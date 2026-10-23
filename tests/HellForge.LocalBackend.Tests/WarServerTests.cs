@@ -19,6 +19,7 @@ static class WarServerTests
     {
         public Func<string, (HttpStatusCode Status, string? Type, string Body)> Answer = _ => (HttpStatusCode.NotFound, null, "");
         public bool Fail;
+        public HttpRequestException Failure = new("connection refused (test)");
         public readonly List<Seen> Requests = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -28,7 +29,7 @@ static class WarServerTests
             foreach (var header in request.Headers.Concat(request.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>()))
                 headers[header.Key] = string.Join(",", header.Value);
             lock (Requests) Requests.Add(new Seen(request.Method.Method, request.RequestUri!.PathAndQuery, headers, body));
-            if (Fail) throw new HttpRequestException("connection refused (test)");
+            if (Fail) throw Failure;
             var (status, type, text) = Answer(request.RequestUri!.AbsolutePath);
             var response = new HttpResponseMessage(status) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes(text)) };
             if (type != null) response.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(type);
@@ -75,6 +76,16 @@ static class WarServerTests
         try { using var _ = await WarServer.ConnectAsync("https://war.test", null, null, log.Add, new FakeServer { Fail = true }); }
         catch (InvalidDataException error) { unreachable = error.Message.Contains("could not be reached", StringComparison.Ordinal); }
         check(unreachable, "An unreachable war server was accepted, or not said so.");
+        // In words, not the AOT build's resource keys.
+        var untrusted = "";
+        try
+        {
+            using var _ = await WarServer.ConnectAsync("https://war.test", null, null, log.Add,
+                new FakeServer { Fail = true, Failure = new HttpRequestException(HttpRequestError.SecureConnectionError, "net_http_ssl_connection_failed") });
+        }
+        catch (InvalidDataException error) { untrusted = error.Message; }
+        check(untrusted.Contains("certificate is not trusted", StringComparison.Ordinal) && !untrusted.Contains("net_http", StringComparison.Ordinal),
+            "A refused certificate was not said in words: " + untrusted);
         foreach (var (content, why) in new[] { ("", "an empty token"), ("two words", "a token with a space"), (new string('x', 513), "a token too long") })
         {
             File.WriteAllText(Path.Combine(folder, "bad-token.txt"), content);

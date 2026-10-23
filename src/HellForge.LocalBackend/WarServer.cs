@@ -100,9 +100,21 @@ public sealed class WarServer : IDisposable
             Name = name;
         }
         catch (JsonException) { throw new InvalidDataException(Failure("its hello is not JSON.")); }
-        catch (HttpRequestException error) { throw new InvalidDataException(Failure(error.Message)); }
-        catch (TaskCanceledException) when (!cancellation.IsCancellationRequested) { throw new InvalidDataException(Failure($"no answer within {RequestTimeout.TotalSeconds} s.")); }
+        catch (HttpRequestException error) { throw new InvalidDataException(Failure(Reason(error))); }
+        catch (TaskCanceledException error) when (!cancellation.IsCancellationRequested) { throw new InvalidDataException(Failure(Reason(error))); }
     }
+
+    // Why a request failed, in words: the NativeAOT build keeps the framework's resource keys
+    // (net_http_ssl_connection_failed), not its messages.
+    static string Reason(Exception error) => error switch
+    {
+        TaskCanceledException => $"no answer within {RequestTimeout.TotalSeconds} s.",
+        HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => "its name could not be resolved.",
+        HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => "no connection could be made.",
+        HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } =>
+            "the secure connection failed: its certificate is not trusted for that name (--war-server-ca gives the CA to trust).",
+        _ => error.Message
+    };
 
     // The game's request as it is (method, path, query, body and headers), with this backend's own headers added, and the
     // server's answer. Throws HttpRequestException or TaskCanceledException when the server does not answer.
@@ -128,7 +140,7 @@ public sealed class WarServer : IDisposable
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellation.IsCancellationRequested)
         {
-            log($"{request.Method} {request.Path.Value} was not answered by the war server ({error.Message}); the game got HTTP 502.");
+            log($"{request.Method} {request.Path.Value} was not answered by the war server ({Reason(error)}); the game got HTTP 502.");
             throw;
         }
     }
