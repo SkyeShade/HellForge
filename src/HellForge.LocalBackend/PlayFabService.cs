@@ -25,10 +25,14 @@ public sealed class PlayFabService
     readonly ConcurrentDictionary<string, JsonObject> objects = new(StringComparer.OrdinalIgnoreCase);
     readonly ConcurrentDictionary<string, string> displayNames = new(StringComparer.OrdinalIgnoreCase);
     readonly FriendPresence? presence;
+    readonly object steamIdGate = new();
     ulong? localSteamId;
 
     // With presence, Steam friends who run HellForge are the friends list, with the profile objects their backends shared.
     public PlayFabService(FriendPresence? presence = null) => this.presence = presence;
+
+    // This player's SteamID64, from the ticket of their PlayFab login (null before it): what a war server is told.
+    public ulong? LocalSteamId { get { lock (steamIdGate) return localSteamId; } }
 
     public static bool Handles(string path) => path.StartsWith(Prefix + "/", StringComparison.Ordinal);
 
@@ -71,7 +75,7 @@ public sealed class PlayFabService
     {
         var steamId = SteamIdFromTicket(body.ValueKind == JsonValueKind.Object && body.TryGetProperty("SteamTicket", out var t) ? t.GetString() : null);
         if (steamId is not { } id) return Error(400, "InvalidSteamTicket", 1010, "Steam ticket not recognised.", "pf_login_ticket_unrecognised");
-        localSteamId = id;
+        lock (steamIdGate) localSteamId = id;
         var now = DateTime.UtcNow;
         return Ok(new JsonObject
         {

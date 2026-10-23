@@ -49,12 +49,14 @@ static class Launch
         if (!SupportedBuild.Current.IsComplete(install.Game))
             throw new InvalidDataException("The game copy is not complete: open HellForge.exe once to set up (or repair) the installation.");
         var war = options.GetValueOrDefault("--war") ?? ProfileStore.LoadWar(paths);
-        if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
-            throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
+        if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen or ProfileStore.WarServer))
+            throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen}, {ProfileStore.WarOpen} or {ProfileStore.WarServer}.");
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
-            GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)));
+            GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
+            WarServerChoice(war, options));
+        string? warServer = session.WarServer?.Origin;
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -83,8 +85,25 @@ static class Launch
             if (!runner.IsRunning) throw new InvalidDataException("The session runner exited before starting: " + RunnerLog(install, startedUtc));
             Thread.Sleep(250);
         }
-        Emit(new { @event = "started", runId = Path.GetFileName(run), run, pid = runner.ProcessId, profile = profile.Name, war, arguments });
+        Emit(new { @event = "started", runId = Path.GetFileName(run), run, pid = runner.ProcessId, profile = profile.Name, war, warServer, arguments });
         return Yes(options, "--wait", false) ? Follow(run, () => runner.IsRunning) : 0;
+    }
+
+    // play --war server: the war server for this session (never saved), its CA and token files checked to exist. The
+    // war server options without --war server are refused, as are their files' contents later by the backend.
+    static WarServerOptions? WarServerChoice(string war, Dictionary<string, string> options)
+    {
+        var given = options.ContainsKey("--war-server") || options.ContainsKey("--war-server-ca") || options.ContainsKey("--war-server-token");
+        if (war != ProfileStore.WarServer)
+            return given ? throw new ArgumentException("--war-server, --war-server-ca and --war-server-token go with --war server.") : null;
+        var origin = WarServerOptions.ParseOrigin(options.GetValueOrDefault("--war-server") ?? throw new ArgumentException("--war server needs --war-server <https origin>."));
+        string? File(string key)
+        {
+            if (!options.TryGetValue(key, out var file)) return null;
+            var full = Path.GetFullPath(file);
+            return System.IO.File.Exists(full) ? full : throw new ArgumentException($"{key}: no such file ({full}).");
+        }
+        return new WarServerOptions(origin, File("--war-server-ca"), File("--war-server-token"));
     }
 
     // Why the session runner stopped before it made its run folder: its last line in logs/session-runner.log, if new.
@@ -398,6 +417,8 @@ static class Launch
         }
         if (options.TryGetValue("--war", out var war))
         {
+            if (war == ProfileStore.WarServer)
+                throw new ArgumentException("A war server is chosen for one session only (play --war server), never saved.");
             if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
                 throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
             ProfileStore.SaveWar(paths, war);

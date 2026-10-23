@@ -52,6 +52,25 @@ static class SessionLaunchTests
                 "--open-war", "--game-options", "-windowed"]), "Open war, launch options: " + string.Join(" ", open));
             var frozen = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, []));
             check(!frozen.Contains("--live-war") && !frozen.Contains("--open-war"), "The frozen war needs nothing.");
+            var token = Path.Combine(root, "war-token.txt");
+            var server = SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [],
+                new WarServerOptions("https://War.Example:8443/", null, token)));
+            check(server.SequenceEqual(["play", "--install", paths.Install.Root, "--profile", profile.Folder, "--template", profile.Template,
+                "--local-playfab", "--war-server", "https://war.example:8443", "--war-server-token", token]), "War server: " + string.Join(" ", server));
+            var refused = 0;
+            foreach (var missing in new WarServerOptions?[] { null, new("http://war.example", null, null), new("https://war.example/api", null, null) })
+                try { SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [], missing)); }
+                catch (ArgumentException) { refused++; }
+            check(refused == 3, "A war server session without an https origin was given a command line.");
+        });
+
+        test("A war server is chosen for one session, never saved as the launcher's war", () =>
+        {
+            var paths = Install("launch-war-server");
+            var refused = false;
+            try { ProfileStore.SaveWar(paths, ProfileStore.WarServer); }
+            catch (ArgumentException) { refused = true; }
+            check(refused && ProfileStore.LoadWar(paths) == ProfileStore.WarLive, "A war server was saved as the launcher's war.");
         });
 
         test("A session's run folder is the one the session runner named after it started, not an earlier one", () =>
