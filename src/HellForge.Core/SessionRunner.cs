@@ -5,7 +5,25 @@ namespace HellForge.Core;
 
 // A session's choices, as the launcher's Settings page keeps them (launcher-settings.json, ProfileStore) or as another
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse).
-public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions);
+public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
+    WarServerOptions? WarServer = null);
+
+// A war server (war "server", HellForge.Cli play --war server): the local backend forwards the game's Arrowhead routes to
+// it (docs/external-launchers.md, "War servers"). Chosen for one session; launcher-settings.json never keeps it. The
+// files are full paths.
+public sealed record WarServerOptions(string Origin, string? CaFile, string? TokenFile)
+{
+    // https://host[:port] and nothing else (no path, query, fragment or user name), as its canonical form: lowercase
+    // host, no default port, no trailing slash.
+    public static string ParseOrigin(string? text)
+    {
+        if (text is null || text.Trim() != text || !Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            uri.Host.Length == 0 || uri.UserInfo.Length > 0 || uri.AbsolutePath != "/" || uri.Query.Length > 0 || uri.Fragment.Length > 0 ||
+            text.EndsWith("//", StringComparison.Ordinal))
+            throw new ArgumentException("A war server is an https origin (https://host or https://host:port) with nothing after it.");
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
+}
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -36,6 +54,14 @@ public sealed class SessionRunner
         // the galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing
         if (options.War == ProfileStore.WarLive) arguments.AddRange(["--live-war", Path.Combine(paths.HostRoot, "live-war.json")]);
         else if (options.War == ProfileStore.WarOpen) arguments.Add("--open-war");
+        // a war server, for this session only: the game's Arrowhead routes are forwarded to it
+        else if (options.War == ProfileStore.WarServer)
+        {
+            var server = options.WarServer ?? throw new ArgumentException("The war server mode needs a war server.");
+            arguments.AddRange(["--war-server", WarServerOptions.ParseOrigin(server.Origin)]);
+            if (server.CaFile != null) arguments.AddRange(["--war-server-ca", Path.GetFullPath(server.CaFile)]);
+            if (server.TokenFile != null) arguments.AddRange(["--war-server-token", Path.GetFullPath(server.TokenFile)]);
+        }
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)
         if (options.GameOptions.Count > 0) arguments.AddRange(["--game-options", GameLaunchOptions.CommandLine(options.GameOptions)]);

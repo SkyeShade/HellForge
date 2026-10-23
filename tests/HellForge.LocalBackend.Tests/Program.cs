@@ -498,6 +498,9 @@ try
     await OpenWarTests.Run(root, Check);
     results.Add(new { mode = "open-war", outcome = "passed" });
     Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");
+    await WarServerTests.Run(root, Check);
+    results.Add(new { mode = "war-server", outcome = "passed" });
+    Console.WriteLine("PASS war server: origins, hello, forwarded as it is, local routes kept, the player's key and SteamID, 502 when gone, the CA check");
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });
     Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP");

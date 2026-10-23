@@ -78,10 +78,13 @@ public static class LocalBackend
     public static WebApplication Create(int port, string evidenceDirectory, LoginMode mode, bool startupFixtures = false,
         ProfileStore? profile = null, string? itemCatalog = null, string? fixtureOverride = null, bool captureMissionBodies = false,
         WarClock? warClock = null, AccountKeys? accountKeys = null, LiveWar? liveWar = null, FriendPresence? presence = null,
-        RegisteredItems? registeredItems = null, bool openWar = false)
+        RegisteredItems? registeredItems = null, bool openWar = false, WarServer? warServer = null)
     {
         if (port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        // --war server: the war server's war takes the place of every other.
+        if (warServer != null && (mode != LoginMode.LocalSession || openWar || liveWar != null))
+            throw new ArgumentException("A war server needs local-session mode and no other war.");
         if (startupFixtures && mode != LoginMode.LocalSession)
             throw new ArgumentException("Startup fixtures require local-session mode.");
         if (profile != null && !startupFixtures) throw new ArgumentException("A profile requires startup fixtures.");
@@ -163,6 +166,17 @@ public static class LocalBackend
             options.Limits.MaxRequestBodySize = MaximumBodyBytes;
         });
         var app = builder.Build();
+        // The game's public key for this run, from its login; a host fetches it when this player joins (AccountKeys).
+        void TakePlayerKey(JsonElement login)
+        {
+            if (login.ValueKind == JsonValueKind.Object && login.TryGetProperty("publicKey", out var publicKey) &&
+                publicKey.ValueKind == JsonValueKind.String && AccountKeys.IsKey(publicKey.GetString()))
+            {
+                accountKeys.SetLocal(publicKey.GetString()!);
+                accountKeys.Log?.Invoke($"This player's key was received with the login ({publicKey.GetString()!.Length} characters).");
+            }
+            else accountKeys.Log?.Invoke("The login carried no usable player key; friends cannot be admitted to this player's games.");
+        }
         app.Run(async context =>
         {
             var request = context.Request;
@@ -178,9 +192,36 @@ public static class LocalBackend
             var outcome = "unsupported_request";
             var status = StatusCodes.Status501NotImplemented;
             object response = new JsonObject { ["errorCode"] = "HELLFORGE_UNSUPPORTED_REQUEST", ["message"] = "Local contract not implemented." };
+            WarServer.Reply? forwarded = null;
             try
             {
-                if (request.Path == "/config/locator.json")
+                if (warServer != null && WarServer.Forwards(request.Path))
+                {
+                    // A war server's route: it goes there as it is, and its answer comes back as it is (WarServer).
+                    using var buffer = new MemoryStream();
+                    await request.Body.CopyToAsync(buffer, context.RequestAborted);
+                    var body = buffer.ToArray();
+                    // The login is the war server's, but its player key stays here too, for co-op.
+                    if (request.Path == "/Account/Login" && HttpMethods.IsPost(request.Method))
+                    {
+                        try { using var login = JsonDocument.Parse(body); TakePlayerKey(login.RootElement); }
+                        catch (JsonException) { TakePlayerKey(default); }
+                    }
+                    try
+                    {
+                        forwarded = await warServer.ForwardAsync(request, body, playFab.LocalSteamId, context.RequestAborted);
+                        status = forwarded.Status;
+                        outcome = "forwarded";
+                        if (WarServer.StatusTime(request, forwarded) is { } time) warClock.Set(time);
+                    }
+                    catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !context.RequestAborted.IsCancellationRequested)
+                    {
+                        status = StatusCodes.Status502BadGateway;
+                        outcome = "war_server_unreachable";
+                        response = Error("HELLFORGE_WAR_SERVER_UNREACHABLE");
+                    }
+                }
+                else if (request.Path == "/config/locator.json")
                 {
                     if (!HttpMethods.IsGet(request.Method))
                     {
@@ -225,14 +266,7 @@ public static class LocalBackend
                         }
                         else
                         {
-                            // The game's public key for this run; a host fetches it when this player joins (AccountKeys).
-                            if (body.RootElement.TryGetProperty("publicKey", out var publicKey) && publicKey.ValueKind == JsonValueKind.String &&
-                                AccountKeys.IsKey(publicKey.GetString()))
-                            {
-                                accountKeys.SetLocal(publicKey.GetString()!);
-                                accountKeys.Log?.Invoke($"This player's key was received with the login ({publicKey.GetString()!.Length} characters).");
-                            }
-                            else accountKeys.Log?.Invoke("The login carried no usable player key; friends cannot be admitted to this player's games.");
+                            TakePlayerKey(body.RootElement);
                             status = StatusCodes.Status200OK;
                             outcome = "local_session_created";
                             // 42 ASCII chars plus the client's "session " prefix fit 64 bytes.
@@ -487,17 +521,34 @@ public static class LocalBackend
 
             // Never persist request bodies, credentials, headers, query strings or session IDs.
             // Paths are retained to identify the next missing local endpoint.
-            var record = new JsonObject
+            var entry = new JsonObject
             {
                 ["timeUtc"] = DateTimeOffset.UtcNow, ["method"] = request.Method, ["path"] = request.Path.Value,
                 ["status"] = status, ["outcome"] = outcome, ["gmiState"] = gmiState, ["authorization"] = authorization, ["mode"] = mode.ToString(),
                 ["startupFixtures"] = startupFixtures
-            }.ToJsonString();
+            };
+            if (forwarded != null) entry["forwardMilliseconds"] = forwarded.Milliseconds;
+            var record = entry.ToJsonString();
             lock (auditLock) File.AppendAllText(auditPath, record + Environment.NewLine);
             context.Response.StatusCode = status;
             context.Response.Headers.CacheControl = "no-store";
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var payload = PadForClientDecoder(Utf8(response));
+            byte[] payload;
+            if (forwarded != null)
+            {
+                // The war server's answer as it is. A JSON body gets the same trailing whitespace as the local answers
+                // (PadForClientDecoder), which changes no value.
+                if (forwarded.ContentType != null) context.Response.ContentType = forwarded.ContentType;
+                payload = status is StatusCodes.Status204NoContent or StatusCodes.Status304NotModified ? []
+                    : forwarded.Body.Length > 0 && forwarded.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true
+                    ? PadForClientDecoder(forwarded.Body) : forwarded.Body;
+            }
+            else
+            {
+                context.Response.ContentType = "application/json; charset=utf-8";
+                payload = PadForClientDecoder(Utf8(response));
+            }
+            // A war server's 204 or 304 has no body, and no length either.
+            if (payload.Length == 0 && status is StatusCodes.Status204NoContent or StatusCodes.Status304NotModified) return;
             context.Response.ContentLength = payload.Length;
             await context.Response.Body.WriteAsync(payload, context.RequestAborted);
         });

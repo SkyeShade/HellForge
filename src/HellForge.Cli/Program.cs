@@ -32,6 +32,7 @@ try
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--game-options <options>]
                  [--wait yes] [--dry-run yes]
+                 [--war server --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>]]
             stop [--install <folder>] [--run <session folder>] [--wait yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
@@ -62,6 +63,7 @@ try
             replaces one; the engine's session runner does every check and cleanup itself. Without --wait it prints the
             run once started and returns; with it, one JSON line per status until the session ends (exit code 0 when it
             ended normally). stop asks the session to close the game. Mod changes wait until no session runs.
+            play --war server sends the game's war routes to a war server for that session only (never saved).
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does.
             Close Steam and the game before prepare; installations must remain idle.
@@ -90,7 +92,8 @@ try
         "build-mod" => ["--mod"],
         "package-mod" => ["--mod", "--out"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--game-options", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--game-options", "--wait", "--dry-run",
+            "--war-server", "--war-server-ca", "--war-server-token"],
         "stop" => ["--install", "--run", "--wait"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],

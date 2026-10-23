@@ -133,6 +133,9 @@ public static partial class ProfileStore
     // frozen war HellForge ships, or the all-planets war made from it (backend --war open). Live unless chosen otherwise;
     // a settings file from before the choice keeps its live-war switch ("liveWar").
     public const string WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
+    // A war server (backend --war server, SessionOptions.WarServer): chosen per session by HellForge.Cli play only, never
+    // saved here.
+    public const string WarServer = "server";
     public static string LoadWar(ISessionPaths paths)
     {
         var settings = SessionFiles.ReadJson(paths.SettingsFile);
@@ -163,8 +166,11 @@ public static partial class ProfileStore
     public static void SaveSdkShims(ISessionPaths paths, bool enabled) =>
         Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
 
-    public static void SaveWar(ISessionPaths paths, string war) =>
+    public static void SaveWar(ISessionPaths paths, string war)
+    {
+        if (war == WarServer) throw new ArgumentException("A war server is chosen for one session only (HellForge.Cli play --war server), never saved.");
         Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+    }
 
     public static void SaveCrashDump(ISessionPaths paths, bool enabled) =>
         Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths));

@@ -27,7 +27,8 @@ public lobbies, and you cannot play with the normal game's players.
 
 Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
 follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
-HellForge's frozen war, or open every planet to liberation (Settings > Galactic war).
+HellForge's frozen war, or open every planet to liberation (Settings > Galactic war). A launcher of its own can also
+name a community war server for a session ([war servers](docs/external-launchers.md#war-servers)).
 
 ## Requirements
 

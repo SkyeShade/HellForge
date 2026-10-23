@@ -9,6 +9,7 @@ public static class BackendOptions
     [
         "--port", "--mode", "--evidence", "--startup-fixtures", "--profile-dir", "--lifetime-seconds", "--profile-template",
         "--item-catalog", "--fixture-override", "--capture-mission-bodies", "--pipe", "--link", "--mod-digest", "--mod-list", "--mods", "--live-war", "--war",
+        "--war-server", "--war-server-ca", "--war-server-token",
     ];
 
     public static Dictionary<string, string> Parse(IReadOnlyList<string> args)

@@ -562,6 +562,16 @@ sealed class PlaySession(PlayOptions options)
         // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
         if (options.OpenWar) { start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open"; }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
+        // A war server: the backend forwards the game's war routes to it, and checks it before it is ready.
+        else if (options.WarServer != null)
+        {
+            foreach (var argument in new[] { "--war", "server", "--war-server", options.WarServer }) start.ArgumentList.Add(argument);
+            if (options.WarServerCa != null) { start.ArgumentList.Add("--war-server-ca"); start.ArgumentList.Add(Path.GetFullPath(options.WarServerCa)); }
+            if (options.WarServerToken != null) { start.ArgumentList.Add("--war-server-token"); start.ArgumentList.Add(Path.GetFullPath(options.WarServerToken)); }
+            result["war"] = "server";
+            result["warServer"] = options.WarServer;
+            Say($"The war comes from the war server {options.WarServer}.");
+        }
         if (options.Multiplayer)
         {
             var link = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
@@ -586,14 +596,23 @@ sealed class PlaySession(PlayOptions options)
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };
         var stderr = new StreamWriter(Path.Combine(run, "backend-stderr.txt")) { AutoFlush = true };
         server.OutputDataReceived += (_, e) => { if (e.Data != null) lock (stdout) stdout.WriteLine(Privacy.Scrub(e.Data)); };
-        server.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (stderr) stderr.WriteLine(Privacy.Scrub(e.Data)); };
+        string? lastError = null;
+        server.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (stderr) { lastError = Privacy.Scrub(e.Data); stderr.WriteLine(lastError); } };
         server.BeginOutputReadLine();
         server.BeginErrorReadLine();
         var ready = Path.Combine(evidence, "ready.json");
         var clock = Stopwatch.StartNew();
-        // Up to 16 s of live war fetches (two requests, 8 s timeout each) come before ready.
+        // Up to 16 s of live war fetches (two requests, 8 s timeout each), or a war server's hello (20 s at most), come before ready.
         while (!File.Exists(ready))
         {
+            if (server.HasExited && options.WarServer != null)
+            {
+                // Why: the backend's last error line ("... could not be reached: ..."), once its output is all read.
+                server.WaitForExit();
+                string? why;
+                lock (stderr) why = lastError;
+                throw new SessionFailure($"The war server {options.WarServer} could not be used" + (why != null ? $" ({why})." : "."));
+            }
             if (server.HasExited || clock.Elapsed.TotalSeconds > 30) throw new SessionFailure("Backend did not become ready.");
             Thread.Sleep(100);
         }

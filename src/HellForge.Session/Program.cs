@@ -2,14 +2,16 @@ using HellForge.Session;
 
 // HellForge.Session.exe: the engine's session runner (docs/engine.md).
 //   play --install <installation> --profile <profile folder> [--template <name>] [--local-playfab] [--multiplayer]
-//        [--live-war <cache file> | --open-war] [--engine-log] [--game-options <the player's launch options>]
+//        [--live-war <cache file> | --open-war | --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>]]
+//        [--engine-log] [--game-options <the player's launch options>]
 //   version
 //   census <network-census.jsonl>   (a session's network census, summarised as the session's result.json holds it)
 //   network-probe <backend port> <report>   (the network block's probe as a Linux session runs it, PlaySession.NetworkProbeInProcess)
 // A session reports through its run folder (logs/sessions/<run>: result.json and the rest, as the launcher reads them);
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
-    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] | version | census <log>";
+    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war | --war-server <https origin> [--war-server-ca <pem file>] " +
+    "[--war-server-token <file>]] [--engine-log] [--game-options <options>] | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
@@ -40,6 +42,9 @@ for (var i = 1; i < args.Length; i++)
         case "--template": options.Template = Value(); break;
         case "--live-war": options.LiveWar = Value(); break;
         case "--open-war": options.OpenWar = true; break;
+        case "--war-server": options.WarServer = Value(); break;
+        case "--war-server-ca": options.WarServerCa = Value(); break;
+        case "--war-server-token": options.WarServerToken = Value(); break;
         case "--local-playfab": options.LocalPlayFab = true; break;
         case "--multiplayer": options.Multiplayer = true; break;
         case "--engine-log": options.EngineLog = true; break;
@@ -48,10 +53,15 @@ for (var i = 1; i < args.Length; i++)
     }
 }
 if (options.Install.Length == 0) { Console.Error.WriteLine(Usage); return 2; }
+// one war: a war server's takes the place of the live and the all-planets war; its CA and token only go with it
+if ((options.WarServer != null && (options.LiveWar != null || options.OpenWar)) ||
+    (options.WarServer == null && (options.WarServerCa != null || options.WarServerToken != null)))
+{ Console.Error.WriteLine(Usage); return 2; }
 try
 {
     // checked as the launcher checks them (GameLaunchOptions): never a switch the session sets itself
     options.GameOptions = HellForge.Core.GameLaunchOptions.Parse(gameOptions);
+    if (options.WarServer != null) options.WarServer = HellForge.Core.WarServerOptions.ParseOrigin(options.WarServer);
     return new PlaySession(options).Run();
 }
 catch (Exception error) when (error is SessionFailure or IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException)
@@ -71,6 +81,9 @@ sealed class PlayOptions
     public string? Template { get; set; }
     public string? LiveWar { get; set; }
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
+    public string? WarServer { get; set; } /* a war server's origin (backend --war server), with its CA and token files */
+    public string? WarServerCa { get; set; }
+    public string? WarServerToken { get; set; }
     public bool LocalPlayFab { get; set; }
     public bool Multiplayer { get; set; }
     public bool EngineLog { get; set; }

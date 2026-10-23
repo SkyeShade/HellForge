@@ -118,7 +118,8 @@ launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
 `--multiplayer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+and prints every setting. A war server is the exception: it is chosen for one session (`play --war server`) and never
+saved, so `settings --war server` is refused.
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
@@ -133,12 +134,16 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
+                       [--war server --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>]]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
-| `--war` | `live` | `live`: the current galactic war, read-only through the community mirror; `frozen`: the war HellForge ships; `open`: every planet open |
+| `--war` | `live` | `live`: the current galactic war, read-only through the community mirror; `frozen`: the war HellForge ships; `open`: every planet open; `server`: a war server's (see [War servers](#war-servers)), for this session only |
+| `--war-server` | | with `--war server`: the war server, as an https origin (`https://host` or `https://host:port`, nothing after it) |
+| `--war-server-ca` | | with `--war server`, optional: a PEM certificate; the war server's certificate must chain to it (or be it), instead of to Windows' roots |
+| `--war-server-token` | | with `--war server`, optional: a file holding one token (1 to 512 printable characters) sent with every request to the war server |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
@@ -200,6 +205,44 @@ sizes.
 computer name, whoever wrote them. Programs are left out, and a crash dump goes in as it is. While a session runs, its
 logs are read with shared access, and a file it has locked is left out (`skipped` counts them). The zip must not exist
 yet.
+
+## War servers
+
+A war server is a galactic war someone runs for a group of players: a community war, or a private one. With
+`play --war server --war-server <origin>`, the session's local backend sends the game's war routes to it instead of
+answering them itself. Nothing else about the session changes: the copied game still reaches only this PC (the local
+backend is the one program that talks to the war server, as it does to the community mirror for the live war), and
+the network block, the ownership check and mods are as always. The war server is named for that session only.
+
+What stays on this PC, so that co-op with Steam friends works as before:
+
+- `GET /config/locator.json` (it names the local backend);
+- the PlayFab stand-in (`/playfab/...`);
+- the social tab's lobbies (`/lobby`, `/lobby/...`) and the player keys (`GET /Account/Keys`);
+- the player key in the game's login: `POST /Account/Login` is forwarded, but the backend keeps its `publicKey` first.
+
+Every other request goes to the war server as it is, at the same path (`/WarSeason/801/Status`, with no `/api` in
+front), with the same query, body and headers (all but `Host` and the connection's own), and the war server's answer
+comes back to the game as it is: its status, its `Content-Type` and its body. A JSON body gets trailing spaces, as every
+local answer does, because the game's JSON reader needs the room; no value changes. Nothing in this mode is answered
+from HellForge's own war or the profile, so the game never mixes the two.
+
+The backend adds three headers to every forwarded request:
+
+| Header | Value |
+|---|---|
+| `X-HellForge-SteamId` | the player's SteamID64, from their Steam ticket at the local PlayFab login (left out before that, and with `--local-playfab no`). A claim, not a proof: a war server can't check a Steam ticket |
+| `X-HellForge-Version` | HellForge's and the engine's versions |
+| `X-HellForge-Token` | the token file's contents, when `--war-server-token` is given |
+
+Before it is ready, the backend asks the war server `GET /hellforge/v1/hello` (with the version and token headers) and
+expects `200` with `{"protocol": 1, "name": "<1 to 64 printable characters>"}`. If the war server can't be reached,
+its certificate isn't trusted, or the answer is anything else, the session stops before the game starts and says why.
+During the session, a request the war server does not answer within 20 s (or at all) gets
+`502 {"errorCode": "HELLFORGE_WAR_SERVER_UNREACHABLE"}`, and `backend/war-server.log` in the session's logs says which.
+The war clock follows the `time` in the war server's `GET /WarSeason/<id>/Status` answers, so a co-op host's war time
+still reaches friends. `backend/requests.jsonl` records each forwarded request's path, status and time taken (outcome
+`forwarded`), never a body, header, query or token. Linux sessions have no network, so they can't use a war server.
 
 ## Linux
 

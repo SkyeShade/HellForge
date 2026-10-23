@@ -14,6 +14,7 @@ if (args.Contains("--help"))
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
+    Console.WriteLine("--war server --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>] forwards the game's war routes to a war server (checked before ready); the locator, PlayFab, lobbies and player keys stay here (no --live-war).");
     Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ.");
     return 0;
 }
@@ -86,18 +87,37 @@ try
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).
     Directory.CreateDirectory(evidence);
     var liveWarLog = Path.Combine(evidence, "live-war.log");
-    // --war open: the all-planets war (OpenWar); it takes the place of the live war.
+    // --war open: the all-planets war (OpenWar); it takes the place of the live war. --war server: a war server's (WarServer).
     var war = options.GetValueOrDefault("--war");
-    if (war != null && war != OpenWar.Mode) throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\".");
+    if (war != null && war != OpenWar.Mode && war != WarServer.Mode)
+        throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\" or \"" + WarServer.Mode + "\".");
     var openWar = war == OpenWar.Mode;
-    await using var liveWar = !openWar && options.GetValueOrDefault("--live-war") is { } liveWarCache && startupFixtures
+    var serverWar = war == WarServer.Mode;
+    if (!serverWar && (options.ContainsKey("--war-server") || options.ContainsKey("--war-server-ca") || options.ContainsKey("--war-server-token")))
+        throw new ArgumentException("--war-server, --war-server-ca and --war-server-token need --war server.");
+    if (serverWar)
+    {
+        if (!options.ContainsKey("--war-server")) throw new ArgumentException("--war server needs --war-server <https origin>.");
+        if (options.ContainsKey("--live-war")) throw new ArgumentException("--war server takes the place of --live-war.");
+        if (mode != LoginMode.LocalSession) throw new ArgumentException("--war server needs local-session mode.");
+        // Linux: the backend runs in the game's network namespace, with loopback only (docs/linux.md).
+        if (Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") throw new ArgumentException("A war server can't be reached from a session with no network (Linux).");
+    }
+    var warServerLog = Path.Combine(evidence, "war-server.log");
+    using var warServer = serverWar
+        ? await WarServer.ConnectAsync(options["--war-server"], options.GetValueOrDefault("--war-server-ca"), options.GetValueOrDefault("--war-server-token"), message =>
+        {
+            lock (warServerLog) File.AppendAllText(warServerLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
+        }, cancellation: lifetime.Token)
+        : null;
+    await using var liveWar = !openWar && !serverWar && options.GetValueOrDefault("--live-war") is { } liveWarCache && startupFixtures
         ? await LiveWar.StartAsync(liveWarCache, warClock, message =>
         {
             lock (liveWarLog) File.AppendAllText(liveWarLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
     await using var app = LocalBackend.Create(port, evidence, mode, startupFixtures, profile, options.GetValueOrDefault("--item-catalog"),
-        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar);
+        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, warServer);
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
     // --mod-list <file>: the digest's mods one by one (ModlistDiff's form), so a refused join can say which differ
@@ -112,6 +132,7 @@ try
         ["mode"] = mode.ToString(), ["evidence"] = evidence, ["startupFixtures"] = startupFixtures,
         ["profile"] = profile?.FilePath, ["profileCreated"] = profile?.Created, ["lifetimeSeconds"] = lifetimeSeconds
     };
+    if (warServer != null) ready["warServer"] = new System.Text.Json.Nodes.JsonObject { ["origin"] = warServer.Origin, ["name"] = warServer.Name };
     var json = ready.ToJsonString();
     await File.WriteAllTextAsync(Path.Combine(evidence, "ready.json"), json);
     Console.WriteLine(json);
