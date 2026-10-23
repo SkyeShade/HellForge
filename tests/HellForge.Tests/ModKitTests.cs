@@ -94,6 +94,7 @@ static class ModKitTests
 
         test("Unpacked tools are moved into place even while an antivirus still holds a file open", () =>
         {
+            if (!OperatingSystem.IsWindows()) return; // exclusive file locks are a Windows behaviour
             var staging = Directory.CreateDirectory(Path.Combine(root, "held-tools", "zig-staging")).FullName;
             var target = Path.Combine(root, "held-tools", "zig");
             var exe = Path.Combine(staging, "zig.exe");

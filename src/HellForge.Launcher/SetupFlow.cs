@@ -57,6 +57,29 @@ public partial class MainWindow
         InstallCard.IsVisible = true;
         InstallText.Text = $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}";
         SetupStartButton.Click += async (_, _) => await RunSetup();
+        // Desktop and Start menu shortcuts are Windows things; on Linux the package installs a menu entry.
+        if (!OperatingSystem.IsWindows()) { DesktopShortcutBox.IsVisible = false; StartMenuShortcutBox.IsVisible = false; }
+        // Development: HELLFORGE_DEV_SHOT=<folder> saves a picture of the window every 2 seconds (shot-N.png), and
+        // HELLFORGE_DEV_SETUP=1 presses Start setup once the window is open.
+        if (Environment.GetEnvironmentVariable("HELLFORGE_DEV_SHOT") is { Length: > 0 } shotFolder)
+        {
+            Directory.CreateDirectory(shotFolder);
+            var count = 0;
+            var timer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            timer.Tick += (_, _) =>
+            {
+                if (Bounds.Width < 1) return;
+                using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize((int)Bounds.Width, (int)Bounds.Height));
+                bitmap.Render(this);
+                bitmap.Save(Path.Combine(shotFolder, $"shot-{count++}.png"));
+            };
+            timer.Start();
+        }
+        // HELLFORGE_DEV_PLAY=1 presses PLAY once the window is open.
+        if (Environment.GetEnvironmentVariable("HELLFORGE_DEV_PLAY") == "1")
+            Opened += async (_, _) => { await Task.Delay(2500); Start(); };
+        if (Environment.GetEnvironmentVariable("HELLFORGE_DEV_SETUP") == "1")
+            Opened += async (_, _) => { await Task.Delay(1500); await RunSetup(); };
         SetupPauseButton.Click += (_, _) => setupCancel?.Cancel();
         SetupBackButton.Click += (_, _) => LeaveSetup();
         OpenConsoleButton.Click += (_, _) => OpenSteamConsole();
@@ -107,7 +130,7 @@ public partial class MainWindow
 
     async Task RunSetup()
     {
-        if (setupRunning || runner.IsRunning || paths.InstallRoot == null || !OperatingSystem.IsWindows()) return;
+        if (setupRunning || runner.IsRunning || paths.InstallRoot == null || !(OperatingSystem.IsWindows() || OperatingSystem.IsLinux())) return;
         setupRunning = true;
         SetupStartButton.IsEnabled = false;
         SetupBackButton.IsVisible = false;
@@ -118,9 +141,9 @@ public partial class MainWindow
             SetRow(step, null, "Looking in your Steam libraries...", running: true);
             // Linux (Wine/Proton) outside the namespace, such as the launcher HellForge-Setup.exe opens: the network block
             // step could only fail there (Wine has no Windows Filtering Platform), after the whole copy.
-            if (LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested)
+            if ((LinuxNetworkBlock.UnderWine || LinuxHost.IsNative) && !LinuxNetworkBlock.Requested)
                 throw new SetupStopped("On Linux, setup runs inside HellForge's network namespace. Close HellForge and start it with " +
-                    "app/linux/hellforge-linux.sh (docs/linux.md), then start setup there.");
+                    (LinuxHost.IsNative ? "the hellforge command" : "app/linux/hellforge-linux.sh (docs/linux.md)") + ", then start setup there.");
             if (!LinuxNetworkBlock.Requested) await CheckFilteringEngine(install);
             var build = SupportedBuild.Current;
             var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
@@ -206,7 +229,7 @@ public partial class MainWindow
             if (File.Exists(evidence)) File.Delete(evidence);
             int ownershipExit;
             string ownershipError;
-            if (LinuxNetworkBlock.UnderWine)
+            if (LinuxNetworkBlock.UnderWine || LinuxHost.IsNative)
             {
                 var probe = Path.GetFullPath(Path.Combine(paths.ScriptsFolder, "..", "steamprobe", "HellForge.SteamProbe.exe"));
                 try
@@ -275,7 +298,7 @@ public partial class MainWindow
             else SetRow(step, true, "Skipped.");
 
             step = SetupStep.Shortcuts;
-            var made = CreateShortcuts(install);
+            var made = OperatingSystem.IsWindows() ? CreateShortcuts(install) : [];
             SetRow(step, true, made.Count > 0 ? string.Join(", ", made) : "Skipped.");
             await SyncBundledMods(install); // with the game copied: the editor's icons and fonts, Hell Forge's icon
 
@@ -405,7 +428,9 @@ public partial class MainWindow
             "Steam shows no progress in its library for this; the bar below does.";
         // Linux: Steam for Linux downloads into its own folder, which setup cannot read under Wine (Z: counts as a linked
         // path); linux/hellforge-linux.sh moves the download into this prefix's Steam folder.
-        if (LinuxNetworkBlock.UnderWine)
+        if (LinuxHost.IsNative)
+            DownloadIntro.Text += " On Linux, Steam may put the download in a client folder of its own; HellForge looks in all of them.";
+        else if (LinuxNetworkBlock.UnderWine)
             DownloadIntro.Text += " On Linux, Steam puts the download in its own folder instead, and the bar stays empty: once the console " +
                 "says \"Depot download complete\" for every command, close HellForge and start it again with app/linux/hellforge-linux.sh, " +
                 "which moves the download into this prefix. Then press Check again.";
@@ -524,7 +549,7 @@ public partial class MainWindow
         UninstallConfirm.IsVisible = false;
         if (runner.IsRunning || setupRunning) { UninstallText.Text = "Stop the session (or setup) first."; return; }
         // Linux (Wine/Proton): the removal runs Windows PowerShell, which a Wine prefix has only as a stub that does nothing.
-        if (LinuxNetworkBlock.UnderWine) { UninstallText.Text = "On Linux, remove HellForge by hand: see \"Removing HellForge\" in docs/linux.md."; return; }
+        if (LinuxNetworkBlock.UnderWine || LinuxHost.IsNative) { UninstallText.Text = "On Linux, remove HellForge by hand: see \"Removing HellForge\" in docs/linux.md."; return; }
         var running = Process.GetProcesses().Where(p => p.Id != Environment.ProcessId && IsFrom(p, install.Root)).Select(p => p.ProcessName).Distinct().ToList();
         if (running.Count > 0) { UninstallText.Text = "Close these first: " + string.Join(", ", running) + "."; return; }
         try { UninstallSafety(install.Root); }

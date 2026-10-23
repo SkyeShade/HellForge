@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# hellforge: native Linux entry point. Starts the HellForge launcher inside its offline network namespace.
+#   hellforge            start the launcher
+#   hellforge install    fetch HellForge-Setup.exe and install the engine into HellForge's own Proton prefix (once)
+#   hellforge --help
+set -euo pipefail
+LIB="${HELLFORGE_LIB:-/usr/lib/hellforge}"
+PREFIX="${HF_PREFIX:-$HOME/.local/share/hellforge-prefix}"
+INSTALL="${INSTALL:-$PREFIX/pfx/drive_c/users/steamuser/Documents/HellForge}"
+STEAM="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}"
+if [ -z "$STEAM" ]; then
+  for s in "$HOME/.local/share/Steam" "$HOME/.steam/debian-installation" "$HOME/.steam/steam" \
+           "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam" "$HOME/snap/steam/common/.local/share/Steam"; do
+    [ -d "$s/steamapps" ] && { STEAM="$(cd "$s" && pwd -P)"; break; }
+  done
+fi
+[ -n "$STEAM" ] || { echo "hellforge: Steam was not found (no steamapps folder in ~/.local/share/Steam, ~/.steam, Flatpak or Snap). Install Steam, or set STEAM_COMPAT_CLIENT_INSTALL_PATH." >&2; exit 1; }
+
+pick_proton() {
+  [ -n "${PROTON:-}" ] && { echo "$PROTON"; return; }
+  ls -d "$STEAM"/steamapps/common/Proton*/proton "$STEAM"/compatibilitytools.d/*/proton 2>/dev/null | sort -V | tail -n1
+}
+
+case "${1:-}" in
+  --help|-h) sed -n 2,5p "$0"; exit 0 ;;
+  install)
+    proton="$(pick_proton)"; [ -n "$proton" ] || { echo "Install a Proton in Steam first." >&2; exit 1; }
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/hellforge"; mkdir -p "$cache" "$PREFIX"
+    if [ -n "${2:-}" ]; then
+      setup="$2"; [ -f "$setup" ] || { echo "hellforge: $setup does not exist." >&2; exit 1; }
+    else
+      setup="$cache/HellForge-Setup.exe"
+      if [ ! -f "$setup" ]; then
+        # the newest release, prereleases included (releases/latest skips them)
+        releases="$(curl -fsSL https://api.github.com/repos/SkyeShade/HellForge/releases)" \
+          || { echo "hellforge: could not look up the HellForge release (no network?)." >&2; exit 1; }
+        url="$(grep -m1 -o 'https://[^"]*/HellForge-Setup.exe' <<<"$releases")" \
+          || { echo "hellforge: no HellForge-Setup.exe in the releases." >&2; exit 1; }
+        echo "Downloading $url (about 250 MB) ..."
+        curl -fL --progress-bar -o "$setup.part" "$url" || { rm -f "$setup.part"; echo "hellforge: the download failed." >&2; exit 1; }
+        [ "$(head -c2 "$setup.part")" = "MZ" ] || { rm -f "$setup.part"; echo "hellforge: the download is not a Windows program." >&2; exit 1; }
+        mv "$setup.part" "$setup"
+      fi
+    fi
+    STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM" STEAM_COMPAT_DATA_PATH="$PREFIX" "$proton" run "$setup"
+    echo "Installed. Close the Windows launcher if it opened and run: hellforge"
+    exit 0 ;;
+esac
+
+if [ ! -f "$INSTALL/hellforge-install.json" ]; then
+  echo "HellForge's engine is not installed yet. Run: hellforge install" >&2; exit 1
+fi
+export INSTALL STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM" STEAM_COMPAT_DATA_PATH="$PREFIX"
+export HF_NATIVE_LAUNCHER="$LIB/HellForge.Launcher"
+exec bash "$LIB/linux/hellforge-linux.sh" "$@"

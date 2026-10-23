@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=HellForge
+Comment=Offline HELLDIVERS 2 launcher with a modding SDK
+Exec=hellforge
+Icon=hellforge
+Terminal=false
+Categories=Game;

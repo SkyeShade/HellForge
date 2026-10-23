@@ -65,6 +65,7 @@ sealed class LauncherPaths : ISessionPaths
     public static LauncherPaths? Find()
     {
         if (InstallLayout.Find(AppContext.BaseDirectory) is { } install) return ForInstall(install);
+        if (OperatingSystem.IsLinux() && LinuxHost.FindInstall() is { } linuxInstall) return ForInstall(linuxInstall);
         var root = AppContext.BaseDirectory;
         while (root != null && !File.Exists(Path.Combine(root, "HellForge.slnx")))
             root = Path.GetDirectoryName(root.TrimEnd(Path.DirectorySeparatorChar));

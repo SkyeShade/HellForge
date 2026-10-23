@@ -1,0 +1,18 @@
+# Maintainer: noxy
+pkgname=hellforge
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Native Linux launcher for HellForge (offline HELLDIVERS 2 with a modding SDK), runs the game through Proton'
+arch=(x86_64)
+url='https://github.com/SkyeShade/HellForge'
+license=(GPL3)
+depends=(socat iproute2 util-linux procps-ng curl fontconfig libx11 libice libsm)
+optdepends=('steam: required, with HELLDIVERS 2 and a Proton installed')
+options=(!strip)
+source=("hellforge-linux-x64.tar.gz")
+sha256sums=(SKIP)
+package() {
+  install -d "$pkgdir/usr/lib"
+  cp -a hellforge "$pkgdir/usr/lib/hellforge"
+  cp -a usr "$pkgdir/"
+}
