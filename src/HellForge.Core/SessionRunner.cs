@@ -16,10 +16,10 @@ public sealed class SessionRunner
 {
     Process? controller;
 
-    public static bool IsSupported => OperatingSystem.IsWindows();
+    public static bool IsSupported => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && (LinuxNetworkBlock.UnderWine || LinuxHost.Proton != null));
 
     public static string UnsupportedMessage => OperatingSystem.IsLinux()
-        ? "Linux sessions are not supported yet."
+        ? "Proton was not found: install Proton in Steam and start HellForge with the hellforge command."
         : "Sessions are only supported on Windows for now.";
 
     public bool IsRunning => controller is { HasExited: false };
@@ -56,17 +56,24 @@ public sealed class SessionRunner
         if (IsRunning) return;
         var arguments = Arguments(paths, profile, options);
         LinuxNetworkBlock.GuardSession(paths.InstallRoot!);
-        var start = new ProcessStartInfo(paths.Session)
+        ProcessStartInfo start;
+        if (LinuxHost.IsNative)
         {
-            WorkingDirectory = paths.Root,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            // The session runner is a Windows program: Proton runs it, with the paths it reads as Windows paths.
+            start = LinuxHost.Windows(LinuxHost.WindowsPath(paths.Session), arguments.Select(a => a.StartsWith('/') ? LinuxHost.WindowsPath(a) : a),
+                paths.Root);
+        }
+        else
+        {
+            start = new ProcessStartInfo(paths.Session) { WorkingDirectory = paths.Root, UseShellExecute = false, CreateNoWindow = true };
+            foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        }
         // The mod loader has HellForge.Cli write a full dump at the game's first crash (WriteCrashDump); the game inherits
         // the session runner's environment.
         if (options.CrashDump)
-            start.Environment["HELLFORGE_CRASH_DUMP"] = Path.Combine(paths.InstallRoot!, "app", "cli", "HellForge.Cli.exe");
+            start.Environment["HELLFORGE_CRASH_DUMP"] = LinuxHost.IsNative
+                ? LinuxHost.WindowsPath(Path.Combine(paths.InstallRoot!, "app", "cli", "HellForge.Cli.exe"))
+                : Path.Combine(paths.InstallRoot!, "app", "cli", "HellForge.Cli.exe");
         // An installation keeps even temporary files inside its folder.
         var temp = Directory.CreateDirectory(Path.Combine(paths.InstallRoot!, "temp")).FullName;
         start.Environment["TEMP"] = start.Environment["TMP"] = temp;
@@ -78,7 +85,7 @@ public sealed class SessionRunner
     public static string? RunSince(ISessionPaths paths, DateTime startedUtc)
     {
         if (SessionFiles.ReadJson(paths.SessionFile) is not { } session) return null;
-        var run = SessionFiles.Text(session, "run");
+        var run = LinuxHost.NativePath(SessionFiles.Text(session, "run"));
         return run.Length > 0 &&
             DateTime.TryParse(SessionFiles.Text(session, "startedUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var started) &&
             started >= startedUtc.AddSeconds(-5) ? run : null;
@@ -86,7 +93,7 @@ public sealed class SessionRunner
 
     // The newest run folder, whatever started it, or null.
     public static string? LatestRun(ISessionPaths paths) =>
-        SessionFiles.ReadJson(paths.SessionFile) is { } session && SessionFiles.Text(session, "run") is { Length: > 0 } run ? run : null;
+        SessionFiles.ReadJson(paths.SessionFile) is { } session && SessionFiles.Text(session, "run") is { Length: > 0 } run ? LinuxHost.NativePath(run) : null;
 
     // The session runner stops the game and the backend, then exits.
     public static void SignalStop(string runDirectory) =>

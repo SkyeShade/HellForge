@@ -120,7 +120,9 @@ public static class ModInstaller
         var kind = Path.GetExtension(archive).ToLowerInvariant();
         var target = Path.Combine(install.Temp, "mod-unpacked-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(target);
-        var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+        // Linux: bsdtar (libarchive), which reads 7z and RAR; GNU tar does not.
+        var tar = OperatingSystem.IsLinux() ? (File.Exists("/usr/bin/bsdtar") ? "/usr/bin/bsdtar" : "bsdtar")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
         var start = new System.Diagnostics.ProcessStartInfo(tar) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
         foreach (var a in new[] { "-xf", archive, "-C", target }) start.ArgumentList.Add(a);
         try
@@ -129,9 +131,9 @@ public static class ModInstaller
             var errors = process.StandardError.ReadToEndAsync();
             process.StandardOutput.ReadToEnd();
             process.WaitForExit();
-            if (process.ExitCode != 0) throw new InvalidDataException($"Windows could not unpack it ({errors.Result.Trim()}): unpack the {kind} yourself and add its folder.");
+            if (process.ExitCode != 0) throw new InvalidDataException($"The system could not unpack it ({errors.Result.Trim()}): unpack the {kind} yourself and add its folder.");
         }
-        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException($"Windows has no tar to unpack it with: unpack the {kind} yourself and add its folder."); }
+        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException($"This system has no tar (bsdtar on Linux) to unpack it with: unpack the {kind} yourself and add its folder."); }
         if (new DirectoryInfo(target).EnumerateFileSystemInfos("*", SearchOption.AllDirectories).Any(e => (e.Attributes & FileAttributes.ReparsePoint) != 0))
             throw new InvalidDataException($"the {kind} contains a link; HellForge adds only plain files and folders.");
         var root = ModArchives.ManifestRoot(target);

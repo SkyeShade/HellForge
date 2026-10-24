@@ -14,3 +14,8 @@ examples/mods/*/*.dll
 examples/mods/*/data/
 examples/mods/*/build/
 CMakeUserPresets.json
+linux/packaging/dist/
+linux/packaging/pkg/
+linux/packaging/src/
+linux/packaging/*.tar.gz
+linux/packaging/*.pkg.tar.zst

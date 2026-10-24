@@ -21,6 +21,11 @@ done
 [ "$n" -gt 0 ] || { echo "no bridge sockets found; start hf-bridge-host.sh first" >&2; exit 1; }
 trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
 sleep 1
+if [ -n "${HF_NATIVE_LAUNCHER:-}" ]; then
+  # Native Linux launcher: it runs here in the namespace, in the foreground, and starts the Windows parts through Proton.
+  HELLFORGE_INSTALL="$INSTALL" "$HF_NATIVE_LAUNCHER" "$@" || true
+  exit 0
+fi
 if [ $# -gt 0 ]; then "$PROTON" run "$@" || true; else "$PROTON" run "$INSTALL/HellForge.exe" || true; fi
 
 # "proton run" returns as soon as the launcher has started, but the launcher keeps running (and HellForge.Cli play

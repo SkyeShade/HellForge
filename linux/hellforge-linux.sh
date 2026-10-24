@@ -95,7 +95,7 @@ fi
 # path). Setup reads it from Steam's folder inside the prefix, so offer to move it there: a rename on the same
 # filesystem, no extra space. Only for an installation inside this prefix (made there by HellForge-Setup.exe).
 # The depots are the supported build's (src/HellForge.Core/supported-build.json).
-if [ -n "$inside" ] && [ "$inside" -ef "$STEAM_COMPAT_DATA_PATH" ] && [ ! -f "$INSTALL/game/bin/helldivers2.exe" ]; then
+if [ -z "${HF_NATIVE_LAUNCHER:-}" ] && [ -n "$inside" ] && [ "$inside" -ef "$STEAM_COMPAT_DATA_PATH" ] && [ ! -f "$INSTALL/game/bin/helldivers2.exe" ]; then
   depots="553851 553853 553854"
   target="$STEAM_COMPAT_DATA_PATH/pfx/drive_c/Program Files (x86)/Steam/steamapps/content/app_553850"
   # true for a folder that holds every depot the prefix still lacks

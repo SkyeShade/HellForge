@@ -59,8 +59,14 @@ public static class SteamOwnershipCheck
         string hash;
         using (var stream = File.OpenRead(library)) hash = Convert.ToHexString(SHA256.HashData(stream));
         var report = Path.Combine(run, "result.json");
-        var start = new ProcessStartInfo(probe) { WorkingDirectory = run, UseShellExecute = false, CreateNoWindow = true };
-        foreach (var argument in new[] { library, hash, report }) start.ArgumentList.Add(argument);
+        ProcessStartInfo start;
+        if (LinuxHost.IsNative)
+            start = LinuxHost.Windows(LinuxHost.WindowsPath(probe), new[] { LinuxHost.WindowsPath(library), hash, LinuxHost.WindowsPath(report) }, run);
+        else
+        {
+            start = new ProcessStartInfo(probe) { WorkingDirectory = run, UseShellExecute = false, CreateNoWindow = true };
+            foreach (var argument in new[] { library, hash, report }) start.ArgumentList.Add(argument);
+        }
         using var process = Process.Start(start) ?? throw new InvalidDataException("The Steam ownership probe did not start.");
         if (!process.WaitForExit((int)timeout.TotalMilliseconds))
         {

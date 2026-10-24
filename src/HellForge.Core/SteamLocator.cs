@@ -13,6 +13,7 @@ public static class SteamLocator
         if (OperatingSystem.IsWindows() &&
             Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) is string path && Directory.Exists(path))
             return LocalInstall.FullPath(path);
+        if (OperatingSystem.IsLinux() && LinuxHost.SteamRoot() is { } linuxSteam) return LocalInstall.FullPath(linuxSteam);
         var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam");
         return Directory.Exists(fallback) ? fallback : null;
     }

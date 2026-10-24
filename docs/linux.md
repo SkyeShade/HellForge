@@ -135,6 +135,26 @@ for Steam.
 To move it yourself, move the three `depot_*` folders from `app_553850` in Steam's folder to that `app_553850` folder in
 the prefix. Links do not work: HellForge refuses linked paths.
 
+## Native launcher (experimental)
+
+Besides running `HellForge.exe` under Proton, the launcher can run as a native Linux program (Avalonia). The launcher,
+setup and the Steam search then run natively, and only the Windows parts (the session runner and the game, the Steam
+ownership probe) run through Proton, still inside the network namespace. Nothing about the offline guarantee changes:
+`LinuxNetworkBlock.GuardSession` refuses a session outside the namespace.
+
+```sh
+bash linux/packaging/build.sh pkg        # needs a .NET 10 SDK; builds an Arch/CachyOS package
+sudo pacman -U linux/packaging/hellforge-*.pkg.tar.zst
+hellforge install                        # once: runs HellForge-Setup.exe in HellForge's own Proton prefix
+hellforge                                # starts the native launcher in the namespace
+```
+
+Natively, setup reads Steam's folders directly (no Z: drive, no depot move). `src/HellForge.Core/LinuxHost.cs` holds the
+Proton start, the path conversion and the Steam search. Needs `bsdtar` for `.7z` and `.rar` mods. Development:
+`HELLFORGE_DEV_SHOT=<folder>` saves a picture of the window every two seconds, `HELLFORGE_DEV_SETUP=1` and
+`HELLFORGE_DEV_PLAY=1` press Start setup or PLAY. Not tested yet: a session that reaches the game, and the ownership
+probe through Proton.
+
 ## Updating
 
 Run the newer `HellForge-Setup.exe` with the command from step 2, with the same prefix. It finds the installation, its

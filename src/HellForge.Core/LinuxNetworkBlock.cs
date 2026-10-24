@@ -94,7 +94,7 @@ public static class LinuxNetworkBlock
     {
         if (!Requested)
         {
-            if (UnderWine || MarkerIsEmulated(installRoot))
+            if (UnderWine || LinuxHost.IsNative || MarkerIsEmulated(installRoot))
                 throw new InvalidOperationException("On Linux, HellForge's game runs only in its network namespace. Start HellForge with linux/hellforge-linux.sh (docs/linux.md) so the game cannot reach the internet.");
             return;
         }
