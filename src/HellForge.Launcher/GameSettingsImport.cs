@@ -19,7 +19,8 @@ public partial class MainWindow
             {
                 var result = GameSettings.ImportFromGame(install, Selected.Name, GameSettings.VanillaUserData(), GameSettings.SteamControls(), withControls);
                 var text = result.Copied.Count == 0
-                    ? "Nothing to import: the normal HELLDIVERS 2 has no settings on this PC yet (play it once, or check that it is the same Windows user)."
+                    ? "Nothing to import: the normal HELLDIVERS 2 has no settings on this PC yet (play it once, or check that it is the same " +
+                      (LinuxNetworkBlock.UnderWine ? "Steam installation HellForge runs under)." : "Windows user).")
                     : "Imported into " + Selected.Name + ": " + string.Join(", ", result.Copied) + ". The next session uses them." +
                       (result.Missing.Count > 0 ? " Not found: " + string.Join(", ", result.Missing) + "." : "");
                 ShowImportStatus(text, result.Copied.Count == 0);
