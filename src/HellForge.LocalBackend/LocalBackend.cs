@@ -329,6 +329,106 @@ public static class LocalBackend
                         response = new JsonObject { ["accountKeys"] = found };
                     }
                 }
+                else if (profile != null && request.Path == "/StoreFront/buy")
+                {
+                    if (!HttpMethods.IsPost(request.Method))
+                    {
+                        status = StatusCodes.Status405MethodNotAllowed;
+                        context.Response.Headers.Allow = "POST";
+                        outcome = "method_rejected";
+                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
+                    }
+                    else
+                    {
+                        using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
+                        if (captureBodies != null && body.RootElement.ValueKind == JsonValueKind.Object)
+                        {
+                            var identifiers = new JsonObject();
+                            var fields = new JsonObject();
+                            foreach (var field in body.RootElement.EnumerateObject())
+                            {
+                                fields[field.Name] = field.Value.ValueKind.ToString();
+                                if (field.Name is "mixId" or "amount" && field.Value.ValueKind == JsonValueKind.Number &&
+                                    field.Value.TryGetUInt32(out var number)) identifiers[field.Name] = number;
+                                if (field.Name == "salesId" && field.Value.ValueKind == JsonValueKind.String &&
+                                    Guid.TryParseExact(field.Value.GetString(), "D", out var sale)) identifiers[field.Name] = sale.ToString("D");
+                            }
+                            await File.WriteAllTextAsync(Path.Combine(captureBodies, DateTime.UtcNow.ToString("HHmmssfff") + "-StoreFront_buy.json"),
+                                new JsonObject { ["identifiers"] = identifiers, ["fields"] = fields }.ToJsonString(), context.RequestAborted);
+                        }
+                        var result = profile.BuyStoreItem(body.RootElement);
+                        status = result.Status;
+                        outcome = result.Outcome;
+                        response = result.Body;
+                    }
+                }
+                else if (profile != null && request.Path == "/Progression/buy/v2")
+                {
+                    if (!HttpMethods.IsPost(request.Method))
+                    {
+                        status = StatusCodes.Status405MethodNotAllowed;
+                        context.Response.Headers.Allow = "POST";
+                        outcome = "method_rejected";
+                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
+                    }
+                    else
+                    {
+                        using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
+                        if (captureBodies != null && body.RootElement.ValueKind == JsonValueKind.Object)
+                        {
+                            var identifiers = new JsonObject();
+                            var fields = new JsonObject();
+                            foreach (var field in body.RootElement.EnumerateObject())
+                            {
+                                fields[field.Name] = field.Value.ValueKind.ToString();
+                                if (field.Name is "mixId" or "amount" && field.Value.ValueKind == JsonValueKind.Number &&
+                                    field.Value.TryGetUInt32(out var number)) identifiers[field.Name] = number;
+                            }
+                            await File.WriteAllTextAsync(Path.Combine(captureBodies, DateTime.UtcNow.ToString("HHmmssfff") + "-Progression_buy_v2.json"),
+                                new JsonObject { ["identifiers"] = identifiers, ["fields"] = fields }.ToJsonString(), context.RequestAborted);
+                        }
+                        var result = profile.BuyPremiumWarbond(body.RootElement);
+                        status = result.Status;
+                        outcome = result.Outcome;
+                        response = result.Body;
+                    }
+                }
+                else if (profile != null && request.Path == "/SeasonPass/item/buy")
+                {
+                    if (!HttpMethods.IsPost(request.Method))
+                    {
+                        status = StatusCodes.Status405MethodNotAllowed;
+                        context.Response.Headers.Allow = "POST";
+                        outcome = "method_rejected";
+                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
+                    }
+                    else
+                    {
+                        using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
+                        if (captureBodies != null && body.RootElement.ValueKind == JsonValueKind.Object)
+                        {
+                            // Only item identifiers and field types, never credentials or arbitrary strings.
+                            var identifiers = new JsonObject();
+                            var fields = new JsonObject();
+                            foreach (var field in body.RootElement.EnumerateObject())
+                            {
+                                fields[field.Name] = field.Value.ValueKind.ToString();
+                                if (field.Name is "seasonPassItemId" or "seasonPassItemId32" or "itemId" or "itemId32" or "id" or
+                                    "seasonPassId" or "seasonPassId32" or "seasonPass" or "warbondId")
+                                {
+                                    if (field.Value.ValueKind == JsonValueKind.Number && field.Value.TryGetUInt32(out var number)) identifiers[field.Name] = number;
+                                    else if (field.Value.ValueKind == JsonValueKind.String && uint.TryParse(field.Value.GetString(), out number)) identifiers[field.Name] = number;
+                                }
+                            }
+                            await File.WriteAllTextAsync(Path.Combine(captureBodies, DateTime.UtcNow.ToString("HHmmssfff") + "-SeasonPass_item_buy.json"),
+                                new JsonObject { ["identifiers"] = identifiers, ["fields"] = fields }.ToJsonString(), context.RequestAborted);
+                        }
+                        var result = profile.BuyWarbondItem(body.RootElement);
+                        status = result.Status;
+                        outcome = result.Outcome;
+                        response = result.Body;
+                    }
+                }
                 else if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
                     seasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
                 {
@@ -485,7 +585,8 @@ public static class LocalBackend
                 response = Error("HELLFORGE_BODY_TOO_LARGE");
             }
 
-            // Never persist request bodies, credentials, headers, query strings or session IDs.
+            // Audit retains no bodies, credentials, headers, query strings or session IDs.
+            // Opt-in mission evidence and sanitized Warbond IDs are captured separately above.
             // Paths are retained to identify the next missing local endpoint.
             var record = new JsonObject
             {

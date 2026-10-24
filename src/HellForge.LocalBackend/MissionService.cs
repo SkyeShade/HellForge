@@ -51,6 +51,9 @@ public sealed class MissionService
 
     JsonObject End(JsonElement body)
     {
+        if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("missionId", out var identity) ||
+            identity.ValueKind != JsonValueKind.String || !Guid.TryParseExact(identity.GetString(), "D", out var missionId) || missionId == Guid.Empty)
+            throw new JsonException("A valid mission identity is required.");
         var success = FindBool(body, "missionSuccess") ?? FindBool(body, "succeeded") ?? false;
         var difficulty = (int)(FindInt(body, "difficultyType") ?? (FindInt(body, "operationId") is { } op &&
             operationDifficulty.TryGetValue(op, out var known) ? known : 1));
@@ -63,10 +66,9 @@ public sealed class MissionService
         foreach (var source in new[] { looted, heavy })
             foreach (var (mix, amount) in source) grants[mix] = grants.GetValueOrDefault(mix) + amount;
         if (requisition > 0) grants[RequisitionMixId] = grants.GetValueOrDefault(RequisitionMixId) + requisition;
-        profile.ApplyMissionRewards(experience, grants);
         static JsonArray Items(Dictionary<uint, long> items) =>
             new(items.Select(item => (JsonNode?)new JsonObject { ["mixId"] = item.Key, ["amount"] = item.Value }).ToArray());
-        return new JsonObject
+        var reply = new JsonObject
         {
             ["operationId"] = FindInt(body, "operationId") ?? 0, ["missionIndex"] = FindInt(body, "missionIndex") ?? 0,
             ["missionId"] = FindString(body, "missionId") ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
@@ -76,6 +78,7 @@ public sealed class MissionService
             ["rewards"] = requisition > 0 ? new JsonArray((JsonNode)new JsonObject { ["mixId"] = RequisitionMixId, ["amount"] = requisition }) : new JsonArray(),
             ["repeatingPlayer"] = false
         };
+        return profile.ApplyMissionOnce(missionId.ToString("D"), experience, grants, reply, body);
     }
 
     public static class Rewards
