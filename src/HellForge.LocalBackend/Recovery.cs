@@ -5,11 +5,11 @@ namespace HellForge.LocalBackend;
 
 public sealed partial class ProfileStore
 {
-    // Sent by the local read-only curl bridge immediately before a request. It is
-    // used only to calculate response deltas, never to price a purchase or save balances.
+    // A client may attach its live inventory to a retried request. It only shapes the reply's deltas,
+    // never prices, ownership or saved balances.
     static Dictionary<uint, long>? ClientInventory(JsonElement body)
     {
-        if (!body.TryGetProperty("codexInventory", out var snapshot)) return null;
+        if (!body.TryGetProperty("clientInventory", out var snapshot)) return null;
         if (snapshot.ValueKind != JsonValueKind.Object || !snapshot.TryGetProperty("version", out var version) ||
             version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var v) || v != 1 || !snapshot.TryGetProperty("items", out var rows) ||
             rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > 4096)
@@ -22,6 +22,7 @@ public sealed partial class ProfileStore
         return result;
     }
 
+    // The deltas that bring the client to the saved inventory; without a snapshot, the normal reply.
     static JsonArray RecoverItems(JsonObject state, JsonElement request, IEnumerable<uint> relevant,
         JsonArray legacy, bool medalClaim = false, int medalCost = 0, bool positiveOnly = false)
     {
@@ -52,19 +53,21 @@ public sealed partial class ProfileStore
         return changes;
     }
 
+    // Rewards are saved with a receipt for the mission id, so a retried end pays nothing again.
     public JsonObject ApplyMissionOnce(string missionId, long experience, IReadOnlyDictionary<uint, long> items,
         JsonObject reply, JsonElement request)
     {
         lock (gate)
         {
             var updated = profile.DeepClone().AsObject();
-            var receipts = updated["progression"]!["codexMissionReceipts"] as JsonObject ?? new JsonObject();
+            var receipts = updated["progression"]!["missionReceipts"] as JsonObject ?? new JsonObject();
             var previous = receipts[missionId] as JsonObject;
             if (previous != null) return MissionRecovery(updated, previous, reply, request, duplicate: true);
             ApplyRewardAmounts(updated, experience, items);
             var receipt = new JsonObject { ["items"] = new JsonArray(items.Keys.Select(k => (JsonNode?)JsonValue.Create(k)).ToArray()) };
             var answer = MissionRecovery(updated, receipt, reply, request, duplicate: false);
-            receipts[missionId] = receipt; updated["progression"]!["codexMissionReceipts"] = receipts;
+            receipts[missionId] = receipt;
+            updated["progression"]!["missionReceipts"] = receipts;
             Validate(updated);
             if (FilePath != null) Save(FilePath, updated);
             foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
@@ -75,7 +78,7 @@ public sealed partial class ProfileStore
     static JsonObject MissionRecovery(JsonObject state, JsonObject receipt, JsonObject originalReply, JsonElement request, bool duplicate)
     {
         var reply = originalReply.DeepClone().AsObject();
-        if (!request.TryGetProperty("codexInventory", out var snapshot))
+        if (!request.TryGetProperty("clientInventory", out var snapshot))
         {
             if (duplicate) { reply["experience"] = 0; foreach (var name in new[] { "rewards", "lootedItemRewards", "lootedHeavyItemRewards" }) reply[name] = new JsonArray(); }
             return reply;

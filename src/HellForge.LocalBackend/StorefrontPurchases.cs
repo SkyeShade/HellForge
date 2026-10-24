@@ -5,14 +5,12 @@ namespace HellForge.LocalBackend;
 
 public sealed partial class ProfileStore
 {
-    public sealed record StorePurchaseResult(int Status, JsonNode Body, string Outcome);
-    static StorePurchaseResult StoreError(int status, string code) =>
+    static PurchaseResult StoreError(int status, string code) =>
         new(status, new JsonObject { ["errorCode"] = code }, "storefront_purchase_rejected");
     static JsonObject StoreReply(JsonArray changes) => new() { ["items"] = changes, ["packageProgress"] = new JsonArray() };
 
-    // One-time unlocks exposed by the local storefront, priced by the same catalogue
-    // served to the client. The request cannot set the cost, reward or prerequisites.
-    public StorePurchaseResult BuyStoreItem(JsonElement body)
+    // One-time storefront unlocks at catalogue prices; the request cannot set cost, reward or prerequisites.
+    public PurchaseResult BuyStoreItem(JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object ||
             !body.TryGetProperty("salesId", out var sale) || sale.ValueKind != JsonValueKind.String ||
@@ -61,7 +59,7 @@ public sealed partial class ProfileStore
             if (item.GetProperty("requiredItems").EnumerateArray().Any(i => CountItem(updated, i.GetUInt32()) < 1))
                 return StoreError(403, "HELLFORGE_STORE_PREREQUISITE_REQUIRED");
 
-            // Paid-credit prices use the combined wallet displayed by the native UI.
+            // Credit prices use both wallets, earned first, as the client shows them.
             var creditCost = costs.GetValueOrDefault(EarnedSuperCredits) + costs.GetValueOrDefault(PaidSuperCredits);
             costs.Remove(EarnedSuperCredits); costs.Remove(PaidSuperCredits);
             var earned = CountItem(updated, EarnedSuperCredits);
@@ -84,10 +82,7 @@ public sealed partial class ProfileStore
             Validate(updated);
             if (FilePath != null) Save(FilePath, updated);
             foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
-            // Build 25480438: 0x12ca561 parses the root object with 0x105a470.
-            // 0x1374f60 applies signed returned items; expectedCost is NOT debited again.
-            // This wrapper differs from premium checkout's root array and medal claims'
-            // positive-only grants despite sharing the medal parser's object layout.
+            // The reply is {items, packageProgress} with signed deltas (parser 0x105a470); expectedCost is not debited separately.
             return new(200, StoreReply(changes), "storefront_item_purchased");
         }
     }

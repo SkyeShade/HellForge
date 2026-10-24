@@ -8,19 +8,17 @@ public sealed partial class ProfileStore
     const uint EarnedSuperCredits = 3422537285;
     const uint PaidSuperCredits = 3481751602;
 
-    public sealed record PremiumPurchaseResult(int Status, JsonNode Body, string Outcome);
-    static PremiumPurchaseResult PremiumError(int status, string code) =>
+    static PurchaseResult PremiumError(int status, string code) =>
         new(status, new JsonObject { ["errorCode"] = code }, "premium_warbond_purchase_rejected");
 
-    public PremiumPurchaseResult BuyPremiumWarbond(JsonElement body)
+    public PurchaseResult BuyPremiumWarbond(JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object ||
             !PurchaseNumber(body, ["mixId"], out var mix) || mix == null ||
             !PurchaseNumber(body, ["amount"], out var quantity) || quantity != 1)
             return PremiumError(400, "HELLFORGE_INVALID_PREMIUM_PURCHASE");
 
-        // This endpoint also buys other items in the original game. Only implement verified
-        // premium Warbond tokens here; no arbitrary item grants or request-supplied prices.
+        // The game also buys other items here; only premium Warbond tokens are accepted, at catalogue prices.
         using var data = LocalBackend.LoadResource("progression-data.json");
         var passes = data.RootElement.GetProperty("seasonPassDetails").EnumerateObject()
             .Select(p => p.Value).Where(p => p.GetProperty("id32").GetUInt32() != FreeWarbond &&
@@ -48,8 +46,7 @@ public sealed partial class ProfileStore
             var paid = CountItem(updated, PaidSuperCredits);
             if (earned + paid < cost) return PremiumError(409, "HELLFORGE_NOT_ENOUGH_SUPER_CREDITS");
 
-            // The native UI displays the two credit wallets together. Spend earned first,
-            // then paid; the catalogue's paid-credit price denotes that combined currency.
+            // The client shows both credit wallets as one; spend earned credits first.
             var earnedDebit = Math.Min(earned, cost);
             var paidDebit = cost - earnedDebit;
             var changes = new JsonArray();
@@ -70,9 +67,7 @@ public sealed partial class ProfileStore
             if (FilePath != null) Save(FilePath, updated);
             foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
 
-            // Unlike /SeasonPass/item/buy, /Progression/buy/v2 parses a ROOT ARRAY and
-            // applies signed deltas, including debits. It does not debit expectedCost.
-            // Build 25480438: 0x12c90f3 -> 0x107eb20 -> 0x136ef80 / 0x136f5e0.
+            // The reply is a root array of signed deltas (parser 0x107eb20); expectedCost is not debited separately.
             return new(200, changes, "premium_warbond_purchased");
         }
     }

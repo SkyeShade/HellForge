@@ -9,7 +9,7 @@ public sealed partial class ProfileStore
     const uint MedalWallet = 1276729503;
     const uint FreeWarbond = 1929468580;
 
-    public sealed record PurchaseResult(int Status, JsonObject Body, string Outcome);
+    public sealed record PurchaseResult(int Status, JsonNode Body, string Outcome);
     static PurchaseResult PurchaseError(int status, string code) => new(status, new JsonObject { ["errorCode"] = code }, "warbond_purchase_rejected");
 
     static bool PurchaseNumber(JsonElement body, string[] fields, out uint? result)
@@ -103,10 +103,8 @@ public sealed partial class ProfileStore
 
             SetItem(updated, MedalWallet, CountItem(updated, MedalWallet) - cost);
             SetItem(updated, spentMix, checked(CountItem(updated, spentMix) + cost));
-            // The client applies root `items` as positive inventory deltas, not the nested
-            // inventory snapshot. Its expectedCost debits the wallet separately. Include the
-            // hidden spending currency here so the current session can unlock later pages.
-            // Parser 0x105a470 -> 0x103e1e0 -> 0x13751d0 (build 25480438).
+            // The client applies root items as positive grants and debits expectedCost itself (completion 0x13751d0).
+            // The spent-medals counter goes in too, or later pages stay locked this session.
             var awarded = new JsonArray();
             if (cost > 0) awarded.Add((JsonNode)new JsonObject { ["mixId"] = spentMix, ["amount"] = (long)cost });
             foreach (var grant in grants)
