@@ -362,6 +362,26 @@ public static class LocalBackend
                         response = new JsonObject { ["accountKeys"] = found };
                     }
                 }
+                else if (profile != null && request.Path.Value is "/SeasonPass/item/buy" or "/Progression/buy/v2" or "/StoreFront/buy")
+                {
+                    if (!HttpMethods.IsPost(request.Method))
+                    {
+                        status = StatusCodes.Status405MethodNotAllowed;
+                        context.Response.Headers.Allow = "POST";
+                        outcome = "method_rejected";
+                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
+                    }
+                    else
+                    {
+                        using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
+                        (status, response, outcome) = request.Path.Value switch
+                        {
+                            "/SeasonPass/item/buy" => profile.BuyWarbondItem(body.RootElement),
+                            "/Progression/buy/v2" => profile.BuyPremiumWarbond(body.RootElement),
+                            _ => profile.BuyStoreItem(body.RootElement)
+                        };
+                    }
+                }
                 else if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
                     seasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
                 {

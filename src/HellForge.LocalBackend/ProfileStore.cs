@@ -6,8 +6,9 @@ namespace HellForge.LocalBackend;
 
 // The single offline player profile behind the per-player startup endpoints. New profiles start
 // from the parser-tested startup fixtures. Hand edits are validated on load; an invalid file is
-// reported, never replaced. Only writes whose request builders are decoded are accepted.
-public sealed class ProfileStore : IDisposable
+// reported, never replaced. Only writes whose request builders are decoded are accepted. Purchases
+// are in WarbondPurchases.cs, PremiumWarbonds.cs and StorefrontPurchases.cs, retries in Recovery.cs.
+public sealed partial class ProfileStore : IDisposable
 {
     public const int SchemaVersion = 1;
     public const string FileName = "profile.json";
@@ -255,27 +256,32 @@ public sealed class ProfileStore : IDisposable
     // maxCap when one exists; unknown items are added as discovered inventory entries.
     public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items)
     {
-        var caps = new Dictionary<uint, long>();
-        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
-            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
         lock (gate)
         {
             var updated = profile.DeepClone().AsObject();
-            var progression = (JsonObject)updated["progression"]!;
-            progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
-            var inventory = (JsonObject)updated["inventory"]!;
-            if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
-            foreach (var (mix, amount) in items)
-            {
-                var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
-                if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));
-                var total = Number(entry["amount"]!) + amount;
-                entry["amount"] = Math.Min(caps.TryGetValue(mix, out var cap) ? cap : uint.MaxValue, total);
-            }
+            ApplyRewardAmounts(updated, experience, items);
             Validate(updated);
             if (FilePath != null) Save(FilePath, updated);
             profile["progression"] = updated["progression"]!.DeepClone();
             profile["inventory"] = updated["inventory"]!.DeepClone();
+        }
+    }
+
+    static void ApplyRewardAmounts(JsonObject updated, long experience, IReadOnlyDictionary<uint, long> items)
+    {
+        var caps = new Dictionary<uint, long>();
+        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
+            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
+        var progression = (JsonObject)updated["progression"]!;
+        progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
+        var inventory = (JsonObject)updated["inventory"]!;
+        if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
+        foreach (var (mix, amount) in items)
+        {
+            var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
+            if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));
+            var total = Number(entry["amount"]!) + amount;
+            entry["amount"] = Math.Min(caps.TryGetValue(mix, out var cap) ? cap : uint.MaxValue, total);
         }
     }
 
@@ -464,6 +470,13 @@ public sealed class ProfileStore : IDisposable
 
         // Fields required by the /Progression parser; optional extras pass through to the client.
         var progression = (JsonObject)profile["progression"]!;
+        if (progression["missionReceipts"] is { } receiptNode && receiptNode is not JsonObject)
+            throw new InvalidDataException("Invalid mission payout receipts.");
+        if (progression["missionReceipts"] is JsonObject receipts)
+            foreach (var receipt in receipts)
+                if (!Guid.TryParseExact(receipt.Key, "D", out var id) || id == Guid.Empty || receipt.Value is not JsonObject entry ||
+                    entry["items"] is not JsonArray mixes || mixes.Any(m => m is not JsonValue v || !v.TryGetValue<uint>(out _)))
+                    throw new InvalidDataException("Invalid mission payout receipt.");
         Integer(progression, "experience", "progression");
         if (!OnboardingStates.Contains((int)Integer(progression, "onboardingState", "progression")))
             throw new InvalidDataException("progression.onboardingState must be 0-4 or 128.");
