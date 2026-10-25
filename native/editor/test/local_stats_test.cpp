@@ -124,6 +124,39 @@ int main()
     Check(!localstats::ShowingHost() && localstats::Get("weapons", "AR-23 Liberator", "weapon.fire_rate", &got) && got == 999, "back on its own: this machine's");
     DeleteFileA(modFile.c_str());
 
+    /* Sandboxed (low integrity): each save writes every change saved this session to changes.json; mods/ is only read. */
+    std::string sandboxDir = mods + "\\sandbox-stats", journal = sandboxDir + "\\changes.json";
+    CreateDirectoryA(sandboxDir.c_str(), NULL);
+    localstats::SetSandboxSaveFolder(std::wstring(sandboxDir.begin(), sandboxDir.end()));
+    localstats::SetModFile(std::wstring(modFile.begin(), modFile.end()));
+    std::string realStats = Read(stats);
+    localstats::Set("weapons", "AR-23 Liberator", "weapon.fire_rate", 500, false);
+    Check(localstats::Save(mods, &error) && !localstats::Pending() && Read(journal).find("\"value\": 500") != std::string::npos,
+        "sandbox: a save writes the change list");
+    localstats::Set("weapons", "AR-23 Liberator", "weapon.mag_size", 60, true);
+    localstats::Set("mod:you/mod/sentry", "you/mod/sentry", "stratagem.cooldown", 200, true);
+    Check(localstats::Save(mods, &error) && Read(journal).find("\"value\": 500") != std::string::npos &&
+        Read(journal).find("weapon.mag_size") != std::string::npos && Read(journal).find("stratagem.cooldown") != std::string::npos,
+        "sandbox: a second save keeps the first's changes, mod entries among them");
+    localstats::Remove("weapons", "AR-23 Liberator", "weapon.fire_rate");
+    Check(localstats::Save(mods, &error) && Read(journal).find("\"value\": 500") == std::string::npos &&
+        Read(journal).find("\"remove\": true") != std::string::npos, "sandbox: a removal replaces the field's change");
+    Check(Read(stats) == realStats && !Exists(modFile), "sandbox: nothing in mods/ was written");
+    Check(localstats::Get("weapons", "AR-23 Liberator", "weapon.mag_size", &got) && got == 60 &&
+        !localstats::Get("weapons", "AR-23 Liberator", "weapon.fire_rate", &got), "sandbox: the editor shows the saved changes");
+    /* A change list that cannot be written: the changes wait for the next save. */
+    std::string blocker = journal + ".ingame.tmp";
+    CreateDirectoryA(blocker.c_str(), NULL);
+    localstats::Set("weapons", "AR-23 Liberator", "weapon.recoil", 3, false);
+    Check(!localstats::Save(mods, &error) && localstats::Pending(), "sandbox: a failed save keeps the change");
+    RemoveDirectoryA(blocker.c_str());
+    Check(localstats::Save(mods, &error) && Read(journal).find("weapon.recoil") != std::string::npos, "sandbox: saved once it can be written");
+    /* Back to normal: saves go to the mods folder again. */
+    localstats::SetSandboxSaveFolder(L"");
+    localstats::Set("weapons", "AR-23 Liberator", "weapon.fire_rate", 1200, false);
+    Check(localstats::Save(mods, &error) && Read(stats).find("1200") != std::string::npos, "sandbox off: saves go to the real mods folder");
+    DeleteFileA(journal.c_str()); DeleteFileA(modFile.c_str()); RemoveDirectoryA(sandboxDir.c_str());
+
     DeleteFileA(stats.c_str()); DeleteFileA(manifest.c_str()); RemoveDirectoryA(folder.c_str());
     DeleteFileA((mods + "\\.hellforge-stats-editor.lock").c_str()); RemoveDirectoryA(mods.c_str());
     printf("%s local stats: %d failure(s)\n", g_failures ? "FAIL" : "PASS", g_failures);

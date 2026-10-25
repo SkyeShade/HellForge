@@ -28,13 +28,12 @@ public partial class MainWindow
     DispatcherTimer? modsChanged;
 
     // A row being dragged: its group's rows (top first), where it was, and where it would go.
-    sealed class ModDrag(string id, StackPanel panel, List<(ModManifest Mod, Border Row)> rows, int from, int pinned)
+    sealed class ModDrag(string id, StackPanel panel, List<(ModManifest Mod, Border Row)> rows, int from)
     {
         public string Id { get; } = id;
         public StackPanel Panel { get; } = panel;
         public List<(ModManifest Mod, Border Row)> Rows { get; } = rows;
         public int From { get; } = from;
-        public int Pinned { get; } = pinned; // rows at the top that stay there (Local Stats)
         public int To { get; set; } = from;
     }
 
@@ -74,6 +73,8 @@ public partial class MainWindow
                 var relative = Path.GetRelativePath(folder, path).Replace('\\', '/');
                 var name = Path.GetFileName(relative);
                 if (relative.Split('/').Any(p => p.StartsWith('.')) || name.StartsWith(ModSettings.LegacyFileName, StringComparison.OrdinalIgnoreCase)) return;
+                // Office's lock and temporary files come and go as a document kept beside a mod is opened and saved
+                if (name.StartsWith("~$", StringComparison.Ordinal) || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) return;
                 // the page's own saves are drawn already; another program's (HellForge.Cli, a mod manager) are loaded
                 if (name.StartsWith(ModSettings.FileName, StringComparison.OrdinalIgnoreCase) &&
                     (!name.Equals(ModSettings.FileName, StringComparison.OrdinalIgnoreCase) || OwnSettings(path))) return;
@@ -121,16 +122,28 @@ public partial class MainWindow
             ModsSummary.Text = "Could not read the mods folder: " + Privacy.Scrub(error.Message);
             return;
         }
+        // Local Stats is the in-game editor's (its saved changes, always on, never compared): not listed, so nobody thinks
+        // friends must match it
+        mods = mods.Where(m => m.Id != ModCatalog.LocalStatsId).ToList();
         var active = ModCatalog.Active(mods);
         ModsSummary.Text = mods.Count == 0 && problems.Count == 0
             ? "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder."
             : $"{active.Count} of {mods.Count} mod{(mods.Count == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " +
               "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
-        // what friends compare (ModCatalog.Digest): not Local Stats, since in co-op everyone plays with the host's
-        var gameplay = active.Count(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId);
-        var ownStats = active.Any(m => m.Id == ModCatalog.LocalStatsId) ? " Your Local Stats is not compared: in co-op everyone plays with the host's." : "";
-        ModsDigestText.Text = (gameplay == 0 ? "No gameplay mods to compare: you can play with friends who have none."
-            : $"Modlist code {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}: friends need the same {gameplay} gameplay mod{(gameplay == 1 ? "" : "s")}; the order is up to you.") + ownStats;
+        // what friends compare (ModCatalog.Digest)
+        var gameplay = active.Count(m => m.Gameplay);
+        string compared;
+        try
+        {
+            compared = gameplay == 0 ? "No gameplay mods to compare: you can play with friends who have none."
+                : $"Modlist code {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}: friends need the same {gameplay} gameplay mod{(gameplay == 1 ? "" : "s")}; the order is up to you.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // a file in a mod's folder that another program holds (issue 18): the list still shows
+            compared = "Modlist code unavailable: a mod's file could not be read (" + Privacy.Scrub(error.Message) + "). Close the program using it, then Refresh.";
+        }
+        ModsDigestText.Text = compared;
 
         // the folder's problems, and what the last Add mods refused (until the next one)
         var notices = problems.Concat(modsRefused.Select(p => "Not added: " + p)).ToList();
@@ -151,7 +164,154 @@ public partial class MainWindow
             AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "COSMETIC", "Only on your PC: friends need not have the same ones.",
                 "No cosmetic mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) with Add mods...", ref number);
         }
+        AddModSyncCard(paths.ModsFolder);
         SetModsLocked(modsLocked);
+    }
+
+    // Mod sync (ModSyncPlan, docs/mods.md "Playing with other mods"): whether players who join may download this player's
+    // mods, the mods whose lobbies are never offered (blocked from the in-game MOD SYNC prompt), and the downloaded mods.
+    void AddModSyncCard(string modsFolder)
+    {
+        var settings = ModSettings.Read(modsFolder);
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = "MOD SYNC", Classes = { "h2" }, Margin = new(0) });
+        panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text =
+            "Join players who run other gameplay mods: HellForge downloads the host's mods and restarts the game with them." });
+        // What downloads from whom (ModSyncPlan), folded away: the rules matter once, the switches every day.
+        var rules = new StackPanel { Spacing = 4, Margin = new(12, 0, 0, 4), IsVisible = false };
+        foreach (var rule in new[]
+        {
+            "From any host: what HellForge checks itself (stats, network field types, data specs that don't replace values).",
+            "From a Steam friend only: mods that run code (a DLL, sources or Lua) or carry data HellForge cannot check (data patches, raw stats, " +
+                "component writes, data specs that replace values), and only when HellForge has verified that exact version or you trusted it on the prompt.",
+            "Anything else you install yourself: a mod's GET IT button shows where, when its author gave a link."
+        })
+            rules.Children.Add(new TextBlock { Text = "•  " + rule, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } });
+        var rulesButton = new Button { Content = "How downloads are checked ▸", Classes = { "flat" }, Padding = new(0), HorizontalAlignment = HorizontalAlignment.Left };
+        rulesButton.Click += (_, _) =>
+        {
+            rules.IsVisible = !rules.IsVisible;
+            rulesButton.Content = rules.IsVisible ? "How downloads are checked ▾" : "How downloads are checked ▸";
+        };
+        panel.Children.Add(rulesButton);
+        panel.Children.Add(rules);
+
+        panel.Children.Add(Section("When I host"));
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Mods that run code or carry unchecked data go to Steam friends only.",
+            settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
+        // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
+        panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
+            settings.ListPublic, on => ModSettings.SetListPublic(modsFolder, on), "the public lobby setting"));
+        // friends keep their own in-game editor changes unless this is on (StatsShare); either way every game loads the
+        // packages the others' changes need (AssetShare)
+        panel.Children.Add(SettingSwitch("Everyone plays with my editor changes", "Off: each player keeps their own changes.",
+            settings.HostStats, on => ModSettings.SetHostStats(modsFolder, on), "the shared stats setting"));
+
+        panel.Children.Add(Section("When I join"));
+        // joiners of a host who shares edited stats play with them: such public lobbies are hidden on the Galactic Map unless shown
+        panel.Children.Add(SettingSwitch("Show lobbies whose host shares edited stats", "You would play with the host's changes, not your own.",
+            settings.ShowEditedStats, on => ModSettings.SetShowEditedStats(modsFolder, on), "the mod sync setting"));
+
+        // Trusted (TRUST on the in-game prompt): each exact mod, who hosted it and when. Untrusting it deletes its downloaded
+        // copy too, so no synced session runs it again unless it is trusted (or verified) again.
+        panel.Children.Add(Section(settings.Trusted.Count == 0 ? "Trusted mods" : $"Trusted mods ({settings.Trusted.Count})"));
+        panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text = settings.Trusted.Count == 0
+            ? "None. TRUST on the in-game MOD SYNC prompt lets a Steam friend's mod download that HellForge has not verified."
+            : "These exact versions download from Steam friends without HellForge's check. They run their own code on your PC." });
+        foreach (var trusted in settings.Trusted)
+        {
+            var row = new DockPanel();
+            var untrust = new Button { Content = "Untrust", Classes = { "flat" }, IsEnabled = !modsLocked, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(untrust, "Take the trust back and delete the copy downloaded from your friend.");
+            untrust.Click += (_, _) =>
+            {
+                try
+                {
+                    ModSettings.Untrust(modsFolder, trusted.Id, trusted.Hash);
+                    SyncedStore.Forget(modsFolder, trusted.Id, trusted.Hash);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not untrust " + trusted.Id + ": " + error.Message, Red); }
+                RefreshMods();
+            };
+            DockPanel.SetDock(untrust, Dock.Right);
+            row.Children.Add(untrust);
+            var since = DateTime.TryParse(trusted.Since, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var when)
+                ? "  ·  " + when.ToLocalTime().ToString("yyyy-MM-dd") : "";
+            // the host's name without its Steam account id ("Riggs (11000010838EA1C)"), which the tooltip keeps
+            var from = System.Text.RegularExpressions.Regex.Replace(trusted.From, @"\s*\([0-9A-Fa-f]{6,}\)$", "");
+            var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = $"{trusted.Name} {trusted.Version}", TextWrapping = TextWrapping.Wrap });
+            text.Children.Add(new TextBlock { Text = $"from {from}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            ToolTip.SetTip(text, $"{trusted.Id}, from {trusted.From}. Content hash {trusted.Hash}");
+            row.Children.Add(text);
+            panel.Children.Add(row);
+        }
+
+        panel.Children.Add(Section("Blocked mods"));
+        panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text = settings.Blocked.Count == 0
+            ? "None. BLOCK on the in-game MOD SYNC prompt hides lobbies that run a mod."
+            : "Lobbies running these mods are not offered." });
+        foreach (var id in settings.Blocked.Order(StringComparer.Ordinal))
+        {
+            var row = new DockPanel();
+            var unblock = new Button { Content = "Unblock", Classes = { "flat" } };
+            unblock.Click += (_, _) =>
+            {
+                try { ModSettings.SetBlocked(modsFolder, id, false); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not unblock " + id + ": " + error.Message, Red); }
+                RefreshMods();
+            };
+            DockPanel.SetDock(unblock, Dock.Right);
+            row.Children.Add(unblock);
+            row.Children.Add(new TextBlock { Text = id, VerticalAlignment = VerticalAlignment.Center });
+            panel.Children.Add(row);
+        }
+
+        var store = SyncedStore.Root(modsFolder);
+        var stored = Directory.Exists(store) ? Directory.GetDirectories(store).Where(d => !Path.GetFileName(d).StartsWith('.')).ToList() : [];
+        if (stored.Count > 0)
+        {
+            panel.Children.Add(Section("Downloaded mods"));
+            long bytes = 0;
+            try { bytes = stored.Sum(d => Directory.GetFiles(d, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            var row = new DockPanel();
+            var clear = new Button { Content = "Delete downloaded mods", Classes = { "flat" }, IsEnabled = !modsLocked };
+            clear.Click += (_, _) =>
+            {
+                try { Directory.Delete(store, recursive: true); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not delete the downloaded mods: " + error.Message, Red); }
+                RefreshMods();
+            };
+            DockPanel.SetDock(clear, Dock.Right);
+            row.Children.Add(clear);
+            row.Children.Add(new TextBlock { Text = $"{stored.Count} mod{(stored.Count == 1 ? "" : "s")} from hosts ({bytes / 1048576.0:0.0} MB), used only when you play with their mods.",
+                TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Classes = { "muted" } });
+            panel.Children.Add(row);
+        }
+        ModsList.Children.Add(new Border { Classes = { "card" }, Child = panel });
+    }
+
+    // A part of a card under its title: a small heading with room above it.
+    static TextBlock Section(string title) => new() { Text = title, FontWeight = FontWeight.SemiBold, Margin = new(0, 10, 0, 0) };
+
+    // A switch with its label and a one-line hint under it, saved as it changes (what names the setting in a failure).
+    Control SettingSwitch(string label, string hint, bool isChecked, Action<bool> save, string what)
+    {
+        var toggle = new ToggleSwitch { IsChecked = isChecked, OnContent = null, OffContent = null, MinWidth = 0, VerticalAlignment = VerticalAlignment.Top };
+        toggle.IsCheckedChanged += (_, _) =>
+        {
+            try { save(toggle.IsChecked == true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save " + what + ": " + error.Message, Red); }
+        };
+        var text = new StackPanel { Spacing = 1, Margin = new(8, 4, 0, 0) };
+        text.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap });
+        text.Children.Add(new TextBlock { Text = hint, Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        var row = new DockPanel();
+        DockPanel.SetDock(toggle, Dock.Left);
+        row.Children.Add(toggle);
+        row.Children.Add(text);
+        return row;
     }
 
     void AddModGroup(List<ModManifest> all, List<ModManifest> group, string title, string hint, string empty, ref int number)
@@ -181,7 +341,6 @@ public partial class MainWindow
 
     Border ModRow(ModManifest mod, int number, StackPanel panel, List<(ModManifest Mod, Border Row)> rows, List<ModManifest> all)
     {
-        var pinned = mod.Id == ModCatalog.LocalStatsId;
         var grid = new Grid { ColumnDefinitions = new("Auto,Auto,Auto,Auto,*,Auto,Auto"), RowDefinitions = new("Auto,Auto") };
         var row = new Border
         {
@@ -189,16 +348,15 @@ public partial class MainWindow
             Padding = new(6, 8, 8, 8), Child = grid, Opacity = mod.Enabled ? 1 : 0.55
         };
 
-        // the row drags within its group (Local Stats stays on top: the editor's saved changes apply last); the handle
-        // marks it
+        // the row drags within its group; the handle marks it
         var handle = new TextBlock
         {
-            Text = pinned ? "" : "⠿", FontSize = 18, Width = 22, Foreground = Grey, TextAlignment = TextAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, Cursor = pinned ? Cursor.Default : new Cursor(StandardCursorType.SizeNorthSouth),
+            Text = "⠿", FontSize = 18, Width = 22, Foreground = Grey, TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, Cursor = new Cursor(StandardCursorType.SizeNorthSouth),
             Background = Brushes.Transparent
         };
-        ToolTip.SetTip(handle, pinned ? "Your editor changes stay on top: they apply last." : "Drag the mod to change the load order: higher wins.");
-        if (!pinned) Draggable(row, mod, panel, rows, all);
+        ToolTip.SetTip(handle, "Drag the mod to change the load order: higher wins.");
+        Draggable(row, mod, panel, rows, all);
         grid.Children.Add(handle);
 
         var place = new TextBlock { Text = number.ToString(), Width = 26, FontSize = 12, Foreground = Grey, TextAlignment = TextAlignment.Right,
@@ -251,9 +409,9 @@ public partial class MainWindow
         grid.Children.Add(tags);
 
         var menu = new Button { Content = "⋮", Classes = { "flat" }, FontSize = 18, Padding = new(10, 0), Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Flyout = ModMenu(mod, pinned, rows, all) };
+            Flyout = ModMenu(mod, rows, all) };
         ToolTip.SetTip(menu, "More: build, zip, open its folder, remove.");
-        row.ContextFlyout = ModMenu(mod, pinned, rows, all);
+        row.ContextFlyout = ModMenu(mod, rows, all);
         Grid.SetColumn(menu, 6);
         grid.Children.Add(menu);
 
@@ -273,8 +431,7 @@ public partial class MainWindow
     {
         var tags = new List<(string, string)>();
         if (build?.Colour == Red) tags.Add(("DID NOT COMPILE", "#FF6054"));
-        if (mod.Id == ModCatalog.LocalStatsId) tags.Add(("YOUR EDITS", "#FFC72C"));
-        else if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("BUNDLED", "#9AA0A8"));
+        if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("BUNDLED", "#9AA0A8"));
         if (mod.Pack != null) tags.Add(("PACK", "#4FA3FF"));
         if (mod.Lua) tags.Add(("LUA", "#F2A541"));
         if (mod.HasCode) tags.Add(("CODE", "#E05591"));
@@ -335,7 +492,12 @@ public partial class MainWindow
     {
         if (!mod.HasSource || paths.InstallRoot == null) return null;
         var record = ModBuilds.Record(new InstallLayout(paths.InstallRoot), mod.Id);
-        var current = record != null && Sdk is { } sdk && ModKit.ToolsReady(sdk) && record.Key == ModBuilds.Key(mod.Folder, sdk, SupportedBuild.Current.BuildId);
+        bool current;
+        try { current = record != null && Sdk is { } sdk && ModKit.ToolsReady(sdk) && record.Key == ModBuilds.Key(mod.Folder, sdk, SupportedBuild.Current.BuildId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return ("Its sources could not be read: " + Privacy.Scrub(error.Message), Orange);
+        }
         return record == null ? ("Built from its sources when a session starts.", Light)
             : record.Error != null && current ? ("Did not compile; it stays off until fixed:\n" + record.Error, Red)
             : record.Error != null ? ("Its last build did not compile; the sources changed since, so the next session builds it again.", Orange)
@@ -360,6 +522,15 @@ public partial class MainWindow
             details.Children.Add(new TextBlock { Text = b.Text, FontSize = 12, Foreground = b.Colour, TextWrapping = TextWrapping.Wrap,
                 FontFamily = b.Colour == Red ? new FontFamily("Consolas") : FontFamily.Default });
         if (mod.Pack is { Options.Count: > 0 } pack) details.Children.Add(PackOptions(mod, pack));
+        // where players get it (its manifest's "url", an https:// address): opened in the browser
+        if (mod.Url is { } url)
+        {
+            var link = new Button { Content = url, Classes = { "flat" }, FontSize = 12, Padding = new(0), HorizontalAlignment = HorizontalAlignment.Left,
+                Foreground = Solid("#4FA3FF"), Cursor = new Cursor(StandardCursorType.Hand) };
+            ToolTip.SetTip(link, "Where to get this mod: opens in your browser.");
+            link.Click += (_, _) => OpenLink(url);
+            details.Children.Add(link);
+        }
         details.Children.Add(new TextBlock { Text = $"{mod.Id}  ·  {mod.Archive ?? Path.GetFileName(mod.Folder)}", FontSize = 11, Classes = { "muted" } });
         if (RemoveConfirmation(mod) is { } confirm) details.Children.Add(confirm);
         return details;
@@ -431,33 +602,30 @@ public partial class MainWindow
     }
 
     // The ⋮ menu (and the row's right click): details, order, build, zip, folder, remove.
-    MenuFlyout ModMenu(ModManifest mod, bool pinned, List<(ModManifest Mod, Border Row)> rows, List<ModManifest> all)
+    MenuFlyout ModMenu(ModManifest mod, List<(ModManifest Mod, Border Row)> rows, List<ModManifest> all)
     {
         var menu = new MenuFlyout();
         var details = new MenuItem { Header = modsExpanded.Contains(mod.Id) ? "Hide details" : "Details" };
         details.Click += (_, _) => { if (!modsExpanded.Remove(mod.Id)) modsExpanded.Add(mod.Id); RefreshMods(); };
         menu.Items.Add(details);
-        if (!pinned)
+        // the group's rows are all there once the menu opens (this row is made before it joins them)
+        int At() => rows.FindIndex(r => r.Mod.Id == mod.Id);
+        var up = new MenuItem { Header = "Move up" };
+        var down = new MenuItem { Header = "Move down" };
+        menu.Opening += (_, _) =>
         {
-            // the group's rows are all there once the menu opens (this row is made before it joins them)
-            int At() => rows.FindIndex(r => r.Mod.Id == mod.Id);
-            var up = new MenuItem { Header = "Move up" };
-            var down = new MenuItem { Header = "Move down" };
-            menu.Opening += (_, _) =>
-            {
-                up.IsEnabled = !modsLocked && At() > rows.Count(r => r.Mod.Id == ModCatalog.LocalStatsId);
-                down.IsEnabled = !modsLocked && At() >= 0 && At() < rows.Count - 1;
-            };
-            up.Click += (_, _) => MoveMod(rows, At(), At() - 1, all);
-            down.Click += (_, _) => MoveMod(rows, At(), At() + 2, all);
-            menu.Items.Add(up);
-            menu.Items.Add(down);
-        }
+            up.IsEnabled = !modsLocked && At() > 0;
+            down.IsEnabled = !modsLocked && At() >= 0 && At() < rows.Count - 1;
+        };
+        up.Click += (_, _) => MoveMod(rows, At(), At() - 1, all);
+        down.Click += (_, _) => MoveMod(rows, At(), At() + 2, all);
+        menu.Items.Add(up);
+        menu.Items.Add(down);
         menu.Items.Add(new Separator());
         // BUILD for a mod with sources; ZIP and REMOVE for the player's own mods (not the ones HellForge ships, which come
-        // back by themselves, nor Local Stats, the editors' saved changes); ZIP not for a zip, which is one already, nor a
+        // back by themselves); ZIP not for a zip, which is one already, nor a
         // cosmetic pack, which is shared as its author made it
-        var own = paths.InstallRoot != null && mod.Id != ModCatalog.LocalStatsId && BundledMods.ShippedFiles(mod.Folder) == null;
+        var own = paths.InstallRoot != null && BundledMods.ShippedFiles(mod.Folder) == null;
         if (Sdk != null && mod.HasSource) menu.Items.Add(BuildItem(mod));
         if (own && mod.Archive == null && mod.Pack == null) menu.Items.Add(ZipItem(mod));
         var folder = new MenuItem { Header = "Open folder" };
@@ -514,7 +682,7 @@ public partial class MainWindow
                 if (Math.Abs(y - start.Y) < 5 || modsLocked) return;
                 var from = rows.FindIndex(r => r.Mod.Id == mod.Id);
                 if (from < 0) { pressed = null; return; }
-                modDrag = new(mod.Id, panel, rows, from, rows.Count(r => r.Mod.Id == ModCatalog.LocalStatsId));
+                modDrag = new(mod.Id, panel, rows, from);
                 e.Pointer.Capture(row);
                 // the row being moved lights up in the accent colours
                 row.Background = DragFill;
@@ -522,7 +690,7 @@ public partial class MainWindow
             }
             if (modDrag is not { } drag || drag.Id != mod.Id) return;
             var to = drag.Rows.Count(r => r.Row.Bounds.Top + r.Row.Bounds.Height / 2 < y);
-            drag.To = Math.Max(to, drag.Pinned);
+            drag.To = to;
             // the line shows where it lands, its own place too (just above or below itself: nothing moves)
             for (var i = 0; i < drag.Rows.Count; i++) drag.Rows[i].Row.BoxShadow = default;
             if (drag.To < drag.Rows.Count) drag.Rows[drag.To].Row.BoxShadow = DropAbove;

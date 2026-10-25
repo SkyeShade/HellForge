@@ -4,7 +4,7 @@ This page is for contributors. It lists what is done and what is planned in the 
 backend, the mod loader and the stand-ins); [engine.md](engine.md) describes the engine as it is, and
 [sdk-roadmap.md](sdk-roadmap.md) is the mod SDK's side.
 
-Current versions: HellForge 0.2.0-beta, engine 0.1.28, mod SDK 13 (`Directory.Build.props`,
+Current versions: HellForge 0.3.0-dev.9, engine 0.1.37, mod SDK 15 (`Directory.Build.props`,
 `native/mod-sdk/hellforge_mod.h`).
 
 ## Network isolation
@@ -92,8 +92,8 @@ Finding, 2026-10-19 (in-game bisect, `HELLFORGE_NETGATE_HOOKS`): the in-process 
 level on this build. Hooking the connection primitives trips the game's own integrity check:
 
 - the connectex group (the ConnectEx pointer from WSAIoctl) fast-fails the game about 24 s in (0xC0000409), even when
-  its real function is hooked in place and the genuine pointer is returned, so it is a code checksum, not pointer
-  validation;
+  its real function is hooked in place and the genuine pointer is returned, so the game checksums the code rather than
+  validating the pointer;
 - the connect group (ws2_32 connect/WSAConnect) does not crash but silently blocks sign-in;
 - the send, dns, http and process groups are all fine (full sign-in, hundreds of backend requests).
 
@@ -116,9 +116,9 @@ the Linux port blocks the copy with a network namespace ([linux.md](linux.md)).
 Status: built; setup installs it, and sessions follow it. Still owed: a real wizard GUI run on a fresh install, and
 co-op over WFP.
 
-Started 2026-10-19 on branch `network-gate`. Since the in-process gate cannot block outbound TCP (step 4), the block that
-replaces the firewall is placed straight into the Windows Filtering Platform (WFP) from outside the game's process,
-doing the job the Windows Firewall rules did.
+Started 2026-10-19 on branch `network-gate`. Since the in-process gate cannot block outbound TCP (step 4), HellForge
+places the block that replaces the firewall straight into the Windows Filtering Platform (WFP), from outside the game's
+process.
 
 The shape: persistent WFP filters, installed once (elevated), checked each session and removed on uninstall. This is
 the same install-once model as the firewall rules, so the session flow barely changes; there is no resident helper
@@ -129,9 +129,16 @@ over a security suite's or VPN's permit sublayer, which was the beta's Kaspersky
 The tool is `native/network-block/hellforge_wfp.c`, a Zig-built console tool (`hellforge_wfp install|uninstall|status`).
 For each of the copy's programs it adds, over the four ALE layers (connect v4/v6, recv/accept v4/v6), a permit-loopback
 filter above a block filter, keyed to the program's app id and tagged with a per-install provider GUID, so installations
-never touch each other's blocks. A round trip installs 8 filters per program, reads them back and removes them cleanly.
-An enforcement test showed that a blocked program gets WSAEACCES (10013) to 192.0.2.1:443 and 10061 (not blocked) to
-loopback, the exact outcome the session's probe (OfflineControlNetworkProbe) already checks, so the probe is unchanged.
+never touch each other's blocks. On the connect layers the permit also names one remote port, the local backend's
+(lockdown item 6): the copy reaches that loopback port and no other. Setup picks the port
+(`InstallLayout.ComputedBackendPort`, 40000-46999 from the installation's path: below Windows' dynamic range, where
+Hyper-V, WSL and Docker reserve blocks) and passes it to `Install-WfpBlock.ps1 -BackendPort`, which records it in the
+marker (`network-block/wfp-block.json`, `"port"`); sessions start the backend on the marker's port. A marker without the
+port is a block from before the narrowing, which setup places again, and so does a session (one Windows prompt; a
+sandboxed session refuses to start without it). A round trip installs 8 filters per program, reads
+them back and removes them cleanly. An enforcement test showed that a blocked program gets WSAEACCES (10013) to
+192.0.2.1:443 and 10061 (not blocked) to loopback, the outcome the session's probe (OfflineControlNetworkProbe) checks.
+Setup's probe also connects to the next loopback port and requires 10013 there, which proves the narrowing.
 `scripts/Build-Engine.ps1` compiles, smoke-checks and packages it (its hash is `networkBlock` in `build.json`).
 
 Proven over real boots (2026-10-19). `PlaySession.cs` takes an opt-in `HELLFORGE_WFP_ONLY`: the WFP filters (installed
@@ -146,7 +153,7 @@ unchanged and still gates the session, so `networkBlock` reads "wfp". Two boots 
 So WFP fully replaces the firewall for the boot-to-ship path. The test installation was restored to the firewall
 afterwards.
 
-Setup installs it (built 2026-10-19). The user's decision: the setup wizard places the WFP block and does not finish
+Setup installs it (built 2026-10-19). The decision: the setup wizard places the WFP block and does not finish
 until it is in place; a session then follows it, and defeating it from inside is out of scope. Setup's required "block
 the copy from the internet" step runs `Install-WfpBlock.ps1` elevated. It places the filters (`hellforge_wfp`, with a
 per-install provider GUID from the install path's hash), proves they enforce with the probe (outside refused, 10013),
@@ -156,9 +163,9 @@ needs only the Base Filtering Engine, not Windows Firewall, so a suite that swit
 setup. Installations without the marker keep the firewall path, so existing installations are unaffected. This was
 verified elevated end to end (install, status, uninstall, the marker, enforcement).
 
-The per-session status re-check is deliberately not done. Reading or enumerating WFP filters needs administrator rights
-(unlike Get-NetFirewallRule, which any user can read), so a non-elevated session cannot run the tool's `status`; the
-install and the probe are trusted instead.
+Sessions deliberately do not re-check the filters. Reading or enumerating WFP filters needs administrator rights
+(unlike Get-NetFirewallRule, which any user can read), so a non-elevated session cannot run the tool's `status`; it
+trusts the install and the probe instead.
 
 ### Near term: the firewall path as it is
 
@@ -183,7 +190,7 @@ Status: steps 1 to 3 are built (engines 0.1.4 to 0.1.21); step 4 is planned; ste
 ### Goal
 
 A stratagem, entity, behaviour or ability a mod adds works in co-op with nothing done by the mod, as the game's own do.
-[sdk-roadmap.md](sdk-roadmap.md) (principle 7 and phase 7) is the SDK's side of this.
+[sdk-roadmap.md](sdk-roadmap.md) (principle 7 and phase 6) is the SDK's side of this.
 
 ### Found in the first co-op sessions (engine 0.1.2 and 0.1.3)
 

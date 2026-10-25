@@ -1,0 +1,422 @@
+{
+  "format": 1,
+  "sdk": "1.55",
+  "about": "The Steam bridge's allow-list (docs/steam-bridge.md, phase 3), reviewed by hand. A method not listed is refused. mode: call (a round trip; the broker checks as listed), hand (written in bridge_local.c: answered in the game, from the snapshot or fixed), refuse. strings: an input string's longest length in bytes. buffers: an output buffer, the parameter that holds its size and the most the broker accepts. outs: pointers the method writes one value through. ownLobby: CSteamID parameters that must be a lobby the game made or joined this session (LobbyCreated_t or a successful LobbyEnter_t). range: [min, max] for an integer parameter. printable: strings that may hold only printable ASCII. logged: strings the broker writes to its log on every call. p2pPeer: CSteamID parameters that must be one of the game's co-op peers (the backend's lobby and Party peers; a member of a lobby the game joined is not enough, since JoinLobby takes any lobby). refusedStrings: texts a string parameter may not be, ASCII case ignored. inBuffers: bytes the game hands in, the parameter that holds their size and the most the broker accepts. outBytes: a struct the method writes through a pointer, by its size. adjust: integer parameters the broker may change by its own rule before Valve's DLL sees them (BrokerApi.adjust).",
+  "callbacks": [
+    143,
+    152,
+    163,
+    331,
+    333,
+    337,
+    504,
+    505,
+    513,
+    714,
+    1005,
+    1101,
+    1102,
+    1103,
+    1202,
+    1203,
+    1221
+  ],
+  "enumRefusals": {
+    "EBeginAuthSessionResult": 5,
+    "EUserHasLicenseForAppResult": 2,
+    "EVoiceResult": 2
+  },
+  "interfaces": {
+    "SteamClient020": {
+      "class": "ISteamClient",
+      "methods": {
+        "GetISteamUser": {
+          "mode": "interface"
+        },
+        "GetISteamGameServer": {
+          "mode": "interface"
+        },
+        "GetISteamFriends": {
+          "mode": "interface"
+        },
+        "GetISteamUtils": {
+          "mode": "interface"
+        },
+        "GetISteamMatchmaking": {
+          "mode": "interface"
+        },
+        "GetISteamMatchmakingServers": {
+          "mode": "interface"
+        },
+        "GetISteamGenericInterface": {
+          "mode": "interface"
+        },
+        "GetISteamUserStats": {
+          "mode": "interface"
+        },
+        "GetISteamGameServerStats": {
+          "mode": "interface"
+        },
+        "GetISteamApps": {
+          "mode": "interface"
+        },
+        "GetISteamNetworking": {
+          "mode": "interface"
+        },
+        "GetISteamRemoteStorage": {
+          "mode": "interface"
+        },
+        "GetISteamScreenshots": {
+          "mode": "interface"
+        },
+        "GetISteamGameSearch": {
+          "mode": "interface"
+        },
+        "GetISteamHTTP": {
+          "mode": "interface"
+        },
+        "GetISteamController": {
+          "mode": "interface"
+        },
+        "GetISteamUGC": {
+          "mode": "interface"
+        },
+        "GetISteamAppList": {
+          "mode": "interface"
+        },
+        "GetISteamMusic": {
+          "mode": "interface"
+        },
+        "GetISteamMusicRemote": {
+          "mode": "interface"
+        },
+        "GetISteamHTMLSurface": {
+          "mode": "interface"
+        },
+        "GetISteamInventory": {
+          "mode": "interface"
+        },
+        "GetISteamVideo": {
+          "mode": "interface"
+        },
+        "GetISteamParentalSettings": {
+          "mode": "interface"
+        },
+        "GetISteamInput": {
+          "mode": "interface"
+        },
+        "GetISteamParties": {
+          "mode": "interface"
+        },
+        "GetISteamRemotePlay": {
+          "mode": "interface"
+        },
+        "CreateSteamPipe": {
+          "mode": "hand"
+        },
+        "BReleaseSteamPipe": {
+          "mode": "hand"
+        },
+        "ConnectToGlobalUser": {
+          "mode": "hand"
+        },
+        "ReleaseUser": {
+          "mode": "hand"
+        }
+      }
+    },
+    "SteamUser021": {
+      "class": "ISteamUser",
+      "methods": {
+        "BLoggedOn": {
+          "mode": "hand"
+        },
+        "GetSteamID": {
+          "mode": "hand"
+        },
+        "GetHSteamUser": {
+          "mode": "hand"
+        },
+        "GetAuthSessionTicket": {
+          "mode": "call",
+          "buffers": {
+            "pTicket": {
+              "size": "cbMaxTicket",
+              "max": 1024
+            }
+          },
+          "outs": [
+            "pcbTicket"
+          ]
+        },
+        "CancelAuthTicket": {
+          "mode": "call"
+        }
+      }
+    },
+    "SteamFriends017": {
+      "class": "ISteamFriends",
+      "methods": {
+        "GetPersonaName": {
+          "mode": "hand"
+        },
+        "GetFriendCount": {
+          "mode": "call"
+        },
+        "GetFriendByIndex": {
+          "mode": "call"
+        },
+        "GetFriendRelationship": {
+          "mode": "call"
+        },
+        "GetUserRestrictions": {
+          "mode": "call"
+        },
+        "SetRichPresence": {
+          "mode": "call",
+          "strings": {
+            "pchKey": 64,
+            "pchValue": 256
+          },
+          "printable": [
+            "pchKey",
+            "pchValue"
+          ],
+          "logged": [
+            "pchKey"
+          ],
+          "refusedStrings": {
+            "pchKey": [
+              "hellforge"
+            ]
+          },
+          "review": "strings Steam friends see; reviewed 2026-10-24: the game's own keys pass, HellForge's own (\"hellforge\", how friends' backends find this one, SteamPeerTransport) is refused, so the game can neither fake nor overwrite it"
+        },
+        "ClearRichPresence": {
+          "mode": "call"
+        }
+      }
+    },
+    "SteamUtils010": {
+      "class": "ISteamUtils",
+      "methods": {
+        "GetAppID": {
+          "mode": "hand"
+        },
+        "GetIPCountry": {
+          "mode": "hand"
+        },
+        "IsSteamRunningOnSteamDeck": {
+          "mode": "hand"
+        },
+        "SetOverlayNotificationPosition": {
+          "mode": "hand"
+        },
+        "IsOverlayEnabled": {
+          "mode": "hand"
+        },
+        "InitFilterText": {
+          "mode": "call"
+        },
+        "FilterText": {
+          "mode": "call",
+          "strings": {
+            "pchInputMessage": 4096
+          },
+          "buffers": {
+            "pchOutFilteredText": {
+              "size": "nByteSizeOutFilteredText",
+              "max": 4096
+            }
+          }
+        }
+      }
+    },
+    "SteamMatchMaking009": {
+      "class": "ISteamMatchmaking",
+      "methods": {
+        "CreateLobby": {
+          "mode": "call",
+          "range": {
+            "cMaxMembers": [
+              1,
+              4
+            ]
+          },
+          "adjust": [
+            "eLobbyType"
+          ],
+          "review": "a public lobby's data can be read by anyone who searches: the broker logs the type asked for and makes a Public lobby Friends only while Play with strangers is off (broker_bridge.c)"
+        },
+        "JoinLobby": {
+          "mode": "call",
+          "review": "the game's co-op join: after the PlayFab join, a joiner joins the host's own Steam lobby (census 2026-10-24); any lobby by id, as the game does without HellForge, and that lobby learns this player's SteamID"
+        },
+        "LeaveLobby": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ]
+        },
+        "GetLobbyData": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ],
+          "strings": {
+            "pchKey": 255
+          }
+        },
+        "GetNumLobbyMembers": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ]
+        },
+        "GetLobbyMemberByIndex": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ]
+        },
+        "SetLobbyData": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ],
+          "strings": {
+            "pchKey": 255,
+            "pchValue": 4096
+          }
+        },
+        "SetLobbyJoinable": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ]
+        },
+        "GetLobbyOwner": {
+          "mode": "call",
+          "ownLobby": [
+            "steamIDLobby"
+          ]
+        }
+      }
+    },
+    "STEAMUSERSTATS_INTERFACE_VERSION012": {
+      "class": "ISteamUserStats",
+      "methods": {
+        "RequestCurrentStats": {
+          "mode": "call"
+        },
+        "GetAchievement": {
+          "mode": "call",
+          "strings": {
+            "pchName": 128
+          },
+          "outs": [
+            "pbAchieved"
+          ]
+        }
+      }
+    },
+    "STEAMAPPS_INTERFACE_VERSION008": {
+      "class": "ISteamApps",
+      "methods": {
+        "BIsSubscribedApp": {
+          "mode": "hand"
+        },
+        "GetDLCCount": {
+          "mode": "hand"
+        },
+        "BGetDLCDataByIndex": {
+          "mode": "hand"
+        },
+        "GetCurrentGameLanguage": {
+          "mode": "hand"
+        },
+        "GetCurrentBetaName": {
+          "mode": "hand"
+        }
+      }
+    },
+    "SteamNetworking006": {
+      "class": "ISteamNetworking",
+      "methods": {
+        "SendP2PPacket": {
+          "mode": "call",
+          "p2pPeer": [
+            "steamIDRemote"
+          ],
+          "inBuffers": {
+            "pubData": {
+              "size": "cubData",
+              "max": 7000
+            }
+          },
+          "range": {
+            "eP2PSendType": [
+              0,
+              3
+            ],
+            "nChannel": [
+              0,
+              7
+            ]
+          },
+          "review": "co-op: the host sends to a joiner over Steam P2P when it joins (2026-10-24); only to and from the game's co-op peers, so it is no way out to any other Steam user"
+        },
+        "IsP2PPacketAvailable": {
+          "mode": "hand"
+        },
+        "ReadP2PPacket": {
+          "mode": "hand"
+        },
+        "AcceptP2PSessionWithUser": {
+          "mode": "call",
+          "p2pPeer": [
+            "steamIDRemote"
+          ]
+        },
+        "CloseP2PSessionWithUser": {
+          "mode": "call"
+        },
+        "CloseP2PChannelWithUser": {
+          "mode": "call",
+          "range": {
+            "nChannel": [
+              0,
+              7
+            ]
+          }
+        },
+        "GetP2PSessionState": {
+          "mode": "call",
+          "p2pPeer": [
+            "steamIDRemote"
+          ],
+          "outBytes": {
+            "pConnectionState": 20
+          }
+        },
+        "AllowP2PPacketRelay": {
+          "mode": "call"
+        }
+      }
+    },
+    "SteamInput006": {
+      "class": "ISteamInput",
+      "methods": {
+        "GetControllerForGamepadIndex": {
+          "mode": "call",
+          "range": {
+            "nIndex": [
+              0,
+              15
+            ]
+          }
+        }
+      }
+    }
+  }
+}

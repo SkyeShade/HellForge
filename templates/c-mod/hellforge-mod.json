@@ -5,5 +5,5 @@
   "version": "0.1.0",
   "description": "{{name}}: a HellForge code mod. Source in src/.",
   "gameplay": true,
-  "code": { "dll": "{{dll}}.dll", "sdk": 13 }
+  "code": { "dll": "{{dll}}.dll", "sdk": 15 }
 }

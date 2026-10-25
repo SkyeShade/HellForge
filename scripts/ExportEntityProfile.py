@@ -46,7 +46,7 @@ keep = ('ProjectileWeaponComponentData', 'DepositComponentData', 'HealthComponen
         'BackpackComponentData', 'WeaponLinkedAmmoComponentData', 'ThrowerComponentData', 'LoadoutEntryComponentData',
         'ShieldControllerComponentData', 'VehicleMotionComponentData', 'HellpodPayloadComponentData',
         'OrbitalAbilityComponentData', 'WeaponCustomizationComponentData', 'RotationComponentData',
-        'SeekingMissileComponentData', 'DisplacementComponentData', 'HellpodRackComponentData')
+        'SeekingMissileComponentData', 'DisplacementComponentData', 'HellpodRackComponentData', 'GoreComponentData')
 components = {name: schema['components'][name] for name in keep if name in schema['components']}
 # Components the schema lacks, read from the same build's generated_entities.dl_bin (its LDLD frame: offset, framing
 # header, the component index before it, index rows, records, stride) with HD2Runtime-dev6's scan.tables; the method
@@ -64,6 +64,19 @@ EXTRA = {
     # Targeting and Unit entries above exactly): an ability weapon's fire modes (the silo remote, the C4 detonator).
     'AbilityWeaponComponentData': {'offset': 27512448, 'header': '651c93ff4c444c4401000000651c93ff380400000100000000000000', 'index': 267,
                                    'indices': 18, 'records': 9, 'record_offset': 288, 'stride': 88, 'type': 4287831141},
+    # The same way (each frame found by the component index before it, which reproduces all 46 entries above; counts and
+    # strides as HD2Runtime's component catalogue has them): the structures' components the HD2R Editor's Enemies pages
+    # edit (research/editor-phase2 components-needed).
+    'AiSpawnerComponentData': {'offset': 7293320, 'header': '772615bc4c444c4401000000772615bc681d00000100000000000000', 'index': 182,
+                               'indices': 66, 'records': 33, 'record_offset': 1056, 'stride': 196, 'type': 3155502711},
+    'SquadTransportFormationComponentData': {'offset': 5909184, 'header': 'c7e78c494c444c4401000000c7e78c49201c00000100000000000000', 'index': 122,
+                                             'indices': 180, 'records': 90, 'record_offset': 2880, 'stride': 48, 'type': 1233971143},
+    'SquadTransportComponentData': {'offset': 2080624, 'header': 'd83cb9d24c444c4401000000d83cb9d2f00300000100000000000000', 'index': 97,
+                                    'indices': 12, 'records': 6, 'record_offset': 192, 'stride': 136, 'type': 3535355096},
+    'StratagemBlockerComponentData': {'offset': 681424, 'header': 'b78a5f8c4c444c4401000000b78a5f8c700100000100000000000000', 'index': 25,
+                                      'indices': 14, 'records': 7, 'record_offset': 224, 'stride': 20, 'type': 2355071671},
+    'BugholeComponentData': {'offset': 7710424, 'header': 'f3b10f174c444c4401000000f3b10f17900000000100000000000000', 'index': 216,
+                             'indices': 4, 'records': 2, 'record_offset': 64, 'stride': 40, 'type': 386904563},
 }
 for name, c in EXTRA.items():
     components.setdefault(name, c)

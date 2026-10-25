@@ -1,11 +1,16 @@
 # HellForge
 
-HellForge runs your own copy of HELLDIVERS 2 offline, against a local backend on your PC, and loads mods into it: new
-stratagems, weapons, stats and difficulties. You can play solo or with Steam friends who run HellForge too. It comes with
-an in-game editor (F8) and a C mod SDK with guides and examples.
+HellForge runs your own copy of HELLDIVERS 2 locally, against a backend on your PC in place of the official servers, and
+loads mods into it: new stratagems, weapons, stats and difficulties. You can play solo, or co-op over Steam with other
+players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK with guides and examples.
 
-Status: beta (0.2.0-beta), made for modders first, so expect rough edges. The launcher shows its version and the game
-build it targets in its bottom-left corner.
+> [!WARNING]
+> **This is the `dev` branch: work in progress for the next release (0.3.0), experimental and possibly broken.** Players:
+> install the latest release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead. A build of
+> this branch shows `-dev.<n>` in its version.
+
+Status: development build (0.3.0-dev.9), made for modders first, so expect rough edges. The launcher shows its version
+and the game build it targets in its bottom-left corner.
 
 ## What HellForge is and is not
 
@@ -17,13 +22,22 @@ your own Steam files. Your normal Steam game is never changed.
 The Steam ownership check stays. A genuine check runs at setup and before every launch, so Steam must be running and
 signed in to an account that owns the game or has it through Steam Family Sharing.
 
-The copy is offline. It talks to a local backend on your PC in place of Arrowhead's online services, and a network block
-in the Windows Filtering Platform stops it reaching anything but this PC. It never connects to official servers, so it
-cannot be used to play online with a modified game.
+The copy runs locally. It talks to a local backend on your PC in place of Arrowhead's online services, and a network
+block in the Windows Filtering Platform stops the game itself reaching anything but this PC; co-op goes through
+HellForge's backend over Steam. It never connects to official servers, so it cannot be used to play on them with a
+modified game.
 
-Co-op with Steam friends is the only multiplayer. You host or join friends from your Steam friends list who also run
-HellForge with the same gameplay mods; HellForge checks the mods before a join. There is no matchmaking, there are no
-public lobbies, and you cannot play with the normal game's players.
+Multiplayer is co-op with other HellForge players only. You host or join Steam friends who run HellForge, and public
+lobbies of other HellForge players show on the Galactic Map: HellForge lists them on Steam's lobby service, never on
+Arrowhead's. A public lobby shows its players' names and its host's Steam account id to anyone who looks. The game's
+Privacy setting (Friends only, Invite only) keeps strangers out, and a switch on the Mods page keeps your Public lobbies
+off the map. You cannot play with the normal game's players.
+
+Joining a lobby whose host runs other gameplay mods offers to download them and restart with the host's mods. Only
+what HellForge checks itself downloads by itself: mods that run code (a DLL, sources or Lua) or carry data it cannot
+check (binary data patches, raw stats) download only when HellForge has verified that exact version. A blocklist hides lobbies
+running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
+unless you show them on the Mods page.
 
 Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
 follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
@@ -34,6 +48,8 @@ name a community war server for a session ([war servers](docs/external-launchers
 
 - Windows 10 or 11 (64-bit). Linux under Proton is experimental: see [docs/linux.md](docs/linux.md).
 - Steam running and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing.
+- The Microsoft Visual C++ 2012 and 2015-2022 Redistributables (x64), which the game needs. Setup checks for both and
+  links Microsoft's downloads when one is missing ([troubleshooting](docs/troubleshooting.md#microsoft-visual-c-runtimes)).
 - About 25 GB free on the drive you install to. Add about 2 GB while a patch pack is applied, or plan on about 50 GB in
   total if Steam has to download the supported build.
 - Permission to approve one Windows administrator prompt, for the network block. Windows Firewall does not need to be on:

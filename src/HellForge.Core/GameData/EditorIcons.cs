@@ -15,18 +15,26 @@ namespace HellForge.Core.GameData;
 //                        and the white layer (green)
 //   boosters             the sprite in colour, with its alpha
 //   passives             their glyph: the sprite is a black glyph on opaque white, a mask the game draws in a colour
+//   factions             the emblem, drawn in the faction's colour: an opaque one's red mask (Terminids, Automatons,
+//                        Illuminate: green is the same, blue a soft glow), else its alpha (Super Earth's white emblem)
+//   difficulties         a mission difficulty's badge (levels 1 to 10), in colour with its alpha
 // Sprites larger than 128 pixels are scaled down (by area, alpha-weighted): the editor draws none larger.
 //
 // game-icons.bin: "HFIC", u32 version 2, u32 count, then per icon: u8 kind (0 weapon, 1 throwable, 2 stratagem category
-// layer, 3 stratagem white layer, 4 booster, 5 armor passive), u8 name length, the UTF-8 name, u16 width, u16 height, u8 channels
-// (1: coverage, 0 empty to 255 full; 4: RGBA), then width * height * channels bytes, rows top to bottom.
+// layer, 3 stratagem white layer, 4 booster, 5 armor passive, 7 faction, 8 difficulty; 6 is the editor's own, a mod's image), u8 name
+// length, the UTF-8 name, u16 width, u16 height, u8 channels (1: coverage, 0 empty to 255 full; 4: RGBA), then
+// width * height * channels bytes, rows top to bottom.
 public static class EditorIcons
 {
     public const string FileName = "game-icons.bin";
     public const int Version = 2;
     static readonly ulong TextureAtlas = ResourceTypes.Hash("texture_atlas");
     const int TextureHeader = 0xC0, Largest = 128;
-    static readonly string[] Groups = ["weapons", "throwables", "stratagems", "boosters", "passives"];
+    static readonly string[] Groups = ["weapons", "throwables", "stratagems", "boosters", "passives", "factions", "difficulties"];
+    // What an installation's icons were made from: the file's format, the groups, and the sprites mappings/hud-icons.json
+    // names (BundledMods makes them again when it changes; a change to how a group is extracted adds to Version).
+    public static string Stamp { get; } = Version + ":" + string.Join(",", Groups) + ":" + Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(typeof(EditorIcons).Assembly.GetManifestResourceStream("HellForge.Core.mappings.hud-icons.json")!));
 
     public sealed record Icon(int Kind, string Name, int Width, int Height, int Channels, byte[] Pixels);
 
@@ -92,6 +100,14 @@ public static class EditorIcons
                 var (w, h, rgba) = Shrink(rec.W, rec.H, decoded);
                 switch (group)
                 {
+                    case "factions":
+                        var opaque = true;
+                        for (var i = 3; i < rgba.Length && opaque; i += 4) opaque = rgba[i] == 255;
+                        icons.Add(new(7, name, w, h, 1, opaque ? Channel(rgba, 0, true) : Channel(rgba, 3, false)));
+                        break;
+                    case "difficulties":
+                        icons.Add(new(8, name, w, h, 4, rgba));
+                        break;
                     case "weapons" or "throwables":
                         icons.Add(new(group == "weapons" ? 0 : 1, name, w, h, 1, Channel(rgba, 0, false)));
                         break;

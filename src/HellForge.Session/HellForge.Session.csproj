@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The engine's version (Directory.Build.props EngineVersion), as its package and engine.json carry it. -->
   <PropertyGroup><Version>$(EngineVersion)</Version></PropertyGroup>
-  <!-- The session runner: everything a HellForge session does to run the copied game offline (docs/engine.md).
+  <!-- The session runner: everything a HellForge session does to run the copied game locally (docs/engine.md).
        Published with NativeAOT (scripts/Build-Engine.ps1): one native program, no .NET installation needed. -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>

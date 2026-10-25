@@ -80,10 +80,28 @@ A failed download says "Could not download the build patch: ... Something on thi
 When a patch fails for any reason, setup shows Steam's own download of the build instead (the steps above). Files it
 already patched are kept, so the copy only needs the rest. Restarting the launcher tries the failed patch again.
 
+Except when the drive is full: setup checks for room before it downloads the patch and again before it patches, and
+says "Not enough free space on D:\: ... more is needed" (or "D:\ ran out of space while patching ...", which older
+versions showed as "hpatchz exit code 24" with advice to validate the game). Free that much on the drive HellForge is
+installed on and press Check again; the files already patched are kept. Steam's download would need the same room.
+
 ### Pausing and interrupted copies
 
 Pause copying stops the copy with "Paused. Start setup again to continue where it stopped." An interrupted copy also
 continues where it stopped the next time you run setup.
+
+### Microsoft Visual C++ runtimes
+
+The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64) and the
+Visual C++ 2015-2022 Redistributable (x64). Steam's own install of the game no longer adds the 2012 one, so a fresh PC
+often lacks it. Setup checks for both before it copies the game, and every session checks again before it starts the
+game. When one is missing, the message names it and gives Microsoft's download link:
+
+- 2012: <https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe>
+- 2015-2022: <https://aka.ms/vc14/vc_redist.x64.exe>
+
+Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
+have.
 
 ### The network block
 
@@ -93,7 +111,7 @@ Windows Firewall does not need to be on.
 | Message | What to do |
 |---|---|
 | "Windows permission was declined. The network block is required; start setup again and allow it." | Start setup again and answer Yes to the Windows administrator prompt. Setup does not finish without the block. |
-| "The Windows Base Filtering Engine (BFE) service is off. HellForge needs it to keep its copy of the game offline." | Turn it back on (Services > Base Filtering Engine, or run `net start BFE` as administrator), then start setup again. |
+| "The Windows Base Filtering Engine (BFE) service is off. HellForge needs it to keep its copy of the game off the internet." | Turn it back on (Services > Base Filtering Engine, or run `net start BFE` as administrator), then start setup again. |
 | "The network block was not installed: ..." | The reason follows the colon. Setup also writes `logs\setup-network-block.json`; include it when you ask for help. |
 
 ## Antivirus
@@ -132,11 +150,19 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
 | "Another HellForge session is still running for this installation..." | Wait for it to end, or close `HellForge.Session.exe` in Task Manager (or restart the PC), then press PLAY again. |
 | "The game copy is not the supported build (...); repair it from the launcher." | Run Settings > Installation > Check and repair. |
+| "The game needs a Microsoft runtime this PC does not have..." | Install the runtime it names from the link it gives, then press PLAY again ([Visual C++ runtimes](#microsoft-visual-c-runtimes)). |
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
 | "The session runner exited before starting." | The launcher points to `logs\session-runner.log`, which says why. |
 | "Mod left out of this session: ..." (in the Console) | The session still runs without that mod. The Mods page shows why on the mod's row ([using mods](mods.md)). |
+| "HellForge's file ... could not be held read-only for the session ..." | Another program has that file of the installation's `app` folder open for writing. Close it (or restart the PC), then press PLAY. |
+| "Mod file ... could not be held read-only for the session ..." | Another program (an editor, an archive tool) has that file in `mods` open for writing. Close it, then press PLAY. |
+| "WARNING: ... file(s) appeared in the mods folder during the session ..." (in the Console, after a session) | Something wrote into `mods` while the game ran. If you did not add them, delete the files it lists (in that session's `result.json`, `plantedMods`) and leave any switched-off mod off ([using mods](mods.md#the-mods-page)). |
+| "Port ..., HellForge's backend port, is used by another program on this PC." | Close the program using it (or restart the PC). The network block lets the game reach only that port. |
+| "The network block still lets the game reach every program on this PC: placing it again ..." | An installation from before 0.3.0: the session narrows the block to HellForge's backend, after one Windows prompt. Accept it. |
+| "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
+| "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
 
 ### The game could not be prepared or connected
@@ -165,7 +191,8 @@ means:
 | `0xC0000428` | Windows blocked an unsigned DLL (Smart App Control or a code-integrity policy) |
 | `0xC0000361` | a Windows policy blocked a file the game loads |
 
-For a damaged or missing DLL, run Settings > Installation > Check and repair. For the security codes, see
+For a damaged or missing DLL, check the [Visual C++ runtimes](#microsoft-visual-c-runtimes) first, then run Settings >
+Installation > Check and repair. For the security codes, see
 [antivirus](#antivirus).
 
 ### Other network block messages

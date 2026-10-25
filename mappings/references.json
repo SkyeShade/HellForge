@@ -5131,7 +5131,9 @@
       "record": 60,
       "component": 321,
       "offset": 162676,
-      "projectile": 276
+      "projectile": 276,
+      "damage": 108,
+      "optionalFor": []
     },
     {
       "weapon": "JAR-5 Dominator",
@@ -5140,7 +5142,9 @@
       "record": 91,
       "component": 321,
       "offset": 164784,
-      "projectile": 177
+      "projectile": 177,
+      "damage": 153,
+      "optionalFor": []
     },
     {
       "weapon": "P-19 Redeemer",
@@ -5149,7 +5153,11 @@
       "record": 50,
       "component": 321,
       "offset": 162124,
-      "projectile": 291
+      "projectile": 291,
+      "damage": 73,
+      "optionalFor": [
+        "MP-98 Knight"
+      ]
     },
     {
       "weapon": "P-2 Peacemaker",
@@ -5158,7 +5166,12 @@
       "record": 51,
       "component": 321,
       "offset": 162128,
-      "projectile": 337
+      "projectile": 337,
+      "damage": 75,
+      "optionalFor": [
+        "MP-98 Knight",
+        "P-19 Redeemer"
+      ]
     },
     {
       "weapon": "R-63 Diligence",
@@ -5167,7 +5180,9 @@
       "record": 80,
       "component": 321,
       "offset": 164036,
-      "projectile": 305
+      "projectile": 305,
+      "damage": 141,
+      "optionalFor": []
     },
     {
       "weapon": "SG-225 Breaker",
@@ -5176,7 +5191,9 @@
       "record": 125,
       "component": 321,
       "offset": 167032,
-      "projectile": 179
+      "projectile": 179,
+      "damage": 179,
+      "optionalFor": []
     }
   ],
   "hosts": {
@@ -5304,6 +5321,10 @@
       "mechanism": "component",
       "class": "explosive_impact"
     },
+    "GL-15 Evictor": {
+      "mechanism": "rounds",
+      "class": "explosive_impact_and_expiry"
+    },
     "GL-21 Grenade Launcher": {
       "mechanism": "component",
       "class": "explosive_impact_and_expiry"
@@ -5356,12 +5377,20 @@
       "mechanism": "component",
       "class": "conventional_plain"
     },
+    "M90A Shotgun": {
+      "mechanism": "rounds",
+      "class": "conventional_plain"
+    },
     "MA5C Assault Rifle": {
       "mechanism": "component",
       "class": "conventional_plain"
     },
     "MG-206 Heavy Machine Gun": {
       "mechanism": "component",
+      "class": "conventional_plain"
+    },
+    "P-11 Stim Pistol": {
+      "mechanism": "rounds",
       "class": "conventional_plain"
     },
     "P-113 Verdict": {
@@ -5379,6 +5408,14 @@
     "P-35 Re-Educator": {
       "mechanism": "component",
       "class": "status_bearing"
+    },
+    "P-4 Senator": {
+      "mechanism": "rounds",
+      "class": "conventional_plain"
+    },
+    "P-69 Veto": {
+      "mechanism": "rounds",
+      "class": "conventional_plain"
     },
     "P/40-K Bolt Pistol": {
       "mechanism": "component",
@@ -5407,6 +5444,10 @@
     "R-4 Hyena": {
       "mechanism": "component",
       "class": "status_bearing"
+    },
+    "R-6 Deadeye": {
+      "mechanism": "rounds",
+      "class": "conventional_plain"
     },
     "R-63 Diligence": {
       "mechanism": "ammunition",
@@ -5460,6 +5501,10 @@
       "mechanism": "rounds",
       "class": "conventional_plain"
     },
+    "SG-97 Sweeper": {
+      "mechanism": "rounds",
+      "class": "conventional_plain"
+    },
     "SMG-203 Gallant": {
       "mechanism": "component",
       "class": "conventional_plain"
@@ -5500,32 +5545,25 @@
     "EXO-45 Patriot Exosuit / left_gun": "The shot spawns a missile entity (ProjectileWeapon +40, ProjectileEntity), not a projectile (research/wasp-rocket: 0x6143CD, 0x615B15). The missile flies by its own SeekingMissile record: its fields are not offered on mounted weapons yet. ProjectileWeapon +0 (projectile 128) reaches the missile only as its hit row (damage, impact explosion) through the shooter's spawn info (0x61604F -> 0x6414E0): a swap would change neither its flight nor its model, and how another machine's copy of the missile gets its type is not traced, so the fired projectile is not swapped.",
     "EXO-55 Breakthrough Exosuit / right_gun": "Another native selector owns the fired projectile: WeaponRounds ammo types (primary / alternate magazine projectile).",
     "FAF-14 Spear": "The shot spawns a missile entity (ProjectileWeapon +40, ProjectileEntity), not a projectile (research/wasp-rocket: 0x6143CD, 0x615B15). The missile flies by its own SeekingMissile record: edit it with the missile.* fields of this weapon. ProjectileWeapon +0 (projectile 225) reaches the missile only as its hit row (damage, impact explosion) through the shooter's spawn info (0x61604F -> 0x6414E0): a swap would change neither its flight nor its model, and how another machine's copy of the missile gets its type is not traced, so the fired projectile is not swapped.",
-    "GL-15 Evictor": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "GL-52 De-Escalator": "Another native selector owns the fired projectile: WeaponRounds ammo types (primary / alternate magazine projectile).",
     "GP-31 Grenade Pistol": "The weapon identity does not resolve uniquely, so its customization and active source are not classified.",
     "GR-8 Recoilless Rifle": "A weapon function (programmable ammo) switches to WeaponFunctionProjectileType; the base member is only the default function's projectile.",
     "LAS-17 Double-Edge Sickle": "Another native selector owns the fired projectile: WeaponHeat (level-selected projectile).",
     "M-1000 Maxigun": "HD2Runtime marks its projectile not writable: Every shot is ProjectileWeapon +0 by the data path, but the weapon is not magazine-fed and the fired-type trace (research/fired-type-callers) does not prove its structure: a linked-ammunition weapon fires the type of its linked ammunition source whenever one is linked. Its projectile reference stays read-only.",
-    "M90A Shotgun": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "MG-43 Machine Gun": "Another native selector owns the fired projectile: magazine pattern (WeaponMagazine Projectiles[32] / FirstProjectile).",
     "MGX-42 Bullet Storm": "Another native selector owns the fired projectile: magazine pattern (WeaponMagazine Projectiles[32] / FirstProjectile).",
     "MLS-4X Commando": "The shot spawns a missile entity (ProjectileWeapon +40, ProjectileEntity), not a projectile (research/wasp-rocket: 0x6143CD, 0x615B15). The missile flies by its own SeekingMissile record: edit it with the missile.* fields of this weapon. ProjectileWeapon +0 (projectile 245) reaches the missile only as its hit row (damage, impact explosion) through the shooter's spawn info (0x61604F -> 0x6414E0): a swap would change neither its flight nor its model, and how another machine's copy of the missile gets its type is not traced, so the fired projectile is not swapped.",
     "MP-98 Knight": "No default overrides +0, but the unlock list carries an option that patches a projectile member: the fired projectile depends on the equipped option.",
-    "P-11 Stim Pistol": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "P-33 Missile Pistol": "The shot spawns a missile entity (ProjectileWeapon +40, ProjectileEntity), not a projectile (research/wasp-rocket: 0x6143CD, 0x615B15). The missile flies by its own SeekingMissile record: edit it with the missile.* (and function_missile.* for the ProgrammableAmmo missile) fields of this weapon. ProjectileWeapon +0 (projectile 152) reaches the missile only as its hit row (damage, impact explosion) through the shooter's spawn info (0x61604F -> 0x6414E0): a swap would change neither its flight nor its model, and how another machine's copy of the missile gets its type is not traced, so the fired projectile is not swapped.",
     "P-34 Breacher": "The shot spawns an entity (ProjectileWeapon +40, ProjectileEntity) that is not a missile (Explosive, Sticky, Throwable): no projectile row is fired, so there is nothing to swap (research/wasp-rocket).",
-    "P-4 Senator": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile (+0 patched by REVOLVER 13x40mm. FULL METAL JACKET); which member a shot consumes is not proven offline.",
-    "P-69 Veto": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "P-92 Warrant": "The shot spawns a missile entity (ProjectileWeapon +40, ProjectileEntity), not a projectile (research/wasp-rocket: 0x6143CD, 0x615B15). The missile flies by its own SeekingMissile record: edit it with the missile.* fields of this weapon. ProjectileWeapon +0 (projectile 326) reaches the missile only as its hit row (damage, impact explosion) through the shooter's spawn info (0x61604F -> 0x6414E0): a swap would change neither its flight nor its model, and how another machine's copy of the missile gets its type is not traced, so the fired projectile is not swapped.",
     "PLAS-101 Purifier": "Another native selector owns the fired projectile: WeaponCharge (level-selected projectile).",
     "PLAS-15 Loyalist": "Another native selector owns the fired projectile: WeaponCharge (level-selected projectile).",
     "PLAS-45 Epoch": "Another native selector owns the fired projectile: WeaponCharge (level-selected projectile).",
-    "R-6 Deadeye": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "RL-77 Airburst Rocket Launcher": "A weapon function (programmable ammo) switches to WeaponFunctionProjectileType; the base member is only the default function's projectile.",
     "SG-20 Halt": "The default ammunition item SHOTGUN 10g. FLECHETTES patches WeaponRounds PrimaryProjectileType when the weapon is built, so the base member is dormant. The rounds ammunition source is not offered for writes.",
     "SG-8 Punisher": "Customization options patch WeaponRounds PrimaryProjectileType (SHOTGUN 10g. BIRDSHOT, SHOTGUN 10g. BUCKSHOT, SHOTGUN 10g. BUGSHOT, SHOTGUN 10g. DUAL SABOT, SHOTGUN 10g. FLECHETTES, SHOTGUN 10g. FRAGMENTATION, SHOTGUN 10g. HIGH VELOCITY SABOT, SHOTGUN 10g. LIBERTY FIRE, SHOTGUN 10g. MAGNUM, SHOTGUN 10g. MAGNUM TRIBALL, SHOTGUN 10g. SCATTER SHOT, SHOTGUN 10g. SLUG, SHOTGUN 10g. TRI-BALL); the fired projectile depends on the equipped option.",
     "SG-88 Break-Action Shotgun": "Another native selector owns the fired projectile: WeaponRounds ammo types (primary / alternate magazine projectile).",
-    "SG-97 Sweeper": "Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0 carry a projectile; which member a shot consumes is not proven offline.",
     "SMG-37 Defender": "The weapon identity does not resolve uniquely, so its customization and active source are not classified.",
     "TD-110 Maelstrom / attach_tank_gun": "Another native selector owns the fired projectile: magazine pattern (WeaponMagazine Projectiles[32] / FirstProjectile).",
     "TD-110 Maelstrom / slot_2": "A weapon function (programmable ammo) switches to WeaponFunctionProjectileType; the base member is only the default function's projectile.",

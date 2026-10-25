@@ -256,7 +256,7 @@ static int ValueBytes(HfMod* mod, const char* what, uint32_t line, const SdkComp
 static int TableKnown(const char* component)
 {
     int extra = StatsExtraKind(component);
-    return StatsTableKind(component) || !strcmp(component, "DifficultySettings") || (extra >= 0 && extra < (int)STATS_EXTRA_COUNT - 1);
+    return StatsTableKind(component) || (extra >= 0 && extra < (int)STATS_EXTRA_COUNT - 1);
 }
 
 /* A settings table's row by its id, through the table the game reads now (HellForge's moved copy, else the game's): the
@@ -293,9 +293,12 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     }
     if (!strcmp(component, "DifficultySettings"))
     {
-        if (g_difficultyState != 1) { *ready = g_difficultyState < 0; return 0; }
-        return id <= 11 ? ApiDifficultyRow((uint32_t)id) : 0;
+        /* level 11's moved table, else (none added, or its move refused) the game's own: director.c */
+        if (g_difficultyState == 0) { *ready = 0; return 0; }
+        if (g_difficultyState == 1 && g_difficultyTable != NULL) return id <= 11 ? ApiDifficultyRow((uint32_t)id) : 0;
+        return DifficultyVanillaRow(id, ready);
     }
+    if (DirectorKind(component)) return DirectorRow(component, id, ready);
     int kind = StatsExtraKind(component);
     if (kind < 0 || kind >= (int)STATS_EXTRA_COUNT - 1) return 0;
     if (!g_statsAllocations[kind]) { *ready = g_statsExtraDone[kind]; return 0; }
@@ -555,9 +558,10 @@ static void ApplyEdit(FieldEdit* e)
     }
     uint8_t* at = record + e->field->offset;
     e->address = (uintptr_t)at;
-    uint8_t bytes[1024];
+    uint8_t bytes[1024], was[8];
     if (e->field->size > sizeof bytes) { EditFailed(e, "the field is larger than HellForge edits"); return; }
     memcpy(bytes, at, e->field->size);
+    memcpy(was, at, e->field->size < sizeof was ? e->field->size : sizeof was);
     /* under a value Local Stats saved (not written; its original is taken when it does apply) */
     if (e->live && ModRank(e->mod) < RANK_EDITOR && SavedEditorValue((uintptr_t)at, e->field->size)) { e->failed = 0; return; }
     if (e->live && !e->hasOriginal && e->field->size <= sizeof e->original) { memcpy(e->original, at, e->field->size); e->hasOriginal = 1; }
@@ -604,7 +608,22 @@ static void ApplyEdit(FieldEdit* e)
             memset(bytes + (count - 1) * 8, 0, 8);
         }
     }
+    /* the spawn director's rows: a composition's squad within the queue's capacity, its ranges in order (director.c) */
+    const char* refused = e->table ? DirectorRefuses(e->component->component, (uintptr_t)record, e->field->offset, bytes, e->field->size) : NULL;
+    if (refused != NULL) { EditFailed(e, refused); return; }
     if (memcmp(bytes, at, e->field->size) != 0 && ApiWrite((uintptr_t)at, bytes, e->field->size)) { EditFailed(e, "its record could not be written"); return; }
+    /* the game's own difficulty table (no level 11): every copy that held the same bytes */
+    if (e->table && !strcmp(e->component->component, "DifficultySettings") && e->field->size <= sizeof was)
+        DifficultyMirror((uintptr_t)record, e->field->offset, was, bytes, e->field->size);
+    /* a weapon's projectile changed live (the editor's swap): this machine's own, for co-op's shots (shots.c) */
+    if (!e->table && e->field->size == 4 && ShotsSlotOf(e->component->component, e->field->offset) >= 0)
+    {
+        uint32_t now;
+        memcpy(&now, bytes, 4);
+        uint32_t before;
+        memcpy(&before, was, 4);
+        ShotsNoteLocal(e->entity, ShotsSlotOf(e->component->component, e->field->offset), before, now);
+    }
     e->failed = 0;
 }
 

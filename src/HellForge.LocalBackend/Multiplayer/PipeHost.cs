@@ -34,8 +34,7 @@ public sealed class PipeHost : IAsyncDisposable
     {
         while (!stop.IsCancellationRequested)
         {
-            var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
-                PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            var pipe = HellForge.Core.PipeServer.Create(name, NamedPipeServerStream.MaxAllowedServerInstances);
             try { await pipe.WaitForConnectionAsync(stop.Token); }
             catch (OperationCanceledException) { await pipe.DisposeAsync(); return; }
             lock (connections) connections.Add(Task.Run(() => Serve(pipe)));

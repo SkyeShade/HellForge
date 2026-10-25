@@ -13,12 +13,20 @@
  * map has no overflow path (a full one writes to address 0), so nothing is requested with it 3/4 full, and HellForge
  * holds at most 64 packages. Whether a package is resident is read from the engine's package list (helldivers2.exe;
  * its has_loaded and package lookup functions checked): known with every part in state 4; else loading, queued or
- * absent. A package not resident 90 s after its request has failed. Only the catalogue's packages are requested. */
+ * absent. A package not resident 90 s after its request has failed. Only the catalogue's packages are requested.
+ *
+ * Co-op (docs/multiplayer.md "Assets in co-op"): every player keeps their own edits, and what a friend's edit puts in the
+ * game (a vehicle's swapped weapon, a pod's pickup) is created on every machine, so each machine needs its package. The
+ * packages this machine holds for its own edits, mods and actions are its "own": the live pipe sends them to the
+ * session's backend whenever they change (live.c "packages"), the backends gather the lobby's, and each machine asks for
+ * its friends' (live.c "preload", PackagesForFriends) as it does for its own. Friends' packages leave 16 of the 64 for
+ * this machine's own. */
 #include "reference_data.h"
 
 #define TICK_UPDATE 0x13270B0u
 #define TICK_MAX 16
 #define PKG_MAX_HELD 64
+#define PKG_OWN_RESERVE 16
 #define PKG_TIMEOUT_MS 90000u
 #define PKG_FILL_LIMIT 0.75
 
@@ -42,6 +50,7 @@ typedef struct HeldPackage
     ULONGLONG since;    /* asked for; requested: the request */
     int requested;
     int failed;
+    int own;            /* for this machine's edits, mods or actions (sent to friends); else only for a friend's */
     char why[160];
 } HeldPackage;
 static HeldPackage g_held[PKG_MAX_HELD];
@@ -133,21 +142,27 @@ static const RefPackage* CataloguePackage(uint64_t id)
     return NULL;
 }
 
+static void LivePackagesChanged(void); /* live.c: this machine's own packages changed, for the session's backend */
+
 /* A catalogue package HellForge wants resident: asked for on the first call (the game thread requests it), then
- * PKG_WAITING until the engine has every part, PKG_RESIDENT, or PKG_FAILED (*why says why). */
-static int PackageWant(uint64_t id, const char** name, const char** why)
+ * PKG_WAITING until the engine has every part, PKG_RESIDENT, or PKG_FAILED (*why says why). own: for this machine's
+ * edits, mods or actions; else for a friend's (PackagesForFriends), which may not take the last PKG_OWN_RESERVE places.
+ * *added (may be NULL): 1 when this call asked for it first. */
+static int PackageWantAs(uint64_t id, int own, const char** name, const char** why, int* added)
 {
     static const char* const notInCatalogue = "it is not a package HellForge's catalogue names";
     const RefPackage* known = CataloguePackage(id);
     *name = known != NULL ? known->name : "?";
+    if (added != NULL) *added = 0;
     if (known == NULL) { *why = notInCatalogue; return PKG_FAILED; }
     AcquireSRWLockExclusive(&g_packagesLock);
     HeldPackage* held = NULL;
     for (int i = 0; i < g_heldCount; i++) if (g_held[i].id == id) held = &g_held[i];
-    int result = PKG_WAITING;
-    if (held == NULL && g_heldCount >= PKG_MAX_HELD)
+    int result = PKG_WAITING, changed = 0;
+    if (held == NULL && g_heldCount >= (own ? PKG_MAX_HELD : PKG_MAX_HELD - PKG_OWN_RESERVE))
     {
-        *why = "HellForge holds 64 packages already (its budget)";
+        *why = own ? "HellForge holds 64 packages already (its budget)" :
+            "friends' packages leave 16 of HellForge's 64 for this machine's own, and the rest are taken";
         ReleaseSRWLockExclusive(&g_packagesLock);
         return PKG_FAILED;
     }
@@ -158,27 +173,67 @@ static int PackageWant(uint64_t id, const char** name, const char** why)
         held->id = id;
         held->name = known->name;
         held->since = GetTickCount64();
+        held->own = own;
+        changed = own;
+        if (added != NULL) *added = 1;
         if (g_tickState < 0) { held->failed = 1; snprintf(held->why, sizeof held->why, "the game thread's update could not be hooked"); }
-        Note("package %016llx (%s) wanted", (unsigned long long)id, known->name);
+        Note("package %016llx (%s) wanted%s", (unsigned long long)id, known->name, own ? "" : " for a friend's change");
     }
+    else if (own && !held->own) { held->own = 1; changed = 1; } /* a friend's first, now this machine's too */
     if (held->failed) result = PKG_FAILED;
     else if (held->requested && PackageResident(id) == PKG_RESIDENT) result = PKG_RESIDENT;
     else if (GetTickCount64() - held->since > PKG_TIMEOUT_MS)
     {
         held->failed = 1;
+        changed |= held->own;
         snprintf(held->why, sizeof held->why, "it was %s for 90 seconds", held->requested ? "not resident" : "not requested");
         Note("package %016llx (%s) failed: %s", (unsigned long long)id, held->name, held->why);
         result = PKG_FAILED;
     }
     *why = held->why;
     ReleaseSRWLockExclusive(&g_packagesLock);
+    if (changed) LivePackagesChanged();
     return result;
+}
+
+static int PackageWant(uint64_t id, const char** name, const char** why) { return PackageWantAs(id, 1, name, why, NULL); }
+
+/* This machine's own packages, for the live pipe's "packages" line: ids in hex, comma separated, "-" for none. Failed
+ * ones are left out (no friend needs them for an edit that never applied here). */
+static void PackagesOwnList(char* out, size_t size)
+{
+    size_t used = 0;
+    out[0] = 0;
+    AcquireSRWLockShared(&g_packagesLock);
+    for (int i = 0; i < g_heldCount && used + 18 < size; i++)
+        if (g_held[i].own && !g_held[i].failed)
+            used += (size_t)snprintf(out + used, size - used, "%s%016llx", used ? "," : "", (unsigned long long)g_held[i].id);
+    ReleaseSRWLockShared(&g_packagesLock);
+    if (used == 0) snprintf(out, size, "-");
+}
+
+/* The lobby's packages from the session's backend: each asked for as this machine's own are, for a friend's change.
+ * Counts what is resident, loading and refused, and how many were asked for the first time; *why, the first refusal. */
+static void PackagesForFriends(const uint64_t* ids, int count, int* resident, int* loading, int* refused, int* fresh, const char** why)
+{
+    *resident = *loading = *refused = *fresh = 0;
+    *why = NULL;
+    for (int i = 0; i < count; i++)
+    {
+        const char *name, *reason;
+        int added = 0, state = PackageWantAs(ids[i], 0, &name, &reason, &added);
+        *fresh += added;
+        if (state == PKG_RESIDENT) (*resident)++;
+        else if (state == PKG_WAITING) (*loading)++;
+        else { (*refused)++; if (*why == NULL) *why = reason; }
+    }
 }
 
 /* On the game thread: requests the packages wanted since the last update. */
 static void PackagesRequest(void)
 {
     if (g_heldCount == 0) return;
+    int changed = 0;
     AcquireSRWLockExclusive(&g_packagesLock);
     for (int i = 0; i < g_heldCount; i++)
     {
@@ -190,7 +245,12 @@ static void PackagesRequest(void)
         else if ((system = PackageSystem(&fill)) == 0) continue; /* not set up yet: the timeout ends the wait */
         else if (fill >= PKG_FILL_LIMIT)
         { held->failed = 1; snprintf(held->why, sizeof held->why, "the game's package reference map is %.0f%% full", fill * 100); }
-        if (held->failed) { Note("package %016llx (%s) not requested: %s", (unsigned long long)held->id, held->name, held->why); continue; }
+        if (held->failed)
+        {
+            changed |= held->own;
+            Note("package %016llx (%s) not requested: %s", (unsigned long long)held->id, held->name, held->why);
+            continue;
+        }
         typedef void (*RequestFn)(uintptr_t system, const uint64_t* ids, uint32_t count);
         (g_packageRequest ? g_packageRequest : (RequestFn)(PackagesGame() + PKG_REQUEST))(system, &held->id, 1);
         held->requested = 1;
@@ -198,6 +258,7 @@ static void PackagesRequest(void)
         Note("package %016llx (%s) requested (reference map %.0f%% full, %d held)", (unsigned long long)held->id, held->name, fill * 100, g_heldCount);
     }
     ReleaseSRWLockExclusive(&g_packagesLock);
+    if (changed) LivePackagesChanged();
 }
 
 static void EventsTick(void); /* events.c */

@@ -4,7 +4,7 @@ This page is the starting point for contributors to HellForge's engine: what it 
 this repository, how to build it and how to run its tests. Mod authors start at [modding/README.md](modding/README.md)
 instead.
 
-The engine is what runs the copied game offline and loads mods into it. Its full source is in this repository, next to
+The engine is what runs the copied game locally, against the local backend, and loads mods into it. Its full source is in this repository, next to
 the launcher, setup program, command-line tool and mod SDK. `scripts/Build-Engine.ps1` builds it from here into the
 engine package, `artifacts/engine-package/hellforge-engine-<version>.zip`, and `scripts/Publish-HellForge.ps1` puts
 that package into every installation's `app` folder.
@@ -45,8 +45,8 @@ The session runner's `src/HellForge.Session/EarlyConstructor.cs` is generated fr
 
 ## The package and its version
 
-The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.28). HellForge's own version,
-`Version` in the same file, is separate (currently 0.2.0-beta).
+The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.37). HellForge's own version,
+`Version` in the same file, is separate (currently 0.3.0-dev.9).
 
 Besides the folders in the table, the package holds `engine.json` and the licences (`LICENSE`, `LICENSE-EXCEPTION`).
 `engine.json` lists the engine version, the game build, the commit and every file's SHA-256. `sdk-shims/build.json`

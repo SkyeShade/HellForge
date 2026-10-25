@@ -47,6 +47,7 @@ HellForge.Cli build-mod --mod <installation>/mods/my-mod                        
 HellForge.Cli package-mod --mod <installation>/mods/my-mod                           # zip it to share
 HellForge.Cli check-stats --mod <folder>                                             # check a stats mod
 HellForge.Cli build-data --mod <folder> --install <installation>                     # build a data spec
+HellForge.Cli mod-hash --mod <folder or zip>                                         # its content hash (mod sync)
 ```
 
 `new-mod` also takes `--out <folder>` instead of `--install`, to make the mod outside an installation. `build-mod` on a
@@ -80,7 +81,7 @@ DLL in the folder is loaded. A mod that ships both and wants its own DLL loaded 
 build the DLL was built for, so that another build refuses it with a message instead of crashing:
 
 ```json
-"code": { "dll": "my_mod.dll", "sdk": 13, "prebuilt": true, "game": "25480438" }
+"code": { "dll": "my_mod.dll", "sdk": 15, "prebuilt": true, "game": "25480438" }
 ```
 
 Friends then compare the DLL itself, so everyone needs the identical file.
@@ -98,6 +99,44 @@ Friends then compare the DLL itself, so everyone needs the identical file.
 Friends who play together need the same gameplay mods with identical files, so share the zip rather than a folder that
 picked up leftovers. The SDK, template and examples are MIT No Attribution, so your mod is yours under any licence you
 choose.
+
+Give the manifest a `url` (an `https://` address: the mod's page on GitHub, Nexus Mods or your Discord's site) when the
+mod has one ([the manifest](concepts.md#the-manifest)). The Mods page links it, and a player who joins someone running
+your mod and has to install it themselves gets a GET IT button on the in-game MOD SYNC prompt that opens it.
+
+### Players who join you
+
+When a player joins a lobby whose host runs your mod and lacks it, mod sync can download it from the host
+([mods.md](../mods.md#playing-with-other-mods)). A mod HellForge checks all of (schema stats, network field types, data
+specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only from a host who is
+the player's Steam friend, and only when:
+- HellForge's verified list names that exact version (below), or
+- the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC). That trust is for
+  those exact files: a new version has to be trusted again.
+
+Otherwise the player installs it themselves, from your `url` when the manifest has one.
+
+### The verified list
+
+`data/verified-mods.json` in HellForge's repository lists the code and raw-data mods a HellForge maintainer has
+reviewed. It ships inside each HellForge release, so a change reaches players with the next release. Each entry names
+one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
+each counted file and that file's SHA-256, and for a data spec the data builder's version).
+
+To add a mod (maintainers):
+1. Review the release as players get it: the zip its author shares, not a working folder. Read all of its code.
+2. Print its hash from that zip: `HellForge.Cli mod-hash --mod <the zip or folder>`. It hashes a zip by what it ships,
+   as a player's HellForge loads it, and prints the mod's class and an `entry` to copy.
+3. Add the entry to `mods` in `data/verified-mods.json`: `id`, `name`, `version`, `hash` (64 lower-case hex digits) and
+   `reviewed` (the date, who reviewed it, and what: for example "2026-10-23, SkyeShade: stratagem-compendium-1.0.4.zip
+   as shipped").
+4. Run `scripts/Test.ps1`: the tests parse the list (a malformed entry fails them) and recheck the Stratagem Compendium
+   entry against its zip where it is installed.
+
+Rehash every listed mod that has a data spec when `ModDataBuilder.Version` changes: its hash includes the builder's
+version, so the old entry no longer matches. Any change to a mod's files (a comment, a line ending) is a new hash too:
+the repository's `examples/mods/stratagem-compendium` hashes differently from its shipped 1.0.4 zip because its
+comments were edited after the release.
 
 ## Where to go next
 

@@ -14,6 +14,7 @@ struct Host
     std::string modFolder, modsFolder;
     void (*close)(void);       /* closes the window (Escape, the X) */
     void (*saveSoon)(int ms);  /* saves the Local Stats changes in ms */
+    void (*modal)(bool on);    /* the MOD SYNC prompt over the game, the window closed: shown (the game's input held) or gone */
 };
 
 void Init(const Host& host);
@@ -31,6 +32,8 @@ void Frame(ImDrawList* list, float width, float height, float dt);
 bool NoticeShown();
 /* A frame of the closed window: only the message, no input. */
 void Overlay(ImDrawList* list, float width, float height);
+/* A frame of the MOD SYNC prompt alone over the game (the window closed): its input, then drawing into the list. */
+void Modal(ImDrawList* list, float width, float height, float dt);
 void Opened();
 void Closed();
 /* The status of the last Local Stats save, shown in the window. */

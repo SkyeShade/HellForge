@@ -101,6 +101,10 @@ static class MultiplayerTests
         // and their backend takes the host's war time.
         host.Clock.Set(5_000_000);
         stranger.Clock.Set(42);
+        // the host's backend lists the joiner for a sandboxed game's Steam P2P before its game hears of the joiner
+        // (MultiplayerHost.ListPeer): the host's game sends to a joiner the moment it does
+        var admitted = new System.Collections.Concurrent.ConcurrentQueue<(ulong Peer, bool GameKnew)>();
+        host.Lobby.PeerAdmitted += peer => admitted.Enqueue((peer, host.Inbox.Any(f => f.Type == "lobby.memberAdded")));
         guest.Lobby.FromLocal(Join("j1", GuestId, connection));
         var joined = guest.Next("lobby.result", check);
         check(joined.Text(0) == "j1" && joined.Text(1) == "join" && joined.Text(2) == "0" && joined.Text(3) == lobbyId, "Join succeeds");
@@ -109,6 +113,8 @@ static class MultiplayerTests
         _ = joined.Properties(ref index);
         check(joined.Int(index) == 2 && joined.Text(index + 1) == LobbyService.EntityId(HostId), "The joiner sees both members");
         var added = host.Next("lobby.memberAdded", check);
+        check(admitted.TryPeek(out var listedFirst) && listedFirst.Peer == GuestId && !listedFirst.GameKnew,
+            "The joiner is admitted as a P2P peer before the host's game hears of it");
         Thread.Sleep(100);
         check(Math.Abs(guest.Clock.Seconds - 5_000_000) <= 1, "The friend's war time follows the host's");
         network.Join(StrangerId + 20).Send(GuestId, new Frame("war.clock").Add(7).Encode(), true);

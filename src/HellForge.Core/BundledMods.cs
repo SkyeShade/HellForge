@@ -186,22 +186,28 @@ public static class BundledMods
         }
     }
 
-    // The catalogue follows the app (rewritten whenever the editor changed); icons and fonts come from the game copy and
-    // are made once, when missing.
+    // The catalogue follows the app: written whenever its text is not this HellForge's (a catalogue change ships with an
+    // unchanged editor too). Icons and fonts come from the game copy: made when missing, when the editor changed, and when
+    // the sprites the app names or the icon file's format did (IconStampFile holds EditorIcons.Stamp).
+    public const string IconStampFile = "game-icons.stamp";
     static void EditorData(InstallLayout install, string folder, bool changed, Action<string>? log)
     {
         var catalog = Path.Combine(folder, EditorCatalog.FileName);
-        if (changed || !File.Exists(catalog))
+        var text = EditorCatalog.Text();
+        if (!File.Exists(catalog) || File.ReadAllText(catalog) != text)
         {
-            File.WriteAllText(catalog + ".partial", EditorCatalog.Text());
+            File.WriteAllText(catalog + ".partial", text);
             File.Move(catalog + ".partial", catalog, overwrite: true);
         }
         // Only from a complete copy: the launcher syncs at start, which can be before or during setup's copy.
         var gameData = Path.Combine(install.Game, "data");
         var icons = Path.Combine(folder, EditorIcons.FileName);
-        if ((File.Exists(icons) && !changed) || !SupportedBuild.Current.IsComplete(install.Game)) return;
+        var stamp = Path.Combine(folder, IconStampFile);
+        var current = File.Exists(icons) && !changed && File.Exists(stamp) && File.ReadAllText(stamp) == EditorIcons.Stamp;
+        if (current || !SupportedBuild.Current.IsComplete(install.Game)) return;
         var (count, missing) = EditorIcons.Write(gameData, icons);
         var fonts = EditorFonts.Write(gameData, folder);
+        File.WriteAllText(stamp, EditorIcons.Stamp);
         log?.Invoke($"In-game editor: {count} icons ({missing.Count} missing) and {fonts.Count} fonts from this installation's game copy.");
     }
 

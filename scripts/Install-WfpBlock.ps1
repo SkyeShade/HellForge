@@ -1,10 +1,11 @@
 # One-time, elevated: installs HellForge's network block for an installation straight into the Windows Filtering
 # Platform (WFP) with hellforge_wfp, instead of Windows Firewall rules (Install-NetworkBlock.ps1). The copied game's
-# programs can then reach only loopback (the local backend); the block holds even with Windows Firewall off and a
+# programs can then reach only the local backend's loopback port (-BackendPort, chosen by setup: InstallLayout's
+# ComputedBackendPort); the block holds even with Windows Firewall off and a
 # security suite's own permit cannot override it. Setup runs this and does not finish until it reports "installed".
 # -Uninstall removes the WFP filters, the marker and the block's probe. A successful install drops a marker
 # (network-block/wfp-block.json) so a session knows the block is WFP and does not require the firewall rules.
-param([switch]$Uninstall,[string]$ReportPath,[Parameter(Mandatory)][string]$InstallRoot)
+param([switch]$Uninstall,[string]$ReportPath,[Parameter(Mandatory)][string]$InstallRoot,[int]$BackendPort)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $HellForgeInstallRoot=[IO.Path]::GetFullPath($InstallRoot)
@@ -38,29 +39,33 @@ try{
         if(Test-Path -LiteralPath $HellForgeBlockRoot){Remove-Item -LiteralPath $HellForgeBlockRoot -Recurse -Force}
         $state.status='uninstalled'
     }else{
+        if($BackendPort -lt 1 -or $BackendPort -gt 65535){throw 'Install needs -BackendPort, the local backend''s port (1-65535).'}
         No-Links $copy
         New-Item -ItemType Directory $HellForgeBlockRoot -Force|Out-Null
         No-Links $HellForgeBlockRoot
-        # The probe is one of the blocked programs, so it must exist before the program list is gathered.
-        if(-not(Test-Path -LiteralPath $HellForgeBlockProbe)){
-            New-HellForgeBlockProbe
-        }
+        # The probe is one of the blocked programs, so it must exist before the program list is gathered. Built every
+        # time: a probe from an earlier HellForge lacks the other-loopback-port check below.
+        New-HellForgeBlockProbe
         # WFP keys filters to a program's application id, read from the file, so only existing files are listed.
         $programs=@(Get-HellForgeBlockedPrograms $copy|Where-Object {Test-Path -LiteralPath $_})
         foreach($path in $programs){No-Links $path}
         $programsFile=Join-Path $HellForgeBlockRoot 'wfp-programs.txt'
         [IO.File]::WriteAllLines($programsFile,$programs)
-        $r=Invoke-Wfp @('install',$HellForgeWfpProvider,'HellForge network block',$programsFile)
+        $r=Invoke-Wfp @('install',$HellForgeWfpProvider,'HellForge network block',$programsFile,[string]$BackendPort)
         if($r.status -ne 'installed'){throw ('The WFP block was not installed: '+$r.failure)}
-        # Prove the block enforces: the probe (one of the blocked programs) must be refused reaching the outside
-        # (WSAEACCES, 10013). The loopback backend is not up here, so only the outside result matters.
+        # Prove the block enforces: the probe (one of the blocked programs) must be refused reaching the outside and any
+        # other loopback port (WSAEACCES, 10013), while the backend's port is let through. Nothing listens there yet, so
+        # that connect is refused by the stack (10061, or 0 if something does listen), not by the block.
         $probeReport=Join-Path $HellForgeBlockRoot 'wfp-egress.json'
-        & $HellForgeBlockProbe 1 $probeReport|Out-Null
+        $otherPort=if($BackendPort -lt 65535){$BackendPort+1}else{$BackendPort-1}
+        & $HellForgeBlockProbe $BackendPort $probeReport $otherPort|Out-Null
         $egress=if(Test-Path -LiteralPath $probeReport){Get-Content -Raw -LiteralPath $probeReport|ConvertFrom-Json}else{$null}
         if(-not $egress -or $egress.externalIpv4TcpError -ne 10013){
             throw 'The network block is not stopping outside connections (another firewall, a VPN or a security suite may be letting traffic past the WFP filters).'
         }
-        $marker=[ordered]@{block='wfp';provider=$HellForgeWfpProvider;filters=$r.filters;programs=$programs.Count;installedUtc=[DateTime]::UtcNow.ToString('o')}
+        if($egress.otherLoopbackTcpError -ne 10013){throw ('The network block lets the copy reach loopback ports other than the backend''s ('+$otherPort+').')}
+        if($egress.loopbackTcpError -eq 10013){throw ('The network block refuses the backend''s own port ('+$BackendPort+').')}
+        $marker=[ordered]@{block='wfp';provider=$HellForgeWfpProvider;port=$BackendPort;filters=$r.filters;programs=$programs.Count;installedUtc=[DateTime]::UtcNow.ToString('o')}
         [IO.File]::WriteAllText($HellForgeWfpMarker,($marker|ConvertTo-Json))
         $state.programs=$programs.Count;$state.filters=$r.filters;$state.egressBlocked=$true;$state.status='installed'
     }

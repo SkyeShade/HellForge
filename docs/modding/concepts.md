@@ -29,8 +29,9 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "version": "1.0.0",
   "description": "What it changes, in a sentence or two.",
   "icon": "images/icon.png",
+  "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 13 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
 }
 ```
 
@@ -41,6 +42,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
 | `name`, `description` | what players see on the Mods page |
 | `version` | raise it for every release; friends compare it |
 | `icon` | optional: a PNG or JPEG in the mod folder; square looks best |
+| `url` | optional: where players get the mod, an `https://` address of at most 200 characters (no `http://`, user name, port or spaces). The Mods page links it, and the in-game MOD SYNC prompt shows it as GET IT to a joiner who has to install the mod themselves. Any other address is left out; a bundled mod's is never shown |
 | `gameplay` | default `true`: friends must run the same gameplay mods. Set `false` for cosmetic mods, which are not compared. A mod with stats or `componentWrites` is always gameplay; one holding only Lua patches is always cosmetic |
 | `code.dll` | the DLL's file name; HellForge builds it from `src/` |
 | `code.sdk` | the SDK version the mod needs (see [compatibility](#compatibility)) |
@@ -127,7 +129,8 @@ game: use `hf_set` or `edit_entity` instead.
 ## Co-op
 
 - The modlist code. Before a friend joins, HellForge compares both players' gameplay mods: ids, versions and files (a
-  source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ. Cosmetic
+  source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
+  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic
   mods, packs and Lua mods are not compared. Nor is the order: friends who order the same mods differently can play
   together, but where two mods conflict, a different one may win on each machine.
 - Every machine runs its own mods. Each player's game runs the mods' code and data. A hit is applied by the machine
@@ -135,7 +138,8 @@ game: use `hf_set` or `edit_entity` instead.
   machine.
 - The host decides some things. Actions marked "host" in the reference (statuses, explosions, projectiles, the mission
   timer, Pelicans) only work on the host. `hf->session(mod, &out)` gives the role: `HF_SESSION_SOLO`, `_HOST` or
-  `_JOINER`. In co-op everyone plays with the host's Local Stats (the in-game editor's saved changes).
+  `_JOINER`. In co-op every player keeps their own Local Stats (the in-game editor's saved changes) unless the host
+  shares theirs; `hf->stats_source(mod)` (SDK 15) says which.
 - What travels between machines. New content travels as ids (stratagem types, projectile types), so a mod's content
   must exist on every machine, which the modlist code makes sure of. A network field type a mod widens is widened on
   every machine for the same reason.
@@ -160,7 +164,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 14; this HellForge provides SDK 13"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c
@@ -200,7 +204,7 @@ would pass a limit returns 0 (`hook` returns non-zero), and the mod's log says w
 
 A code mod runs inside the game with the player's permissions, and the loader does not catch its crashes: a crash in
 your code ends the game, and `modloader.log` names where it happened ([debugging](debugging.md#crashes)). Players should
-only enable code mods from people they trust. Everything runs in HellForge's offline copy; the normal game is never
-touched.
+only enable code mods from people they trust. Everything runs in HellForge's own local copy; the normal game is
+never touched.
 
 Next: [Stats mods](stats-mods.md), number changes without code.

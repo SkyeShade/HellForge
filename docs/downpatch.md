@@ -40,7 +40,9 @@ The list only tells setup which pack to try; the pack itself is checked:
 
 A file that does not come out with its hash is never kept. If the patch fails for any reason (its download, a changed
 Steam file, the pack itself), setup keeps the files it already wrote correctly and switches to the Steam console download
-of the supported build, which copies the rest. It does the same when no patch matches the build Steam has
+of the supported build, which copies the rest. A full drive is the exception (`DiskSpace`: checked before the download
+and before patching; hpatchz exit code 24 is HDiffPatch's out-of-space error): setup asks for room and tries the patch
+again, since Steam's download would need the same space. It does the same when no patch matches the build Steam has
 ([troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build)).
 
 ## What a pack holds

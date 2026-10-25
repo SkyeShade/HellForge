@@ -93,7 +93,12 @@ mod, never a game resource's name. The copy can then be changed, in this order:
 - `expect`: `{"0x<offset>": "0x<hex>"}`, what the resource must hold first. A value that is not `0x` hex is taken as a
   name and hashed.
 - `replace`: references to another resource (`from`) become `to`, usually another of your copies. Without `at` every
-  occurrence changes; with it, exactly the `at` offsets (`"0x..."` strings, each of which must hold `from`).
+  occurrence changes; with it, exactly the `at` offsets (`"0x..."` strings, each of which must hold `from`). HellForge
+  cannot tell a reference from any other 8 bytes, so a spec with `replace` counts as raw data for mod sync: players
+  who join you download it only from a Steam friend, and only when HellForge's verified list names it or they trust it
+  on the prompt (see [mods.md](../mods.md), "Playing with other mods"). So does a copy or include of a type other than
+  `unit`, `material`, `texture` and `particles` (and includes of `wwise_bank` and `wwise_dep`), or an edit on another
+  type than its own.
 - `curves`: a particle effect's colour curves (10 key times, then 10 RGB keys on 0..255). Each warm key (red >= green
   >= blue, red above blue, brightest channel at least 2) is recoloured, either with `"preset": "warm-to-blue"` or with
   `"colour": "#3070FF"` (that hue and saturation at the key's brightness). `"keys": n` requires exactly n keys to
@@ -162,7 +167,10 @@ before it is written, and anything that is not as expected is logged and left al
   the same edit, and the modlist code makes sure they do. In code, the same edit is `set_network_field_bits`
   (`machine-gun-10k-code`).
 - `componentWrites` sets u32 fields of an entity's record, only over the expected value. It predates named fields; new
-  mods use a [definition block](content.md#changing-existing-content) or a [stats mod](stats-mods.md).
+  mods use a [definition block](content.md#changing-existing-content) or a [stats mod](stats-mods.md). A mod with
+  `componentWrites`, like one with binary patch files, downloads through mod sync only when it is on the verified list
+  ([tools.md](tools.md#the-verified-list)); `networkFieldTypes` and the data specs HellForge checks whole download by
+  themselves.
 
 `examples/mods/machine-gun-10k` is the Maxigun mod made this way, with no code.
 

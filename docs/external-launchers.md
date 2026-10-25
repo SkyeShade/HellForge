@@ -58,12 +58,12 @@ standard error and exits with 1.
 
 | Command | What it does |
 |---|---|
-| `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept offline (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session and whether one is running. |
+| `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session and whether one is running. |
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
 | `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
 | `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). |
-| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves, and Local Stats (tag `local-stats`) cannot be removed: switch these off instead. |
-| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. |
+| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. |
+| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. |
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
@@ -72,7 +72,9 @@ standard error and exits with 1.
 | `stop [--run <run folder>] [--wait yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. |
 | `fetch-war` | Fetches the live galactic war into `live-war.json`. The Linux scripts run this before a session. |
 
-The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`.
+The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
+not show Local Stats (the in-game editor's saved changes, always on and never compared between friends); `mods` still
+lists it, so a launcher can hide it the same way.
 
 Mod changes are refused while a session runs, as on the Mods page, because a session keeps the mods it started with.
 HellForge.exe can stay open meanwhile: its Mods page watches the folder.
@@ -103,13 +105,21 @@ If you write `mods\hellforge-mods.json` yourself, it looks like this:
   "format": 1,
   "disabled": ["owner.mod-id"],
   "order": ["top.mod", "next.mod"],
-  "packs": { "pack.<guid>": { "off": ["Option name"], "sub": { "Option name": "Variant name" } } }
+  "packs": { "pack.<guid>": { "off": ["Option name"], "sub": { "Option name": "Variant name" } } },
+  "blocked": ["owner.mod-id"],
+  "share": true,
+  "showEditedStats": false,
+  "listPublic": true
 }
 ```
 
 Mods are on unless `disabled` lists them. `order` is top first, and mods missing from it go to the top of their group.
 A pack's `off` lists the options switched off, and `sub` the variant picked for an option that has variants (otherwise
-the first one is used). Write the whole file at once, to a temporary file and then a rename, as HellForge does.
+the first one is used). `blocked` lists the mods mod sync never offers (see [mods.md](mods.md#playing-with-other-mods)),
+`share` (default true) lets players who join you download your gameplay mods, and
+`showEditedStats` (default false) shows public lobbies whose host plays with edited stats, and `listPublic` (default
+true) lists the player's own Public lobbies on other HellForge players' Galactic Map. Write the whole file at once, to a
+temporary file and then a rename, as HellForge does.
 
 ## Profiles and settings
 
@@ -117,14 +127,21 @@ the first one is used). Write the whole file at once, to a temporary file and th
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting. A war server is the exception: it is chosen for one session (`play --war server`) and never
-saved, so `settings --war server` is refused.
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--game-options`), saves the ones given, checks them as `play` would,
+and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "file": "<installation>\\launcher-settings.json"}
+ "gameOptions": "", "sandbox": false, "steamBridge": true, "playWithStrangers": false,
+ "file": "<installation>\\launcher-settings.json"}
 ```
+
+A war server is the exception: it is chosen for one session (`play --war server`) and never saved, so
+`settings --war server` is refused.
+
+`settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
+[multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
+`launcher-settings.json`, and `play` has no option for it. A running session's backend picks it up within a few seconds.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
@@ -133,7 +150,8 @@ lists and creates profiles; `settings --profile <name>` selects one.
 
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
-                       [--engine-log yes | no] [--crash-dump yes | no] [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
+                       [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--game-options "<launch options>"]
+                       [--wait yes] [--dry-run yes]
                        [--war server --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>]]
 ```
 
@@ -148,6 +166,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
+| `--sandbox` | `no` | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); only with an engine built with the Steam bridge (`settings` prints `steamBridge`), experimental |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |
 

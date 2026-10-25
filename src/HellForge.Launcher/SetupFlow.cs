@@ -122,6 +122,7 @@ public partial class MainWindow
                 throw new SetupStopped("On Linux, setup runs inside HellForge's network namespace. Close HellForge and start it with " +
                     "app/linux/hellforge-linux.sh (docs/linux.md), then start setup there.");
             if (!LinuxNetworkBlock.Requested) await CheckFilteringEngine(install);
+            if (VisualCppRuntimes.Problem("start setup again.") is { } runtimes) throw new SetupStopped(runtimes);
             var build = SupportedBuild.Current;
             var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
             // The build patches published since this release (a game update gets one there, not a new HellForge).
@@ -178,6 +179,12 @@ public partial class MainWindow
                 step = SetupStep.Copy;
                 SetRow(step, null, "Downloading and applying the build patch...", running: true);
                 try { await DownpatchGame(downpatchSource!, install, downpatchPack); }
+                // a full drive: the patch is fine and Steam's download would need the same room, so ask for space; the
+                // files already patched are kept
+                catch (NotEnoughSpaceException error)
+                {
+                    throw new SetupWaiting($"{error.Message} Free some space on that drive, then click Check again: the files already patched are kept.");
+                }
                 // the patch failed (its download, Steam's copy, the pack itself): Steam's own download of the build still
                 // works, and the files already patched are kept (each one has the build's hash), so it copies only the rest
                 catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or HttpRequestException
@@ -476,7 +483,7 @@ public partial class MainWindow
     {
         var check = await RunPowerShell("-Command \"if((Get-Service BFE).Status -ne 'Running'){exit 3}; exit 0\"", install);
         if (check.ExitCode == 3)
-            throw new SetupStopped("The Windows Base Filtering Engine (BFE) service is off. HellForge needs it to keep its copy of the game offline. " +
+            throw new SetupStopped("The Windows Base Filtering Engine (BFE) service is off. HellForge needs it to keep its copy of the game off the internet. " +
                 "Turn it back on (Services > Base Filtering Engine, or run 'net start BFE' as administrator), then start setup again.");
     }
 
@@ -597,7 +604,7 @@ public partial class MainWindow
         var report = Path.Combine(install.Logs, "setup-network-block.json");
         if (File.Exists(report)) File.Delete(report);
         var start = new ProcessStartInfo(PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File {Arg(ScriptPath("Install-WfpBlock.ps1"))} " +
-            $"-InstallRoot {Arg(install.Root)} -ReportPath {Arg(report)}" + (uninstall ? " -Uninstall" : ""))
+            $"-InstallRoot {Arg(install.Root)} -ReportPath {Arg(report)}" + (uninstall ? " -Uninstall" : $" -BackendPort {install.ComputedBackendPort}"))
         { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = install.Root };
         await Task.Run(() =>
         {

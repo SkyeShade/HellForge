@@ -107,12 +107,38 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
+        // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
+        StrangersBox.IsEnabled = paths.ModsFolder != null;
+        StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
+        StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
+        StrangersBox.IsCheckedChanged += (_, _) =>
+        {
+            StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
+            if (paths.ModsFolder == null) return;
+            try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
+        };
+        // The sandbox (docs/steam-bridge.md): off unless chosen, and only with an engine built with the Steam bridge.
+        var steamBridge = SessionRunner.HasSteamBridge(paths);
+        SandboxBox.IsEnabled = steamBridge;
+        SandboxBox.IsChecked = steamBridge && ProfileStore.LoadSandbox(paths);
+        SandboxUnavailable.IsVisible = !steamBridge;
+        SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
         foreach (var (radio, mode) in new[] { (WarLiveRadio, ProfileStore.WarLive), (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
+        // the all-planets war's subfaction seed: typed (a whole number) or rolled, saved as it changes
+        SubfactionSeedBox.Text = ProfileStore.LoadSubfactionSeed(paths).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        SubfactionSeedBox.TextChanged += (_, _) =>
+        {
+            if (uint.TryParse(SubfactionSeedBox.Text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seed))
+                ProfileStore.SaveSubfactionSeed(paths, seed);
+        };
+        SubfactionRandomiseButton.Click += (_, _) =>
+            SubfactionSeedBox.Text = ((uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue)).ToString(System.Globalization.CultureInfo.InvariantCulture);
         EngineLogBox.IsChecked = ProfileStore.LoadEngineLog(paths);
         EngineLogBox.IsCheckedChanged += (_, _) => ProfileStore.SaveEngineLog(paths, EngineLogBox.IsChecked == true);
         CrashDumpBox.IsChecked = ProfileStore.LoadCrashDump(paths);
@@ -126,10 +152,13 @@ public partial class MainWindow : Window
         };
 
         // Development: HELLFORGE_LAUNCHER_SHOT=<file.png> shows the play page as a session builds its mods (2 of 5), saves
-        // it as a picture and closes (a look at the launcher without a session).
+        // it as a picture and closes (a look at the launcher without a session). HELLFORGE_LAUNCHER_SHOT_PAGE=<1-5> shows that
+        // page instead (3: Mods).
         if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is { Length: > 0 } shot)
             Opened += async (_, _) =>
             {
+                if (int.TryParse(Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_PAGE"), out var page) && page is >= 1 and <= 5)
+                    Nav.SelectedIndex = page - 1;
                 RenderSteps(BuildStep, false, 0.4);
                 SetStatus("Compiling mods (3 of 5)...", Phase.Busy, "Building Stratagem Compendium from its sources.");
                 BootProgress.IsVisible = true;
@@ -178,11 +207,13 @@ public partial class MainWindow : Window
         }, TaskScheduler.Default);
     }
 
-    void Start()
+    // modSync: start with a host's mods after a mod sync (the backend stopped the last session for it).
+    void Start(string? modSync = null)
     {
         if (runner.IsRunning) return;
         runDirectory = null;  // Forget the previous run so its final state does not overwrite this one.
         launchedUtc = default;
+        NoteSessionEditor();
         if (!SessionRunner.IsSupported)
         {
             SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle);
@@ -195,6 +226,13 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return;
             }
+        // Without Local PlayFab the game's own lobby search would list vanilla players' Steam lobbies: the session runner
+        // refuses multiplayer then, and so does the launcher, with the switch to change.
+        if (SdkShimsBox.IsChecked == true && LocalPlayFabBox.IsChecked != true)
+        {
+            SetStatus("Multiplayer needs Local PlayFab.", Phase.Failed, failure: "Turn on Experiments > Local PlayFab (or turn off the PlayFab SDK stand-ins) and press PLAY again.");
+            return;
+        }
         // A name typed into the open new-profile form is created and used rather than dropped.
         if (NewProfileForm.IsVisible && !string.IsNullOrWhiteSpace(NewProfileName.Text) && !CreateProfile()) return;
         var profile = Selected;
@@ -220,10 +258,11 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
-                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions));
+                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
@@ -280,9 +319,19 @@ public partial class MainWindow : Window
             if (SessionFiles.ReadJson(Path.Combine(runDirectory, "result.json")) is { } state) ShowState(state);
             // Mods are built before the script writes its first result.json: their progress shows from the start.
             else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
+            if (runner.IsRunning) ShowModSync(runDirectory);
+            else ModSyncCard.IsVisible = false;
         }
         var runnerExited = runner.CollectExited();
         if (runnerExited) PruneSessionLogs();
+        // Mod sync: the backend stopped the session so that it starts again with the host's mods it downloaded.
+        if (runnerExited && runDirectory != null && !stopRequested && paths.InstallRoot != null &&
+            SessionFiles.ReadJson(Path.Combine(runDirectory, "result.json")) is { } final && SessionFiles.Text(final, "restart") == "mod-sync")
+        {
+            Append("Restarting with the host's mods (mod sync). Once the game is on the ship, the host's invitation to their lobby waits in game.", LauncherLine);
+            Start(HellForge.Core.ModSyncSession.PathIn(new HellForge.Core.InstallLayout(paths.InstallRoot)));
+            return;
+        }
         if (runnerExited && runDirectory == null)
         {
             if (stopRequested)

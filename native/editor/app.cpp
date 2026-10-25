@@ -60,6 +60,24 @@ Tone ToneOf(const std::string& tone)
     if (tone == "support") return {C(74, 172, 232, 255), C(74, 172, 232, 40)};
     return {0, 0};
 }
+/* A faction's colour, the HD2R Editor's (its emblem, the game's HUD icon, is drawn in it); 0 for anything else. */
+ImU32 FactionColour(const std::string& faction)
+{
+    if (faction == "terminids") return C(255, 201, 45, 255);
+    if (faction == "automatons") return C(255, 80, 80, 255);
+    if (faction == "illuminate") return C(183, 116, 255, 255);
+    if (faction == "super_earth") return C(95, 195, 245, 255);
+    return 0;
+}
+/* The faction whose emblem an object shows: an entity's own (structures and other entities too), else its page's. */
+const std::string& FactionOf(const Object* object) { return object->faction.empty() ? object->category : object->faction; }
+/* An object on a page where most rows have an icon (Structures, Other Entities, the factions', the rosters', the mission
+ * difficulties'): a row without one keeps its room, so the names line up. */
+bool EntityPage(const Object* object)
+{
+    return object->category == "structures" || object->category == "entities" || object->category == "rosters" ||
+        object->category == "difficulty" || FactionColour(object->category) != 0;
+}
 const float SZ_TITLE = 22, SZ_TAB = 15, SZ_HEADING = 13, SZ_LABEL = 15, SZ_SMALL = 13, SZ_TINY = 12;
 const float PANEL_W = 1260, PANEL_H = 930, PANEL_MIN_H = 660;
 const float UI_SCALES[] = {0.9f, 1.0f, 1.1f, 1.25f, 1.4f, 1.5f};
@@ -159,6 +177,20 @@ struct { std::string text; int index = 0; } g_gsearch;
 int g_change;
 struct LiveState { bool read = false; double now = 0, base = 0; std::string mod; ULONGLONG at = 0; };
 std::map<const Row*, LiveState> g_live;
+/* A live read is a lookup in the mod loader under its lock, a long one for some fields: an enemy page reads 300 at
+ * once, and they all go stale together. The reads drawing asks for share LIVE_BUDGET_US a frame (HolderTick gets what
+ * they leave of it, after the page); the rest wait for a later frame, which also spreads their next refresh. A fresh read (after an edit) is never
+ * held back. Frame() logs a frame that was slow anyway. */
+const LONGLONG LIVE_BUDGET_US = 1500;
+struct { unsigned frame = 0; LONGLONG ticks = 0; int reads = 0, held = 0; } g_liveFrame;
+LONGLONG QpcFrequency() { static LARGE_INTEGER f; if (f.QuadPart == 0) QueryPerformanceFrequency(&f); return f.QuadPart; }
+LONGLONG QpcNow() { LARGE_INTEGER t; QueryPerformanceCounter(&t); return t.QuadPart; }
+/* This frame's live reads so far (reset when the frame changes). */
+decltype(g_liveFrame)& LiveFrame()
+{
+    if (g_liveFrame.frame != g_frame) g_liveFrame = {g_frame, 0, 0, 0};
+    return g_liveFrame;
+}
 struct { std::string key; float trackY = 0, trackH = 0, thumb = 0; int count = 0, rows = 0; } g_drag;
 unsigned g_markVersion = 1;
 
@@ -171,6 +203,13 @@ void Toast(const std::string& text, ImU32 colour)
 
 /* ---- settings (the editor's folder, editor-settings.json) ---- */
 std::wstring SettingsPath() { return hfjson::Wide(g_host.modFolder) + L"\\editor-settings.json"; }
+/* Sandboxed, the game cannot write into its mods folder: settings and exported presets go to the session's sandbox
+ * folder, and HellForge puts them in place once the game is gone (SandboxStats.cs). */
+std::wstring SettingsWritePath()
+{
+    std::wstring sandbox = localstats::SandboxFolder();
+    return sandbox.empty() ? SettingsPath() : sandbox + L"\\editor-settings.json";
+}
 
 void LoadSettings()
 {
@@ -212,7 +251,7 @@ void SaveSettings()
     mounts.kind = hfjson::Value::Object;
     for (auto& m : g_mounts) mounts.members.emplace_back(m.first, hfjson::Value::MakeNumber(m.second, true));
     root.members.emplace_back("mounts", mounts);
-    hfjson::WriteAtomically(SettingsPath(), hfjson::Write(root));
+    hfjson::WriteAtomically(SettingsWritePath(), hfjson::Write(root));
 }
 
 /* ---- values ---- */
@@ -234,30 +273,38 @@ bool LiveStat(const Row* row)
 }
 HfStat StatOf(const Row* row) { return HfStat{row->statKind.c_str(), row->statComponent.c_str(), row->statResource, row->statRecord, row->offset, row->type}; }
 
-/* Co-op (docs/multiplayer.md step 5): joined to a friend's lobby, this game plays with the host's stats, which the
- * session's backend applies; the editor shows them read-only. Hosting, friends play with this machine's. */
+/* Co-op (docs/multiplayer.md "Stats in co-op"): every player keeps their own stats, and HellForge loads the packages
+ * friends' changes need. A host may share its stats instead (the Mods page): then a joiner plays with the host's, which
+ * the session's backend applies, and the editor shows them read-only. A loader from before SDK 15 (no stats_source)
+ * always shared the host's. */
 HfSession g_session;
+bool g_lobbyStats; /* the lobby plays with the host's stats (hosting: this machine's; joined: the host's) */
+bool g_hostStats;  /* joined, playing with the host's stats */
 void ReadSession()
 {
     HfSession now{};
     if (g_host.api->size >= offsetof(HfApi, session) + sizeof(void*) && g_host.api->session != nullptr) g_host.api->session(g_host.mod, &now);
     if (now.version != g_session.version || now.role != g_session.role)
     {
-        bool was = g_session.role == HF_SESSION_JOINER;
+        bool was = g_hostStats, joined = g_session.role == HF_SESSION_JOINER;
+        bool sourced = g_host.api->size >= offsetof(HfApi, stats_source) + sizeof(void*) && g_host.api->stats_source != nullptr;
         g_session = now;
+        g_lobbyStats = now.role != HF_SESSION_SOLO && (!sourced || g_host.api->stats_source(g_host.mod) == HF_STATS_HOST);
+        g_hostStats = now.role == HF_SESSION_JOINER && g_lobbyStats;
         g_markVersion++;
         g_live.clear(); /* the host's values: read again */
-        if (!was && now.role == HF_SESSION_JOINER) Toast(std::string("Joined ") + now.host + ": you play with the host's stats; the editor is read-only", PENDING);
-        if (was && now.role != HF_SESSION_JOINER) Toast("Back to your own stats: the editor can change them again", OK);
+        if (!was && g_hostStats) Toast(std::string("Joined ") + now.host + ": you play with the host's stats; the editor is read-only", PENDING);
+        else if (was && !g_hostStats) Toast("Back to your own stats: the editor can change them again", OK);
+        else if (!joined && now.role == HF_SESSION_JOINER) Toast(std::string("Joined ") + now.host + ": everyone keeps their own changes", OK);
     }
 }
-bool Locked() { return g_session.role == HF_SESSION_JOINER; }
+bool Locked() { return g_hostStats; }
 
 /* HellForge's messages for the player (SDK 12, HfApi notice; docs/mods.md "Playing with friends"): why a friend's lobby
  * refused this game's join, or why a friend could not join this one. Each new one shows over the game for a while, the
  * editor open or not (Overlay draws it while the window is closed). */
-struct { uint32_t version = 0; bool error = false; std::string title; std::vector<std::string> lines; ULONGLONG at = 0; } g_notice;
-const ULONGLONG NOTICE_ERROR_MS = 20000, NOTICE_INFO_MS = 12000, NOTICE_FADE_MS = 800;
+struct { uint32_t version = 0; bool error = false, brief = false; std::string title; std::vector<std::string> lines; ULONGLONG at = 0; } g_notice;
+const ULONGLONG NOTICE_ERROR_MS = 20000, NOTICE_INFO_MS = 12000, NOTICE_BRIEF_MS = 6000, NOTICE_FADE_MS = 800;
 bool HasNotice() { return g_host.api->size >= offsetof(HfApi, notice) + sizeof(void*) && g_host.api->notice != nullptr; }
 void ReadNotice()
 {
@@ -269,8 +316,10 @@ void ReadNotice()
     now.text[sizeof now.text - 1] = 0;
     g_notice.version = now.version;
     g_notice.error = now.kind == HF_NOTICE_ERROR;
+    g_notice.brief = now.kind == HF_NOTICE_BRIEF;
     g_notice.title = now.title;
-    for (char& c : g_notice.title) if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A'); /* a heading, as the editor's (UTF-8 kept) */
+    if (!g_notice.brief) /* a heading, as the editor's (UTF-8 kept); a brief one keeps the friend's name as it is */
+        for (char& c : g_notice.title) if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
     g_notice.lines.clear();
     for (const char *p = now.text, *end; *p; p = *end ? end + 1 : end)
     {
@@ -281,7 +330,7 @@ void ReadNotice()
     g_notice.at = GetTickCount64();
     if (g_notice.error) Sound(sounds::ERROR_);
 }
-ULONGLONG NoticeMs() { return g_notice.error ? NOTICE_ERROR_MS : NOTICE_INFO_MS; }
+ULONGLONG NoticeMs() { return g_notice.error ? NOTICE_ERROR_MS : g_notice.brief ? NOTICE_BRIEF_MS : NOTICE_INFO_MS; }
 ImU32 Faded(ImU32 colour, float alpha) { return (colour & 0x00FFFFFF) | ((ImU32)((float)(colour >> 24) * alpha + 0.5f) << 24); }
 /* A line broken into lines at most max units wide, at word ends (a word wider than that is cut with "..."). */
 std::vector<std::string> Wrapped(const std::string& text, float max, float size)
@@ -302,14 +351,30 @@ std::vector<std::string> Wrapped(const std::string& text, float max, float size)
     if (!line.empty()) out.push_back(line);
     return out;
 }
-/* The message at the top of the screen, over the game and the editor alike. */
+bool SyncShown(); /* mod sync's dialog is up */
+/* The message at the top of the screen, over the game and the editor alike. A refused join's notice gives way to mod
+ * sync's dialog, which lists the same mods and what happens to each: once that is up, the notice is done. */
 void DrawNotice()
 {
     if (g_notice.version == 0) return;
+    if (SyncShown()) { g_notice.at = 0; return; }
     ULONGLONG age = GetTickCount64() - g_notice.at, total = NoticeMs();
     if (age >= total) return;
     float alpha = age + NOTICE_FADE_MS > total ? (float)(total - age) / (float)NOTICE_FADE_MS : 1.0f;
     ImU32 accent = g_notice.error ? ERROR_ : GOLD;
+    if (g_notice.brief) /* a small note in the top right corner: the title and the first line (the host's "<friend> couldn't join") */
+    {
+        float bw = std::min(440.0f, g_cv.width - 40), bx = floorf(g_cv.width - g_cv.ox - bw - 24), by = 24 - g_cv.oy;
+        bool line = !g_notice.lines.empty();
+        float bh = line ? 58 : 36;
+        g_cv.Rect(bx - 3, by - 3, bw + 6, bh + 6, Faded(SHADOW, alpha), 13);
+        g_cv.Rect(bx, by, bw, bh, Faded(PANEL_ALT, alpha), 13);
+        g_cv.Frame(bx, by, bw, bh, Faded(LINE_STRONG, alpha), 14);
+        g_cv.Rect(bx, by, 3, bh, Faded(accent, alpha), 14);
+        g_cv.Text(g_notice.title, bx + 16, by + 18, T(SZ_LABEL, Faded(TEXT, alpha), ui::BODY, ui::LEFT, bw - 32, 15));
+        if (line) g_cv.Text(g_notice.lines[0], bx + 16, by + 40, T(SZ_SMALL, Faded(DIM, alpha), ui::BODY, ui::LEFT, bw - 32, 15));
+        return;
+    }
     float w = std::min(860.0f, g_cv.width - 40), x = floorf(g_cv.width / 2 - g_cv.ox - w / 2), y = 36 - g_cv.oy;
     std::vector<std::string> lines;
     size_t lead = 0; /* the first line's rows, brighter: what happened; the rest say why */
@@ -351,7 +416,8 @@ void SendPassives()
     g_host.api->set_passives(g_host.mod, g_choice[0] < 0 ? HF_PASSIVE_KIT : (uint32_t)g_choice[0], g_choice[1] < 0 ? HF_PASSIVE_KIT : (uint32_t)g_choice[1]);
 }
 
-LiveState& Live(const Row* row, bool fresh = false)
+/* budgeted: the read shares the frame's LIVE_BUDGET_US (drawing); HolderTick reads within its own budget */
+LiveState& Live(const Row* row, bool fresh = false, bool budgeted = true)
 {
     LiveState& s = g_live[row];
     if (IsApLabel(row))
@@ -359,7 +425,7 @@ LiveState& Live(const Row* row, bool fresh = false)
         s.read = true; s.now = s.base = 0; s.mod.clear();
         for (const Row* t : TraitRows(row))
         {
-            const LiveState& ts = Live(t, fresh);
+            const LiveState& ts = Live(t, fresh, budgeted);
             if (ts.read && ts.now != 0 && row->OptionOf(ts.now)) s.now = ts.now;
             if (ts.read && ts.base != 0 && row->OptionOf(ts.base)) s.base = ts.base;
             if (ts.read && !ts.mod.empty()) s.mod = ts.mod;
@@ -373,23 +439,27 @@ LiveState& Live(const Row* row, bool fresh = false)
         return s;
     }
     ULONGLONG now = GetTickCount64();
-    if (row->Live() && HasGetLive() && (fresh || s.at == 0 || now - s.at > 400))
+    bool live = row->Live() && HasGetLive(), stat = !row->Live() && row->Stat() && HasGetStat();
+    if ((!live && !stat) || !(fresh || s.at == 0 || now - s.at > 400)) return s;
+    auto& frame = LiveFrame();
+    if (budgeted && !fresh && frame.ticks >= QpcFrequency() * LIVE_BUDGET_US / 1000000) { frame.held++; return s; }
+    LONGLONG start = QpcNow();
+    HfLiveValue value;
+    if (live)
     {
         HfField field = FieldOf(row);
-        HfLiveValue value;
         s.read = g_host.api->get_live(g_host.mod, row->ref, &field, &value) != 0;
-        if (s.read) { s.now = value.now.number; s.base = value.base.number; s.mod = value.mod ? value.mod : ""; }
-        s.at = now;
     }
-    else if (!row->Live() && row->Stat() && HasGetStat() && (fresh || s.at == 0 || now - s.at > 400))
+    else
     {
         /* applied at boot: the value the game holds now, and its base (the Local Stats mod's edit undone) */
         HfStat stat{row->statKind.c_str(), row->statComponent.c_str(), row->statResource, row->statRecord, row->offset, row->type};
-        HfLiveValue value;
         s.read = g_host.api->get_stat(g_host.mod, &stat, &value) != 0;
-        if (s.read) { s.now = value.now.number; s.base = value.base.number; s.mod = value.mod ? value.mod : ""; }
-        s.at = now;
     }
+    if (s.read) { s.now = value.now.number; s.base = value.base.number; s.mod = value.mod ? value.mod : ""; }
+    s.at = now;
+    frame.ticks += QpcNow() - start;
+    frame.reads++;
     return s;
 }
 
@@ -837,6 +907,52 @@ void ApplyRow(const Row* row, double value)
 
 int PendingCount() { return (int)g_pending.size(); }
 
+/* A field's value once the changes are applied: the saved one, else what the game holds. */
+double Effective(const Row* row)
+{
+    double v;
+    if (localstats::Get(row->category, row->target, row->key, &v)) return v;
+    const LiveState& s = Live(row, true);
+    return s.read ? s.now : 0;
+}
+
+/* Added rates (rate slots X and Z, ProjectileWeapon +4 / +12) are selectable only while an input is bound to rate of
+ * fire (WeaponData +184 / +188 = 2: the press dispatcher reaches the rate cycle only for it, game.dll 0x75541F; the
+ * cycle skips empty slots, 0x617A0B; HD2Mods research\coop-weapon-stats). Filling X or Z binds a free input with them;
+ * emptying both takes that binding off again, unless the weapon has it itself. Returns what it says to the player. */
+std::string BindRateInput(const Row* rate)
+{
+    auto entry = [&](const char* key) { return g_catalog.Entry(rate->category, rate->target, key); };
+    const Row *x = entry("fire_rate.modes.x"), *y = entry("weapon.fire_rate"), *z = entry("fire_rate.modes.z");
+    const Row* inputs[2] = {entry("weapon_function.left"), entry("weapon_function.right")};
+    double xv = x ? Effective(x) : 0, zv = z ? Effective(z) : 0;
+    bool added = xv != 0 || zv != 0;
+    const Row *bound = nullptr, *free = nullptr;
+    for (const Row* input : inputs)
+    {
+        if (input == nullptr) continue;
+        double v = Effective(input);
+        if (v == 2) bound = input;
+        else if (v == 0 && free == nullptr && input->OptionOf(2)) free = input;
+    }
+    if (!added)
+    {
+        if (bound != nullptr && Live(bound, true).base != 2) { ResetRow(bound); return bound->label + " is back to its own: no added rates"; }
+        return "";
+    }
+    std::string said;
+    if (bound == nullptr)
+    {
+        if (free == nullptr) return "Both inputs are in use: the added rates of fire can't be selected";
+        ApplyRow(free, 2);
+        said = free->label + " set to Rate of fire, so the added rates can be selected (from the next respawn)";
+    }
+    double yv = y ? Effective(y) : 0;
+    if ((xv != 0 && (xv == yv || xv == zv)) || (zv != 0 && zv == yv))
+        said += std::string(said.empty() ? "" : "; ") + "two rates of fire are the same, so a press may seem to do nothing";
+    return said;
+}
+
 void Apply()
 {
     if (RefuseLocked()) return;
@@ -853,10 +969,16 @@ void Apply()
     };
     std::stable_sort(pending.begin(), pending.end(), [&](auto& a, auto& b) { return rank(a) < rank(b); });
     for (auto& p : pending) { if (p.second.reset) ResetRow(p.first); else ApplyRow(p.first, p.second.value); }
+    std::string rates;
+    std::set<std::string> weapons;
+    for (auto& p : pending)
+        if ((p.first->key == "fire_rate.modes.x" || p.first->key == "fire_rate.modes.z") && weapons.insert(p.first->category + "/" + p.first->target).second)
+            if (std::string said = BindRateInput(p.first); !said.empty()) rates = said;
     g_markVersion++;
     g_host.saveSoon(800);
     Sound(sounds::APPLY);
-    Toast(g_errors.empty() ? (std::to_string(n) + (n == 1 ? " change applied" : " changes applied") + " and saved to Local Stats") :
+    if (!rates.empty() && g_errors.empty()) Toast(rates, PENDING);
+    else Toast(g_errors.empty() ? (std::to_string(n) + (n == 1 ? " change applied" : " changes applied") + " and saved to Local Stats") :
         std::to_string(g_errors.size()) + " refused: see the ERRORS badge", g_errors.empty() ? OK : ERROR_);
 }
 
@@ -892,7 +1014,7 @@ void StageResetAll()
 
 /* ---- holders: the mod whose value each catalogue row holds (get_live / get_stat name it), read a few rows a frame so
  * the objects' and categories' marks and the MODS view know them without stalling the game: every frame from the
- * session's start, open or not (Tick: 0.5 ms of reads; 1.5 ms more while the editor draws), a pass over the catalogue
+ * session's start, open or not (Tick: 0.5 ms of reads; while the editor draws, what the page's reads leave of their 1.5 ms), a pass over the catalogue
  * every 10 s. What a pass finds shows in the marks within half a second. ---- */
 std::map<const Row*, std::string> g_holders;
 size_t g_holderNext;
@@ -922,7 +1044,7 @@ void HolderTick(LONGLONG microseconds)
     {
         const Row* row = &g_catalog.rows[g_holderNext++];
         if (!row->choice.empty() || IsApLabel(row) || (!row->Live() && !row->Stat())) continue;
-        const LiveState& live = Live(row);
+        const LiveState& live = Live(row, false, false);
         std::string holder = live.read ? live.mod : "";
         auto found = g_holders.find(row);
         if (holder.empty() && found != g_holders.end()) { g_holders.erase(found); g_holderChanged = true; }
@@ -1067,8 +1189,9 @@ float DrawMarks(const Marks& m, float x, float cy, float size)
 }
 
 /* An object's icon, fitted into a square: the game's HUD silhouette of a weapon or throwable; a stratagem's icon as the
- * game draws it (its category layer in the category's colour, its white layer white); a booster as it is. A stratagem
- * with no icon is a plain square in its colour (never made-up art). False when there is nothing to draw. */
+ * game draws it (its category layer in the category's colour, its white layer white); a booster as it is; an entity its
+ * faction's emblem in the faction's colour. A stratagem with no icon is a plain square in its colour (never made-up art).
+ * False when there is nothing to draw. */
 bool DrawIcon(const Object* object, float x, float y, float size, int z = 4)
 {
     if (!icons::Texture()) return false;
@@ -1095,6 +1218,13 @@ bool DrawIcon(const Object* object, float x, float y, float size, int z = 4)
         fit(white, C(255, 255, 238, 255), z + 1);
         return true;
     }
+    if (object->icon == "difficulty")
+    {
+        const icons::Icon* icon = icons::Find(icons::DIFFICULTY, object->sprite);
+        if (icon == nullptr) return false;
+        fit(icon, IM_COL32_WHITE, z);
+        return true;
+    }
     if (object->icon == "booster" || object->icon == "passive")
     {
         const icons::Icon* icon = icons::Find(object->icon == "booster" ? icons::BOOSTER : icons::PASSIVE, object->sprite.empty() ? object->name : object->sprite);
@@ -1107,6 +1237,13 @@ bool DrawIcon(const Object* object, float x, float y, float size, int z = 4)
         const icons::Icon* icon = icons::Find(object->icon == "throwable" ? icons::THROWABLE : icons::WEAPON, object->name);
         if (icon == nullptr) return false;
         fit(icon, ICON, z);
+        return true;
+    }
+    if (ImU32 faction = FactionColour(FactionOf(object)))
+    {
+        const icons::Icon* icon = icons::Find(icons::FACTION, FactionOf(object));
+        if (icon == nullptr) return false;
+        fit(icon, faction, z);
         return true;
     }
     if (tone.colour) { g_cv.Rect(x + size * 0.18f, y + size * 0.18f, size * 0.64f, size * 0.64f, tone.colour, z); return true; }
@@ -1211,7 +1348,7 @@ std::vector<Object*> Objects()
     std::string q = Lower(g_search.text);
     for (Object* o : list)
     {
-        if (group != "All" && o->subtitle != group) continue;
+        if (group != "All" && (o->group.empty() ? o->subtitle : o->group) != group) continue;
         if (!q.empty() && (Lower(o->name) + " " + Lower(o->subtitle) + " " + o->search).find(q) == std::string::npos) continue;
         out.push_back(o);
     }
@@ -1625,6 +1762,11 @@ int g_preset;
 struct { bool shown = false; std::string name, text; ImU32 colour = TEXT; } g_presetResult;
 
 std::wstring PresetFolder() { return hfjson::Wide(g_host.modFolder) + L"\\presets"; }
+std::wstring PresetWriteFolder()
+{
+    std::wstring sandbox = localstats::SandboxFolder();
+    return sandbox.empty() ? PresetFolder() : sandbox + L"\\presets";
+}
 
 std::string Narrow(const std::wstring& text)
 {
@@ -1634,11 +1776,8 @@ std::string Narrow(const std::wstring& text)
     return out;
 }
 
-void ScanPresets()
+void ScanPresetFolder(const std::wstring& folder)
 {
-    std::wstring folder = PresetFolder();
-    CreateDirectoryW(folder.c_str(), nullptr);
-    g_presets.clear();
     WIN32_FIND_DATAW found;
     HANDLE find = FindFirstFileW((folder + L"\\*.json").c_str(), &found);
     if (find == INVALID_HANDLE_VALUE) return;
@@ -1666,9 +1805,20 @@ void ScanPresets()
                 p.fields = fields != nullptr && fields->kind == hfjson::Value::Array ? (int)fields->items.size() : 0;
             }
         }
-        g_presets.push_back(p);
+        /* a preset exported this (sandboxed) session replaces the saved one of its name */
+        auto same = std::find_if(g_presets.begin(), g_presets.end(), [&](const PresetFile& q) { return q.file == p.file; });
+        if (same != g_presets.end()) *same = p; else g_presets.push_back(p);
     } while (FindNextFileW(find, &found));
     FindClose(find);
+}
+
+void ScanPresets()
+{
+    std::wstring folder = PresetFolder(), written = PresetWriteFolder();
+    CreateDirectoryW(written.c_str(), nullptr);
+    g_presets.clear();
+    ScanPresetFolder(folder);
+    if (written != folder) ScanPresetFolder(written);
     std::sort(g_presets.begin(), g_presets.end(), [](const PresetFile& a, const PresetFile& b) { return a.file < b.file; });
     g_preset = std::clamp(g_preset, 0, std::max(0, (int)g_presets.size() - 1));
 }
@@ -1960,8 +2110,8 @@ void ExportPreset()
     root.members.emplace_back("runtime", hfjson::Value::MakeString(g_catalog.hd2rRuntime));
     root.members.emplace_back("created", hfjson::Value::MakeString(created));
     root.members.emplace_back("fields", list);
-    CreateDirectoryW(PresetFolder().c_str(), nullptr);
-    std::wstring path = PresetFolder() + L"\\" + hfjson::Wide(name) + L".hd2rpreset.json";
+    CreateDirectoryW(PresetWriteFolder().c_str(), nullptr);
+    std::wstring path = PresetWriteFolder() + L"\\" + hfjson::Wide(name) + L".hd2rpreset.json";
     if (!hfjson::WriteAtomically(path, hfjson::Write(root))) { Toast("The preset could not be written", ERROR_); return; }
     ScanPresets();
     for (int i = 0; i < (int)g_presets.size(); i++) if (g_presets[i].path == path) g_preset = i;
@@ -1977,6 +2127,8 @@ void OpenPresetFolder()
     STARTUPINFOW si = {sizeof si};
     PROCESS_INFORMATION pi;
     if (CreateProcessW(nullptr, &command[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); }
+    /* a session's game may not start other programs (its job holds it alone): the folder is said instead */
+    else Toast("The presets are in " + Narrow(folder), PENDING);
 }
 
 /* ---- the errors list, the confirmation, the logs (HD2R Editor's errors popup, its RESET ITEM confirmation, LOGS) ---- */
@@ -2117,12 +2269,16 @@ void LogRead(bool force)
     LogFilter();
 }
 
-void OpenWith(const std::wstring& arguments)
+// Explorer on a path; false when Windows refused (a session's game may not start other programs: its job holds it alone).
+bool OpenWith(const std::wstring& arguments)
 {
     std::wstring command = L"explorer.exe " + arguments;
     STARTUPINFOW si = {sizeof si};
     PROCESS_INFORMATION pi;
-    if (CreateProcessW(nullptr, &command[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); }
+    if (!CreateProcessW(nullptr, &command[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
 }
 
 /* ---- navigation ---- */
@@ -2464,6 +2620,402 @@ void DrawMods(float y0, float h)
 /* ---- keys ---- */
 bool Pressed(ImGuiKey key) { return ImGui::IsKeyPressed(key, true); }
 
+/* ---- mod sync (SDK 14): a lobby whose host plays with other gameplay mods ----
+ * The session's backend offers to download the host's mods and restart the session with them (docs/mods.md "Playing
+ * with other mods"); the loader hands the offer over (sync_state, sync_mod) and the player's answer back (sync_answer).
+ * Tick reads it every 30 frames. An offer that needs the player (new, ready, blocked, failed) shows this dialog by itself:
+ * alone over the game, with no editor behind it, or in the window when that is open. Esc or closing the window answers
+ * no, except while downloading: the download goes on, and the dialog is back when it is ready. */
+struct
+{
+    bool on = false;     /* the dialog is shown */
+    bool alone = false;  /* it is shown over the game by itself, the window closed */
+    bool sent = false;   /* an answer went: the buttons wait for the backend's next state */
+    HfSyncState state{}; /* as last read */
+    std::vector<HfSyncMod> mods;
+    int index = 0;       /* the selected mod (keyboard) */
+    double shownAt = 0;  /* when it last appeared or turned: its answers wait SYNC_ARM seconds */
+    int trust = -1;      /* the mod whose TRUST warning shows instead of the list (-1 none) */
+    double trustAt = 0;  /* when that warning appeared: its button waits SYNC_ARM seconds too */
+} g_sync;
+/* A key or click meant for the game (Enter in chat, a shot) when the prompt pops up must not answer it: its buttons and
+ * keys wait this long after it appears or its state turns. Esc, which only says no or hides it, works at once. */
+const double SYNC_ARM = 1.0;
+bool SyncArmed() { return ImGui::GetTime() - g_sync.shownAt >= SYNC_ARM; }
+bool SyncShown() { return g_sync.on; }
+bool g_windowShown; /* Opened() to Closed() */
+
+bool HasSync() { return g_host.api->size >= offsetof(HfApi, sync_answer) + sizeof(void*) && g_host.api->sync_state != nullptr; }
+
+/* Keys let go while the editor was closed went to the game, not to ImGui: forget every key state on opening and closing,
+ * or a key held then (Escape) counts as held when it opens again and closes it at once. */
+void ForgetKeys()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    io.ClearEventsQueue();
+    io.ClearInputKeys();
+    io.ClearInputMouse();
+    io.InputQueueCharacters.resize(0);
+    /* where the mouse is now (the queue held the moves): a click before any move lands where it is */
+    POINT at;
+    HWND window = GetForegroundWindow();
+    if (window != nullptr && GetCursorPos(&at) && ScreenToClient(window, &at)) io.AddMousePosEvent((float)at.x, (float)at.y);
+}
+
+/* The dialog alone over the game, the window closed: the editor holds the game's input for it, as for the window. */
+void ShowSyncAlone(bool on)
+{
+    if (g_sync.alone == on) return;
+    g_sync.alone = on;
+    g_host.modal(on);
+    ForgetKeys();
+    if (on) g_sync.shownAt = ImGui::GetTime();
+    sounds::EditorOpen(on);
+    g_host.api->log(g_host.mod, on ? "editor: the mod sync prompt shows over the game, the window closed" : "editor: the mod sync prompt goes");
+    if (on) Sound(sounds::SHOW);
+}
+
+std::string SizeText(uint64_t bytes)
+{
+    char text[32];
+    if (bytes >= 1024 * 1024) snprintf(text, sizeof text, "%.1f MB", (double)bytes / 1048576.0);
+    else snprintf(text, sizeof text, "%llu KB", (unsigned long long)((bytes + 1023) / 1024));
+    return text;
+}
+
+/* The dialog goes (an open window stays). */
+void CloseSync()
+{
+    g_sync.on = false;
+    ShowSyncAlone(false);
+}
+
+void AnswerSync(uint32_t answer, const char* id = nullptr)
+{
+    bool sent = g_host.api->sync_answer(g_host.mod, g_sync.state.version, answer, id) != 0;
+    /* a trust waits for the backend's new offer (and its download), as accept and restart wait for the next state */
+    g_sync.sent = sent && (answer == HF_SYNC_ACCEPT || answer == HF_SYNC_RESTART || answer == HF_SYNC_TRUST);
+    g_sync.trust = -1;
+    if (!sent) Toast("That offer is gone: the session's backend has a newer one, or is not connected", ERROR_);
+    else if (answer == HF_SYNC_OPEN) { Toast("The mod's page opens in your browser (Alt+Tab to it)", OK); Sound(sounds::APPLY); }
+    else Sound(answer == HF_SYNC_DECLINE ? sounds::BACK : sounds::APPLY);
+    if (!sent || answer == HF_SYNC_DECLINE || answer == HF_SYNC_BLOCK) CloseSync();
+}
+
+/* Every 30 frames (Tick): the backend's offer, when it changed. Nothing is allocated unless it did. */
+void ReadSync()
+{
+    static int frames;
+    if (!HasSync() || ++frames < 30) return;
+    frames = 0;
+    HfSyncState now{};
+    now.size = sizeof now;
+    g_host.api->sync_state(g_host.mod, &now);
+    HfSyncState& was = g_sync.state;
+    bool turned = now.version != was.version || now.state != was.state;
+    if (!turned && now.done == was.done && now.bytes == was.bytes && !strcmp(now.message, was.message) && !strcmp(now.host, was.host)) return;
+    if (now.version != was.version || now.mods != g_sync.mods.size())
+    {
+        g_sync.mods.clear();
+        for (uint32_t i = 0; i < now.mods; i++)
+        {
+            HfSyncMod mod{};
+            mod.size = sizeof mod;
+            if (!g_host.api->sync_mod(g_host.mod, i, &mod)) break;
+            g_sync.mods.push_back(mod);
+        }
+        g_sync.index = 0;
+        g_sync.trust = -1; /* the warning was for the offer that is gone */
+    }
+    g_sync.state = now;
+    if (!turned) return;
+    g_sync.sent = false;
+    if (now.state == HF_SYNC_NONE) { if (g_sync.on) CloseSync(); return; }
+    if (now.state == HF_SYNC_DOWNLOADING) return;
+    g_sync.shownAt = ImGui::GetTime();
+    g_host.api->log(g_host.mod, "editor: mod sync %u from %s: %u mod(s), %llu bytes to download; the dialog opens", now.version,
+        now.host[0] ? now.host : "the host", now.mods, (unsigned long long)now.bytes);
+    bool fresh = !g_sync.on;
+    if (fresh)
+    {
+        g_sync.on = true;
+        g_picker.on = false;
+        g_errorsPopup.on = false;
+        g_edit.on = false;
+        g_seen.erase("sync");
+    }
+    /* over the game (again, when it was hidden while downloading), or in the open window */
+    if (!g_windowShown) ShowSyncAlone(true);
+    else if (fresh) Sound(sounds::OPEN);
+}
+
+const char* SyncActionText(uint32_t action)
+{
+    switch (action)
+    {
+    case HF_SYNC_MOD_HAVE: return "you have it";
+    case HF_SYNC_MOD_DOWNLOAD: return "downloads";
+    case HF_SYNC_MOD_MANUAL: return "install it yourself";
+    case HF_SYNC_MOD_BLOCKED: return "blocked";
+    case HF_SYNC_MOD_UPDATE: return "needs another HellForge";
+    case HF_SYNC_MOD_TRUST: return "needs your trust";
+    default: return "off for this session";
+    }
+}
+
+ImU32 SyncActionColour(uint32_t action)
+{
+    return action == HF_SYNC_MOD_HAVE ? OK : action == HF_SYNC_MOD_DOWNLOAD ? GOLD : action == HF_SYNC_MOD_MANUAL || action == HF_SYNC_MOD_TRUST ? PENDING :
+        action == HF_SYNC_MOD_OFF ? FAINT : ERROR_;
+}
+
+/* A row's BLOCK: on mods that would come from the host or be installed by hand, while an offer stands, and on mods that
+ * wait for the player's trust (the other way to answer them). */
+bool SyncBlockable(const HfSyncMod& mod)
+{
+    uint32_t state = g_sync.state.state;
+    bool offered = (mod.action == HF_SYNC_MOD_DOWNLOAD || mod.action == HF_SYNC_MOD_MANUAL) &&
+        (state == HF_SYNC_OFFER || state == HF_SYNC_DOWNLOADING || state == HF_SYNC_READY);
+    return !g_sync.sent && (offered || (mod.action == HF_SYNC_MOD_TRUST && state == HF_SYNC_BLOCKED));
+}
+
+/* A row's TRUST: a Steam friend's mod HellForge has not verified (the backend offers no other for trust). */
+bool SyncTrustable(const HfSyncMod& mod) { return !g_sync.sent && mod.action == HF_SYNC_MOD_TRUST && g_sync.state.state == HF_SYNC_BLOCKED; }
+
+/* A row's GET IT: a mod the player may install themselves, with an address to get it from (the loader keeps only https://
+ * ones, and the backend opens only those). */
+bool SyncGettable(const HfSyncMod& mod)
+{
+    size_t size = sizeof mod.url;
+    return (mod.action == HF_SYNC_MOD_MANUAL || mod.action == HF_SYNC_MOD_TRUST) && mod.url[0] && strnlen(mod.url, size) < size &&
+        !strncmp(mod.url, "https://", 8);
+}
+
+/* The TRUST warning for a row: shown instead of the list until answered; its button waits SYNC_ARM seconds, and only a
+ * click on it trusts (no key does). */
+void AskTrust(int i)
+{
+    if (i < 0 || i >= (int)g_sync.mods.size() || !SyncTrustable(g_sync.mods[i])) return;
+    g_sync.trust = i;
+    g_sync.trustAt = ImGui::GetTime();
+    g_host.api->log(g_host.mod, "editor: mod sync: the trust warning for %s shows", g_sync.mods[i].id);
+    Sound(sounds::OPEN);
+}
+bool TrustArmed() { return SyncArmed() && ImGui::GetTime() - g_sync.trustAt >= SYNC_ARM; }
+
+/* Trusting this mod leaves nothing else in the way: the backend starts the download (TRUST AND DOWNLOAD). */
+bool TrustDownloads(int i)
+{
+    for (int j = 0; j < (int)g_sync.mods.size(); j++)
+    {
+        uint32_t action = g_sync.mods[j].action;
+        if (j != i && (action == HF_SYNC_MOD_TRUST || action == HF_SYNC_MOD_MANUAL || action == HF_SYNC_MOD_BLOCKED || action == HF_SYNC_MOD_UPDATE)) return false;
+    }
+    return true;
+}
+
+/* The dialog's first button and its answer, by state ("" none). */
+const char* SyncPrimary(uint32_t* answer)
+{
+    const HfSyncState& s = g_sync.state;
+    *answer = s.state == HF_SYNC_OFFER ? (s.bytes > 0 ? HF_SYNC_ACCEPT : HF_SYNC_RESTART) : s.state == HF_SYNC_READY ? HF_SYNC_RESTART :
+        s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED ? HF_SYNC_DECLINE : 0;
+    if (s.state == HF_SYNC_OFFER) return s.bytes > 0 ? "DOWNLOAD AND RESTART" : "RESTART TO JOIN";
+    if (s.state == HF_SYNC_READY) return "RESTART TO JOIN";
+    if (s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED) return "OK";
+    return "";
+}
+
+void SyncKeys()
+{
+    int n = (int)g_sync.mods.size();
+    /* the TRUST warning: Esc goes back to the list; nothing but a click on its button trusts */
+    if (g_sync.trust >= 0)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { g_sync.trust = -1; Sound(sounds::BACK); }
+        return;
+    }
+    if (Pressed(ImGuiKey_UpArrow)) g_sync.index = std::max(0, g_sync.index - 1);
+    if (Pressed(ImGuiKey_DownArrow)) g_sync.index = std::min(std::max(0, n - 1), g_sync.index + 1);
+    bool armed = SyncArmed();
+    if (armed && ImGui::IsKeyPressed(ImGuiKey_B, false) && g_sync.index < n && SyncBlockable(g_sync.mods[g_sync.index]))
+        AnswerSync(HF_SYNC_BLOCK, g_sync.mods[g_sync.index].id);
+    if (armed && ImGui::IsKeyPressed(ImGuiKey_T, false) && g_sync.index < n && SyncTrustable(g_sync.mods[g_sync.index])) { AskTrust(g_sync.index); return; }
+    if (armed && ImGui::IsKeyPressed(ImGuiKey_G, false) && g_sync.index < n && SyncGettable(g_sync.mods[g_sync.index]))
+        AnswerSync(HF_SYNC_OPEN, g_sync.mods[g_sync.index].id);
+    uint32_t answer;
+    const char* primary = SyncPrimary(&answer);
+    if (armed && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) && primary[0] && !g_sync.sent)
+        AnswerSync(answer);
+    if (!ImGui::IsKeyPressed(ImGuiKey_Escape, false)) return;
+    if (g_windowShown) g_host.close(); /* Closed() answers */
+    else if (g_sync.sent || g_sync.state.state == HF_SYNC_DOWNLOADING) { ShowSyncAlone(false); Sound(sounds::BACK); } /* it goes on */
+    else AnswerSync(HF_SYNC_DECLINE);
+}
+
+/* The TRUST warning, in the prompt's place: what trusting a mod HellForge has not checked means, in plain words. Its
+ * button waits SYNC_ARM seconds and answers only to a click; CANCEL and Esc go back to the list. */
+void DrawTrust(const HfSyncMod& mod)
+{
+    const HfSyncState& s = g_sync.state;
+    std::string name = std::string(mod.name[0] ? mod.name : mod.id) + " " + mod.version, friendName = s.host[0] ? s.host : "the host";
+    std::vector<std::string> lines;
+    float w = std::min(760.0f, PANEL_W - 60);
+    std::string warning = mod.kind == HF_SYNC_CLASS_RAW
+        ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
+          "through a flaw in the game run code on your PC that can do anything your Windows account can."
+        : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
+          "files, or install other programs.";
+    warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+    for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL)) lines.push_back(std::move(part));
+    size_t lead = lines.size();
+    for (std::string& part : Wrapped("HellForge still checks that every file you download is exactly the one " + friendName + " has. You can take "
+             "the trust back on the launcher's Mods page (MOD SYNC).", w - 56, SZ_SMALL))
+        lines.push_back(std::move(part));
+    /* at least 420 units high, so its buttons stay put whatever the text (overlay_test clicks them) */
+    float h = std::min(g_panelH - 80, std::max(420.0f, 196 + 26.0f * (float)lines.size())), x = (PANEL_W - w) / 2, y = (g_panelH - h) / 2;
+    g_cv.Block();
+    g_cv.Rect(x, y, w, h, PANEL_ALT, 9);
+    g_cv.Frame(x, y, w, h, LINE_STRONG, 10);
+    g_cv.Rect(x, y, w, 3, ERROR_, 10);
+    float tw = g_cv.Text("TRUST THIS MOD?", x + 24, y + 30, T(18, ERROR_, ui::TITLE, ui::LEFT, 0, 11));
+    g_cv.Text(std::string("from ") + friendName + "'s lobby", x + 36 + tw, y + 31, T(SZ_LABEL, DIM, ui::BODY, ui::LEFT, w - tw - 80, 11));
+    float ly = y + 70;
+    float cx = x + 24;
+    if (mod.kind == HF_SYNC_CLASS_CODE) cx += Chip("CODE", cx, ly, INVERSE, LUA, false, 11) + 8;
+    else if (mod.kind == HF_SYNC_CLASS_RAW) cx += Chip("RAW DATA", cx, ly, INVERSE, LUA, false, 11) + 8;
+    g_cv.Text(name, cx, ly, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, x + w - 24 - cx, 11));
+    g_cv.Rect(x + 12, ly + 22, w - 24, 1, LINE, 10);
+    for (size_t i = 0; i < lines.size(); i++)
+        g_cv.Text(lines[i], x + 28, ly + 50 + 26.0f * (float)i + (i >= lead ? 8.0f : 0), T(i < lead ? SZ_LABEL : SZ_SMALL, i < lead ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56, 11));
+    bool armed = TrustArmed();
+    const char* label = TrustDownloads(g_sync.trust) ? "TRUST AND DOWNLOAD" : "TRUST";
+    float bx = x + w - 24 - 150;
+    if (Button("CANCEL", bx, y + h - 66, 150, 30, NORMAL, ui::Id("synctrustno"), 11)) { g_sync.trust = -1; Sound(sounds::BACK); return; }
+    float pw = std::max(150.0f, g_cv.Measure(label, SZ_TAB, ui::TITLE) + 40);
+    bx -= 12 + pw;
+    if (Button(label, bx, y + h - 66, pw, 30, armed ? DANGER : DISABLED, ui::Id("synctrustyes"), 11) && armed)
+    {
+        g_host.api->log(g_host.mod, "editor: mod sync: the player trusts %s", mod.id);
+        AnswerSync(HF_SYNC_TRUST, mod.id);
+        return;
+    }
+    g_cv.Text("Click " + std::string(label) + " to trust it   Esc back to the list", x + 24, y + h - 20, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
+}
+
+void DrawSync()
+{
+    if (!g_sync.on) return;
+    const HfSyncState& s = g_sync.state;
+    int n = (int)g_sync.mods.size();
+    bool bad = s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED;
+    if (g_sync.alone) g_cv.Rect(-g_cv.ox, -g_cv.oy, g_cv.width, g_cv.height, C(0, 0, 0, 150), 8); /* the game, dimmed */
+    else g_cv.Rect(0, 0, PANEL_W, g_panelH, C(0, 0, 0, 120), 8);
+    if (g_sync.trust >= 0 && g_sync.trust < n) { DrawTrust(g_sync.mods[g_sync.trust]); return; }
+    float w = std::min(900.0f, PANEL_W - 60), h = std::clamp(214.0f + 40.0f * (float)std::max(1, n), 320.0f, g_panelH - 80);
+    float x = (PANEL_W - w) / 2, y = (g_panelH - h) / 2;
+    g_cv.Block();
+    g_cv.Rect(x, y, w, h, PANEL_ALT, 9);
+    g_cv.Frame(x, y, w, h, LINE_STRONG, 10);
+    g_cv.Rect(x, y, w, 3, bad ? ERROR_ : GOLD, 10);
+    float tw = g_cv.Text("MOD SYNC", x + 24, y + 30, T(18, bad ? ERROR_ : GOLD, ui::TITLE, ui::LEFT, 0, 11));
+    g_cv.Text(std::string(s.host[0] ? s.host : "The host") + "'s lobby", x + 36 + tw, y + 31, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, w - tw - 80, 11));
+    std::string say = s.message[0] ? s.message :
+        s.state == HF_SYNC_OFFER ? "The host plays with gameplay mods you don't have. Get them and restart with the host's mods: their invitation waits on your ship." :
+        s.state == HF_SYNC_DOWNLOADING ? "Downloading the host's mods; each file is checked before it is kept." :
+        s.state == HF_SYNC_READY ? "Every mod is here. Restart with the host's mods: their invitation waits on your ship." :
+        s.state == HF_SYNC_BLOCKED ? "You cannot join this lobby with these mods." : "The download failed.";
+    g_cv.Text(say, x + 24, y + 58, T(SZ_SMALL, bad ? ERROR_ : DIM, ui::BODY, ui::LEFT, w - 48, 11));
+    float hy = y + 80;
+    g_cv.Rect(x + 1, hy, w - 2, 22, HEADER, 10);
+    g_cv.Text("MOD", x + 24, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
+    g_cv.Text("WHAT HAPPENS", x + w - 460, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
+    bool gettable = false, trustable = false;
+    for (const HfSyncMod& mod : g_sync.mods) { gettable = gettable || SyncGettable(mod); trustable = trustable || SyncTrustable(mod); }
+    ListOpts o;
+    o.x = x + 2; o.y = hy + 26; o.w = w - 4; o.h = y + h - hy - 26 - 108; o.rowH = 40; o.count = n; o.selected = g_sync.index;
+    o.key = "sync"; o.focused = true; o.layer = 12;
+    o.click = [&](int i) { g_sync.index = i; };
+    o.draw = [&](int i, float rx, float ry, float rw, float rh, bool hovered) {
+        const HfSyncMod& mod = g_sync.mods[i];
+        bool selected = i == g_sync.index;
+        if (selected) { g_cv.Rect(rx + 10, ry + 2, rw - 20, rh - 4, SELECT, 10); g_cv.Rect(rx + 10, ry + 2, 3, rh - 4, GOLD, 11); }
+        else if (hovered) g_cv.Rect(rx + 10, ry + 2, rw - 20, rh - 4, HOVER, 10);
+        float lx = rx + 22, right = rx + rw - 460;
+        if (mod.kind == HF_SYNC_CLASS_CODE) lx += Chip("CODE", lx, ry + rh / 2, INVERSE, LUA, false, 12) + 8;
+        else if (mod.kind == HF_SYNC_CLASS_RAW) lx += Chip("RAW DATA", lx, ry + rh / 2, INVERSE, LUA, false, 12) + 8;
+        float nw = g_cv.Text(mod.name[0] ? mod.name : mod.id, lx, ry + rh / 2, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, (right - lx) * 0.7f, 12));
+        g_cv.Text(mod.version, lx + nw + 10, ry + rh / 2, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, right - lx - nw - 20, 12));
+        std::string what = SyncActionText(mod.action);
+        if (mod.action == HF_SYNC_MOD_DOWNLOAD) what += " (" + SizeText(mod.bytes) + ")";
+        /* the action's text up to the row's buttons (BLOCK, TRUST, GET IT from the right) */
+        float buttons = (SyncBlockable(mod) ? 86.0f : 0) + (SyncTrustable(mod) ? 86.0f : 0) + (SyncGettable(mod) ? 86.0f : 0);
+        g_cv.Text(what, right + 2, ry + rh / 2, T(SZ_SMALL, SyncActionColour(mod.action), ui::BODY, ui::LEFT, std::min(340.0f, 434.0f - buttons), 12));
+    };
+    o.after = [&](int i, float rx, float ry, float rw, float rh) {
+        const HfSyncMod& mod = g_sync.mods[i];
+        float bx = rx + rw - 102, by = ry + (rh - 24) / 2;
+        if (SyncBlockable(mod))
+        {
+            if (Button("BLOCK", bx, by, 78, 24, DANGER, ui::Id("syncblock", (uint64_t)i), 12) && SyncArmed()) { AnswerSync(HF_SYNC_BLOCK, mod.id); return; }
+            bx -= 86;
+        }
+        if (SyncTrustable(mod))
+        {
+            if (Button("TRUST", bx, by, 78, 24, SyncArmed() ? NORMAL : DISABLED, ui::Id("synctrust", (uint64_t)i), 12) && SyncArmed()) { AskTrust(i); return; }
+            bx -= 86;
+        }
+        if (SyncGettable(mod) && Button("GET IT", bx, by, 78, 24, SyncArmed() ? NORMAL : DISABLED, ui::Id("syncget", (uint64_t)i), 12) && SyncArmed())
+            AnswerSync(HF_SYNC_OPEN, mod.id);
+    };
+    List(o);
+    if (n == 0) g_cv.Text("The host's mods are not listed.", x + 28, hy + 48, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, 0, 12));
+    float fy = y + h - 104;
+    g_cv.Rect(x + 12, fy, w - 24, 1, LINE, 10);
+    if (s.state == HF_SYNC_DOWNLOADING)
+    {
+        float bw = w - 48, filled = s.bytes > 0 ? bw * (float)std::min(1.0, (double)s.done / (double)s.bytes) : 0;
+        g_cv.Rect(x + 24, fy + 16, bw, 10, BOX, 11);
+        g_cv.Rect(x + 24, fy + 16, filled, 10, GOLD, 12);
+        g_cv.Text(SizeText(s.done) + " of " + SizeText(s.bytes), x + 24, fy + 40, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 0, 11));
+    }
+    else
+        g_cv.Text(s.bytes > 0 ? SizeText(s.bytes) + " to download from the host" : "Nothing to download", x + 24, fy + 22,
+            T(SZ_SMALL, s.bytes > 0 ? TEXT : FAINT, ui::BODY, ui::LEFT, 0, 11));
+    uint32_t answer;
+    const char* primary = SyncPrimary(&answer);
+    float bx = x + w - 24;
+    const char* second = s.state == HF_SYNC_OFFER || s.state == HF_SYNC_DOWNLOADING ? "CANCEL" : s.state == HF_SYNC_READY ? "LATER" : "";
+    if (second[0])
+    {
+        bx -= 150;
+        if (Button(second, bx, y + h - 66, 150, 30, NORMAL, ui::Id("syncsecond"), 11) && SyncArmed()) AnswerSync(HF_SYNC_DECLINE);
+        bx -= 12;
+    }
+    if (primary[0])
+    {
+        float pw = std::max(150.0f, g_cv.Measure(primary, SZ_TAB, ui::TITLE) + 40);
+        bx -= pw;
+        if (Button(g_sync.sent ? (answer == HF_SYNC_RESTART ? "RESTARTING..." : "STARTING...") : primary, bx, y + h - 66, pw, 30,
+                g_sync.sent || !SyncArmed() ? DISABLED : bad ? NORMAL : PRIMARY, ui::Id("syncprimary"), 11) && SyncArmed())
+            AnswerSync(answer);
+    }
+    /* beside the buttons: what GET IT does, and that installing a mod by hand takes a new session */
+    if (gettable && s.state != HF_SYNC_DOWNLOADING)
+    {
+        auto lines = Wrapped("GET IT opens the mod's page in your browser. To install a mod yourself, close the game, add the mod "
+            "on the Mods page, then start HellForge again and join.", bx - x - 48, SZ_SMALL);
+        for (size_t i = 0; i < lines.size() && i < 2; i++)
+            g_cv.Text(lines[i], x + 24, fy + 46 + 18.0f * (float)i, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, bx - x - 36, 11));
+    }
+    std::string keys = "\xE2\x86\x91\xE2\x86\x93 select   B block the mod   ";
+    if (trustable) keys += "T trust   ";
+    if (gettable) keys += "G get it   ";
+    if (primary[0]) keys += std::string("Enter ") + primary + "   ";
+    keys += s.state == HF_SYNC_DOWNLOADING ? "Esc hide (the download goes on)" : "Esc close (no)";
+    g_cv.Text(keys, x + 24, y + h - 20, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
+}
+
 void NextView(int delta)
 {
     g_view = (View)(((int)g_view + delta + VIEW_COUNT) % VIEW_COUNT);
@@ -2503,6 +3055,7 @@ void HandleKeys()
     ImGuiIO& io = ImGui::GetIO();
     bool ctrl = io.KeyCtrl, shift = io.KeyShift;
     auto chars = Chars();
+    if (g_sync.on) { SyncKeys(); return; }
     if (g_errorsPopup.on)
     {
         auto list = ErrorRows();
@@ -2752,7 +3305,8 @@ void DrawHeader(int errors, int active)
         return clicked;
     };
     if (Locked()) status(std::string("READ-ONLY \xC2\xB7 HOST: ") + (g_session.host[0] ? g_session.host : "A FRIEND"), PENDING, PENDING_SOFT, 0);
-    else if (g_session.role == HF_SESSION_HOST) status("HOSTING \xC2\xB7 FRIENDS PLAY WITH YOUR STATS", MOD, MOD_SOFT, 0);
+    else if (g_session.role == HF_SESSION_HOST) status(g_lobbyStats ? "HOSTING \xC2\xB7 FRIENDS PLAY WITH YOUR STATS" : "HOSTING \xC2\xB7 EVERYONE KEEPS THEIR OWN", MOD, MOD_SOFT, 0);
+    else if (g_session.role == HF_SESSION_JOINER) status(std::string("JOINED \xC2\xB7 ") + (g_session.host[0] ? g_session.host : "A FRIEND") + " \xC2\xB7 YOUR OWN STATS", MOD, MOD_SOFT, 0);
     if (errors > 0 && status(std::to_string(errors) + (errors == 1 ? " ERROR" : " ERRORS"), ERROR_, ERROR_SOFT, ui::Id("errors"))) OpenErrors();
     if (active > 0) status(std::to_string(active) + (Locked() ? " ACTIVE (HOST)" : " ACTIVE"), GOLD, GOLD_WASH, 0);
     if (PendingCount() > 0 && !Locked()) status(std::to_string(PendingCount()) + " PENDING", PENDING, PENDING_SOFT, 0);
@@ -2825,8 +3379,17 @@ void DrawCategories(float y0, float h)
         else if (g_cv.Hovered() == id) g_cv.Rect(8, y, CAT_W - 16, rh, HOVER, 2);
         if (tone.colour && !selected) g_cv.Rect(8, y + 9, 3, rh - 18, tone.colour, 3);
         float cw = g_cv.Text(std::to_string(g_catalog.Of(nav.id).size()), CAT_W - 20, y + rh / 2, T(SZ_SMALL, FAINT, ui::BODY, ui::RIGHT));
+        /* an enemy faction's emblem left of its count, then the markers */
+        float right = CAT_W - 28 - cw;
+        const icons::Icon* emblem = FactionColour(nav.id) && icons::Texture() ? icons::Find(icons::FACTION, nav.id) : nullptr;
+        if (emblem != nullptr)
+        {
+            const float size = 20;
+            g_cv.Image(icons::Texture(), right - size, y + (rh - size) / 2, size, size, emblem->uv0, emblem->uv1, FactionColour(nav.id), 4);
+            right -= size + 6;
+        }
         auto found = marks.navs.find(nav.id);
-        float mx = DrawMarks(found != marks.navs.end() ? found->second : Marks{}, CAT_W - 28 - cw, y + rh / 2, 26);
+        float mx = DrawMarks(found != marks.navs.end() ? found->second : Marks{}, right, y + rh / 2, 26);
         g_cv.Text(item.label, 22, y + rh / 2, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, std::min(CAT_W - 80, mx - 30)));
         if (g_cv.Hit(8, y, CAT_W - 16, rh, id)) { SelectCategory(i); g_focus = CATEGORIES; }
     }
@@ -2905,7 +3468,8 @@ void DrawObjects(float y0, float h)
         }
         else if (hovered) g_cv.Rect(x + 8, y + 2, w - 16, rh - 4, HOVER, 2);
         float tx = x + 22;
-        if (DrawIcon(object, x + 18, y + 5, rh - 10)) tx = x + 18 + rh;
+        /* a page of entities keeps the emblem's room on every row, those of no known faction too, so the names line up */
+        if (DrawIcon(object, x + 18, y + 5, rh - 10) || EntityPage(object)) tx = x + 18 + rh;
         g_cv.Text(object->name, tx, y + 15, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56 - (tx - x)));
         g_cv.Text(object->subtitle, tx, y + 31, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, w - 56 - (tx - x)));
         auto found = marks.objects.find(object);
@@ -2930,7 +3494,8 @@ void DrawFields(float y0, float h)
     if (Button("RESET ITEM", x0 + w - bw - rw - 24, y0 + 12, rw, 28, changed && !Locked() ? DANGER : DISABLED, ui::Id("resetitem")) && changed) ResetItem(object);
     g_cv.Text(object->name, hx, y0 + 24, T(20, TEXT, ui::TITLE, ui::LEFT, w - 70 - bw - rw - (hx - x0)));
     int edited = 0;
-    for (const Row* row : object->rows) { RowView v = ViewOf(row); if (v.source == STAGED || v.source == EDITED) edited++; }
+    /* staged or saved (ViewOf's STAGED or EDITED), without its live value: an enemy's 300 fields every frame */
+    for (const Row* row : object->rows) { double saved; if ((!Locked() && PendingOf(row)) || Saved(row, &saved)) edited++; }
     std::string sub = (object->subtitle.empty() ? "" : object->subtitle + "   ") + std::to_string(object->rows.size()) + " fields" +
         (edited > 0 ? "   " + std::to_string(edited) + " edited" : "");
     g_cv.Text(sub, hx, y0 + 47, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, w - 40 - (hx - x0)));
@@ -2989,6 +3554,19 @@ void DrawFields(float y0, float h)
         else if (hovered) g_cv.Rect(x + 6, y + 1, lw - 12, rowH - 2, HOVER, 2);
         float lx = FX_LABEL + (item.depth > 0 ? (item.depth + 1) * INDENT : 0);
         if (row == nullptr) { g_cv.Text(item.note, x + lx, cy, T(SZ_SMALL, item.detail ? FAINT : PENDING, ui::BODY, ui::LEFT, lw - lx - 24)); return; }
+        /* a roster row's weight at one difficulty: that difficulty's icon in front of its label (the HD2R Editor's); one
+         * without an icon (level 11 without its mod) keeps level 1's room, so the labels line up */
+        if (row->difficulty > 0 && icons::Texture())
+        {
+            const icons::Icon* badge = icons::Find(icons::DIFFICULTY, std::to_string(row->difficulty));
+            const icons::Icon* room = badge != nullptr ? badge : icons::Find(icons::DIFFICULTY, "1");
+            if (room != nullptr)
+            {
+                float bh = rowH - 12, bw = bh * (float)room->width / (float)room->height;
+                if (badge != nullptr) g_cv.Image(icons::Texture(), x + lx, cy - bh / 2, bw, bh, badge->uv0, badge->uv1, IM_COL32_WHITE, 4);
+                lx += bw + 8;
+            }
+        }
         bool locked = !LockOf(row).empty(), blocked = !SlotBlock(row).empty();
         RowView v = ViewOf(row);
         std::string def = v.hasBase ? Format(row, v.base) : "\xE2\x80\x94";
@@ -3100,12 +3678,19 @@ void DrawStatus(float y, float h)
         if (!v.holder.empty())
             g_cv.Text(std::string(IsLuaHolder(v.holder) ? "Lua mod: " : "Mod: ") + v.holder + " = " + Format(row, v.base), x + 10, cy,
                 T(SZ_SMALL, IsLuaHolder(v.holder) ? LUA : MOD, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
-        else if (!row->also.empty())
+        else if (!row->also.empty() || !row->alsoIf.empty())
         {
-            std::string names;
-            for (size_t i = 0; i < row->also.size() && i < 2; i++) names += (i ? ", " : "") + row->also[i];
-            if (row->also.size() > 2) names += " +" + std::to_string(row->also.size() - 2);
-            g_cv.Text("also changes " + names, x + 10, cy, T(SZ_SMALL, PENDING, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
+            auto list = [](const std::vector<std::string>& of) {
+                std::string names;
+                for (size_t i = 0; i < of.size() && i < 2; i++) names += (i ? ", " : "") + of[i];
+                if (of.size() > 2) names += " +" + std::to_string(of.size() - 2);
+                return names;
+            };
+            /* weapons that reach the row only by equipping the same ammunition are named as such (bug-report-0035) */
+            std::string text = row->also.empty() ? "" : "also changes " + list(row->also);
+            if (!row->alsoIf.empty())
+                text += (text.empty() ? "also changes " : "; and ") + list(row->alsoIf) + " when they use " + row->alsoAmmo;
+            g_cv.Text(text, x + 10, cy, T(SZ_SMALL, PENDING, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
         }
         else if (!row->note.empty())
             g_cv.Text(row->note, x + 10, cy, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
@@ -3289,9 +3874,9 @@ void DrawLogs(float y0, float h)
     g_cv.Text(g_logs.path.empty() ? "This HellForge does not say where its logs are (update HellForge)." : Narrow(g_logs.path),
         20, y0 + 47, T(SZ_SMALL, g_logs.path.empty() ? ERROR_ : FAINT, ui::BODY, ui::LEFT, W - 480));
     if (Button("OPEN LOG FILE", W - 216, y0 + 16, 196, 34, g_logs.path.empty() ? DISABLED : NORMAL, ui::Id("logfile")) && !g_logs.path.empty())
-        OpenWith(L"\"" + g_logs.path + L"\"");
+        if (!OpenWith(L"\"" + g_logs.path + L"\"")) Toast("Open it yourself: " + Narrow(g_logs.path), PENDING);
     if (Button("SHOW IN FOLDER", W - 424, y0 + 16, 196, 34, g_logs.path.empty() ? DISABLED : NORMAL, ui::Id("logfolder")) && !g_logs.path.empty())
-        OpenWith(L"/select,\"" + g_logs.path + L"\"");
+        if (!OpenWith(L"/select,\"" + g_logs.path + L"\"")) Toast("Open it yourself: " + Narrow(g_logs.path), PENDING);
     /* the source (HellForge's log or the editor's), the filters, following the end */
     float fx = 20, fy = y0 + 68;
     auto chip = [&](const std::string& label, bool on, ImU32 tone, uint64_t id) {
@@ -3384,7 +3969,6 @@ void DrawErrors();
 
 void Draw()
 {
-    HolderTick(1500);
     g_cv.Rect(-4, -4, PANEL_W + 8, g_panelH + 8, SHADOW, 0);
     g_cv.Rect(0, 0, PANEL_W, g_panelH, PANEL, 0);
     int errors = (int)g_errors.size(), active = (int)SavedRows().size();
@@ -3403,6 +3987,10 @@ void Draw()
     if (Locked()) g_cv.Rect(0, bodyY, PANEL_W, g_panelH - bodyY, C(40, 42, 48, 150), 7); /* read-only: greyed, still browsable */
     DrawPicker();
     DrawErrors();
+    DrawSync();
+    /* the holders read after the page, with what its own reads left of the frame's budget: what is on screen comes first */
+    LONGLONG used = LiveFrame().ticks * 1000000 / QpcFrequency();
+    if (used < LIVE_BUDGET_US) HolderTick(LIVE_BUDGET_US - used);
 }
 
 /* The picker of a choice row (the HD2R Editor's pickers): its options with their icons and notes, a dialog over the panel. */
@@ -3533,10 +4121,11 @@ void DrawErrors()
 
 /* ---- co-op: the host's saved changes ----
  * The values of content mods added are this editor's own live edits (mod-stats.json), not Local Stats, so the session's
- * backend, which plays the host's Local Stats, does not reach them. Joined, the editor takes its own off and applies the
- * host's, which the backend writes beside them (host-mod-stats.json); back on its own, the host's go and its own come back.
- * Joined, the editor also shows the host's saved changes as its own (marks, ACTIVE, the Changes list), read-only: the
- * host's Local Stats file (host-stats.json, which the backend has applied) and mod content values. */
+ * backend, which plays the host's Local Stats, does not reach them. Joined to a host who shares its stats (Locked), the
+ * editor takes its own off and applies the host's, which the backend writes beside them (host-mod-stats.json); back on
+ * its own, the host's go and its own come back. It also shows the host's saved changes as its own (marks, ACTIVE, the
+ * Changes list), read-only: the host's Local Stats file (host-stats.json, which the backend has applied) and mod content
+ * values. Joined to a host who lets every player keep their own, nothing here changes. */
 std::map<const Row*, double> g_modLive; /* what the editor's live edits of mod content hold now */
 int g_modRole = -1;                     /* HF_SESSION_JOINER: they are the host's; else this machine's (-1: none yet) */
 std::string g_hostModText, g_hostStatsText, g_hostMountsText; /* the host's files as last applied and shown */
@@ -3596,14 +4185,15 @@ int ApplyModValues(const std::vector<localstats::Entry>& entries, const char* wh
     return applied;
 }
 
-/* Joined: the host's values, read again each second (the backend rewrites the files when the host changes them). */
+/* Joined to a host who shares its stats: the host's values, read again each second (the backend rewrites the files when
+ * the host changes them). */
 void SyncModValues()
 {
-    if (g_session.role != HF_SESSION_JOINER)
+    if (!Locked())
     {
         if (g_modRole == HF_SESSION_JOINER)
         {
-            g_modRole = (int)g_session.role;
+            g_modRole = HF_SESSION_SOLO; /* this machine's own again */
             g_hostModText.clear();
             g_hostStatsText.clear();
             g_hostMountsText.clear();
@@ -3660,6 +4250,7 @@ void Layout(float width, float height, float* ox, float* oy, float* s)
 }
 } // namespace
 
+static std::wstring IconFile(const std::string& folder, const std::string& resource);
 void Init(const Host& host)
 {
     g_host = host;
@@ -3667,11 +4258,17 @@ void Init(const Host& host)
     ui::SetFontFolder(host.modFolder);
     sounds::SetEnabled(g_soundsOn);
     std::wstring folder = hfjson::Wide(host.modFolder);
+    ULONGLONG loading = GetTickCount64();
     g_catalogOk = catalog::Load(folder + L"\\editor-catalog.json", &g_catalog, &g_catalogError);
+    loading = GetTickCount64() - loading;
     g_layout = (uint32_t)strtoul(g_catalog.build.c_str(), nullptr, 10);
     if (g_catalogOk && g_catalog.build != host.api->build_id())
     { g_catalogOk = false; g_catalogError = "editor-catalog.json is for game build " + g_catalog.build + ", the game runs " + host.api->build_id(); }
     int iconCount = icons::Load(folder + L"\\game-icons.bin");
+    /* level 11's icon: the game has none, the bundled Hell Forge difficulty brings its own (its data spec's image) */
+    if (!host.modsFolder.empty())
+        if (std::wstring file = IconFile(host.modsFolder + "\\hell-forge", "skyeshade/hell_forge/icons/hell_forge"); !file.empty())
+            icons::AddImage(icons::DIFFICULTY, "11", file);
     std::string error;
     localstats::SetModFile(folder + L"\\mod-stats.json");
     if (!host.modsFolder.empty() && !localstats::Load(host.modsFolder, &error)) Toast("Local Stats: " + error, ERROR_);
@@ -3687,7 +4284,7 @@ void Init(const Host& host)
     for (const Row* row : g_choiceRows) /* the arm swaps, pods and row copies kept from last time (a row several pages show is sent for each: the same value) */
         if (IsMount(row) && g_mounts.count(MountKey(row))) SendMount(row);
     host.api->log(host.mod, "editor: %s; %d game icons%s", g_catalogOk ? (std::to_string(g_catalog.objects.size()) + " objects, " +
-        std::to_string(g_catalog.rows.size()) + " fields").c_str() : g_catalogError.c_str(), iconCount,
+        std::to_string(g_catalog.rows.size()) + " fields (read in " + std::to_string(loading) + " ms)").c_str() : g_catalogError.c_str(), iconCount,
         HasGetLive() ? "" : "; this HellForge has no get_live (values are not shown)");
 }
 
@@ -3809,6 +4406,7 @@ void AddModContent()
 
 void Tick()
 {
+    ReadSync();
     static ULONGLONG next, nextNotice;
     ULONGLONG now = GetTickCount64();
     if (now >= nextNotice) { nextNotice = now + 250; ReadNotice(); }
@@ -3825,8 +4423,21 @@ float PixelScale(float width, float height)
     return s;
 }
 
+/* A frame of the editor's longer than 100 ms, in its log (at most every 5 s): how long, and its live reads. */
+void NoteSlowFrame(LONGLONG start)
+{
+    static ULONGLONG noted;
+    double ms = (double)(QpcNow() - start) * 1000.0 / (double)QpcFrequency();
+    if (ms < 100 || GetTickCount64() - noted < 5000) return;
+    noted = GetTickCount64();
+    auto& frame = LiveFrame();
+    g_host.api->log(g_host.mod, "editor: a slow frame, %.0f ms: %d live read(s) in %.1f ms, %d left for later frames", ms, frame.reads,
+        (double)frame.ticks * 1000.0 / (double)QpcFrequency(), frame.held);
+}
+
 void Frame(ImDrawList* list, float width, float height, float dt)
 {
+    LONGLONG started = QpcNow();
     g_time += dt;
     g_frame++;
     ReadSession();
@@ -3837,12 +4448,13 @@ void Frame(ImDrawList* list, float width, float height, float dt)
     g_cv.Input(io.MousePos.x, io.MousePos.y, ImGui::IsMouseClicked(0), ImGui::IsMouseClicked(1), io.MouseWheel);
     if (ImGui::IsMouseClicked(0) && g_edit.on) CommitEdit();
     if (ImGui::IsMouseClicked(0) && g_search.active) g_search.active = false;
-    if (g_catalogOk) HandleKeys();
+    if (g_catalogOk || g_sync.on) HandleKeys();
     else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) g_host.close();
     Draw();
     DrawNotice();
     if (g_cv.Clicked()) Sound(sounds::CLICK);
     g_cv.End();
+    NoteSlowFrame(started);
 }
 
 bool NoticeShown() { return g_notice.version != 0 && GetTickCount64() - g_notice.at < NoticeMs(); }
@@ -3856,23 +4468,26 @@ void Overlay(ImDrawList* list, float width, float height)
     g_cv.End();
 }
 
-/* Keys let go while the editor was closed went to the game, not to ImGui: forget every key state on opening and closing,
- * or a key held then (Escape) counts as held when it opens again and closes it at once. */
-void ForgetKeys()
+void Modal(ImDrawList* list, float width, float height, float dt)
 {
+    g_time += dt;
+    g_frame++;
+    float ox, oy, s;
+    Layout(width, height, &ox, &oy, &s);
+    g_cv.Begin(list, ox, oy, s, width, height);
     ImGuiIO& io = ImGui::GetIO();
-    io.ClearEventsQueue();
-    io.ClearInputKeys();
-    io.ClearInputMouse();
-    io.InputQueueCharacters.resize(0);
-    /* where the mouse is now (the queue held the moves): a click before any move lands where it is */
-    POINT at;
-    HWND window = GetForegroundWindow();
-    if (window != nullptr && GetCursorPos(&at) && ScreenToClient(window, &at)) io.AddMousePosEvent((float)at.x, (float)at.y);
+    g_cv.Input(io.MousePos.x, io.MousePos.y, ImGui::IsMouseClicked(0), ImGui::IsMouseClicked(1), io.MouseWheel);
+    if (g_sync.on) SyncKeys();
+    DrawSync();
+    DrawNotice();
+    if (g_cv.Clicked()) Sound(sounds::CLICK);
+    g_cv.End();
 }
 
 void Opened()
 {
+    g_windowShown = true;
+    ShowSyncAlone(false); /* F8 over the prompt: the window opens on the dialog */
     ForgetKeys();
     sounds::Report("the editor opens");
     sounds::EditorOpen(true);
@@ -3884,6 +4499,9 @@ void Opened()
 
 void Closed()
 {
+    g_windowShown = false;
+    /* the window closed on an offer: no, unless it is downloading (the dialog is back over the game when it is ready) */
+    if (g_sync.on && !g_sync.sent && g_sync.state.state != HF_SYNC_DOWNLOADING) AnswerSync(HF_SYNC_DECLINE);
     ForgetKeys();
     g_picker.on = false;
     sounds::Report("the editor closes");

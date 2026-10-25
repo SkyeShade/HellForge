@@ -114,6 +114,8 @@ Object* Catalog::AddCopy(const Object& like, const std::string& id, const std::s
                 row.target = target;
                 row.link = "mod|" + r->component + ":" + std::to_string(ref) + ":" + std::to_string(r->offset);
                 row.also.clear();
+                row.alsoIf.clear();
+                row.alsoAmmo.clear();
                 row.hd2r.clear();
                 row.hd2rAs.clear();
                 if (r->component.find("ComponentData") != std::string::npos) row.shared = false; /* the copy's own record */
@@ -167,6 +169,8 @@ bool Load(const std::wstring& path, Catalog* out, std::string* error)
             object->icon = o.GetString("icon");
             object->search = o.GetString("search");
             object->tone = o.GetString("tone");
+            object->faction = o.GetString("faction");
+            object->group = o.GetString("group");
             object->notOffered = o.GetString("notOffered");
             object->sprite = o.GetString("sprite");
             object->detail = o.GetString("detail");
@@ -186,6 +190,7 @@ bool Load(const std::wstring& path, Catalog* out, std::string* error)
                                     Row& row = out->rows.back();
                                     row.object = object.get();
                                     row.label = r.GetString("label");
+                                    row.difficulty = (int)r.GetNumber("difficulty");
                                     row.category = r.GetString("cat");
                                     row.target = r.GetString("target");
                                     row.key = r.GetString("key");
@@ -208,6 +213,9 @@ bool Load(const std::wstring& path, Catalog* out, std::string* error)
                                     row.link = r.GetString("link");
                                     if (const Value* also = r.Find("also"); also != nullptr && also->kind == Value::Array)
                                         for (const Value& a : also->items) row.also.push_back(a.Str());
+                                    if (const Value* alsoIf = r.Find("alsoIf"); alsoIf != nullptr && alsoIf->kind == Value::Array)
+                                        for (const Value& a : alsoIf->items) row.alsoIf.push_back(a.Str());
+                                    row.alsoAmmo = r.GetString("alsoAmmo");
                                     row.choice = r.GetString("choice");
                                     row.size = (uint32_t)r.GetNumber("size", 0);
                                     row.note = r.GetString("note");

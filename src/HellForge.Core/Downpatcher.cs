@@ -119,6 +119,12 @@ public static partial class Downpatcher
         LocalInstall.NoLinks(gameDestination);
         Directory.CreateDirectory(gameDestination);
         Directory.CreateDirectory(tempFolder);
+        // before the download: room for the pack and every game file not yet in place (ApplyPack checks again with the
+        // largest patch it extracts)
+        var build = SupportedBuild.Current;
+        var packThere = new FileInfo(Path.Combine(tempFolder, $"downpatch-{pack.SourceBuild}-to-{pack.TargetBuild}.zip"));
+        DiskSpace.Require((gameDestination, build.Files.Where(f => !GameCopier.Present(Path.Combine(gameDestination, f.Path), f)).Sum(f => f.Size)),
+            (tempFolder, packThere.Exists && packThere.Length == pack.Size ? 0 : pack.Size));
 
         var hpatchz = await EnsureHpatchz(tempFolder, http, cancellation);
         var packPath = await DownloadPack(tempFolder, pack, http, downloadProgress, cancellation);
@@ -241,13 +247,21 @@ public static partial class Downpatcher
         if (named.Count != listed.Count)
             throw new InvalidDataException($"The build patch leaves out {listed.Count - named.Count} of build {build.BuildId}'s files.");
 
+        // Room for every file not yet in place, and beside the pack for the largest patch extracted at a time. A drive
+        // that filled up mid-patch used to end in hpatchz exit code 24 and "validate the game in Steam".
+        string Destination(DownpatchFile file) => Path.Combine(gameDestination, file.Path.Replace('/', Path.DirectorySeparatorChar));
+        var pending = manifest.Files!.Where(f => !GameCopier.Present(Destination(f), listed[f.Path])).ToList();
+        long largestPatch = pending.Where(f => f.Op == "patch" && f.PatchFile is { Length: > 0 })
+            .Select(f => zip.GetEntry("patches/" + f.PatchFile)?.Length ?? 0).DefaultIfEmpty(0).Max();
+        DiskSpace.Require((gameDestination, pending.Sum(f => listed[f.Path].Size)), (Path.GetDirectoryName(packPath)!, largestPatch));
+
         long done = 0;
         long total = build.TotalBytes;
         foreach (var file in manifest.Files!)
         {
             cancellation.ThrowIfCancellationRequested();
             var expected = listed[file.Path];
-            var destPath = Path.Combine(gameDestination, file.Path.Replace('/', Path.DirectorySeparatorChar));
+            var destPath = Destination(file);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
             if (Matches(destPath, expected))
@@ -290,7 +304,10 @@ public static partial class Downpatcher
                         using var proc = Process.Start(psi) ?? throw new InvalidOperationException("hpatchz did not start.");
                         proc.WaitForExit();
                         if (proc.ExitCode != 0)
-                            throw new InvalidDataException($"Patching {file.Path} failed (hpatchz exit code {proc.ExitCode}): validate the game in Steam and start setup again.");
+                        {
+                            if (File.Exists(partial)) File.Delete(partial); /* a half-written file keeps the space it took */
+                            throw PatchFailed(file.Path, proc.ExitCode, partial);
+                        }
                     }
                     finally
                     {
@@ -323,11 +340,14 @@ public static partial class Downpatcher
         }
     }
 
-    static bool Matches(string path, SupportedFile file)
-    {
-        var info = new FileInfo(path);
-        return info.Exists && info.Length == file.Size && SupportedBuild.Sha1(path).Equals(file.Sha1, StringComparison.OrdinalIgnoreCase);
-    }
+    static bool Matches(string path, SupportedFile file) => SupportedBuild.Accepts(path, file);
+
+    // hpatchz's failure (HDiffPatch 5.1.3, hpatchz.c THPatchResult): 24 is HPATCH_FILEWRITE_NO_SPACE_ERROR, the drive it
+    // wrote `output` to filled up; anything else is Steam's copy or the patch.
+    public static Exception PatchFailed(string file, int exitCode, string output) => exitCode == 24
+        ? new NotEnoughSpaceException($"{new DriveInfo(Path.GetPathRoot(Path.GetFullPath(output))!).Name} ran out of space while patching {file} " +
+            $"(hpatchz exit code 24).")
+        : new InvalidDataException($"Patching {file} failed (hpatchz exit code {exitCode}): validate the game in Steam and start setup again.");
 
     sealed record DownpatchIndex(int SchemaVersion, DownpatchIndexEntry?[]? Packs);
 

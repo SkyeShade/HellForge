@@ -39,9 +39,10 @@ public static partial class GameSettings
     // Verifies the installation's game for a session and points its settings at the profile's user data. A new
     // profile starts from the normal game's settings (graphics, controls, answered first-run prompts), read from
     // vanillaUserData; nothing is written there. Returns the problems instead of preparing when the game is not the
-    // supported build.
-    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData)
+    // supported build. userData is the root the settings point at: the installation's, or a sandboxed session's copy.
+    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData, string? userData = null)
     {
+        var root = userData ?? install.UserData;
         if (!ProfileName().IsMatch(profile)) throw new ArgumentException("Profile names use 1-32 lowercase letters, digits or hyphens.");
         var build = SupportedBuild.Current;
         var settings = build.Files.Single(file => file.Path == SettingsPath);
@@ -58,7 +59,7 @@ public static partial class GameSettings
         Directory.CreateDirectory(install.Temp);
         var others = build with { Files = build.Files.Where(file => file.Path != SettingsPath).ToList() };
         problems.AddRange(others.Verify(install.Game, install.VerifyCache));
-        var profileData = install.GameProfile(profile);
+        var profileData = Path.Combine(root, "profiles", profile);
         var files = build.Files.Select(file => file.Path).ToList();
         if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files);
 
@@ -78,7 +79,7 @@ public static partial class GameSettings
             seeded = true;
         }
         var original = Utf8.GetString(File.ReadAllBytes(install.OriginalSettings));
-        File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, install.UserData, profile)));
+        File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, root, profile)));
         return new(build.BuildId, problems, profileData, seeded, files);
     }
 

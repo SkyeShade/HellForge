@@ -206,12 +206,22 @@ def main(runtime, out_json, out_header):
         walk(read_table(domains / f'{name}.lua'), [])
 
     # Ammunition: the six weapons whose shot is their default ammunition's (an entity delta), not ProjectileWeapon +0.
+    # Its rows reach other weapons only when those equip the same ammunition (research/ammunition-projectiles: the item's
+    # defaultOf against unlockListedBy): "optionalFor", which the editor names as conditional (bug-report-0035).
+    research = json.loads((Path(runtime) / 'research' / 'ammunition-projectiles-F5FEE03DCFDB.json').read_text(encoding='utf-8'))
+    rows = {w['weapon']: w for w in research['weapons']}
     ammunition = []
     for weapon, a in sorted(outputs['ammunition'].items()):
         if a['backing']['kind'] != 'entity_delta' or a['backing']['offset'] != 0:
             raise ValueError(f'ammunition {weapon}: not a projectile entity delta')
+        r = rows[weapon]
+        if r['ammunitionItem'] != a['item'] or r['projectileType'] != a['currentDefault']['projectileType']:
+            raise ValueError(f'ammunition {weapon}: the research names another item or projectile')
+        item = next(i for i in r['ammunitionItems'] if i['item'] == a['item'])
         ammunition.append({'weapon': weapon, 'item': a['item'], 'resource': a['resource'], 'record': a['settingsIndex'],
-                           'component': a['component'], 'offset': a['dataOffset'], 'projectile': a['currentDefault']['projectileType']})
+                           'component': a['component'], 'offset': a['dataOffset'], 'projectile': a['currentDefault']['projectileType'],
+                           'damage': r['damageInfo']['recordType'],
+                           'optionalFor': sorted(set(item['unlockListedBy']) - set(item['defaultOf']))})
 
     # Weapons whose shot can be swapped (HD2R Editor's hosts): ProjectileWeapon +0 ("component"), or their default
     # ammunition's delta ("ammunition"); the others' reasons, for the editor's "not offered" note.
@@ -225,6 +235,12 @@ def main(runtime, out_json, out_header):
         if name in hosts:
             continue
         direct = [r for r in roles.values() if r.get('status') == 'ACTIVE_DIRECT' and r.get('writable', True)]
+        # Where WeaponRounds +64 and ProjectileWeapon +0 carry the same projectile, the shot takes WeaponRounds +64 when
+        # the weapon has no magazine or heat (none of these do): the type resolver (game.dll 0x7456D0) checks heat (flag
+        # bit 9), then a magazine (bit 7), then rounds (bit 8, +0x40), and every live WeaponRounds weapon in the decoded
+        # snapshots (SG-8 Punisher, SG-88 Break-Action Shotgun) has bit 8.
+        direct = direct or [r for r in roles.values() if r.get('status') == 'AMBIGUOUS' and r.get('member') == 'WeaponRounds +64' and
+                            r.get('candidatesAgree') and r.get('reason', '').startswith('Both WeaponRounds PrimaryProjectileType and ProjectileWeapon +0')]
         if direct and direct[0].get('member') == 'ProjectileWeapon +0':
             hosts[name] = {'mechanism': 'component', 'class': direct[0].get('compatibilityClass')}
         elif direct and direct[0].get('member') == 'WeaponRounds +64':

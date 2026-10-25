@@ -186,8 +186,25 @@ static class StatsTests
                 "The programmable ammunition's projectile.");
             check(weapons["AC-8 Autocannon"].Fields["function_ammo.projectile"] is { Component: "ProjectileWeaponComponentData", Offset: 576 } &&
                 weapons["R-2124 Constitution"].Fields["attack.feed_primary.projectile"] is { Component: "WeaponRoundsComponentData", Offset: 64 } &&
-                weapons["AR-2 Coyote"].Fields.ContainsKey("attack.primary.projectile") && !weapons["M-1000 Maxigun"].Fields.ContainsKey("attack.primary.projectile"),
-                "Programmable ammunition, rounds-fed weapons and HD2Runtime 0.40's direct sources swap; a source it marks not writable does not.");
+                weapons["AR-2 Coyote"].Fields.ContainsKey("attack.primary.projectile"),
+                "Programmable ammunition, rounds-fed weapons and HD2Runtime 0.40's direct sources swap.");
+            // the rest, where their rounds really come from (mappings/projectile-sources.json)
+            JsonNode SourceRow(string name, string key) => Object(name)["page"]!.AsArray().SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray())
+                .Select(r => r!).Single(r => r["key"]!.GetValue<string>() == key);
+            check(weapons["M-1000 Maxigun"].Fields["attack.primary.projectile"] is { Component: "ProjectileWeaponComponentData", Record: 257, Offset: 0 } &&
+                weapons["PLAS-101 Purifier"].Fields["charge.level_1.projectile"] is { Component: "WeaponChargeComponentData", Record: 4, Offset: 4 } &&
+                !weapons["PLAS-101 Purifier"].Fields.ContainsKey("charge.level_3.projectile") &&
+                weapons["LAS-17 Double-Edge Sickle"].Fields["heat.level_2.projectile"] is { Component: "WeaponHeatComponentData", Record: 21, Offset: 28 } &&
+                weapons["MG-43 Machine Gun"].Fields["magazine.pattern_5.projectile"] is { Component: "WeaponMagazineComponentData", Record: 255, Offset: 20 } &&
+                weapons["SG-8 Punisher"].Fields["ammunition.projectile"] is { Kind: "EntityDelta", Component: "117:64", Record: 96, Offset: 165124 } &&
+                weapons["SG-20 Halt"].Fields["ammunition.stun_alternate.projectile"] is { Kind: "EntityDelta", Component: "117:68", Record: 121 } &&
+                weapons["SG-88 Break-Action Shotgun"].Fields["attack.feed_primary.projectile"] is { Component: "WeaponRoundsComponentData", Record: 12, Offset: 64 },
+                "Charge and heat levels, magazine patterns, ammunition options, rounds feeds and the Maxigun's own round.");
+            check(SourceRow("MG-43 Machine Gun", "magazine.pattern_5.projectile")["pick"]!.GetValue<string>() == "projectile" &&
+                SourceRow("SG-8 Punisher", "ammunition.birdshot.projectile")["pick"]!.GetValue<string>() == "projectile" &&
+                SourceRow("PLAS-15 Loyalist", "charge.level_3.projectile")["pick"]!.GetValue<string>() == "projectile" &&
+                Object("MG-43 Machine Gun")["notOffered"] == null && Object("PLAS-101 Purifier")["notOffered"] == null,
+                "They pick projectiles, and their weapons no longer say no swap is offered.");
             var fire = StatsSchema.Current.Targets["statuses"]["Fire"].Fields;
             check(StatsSchema.Current.Targets["statuses"].Count == 71 && fire["status.duration"] is { Kind: "StatusEffectSettings", Record: 5, Offset: 40 } &&
                 fire["damage.standard_damage"].Record == 519 && StatsCatalog.Items.Count(i => i.Nav == "statuses") == 71,

@@ -37,7 +37,7 @@ public static class ModBuilds
         var src = Path.Combine(modFolder, "src");
         if (Directory.Exists(src))
             files.AddRange(Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories)
-                .Where(f => !Path.GetRelativePath(src, f).Split(Path.DirectorySeparatorChar).Any(p => p.StartsWith('.')))
+                .Where(f => !Path.GetRelativePath(src, f).Split(Path.DirectorySeparatorChar).Any(p => p.StartsWith('.') || p.StartsWith("~$", StringComparison.Ordinal)))
                 .Order(StringComparer.Ordinal));
         return files;
     }
@@ -49,7 +49,7 @@ public static class ModBuilds
         foreach (var file in SourceFiles(modFolder))
         {
             hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(modFolder, file).Replace('\\', '/') + "\n"));
-            hash.AppendData(File.ReadAllBytes(file));
+            hash.AppendData(ModCatalog.ReadShared(file));
             hash.AppendData("\n"u8);
         }
         return Convert.ToHexStringLower(hash.GetHashAndReset());
@@ -97,6 +97,11 @@ public static class ModBuilds
                 if (!ModKit.ToolsReady(sdk))
                 {
                     if (!installTools) throw new InvalidDataException("the mod tools are not installed (the launcher's Mods page: Install mod tools).");
+                    // Linux: the session is in a network namespace with no way out, where the download is refused (issue
+                    // 20); hellforge-linux.sh fetches them before it enters the namespace.
+                    if (LinuxNetworkBlock.Requested)
+                        throw new InvalidDataException("the mod tools (Zig) are not installed, and the session has no network to fetch them: start HellForge " +
+                            "with app/linux/hellforge-linux.sh, which fetches them first.");
                     log?.Invoke("Installing the mod tools (HellForge's pinned Zig) to build source mods...");
                     progress?.Invoke(new("tools", done, total, mod.Name));
                     ModKit.InstallToolsAsync(sdk, ide: false, line => log?.Invoke(line)).GetAwaiter().GetResult();

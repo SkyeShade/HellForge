@@ -2,56 +2,97 @@ using HellForge.Core;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
-// The host's stats in co-op (docs/multiplayer.md step 5, HellForge.Core.StatsSync): everyone in a session plays with the
-// stats of the player whose lobby it is.
-//   host:   this machine's Local Stats file (mods/zz.local.stats/hellforge-stats.json, which the in-game editor saves on
-//           APPLY) goes to every friend in a lobby hosted here when they join, and again, numbered, whenever it changes:
-//           "stats.set" [version, gzip of the file ("" none), gzip of the in-game editor's mod content values
+// Stats in co-op (docs/multiplayer.md "Stats in co-op", HellForge.Core.StatsSync). By default every player keeps their own
+// (AssetShare loads the packages friends' changes need); a host may share its stats instead (the Mods page:
+// ModSettings.HostStats), and then everyone in its lobby plays with them.
+//   host:   goes to every friend in a lobby hosted here when they join, and again, numbered, whenever it changes:
+//           "stats.set" [version, gzip of this machine's Local Stats file (mods/zz.local.stats/hellforge-stats.json, which
+//           the in-game editor saves on APPLY; "" none), gzip of the in-game editor's mod content values
 //           (hellforge-editor/mod-stats.json: content mods added, which Local Stats does not hold), gzip of its arm swaps
-//           (the "mounts" of hellforge-editor/editor-settings.json: a vehicle's mount slot and the weapon it holds)].
-//   joiner: the host's file arrives from the friend whose lobby this machine joined; this backend serves the session's
-//           live-edit pipe (\\.\pipe\hellforge-live-<run id>, native/mod-loader/live.c) and turns it into live edits of
-//           the Local Stats mod in this game. The host's mod content values go to host-mod-stats.json in the in-game
-//           editor's folder, which the editor applies in place of its own while joined, and the host's Local Stats file to
-//           host-stats.json beside it, which the editor shows as the saved changes (marks, its Changes list), read-only,
-//           and the host's arm swaps to host-mounts.json, which the editor applies in place of its own.
-//           When the host goes (left, closed or silent), the files go and its own values come back.
-// The game is told its role ("session" solo / host / joiner, with the host's name): the in-game editor turns read-only
-// while joined. Fields live editing does not reach (attachments, status multipliers) stay each machine's own.
+//           (the "mounts" of hellforge-editor/editor-settings.json: a vehicle's mount slot and the weapon it holds),
+//           "host" (friends play with these) or "own" (they keep their own; the three files are sent empty)].
+//   joiner: "stats.set" arrives from the friend whose lobby this machine joined. With "own" its game keeps its own values.
+//           With "host" this backend serves the session's live-edit pipe (\\.\pipe\hellforge-live-<run id>,
+//           native/mod-loader/live.c) and turns the host's file into live edits of the Local Stats mod in this game. The
+//           host's mod content values go to host-mod-stats.json in the in-game editor's folder, which the editor applies in
+//           place of its own while joined, and the host's Local Stats file to host-stats.json beside it, which the editor
+//           shows as the saved changes (marks, its Changes list), read-only, and the host's arm swaps to host-mounts.json,
+//           which the editor applies in place of its own. When the host goes (left, closed or silent) or stops sharing,
+//           the files go and its own values come back.
+// The game is told its role ("session" solo / host / joiner, whose stats it plays with, and the host's name): the in-game
+// editor turns read-only while it plays with the host's. Fields live editing does not reach (attachments, status
+// multipliers) stay each machine's own.
 public sealed class StatsShare : IAsyncDisposable
 {
     public const string FileName = "hellforge-stats.json";
     public const string ModValuesName = "mod-stats.json", HostModValuesName = "host-mod-stats.json", HostStatsName = "host-stats.json";
     public const string EditorSettingsName = "editor-settings.json", HostMountsName = "host-mounts.json";
+    // What a host's file may unpack to (RecordGuard.HostFileLimits).
+    const int HostFileBytes = 1 << 20;
     readonly IPeerTransport transport;
     readonly LobbyService lobby;
     readonly string statsFile, modValuesFile, hostModValuesFile, hostStatsFile, editorSettingsFile, hostMountsFile;
     readonly Func<ulong, string> nameOf;
     readonly Action<string> log;
     readonly LiveEditServer live;
+    // The session's live-edit pipe, which mod sync shares (ModSync's offers to the game, its answers back).
+    public LiveEditServer Live => live;
+
+    // Whether joiners of this player's lobbies play with edited stats: it shares them (ModSettings.HostStats) and has
+    // edits. A public lobby's listing says so (DirectoryService).
+    public bool SharesEdited => hostShares() && Edited;
+
+    // Whether this player plays with edited stats: Local Stats edits, the in-game editor's mod content values or arm swaps.
+    public bool Edited
+    {
+        get
+        {
+            string? stats, mods, mounts;
+            lock (gate) (stats, mods, mounts) = (mine, mineMods, mineMounts);
+            return StatsSync.Values(stats, out var bootOnly).Count > 0 || bootOnly > 0 || !string.IsNullOrEmpty(mounts) && mounts != "{}" || HasModValues(mods);
+        }
+    }
+
+    // mod-stats.json: {category: {target: {field: number}}}; any number is an edit.
+    static bool HasModValues(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(json) is System.Text.Json.Nodes.JsonObject root && root.Select(c => c.Value).OfType<System.Text.Json.Nodes.JsonObject>()
+                .SelectMany(c => c.Select(t => t.Value)).OfType<System.Text.Json.Nodes.JsonObject>().SelectMany(t => t.Select(f => f.Value)).OfType<System.Text.Json.Nodes.JsonValue>().Any();
+        }
+        catch (System.Text.Json.JsonException) { return false; }
+    }
     readonly StatsSync sync = new();
     readonly SemaphoreSlim applying = new(1, 1);
     readonly object gate = new();
     readonly Timer timer;
-    // host: the file last read, its version, and the friends that have it
+    // host: the file last read, its version, whether friends play with it, and the friends that have it
     string? mine, mineMods, mineSettings, mineMounts;
     DateTime mineStamp, modsStamp, settingsStamp;
     long length = -1, modsLength = -1, settingsLength = -1;
     long version;
+    bool sharing;
+    readonly Func<bool> hostShares;
     readonly HashSet<ulong> sentTo = [];
-    // joiner: the host this game plays with, its last version and file
+    // joiner: the host this game is joined to, its last version, whether it shares its stats, and its files
     ulong hostPeer;
     long hostVersion = -1;
+    bool hostShared;
     string? hostStats, hostMods, hostMounts;
     string role = "solo", roleHost = "";
     bool sessionSent;
 
-    public StatsShare(IPeerTransport transport, LobbyService lobby, string runId, string modsFolder, Func<ulong, string> nameOf, Action<string> log)
+    // hostShares: whether friends play with this machine's stats when it hosts (ModSettings.HostStats; read each second).
+    public StatsShare(IPeerTransport transport, LobbyService lobby, string runId, string modsFolder, Func<ulong, string> nameOf, Action<string> log,
+        Func<bool>? hostShares = null)
     {
         this.transport = transport;
         this.lobby = lobby;
         this.nameOf = nameOf;
         this.log = log;
+        this.hostShares = hostShares ?? (() => false);
         statsFile = Path.Combine(modsFolder, "zz.local.stats", FileName);
         var editor = Path.Combine(modsFolder, BundledMods.EditorFolder);
         modValuesFile = Path.Combine(editor, ModValuesName);
@@ -72,24 +113,36 @@ public sealed class StatsShare : IAsyncDisposable
         try
         {
             ReadMine();
+            var shares = hostShares();
+            lock (gate)
+                if (shares != sharing)
+                {
+                    (sharing, version, sessionSent) = (shares, version + 1, false); /* the game's editor shows which */
+                    sentTo.Clear();
+                    log(shares ? "Stats: friends in lobbies hosted here play with this machine's stats." : "Stats: every player keeps their own stats.");
+                }
             var friends = lobby.HostedFriends();
             List<ulong> send;
             byte[] packed, packedMods, packedMounts;
             long sending;
+            bool shared;
             lock (gate)
             {
                 sentTo.IntersectWith(friends);
                 send = friends.Where(f => !sentTo.Contains(f)).ToList();
                 sentTo.UnionWith(send);
-                packed = StatsSync.Pack(mine ?? "");
-                packedMods = StatsSync.Pack(mineMods ?? "");
-                packedMounts = StatsSync.Pack(mineMounts ?? "");
+                packed = StatsSync.Pack(sharing ? mine ?? "" : "");
+                packedMods = StatsSync.Pack(sharing ? mineMods ?? "" : "");
+                packedMounts = StatsSync.Pack(sharing ? mineMounts ?? "" : "");
                 sending = version;
+                shared = sharing;
             }
             foreach (var friend in send)
             {
-                transport.Send(friend, new Frame("stats.set").Add(sending).Add(packed).Add(packedMods).Add(packedMounts).Encode(), reliable: true);
-                log($"Stats: sent this host's Local Stats, mod content values and arm swaps (version {sending}, {packed.Length} + {packedMods.Length} + {packedMounts.Length} bytes) to {LobbyService.EntityId(friend)}.");
+                transport.Send(friend, new Frame("stats.set").Add(sending).Add(packed).Add(packedMods).Add(packedMounts).Add(shared ? "host" : "own").Encode(),
+                    reliable: true);
+                log(shared ? $"Stats: sent this host's Local Stats, mod content values and arm swaps (version {sending}, {packed.Length} + {packedMods.Length} + {packedMounts.Length} bytes) to {LobbyService.EntityId(friend)}."
+                    : $"Stats: told {LobbyService.EntityId(friend)} to keep its own stats (version {sending}).");
             }
             bool hostGone;
             lock (gate)
@@ -97,8 +150,8 @@ public sealed class StatsShare : IAsyncDisposable
                 hostGone = hostPeer != 0 && !lobby.HostsJoinedLobby(hostPeer);
                 if (hostGone)
                 {
-                    log($"Stats: the host {LobbyService.EntityId(hostPeer)} is gone; this game's own values come back.");
-                    (hostPeer, hostVersion, hostStats, hostMods, hostMounts) = (0, -1, null, null, null);
+                    log($"Stats: the host {LobbyService.EntityId(hostPeer)} is gone" + (hostShared ? "; this game's own values come back." : "."));
+                    (hostPeer, hostVersion, hostShared, hostStats, hostMods, hostMounts) = (0, -1, false, null, null, null);
                 }
                 var (wantRole, wantHost) = hostPeer != 0 ? ("joiner", nameOf(hostPeer)) : friends.Count > 0 ? ("host", "") : ("solo", "");
                 if (wantRole != role || wantHost != roleHost) (role, roleHost, sessionSent) = (wantRole, wantHost, false);
@@ -165,6 +218,14 @@ public sealed class StatsShare : IAsyncDisposable
         {
             try
             {
+                // The in-game editor parses these natively: only a JSON object within RecordGuard's limits, written out
+                // by System.Text.Json, reaches it.
+                if (text is { Length: > 0 })
+                {
+                    text = Canonical(text, out var dropped);
+                    if (text == null) log($"Stats: the host's {what} is not a file the editor reads; it is left out.");
+                    else if (dropped > 0) log($"Stats: {dropped} value(s) of the host's {what} are beyond the limits and left out.");
+                }
                 if (text == null) { if (File.Exists(path)) File.Delete(path); return; }
                 if (!Directory.Exists(Path.GetDirectoryName(path))) return;
                 var partial = path + ".partial";
@@ -175,33 +236,46 @@ public sealed class StatsShare : IAsyncDisposable
         }
     }
 
-    // A friend's backend: the host's stats, accepted only from the friend whose lobby this machine joined.
+    static string? Canonical(string text, out int dropped)
+    {
+        dropped = 0;
+        try { return System.Text.Json.Nodes.JsonNode.Parse(text) is System.Text.Json.Nodes.JsonObject root && RecordGuard.Bounded(root, RecordGuard.HostFileLimits, out dropped) is { } kept ? kept.ToJsonString() : null; }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    // A friend's backend: the host's stats, or that every player keeps their own, accepted only from the friend whose lobby
+    // this machine joined.
     public void FromPeer(ulong peer, Frame frame)
     {
         if (frame.Type != "stats.set" || !lobby.HostsJoinedLobby(peer)) return;
-        string text, mods, mounts;
+        var shared = frame.Count <= 4 || frame.Text(4) != "own"; /* a host from before "own": it shares */
+        string? text = null, mods = null, mounts = null;
         try
         {
-            text = StatsSync.Unpack(frame.Bytes(1));
-            mods = frame.Count > 2 ? StatsSync.Unpack(frame.Bytes(2)) : ""; /* a host from before mod content values: none */
-            mounts = frame.Count > 3 ? StatsSync.Unpack(frame.Bytes(3)) : ""; /* a host from before arm swaps: none */
+            if (shared)
+            {
+                text = StatsSync.Unpack(frame.Bytes(1), HostFileBytes);
+                mods = frame.Count > 2 ? StatsSync.Unpack(frame.Bytes(2), HostFileBytes) : ""; /* a host from before mod content values: none */
+                mounts = frame.Count > 3 ? StatsSync.Unpack(frame.Bytes(3), HostFileBytes) : ""; /* a host from before arm swaps: none */
+            }
         }
         catch (Exception error) when (error is InvalidDataException or IOException) { log("Stats: the host's stats could not be read: " + error.Message); return; }
         if (!long.TryParse(frame.Text(0), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var received)) return;
         lock (gate)
         {
             if (peer == hostPeer && received <= hostVersion) return;
-            (hostPeer, hostVersion, hostStats, hostMods, hostMounts) = (peer, received, text, mods, mounts);
             var name = nameOf(peer);
-            if (role != "joiner" || roleHost != name) (role, roleHost, sessionSent) = ("joiner", name, false);
+            if (role != "joiner" || roleHost != name || hostShared != shared) (role, roleHost, sessionSent) = ("joiner", name, false);
+            (hostPeer, hostVersion, hostShared, hostStats, hostMods, hostMounts) = (peer, received, shared, text, mods, mounts);
         }
-        log($"Stats: the host's Local Stats, version {received}, from {LobbyService.EntityId(peer)}.");
+        log(shared ? $"Stats: the host's Local Stats, version {received}, from {LobbyService.EntityId(peer)}."
+            : $"Stats: the host {LobbyService.EntityId(peer)} lets every player keep their own stats (version {received}).");
         WriteHost(text, mods, mounts);
         _ = ApplyAsync();
     }
 
     // A message for the player, which the in-game editor shows over the game (a refused join: MultiplayerHost); kind
-    // "error" or "info". Not kept: a game that is not connected does not get it.
+    // "error", "info" or "brief" (a note in the corner). Not kept: a game that is not connected does not get it.
     public void Notice(string kind, string title, IReadOnlyList<string> lines)
     {
         if (!live.Connected || live.Mismatched) { log($"Notice not shown, the game is not connected: {title}"); return; }
@@ -212,23 +286,35 @@ public sealed class StatsShare : IAsyncDisposable
         });
     }
 
-    // Takes the game to the host's values (joined) or its own, one request at a time; a request the game refused is
-    // logged and tried again with the next change.
+    // Whether the lobby plays with its host's stats, as the game is told (HfApi stats_source): joined to a host who shares
+    // them, or hosting and sharing them. Called with gate held.
+    bool LobbyShared() => role == "joiner" ? hostPeer != 0 && hostShared : role == "host" && sharing;
+    public bool LobbyPlaysHostStats { get { lock (gate) return LobbyShared(); } }
+    // This machine's Local Stats file as last read (AssetShare: this player's projectile swaps).
+    public string? LocalStats { get { lock (gate) return mine; } }
+
+    // Takes the game to the host's values (joined to a host who shares them) or its own, one request at a time; a request
+    // the game refused is logged and tried again with the next change.
     async Task ApplyAsync()
     {
         if (!live.Connected || live.Mismatched) return;
         await applying.WaitAsync();
         try
         {
+            // this game's own files as they are now, not as the last tick read them: a join (the host's values) can come
+            // before the first tick, and its own changes would then not give way
+            ReadMine();
             string? host, own;
             string sessionRole, sessionHost;
-            lock (gate) (host, own, sessionRole, sessionHost) = (hostPeer != 0 ? hostStats ?? "" : null, mine, role, roleHost);
+            bool sessionShared;
+            lock (gate)
+                (host, own, sessionRole, sessionHost, sessionShared) = (hostPeer != 0 && hostShared ? hostStats ?? "" : null, mine, role, roleHost, LobbyShared());
             bool sendSession;
             lock (gate) sendSession = !sessionSent;
             if (sendSession)
             {
-                var session = await live.SessionAsync(sessionRole, sessionHost);
-                lock (gate) if (session.Ok && sessionRole == role && sessionHost == roleHost) sessionSent = true;
+                var session = await live.SessionAsync(sessionRole, sessionHost, sessionShared ? "host" : "own");
+                lock (gate) if (session.Ok && sessionRole == role && sessionHost == roleHost && sessionShared == LobbyShared()) sessionSent = true;
             }
             var requests = sync.Plan(host, own);
             int done = 0, refused = 0;

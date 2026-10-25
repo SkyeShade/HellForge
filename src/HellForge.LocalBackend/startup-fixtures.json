@@ -5,7 +5,7 @@
     { "path": "/Configuration/GameClient", "requestId": "0x26bb04ad", "parserRva": "0x1047c40", "bodySource": "game-client-config.json#gameClient", "body": {} },
     { "path": "/WarSeason/current/WarId", "requestId": "0x2efd74ca", "parserRva": "0x106fca0", "body": { "id": 801 } },
     { "path": "/WarSeason/801/warinfo", "requestId": "0x776c9501", "parserRva": "0x106fdb0", "bodySource": "war-data.json#warInfo", "body": {} },
-    { "path": "/WarSeason/GalacticWarEffects", "requestId": "0x8d1c1b79", "parserRva": "0x1081ba0", "arrayWrapper": true, "body": [] },
+    { "path": "/WarSeason/GalacticWarEffects", "requestId": "0x8d1c1b79", "parserRva": "0x1081ba0", "arrayWrapper": true, "bodySource": "galactic-war-effects.json#effects", "body": [] },
     { "path": "/WarSeason/801/Status", "requestId": "0xb31ac0d3", "parserRva": "0x1071a10", "bodySource": "war-data.json#status", "body": {} },
     { "path": "/Operation", "requestId": "0xbca6c557", "parserRva": "0x105ce00", "body": { "nextOperationId": 1 } },
     { "path": "/Progression/ItemPackages", "requestId": "0xb4219e51", "parserRva": "0x107e850", "arrayWrapper": true, "bodySource": "progression-data.json#itemPackages", "body": [] },

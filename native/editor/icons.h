@@ -1,6 +1,6 @@
-/* The editor's images in one texture: the game's weapon and throwable silhouettes (game-icons.bin, extracted from the
- * player's own game by HellForge's EditorIcons.cs; nothing of them ships), the HD2R Editor's marker icons (ui_marks.h), and
- * HellForge's icon (ui_logo.h). The masks are drawn in a colour, the icon as it is. */
+/* The editor's images in one texture: the game's weapon and throwable silhouettes and faction emblems (game-icons.bin,
+ * extracted from the player's own game by HellForge's EditorIcons.cs; nothing of them ships), the HD2R Editor's marker
+ * icons (ui_marks.h), and HellForge's icon (ui_logo.h). The masks are drawn in a colour, the icon as it is. */
 #pragma once
 #include <d3d11.h>
 #include <d3d12.h>
@@ -10,7 +10,7 @@
 namespace icons
 {
 /* the kinds of game-icons.bin (EditorIcons.cs), then the editor's own */
-enum Kind { WEAPON = 0, THROWABLE = 1, STRATAGEM = 2, STRATAGEM_WHITE = 3, BOOSTER = 4, PASSIVE = 5, MOD = 6, MARK = 16 };
+enum Kind { WEAPON = 0, THROWABLE = 1, STRATAGEM = 2, STRATAGEM_WHITE = 3, BOOSTER = 4, PASSIVE = 5, MOD = 6, FACTION = 7, DIFFICULTY = 8, MARK = 16 };
 struct Icon { ImVec2 uv0, uv1; int width, height; };
 
 /* Reads game-icons.bin (when there is one; version 1 or 2) and lays every image out in the atlas. Returns how many game

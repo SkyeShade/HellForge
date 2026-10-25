@@ -4,6 +4,8 @@ using HellForge.Session;
 //   play --install <installation> --profile <profile folder> [--template <name>] [--local-playfab] [--multiplayer]
 //        [--live-war <cache file> | --open-war | --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>]]
 //        [--engine-log] [--game-options <the player's launch options>]
+//        [--mod-sync <the mod sync session file>] [--sandbox]   (--sandbox, or HELLFORGE_SANDBOX=1: the game at low integrity
+//        with the Steam broker, docs/steam-bridge.md; in development)
 //   version
 //   census <network-census.jsonl>   (a session's network census, summarised as the session's result.json holds it)
 //   network-probe <backend port> <report>   (the network block's probe as a Linux session runs it, PlaySession.NetworkProbeInProcess)
@@ -11,7 +13,7 @@ using HellForge.Session;
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
     "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war | --war-server <https origin> [--war-server-ca <pem file>] " +
-    "[--war-server-token <file>]] [--engine-log] [--game-options <options>] | version | census <log>";
+    "[--war-server-token <file>]] [--engine-log] [--game-options <options>] [--mod-sync <file>] [--sandbox] | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
@@ -42,6 +44,7 @@ for (var i = 1; i < args.Length; i++)
         case "--template": options.Template = Value(); break;
         case "--live-war": options.LiveWar = Value(); break;
         case "--open-war": options.OpenWar = true; break;
+        case "--war-seed": options.WarSeed = uint.Parse(Value(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture); break;
         case "--war-server": options.WarServer = Value(); break;
         case "--war-server-ca": options.WarServerCa = Value(); break;
         case "--war-server-token": options.WarServerToken = Value(); break;
@@ -49,6 +52,8 @@ for (var i = 1; i < args.Length; i++)
         case "--multiplayer": options.Multiplayer = true; break;
         case "--engine-log": options.EngineLog = true; break;
         case "--game-options": gameOptions = Value(); break;
+        case "--mod-sync": options.ModSync = Value(); break;
+        case "--sandbox": options.Sandbox = true; break;
         default: Console.Error.WriteLine(Usage); return 2;
     }
 }
@@ -57,6 +62,8 @@ if (options.Install.Length == 0) { Console.Error.WriteLine(Usage); return 2; }
 if ((options.WarServer != null && (options.LiveWar != null || options.OpenWar)) ||
     (options.WarServer == null && (options.WarServerCa != null || options.WarServerToken != null)))
 { Console.Error.WriteLine(Usage); return 2; }
+// as the other HELLFORGE_ diagnostics: a session the launcher starts takes it from the environment
+if (Environment.GetEnvironmentVariable("HELLFORGE_SANDBOX") == "1") options.Sandbox = true;
 try
 {
     // checked as the launcher checks them (GameLaunchOptions): never a switch the session sets itself
@@ -81,6 +88,7 @@ sealed class PlayOptions
     public string? Template { get; set; }
     public string? LiveWar { get; set; }
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
+    public uint WarSeed { get; set; } /* its subfaction seed (backend --war-seed; 0 the default layout) */
     public string? WarServer { get; set; } /* a war server's origin (backend --war server), with its CA and token files */
     public string? WarServerCa { get; set; }
     public string? WarServerToken { get; set; }
@@ -88,4 +96,6 @@ sealed class PlayOptions
     public bool Multiplayer { get; set; }
     public bool EngineLog { get; set; }
     public List<string> GameOptions { get; set; } = [];
+    public string? ModSync { get; set; } /* the next session's mods after a mod sync (ModSyncSession); this session only */
+    public bool Sandbox { get; set; } /* low-integrity game process with a Steam broker (docs/steam-bridge.md phase 4) */
 }

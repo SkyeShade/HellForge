@@ -35,7 +35,8 @@ public static unsafe partial class CloudSmoke
         // Forwarders are resolved by the loader's search, which the game's own folder satisfies; here it is set explicitly.
         SetDllDirectory(bin);
         var module = NativeLibrary.Load(Path.Combine(bin, "steam_api64.dll"));
-        var forwarded = NativeLibrary.GetExport(module, "SteamAPI_GetHSteamUser");
+        // one the stand-in does not write itself (it writes SteamAPI_GetHSteamUser, for bridge mode)
+        var forwarded = NativeLibrary.GetExport(module, "SteamGameServer_GetHSteamUser");
         var real = GetModuleHandle("steam_api64_hellforge.dll");
         Expect(real != 0 && forwarded != 0 && !InModule(forwarded, module) && InModule(forwarded, real),
             "A forwarded export resolves into the original DLL");

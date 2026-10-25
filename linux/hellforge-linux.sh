@@ -6,7 +6,8 @@
 # What it does: checks the programs it needs, finds Steam, the prefix and Proton, and, until the game is copied, moves
 # Steam's download of the supported build into the prefix (where setup reads it). Then it bridges Steam's local ports
 # (hf-bridge-host.sh, unless one is running already), fetches the live galactic war while this PC still has its network
-# (the session that follows has none and serves this copy), and starts the launcher inside a network namespace with
+# (the session that follows has none and serves this copy) and, once, the mod tools that build source mods, and starts the
+# launcher inside a network namespace with
 # loopback only (hellforge-offline.sh), where hf-inner.sh forwards Steam's ports and runs HellForge.exe through Proton.
 # The bridge it started stops when HellForge closes.
 #
@@ -165,6 +166,20 @@ if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache"; then echo "Fetch
 else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
 # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
 for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
+
+# The mod tools (HellForge's pinned Zig, about 90 MB from ziglang.org), once, also now: source mods are compiled when a
+# session starts, inside the namespace, where the download is refused (issue 20). Fetched again only when the pin changes.
+# Not fatal either: without them source mods stay off.
+pin="$(grep '"name": "zig"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E 's/.*"sha256": "([0-9A-Fa-f]+)".*/\1/' || true)"
+zigReady() { [ -f "$INSTALL/tools/zig/zig.exe" ] && [ "$(cat "$INSTALL/tools/zig/.hellforge-archive-sha256" 2>/dev/null)" = "$pin" ]; }
+if [ -n "$pin" ] && ! zigReady; then
+  echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..."
+  root="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
+  timeout 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null || true
+  for _ in $(seq 1 900); do pgrep -f "HellForge.Cli.exe mod-tools" >/dev/null || break; sleep 1; done
+  if zigReady; then echo "Fetched the mod tools."
+  else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
+fi
 
 # Run through bash, so the scripts work without their executable bit (lost when copied from Windows or unpacked by setup).
 bash "$here/hellforge-offline.sh" bash "$here/hf-inner.sh" "$@"

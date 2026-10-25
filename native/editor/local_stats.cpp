@@ -17,6 +17,8 @@ std::map<std::string, Change> g_pending; /* by category, target and key: the lat
 Value g_saved;                           /* the file as last read or written */
 Value g_modSaved;                        /* the mod content file (mod-stats.json), as last read or written */
 std::wstring g_modPath;
+std::wstring g_sandboxFolder;
+std::map<std::string, Change> g_journal; /* sandboxed: every change saved this session, the latest of each field */
 unsigned g_version = 1;
 bool g_hostShown;                        /* joined: Get and Entries show the host's */
 Value g_hostSaved, g_hostModSaved;       /* the host's Local Stats file and mod content values */
@@ -102,10 +104,45 @@ bool ReadDocument(const std::wstring& folder, Value* document, bool* existed, st
     if (!document->Find("format")) document->members.insert(document->members.begin(), {"format", Value::MakeNumber(1, true)});
     return true;
 }
+/* Sandboxed (low integrity, which cannot write to mods/): the session's saved changes, as a list the backend applies to
+ * the Local Stats file and the editor's mod-stats.json once the game is gone (SandboxStats.cs), checking each. */
+std::string JournalText(const std::map<std::string, Change>& journal)
+{
+    Value root, list;
+    root.kind = Value::Object;
+    list.kind = Value::Array;
+    root.members.emplace_back("format", Value::MakeNumber(1, true));
+    for (auto& entry : journal)
+    {
+        const Change& c = entry.second;
+        Value item;
+        item.kind = Value::Object;
+        item.members.emplace_back("category", Value::MakeString(c.category));
+        item.members.emplace_back("target", Value::MakeString(c.target));
+        item.members.emplace_back("key", Value::MakeString(c.key));
+        if (c.remove) item.members.emplace_back("remove", Value::MakeBool(true));
+        else item.members.emplace_back("value", Value::MakeNumber(c.value, c.whole));
+        list.items.push_back(item);
+    }
+    root.members.emplace_back("changes", list);
+    return hfjson::Write(root);
+}
 } // namespace
 
 namespace localstats
 {
+void SetSandboxSaveFolder(const std::wstring& folder)
+{
+    std::lock_guard<std::mutex> hold(g_lock);
+    g_sandboxFolder = folder;
+}
+
+std::wstring SandboxFolder()
+{
+    std::lock_guard<std::mutex> hold(g_lock);
+    return g_sandboxFolder;
+}
+
 void SetModFile(const std::wstring& path)
 {
     std::lock_guard<std::mutex> hold(g_lock);
@@ -222,6 +259,30 @@ bool Save(const std::string& modsFolder, std::string* error)
     for (auto it = changes.begin(); it != changes.end();)
         if (ModCategory(it->second.category)) { modChanges.insert(*it); it = changes.erase(it); }
         else ++it;
+    std::wstring sandbox;
+    { std::lock_guard<std::mutex> hold(g_lock); sandbox = g_sandboxFolder; }
+    if (!sandbox.empty())
+    {
+        /* Sandboxed: what is shown stays as Set and Remove left it (the files in mods/ are not written). */
+        std::map<std::string, Change> journal;
+        {
+            std::lock_guard<std::mutex> hold(g_lock);
+            journal = g_journal;
+        }
+        for (auto& c : modChanges) journal[c.first] = c.second;
+        for (auto& c : changes) journal[c.first] = c.second;
+        if (hfjson::WriteAtomically(sandbox + L"\\changes.json", JournalText(journal)))
+        {
+            std::lock_guard<std::mutex> hold(g_lock);
+            g_journal.swap(journal);
+            return true;
+        }
+        std::lock_guard<std::mutex> hold(g_lock);
+        for (auto& c : modChanges) g_pending.emplace(c.first, c.second); /* tried again later; newer changes win */
+        for (auto& c : changes) g_pending.emplace(c.first, c.second);
+        *error = "the session's changes could not be written";
+        return false;
+    }
     if (!modChanges.empty())
     {
         /* the editor's own file: the file as it is, the changes, written whole */
@@ -268,8 +329,11 @@ bool Save(const std::string& modsFolder, std::string* error)
 
     if (document.members.size() == 1)
     {
-        /* Nothing left: the mod goes, as when the launcher's editor undoes every change. */
-        if (existed) { DeleteFileW(path.c_str()); DeleteFileW(manifest.c_str()); RemoveDirectoryW(folder.c_str()); }
+        /* Nothing left: the mod goes, as when the launcher's editor undoes every change. A file another program has open
+         * stays (Windows refuses the delete): tried again later, not taken as saved with the change still in it. */
+        if (existed && !DeleteFileW(path.c_str()) && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return fail("the Local Stats file could not be removed (another program has it open?)");
+        if (existed) { DeleteFileW(manifest.c_str()); RemoveDirectoryW(folder.c_str()); }
     }
     else
     {

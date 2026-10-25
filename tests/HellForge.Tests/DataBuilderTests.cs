@@ -91,6 +91,18 @@ static class DataBuilderTests
             var corrupt = png.ToArray();
             corrupt[40] ^= 1;
             reject(() => IconImage.ReadPng(corrupt));
+            // A zlib bomb: a 256 x 256 header over 64 MB of zeros (about 64 KB compressed) is refused once the header's
+            // size is inflated, and a header claiming 8192 x 8192 at 16-bit RGBA is refused before anything inflates.
+            var bomb = new MemoryStream();
+            using (var zlib = new ZLibStream(bomb, CompressionLevel.Optimal, leaveOpen: true))
+            {
+                var zeros = new byte[1 << 20];
+                for (var i = 0; i < 64; i++) zlib.Write(zeros);
+            }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            reject(() => IconImage.ReadPng(PngOf(256, 256, 8, 6, bomb.ToArray())));
+            reject(() => IconImage.ReadPng(PngOf(8192, 8192, 16, 6, bomb.ToArray())));
+            check(clock.Elapsed < TimeSpan.FromSeconds(2), $"The bombs took {clock.ElapsedMilliseconds} ms to refuse.");
             check(Lz4.DecompressBlock([0x41, (byte)'a', (byte)'b', (byte)'c', (byte)'d', 4, 0, 0x10, (byte)'x'], 10).SequenceEqual("abcdabcdax"u8.ToArray()), "LZ4 matches decode wrongly.");
         });
 
@@ -564,6 +576,24 @@ static class DataBuilderTests
         }
         Chunk("IHDR", [.. BigEndian((uint)size), .. BigEndian((uint)size), 8, 6, 0, 0, 0]);
         Chunk("IDAT", compressed.ToArray());
+        Chunk("IEND", []);
+        return png.ToArray();
+    }
+
+    // A PNG of any header and image data, as given.
+    static byte[] PngOf(int width, int height, byte depth, byte colour, byte[] idat)
+    {
+        var png = new MemoryStream();
+        png.Write(IconImage.PngSignature);
+        void Chunk(string kind, byte[] body)
+        {
+            var bytes = Encoding.ASCII.GetBytes(kind).Concat(body).ToArray();
+            png.Write(BigEndian((uint)body.Length));
+            png.Write(bytes);
+            png.Write(BigEndian(IconImage.Crc32(bytes)));
+        }
+        Chunk("IHDR", [.. BigEndian((uint)width), .. BigEndian((uint)height), depth, colour, 0, 0, 0]);
+        Chunk("IDAT", idat);
         Chunk("IEND", []);
         return png.ToArray();
     }

@@ -52,6 +52,9 @@ public sealed class LiveEditServer : IAsyncDisposable
     // The connected game runs another build or schema than this HellForge: requests are not sent.
     public bool Mismatched => Connected && (GameBuild != build || GameSchema != "-" && GameSchema != StatsSchema.Fingerprint);
     public event Action? StateChanged;
+    // A line the game sent on its own (not a reply), split at its tabs: mod sync's "syncanswer", and "packages" (this
+    // game's own packages, for friends: AssetShare) (native/mod-loader/live.c).
+    public event Action<string[]>? Received;
 
     // build: the game build the session must run (the schema's; a test harness passes its own).
     public LiveEditServer(string runId, string? build = null)
@@ -68,8 +71,7 @@ public sealed class LiveEditServer : IAsyncDisposable
     {
         while (!stop.IsCancellationRequested)
         {
-            var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            var server = PipeServer.Create(name, 1);
             try
             {
                 await server.WaitForConnectionAsync(stop.Token);
@@ -85,7 +87,10 @@ public sealed class LiveEditServer : IAsyncDisposable
                         StateChanged?.Invoke();
                     }
                     else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var seq))
+                    {
                         lock (pending) if (pending.Remove(seq, out var waiter)) waiter.TrySetResult(line);
+                    }
+                    else if (parts[0].Length > 0 && parts[0].All(char.IsAsciiLetterLower)) Received?.Invoke(parts);
                 }
             }
             catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
@@ -113,16 +118,58 @@ public sealed class LiveEditServer : IAsyncDisposable
     // The field at its base: without the Local Stats mod's edits, live or from the session start (a co-op joiner's own
     // values give way to the host's).
     public Task<LiveResult> BaseAsync(StatsField field) => SendAsync("base", Identity(field));
-    // The session as the in-game editor shows it (HfApi session): "solo", "host" (friends play with this machine's
-    // stats) or "joiner" (this machine plays with the host's; the editor is read-only), and the host's name.
-    public Task<LiveResult> SessionAsync(string role, string host) =>
-        SendAsync("session", role + "\t" + string.Concat(host.Where(c => !char.IsControl(c)).Take(60)));
+    // The session as the in-game editor shows it (HfApi session, stats_source): "solo", "host" or "joiner", whose stats
+    // the game plays with ("own", or "host": joined to a host who shares its stats; the editor is read-only), and the
+    // host's name.
+    public Task<LiveResult> SessionAsync(string role, string host, string stats = "own") =>
+        SendAsync("session", role + "\tstats=" + (stats == "host" ? "host" : "own") + "\t" + string.Concat(host.Where(c => !char.IsControl(c)).Take(60)));
+    // The lobby's packages for friends' changes (native/mod-loader/packages.c): the game asks for each as it does for its
+    // own edits'. Ids as the loader's "packages" line gives them; at most 256.
+    public Task<LiveResult> PreloadAsync(IEnumerable<ulong> packages)
+    {
+        var ids = packages.Take(256).Select(id => id.ToString("x16", CultureInfo.InvariantCulture)).ToList();
+        return SendAsync("preload", ids.Count == 0 ? "-" : string.Join(',', ids));
+    }
+
+    // Each player's projectile swaps, which the game's copies of their shots fire (native/mod-loader/shots.c):
+    // "<peer hex>:<weapon resource hex>=<type>" comma separated, "-" none.
+    public Task<LiveResult> ShotsAsync(string rules) => SendAsync("shots", rules);
+
+    // Each player's changes of projectile and damage rows, which the game's copies of their shots fly and hit with
+    // (native/mod-loader/rounds.c): "<peer hex>=<entry>;<entry>..." comma separated, "-" none (AssetShare.Rounds).
+    public Task<LiveResult> RoundsAsync(string list) => SendAsync("rounds", list);
+
+    // A "packages" or "preload" list: package ids, 16 hex digits each, comma separated, "-" none. Null when malformed.
+    public static SortedSet<ulong>? Packages(string list, int max)
+    {
+        var ids = new SortedSet<ulong>();
+        if (list is "-" or "") return ids;
+        foreach (var part in list.Split(','))
+        {
+            if (part.Length != 16 || !part.All(char.IsAsciiHexDigit) || ids.Count == max) return null;
+            ids.Add(ulong.Parse(part, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture));
+        }
+        return ids;
+    }
     // A message for the player, which the in-game editor shows over the game (HfApi notice): why a friend's lobby refused
     // this game's join, say. kind "error" or "info"; a title and up to 8 lines. A loader from before notices refuses it.
     public Task<LiveResult> NoticeAsync(string kind, string title, IEnumerable<string> lines) =>
         SendAsync("notice", string.Join('\t', new[] { kind, title }.Concat(lines.Take(8)).Select(t => string.Concat(t.Where(c => !char.IsControl(c)).Take(200)))));
     // The field's value in the running game now.
     public Task<LiveResult> GetAsync(StatsField field) => SendAsync("get", Identity(field));
+
+    // Mod sync (HfApi sync_state / sync_mod): an offer's mods, index 0 up, then its state, which publishes them in the
+    // game. A progress update is the state alone, with the same version. Words, not numbers, for actions, classes and states.
+    // url: where players get the mod (ModCatalog.WebAddress, at most 200 characters), or "-".
+    public Task<LiveResult> SyncModAsync(int version, int index, string action, string modClass, long bytes, string id, string name, string modVersion, string? url = null) =>
+        SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), action, modClass, Invariant(bytes), Field(id), Field(name), Field(modVersion),
+            ModCatalog.WebAddress(url) ?? "-"));
+    public Task<LiveResult> SyncStateAsync(int version, string state, string host, long bytes, long done, int mods, string message) =>
+        SendAsync("syncstate", string.Join('\t', Invariant(version), state, Field(host), Invariant(bytes), Invariant(done), Invariant(mods), Field(message)));
+
+    static string Invariant(long number) => number.ToString(CultureInfo.InvariantCulture);
+    // Text inside one field: no tabs, line breaks or other control characters, at most 200 characters.
+    static string Field(string text) => string.Concat(text.Where(c => !char.IsControl(c)).Take(200));
 
     async Task<LiveResult> SendAsync(string verb, string rest)
     {

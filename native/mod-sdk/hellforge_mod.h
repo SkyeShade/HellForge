@@ -11,7 +11,7 @@
  * pointer: it is valid for the whole session. Register for events to act once the game's code and data exist; load
  * events are delivered on the loader's watch thread, in the order mods registered, never two at once.
  *
- * Everything runs inside the offline HellForge copy only; the normal game is never touched. The loader does not catch a mod's crashes; the session log names the mod that was running. */
+ * Everything runs inside HellForge's own local copy only; the normal game is never touched. The loader does not catch a mod's crashes; the session log names the mod that was running. */
 #ifndef HELLFORGE_MOD_H
 #define HELLFORGE_MOD_H
 
@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 13
+#define HF_MOD_SDK_VERSION 15
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -464,11 +464,20 @@ typedef struct HfSession
     char host[64];    /* the host's name (UTF-8), when joined */
 } HfSession;
 
+/* SDK 15, stats_source: whose stats the lobby plays with. HF_STATS_HOST: its host shares its stats with friends (joined,
+ * this game plays with the host's, and the in-game editor shows them read-only; hosting, friends play with this
+ * machine's). HF_STATS_OWN: solo, or every player in the lobby keeps their own (the default: each machine's edits are its
+ * own, and HellForge loads the packages friends' changes need). The session's version changes with it. */
+#define HF_STATS_OWN 0u
+#define HF_STATS_HOST 1u
+
 /* SDK 12: HellForge's latest message for the player (notice), as the session's backend posts it: why a friend's lobby
  * refused this game's join, or why a friend could not join this one. A title and up to 8 lines (UTF-8, '\n' between
- * them); version changes with every new one, 0 before the first. The in-game editor shows each over the game. */
+ * them); version changes with every new one, 0 before the first. The in-game editor shows each over the game: a brief
+ * one (that a friend couldn't join this game's lobby) as a small note in the corner, its title and first line. */
 #define HF_NOTICE_INFO 0u
 #define HF_NOTICE_ERROR 1u
+#define HF_NOTICE_BRIEF 2u
 typedef struct HfNotice
 {
     uint32_t version;
@@ -777,6 +786,65 @@ typedef struct HfModInfo
     const char* name;   /* a Lua mod's name as its runtime gave it ("mods/azura/railgun_repenetrated"), else "" */
     uint32_t loaded;    /* 1: it loaded (a mod whose hellforge_mod_init declined, or whose DLL failed, is 0) */
 } HfModInfo;
+
+/* Mod sync (SDK 14, sync_state): a join refused because the host runs other gameplay mods. The session's backend plans
+ * the difference and offers to download the host's mods and restart with them (docs/mods.md "Playing with other mods");
+ * an editor shows the offer and sends the player's answer (sync_answer). version changes with every new offer; a
+ * download's progress (done) changes without it. */
+#define HF_SYNC_NONE 0u        /* no offer */
+#define HF_SYNC_OFFER 1u       /* the lobby needs mods: HF_SYNC_ACCEPT downloads them (or, with bytes 0, restarts) */
+#define HF_SYNC_BLOCKED 2u     /* the lobby cannot be joined as it is: a blocked mod, one to install by hand, or mods the
+                                * player must trust first (HF_SYNC_MOD_TRUST rows); the message says */
+#define HF_SYNC_DOWNLOADING 3u /* downloading from the host: done of bytes */
+#define HF_SYNC_READY 4u       /* everything is here: HF_SYNC_RESTART restarts the session with the host's mods */
+#define HF_SYNC_FAILED 5u      /* the download or its checks failed (message says why) */
+typedef struct HfSyncState
+{
+    uint32_t size;      /* sizeof(HfSyncState): set by the caller */
+    uint32_t state;     /* HF_SYNC_... */
+    uint32_t version;   /* the offer's: sync_answer names it */
+    uint32_t mods;      /* the mods sync_mod lists */
+    uint64_t bytes;     /* the bytes to download */
+    uint64_t done;      /* downloaded so far */
+    char host[64];      /* the host's name (UTF-8) */
+    char message[192];  /* what the backend says about it (UTF-8), or "" */
+} HfSyncState;
+
+/* One mod of an offer (sync_mod): what happens to it. */
+#define HF_SYNC_MOD_HAVE 0u     /* this machine has it (installed or synced before) */
+#define HF_SYNC_MOD_DOWNLOAD 1u /* downloads from the host */
+#define HF_SYNC_MOD_MANUAL 2u   /* the player installs it by hand (code or unchecked data from a host who is not a Steam
+                                 * friend, or the host does not share); url, when set, says where to get it */
+#define HF_SYNC_MOD_BLOCKED 3u  /* on the player's blocklist */
+#define HF_SYNC_MOD_UPDATE 4u   /* part of HellForge, another version: both players need the same HellForge */
+#define HF_SYNC_MOD_OFF 5u      /* one of this machine's own, off for the synced session (the host does not run it) */
+#define HF_SYNC_MOD_TRUST 6u    /* code or unchecked data HellForge has not verified, from a Steam friend who shares:
+                                 * downloads once the player trusts it (HF_SYNC_TRUST), or the player installs it by hand */
+#define HF_SYNC_CLASS_CONTENT 0u /* what HellForge checks: data specs, schema stats, network field types */
+#define HF_SYNC_CLASS_CODE 1u    /* a DLL, sources HellForge builds, or Lua */
+#define HF_SYNC_CLASS_BUNDLED 2u /* shipped with HellForge (the in-game editor) */
+#define HF_SYNC_CLASS_RAW 3u     /* data HellForge cannot check: data patches, raw stats or component writes */
+typedef struct HfSyncMod
+{
+    uint32_t size;      /* sizeof(HfSyncMod): set by the caller */
+    uint32_t action;    /* HF_SYNC_MOD_... */
+    uint32_t kind;      /* HF_SYNC_CLASS_... */
+    uint32_t reserved;
+    uint64_t bytes;     /* its size */
+    char id[65];
+    char name[81];      /* UTF-8 */
+    char version[33];
+    char url[201];      /* where players get it: an https:// address from its manifest ("url"), or "" */
+} HfSyncMod;
+
+/* The player's answer to an offer (sync_answer). */
+#define HF_SYNC_ACCEPT 1u  /* download (HF_SYNC_OFFER) */
+#define HF_SYNC_DECLINE 2u /* no: the offer goes (a download stops) */
+#define HF_SYNC_RESTART 3u /* restart the session with the host's mods (HF_SYNC_READY, or an offer with nothing to download) */
+#define HF_SYNC_BLOCK 4u   /* put mod_id on the blocklist; the offer goes */
+#define HF_SYNC_TRUST 5u   /* trust mod_id (an HF_SYNC_MOD_TRUST row: that exact content) and download it once nothing else
+                            * waits; a new offer follows. Ask the player first: the mod runs its own code on their PC */
+#define HF_SYNC_OPEN 6u    /* open mod_id's url in the player's browser (the backend opens only an https:// address) */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1113,6 +1181,20 @@ typedef struct HfApi
     /* Like read, with the bytes as they were before any hook HellForge placed (as code_matches reads them). 0 on
      * success. */
     int (*read_code)(uintptr_t address, void* buffer, size_t size);
+
+    /* ---- SDK 14: mod sync (HfSyncState; check hf->size before calling) ------------------------------------------- */
+    /* The current offer: 1 with *out filled (at most out->size bytes), 0 none (solo, or no backend connected). */
+    int (*sync_state)(HfMod* mod, HfSyncState* out);
+    /* The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. */
+    int (*sync_mod)(HfMod* mod, uint32_t index, HfSyncMod* out);
+    /* Sends the player's answer (HF_SYNC_ACCEPT ...) to the offer of that version; mod_id names the mod for
+     * HF_SYNC_BLOCK, HF_SYNC_TRUST and HF_SYNC_OPEN (NULL otherwise). 1 sent; 0 not (another offer came since, or no
+     * backend connected). */
+    int (*sync_answer)(HfMod* mod, uint32_t version, uint32_t answer, const char* mod_id);
+
+    /* ---- SDK 15 --------------------------------------------------------------------------------------------------- */
+    /* Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size. */
+    uint32_t (*stats_source)(HfMod* mod);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

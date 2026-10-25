@@ -14,6 +14,8 @@ public interface IPeerTransport : IDisposable
     event Action<ulong, byte[]>? Received;
     void Start();
     void Send(ulong peer, byte[] frame, bool reliable);
+    // A Steam friend of this machine's player (strangers only reach it through the lobby directory: MultiplayerHost).
+    bool IsFriend(ulong peer) => true;
 }
 
 // Friends who run HellForge, for the social tab (FriendPresence). Steam finds them by a rich presence tag; the test transports
@@ -27,6 +29,8 @@ public interface IFriendSource
 public sealed class InMemoryNetwork
 {
     readonly ConcurrentDictionary<ulong, Endpoint> endpoints = new();
+    // Machines that are not Steam friends of anyone (everyone else is everyone's friend).
+    public HashSet<ulong> Strangers { get; } = [];
 
     public IPeerTransport Join(ulong id) => endpoints[id] = new Endpoint(this, id);
 
@@ -36,6 +40,7 @@ public sealed class InMemoryNetwork
             [.. network.endpoints.Keys.Where(k => k != id).Order().Select(k => new FriendPresence.Friend(k, $"Friend {k:X}"))];
         readonly SemaphoreSlim order = new(1, 1);
         public ulong LocalId => id;
+        public bool IsFriend(ulong peer) { lock (network.Strangers) return !network.Strangers.Contains(peer) && !network.Strangers.Contains(id); }
         public event Action<ulong, byte[]>? Received;
         public void Start() { }
         public void Send(ulong peer, byte[] frame, bool reliable)
@@ -57,7 +62,11 @@ public sealed class InMemoryNetwork
 // Loopback does not lose datagrams in practice; this transport makes no delivery promise beyond that.
 public sealed class UdpLoopbackTransport : IPeerTransport, IFriendSource
 {
-    public IReadOnlyList<FriendPresence.Friend> HellForgeFriends => [.. peers.Keys.Order().Select(k => new FriendPresence.Friend(k, $"Friend {k:X}"))];
+    public IReadOnlyList<FriendPresence.Friend> HellForgeFriends =>
+        TreatPeersAsStrangers ? [] : [.. peers.Keys.Order().Select(k => new FriendPresence.Friend(k, $"Friend {k:X}"))];
+    // Test mode (HELLFORGE_TEST_STRANGERS=1): the configured peers are strangers, not friends.
+    public bool TreatPeersAsStrangers { get; init; }
+    public bool IsFriend(ulong peer) => !TreatPeersAsStrangers;
 
     readonly UdpClient socket;
     readonly IReadOnlyDictionary<ulong, IPEndPoint> peers;

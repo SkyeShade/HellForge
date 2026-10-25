@@ -1,0 +1,54 @@
+# The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
+# structure lint (scripts/lint/README.md), the build (warnings are errors) and the checks that need no game, as
+# scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
+# game's files, the Steamworks SDK and a GPU.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Structure lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'   # the oldest the lint supports (scripts/lint/README.md)
+      - name: The lint's own tests
+        run: python -m unittest discover -s scripts/lint/tests -v
+      # fails on a violation that is new, or worse than scripts/lint/lint-baseline.json has it
+      - name: scripts/lint/lint.py check
+        run: python scripts/lint/lint.py check
+
+  test:
+    name: Build and test
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: scripts/Test.ps1 (build, HellForge.Tests, HellForge.LocalBackend.Tests, the CLI's path checks)
+        shell: pwsh
+        run: |
+          # the tests' temporary files inside the workspace, as on a developer's PC (artifacts/ is ignored)
+          $env:TEMP = $env:TMP = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/tmp')).FullName
+          ./scripts/Test.ps1
+          # Test.ps1 throws on any failure; its last checks expect the CLI to refuse (exit code 1), which the step's own
+          # "exit $LASTEXITCODE" would otherwise report
+          exit 0

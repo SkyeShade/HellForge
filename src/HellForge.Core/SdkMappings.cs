@@ -138,8 +138,10 @@ public sealed class SdkMappings
                     AppliesVerified = v.TryGetProperty("applies", out _) ? v.TryGetProperty("appliesVerified", out _) && Bool(v, "appliesVerified") : appliesVerified,
                     Ref = v.TryGetProperty("ref", out _) ? Text(v, "ref") : null
                 };
-                if (field.Ref != null && (!RefValues.Contains(field.Ref) || type != (field.Ref is "mount" or "pickup" ? "u64" : "u32") || count != 1))
-                    throw new InvalidDataException($"{at}: ref must be projectile, explosion, status or damage on a single u32, or mount on a u64.");
+                // an array of u32 references is checked element by element (a magazine's projectile pattern)
+                if (field.Ref != null && (!RefValues.Contains(field.Ref) || type != (field.Ref is "mount" or "pickup" ? "u64" : "u32") ||
+                                          (count != 1 && field.Ref is "mount" or "pickup")))
+                    throw new InvalidDataException($"{at}: ref must be projectile, explosion, status or damage on u32s, or mount on a single u64.");
                 if (count < 1 || field.Offset < 0 || field.Offset + field.Size > stride || field.Offset % Math.Min(TypeSize(type), 4) != 0)
                     throw new InvalidDataException($"{at}: outside the {stride}-byte record or misaligned.");
                 fields.Add(field);

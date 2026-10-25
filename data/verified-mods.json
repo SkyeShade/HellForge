@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "mods": [
+    {
+      "id": "skyeshade.stratagem-compendium",
+      "name": "Stratagem Compendium",
+      "version": "1.0.4",
+      "hash": "2992e13fc3dc78f9786b22136026aced840acc86eb2597333e62389b5753e3db",
+      "reviewed": "2026-10-23, SkyeShade (its author, a HellForge maintainer): stratagem-compendium-1.0.4.zip as shipped"
+    }
+  ]
+}

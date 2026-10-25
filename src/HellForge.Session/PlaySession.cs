@@ -21,18 +21,28 @@ sealed class PlaySession(PlayOptions options)
 
     readonly JsonObject result = new();
     readonly List<FileStream> locks = [];
+    // Several installations (GameProcesses.MultiInstance): the installed game's files another installation's session held
+    // when this one started, taken over once that session ends (every 5 s, on the timer's thread); released at clean-up.
+    Timer? normalHoldRetry;
+    readonly List<FileStream> retaken = [];
+    bool retakeStopped;
     readonly List<string> swapped = [];
+    ModsHold? modsHold;
     readonly Dictionary<string, string> shimPins = new(StringComparer.Ordinal);
     // HELLFORGE_DEBUG=1 writes the full step reports (addresses, before/after bytes) and the per-second diagnostics into
     // the run folder, for development. Normal sessions keep only what happened, not how.
     static readonly bool Debug = Environment.GetEnvironmentVariable("HELLFORGE_DEBUG") == "1";
     InstallLayout install = null!;
-    string run = "", copy = "", exe = "", gameDll = "", bundle = "", shimOriginals = "", app = "";
+    // gameOut: where the game writes its logs and the editor its sandboxed saves (run, or run/game labelled low when sandboxed)
+    string SandboxUserData => Path.Combine(gameOut, "userdata");
+    string profileName = "";
+    string gameOut = "", run = "", copy = "", exe = "", gameDll = "", bundle = "", shimOriginals = "", app = "";
     string? normal, hint, erlBackup, profileFolder;
     string[] erlBefore = [];
     FileStream? lease;
     HostBoundedProcess? job;
-    Process? server;
+    Process? server, broker;
+    nint lowToken;
     Thread? applier;
     DateTime? gameStarted;
     TextWriter? log;
@@ -48,13 +58,26 @@ sealed class PlaySession(PlayOptions options)
         log?.Flush();
     }
 
-    // Scrubbed (Privacy): readers take only its status and messages from it.
-    void Save() => File.WriteAllText(Path.Combine(run, "result.json"), Privacy.ScrubJson(result), new UTF8Encoding(false));
+    // Scrubbed (Privacy): readers take only its status and messages from it. Written beside it and moved into place, so a
+    // reader never sees half of it; a reader still holding it (the launcher polls each second) is waited out.
+    void Save()
+    {
+        var path = Path.Combine(run, "result.json");
+        File.WriteAllText(path + ".partial", Privacy.ScrubJson(result), new UTF8Encoding(false));
+        for (var attempt = 1; ; attempt++)
+            try { File.Move(path + ".partial", path, overwrite: true); return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < 40) { Thread.Sleep(50); }
+    }
 
     public int Run()
     {
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
+        // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
+        // search at Steam's lobbies, where vanilla games list theirs under the same build string (docs/multiplayer.md step
+        // 7). Multiplayer goes through the stand-ins and the backend's directory only.
+        if (options.Multiplayer && !options.LocalPlayFab)
+            throw new SessionFailure("Multiplayer needs Local PlayFab: turn on Experiments > Local PlayFab in the launcher and start again.");
         app = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
         copy = install.Game;
         exe = Path.GetFullPath(Path.Combine(copy, "bin", "helldivers2.exe"));
@@ -67,6 +90,9 @@ sealed class PlaySession(PlayOptions options)
         var profileDirectory = Path.GetFullPath(options.Profile ?? Path.Combine(install.Root, "profiles", "default"));
         var runId = Guid.NewGuid().ToString("N");
         run = Directory.CreateDirectory(Path.Combine(install.Sessions, runId)).FullName;
+        // Sandboxed, the game may write only into folders labelled low: its logs go to run/game, and the rest of the run
+        // folder (this runner's files, the backend's evidence and the DLL it loads) stays out of its reach.
+        gameOut = options.Sandbox ? LowIntegrityHelper.CreateLowFolder(Path.Combine(run, "game")) : run;
         log = new StreamWriter(Path.Combine(run, "session.log"), append: true, new UTF8Encoding(false));
         result["runId"] = runId;
         result["status"] = "preparing";
@@ -98,6 +124,14 @@ sealed class PlaySession(PlayOptions options)
         return (string?)result["status"] == "observed" ? 0 : 1;
     }
 
+    // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
+    // process has it open.
+    static bool HoldClosed(string path, List<FileStream> into)
+    {
+        try { into.Add(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None)); return true; }
+        catch (IOException) { return false; }
+    }
+
     // Runs HellForge.Cli: its JSON output, or null (its messages go to the run's cli-output.txt).
     string? HellForgeCli(params string[] arguments)
     {
@@ -109,8 +143,10 @@ sealed class PlaySession(PlayOptions options)
     void Prepare(string profileDirectory)
     {
         if (!Environment.Is64BitProcess) throw new SessionFailure("The session runner must run as a 64-bit process.");
-        foreach (var name in new[] { "helldivers2", "GameGuard", "GameMon", "GameMon64" })
-            if (Process.GetProcessesByName(name).Length > 0) throw new SessionFailure("Existing game or GameGuard process.");
+        // installations set up before setup checked for them, or a runtime uninstalled since
+        if (VisualCppRuntimes.Problem("press Play again.") is { } runtimes) throw new SessionFailure(runtimes);
+        if (GameProcesses.Blocking(install, GameProcesses.Running(), GameProcesses.MultiInstance) is { } busy) throw new SessionFailure(busy);
+        result["multiInstance"] = GameProcesses.MultiInstance;
         if (Process.GetProcessesByName("HD2RuntimeModBuilder").Length > 0) throw new SessionFailure("External mod builder is running.");
         // One session at a time per installation: a second one (Play pressed again, or a session runner from an earlier session
         // that has not ended) finds the lock held.
@@ -130,7 +166,7 @@ sealed class PlaySession(PlayOptions options)
                 if (File.Exists(Path.Combine(candidate, "bin", "helldivers2.exe"))) { normal = candidate; break; }
             }
         result["normalGame"] = normal;
-        var profileName = Path.GetFileName(profileDirectory);
+        profileName = Path.GetFileName(profileDirectory);
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
 
         // A session that was cut short leaves the stand-ins in the copy: put the saved originals back first. Their pins
@@ -153,7 +189,12 @@ sealed class PlaySession(PlayOptions options)
         // Mods: stage data mods (and remove the last session's) before the copy's files are locked; --progress lets the
         // launcher show source mods being compiled.
         var loaderPlan = Path.Combine(run, "modloader-plan.txt");
-        var planText = HellForgeCli("mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", run, "--progress", Path.Combine(run, "mod-builds.json"));
+        // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --sync: after a mod sync, the
+        // host's mods instead of the player's own (ModSyncSession).
+        string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
+            "--modset", ModSetFile];
+        if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync)];
+        var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
         if ((bool?)plan["loaderRequired"] == true)
         {
@@ -166,40 +207,75 @@ sealed class PlaySession(PlayOptions options)
         modDigest = (string?)plan["digest"] ?? "none";
         modList = (string?)plan["modlist"];
         modNative = (bool?)plan["native"] == true;
+        nativeFolders = (plan["nativeFolders"] as JsonArray)?.Select(f => (string?)f).OfType<string>().ToList();
         result["mods"] = new JsonObject
         {
             ["loaded"] = new JsonArray((plan["mods"] as JsonArray ?? []).Select(m => (JsonNode?)JsonValue.Create($"{(string?)m!["id"]} {(string?)m["version"]}")).ToArray()),
             ["problems"] = plan["problems"]?.DeepClone() ?? new JsonArray(),
             ["stagedFiles"] = (plan["staged"] as JsonArray)?.Count ?? 0,
             ["codeMods"] = plan["codeMods"]?.DeepClone(),
-            ["digest"] = modDigest
+            ["digest"] = modDigest,
+            ["syncedWith"] = plan["syncedWith"]?.DeepClone()
         };
+        if ((string?)plan["syncedWith"] is { } syncedWith)
+        {
+            Say($"Playing with {syncedWith}'s mods (mod sync).");
+            if (options.ModSync != null) rejoinFile = Path.GetFullPath(options.ModSync);
+        }
         foreach (var problem in plan["problems"] as JsonArray ?? []) Say("Mod not loaded: " + (string?)problem);
 
-        // Every game file is held read-only for the session, then verified against the supported build while
-        // data/settings.ini is pointed at this profile's user data inside the installation.
+        // The player's mods are held read-only so nothing the game runs can change or plant a mod.
+        try { modsHold = ModsHold.Take(install.Mods); }
+        catch (IOException error) { throw new SessionFailure(error.Message); }
+        result["modsHeld"] = modsHold.Held;
+
+        // Every game file (the build's, and everything in data/: staged mods and the player's own patches) is held
+        // read-only for the session, then verified against the supported build while data/settings.ini is pointed at
+        // this profile's user data inside the installation. Other files in the copy are the player's (ReShade's settings,
+        // presets and shaders) and stay writable; so does a steam_appid.txt left by a session that was cut short, which
+        // Play removes (issue 6: held here, it could never be removed again).
         var settingsPath = Path.GetFullPath(Path.Combine(copy, "data", "settings.ini"));
+        var data = Path.GetFullPath(Path.Combine(copy, "data")) + Path.DirectorySeparatorChar;
+        var gameFiles = SupportedBuild.Current.Files.Select(f => Path.GetFullPath(Path.Combine(copy, f.Path))).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var file in Directory.EnumerateFiles(copy, "*", SearchOption.AllDirectories))
         {
             var full = Path.GetFullPath(file);
             if (full.Equals(settingsPath, StringComparison.OrdinalIgnoreCase) || full.EndsWith(".partial", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!gameFiles.Contains(full) && !full.StartsWith(data, StringComparison.OrdinalIgnoreCase)) continue;
             Tools.NoLinks(full);
-            var share = full.Contains(@"\bin\GameGuard", StringComparison.OrdinalIgnoreCase) ? FileShare.ReadWrite : FileShare.Read;
-            locks.Add(new FileStream(full, FileMode.Open, FileAccess.Read, share));
+            try { locks.Add(new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read)); }
+            catch (IOException error) when (error is not FileNotFoundException and not DirectoryNotFoundException)
+            {
+                throw new SessionFailure($"A game file is in use by another program: {Path.GetRelativePath(copy, full)}. Close that program " +
+                    "(or restart the PC) and press Play again.");
+            }
         }
-        var prepared = Tools.ParseJson(HellForgeCli("prepare-session", "--install", install.Root, "--profile", profileName) ?? "")
+        // Sandboxed, the game's user data is a copy in gameOut, which carries the low label (SandboxFolders): the profile's
+        // settings and saves and the shader cache go in now and come back once the game is gone.
+        string[] prepare = ["prepare-session", "--install", install.Root, "--profile", profileName];
+        if (options.Sandbox)
+        {
+            var copiedIn = SandboxFolders.Copy(install.UserData, SandboxUserData, SandboxFolders.UserDataParts(profileName));
+            result["sandboxCopiedIn"] = new JsonObject { ["files"] = copiedIn.Files, ["bytes"] = copiedIn.Bytes, ["skipped"] = copiedIn.Skipped };
+            prepare = [.. prepare, "--user-data", SandboxUserData];
+        }
+        var prepared = Tools.ParseJson(HellForgeCli(prepare) ?? "")
             ?? throw new SessionFailure("Session preparation failed; see cli-output.txt in this session's log folder.");
         if (prepared["problems"] is JsonArray { Count: > 0 } problems)
             throw new SessionFailure($"The game copy is not the supported build ({(string?)problems[0]}); repair it from the launcher.");
         locks.Add(new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.Read));
         result["verifiedFiles"] = (prepared["gameFiles"] as JsonArray)?.Count ?? 0;
+        result["appFilesHeld"] = HoldAppFiles();
         result["userData"] = prepared["profileData"]?.DeepClone();
         result["userDataSeeded"] = prepared["profileSeeded"]?.DeepClone();
         result["gameExeSha256"] = Tools.Sha256(exe);
         result["gameDllSha256"] = Tools.Sha256(gameDll);
         if (normal != null)
         {
-            result["installedExeSha256"] = Tools.Sha256(Path.Combine(normal, "bin", "helldivers2.exe"));
+            // Several installations: another installation's session may hold the installed game's executable closed
+            // already, which keeps it from being read too.
+            try { result["installedExeSha256"] = Tools.Sha256(Path.Combine(normal, "bin", "helldivers2.exe")); }
+            catch (IOException) when (GameProcesses.MultiInstance) { result["installedExeHeldElsewhere"] = true; }
             result["installedDllSha256"] = Tools.Sha256(Path.Combine(normal, "data", "game", "game.dll"));
         }
         profileDirectoryUsed = profileDirectory;
@@ -207,7 +283,42 @@ sealed class PlaySession(PlayOptions options)
 
     string modDigest = "none", profileDirectoryUsed = "";
     string? modList;
+    // After a mod sync whose host's mods were all found: the sync file, which the backend uses to bring the game back into
+    // the host's lobby (--rejoin, AutoRejoin).
+    string? rejoinFile;
+    // The session's mod set (mods-stage --modset), for the backend's mod sync.
+    string ModSetFile => Path.Combine(run, "modset.json");
+
+    // What asked the session to stop: "stop" (the launcher) or "mod-sync" (the backend, to restart with a host's mods).
+    string ReadSignal()
+    {
+        try { return File.ReadAllText(Path.Combine(run, "stop-observation.signal")).Trim(); }
+        catch (IOException) { return ""; }
+    }
     bool modNative;
+    List<string>? nativeFolders; // mods-stage's mods with network type edits (null: a mods-stage from before it)
+
+    // HellForge's own programs (the installation's app folder: the launcher, this runner, the backend, the stand-ins the
+    // copy loads, the scripts) are held read-only for the session like the game's files, so nothing the game runs can
+    // replace them for the next start. A file that cannot be held stops the session. Only an installed runner does it
+    // (a development build runs from elsewhere).
+    int HoldAppFiles()
+    {
+        if (!Path.GetFullPath(app).TrimEnd('\\').Equals(Path.GetFullPath(install.App).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return 0;
+        var held = 0;
+        foreach (var file in Directory.EnumerateFiles(install.App, "*", SearchOption.AllDirectories))
+        {
+            var full = Path.GetFullPath(file);
+            Tools.NoLinks(full);
+            try { locks.Add(new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                throw new SessionFailure($"HellForge's file {Path.GetRelativePath(install.App, full)} could not be held read-only for the session ({error.Message}). Close what has it open and start again.");
+            }
+            held++;
+        }
+        return held;
+    }
 
     // Network block (the readable scripts in app/scripts): $HellForgeInstallRoot names the installation's rule group.
     string BlockScript(string body) =>
@@ -329,17 +440,22 @@ sealed class PlaySession(PlayOptions options)
             }
             result["sdkShimHashes"] = hashes;
             // The game inherits this environment (HostBoundedProcess).
-            Environment.SetEnvironmentVariable("HELLFORGE_SHIM_LOG_DIR", Directory.CreateDirectory(Path.Combine(run, "sdk-shims")).FullName);
+            Environment.SetEnvironmentVariable("HELLFORGE_SHIM_LOG_DIR", Directory.CreateDirectory(Path.Combine(gameOut, "sdk-shims")).FullName);
         }
         Ownership(Path.Combine(copy, "bin", CloudName), Path.Combine(run, "ownership.json"));
         result["ownershipConfirmed"] = true;
 
         // Steam Cloud stays in the profile: the steam_api64.dll stand-in, with the verified original next to it. No session
         // runs without it, so the copy never writes the Steam account's cloud files.
-        var cloudStandIn = Path.Combine(Shims, CloudName);
-        var cloudPin = (string?)build["standIns"]?[CloudName];
+        // Sandboxed, the bridge build instead (docs/steam-bridge.md): no export forwards, so Valve's DLL, still placed beside
+        // it for the broker to load, never loads in the game.
+        var cloudStandIn = Path.Combine(Shims, options.Sandbox ? "steam_api64_bridge.dll" : CloudName);
+        var cloudPin = options.Sandbox ? (string?)build["steamBridge"] : (string?)build["standIns"]?[CloudName];
+        if (options.Sandbox && cloudPin == null)
+            throw new SessionFailure("This HellForge was built without the Steam bridge (it needs the Steamworks SDK), so a sandboxed session cannot start.");
         if (cloudPin == null || !File.Exists(cloudStandIn)) throw new SessionFailure("The Steam Cloud stand-in is missing; reinstall HellForge.");
-        if (Tools.Sha256(cloudStandIn) != cloudPin) throw new SessionFailure("Stand-in changed since it was built: steam_api64.dll");
+        if (Tools.Sha256(cloudStandIn) != cloudPin) throw new SessionFailure("Stand-in changed since it was built: " + Path.GetFileName(cloudStandIn));
+        result["steamBridge"] = options.Sandbox;
         var realTarget = Path.GetFullPath(Path.Combine(copy, "bin", CloudReal));
         if (Tools.Sha256(Path.Combine(copy, "bin", CloudName)) != shimPins[CloudName]) throw new SessionFailure("The copy's steam_api64.dll is not the verified original.");
         SwapIn(CloudName, cloudStandIn, cloudPin, realTarget);
@@ -359,11 +475,11 @@ sealed class PlaySession(PlayOptions options)
             }
         }
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_DIR", Path.GetFullPath(cloudDirectory));
-        Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(run, "steam-cloud.log"));
+        Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(gameOut, "steam-cloud.log"));
         // The network gate's census (the stand-in's net_gate.c): every connection, name lookup and program the copy
         // attempts, logged beside the firewall, which still blocks them; summarised into the result at the end.
         Environment.SetEnvironmentVariable("HELLFORGE_NETGATE", "census");
-        Environment.SetEnvironmentVariable("HELLFORGE_NETGATE_LOG", Path.Combine(run, CensusLog));
+        Environment.SetEnvironmentVariable("HELLFORGE_NETGATE_LOG", Path.Combine(gameOut, CensusLog));
         result["steamCloud"] = new JsonObject { ["directory"] = Path.GetFullPath(cloudDirectory), ["standIn"] = cloudPin, ["controlsSeeded"] = cloudSeeded };
         var authorization = Stopwatch.StartNew();
 
@@ -375,9 +491,16 @@ sealed class PlaySession(PlayOptions options)
             programs.AddRange(Directory.EnumerateFiles(Path.Combine(normal, "bin"), "*", SearchOption.AllDirectories)
                 .Where(f => (f.EndsWith(".des", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".now", StringComparison.OrdinalIgnoreCase)) &&
                             f.Contains("GameGuard", StringComparison.OrdinalIgnoreCase)));
-            foreach (var path in programs)
-                try { locks.Add(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None)); }
-                catch (IOException) { throw new SessionFailure("Could not hold the installed game closed (is it running?): " + path); }
+            var heldElsewhere = programs.Where(path => !HoldClosed(path, locks)).ToList();
+            if (heldElsewhere.Count > 0 && !GameProcesses.MultiInstance)
+                throw new SessionFailure("Could not hold the installed game closed (is it running?): " + heldElsewhere[0]);
+            // Several installations: the first session holds them, and this one takes the hold over once that one ends
+            // (its game was refused above, so a held file here is another installation's session's).
+            if (heldElsewhere.Count > 0)
+            {
+                result["installedGameHeldElsewhere"] = heldElsewhere.Count;
+                normalHoldRetry = new Timer(_ => { lock (retaken) if (!retakeStopped) heldElsewhere.RemoveAll(path => HoldClosed(path, retaken)); }, null, 5000, 5000);
+            }
         }
         hint = Path.Combine(copy, "bin", "steam_appid.txt");
         // Not a game file: only a session writes it, so one here was left by a session that was cut short.
@@ -404,9 +527,49 @@ sealed class PlaySession(PlayOptions options)
         if (linuxNamespace)
             result["networkBlock"] = "linux-netns";
         else if (wfpOnly)
+        {
             result["networkBlock"] = "wfp";
+            // A block placed before it was narrowed to the backend's port still permits every loopback port: it is placed
+            // again for the backend's port alone (Install-WfpBlock.ps1, as setup does), with one Windows prompt. The backend
+            // already runs on that port (install.BackendPort is the computed one while the marker names none).
+            var narrowed = !File.Exists(marker) || install.BlockedBackendPort() != null;
+            if (!narrowed)
+            {
+                result["networkBlockInstallReason"] = "the block predates its narrowing to the backend's port";
+                result["status"] = "awaiting_network_block_install";
+                Save();
+                Say("The network block still lets the game reach every program on this PC: placing it again for HellForge's backend alone. " +
+                    "Windows will ask for administrator consent once.");
+                var report = Path.Combine(run, "network-block-narrow.json");
+                var elevated = new ProcessStartInfo(Tools.PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(Scripts, "Install-WfpBlock.ps1")}\" " +
+                    $"-InstallRoot \"{install.Root}\" -ReportPath \"{report}\" -BackendPort {install.ComputedBackendPort}")
+                    { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+                string? why = null;
+                try { using var installer = Process.Start(elevated); installer?.WaitForExit(); }
+                catch (System.ComponentModel.Win32Exception) { why = "Windows administrator consent was not given"; }
+                if (Tools.ReadJson(report) is { } placed)
+                {
+                    result["networkBlockNarrow"] = placed.DeepClone();
+                    if (why == null && (string?)placed["status"] != "installed") why = (string?)placed["failure"] ?? "the install did not finish";
+                }
+                else why ??= "the install wrote no report";
+                narrowed = install.BlockedBackendPort() == new Uri((string)result["backendOrigin"]!).Port;
+                if (!narrowed && why == null) why = "the placed block names another port";
+                result["status"] = "preparing";
+                // A sandboxed game must not reach other programs on this PC; otherwise the session goes on as before.
+                if (!narrowed && options.Sandbox)
+                    throw new SessionFailure("A sandboxed session needs the network block narrowed to HellForge's backend, and it could not be placed again (" + why +
+                        "). Run Settings > Installation, or turn off Settings > Sandbox.");
+                if (!narrowed) Say("The network block could not be narrowed (" + why + "): the game can still reach every program on this PC. Run Settings > Installation to narrow it.");
+            }
+            result["networkBlockNarrowed"] = narrowed;
+        }
         else
         {
+            // Windows Firewall never filters loopback, so with its rules the game reaches every program on this PC.
+            if (options.Sandbox)
+                throw new SessionFailure("A sandboxed session needs the WFP network block, and this installation still has the older Windows Firewall rules. " +
+                    "Run Settings > Installation to place it, or turn off Settings > Sandbox.");
             result["networkBlock"] = "persistent";
             var blockProblems = BlockProblems();
             if (blockProblems.Length > 0)
@@ -440,11 +603,14 @@ sealed class PlaySession(PlayOptions options)
         var origin = new Uri((string)result["backendOrigin"]!);
         // Linux: the same probe in this process (NetworkProbe.exe is a .NET Framework program, which a Wine prefix runs
         // only with Wine Mono installed).
+        // A narrowed block is proved narrow too: the probe checks another loopback port is refused.
+        var otherPort = wfpOnly && install.BlockedBackendPort() != null ? (origin.Port + 1).ToString() : null;
         var (probeExit, _, _) = linuxNamespace ? (NetworkProbeInProcess(origin.Port, networkReport), "", "")
-            : Tools.Run(probe, [origin.Port.ToString(), networkReport], timeoutMs: 10000);
+            : Tools.Run(probe, otherPort == null ? [origin.Port.ToString(), networkReport] : [origin.Port.ToString(), networkReport, otherPort], timeoutMs: 10000);
         var network = Tools.ReadJson(networkReport);
         result["networkControl"] = network?.DeepClone();
-        if (probeExit != 0 || network == null || (bool?)network["loopbackHttpPassed"] != true || (int?)network["externalIpv4TcpError"] != 10013)
+        if (probeExit != 0 || network == null || (bool?)network["loopbackHttpPassed"] != true || (int?)network["externalIpv4TcpError"] != 10013 ||
+            (otherPort != null && (int?)network["otherLoopbackTcpError"] != 10013))
             throw new SessionFailure("Required loopback/egress controls failed.");
         // Confirm genuine Steam sign-in and ownership with the game's rules active.
         Ownership(realTarget, Path.Combine(run, "ownership-with-firewall.json"));
@@ -452,6 +618,12 @@ sealed class PlaySession(PlayOptions options)
         if (authorization.Elapsed.TotalSeconds >= 120) throw new SessionFailure("Ownership authorization expired.");
 
         profileFolder = Path.Combine(install.UserData, "environment");
+        if (options.Sandbox)
+        {
+            // the game's AppData and temp: a copy in gameOut too, back at the end
+            SandboxFolders.Copy(install.UserData, gameOut, ["environment"]);
+            profileFolder = Path.Combine(gameOut, "environment");
+        }
         foreach (var folder in new[] { "Roaming", "Local", "Temp" }) Directory.CreateDirectory(Path.Combine(profileFolder, folder));
         var requestLog = Path.Combine(run, "backend", "requests.jsonl");
         long requestOffset = 0;
@@ -463,22 +635,67 @@ sealed class PlaySession(PlayOptions options)
         // then the player's launch options (Steam's Launch Options, such as --use-d3d11), after the session's own
         var gameOptions = HellForge.Core.GameLaunchOptions.CommandLine(options.GameOptions);
         result["gameOptions"] = gameOptions;
+        // The game may not start other programs: its job holds it alone. That costs the game's crash reporter (already
+        // blocked from the network) and the DLSS updater Steam's overlay starts. The Crash dump diagnostic needs a child
+        // (the loader starts HellForge.Cli to write the dump), and HELLFORGE_ALLOW_CHILD_PROCESSES=1 lifts it to diagnose.
+        var childReason = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HELLFORGE_CRASH_DUMP")) ? "crash dump"
+            : Environment.GetEnvironmentVariable("HELLFORGE_ALLOW_CHILD_PROCESSES") == "1" ? "HELLFORGE_ALLOW_CHILD_PROCESSES" : null;
+        result["childProcesses"] = childReason == null ? "blocked" : "allowed (" + childReason + ")";
+        // Low-integrity sandbox (docs/steam-bridge.md phase 4): the game runs at low mandatory integrity and cannot
+        // write to the player's files, registry or other processes. A broker at normal integrity forwards Steam API
+        // calls over a named pipe and pushes callbacks through a shared-memory ring.
+        string? bridgeSuffix = null;
+        if (options.Sandbox)
+        {
+            bridgeSuffix = (string)result["runId"]!;
+            Environment.SetEnvironmentVariable("HELLFORGE_BRIDGE_PIPE", bridgeSuffix);
+            // Everything the game writes is in gameOut, made with a low label that its folders inherit: its logs, its
+            // environment and user data (copies), and the editor's saves (gameOut/sandbox-stats, applied after the game is
+            // gone: SandboxStats).
+            var sandboxStats = Directory.CreateDirectory(Path.Combine(gameOut, "sandbox-stats")).FullName;
+            Environment.SetEnvironmentVariable("HELLFORGE_SANDBOX_STATS", sandboxStats);
+            lowToken = LowIntegrityHelper.CreateLowToken();
+            result["sandbox"] = true;
+        }
         job = new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
-            Path.Combine(copy, "bin"), profileFolder, 0);
+            Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);
         result["gamePid"] = job.Process.Id;
         result["gameLaunched"] = true;
+        if (options.Sandbox)
+        {
+            var brokerExe = Path.Combine(Shims, "hellforge_steam_broker.exe");
+            // Pinned like the stand-ins: the broker runs at the player's integrity and loads Valve's DLL for the game.
+            var brokerPin = (string?)Tools.ReadJson(Path.Combine(Shims, "build.json"))?["steamBroker"];
+            if (!File.Exists(brokerExe) || brokerPin == null) throw new SessionFailure("The Steam broker is missing; reinstall HellForge.");
+            if (!Tools.Sha256(brokerExe).Equals(brokerPin, StringComparison.OrdinalIgnoreCase)) throw new SessionFailure("The Steam broker changed since it was built; reinstall HellForge.");
+            var brokerStart = new ProcessStartInfo(brokerExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+            brokerStart.ArgumentList.Add(bridgeSuffix!);
+            brokerStart.ArgumentList.Add(job.Process.Id.ToString());
+            brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(copy, "bin", CloudReal)));
+            // Play with strangers, which the broker reads as the backend does: off, the game's Public Steam lobby is Friends only
+            brokerStart.ArgumentList.Add(Path.GetFullPath(install.Mods));
+            // the backend's co-op peers (MultiplayerHost.PeersFile), the only Steam users the game's P2P reaches: in the
+            // backend's folder, which the low-integrity game cannot write
+            brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
+            broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
+            var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
+            broker.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (brokerLog) brokerLog.WriteLine(e.Data); };
+            broker.BeginErrorReadLine();
+            result["brokerPid"] = broker.Id;
+        }
         result["status"] = "patching";
         Save();
         job.Resume();
         // Opt-in: the engine's PlayFab web API base URL is redirected (heap data only) to the backend's local PlayFab
-        // stand-in; started before the slow edits so the URL is replaced right after the engine formats it.
-        var playFab = options.LocalPlayFab ? HellForgeLocalRoutingPatch.StartPlayFabRedirect(job.Process.Id, exe, (string)result["backendOrigin"]! + "/playfab", 180000) : null;
+        // stand-in; started before the slow edits so the URL is replaced right after the engine formats it, however long
+        // the game takes to get there.
+        var playFab = options.LocalPlayFab ? HellForgeLocalRoutingPatch.StartPlayFabRedirect(job.Process.Id, exe, (string)result["backendOrigin"]! + "/playfab", -1) : null;
         if (modNative)
         {
             var pid = job.Process.Id;
             applier = new Thread(() =>
             {
-                try { NativeModApplier.Run(install, pid, exe, Path.Combine(run, "native-mods.log"), Path.Combine(run, "native-mods.json")); }
+                try { NativeModApplier.Run(install, nativeFolders, pid, exe, Path.Combine(run, "native-mods.log"), Path.Combine(run, "native-mods.json")); }
                 catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException) { }
             }) { IsBackground = true, Name = "native mods" };
             applier.Start();
@@ -555,12 +772,17 @@ sealed class PlaySession(PlayOptions options)
         var backend = Path.Combine(app, "backend", "HellForge.LocalBackend.exe");
         if (!File.Exists(backend)) throw new SessionFailure("The local backend is missing; reinstall HellForge.");
         var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in new[] { "--port", "0", "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
+        foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
                      "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true" }) start.ArgumentList.Add(argument);
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
+        if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         // Follows the live galactic war read-only through the community mirror; fetched before the backend is ready.
         // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
-        if (options.OpenWar) { start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open"; }
+        if (options.OpenWar)
+        {
+            start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";
+            if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
+        }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
         // A war server: the backend forwards the game's war routes to it, and checks it before it is ready.
         else if (options.WarServer != null)
@@ -579,7 +801,17 @@ sealed class PlaySession(PlayOptions options)
             if (Tools.Sha256(link) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
             var pipe = "hellforge-" + (string)result["runId"]!;
             // --mods: co-op plays with the host's Local Stats (StatsShare): the host's backend reads it, a joiner's restores it
-            foreach (var argument in new[] { "--pipe", pipe, "--link", "steam:" + link, "--mod-digest", modDigest, "--mods", install.Mods }) start.ArgumentList.Add(argument);
+            // --modset: joiners lacking this session's mods may download them (ModSync)
+            // Several installations on one PC (GameProcesses.MultiInstance): the backends reach each other over loopback
+            // (HELLFORGE_PEER_LINK, a udp: link) and share a folder as the lobby directory (HELLFORGE_DIRECTORY_FOLDER);
+            // the backend logs the game in as that link's id (HELLFORGE_IDENTITY, which it reads itself).
+            var peerLink = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_PEER_LINK") : null;
+            var directoryFolder = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_DIRECTORY_FOLDER") : null;
+            if (peerLink != null && !peerLink.StartsWith("udp:", StringComparison.Ordinal)) throw new SessionFailure("HELLFORGE_PEER_LINK must be a udp: link.");
+            foreach (var argument in new[] { "--pipe", pipe, "--link", peerLink ?? "steam:" + link, "--mod-digest", modDigest, "--mods", install.Mods, "--modset", ModSetFile })
+                start.ArgumentList.Add(argument);
+            if (directoryFolder != null) { start.ArgumentList.Add("--directory"); start.ArgumentList.Add(Path.GetFullPath(directoryFolder)); }
+            if (peerLink != null) result["peerLink"] = peerLink;
             // --mod-list: the digest's mods one by one, so a refused join can say which differ (ModlistDiff)
             if (modList != null)
             {
@@ -588,10 +820,20 @@ sealed class PlaySession(PlayOptions options)
                 start.ArgumentList.Add("--mod-list");
                 start.ArgumentList.Add(listFile);
             }
+            // --rejoin: after a mod sync, the game is invited back into the host's lobby once it is on the ship (AutoRejoin)
+            if (rejoinFile != null)
+            {
+                start.ArgumentList.Add("--rejoin");
+                start.ArgumentList.Add(rejoinFile);
+                result["rejoin"] = true;
+            }
             // The game inherits this environment (HostBoundedProcess).
             Environment.SetEnvironmentVariable("HELLFORGE_PIPE", pipe);
             result["multiplayer"] = new JsonObject { ["pipe"] = pipe, ["link"] = "steam" };
         }
+        // The block permits only this port, so the backend has no other: say so when another program holds it.
+        if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
+            throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
         server = Process.Start(start) ?? throw new SessionFailure("The local backend did not start.");
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };
         var stderr = new StreamWriter(Path.Combine(run, "backend-stderr.txt")) { AutoFlush = true };
@@ -679,7 +921,13 @@ sealed class PlaySession(PlayOptions options)
                 File.AppendAllText(observations, row.ToJsonString() + "\n", new UTF8Encoding(false));
                 nextSample = clock.ElapsedMilliseconds + 30000;
             }
-            if (File.Exists(Path.Combine(run, "stop-observation.signal"))) { result["observationStoppedBySignal"] = true; break; }
+            if (File.Exists(Path.Combine(run, "stop-observation.signal")))
+            {
+                result["observationStoppedBySignal"] = true;
+                // The backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
+                if (ReadSignal() == "mod-sync") result["restart"] = "mod-sync";
+                break;
+            }
             Thread.Sleep(1000);
         }
         result["gameExitedNaturally"] = job.Process.HasExited;
@@ -730,6 +978,16 @@ sealed class PlaySession(PlayOptions options)
                 }
                 result["engineLogFiles"] = copied;
             });
+        if (broker != null)
+            try
+            {
+                if (!broker.HasExited) { broker.Kill(); broker.WaitForExit(5000); }
+                result["brokerStopped"] = broker.HasExited;
+                if (broker.HasExited) result["brokerExitCode"] = broker.ExitCode;
+            }
+            catch (InvalidOperationException) { }
+            finally { broker.Dispose(); }
+        if (lowToken != 0) { LowIntegrityHelper.CloseToken(lowToken); lowToken = 0; }
         if (server != null)
             try { if (!server.HasExited) { server.Kill(); server.WaitForExit(5000); } result["backendStopped"] = server.HasExited; }
             catch (InvalidOperationException) { }
@@ -753,9 +1011,16 @@ sealed class PlaySession(PlayOptions options)
                     ["outcome"] = r["outcome"]?.DeepClone(), ["authorization"] = r["authorization"]?.DeepClone()
                 }).ToArray());
             });
-        if (gameStarted != null) Try("networkCensusError", () => result["networkCensus"] = NetworkCensus.Summarize(Path.Combine(run, CensusLog)));
+        if (gameStarted != null) Try("networkCensusError", () => result["networkCensus"] = NetworkCensus.Summarize(Path.Combine(gameOut, CensusLog)));
         if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
         foreach (var held in locks) held.Dispose();
+        normalHoldRetry?.Dispose();
+        lock (retaken)
+        {
+            retakeStopped = true;
+            foreach (var held in retaken) held.Dispose();
+        }
+        modsHold?.Release();
         // A loaded DLL cannot be replaced, so the originals go back only once the game is gone; otherwise the next session
         // restores them before verifying the copy.
         if (swapped.Count > 0)
@@ -806,9 +1071,49 @@ sealed class PlaySession(PlayOptions options)
                 result["copyDllUnchanged"] = Tools.Sha256(gameDll) == (string?)result["gameDllSha256"];
                 if (normal != null && result["installedExeSha256"] != null)
                 {
-                    result["installedExeUnchanged"] = Tools.Sha256(Path.Combine(normal, "bin", "helldivers2.exe")) == (string?)result["installedExeSha256"];
+                    // several installations: a later installation's session may hold it closed by now
+                    try { result["installedExeUnchanged"] = Tools.Sha256(Path.Combine(normal, "bin", "helldivers2.exe")) == (string?)result["installedExeSha256"]; }
+                    catch (IOException) when (GameProcesses.MultiInstance) { result["installedExeHeldElsewhere"] = true; }
                     result["installedDllUnchanged"] = Tools.Sha256(Path.Combine(normal, "data", "game", "game.dll")) == (string?)result["installedDllSha256"];
                 }
+            });
+        // What appeared in mods/ during the session, before HellForge applies the sandboxed editor's saves.
+        if (modsHold != null)
+            Try("plantedModsError", () =>
+            {
+                if (modsHold.Check(Say) is not { } planted) return;
+                result["plantedMods"] = new JsonObject
+                {
+                    ["plantedFiles"] = planted.Files.Count,
+                    ["files"] = new JsonArray([.. planted.Files.Take(50).Select(f => (JsonNode?)f)]),
+                    ["disabledMods"] = new JsonArray([.. planted.DisabledMods.Select(id => (JsonNode?)id)])
+                };
+                Say($"WARNING: {planted.Files.Count} file(s) appeared in the mods folder during the session" +
+                    (planted.DisabledMods.Count > 0 ? $"; {planted.DisabledMods.Count} mod(s) they appeared in switched off until you turn them on in Mods." : "."));
+            });
+        if (options.Sandbox && (bool?)result["jobEmpty"] == true && gameStarted != null)
+            Try("sandboxCopyBackError", () =>
+            {
+                // the game's data back where the next session reads it (written by the game: files only, bounded)
+                var back = SandboxFolders.Copy(SandboxUserData, install.UserData, SandboxFolders.UserDataParts(profileName));
+                var environment = SandboxFolders.Copy(gameOut, install.UserData, ["environment"]);
+                result["sandboxCopiedBack"] = new JsonObject
+                {
+                    ["files"] = back.Files + environment.Files, ["bytes"] = back.Bytes + environment.Bytes, ["skipped"] = back.Skipped + environment.Skipped
+                };
+                if (back.Skipped + environment.Skipped > 0)
+                    Say($"{back.Skipped + environment.Skipped} file(s) the game wrote were not copied back (links, or over the size limit).");
+            });
+        if (options.Sandbox && (bool?)result["jobEmpty"] == true)
+            Try("sandboxStatsError", () =>
+            {
+                var applied = SandboxStats.Apply(Path.Combine(gameOut, "sandbox-stats"), install.Mods, EntityProfile.Current);
+                result["sandboxStats"] = applied == null ? "none" : new JsonObject
+                {
+                    ["stats"] = applied.Stats, ["modValues"] = applied.ModValues, ["refused"] = applied.Refused,
+                    ["settings"] = applied.Settings, ["presets"] = applied.Presets
+                };
+                if (applied?.Refused > 0) Say($"{applied.Refused} in-game editor change(s) were left out: the stats file would not accept them.");
             });
         lease?.Dispose();
         result["completedUtc"] = DateTime.UtcNow.ToString("o");

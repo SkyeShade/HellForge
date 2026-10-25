@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "discover": ["src", "native", "examples/mods"],
+  "units": [
+    {"name": "c-mod-template", "path": "templates/c-mod"}
+  ],
+  "default_sources": ["**/*.cs", "**/*.c", "**/*.h", "**/*.cpp"],
+  "exclude": [
+    "**/bin/**",
+    "**/obj/**",
+    "**/test/**",
+    "**/tests/**",
+    "native/editor/ui_logo.h",
+    "native/editor/ui_marks.h",
+    "native/mod-loader/component_sizes.h",
+    "native/mod-loader/damage_sites.h",
+    "native/mod-loader/difficulty_sites.h",
+    "native/mod-loader/location_sites.h",
+    "native/mod-loader/melee_data.h",
+    "native/mod-loader/passive_pins.h",
+    "native/mod-loader/perk_data.h",
+    "native/mod-loader/projectile_sites.h",
+    "native/mod-loader/reference_data.h",
+    "native/mod-loader/sdk_content.h",
+    "native/mod-loader/sdk_fields.h",
+    "native/mod-loader/stats-layouts.h",
+    "native/mod-loader/stratagem_bounds.h",
+    "native/mod-loader/stratagem_sites.h",
+    "native/mod-sdk/hellforge_components.h",
+    "native/mod-sdk/hellforge_content.h",
+    "src/HellForge.Session/EarlyConstructor.cs",
+    "src/HellForge.Session/HostBoundedProcess.cs",
+    "src/HellForge.Session/LocalRoutingPatch.cs"
+  ],
+  "severity": {"R10": "warning", "R11": "warning", "R12": "error", "R13": "error", "R14": "error",
+               "R15": "warning"},
+  "limits": {"cognitive": 15, "function_lines": 150, "parameters": 7, "stack_bytes": 16384, "module_lines": 1000,
+             "clone_tokens": 100}
+}

@@ -556,9 +556,10 @@
           "offset": 4,
           "type": "u32",
           "count": 32,
-          "meaning": "projectile types of successive rounds",
+          "meaning": "projectile types of successive rounds; with magazine_type 1, round n fires entry (n - 1) % count (game.dll 0x7456D0); never 0 inside the count, which is fixed at spawn",
           "verified": true,
-          "source": "HD2Runtime research_active_projectile_sources.py:62,100"
+          "source": "HD2Runtime research_active_projectile_sources.py:62,100",
+          "ref": "projectile"
         },
         "first_projectile": {
           "offset": 132,
@@ -1603,6 +1604,69 @@
           "verified": false,
           "source": "stats-schema entity.health"
         },
+        "health_change_rate": {
+          "offset": 4,
+          "type": "f32",
+          "meaning": "Health change rate",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.health_change_rate"
+        },
+        "health_change_rate_disabled": {
+          "offset": 8,
+          "type": "u8",
+          "meaning": "Health change rate disabled",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.health_change_rate_disabled"
+        },
+        "regeneration_cooldown": {
+          "offset": 12,
+          "type": "f32",
+          "meaning": "Regeneration cooldown",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.regeneration_cooldown"
+        },
+        "regeneration_segments": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "Regeneration segments",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.regeneration_segments"
+        },
+        "regeneration_change_rate": {
+          "offset": 20,
+          "type": "f32",
+          "meaning": "Regeneration change rate",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.regeneration_change_rate"
+        },
+        "constitution": {
+          "offset": 24,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.constitution"
+        },
+        "constitution_rate": {
+          "offset": 28,
+          "type": "f32",
+          "meaning": "Constitution rate",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.constitution_rate"
+        },
+        "zone_bleedout_change_rate": {
+          "offset": 36,
+          "type": "f32",
+          "meaning": "Zone bleedout change rate",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.zone_bleedout_change_rate"
+        },
+        "durable_resistance_7": {
+          "offset": 268,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue entity.durable_resistance"
+        },
         "armor_118": {
           "offset": 280,
           "type": "u32",
@@ -1652,6 +1716,27 @@
           "verified": false,
           "source": "stats-schema zone.health"
         },
+        "zone_0_constitution": {
+          "offset": 756,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_0_downs_on_death": {
+          "offset": 763,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_0_fatal": {
+          "offset": 764,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "affects_main_health": {
           "offset": 768,
           "type": "f32",
@@ -1672,6 +1757,13 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_0.explosive_damage_percentage"
+        },
+        "zone_0_main_health_capped": {
+          "offset": 860,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         },
         "damage_multiplier_3": {
           "offset": 1268,
@@ -1708,6 +1800,27 @@
           "verified": false,
           "source": "stats-schema zone.health"
         },
+        "zone_1_constitution": {
+          "offset": 1308,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_1_downs_on_death": {
+          "offset": 1315,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_1_fatal": {
+          "offset": 1316,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "zone_1_affects_main_health": {
           "offset": 1320,
           "type": "f32",
@@ -1728,6 +1841,13 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_1.explosive_damage_percentage"
+        },
+        "zone_1_main_health_capped": {
+          "offset": 1412,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         },
         "damage_multiplier": {
           "offset": 1820,
@@ -1764,6 +1884,27 @@
           "verified": false,
           "source": "stats-schema zone_2.health"
         },
+        "zone_2_constitution": {
+          "offset": 1860,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_2_downs_on_death": {
+          "offset": 1867,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_2_fatal": {
+          "offset": 1868,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "zone_2_affects_main_health": {
           "offset": 1872,
           "type": "f32",
@@ -1784,6 +1925,13 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_2.explosive_damage_percentage"
+        },
+        "zone_2_main_health_capped": {
+          "offset": 1964,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         },
         "damage_multiplier_2": {
           "offset": 2372,
@@ -1820,6 +1968,27 @@
           "verified": false,
           "source": "stats-schema zone_3.health"
         },
+        "zone_3_constitution": {
+          "offset": 2412,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_3_downs_on_death": {
+          "offset": 2419,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_3_fatal": {
+          "offset": 2420,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "zone_3_affects_main_health": {
           "offset": 2424,
           "type": "f32",
@@ -1840,6 +2009,13 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_3.explosive_damage_percentage"
+        },
+        "zone_3_main_health_capped": {
+          "offset": 2516,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         },
         "damage_multiplier_5": {
           "offset": 2924,
@@ -1876,6 +2052,27 @@
           "verified": false,
           "source": "stats-schema zone_4.health"
         },
+        "zone_4_constitution": {
+          "offset": 2964,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_4_downs_on_death": {
+          "offset": 2971,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_4_fatal": {
+          "offset": 2972,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "zone_4_affects_main_health": {
           "offset": 2976,
           "type": "f32",
@@ -1896,6 +2093,13 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_4.explosive_damage_percentage"
+        },
+        "zone_4_main_health_capped": {
+          "offset": 3068,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         },
         "damage_multiplier_6": {
           "offset": 3476,
@@ -1932,6 +2136,27 @@
           "verified": false,
           "source": "stats-schema zone_5.health"
         },
+        "zone_5_constitution": {
+          "offset": 3516,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_5_downs_on_death": {
+          "offset": 3523,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_5_fatal": {
+          "offset": 3524,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
         "zone_5_affects_main_health": {
           "offset": 3528,
           "type": "f32",
@@ -1953,6 +2178,20 @@
           "verified": false,
           "source": "stats-schema zone_5.explosive_damage_percentage"
         },
+        "zone_5_main_health_capped": {
+          "offset": 3620,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_6_durable_resistance": {
+          "offset": 4036,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_6_armor": {
           "offset": 4048,
           "type": "u32",
@@ -1966,6 +2205,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_6.health"
+        },
+        "zone_6_constitution": {
+          "offset": 4068,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_6_downs_on_death": {
+          "offset": 4075,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_6_fatal": {
+          "offset": 4076,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_6_affects_main_health": {
           "offset": 4080,
@@ -1988,6 +2248,20 @@
           "verified": false,
           "source": "stats-schema zone_6.explosive_damage_percentage"
         },
+        "zone_6_main_health_capped": {
+          "offset": 4172,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_7_durable_resistance": {
+          "offset": 4588,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_7_armor": {
           "offset": 4600,
           "type": "u32",
@@ -2001,6 +2275,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_7.health"
+        },
+        "zone_7_constitution": {
+          "offset": 4620,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_7_downs_on_death": {
+          "offset": 4627,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_7_fatal": {
+          "offset": 4628,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_7_affects_main_health": {
           "offset": 4632,
@@ -2023,6 +2318,20 @@
           "verified": false,
           "source": "stats-schema zone_7.explosive_damage_percentage"
         },
+        "zone_7_main_health_capped": {
+          "offset": 4724,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_8_durable_resistance": {
+          "offset": 5140,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_8_armor": {
           "offset": 5152,
           "type": "u32",
@@ -2036,6 +2345,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_8.health"
+        },
+        "zone_8_constitution": {
+          "offset": 5172,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_8_downs_on_death": {
+          "offset": 5179,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_8_fatal": {
+          "offset": 5180,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_8_affects_main_health": {
           "offset": 5184,
@@ -2058,6 +2388,20 @@
           "verified": false,
           "source": "stats-schema zone_8.explosive_damage_percentage"
         },
+        "zone_8_main_health_capped": {
+          "offset": 5276,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_9_durable_resistance": {
+          "offset": 5692,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_9_armor": {
           "offset": 5704,
           "type": "u32",
@@ -2071,6 +2415,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_9.health"
+        },
+        "zone_9_constitution": {
+          "offset": 5724,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_9_downs_on_death": {
+          "offset": 5731,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_9_fatal": {
+          "offset": 5732,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_9_affects_main_health": {
           "offset": 5736,
@@ -2093,6 +2458,20 @@
           "verified": false,
           "source": "stats-schema zone_9.explosive_damage_percentage"
         },
+        "zone_9_main_health_capped": {
+          "offset": 5828,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_10_durable_resistance": {
+          "offset": 6244,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_10_armor": {
           "offset": 6256,
           "type": "u32",
@@ -2106,6 +2485,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_10.health"
+        },
+        "zone_10_constitution": {
+          "offset": 6276,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_10_downs_on_death": {
+          "offset": 6283,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_10_fatal": {
+          "offset": 6284,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_10_affects_main_health": {
           "offset": 6288,
@@ -2128,6 +2528,20 @@
           "verified": false,
           "source": "stats-schema zone_10.explosive_damage_percentage"
         },
+        "zone_10_main_health_capped": {
+          "offset": 6380,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_11_durable_resistance": {
+          "offset": 6796,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_11_armor": {
           "offset": 6808,
           "type": "u32",
@@ -2141,6 +2555,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_11.health"
+        },
+        "zone_11_constitution": {
+          "offset": 6828,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_11_downs_on_death": {
+          "offset": 6835,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_11_fatal": {
+          "offset": 6836,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_11_affects_main_health": {
           "offset": 6840,
@@ -2163,6 +2598,20 @@
           "verified": false,
           "source": "stats-schema zone_11.explosive_damage_percentage"
         },
+        "zone_11_main_health_capped": {
+          "offset": 6932,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_12_durable_resistance": {
+          "offset": 7348,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_12_armor": {
           "offset": 7360,
           "type": "u32",
@@ -2176,6 +2625,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_12.health"
+        },
+        "zone_12_constitution": {
+          "offset": 7380,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_12_downs_on_death": {
+          "offset": 7387,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_12_fatal": {
+          "offset": 7388,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_12_affects_main_health": {
           "offset": 7392,
@@ -2198,6 +2668,20 @@
           "verified": false,
           "source": "stats-schema zone_12.explosive_damage_percentage"
         },
+        "zone_12_main_health_capped": {
+          "offset": 7484,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_13_durable_resistance": {
+          "offset": 7900,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_13_armor": {
           "offset": 7912,
           "type": "u32",
@@ -2211,6 +2695,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_13.health"
+        },
+        "zone_13_constitution": {
+          "offset": 7932,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_13_downs_on_death": {
+          "offset": 7939,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_13_fatal": {
+          "offset": 7940,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_13_affects_main_health": {
           "offset": 7944,
@@ -2233,6 +2738,20 @@
           "verified": false,
           "source": "stats-schema zone_13.explosive_damage_percentage"
         },
+        "zone_13_main_health_capped": {
+          "offset": 8036,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_14_durable_resistance": {
+          "offset": 8452,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_14_armor": {
           "offset": 8464,
           "type": "u32",
@@ -2246,6 +2765,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_14.health"
+        },
+        "zone_14_constitution": {
+          "offset": 8484,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_14_downs_on_death": {
+          "offset": 8491,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_14_fatal": {
+          "offset": 8492,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_14_affects_main_health": {
           "offset": 8496,
@@ -2268,6 +2808,20 @@
           "verified": false,
           "source": "stats-schema zone_14.explosive_damage_percentage"
         },
+        "zone_14_main_health_capped": {
+          "offset": 8588,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_15_durable_resistance": {
+          "offset": 9004,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_15_armor": {
           "offset": 9016,
           "type": "u32",
@@ -2281,6 +2835,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_15.health"
+        },
+        "zone_15_constitution": {
+          "offset": 9036,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_15_downs_on_death": {
+          "offset": 9043,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_15_fatal": {
+          "offset": 9044,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_15_affects_main_health": {
           "offset": 9048,
@@ -2303,6 +2878,20 @@
           "verified": false,
           "source": "stats-schema zone_15.explosive_damage_percentage"
         },
+        "zone_15_main_health_capped": {
+          "offset": 9140,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_16_durable_resistance": {
+          "offset": 9556,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_16_armor": {
           "offset": 9568,
           "type": "u32",
@@ -2316,6 +2905,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_16.health"
+        },
+        "zone_16_constitution": {
+          "offset": 9588,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_16_downs_on_death": {
+          "offset": 9595,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_16_fatal": {
+          "offset": 9596,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_16_affects_main_health": {
           "offset": 9600,
@@ -2338,6 +2948,20 @@
           "verified": false,
           "source": "stats-schema zone_16.explosive_damage_percentage"
         },
+        "zone_16_main_health_capped": {
+          "offset": 9692,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_17_durable_resistance": {
+          "offset": 10108,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_17_armor": {
           "offset": 10120,
           "type": "u32",
@@ -2351,6 +2975,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_17.health"
+        },
+        "zone_17_constitution": {
+          "offset": 10140,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_17_downs_on_death": {
+          "offset": 10147,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_17_fatal": {
+          "offset": 10148,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_17_affects_main_health": {
           "offset": 10152,
@@ -2373,6 +3018,20 @@
           "verified": false,
           "source": "stats-schema zone_17.explosive_damage_percentage"
         },
+        "zone_17_main_health_capped": {
+          "offset": 10244,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_18_durable_resistance": {
+          "offset": 10660,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_18_armor": {
           "offset": 10672,
           "type": "u32",
@@ -2386,6 +3045,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_18.health"
+        },
+        "zone_18_constitution": {
+          "offset": 10692,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_18_downs_on_death": {
+          "offset": 10699,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_18_fatal": {
+          "offset": 10700,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_18_affects_main_health": {
           "offset": 10704,
@@ -2408,6 +3088,20 @@
           "verified": false,
           "source": "stats-schema zone_18.explosive_damage_percentage"
         },
+        "zone_18_main_health_capped": {
+          "offset": 10796,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_19_durable_resistance": {
+          "offset": 11212,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_19_armor": {
           "offset": 11224,
           "type": "u32",
@@ -2421,6 +3115,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_19.health"
+        },
+        "zone_19_constitution": {
+          "offset": 11244,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_19_downs_on_death": {
+          "offset": 11251,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_19_fatal": {
+          "offset": 11252,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_19_affects_main_health": {
           "offset": 11256,
@@ -2443,6 +3158,20 @@
           "verified": false,
           "source": "stats-schema zone_19.explosive_damage_percentage"
         },
+        "zone_19_main_health_capped": {
+          "offset": 11348,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_20_durable_resistance": {
+          "offset": 11764,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_20_armor": {
           "offset": 11776,
           "type": "u32",
@@ -2456,6 +3185,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_20.health"
+        },
+        "zone_20_constitution": {
+          "offset": 11796,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_20_downs_on_death": {
+          "offset": 11803,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_20_fatal": {
+          "offset": 11804,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_20_affects_main_health": {
           "offset": 11808,
@@ -2478,6 +3228,20 @@
           "verified": false,
           "source": "stats-schema zone_20.explosive_damage_percentage"
         },
+        "zone_20_main_health_capped": {
+          "offset": 11900,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_21_durable_resistance": {
+          "offset": 12316,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_21_armor": {
           "offset": 12328,
           "type": "u32",
@@ -2491,6 +3255,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_21.health"
+        },
+        "zone_21_constitution": {
+          "offset": 12348,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_21_downs_on_death": {
+          "offset": 12355,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_21_fatal": {
+          "offset": 12356,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_21_affects_main_health": {
           "offset": 12360,
@@ -2513,6 +3298,20 @@
           "verified": false,
           "source": "stats-schema zone_21.explosive_damage_percentage"
         },
+        "zone_21_main_health_capped": {
+          "offset": 12452,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_22_durable_resistance": {
+          "offset": 12868,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_22_armor": {
           "offset": 12880,
           "type": "u32",
@@ -2526,6 +3325,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_22.health"
+        },
+        "zone_22_constitution": {
+          "offset": 12900,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_22_downs_on_death": {
+          "offset": 12907,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_22_fatal": {
+          "offset": 12908,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_22_affects_main_health": {
           "offset": 12912,
@@ -2548,6 +3368,20 @@
           "verified": false,
           "source": "stats-schema zone_22.explosive_damage_percentage"
         },
+        "zone_22_main_health_capped": {
+          "offset": 13004,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_23_durable_resistance": {
+          "offset": 13420,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_23_armor": {
           "offset": 13432,
           "type": "u32",
@@ -2561,6 +3395,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_23.health"
+        },
+        "zone_23_constitution": {
+          "offset": 13452,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_23_downs_on_death": {
+          "offset": 13459,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_23_fatal": {
+          "offset": 13460,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_23_affects_main_health": {
           "offset": 13464,
@@ -2583,6 +3438,20 @@
           "verified": false,
           "source": "stats-schema zone_23.explosive_damage_percentage"
         },
+        "zone_23_main_health_capped": {
+          "offset": 13556,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_24_durable_resistance": {
+          "offset": 13972,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_24_armor": {
           "offset": 13984,
           "type": "u32",
@@ -2596,6 +3465,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_24.health"
+        },
+        "zone_24_constitution": {
+          "offset": 14004,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_24_downs_on_death": {
+          "offset": 14011,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_24_fatal": {
+          "offset": 14012,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_24_affects_main_health": {
           "offset": 14016,
@@ -2618,6 +3508,20 @@
           "verified": false,
           "source": "stats-schema zone_24.explosive_damage_percentage"
         },
+        "zone_24_main_health_capped": {
+          "offset": 14108,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_25_durable_resistance": {
+          "offset": 14524,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_25_armor": {
           "offset": 14536,
           "type": "u32",
@@ -2631,6 +3535,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_25.health"
+        },
+        "zone_25_constitution": {
+          "offset": 14556,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_25_downs_on_death": {
+          "offset": 14563,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_25_fatal": {
+          "offset": 14564,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_25_affects_main_health": {
           "offset": 14568,
@@ -2653,6 +3578,20 @@
           "verified": false,
           "source": "stats-schema zone_25.explosive_damage_percentage"
         },
+        "zone_25_main_health_capped": {
+          "offset": 14660,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_26_durable_resistance": {
+          "offset": 15076,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_26_armor": {
           "offset": 15088,
           "type": "u32",
@@ -2666,6 +3605,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_26.health"
+        },
+        "zone_26_constitution": {
+          "offset": 15108,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_26_downs_on_death": {
+          "offset": 15115,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_26_fatal": {
+          "offset": 15116,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_26_affects_main_health": {
           "offset": 15120,
@@ -2688,6 +3648,20 @@
           "verified": false,
           "source": "stats-schema zone_26.explosive_damage_percentage"
         },
+        "zone_26_main_health_capped": {
+          "offset": 15212,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_27_durable_resistance": {
+          "offset": 15628,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_27_armor": {
           "offset": 15640,
           "type": "u32",
@@ -2701,6 +3675,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_27.health"
+        },
+        "zone_27_constitution": {
+          "offset": 15660,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_27_downs_on_death": {
+          "offset": 15667,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_27_fatal": {
+          "offset": 15668,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_27_affects_main_health": {
           "offset": 15672,
@@ -2723,6 +3718,20 @@
           "verified": false,
           "source": "stats-schema zone_27.explosive_damage_percentage"
         },
+        "zone_27_main_health_capped": {
+          "offset": 15764,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_28_durable_resistance": {
+          "offset": 16180,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_28_armor": {
           "offset": 16192,
           "type": "u32",
@@ -2736,6 +3745,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_28.health"
+        },
+        "zone_28_constitution": {
+          "offset": 16212,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_28_downs_on_death": {
+          "offset": 16219,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_28_fatal": {
+          "offset": 16220,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_28_affects_main_health": {
           "offset": 16224,
@@ -2758,6 +3788,20 @@
           "verified": false,
           "source": "stats-schema zone_28.explosive_damage_percentage"
         },
+        "zone_28_main_health_capped": {
+          "offset": 16316,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_29_durable_resistance": {
+          "offset": 16732,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_29_armor": {
           "offset": 16744,
           "type": "u32",
@@ -2771,6 +3815,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_29.health"
+        },
+        "zone_29_constitution": {
+          "offset": 16764,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_29_downs_on_death": {
+          "offset": 16771,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_29_fatal": {
+          "offset": 16772,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_29_affects_main_health": {
           "offset": 16776,
@@ -2793,6 +3858,20 @@
           "verified": false,
           "source": "stats-schema zone_29.explosive_damage_percentage"
         },
+        "zone_29_main_health_capped": {
+          "offset": 16868,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_30_durable_resistance": {
+          "offset": 17284,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_30_armor": {
           "offset": 17296,
           "type": "u32",
@@ -2806,6 +3885,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_30.health"
+        },
+        "zone_30_constitution": {
+          "offset": 17316,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_30_downs_on_death": {
+          "offset": 17323,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_30_fatal": {
+          "offset": 17324,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_30_affects_main_health": {
           "offset": 17328,
@@ -2828,6 +3928,20 @@
           "verified": false,
           "source": "stats-schema zone_30.explosive_damage_percentage"
         },
+        "zone_30_main_health_capped": {
+          "offset": 17420,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_31_durable_resistance": {
+          "offset": 17836,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_31_armor": {
           "offset": 17848,
           "type": "u32",
@@ -2841,6 +3955,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_31.health"
+        },
+        "zone_31_constitution": {
+          "offset": 17868,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_31_downs_on_death": {
+          "offset": 17875,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_31_fatal": {
+          "offset": 17876,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_31_affects_main_health": {
           "offset": 17880,
@@ -2863,6 +3998,20 @@
           "verified": false,
           "source": "stats-schema zone_31.explosive_damage_percentage"
         },
+        "zone_31_main_health_capped": {
+          "offset": 17972,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_32_durable_resistance": {
+          "offset": 18388,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_32_armor": {
           "offset": 18400,
           "type": "u32",
@@ -2876,6 +4025,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_32.health"
+        },
+        "zone_32_constitution": {
+          "offset": 18420,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_32_downs_on_death": {
+          "offset": 18427,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_32_fatal": {
+          "offset": 18428,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_32_affects_main_health": {
           "offset": 18432,
@@ -2898,6 +4068,20 @@
           "verified": false,
           "source": "stats-schema zone_32.explosive_damage_percentage"
         },
+        "zone_32_main_health_capped": {
+          "offset": 18524,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_33_durable_resistance": {
+          "offset": 18940,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_33_armor": {
           "offset": 18952,
           "type": "u32",
@@ -2911,6 +4095,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_33.health"
+        },
+        "zone_33_constitution": {
+          "offset": 18972,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_33_downs_on_death": {
+          "offset": 18979,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_33_fatal": {
+          "offset": 18980,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_33_affects_main_health": {
           "offset": 18984,
@@ -2933,6 +4138,20 @@
           "verified": false,
           "source": "stats-schema zone_33.explosive_damage_percentage"
         },
+        "zone_33_main_health_capped": {
+          "offset": 19076,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_34_durable_resistance": {
+          "offset": 19492,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
         "zone_34_armor": {
           "offset": 19504,
           "type": "u32",
@@ -2946,6 +4165,27 @@
           "meaning": "Health",
           "verified": false,
           "source": "stats-schema zone_34.health"
+        },
+        "zone_34_constitution": {
+          "offset": 19524,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_34_downs_on_death": {
+          "offset": 19531,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_34_fatal": {
+          "offset": 19532,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
         },
         "zone_34_affects_main_health": {
           "offset": 19536,
@@ -2967,6 +4207,202 @@
           "meaning": "Explosion damage taken",
           "verified": false,
           "source": "stats-schema zone_34.explosive_damage_percentage"
+        },
+        "zone_34_main_health_capped": {
+          "offset": 19628,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_35_durable_resistance": {
+          "offset": 20044,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
+        "zone_35_armor": {
+          "offset": 20056,
+          "type": "u32",
+          "meaning": "Armor",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.armor"
+        },
+        "zone_35_health": {
+          "offset": 20072,
+          "type": "i32",
+          "meaning": "Health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.health"
+        },
+        "zone_35_constitution": {
+          "offset": 20076,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_35_downs_on_death": {
+          "offset": 20083,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_35_fatal": {
+          "offset": 20084,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
+        "zone_35_affects_main_health": {
+          "offset": 20088,
+          "type": "f32",
+          "meaning": "Affects main health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.affects_main_health"
+        },
+        "zone_35_explosive_damage_percentage": {
+          "offset": 20164,
+          "type": "f32",
+          "meaning": "Explosive damage percentage",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.explosive_damage_percentage"
+        },
+        "zone_35_main_health_capped": {
+          "offset": 20180,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_36_durable_resistance": {
+          "offset": 20596,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
+        "zone_36_armor": {
+          "offset": 20608,
+          "type": "u32",
+          "meaning": "Armor",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.armor"
+        },
+        "zone_36_health": {
+          "offset": 20624,
+          "type": "i32",
+          "meaning": "Health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.health"
+        },
+        "zone_36_constitution": {
+          "offset": 20628,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_36_downs_on_death": {
+          "offset": 20635,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_36_fatal": {
+          "offset": 20636,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
+        "zone_36_affects_main_health": {
+          "offset": 20640,
+          "type": "f32",
+          "meaning": "Affects main health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.affects_main_health"
+        },
+        "zone_36_explosive_damage_percentage": {
+          "offset": 20716,
+          "type": "f32",
+          "meaning": "Explosive damage percentage",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.explosive_damage_percentage"
+        },
+        "zone_36_main_health_capped": {
+          "offset": 20732,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "zone_37_durable_resistance": {
+          "offset": 21148,
+          "type": "f32",
+          "meaning": "Durable resistance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.durable_resistance"
+        },
+        "zone_37_armor": {
+          "offset": 21160,
+          "type": "u32",
+          "meaning": "Armor",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.armor"
+        },
+        "zone_37_health": {
+          "offset": 21176,
+          "type": "i32",
+          "meaning": "Health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.health"
+        },
+        "zone_37_constitution": {
+          "offset": 21180,
+          "type": "i32",
+          "meaning": "Constitution",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.constitution"
+        },
+        "zone_37_downs_on_death": {
+          "offset": 21187,
+          "type": "u8",
+          "meaning": "Downs on death",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.downs_on_death"
+        },
+        "zone_37_fatal": {
+          "offset": 21188,
+          "type": "u8",
+          "meaning": "Fatal",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.fatal"
+        },
+        "zone_37_affects_main_health": {
+          "offset": 21192,
+          "type": "f32",
+          "meaning": "Affects main health",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.affects_main_health"
+        },
+        "zone_37_explosive_damage_percentage": {
+          "offset": 21268,
+          "type": "f32",
+          "meaning": "Explosive damage percentage",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.explosive_damage_percentage"
+        },
+        "zone_37_main_health_capped": {
+          "offset": 21284,
+          "type": "u8",
+          "meaning": "Main health capped",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue zone.main_health_capped"
         }
       },
       "applies": "respawn",
@@ -3171,6 +4607,13 @@
           "meaning": "shield.durability",
           "verified": false,
           "source": "stats-schema shield.durability"
+        },
+        "armor": {
+          "offset": 80,
+          "type": "f32",
+          "meaning": "Armor",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue shield.armor"
         },
         "recharge_delay": {
           "offset": 88,
@@ -3391,6 +4834,14 @@
           "verified": false,
           "source": "stats-schema heat.level_1_threshold"
         },
+        "level_1_projectile": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the projectile a shot at heat level 1 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
+        },
         "level_1_self_status": {
           "offset": 20,
           "type": "u32",
@@ -3406,6 +4857,14 @@
           "verified": false,
           "source": "stats-schema heat.level_2_threshold"
         },
+        "level_2_projectile": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "the projectile a shot at heat level 2 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
+        },
         "level_2_self_status": {
           "offset": 44,
           "type": "u32",
@@ -3420,6 +4879,14 @@
           "meaning": "Heat level 3 threshold (heat_units)",
           "verified": false,
           "source": "stats-schema heat.level_3_threshold"
+        },
+        "level_3_projectile": {
+          "offset": 52,
+          "type": "u32",
+          "meaning": "the projectile a shot at heat level 3 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
         },
         "level_3_self_status": {
           "offset": 68,
@@ -3928,6 +5395,14 @@
           "verified": false,
           "source": "stats-schema charge.level_1"
         },
+        "level_1_projectile": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the projectile a release at charge level 1 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
+        },
         "level_2": {
           "offset": 24,
           "type": "f32",
@@ -3935,12 +5410,28 @@
           "verified": false,
           "source": "stats-schema charge.level_2"
         },
+        "level_2_projectile": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "the projectile a release at charge level 2 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
+        },
         "level_3": {
           "offset": 48,
           "type": "f32",
           "meaning": "Overcharge time (seconds)",
           "verified": false,
           "source": "stats-schema charge.level_3"
+        },
+        "level_3_projectile": {
+          "offset": 52,
+          "type": "u32",
+          "meaning": "the projectile a release at charge level 3 fires (passed to the fire function as its explicit type)",
+          "verified": false,
+          "source": "HD2Mods research/blocked-projectile-swaps (game.dll 0x73D8C0 charge release, 0x7627B0 heat level)",
+          "ref": "projectile"
         },
         "minimum_seconds": {
           "offset": 72,
@@ -4248,6 +5739,664 @@
           "meaning": "Mission timer in seconds (60 to 2500; the game cuts longer countdowns to 2500). Set it aboard the ship before launch",
           "verified": false,
           "source": "HD2Runtime domains/missions.lua sources (offset 116)"
+        },
+        "patrol_clock_rate_players_1": {
+          "offset": 496,
+          "type": "f32",
+          "meaning": "Patrol clock rate players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.patrol_clock_rate_players_1"
+        },
+        "patrol_clock_rate_players_2": {
+          "offset": 500,
+          "type": "f32",
+          "meaning": "Patrol clock rate players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.patrol_clock_rate_players_2"
+        },
+        "patrol_clock_rate_players_3": {
+          "offset": 504,
+          "type": "f32",
+          "meaning": "Patrol clock rate players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.patrol_clock_rate_players_3"
+        },
+        "patrol_clock_rate_players_4": {
+          "offset": 508,
+          "type": "f32",
+          "meaning": "Patrol clock rate players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.patrol_clock_rate_players_4"
+        },
+        "queue_limit_progress_1": {
+          "offset": 536,
+          "type": "f32",
+          "meaning": "Queue limit progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_progress_1"
+        },
+        "queue_limit_progress_2": {
+          "offset": 540,
+          "type": "f32",
+          "meaning": "Queue limit progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_progress_2"
+        },
+        "queue_limit_progress_3": {
+          "offset": 544,
+          "type": "f32",
+          "meaning": "Queue limit progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_progress_3"
+        },
+        "queue_limit_progress_4": {
+          "offset": 548,
+          "type": "f32",
+          "meaning": "Queue limit progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_progress_4"
+        },
+        "queue_limit_progress_5": {
+          "offset": 552,
+          "type": "f32",
+          "meaning": "Queue limit progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_progress_5"
+        },
+        "queue_limit_players_1": {
+          "offset": 556,
+          "type": "f32",
+          "meaning": "Queue limit players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_players_1"
+        },
+        "queue_limit_players_2": {
+          "offset": 560,
+          "type": "f32",
+          "meaning": "Queue limit players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_players_2"
+        },
+        "queue_limit_players_3": {
+          "offset": 564,
+          "type": "f32",
+          "meaning": "Queue limit players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_players_3"
+        },
+        "queue_limit_players_4": {
+          "offset": 568,
+          "type": "f32",
+          "meaning": "Queue limit players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_players_4"
+        },
+        "queue_limit_conditional_state": {
+          "offset": 572,
+          "type": "f32",
+          "meaning": "Queue limit conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_conditional_state"
+        },
+        "queue_limit_secondary_progress_1": {
+          "offset": 576,
+          "type": "f32",
+          "meaning": "Queue limit secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_secondary_progress_1"
+        },
+        "queue_limit_secondary_progress_2": {
+          "offset": 580,
+          "type": "f32",
+          "meaning": "Queue limit secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_secondary_progress_2"
+        },
+        "queue_limit_secondary_progress_3": {
+          "offset": 584,
+          "type": "f32",
+          "meaning": "Queue limit secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_secondary_progress_3"
+        },
+        "queue_limit_secondary_progress_4": {
+          "offset": 588,
+          "type": "f32",
+          "meaning": "Queue limit secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_secondary_progress_4"
+        },
+        "queue_limit_secondary_progress_5": {
+          "offset": 592,
+          "type": "f32",
+          "meaning": "Queue limit secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.queue_limit_secondary_progress_5"
+        },
+        "refill_clock_rate_progress_1": {
+          "offset": 596,
+          "type": "f32",
+          "meaning": "Refill clock rate progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_progress_1"
+        },
+        "refill_clock_rate_progress_2": {
+          "offset": 600,
+          "type": "f32",
+          "meaning": "Refill clock rate progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_progress_2"
+        },
+        "refill_clock_rate_progress_3": {
+          "offset": 604,
+          "type": "f32",
+          "meaning": "Refill clock rate progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_progress_3"
+        },
+        "refill_clock_rate_progress_4": {
+          "offset": 608,
+          "type": "f32",
+          "meaning": "Refill clock rate progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_progress_4"
+        },
+        "refill_clock_rate_progress_5": {
+          "offset": 612,
+          "type": "f32",
+          "meaning": "Refill clock rate progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_progress_5"
+        },
+        "refill_clock_rate_players_1": {
+          "offset": 616,
+          "type": "f32",
+          "meaning": "Refill clock rate players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_players_1"
+        },
+        "refill_clock_rate_players_2": {
+          "offset": 620,
+          "type": "f32",
+          "meaning": "Refill clock rate players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_players_2"
+        },
+        "refill_clock_rate_players_3": {
+          "offset": 624,
+          "type": "f32",
+          "meaning": "Refill clock rate players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_players_3"
+        },
+        "refill_clock_rate_players_4": {
+          "offset": 628,
+          "type": "f32",
+          "meaning": "Refill clock rate players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_players_4"
+        },
+        "refill_clock_rate_conditional_state": {
+          "offset": 632,
+          "type": "f32",
+          "meaning": "Refill clock rate conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_conditional_state"
+        },
+        "refill_clock_rate_secondary_progress_1": {
+          "offset": 636,
+          "type": "f32",
+          "meaning": "Refill clock rate secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_secondary_progress_1"
+        },
+        "refill_clock_rate_secondary_progress_2": {
+          "offset": 640,
+          "type": "f32",
+          "meaning": "Refill clock rate secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_secondary_progress_2"
+        },
+        "refill_clock_rate_secondary_progress_3": {
+          "offset": 644,
+          "type": "f32",
+          "meaning": "Refill clock rate secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_secondary_progress_3"
+        },
+        "refill_clock_rate_secondary_progress_4": {
+          "offset": 648,
+          "type": "f32",
+          "meaning": "Refill clock rate secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_secondary_progress_4"
+        },
+        "refill_clock_rate_secondary_progress_5": {
+          "offset": 652,
+          "type": "f32",
+          "meaning": "Refill clock rate secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.refill_clock_rate_secondary_progress_5"
+        },
+        "batch_size_progress_1": {
+          "offset": 656,
+          "type": "f32",
+          "meaning": "Batch size progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_progress_1"
+        },
+        "batch_size_progress_2": {
+          "offset": 660,
+          "type": "f32",
+          "meaning": "Batch size progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_progress_2"
+        },
+        "batch_size_progress_3": {
+          "offset": 664,
+          "type": "f32",
+          "meaning": "Batch size progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_progress_3"
+        },
+        "batch_size_progress_4": {
+          "offset": 668,
+          "type": "f32",
+          "meaning": "Batch size progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_progress_4"
+        },
+        "batch_size_progress_5": {
+          "offset": 672,
+          "type": "f32",
+          "meaning": "Batch size progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_progress_5"
+        },
+        "batch_size_players_1": {
+          "offset": 676,
+          "type": "f32",
+          "meaning": "Batch size players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_players_1"
+        },
+        "batch_size_players_2": {
+          "offset": 680,
+          "type": "f32",
+          "meaning": "Batch size players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_players_2"
+        },
+        "batch_size_players_3": {
+          "offset": 684,
+          "type": "f32",
+          "meaning": "Batch size players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_players_3"
+        },
+        "batch_size_players_4": {
+          "offset": 688,
+          "type": "f32",
+          "meaning": "Batch size players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_players_4"
+        },
+        "batch_size_conditional_state": {
+          "offset": 692,
+          "type": "f32",
+          "meaning": "Batch size conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_conditional_state"
+        },
+        "batch_size_secondary_progress_1": {
+          "offset": 696,
+          "type": "f32",
+          "meaning": "Batch size secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_secondary_progress_1"
+        },
+        "batch_size_secondary_progress_2": {
+          "offset": 700,
+          "type": "f32",
+          "meaning": "Batch size secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_secondary_progress_2"
+        },
+        "batch_size_secondary_progress_3": {
+          "offset": 704,
+          "type": "f32",
+          "meaning": "Batch size secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_secondary_progress_3"
+        },
+        "batch_size_secondary_progress_4": {
+          "offset": 708,
+          "type": "f32",
+          "meaning": "Batch size secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_secondary_progress_4"
+        },
+        "batch_size_secondary_progress_5": {
+          "offset": 712,
+          "type": "f32",
+          "meaning": "Batch size secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.batch_size_secondary_progress_5"
+        },
+        "minimum_batch_size_progress_1": {
+          "offset": 716,
+          "type": "f32",
+          "meaning": "Minimum batch size progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_progress_1"
+        },
+        "minimum_batch_size_progress_2": {
+          "offset": 720,
+          "type": "f32",
+          "meaning": "Minimum batch size progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_progress_2"
+        },
+        "minimum_batch_size_progress_3": {
+          "offset": 724,
+          "type": "f32",
+          "meaning": "Minimum batch size progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_progress_3"
+        },
+        "minimum_batch_size_progress_4": {
+          "offset": 728,
+          "type": "f32",
+          "meaning": "Minimum batch size progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_progress_4"
+        },
+        "minimum_batch_size_progress_5": {
+          "offset": 732,
+          "type": "f32",
+          "meaning": "Minimum batch size progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_progress_5"
+        },
+        "minimum_batch_size_players_1": {
+          "offset": 736,
+          "type": "f32",
+          "meaning": "Minimum batch size players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_players_1"
+        },
+        "minimum_batch_size_players_2": {
+          "offset": 740,
+          "type": "f32",
+          "meaning": "Minimum batch size players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_players_2"
+        },
+        "minimum_batch_size_players_3": {
+          "offset": 744,
+          "type": "f32",
+          "meaning": "Minimum batch size players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_players_3"
+        },
+        "minimum_batch_size_players_4": {
+          "offset": 748,
+          "type": "f32",
+          "meaning": "Minimum batch size players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_players_4"
+        },
+        "minimum_batch_size_conditional_state": {
+          "offset": 752,
+          "type": "f32",
+          "meaning": "Minimum batch size conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_conditional_state"
+        },
+        "minimum_batch_size_secondary_progress_1": {
+          "offset": 756,
+          "type": "f32",
+          "meaning": "Minimum batch size secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_secondary_progress_1"
+        },
+        "minimum_batch_size_secondary_progress_2": {
+          "offset": 760,
+          "type": "f32",
+          "meaning": "Minimum batch size secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_secondary_progress_2"
+        },
+        "minimum_batch_size_secondary_progress_3": {
+          "offset": 764,
+          "type": "f32",
+          "meaning": "Minimum batch size secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_secondary_progress_3"
+        },
+        "minimum_batch_size_secondary_progress_4": {
+          "offset": 768,
+          "type": "f32",
+          "meaning": "Minimum batch size secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_secondary_progress_4"
+        },
+        "minimum_batch_size_secondary_progress_5": {
+          "offset": 772,
+          "type": "f32",
+          "meaning": "Minimum batch size secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.minimum_batch_size_secondary_progress_5"
+        },
+        "release_clock_rate_progress_1": {
+          "offset": 776,
+          "type": "f32",
+          "meaning": "Release clock rate progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_progress_1"
+        },
+        "release_clock_rate_progress_2": {
+          "offset": 780,
+          "type": "f32",
+          "meaning": "Release clock rate progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_progress_2"
+        },
+        "release_clock_rate_progress_3": {
+          "offset": 784,
+          "type": "f32",
+          "meaning": "Release clock rate progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_progress_3"
+        },
+        "release_clock_rate_progress_4": {
+          "offset": 788,
+          "type": "f32",
+          "meaning": "Release clock rate progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_progress_4"
+        },
+        "release_clock_rate_progress_5": {
+          "offset": 792,
+          "type": "f32",
+          "meaning": "Release clock rate progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_progress_5"
+        },
+        "release_clock_rate_players_1": {
+          "offset": 796,
+          "type": "f32",
+          "meaning": "Release clock rate players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_players_1"
+        },
+        "release_clock_rate_players_2": {
+          "offset": 800,
+          "type": "f32",
+          "meaning": "Release clock rate players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_players_2"
+        },
+        "release_clock_rate_players_3": {
+          "offset": 804,
+          "type": "f32",
+          "meaning": "Release clock rate players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_players_3"
+        },
+        "release_clock_rate_players_4": {
+          "offset": 808,
+          "type": "f32",
+          "meaning": "Release clock rate players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_players_4"
+        },
+        "release_clock_rate_conditional_state": {
+          "offset": 812,
+          "type": "f32",
+          "meaning": "Release clock rate conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_conditional_state"
+        },
+        "release_clock_rate_secondary_progress_1": {
+          "offset": 816,
+          "type": "f32",
+          "meaning": "Release clock rate secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_secondary_progress_1"
+        },
+        "release_clock_rate_secondary_progress_2": {
+          "offset": 820,
+          "type": "f32",
+          "meaning": "Release clock rate secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_secondary_progress_2"
+        },
+        "release_clock_rate_secondary_progress_3": {
+          "offset": 824,
+          "type": "f32",
+          "meaning": "Release clock rate secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_secondary_progress_3"
+        },
+        "release_clock_rate_secondary_progress_4": {
+          "offset": 828,
+          "type": "f32",
+          "meaning": "Release clock rate secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_secondary_progress_4"
+        },
+        "release_clock_rate_secondary_progress_5": {
+          "offset": 832,
+          "type": "f32",
+          "meaning": "Release clock rate secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.release_clock_rate_secondary_progress_5"
+        },
+        "shared_cooldown_duration_progress_1": {
+          "offset": 896,
+          "type": "f32",
+          "meaning": "Shared cooldown duration progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_progress_1"
+        },
+        "shared_cooldown_duration_progress_2": {
+          "offset": 900,
+          "type": "f32",
+          "meaning": "Shared cooldown duration progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_progress_2"
+        },
+        "shared_cooldown_duration_progress_3": {
+          "offset": 904,
+          "type": "f32",
+          "meaning": "Shared cooldown duration progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_progress_3"
+        },
+        "shared_cooldown_duration_progress_4": {
+          "offset": 908,
+          "type": "f32",
+          "meaning": "Shared cooldown duration progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_progress_4"
+        },
+        "shared_cooldown_duration_progress_5": {
+          "offset": 912,
+          "type": "f32",
+          "meaning": "Shared cooldown duration progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_progress_5"
+        },
+        "shared_cooldown_duration_players_1": {
+          "offset": 916,
+          "type": "f32",
+          "meaning": "Shared cooldown duration players 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_players_1"
+        },
+        "shared_cooldown_duration_players_2": {
+          "offset": 920,
+          "type": "f32",
+          "meaning": "Shared cooldown duration players 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_players_2"
+        },
+        "shared_cooldown_duration_players_3": {
+          "offset": 924,
+          "type": "f32",
+          "meaning": "Shared cooldown duration players 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_players_3"
+        },
+        "shared_cooldown_duration_players_4": {
+          "offset": 928,
+          "type": "f32",
+          "meaning": "Shared cooldown duration players 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_players_4"
+        },
+        "shared_cooldown_duration_conditional_state": {
+          "offset": 932,
+          "type": "f32",
+          "meaning": "Shared cooldown duration conditional state",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_conditional_state"
+        },
+        "shared_cooldown_duration_secondary_progress_1": {
+          "offset": 936,
+          "type": "f32",
+          "meaning": "Shared cooldown duration secondary progress 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_secondary_progress_1"
+        },
+        "shared_cooldown_duration_secondary_progress_2": {
+          "offset": 940,
+          "type": "f32",
+          "meaning": "Shared cooldown duration secondary progress 2",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_secondary_progress_2"
+        },
+        "shared_cooldown_duration_secondary_progress_3": {
+          "offset": 944,
+          "type": "f32",
+          "meaning": "Shared cooldown duration secondary progress 3",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_secondary_progress_3"
+        },
+        "shared_cooldown_duration_secondary_progress_4": {
+          "offset": 948,
+          "type": "f32",
+          "meaning": "Shared cooldown duration secondary progress 4",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_secondary_progress_4"
+        },
+        "shared_cooldown_duration_secondary_progress_5": {
+          "offset": 952,
+          "type": "f32",
+          "meaning": "Shared cooldown duration secondary progress 5",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue hive.shared_cooldown_duration_secondary_progress_5"
         }
       }
     },
@@ -4948,6 +7097,531 @@
           "meaning": "fire mode 1: 1, it starts whenever the weapon fires (else after a check)",
           "verified": false,
           "source": "game.dll 0x7D6080 (an ability weapon fires: its mode settings, 0x7D5FB0) and the C4 detonator record (abilities 521, 520); 2026-10-18"
+        }
+      }
+    },
+    "EnemyRoster": {
+      "component": "EnemyRoster",
+      "table": true,
+      "stride": 40,
+      "layout": "25480438",
+      "meaning": "an enemy roster row's spawn weights (a row by (roster << 16) | row; the weights wherever level 11 put them)",
+      "applies": "mission",
+      "appliesVerified": false,
+      "appliesSource": "the director reads them when a mission is set up (HD2Runtime enemy_director lifecycle)",
+      "fields": {
+        "weights": {
+          "offset": 0,
+          "type": "f32",
+          "count": 10,
+          "meaning": "spawn weight at tech levels (difficulties) 1 to 10",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        }
+      }
+    },
+    "EnemyRosterLevel11": {
+      "component": "EnemyRosterLevel11",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "an enemy roster row's spawn weight at level 11 (only with a mod that adds it)",
+      "applies": "mission",
+      "appliesVerified": false,
+      "appliesSource": "the director reads them when a mission is set up (HD2Runtime enemy_director lifecycle)",
+      "fields": {
+        "weight": {
+          "offset": 0,
+          "type": "f32",
+          "meaning": "spawn weight at level 11",
+          "verified": false,
+          "source": "native/mod-loader/difficulty.c (row +0x54)"
+        }
+      }
+    },
+    "EnemyComposition": {
+      "component": "EnemyComposition",
+      "table": true,
+      "stride": 280,
+      "layout": "25480438",
+      "meaning": "an enemy squad composition (a row by (roster << 16) | (family << 12) | row)",
+      "applies": "mission",
+      "appliesVerified": false,
+      "appliesSource": "the director reads them when a mission is set up (HD2Runtime enemy_director lifecycle)",
+      "fields": {
+        "group_0_key": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "group 1: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_0_count": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "group 1: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_0_emission_time": {
+          "offset": 8,
+          "type": "f32",
+          "meaning": "group 1: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_1_key": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "group 2: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_1_count": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "group 2: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_1_emission_time": {
+          "offset": 20,
+          "type": "f32",
+          "meaning": "group 2: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_2_key": {
+          "offset": 24,
+          "type": "u32",
+          "meaning": "group 3: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_2_count": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "group 3: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_2_emission_time": {
+          "offset": 32,
+          "type": "f32",
+          "meaning": "group 3: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_3_key": {
+          "offset": 36,
+          "type": "u32",
+          "meaning": "group 4: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_3_count": {
+          "offset": 40,
+          "type": "u32",
+          "meaning": "group 4: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_3_emission_time": {
+          "offset": 44,
+          "type": "f32",
+          "meaning": "group 4: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_4_key": {
+          "offset": 48,
+          "type": "u32",
+          "meaning": "group 5: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_4_count": {
+          "offset": 52,
+          "type": "u32",
+          "meaning": "group 5: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_4_emission_time": {
+          "offset": 56,
+          "type": "f32",
+          "meaning": "group 5: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_5_key": {
+          "offset": 60,
+          "type": "u32",
+          "meaning": "group 6: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_5_count": {
+          "offset": 64,
+          "type": "u32",
+          "meaning": "group 6: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_5_emission_time": {
+          "offset": 68,
+          "type": "f32",
+          "meaning": "group 6: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_6_key": {
+          "offset": 72,
+          "type": "u32",
+          "meaning": "group 7: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_6_count": {
+          "offset": 76,
+          "type": "u32",
+          "meaning": "group 7: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_6_emission_time": {
+          "offset": 80,
+          "type": "f32",
+          "meaning": "group 7: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_7_key": {
+          "offset": 84,
+          "type": "u32",
+          "meaning": "group 8: the roster group it draws enemies from (not edited)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_7_count": {
+          "offset": 88,
+          "type": "u32",
+          "meaning": "group 8: how many (the groups total at most 32)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "group_7_emission_time": {
+          "offset": 92,
+          "type": "f32",
+          "meaning": "group 8: emission time (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "weight": {
+          "offset": 224,
+          "type": "f32",
+          "meaning": "how often it is picked",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "cost_multiplier": {
+          "offset": 228,
+          "type": "f32",
+          "meaning": "its cost against the budget",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "post_schedule_duration": {
+          "offset": 232,
+          "type": "f32",
+          "meaning": "post-schedule duration (s)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "minimum_tech_level": {
+          "offset": 236,
+          "type": "u32",
+          "meaning": "lowest tech level (difficulty)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "maximum_tech_level": {
+          "offset": 240,
+          "type": "u32",
+          "meaning": "highest tech level (difficulty)",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "minimum_players": {
+          "offset": 244,
+          "type": "u32",
+          "meaning": "fewest players",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        },
+        "maximum_players": {
+          "offset": 248,
+          "type": "u32",
+          "meaning": "most players",
+          "verified": false,
+          "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
+        }
+      }
+    },
+    "Unit": {
+      "component": "UnitComponentData",
+      "index": 88,
+      "stride": 136,
+      "layout": "25480438",
+      "meaning": "UnitComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "scale_min": {
+          "offset": 8,
+          "type": "f32",
+          "meaning": "Scale min",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue unit.scale_min"
+        },
+        "radius": {
+          "offset": 16,
+          "type": "f32",
+          "meaning": "Radius",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue unit.radius"
+        }
+      }
+    },
+    "SquadTransportFormation": {
+      "component": "SquadTransportFormationComponentData",
+      "index": 122,
+      "stride": 48,
+      "layout": "25480438",
+      "meaning": "SquadTransportFormationComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "passenger_formation_0_dimension_0": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "Passenger formation 0 dimension 0",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.passenger_formation_0_dimension_0"
+        },
+        "passenger_formation_0_dimension_1": {
+          "offset": 8,
+          "type": "u32",
+          "meaning": "Passenger formation 0 dimension 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.passenger_formation_0_dimension_1"
+        },
+        "passenger_formation_1_dimension_0": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "Passenger formation 1 dimension 0",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.passenger_formation_1_dimension_0"
+        },
+        "passenger_formation_1_dimension_1": {
+          "offset": 32,
+          "type": "u32",
+          "meaning": "Passenger formation 1 dimension 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.passenger_formation_1_dimension_1"
+        }
+      }
+    },
+    "SquadTransport": {
+      "component": "SquadTransportComponentData",
+      "index": 97,
+      "stride": 136,
+      "layout": "25480438",
+      "meaning": "SquadTransportComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "grid_dimension_0": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "Grid dimension 0",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.grid_dimension_0"
+        },
+        "grid_dimension_1": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "Grid dimension 1",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue transport.grid_dimension_1"
+        }
+      }
+    },
+    "Gore": {
+      "component": "GoreComponentData",
+      "index": 230,
+      "stride": 33488,
+      "layout": "25480438",
+      "meaning": "GoreComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "whole_body_gib_damage": {
+          "offset": 0,
+          "type": "f32",
+          "meaning": "Whole body gib damage",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue gore.whole_body_gib_damage"
+        }
+      }
+    },
+    "AiSpawner": {
+      "component": "AiSpawnerComponentData",
+      "index": 182,
+      "stride": 196,
+      "layout": "25480438",
+      "meaning": "AiSpawnerComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "initial_release_delay": {
+          "offset": 28,
+          "type": "f32",
+          "meaning": "Initial release delay",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.initial_release_delay"
+        },
+        "queue_limit": {
+          "offset": 136,
+          "type": "u32",
+          "meaning": "Queue limit",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.queue_limit"
+        },
+        "batch_size": {
+          "offset": 140,
+          "type": "u32",
+          "meaning": "Batch size",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.batch_size"
+        },
+        "minimum_batch_size": {
+          "offset": 144,
+          "type": "u32",
+          "meaning": "Minimum batch size",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.minimum_batch_size"
+        },
+        "refill_delay": {
+          "offset": 148,
+          "type": "f32",
+          "meaning": "Refill delay",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.refill_delay"
+        },
+        "release_delay": {
+          "offset": 152,
+          "type": "f32",
+          "meaning": "Release delay",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.release_delay"
+        },
+        "serialized_release_delay": {
+          "offset": 156,
+          "type": "f32",
+          "meaning": "Serialized release delay",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.serialized_release_delay"
+        },
+        "delay_variance": {
+          "offset": 160,
+          "type": "f32",
+          "meaning": "Delay variance",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.delay_variance"
+        },
+        "alternate_roster": {
+          "offset": 164,
+          "type": "u8",
+          "meaning": "Alternate roster",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue spawner.alternate_roster"
+        }
+      }
+    },
+    "StratagemBlocker": {
+      "component": "StratagemBlockerComponentData",
+      "index": 25,
+      "stride": 20,
+      "layout": "25480438",
+      "meaning": "StratagemBlockerComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "radius": {
+          "offset": 12,
+          "type": "f32",
+          "meaning": "Radius",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue jammer.radius"
+        },
+        "initially_enabled": {
+          "offset": 16,
+          "type": "u8",
+          "meaning": "Initially enabled",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue jammer.initially_enabled"
+        }
+      }
+    },
+    "Bughole": {
+      "component": "BugholeComponentData",
+      "index": 216,
+      "stride": 40,
+      "layout": "25480438",
+      "meaning": "BugholeComponentData (fields from the stats schema)",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "a component record: read when the entity is made",
+      "fields": {
+        "emission_radius": {
+          "offset": 12,
+          "type": "f32",
+          "meaning": "Emission radius",
+          "verified": false,
+          "source": "HD2Runtime enemy catalogue breach.emission_radius"
+        }
+      }
+    },
+    "DemolitionTemplate": {
+      "component": "DemolitionTemplate",
+      "table": true,
+      "stride": 16,
+      "layout": "25480438",
+      "meaning": "a demolition template (a row by its index, 1 to 9): the force a destruction stage that names it requires, shared by every such stage",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "read when a destruction stage is hit (HD2Runtime enemy-controls.md: structure destruction); not tested on structures already standing",
+      "fields": {
+        "index": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "its index (not edited)",
+          "verified": false,
+          "source": "HD2Runtime enemy_director.lua demolition_template rows"
+        },
+        "force": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the force a stage naming it requires, 1 to 255 (the incoming force is narrowed to a byte)",
+          "verified": false,
+          "source": "HD2Runtime enemy_director.lua demolition.force"
         }
       }
     }

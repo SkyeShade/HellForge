@@ -39,7 +39,7 @@ sealed class SetupForm : Form
         Row(new Label
         {
             AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 12),
-            Text = "HellForge runs HELLDIVERS 2 offline against a local backend on this PC. Setup unpacks it into the folder below; " +
+            Text = "HellForge runs HELLDIVERS 2 locally against a backend on this PC, with co-op over Steam. Setup unpacks it into the folder below; " +
                 "the launcher then copies the game from your own Steam library (about 24 GB) and finishes setting up. Everything " +
                 "HellForge stores stays inside this folder."
         });

@@ -30,6 +30,7 @@ public static class HellForgeLocalRoutingPatch {
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetThreadContext(IntPtr thread,IntPtr context);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool TerminateProcess(IntPtr p,uint code);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr p,out uint code);
     [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr p,int flags,StringBuilder name,ref int size);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool ReadProcessMemory(IntPtr p,IntPtr a,byte[] b,UIntPtr n,out UIntPtr read);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool WriteProcessMemory(IntPtr p,IntPtr a,byte[] b,UIntPtr n,out UIntPtr written);
@@ -211,7 +212,9 @@ public static class HellForgeLocalRoutingPatch {
                 var path=new StringBuilder(1024);int length=path.Capacity;
                 if(!QueryFullProcessImageName(target,0,path,ref length)||!String.Equals(path.ToString(),expectedExe,StringComparison.OrdinalIgnoreCase)){state.Outcome="unexpected_image";return;}
                 long exe=0;string lastPin=null;
-                while(clock.ElapsedMilliseconds<deadlineMs){
+                // deadlineMs < 0: for as long as the game runs (a start-up dialog, such as the GPU driver warning, can
+                // hold the game for minutes before it formats the URL)
+                while((deadlineMs<0||clock.ElapsedMilliseconds<deadlineMs)&&GetExitCodeProcess(target,out uint code)&&code==259){
                     state.Samples++;
                     try{
                         if(exe==0)exe=FindModule(target,expectedExe);

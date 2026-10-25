@@ -23,10 +23,13 @@ static uint32_t StatSize(const StatEdit* e) { return e->size == 1 ? 1u : 4u; }
 static int RefStat(StatEdit* e, uintptr_t address, uint32_t original);
 static uintptr_t PerkRow(const char* kind, uint64_t id, int* ready); /* perks.c */
 static int g_perksDone; /* the stats pass wrote the armor perk edits (or refused them) */
+static void ShotsNoteLocal(uint64_t resource, int slot, uint32_t before, uint32_t after); /* shots.c */
+static int ShotsSlotOf(const char* component, uint32_t offset);
 static int StatsTableKind(const char* kind)
 {
     return !strcmp(kind, "ProjectileSettings") || !strcmp(kind, "DamageInfo") || !strcmp(kind, "StratagemDefinition") ||
-        !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume");
+        !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume") ||
+        !strcmp(kind, "DifficultySettings") || DirectorKind(kind);
 }
 static StatEdit g_stats[MAX_STATS];
 static int g_statCount;
@@ -92,6 +95,9 @@ static void StatsWrite(StatEdit* e, uintptr_t address)
     if (ApiWrite(address, &e->value, size) || SafeRead(address, &current, size) || current != e->value)
     { StatsRefuse(e, "write verification failed"); return; }
     e->address = address; e->original = original; e->applied = 1;
+    /* this machine's own swap of a weapon's projectile (co-op: friends' copies of its other players' shots, shots.c) */
+    if (!strcmp(e->kind, "component") && !e->own && ShotsSlotOf(e->component, e->offset) >= 0)
+        ShotsNoteLocal(e->resource, ShotsSlotOf(e->component, e->offset), original, e->value);
     ApiLog(e->mod, "stats %s: applied (%08x -> %08x)%s", e->label, original, e->value, e->own ? " to its own record" : "");
 }
 

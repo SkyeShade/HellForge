@@ -14,6 +14,12 @@ struct Entry { std::string category, target, key; double value; };
 void SetModFile(const std::wstring& path);
 bool IsMod(const std::string& category);
 
+// Sandboxed (low integrity), the game cannot write to mods/: Save writes every change saved this session as a list,
+// changes.json in this folder, which HellForge applies to the files once the game is gone (SandboxStats.cs,
+// docs/steam-bridge.md); the files in mods/ are only read. Set before Load; empty disables.
+void SetSandboxSaveFolder(const std::wstring& folder);
+std::wstring SandboxFolder();
+
 // Reads the file as it is now (the editor shows what it holds). False with *error when it cannot be read.
 bool Load(const std::string& modsFolder, std::string* error);
 // Queues a field's value (a stats-file key of a target in a category: "weapons", "AR-23 Liberator", "weapon.fire_rate"),

@@ -10,12 +10,12 @@ if (args.Contains("--help"))
     Console.WriteLine("--item-catalog <file> (development) serves that file's \"items\" array as /Progression/items.");
     Console.WriteLine("--profile-template <name> sets the inventory of a newly created profile: " + string.Join(", ", ProfileStore.TemplateNames));
     Console.WriteLine("Synthetic loopback-only login service. Default port 0 selects a free port. No game launch or routing changes.");
-    Console.WriteLine("--profile-dir keeps a persistent offline profile (requires startup fixtures); a new one starts from fixture defaults.");
+    Console.WriteLine("--profile-dir keeps a persistent local profile (requires startup fixtures); a new one starts from fixture defaults.");
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
     Console.WriteLine("--war server --war-server <https origin> [--war-server-ca <pem file>] [--war-server-token <file>] forwards the game's war routes to a war server (checked before ready); the locator, PlayFab, lobbies and player keys stay here (no --live-war).");
-    Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ.");
+    Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ; --modset <file> is the session's mod set, which joiners lacking its mods may download; --directory <folder> lists public lobbies in a folder (the loopback harness; Steam's directory otherwise); --rejoin <file> (after a mod sync, a ModSyncSession) invites the game back into that host's lobby once it is on the ship.");
     return 0;
 }
 if (args is ["profile", "show", var showDirectory])
@@ -92,6 +92,11 @@ try
     if (war != null && war != OpenWar.Mode && war != WarServer.Mode)
         throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\" or \"" + WarServer.Mode + "\".");
     var openWar = war == OpenWar.Mode;
+    // --war-seed <n>: the all-planets war's subfaction seed (0 the default layout)
+    var warSeed = options.GetValueOrDefault("--war-seed") is { } seedText
+        ? uint.TryParse(seedText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
+            : throw new ArgumentException("--war-seed takes a whole number from 0 to 4294967295.")
+        : 0u;
     var serverWar = war == WarServer.Mode;
     if (!serverWar && (options.ContainsKey("--war-server") || options.ContainsKey("--war-server-ca") || options.ContainsKey("--war-server-token")))
         throw new ArgumentException("--war-server, --war-server-ca and --war-server-token need --war server.");
@@ -117,14 +122,17 @@ try
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
     await using var app = LocalBackend.Create(port, evidence, mode, startupFixtures, profile, options.GetValueOrDefault("--item-catalog"),
-        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, warServer);
+        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, warSeed, warServer);
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
+    // --sandbox: the session's game runs at low integrity, so the pipes it opens carry a low label (PipeServer)
+    HellForge.Core.PipeServer.LowIntegrityClients = options.GetValueOrDefault("--sandbox") == "true";
     // --mod-list <file>: the digest's mods one by one (ModlistDiff's form), so a refused join can say which differ
     var modList = options.GetValueOrDefault("--mod-list") is { } modListFile ? File.ReadAllText(modListFile) : null;
     await using var multiplayer = pipeName != null
         ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence, warClock, accountKeys, presence,
-            options.GetValueOrDefault("--mods"), modList)
+            options.GetValueOrDefault("--mods"), modList, options.GetValueOrDefault("--modset"), directoryFolder: options.GetValueOrDefault("--directory"),
+            rejoinFile: options.GetValueOrDefault("--rejoin"))
         : null;
     var ready = new System.Text.Json.Nodes.JsonObject
     {

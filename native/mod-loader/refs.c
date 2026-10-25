@@ -321,7 +321,11 @@ static int StatRefKind(const StatEdit* e)
     }
     else c = SdkComponentNamed(e->kind);
     for (int i = 0; c != NULL && i < c->count; i++) /* (a mount slot is never a stats edit: they write 4 bytes) */
-        if (c->fields[i].ref != REF_NONE && c->fields[i].ref != REF_MOUNT && c->fields[i].ref != REF_PICKUP && c->fields[i].offset == offset && c->fields[i].size == 4) return (int)c->fields[i].ref;
+    {
+        const SdkField* f = &c->fields[i]; /* a single u32, or an element of an array of them (a magazine's pattern) */
+        if (f->ref != REF_NONE && f->ref != REF_MOUNT && f->ref != REF_PICKUP && f->type == HF_TYPE_U32 && offset >= f->offset &&
+            offset + 4 <= (uint32_t)f->offset + f->size && (offset - f->offset) % 4 == 0) return (int)f->ref;
+    }
     return REF_NONE;
 }
 

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace HellForge.Core;
@@ -32,6 +34,37 @@ public sealed class InstallLayout(string root)
     public string OriginalSettings => Path.Combine(Game, "data", "settings.ini" + GameSettings.OriginalSuffix);
 
     public bool Exists => File.Exists(Marker) || File.Exists(Path.Combine(Root, LegacyMarkerFile));
+
+    // The backend's fixed loopback port, the only one the WFP block lets the copy reach. 40000-46999 is below Windows'
+    // dynamic range (49152-65535), where Hyper-V, WSL and Docker reserve port blocks, and clear of Steam's 27000-27100.
+    public const int BackendPortFirst = 40000, BackendPortCount = 7000;
+    public int ComputedBackendPort
+    {
+        get
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(Root.ToLowerInvariant()));
+            return BackendPortFirst + (BitConverter.ToUInt16(hash, 16) % BackendPortCount);
+        }
+    }
+
+    public string NetworkBlockMarker => Path.Combine(Root, "network-block", "wfp-block.json");
+
+    // The port the installed WFP block permits (its marker's "port"); null for a marker from before the block named one,
+    // the Linux namespace's marker, or none.
+    public int? BlockedBackendPort()
+    {
+        try
+        {
+            using var marker = JsonDocument.Parse(File.ReadAllText(NetworkBlockMarker));
+            return marker.RootElement.ValueKind == JsonValueKind.Object && marker.RootElement.TryGetProperty("port", out var port) &&
+                port.ValueKind == JsonValueKind.Number && port.TryGetInt32(out var value) && value is > 0 and <= 65535 ? value : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+    // What a session starts the backend on: the port the block permits, else (an older block that permits all of loopback,
+    // the Linux namespace, the firewall rules) the computed one.
+    public int BackendPort => BlockedBackendPort() ?? ComputedBackendPort;
 
     // The installation containing a folder, such as the launcher's own. An installation from before the rename gets
     // the new marker name.

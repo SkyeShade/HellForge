@@ -6,7 +6,7 @@ of its C code, so it suits people new to C too.
 
 HellForge mods change HELLDIVERS 2 the way its own data and code do. New weapons, stratagems, entities and difficulties
 are real game content, existing content is changed by named field, and logic runs on the game's own events and
-functions. Everything runs in HellForge's offline copy of the game; the normal game is never touched.
+functions. Everything runs in HellForge's own local copy of the game; the normal game is never touched.
 
 ## What you can build
 

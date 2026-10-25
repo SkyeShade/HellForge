@@ -17,13 +17,26 @@ public static class NativeModApplier
     const int NetworkConfigSlot = 0x1A10268; // helldivers2.exe: [[slot]] is the loaded network configuration
     public const uint ProcessAccess = 0x0400 | 0x0010 | 0x0020 | 0x0008 | 0x00100000;
 
-    public static int Run(InstallLayout install, int pid, string expectedExe, string logPath, string statusPath)
+    // folders: the session's mods with network type edits as mods-stage staged them ("nativeFolders"; after a mod sync the
+    // host's, some in mods/.synced); null reads the installation's enabled mods (a mods-stage from before it).
+    public static int Run(InstallLayout install, IReadOnlyList<string>? folders, int pid, string expectedExe, string logPath, string statusPath)
     {
-        var (mods, problems) = ModCatalog.Load(Path.Combine(install.Root, "mods"));
         using var log = new StreamWriter(logPath, append: true) { AutoFlush = true };
         void Log(string text) => log.WriteLine($"{DateTime.UtcNow:HH\\:mm\\:ss.fff} {Privacy.Scrub(text)}");
-        foreach (var problem in problems) Log("Mod not loaded: " + problem);
-        var native = ModCatalog.Active(mods).Where(m => m.NetworkFieldTypes.Count > 0).ToList();
+        var native = new List<ModManifest>();
+        if (folders == null)
+        {
+            var (mods, problems) = ModCatalog.Load(Path.Combine(install.Root, "mods"));
+            foreach (var problem in problems) Log("Mod not loaded: " + problem);
+            native.AddRange(ModCatalog.Active(mods));
+        }
+        else
+            foreach (var folder in folders)
+            {
+                try { native.Add(ModCatalog.Parse(folder, EntityProfile.Current)); }
+                catch (Exception error) when (error is InvalidDataException or JsonException or IOException) { Log($"Mod not loaded: {folder}: {error.Message}"); }
+            }
+        native = native.Where(m => m.NetworkFieldTypes.Count > 0).ToList();
         if (native.Count == 0) { Log("No native mods."); return 0; }
         var process = OpenProcess(ProcessAccess, false, pid);
         if (process == 0) { Log($"Could not open the game process ({Marshal.GetLastWin32Error()})."); return 1; }

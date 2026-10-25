@@ -23,7 +23,7 @@
                 <TextBlock FontSize="21" FontWeight="Black" LetterSpacing="1.5">
                   <Run Text="HELL" /><Run Text="FORGE" Foreground="{StaticResource AccentBrush}" />
                 </TextBlock>
-                <TextBlock Text="Offline HELLDIVERS 2" Classes="muted" FontSize="11" Margin="0,2,0,0" />
+                <TextBlock Text="Local HELLDIVERS 2" Classes="muted" FontSize="11" Margin="0,2,0,0" />
               </StackPanel>
             </StackPanel>
             <Border Height="2" Background="{StaticResource AccentBrush}" Margin="0,20,0,0" Opacity="0.85" />
@@ -106,6 +106,11 @@
               <TextBlock x:Name="TemplateDescription" Classes="muted" FontSize="12" TextWrapping="Wrap" />
               <TextBlock x:Name="NewProfileError" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
             </StackPanel>
+          </Border>
+
+          <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
+          <Border x:Name="ModSyncCard" Grid.Row="3" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+            <StackPanel x:Name="ModSyncPanel" Spacing="8" />
           </Border>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
@@ -327,6 +332,22 @@
                 <CheckBox x:Name="SdkShimsBox" Content="Lobby and session through Steam friends" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
+                <CheckBox x:Name="StrangersBox" Content="Play with strangers" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Off: only Steam friends reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs." />
+                <TextBlock x:Name="StrangersWarning" Foreground="#FFA235" TextWrapping="Wrap"
+                           Text="Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It applies within a few seconds, also during a session." />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock Text="SANDBOX" Classes="h2" />
+                <CheckBox x:Name="SandboxBox" Content="Run the game sandboxed (experimental)" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Applies to the next session." />
+                <TextBlock x:Name="SandboxUnavailable" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False"
+                           Text="This HellForge was built without the Steam bridge, so the game cannot run sandboxed." />
               </StackPanel>
             </Border>
 
@@ -338,10 +359,17 @@
                            Text="Before the game starts and every 5 minutes while you play, the backend reads the current war (planets, campaigns, liberation) from the community API mirror api.helldivers2.dev, read-only. Neither HellForge nor the game ever contacts Arrowhead's servers. Without a connection the last fetched war is used." />
                 <RadioButton x:Name="WarFrozenRadio" GroupName="war" Content="HellForge's frozen war" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, offline." />
+                           Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, with no internet needed." />
                 <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Built from the frozen war, so it is the same on every PC and offline. Applies to the next session." />
+                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Sectors get their enemy's subfactions (Predator Strain, Jet Brigade...), and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,0">
+                  <TextBlock Text="Subfaction seed" VerticalAlignment="Center" />
+                  <TextBox x:Name="SubfactionSeedBox" Width="130" MaxLength="10" />
+                  <Button x:Name="SubfactionRandomiseButton" Content="Randomise" />
+                </StackPanel>
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                           Text="Which subfactions of each enemy go on which sectors. 0 keeps the frozen war's own; any other number deals them anew, so if you dislike the layout, roll another. In co-op the host's war decides." />
               </StackPanel>
             </Border>
 
@@ -388,7 +416,7 @@
                 <TextBlock TextWrapping="Wrap" Classes="muted"
                            Text="A Steam ownership check runs before every launch, so Steam must be running and signed in to an account that owns the game or has it through Steam Family Sharing." />
                 <TextBlock TextWrapping="Wrap" Classes="muted"
-                           Text="A personal, offline research project. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment." />
+                           Text="A personal research project, run locally. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment." />
                 <TextBlock x:Name="PlatformText" Classes="muted" FontSize="12" Margin="0,6,0,0" />
               </StackPanel>
             </Border>

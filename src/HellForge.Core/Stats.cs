@@ -22,6 +22,8 @@ public sealed record StatsField(string Name, string Kind, string Component, stri
         ? Options.EnumerateArray().Select(o => (o[0].GetDouble(), o[1].GetString() ?? "")) : [];
     // What the editor says about it under the page (when it applies, what a sentinel value means), or null.
     public string? Note { get; init; }
+    // The HD2R Editor's preset key for it, where the mapping names one itself (the Spawning pages: "ed|composition/...").
+    [System.Text.Json.Serialization.JsonIgnore] public string? Hd2rKey { get; init; }
     // The bytes as HD2R Editor's preset keys name them (mappings/hd2r-keys.json, scripts/ExportHd2rKeys.py).
     public string Hd2rAddress => Kind switch
     {
@@ -41,6 +43,11 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
     public string? Host { get; init; }
     public string? Mount { get; init; }
     public string? Family { get; init; }
+    // The name the editor shows, where the target's key is not one (an entity's: "Bile Titan - Strider").
+    [System.Text.Json.Serialization.JsonIgnore] public string? Label { get; init; }
+    // An entity's faction (mappings/entities.json: terminids, automatons, illuminate, super_earth, helldivers or
+    // unresolved), whatever page it is on: the editor draws its emblem on structures and other entities too.
+    [System.Text.Json.Serialization.JsonIgnore] public string? Faction { get; init; }
     // Fields it no longer offers because they never reached the game (a fired entity's unused projectile row): a stats
     // file naming one still loads, and that edit is skipped.
     [System.Text.Json.Serialization.JsonIgnore] public Dictionary<string, string> Retired { get; } = new(StringComparer.Ordinal);
@@ -48,6 +55,21 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
 public sealed record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
 {
     public Dictionary<string, Dictionary<string, string>> TargetAliases { get; init; } = [];
+    // Where each weapon's projectile swap is written, by its edit's site (SwapSite): the weapons whose shots it changes
+    // (an ammunition every weapon equipping it shares: several) and how the loader finds that weapon's round in co-op
+    // (native/mod-loader/shots.c): "" its ProjectileWeapon +0, "/r" its WeaponRounds +64, "/f" its programmable round
+    // (ProjectileWeapon +0x240, while its function is on), "/<type>" the round's stock type (an ammunition's, a magazine
+    // pattern entry's, a charge or heat level's).
+    [System.Text.Json.Serialization.JsonIgnore] public Dictionary<string, List<(ulong Weapon, string Native)>> ProjectileSwaps { get; } = new(StringComparer.Ordinal);
+    void AddSwap(StatsField site, string weapon, string native)
+    {
+        var key = SwapSite(site.Kind, site.Component, Convert.ToUInt64(site.Resource[2..], 16), site.Offset);
+        if (!ProjectileSwaps.TryGetValue(key, out var list)) ProjectileSwaps[key] = list = [];
+        var entry = (Convert.ToUInt64(weapon[2..], 16), native);
+        if (!list.Contains(entry)) list.Add(entry);
+    }
+    public static string SwapSite(string kind, string component, ulong resource, int offset) =>
+        $"{kind}:{component}:{resource:X16}:{offset.ToString(CultureInfo.InvariantCulture)}";
     // Every field the loader observes for the editor. A snapshot is pinned to this set, not to editor metadata.
     static readonly Lazy<string[]> ObservedKeys = new(() => Current.Targets.Values.SelectMany(t => t.Values).SelectMany(t => t.Fields.Values)
         .Select(f => f.AddressKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
@@ -66,9 +88,93 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Melee(schema);
         Parity(schema);
         References(schema);
+        ProjectileSources(schema);
         FiredEntities(schema);
+        Entities(schema);
+        Director(schema);
         return schema;
     });
+
+    // The HD2R Editor's Spawning pages (mappings/director.json, scripts/ExportDirector.py; native/mod-loader/director.c):
+    // "difficulty" (a level's DifficultySettings row, 1 to 11), "rosters" (an enemy's spawn weights by difficulty) and
+    // "compositions" (a squad: its groups' counts, weight, cost and the difficulties and player counts it is drawn at) and
+    // "demolition" (a demolition template: the force a destruction stage naming it requires).
+    // Family is a faction; Class a composition's role (patrol, map, reinforcement).
+    static void Director(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.director.json")!;
+        using var json = JsonDocument.Parse(stream);
+        foreach (var category in new[] { "difficulty", "rosters", "compositions", "demolition" })
+        {
+            var targets = new Dictionary<string, StatsTarget>(StringComparer.Ordinal);
+            foreach (var t in json.RootElement.GetProperty(category).EnumerateObject())
+            {
+                var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
+                var order = 0;
+                foreach (var f in t.Value.GetProperty("fields").EnumerateArray())
+                    fields[f.GetProperty("key").GetString()!] = new StatsField(f.GetProperty("label").GetString()!, f.GetProperty("kind").GetString()!, "",
+                        "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(), f.GetProperty("storage").GetString()!,
+                        Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
+                    { Order = ++order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r") };
+                targets[t.Name] = new StatsTarget(fields, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))
+                {
+                    Label = Text(t.Value, "label"), Family = Text(t.Value, "faction"), Class = Text(t.Value, "role"),
+                };
+            }
+            schema.Targets[category] = targets;
+        }
+    }
+
+    // The entities another page shows instead (StatsCatalog: the MS-11 Solo Silo's rack and missile), and the one whose
+    // main fields join the Helldiver page; the enemies category lists the rest.
+    public static readonly IReadOnlyDictionary<string, (string Item, string Title)> EntityParts = new Dictionary<string, (string, string)>(StringComparer.Ordinal)
+    {
+        ["weapon_rack_mini_missile_silo"] = ("MS-11 Solo Silo", "Rack"),
+        ["mini_missile_silo"] = ("MS-11 Solo Silo", "Missile"),
+    };
+    const string HelldiverEntity = "avatar_helldiver";
+
+    // The HD2R Editor's Enemies pages (mappings/entities.json, scripts/ExportEntities.py): every enemy, structure and other
+    // entity with the fields HellForge's engine writes, keyed by the HD2R Editor's row ids ("entity::entity.health",
+    // "damage_zone:zone_3:zone.armor", "attack:mapped_4:damage.stagger"); Family is its page (terminids, automatons,
+    // illuminate, structures, other). The Helldiver's own entity adds its main fields (main health) to the Helldiver page.
+    static void Entities(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.entities.json")!;
+        using var json = JsonDocument.Parse(stream);
+        var enemies = new Dictionary<string, StatsTarget>(StringComparer.Ordinal);
+        foreach (var e in json.RootElement.GetProperty("entities").EnumerateObject())
+        {
+            var resource = e.Value.GetProperty("resource").GetString()!;
+            var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
+            var order = 0;
+            foreach (var f in e.Value.GetProperty("fields").EnumerateArray())
+            {
+                var kind = f.GetProperty("kind").GetString()!;
+                fields[f.GetProperty("key").GetString()!] = new StatsField(f.GetProperty("label").GetString()!, kind, Text(f, "component") ?? "",
+                    kind == "component" ? resource : "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(),
+                    f.GetProperty("storage").GetString()!, Number(f, "min"), Number(f, "max"), Text(f, "unit"), f.GetProperty("shared").GetBoolean(),
+                    !f.GetProperty("verified").GetBoolean())
+                { Order = ++order, Section = Text(f, "section"), Note = Text(f, "note") };
+            }
+            if (e.Name == HelldiverEntity && schema.Targets.TryGetValue("helldiver", out var helldivers) && helldivers.TryGetValue("Helldiver", out var helldiver))
+            {
+                var taken = helldiver.Fields.Values.Select(f => f.Hd2rAddress).ToHashSet(StringComparer.Ordinal);
+                var next = helldiver.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+                foreach (var (key, field) in fields.Where(f => f.Key.StartsWith("entity::", StringComparison.Ordinal)))
+                    if (taken.Add(field.Hd2rAddress)) helldiver.Fields[key["entity::".Length..]] = field with { Section = null, Order = ++next };
+                continue;
+            }
+            enemies[e.Name] = new StatsTarget(fields, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))
+            {
+                Family = e.Value.GetProperty("category").GetString(),
+                Label = e.Value.GetProperty("label").GetString(),
+                Class = e.Value.GetProperty("kind").GetString(),
+                Faction = Text(e.Value, "faction"),
+            };
+        }
+        schema.Targets["enemies"] = enemies;
+    }
 
     // The references (HD2R Editor's payload swaps; mappings/references.json), which the exported schema lists as blocked,
     // placed by each target's own records: a weapon's projectile (ProjectileWeapon +0, or for six weapons their default
@@ -93,29 +199,54 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                     target.Blocked.Remove(key);
                     if (!fields.ContainsKey(key)) fields[key] = field;
                 }
-                // The projectile it fires.
-                if (category == "weapons" && hosts.TryGetProperty(name, out var host))
+                // The projectile it fires. An underbarrel of rounds (the One-Two's and the Arbitrator's: ProjectileWeapon and
+                // WeaponRounds, no magazine or heat) fires WeaponRounds +64: the type resolver (game.dll 0x7456D0) takes
+                // +0x40 for a weapon whose flags have bit 8, as a live SG-8 Punisher's do (decoded snapshot of this build).
+                var underbarrel = category == "weapons" && target.Slot == "underbarrel" &&
+                    fields.Values.Any(f => f.Component == "WeaponRoundsComponentData") && !fields.Values.Any(f => f.Component is "WeaponMagazineComponentData" or "WeaponHeatComponentData");
+                var mechanism = category != "weapons" ? null : hosts.TryGetProperty(name, out var host) ? host.GetProperty("mechanism").GetString() : underbarrel ? "rounds" : null;
+                if (mechanism != null)
                 {
-                    var mechanism = host.GetProperty("mechanism").GetString();
                     var weapon = fields.Values.Where(f => f.Kind == "component" && f.Component == "ProjectileWeaponComponentData").OrderBy(f => f.Order).FirstOrDefault();
                     var order = fields.Values.Where(f => f.Kind == "ProjectileSettings").Select(f => f.Order).DefaultIfEmpty(0).Min() - 1;
+                    string? swap = null, native = null;
                     if (mechanism == "ammunition" && ammunition.TryGetValue(name, out var a))
-                        Add("ammunition.projectile", new StatsField("Projectile", "EntityDelta", $"{a.GetProperty("component").GetInt32()}:0",
+                    {
+                        Add(swap = "ammunition.projectile", new StatsField("Projectile", "EntityDelta", $"{a.GetProperty("component").GetInt32()}:0",
                             a.GetProperty("resource").GetString()!, a.GetProperty("record").GetInt64(), a.GetProperty("offset").GetInt32(), "u32",
                             null, null, null, true, true) { Order = order });
+                        native = "/" + a.GetProperty("projectile").GetInt32().ToString(CultureInfo.InvariantCulture);
+                    }
                     else if (mechanism == "rounds" && fields.Values.Where(f => f.Kind == "component" && f.Component == "WeaponRoundsComponentData")
                                  .OrderBy(f => f.Order).FirstOrDefault() is { } rounds)
-                        Add("attack.feed_primary.projectile", new StatsField("Projectile", "component", rounds.Component, rounds.Resource, rounds.Record, 64, "u32",
+                    {
+                        // by the name the exported schema blocked it under (a rounds feed's, or the weapon's primary attack)
+                        swap = target.Blocked.ContainsKey("attack.primary.projectile") && !target.Blocked.ContainsKey("attack.feed_primary.projectile")
+                            ? "attack.primary.projectile" : "attack.feed_primary.projectile";
+                        Add(swap, new StatsField("Projectile", "component", rounds.Component, rounds.Resource, rounds.Record, 64, "u32",
                             null, null, null, rounds.Shared, true) { Order = order });
+                        native = "/r";
+                    }
                     else if (mechanism == "component" && weapon != null)
-                        Add("attack.primary.projectile", new StatsField("Projectile", "component", weapon.Component, weapon.Resource, weapon.Record, 0, "u32",
+                    {
+                        Add(swap = "attack.primary.projectile", new StatsField("Projectile", "component", weapon.Component, weapon.Resource, weapon.Record, 0, "u32",
                             null, null, null, weapon.Shared, true) { Order = order });
+                        native = "";
+                    }
+                    // the weapon firing it, by its own resource (the shot's source); an ammunition's swap counts for the
+                    // weapon it belongs to
+                    if (swap != null && native != null && fields[swap] is var site && (weapon?.Resource ?? (native == "/r" ? site.Resource : null)) is { } fires)
+                        schema.AddSwap(site, fires, native);
                 }
                 // The projectile its programmable ammunition fires (ProjectileWeapon +576), where it has one of its own.
                 if (category == "weapons" && programmable.TryGetProperty(name, out _) &&
                     fields.Values.Where(f => f.Kind == "component" && f.Component == "ProjectileWeaponComponentData").OrderBy(f => f.Order).FirstOrDefault() is { } fed)
+                {
                     Add("function_ammo.projectile", new StatsField("Programmable ammo projectile", "component", fed.Component, fed.Resource, fed.Record, 576, "u32",
                         null, null, null, fed.Shared, true) { Order = fields.Values.Where(f => f.Kind == "ProjectileSettings").Select(f => f.Order).DefaultIfEmpty(0).Min() - 1 });
+                    var site = fields["function_ammo.projectile"];
+                    schema.AddSwap(site, fed.Resource, "/f");
+                }
                 // Projectiles and damage types by id are their own rows.
                 if (category == "projectiles" && long.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out var type))
                 {
@@ -167,6 +298,39 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                     }
                 }
             }
+    }
+
+    // The rounds of weapons the references leave without a swap, where they really come from (mappings/projectile-sources.json,
+    // scripts/ExportProjectileSources.py from research/blocked-projectile-swaps): a rounds feed's WeaponRounds +64; the
+    // ProjectileWeapon +0 that is the round after all (the Maelstrom gun, the Maxigun); an ammunition option's entity delta
+    // (the SG-8's and SG-20's WeaponRounds +64 / +68, the Knight's and SMG-37's ProjectileWeapon +0); a magazine pattern's
+    // entries (MG-43, MGX-42, the sentries); a charge level's or heat level's projectile. Each row keeps the round's stock
+    // type, by which co-op recognises it ("/<type>").
+    static void ProjectileSources(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.projectile-sources.json")!;
+        using var json = JsonDocument.Parse(stream);
+        var weapons = schema.Targets["weapons"];
+        foreach (var w in json.RootElement.GetProperty("weapons").EnumerateObject())
+        {
+            var target = weapons.TryGetValue(w.Name, out var t) ? t : throw new InvalidDataException($"projectile-sources: no weapon {w.Name}.");
+            var resource = w.Value.GetProperty("resource").GetString()!;
+            var order = target.Fields.Values.Where(f => f.Kind == "ProjectileSettings").Select(f => f.Order).DefaultIfEmpty(0).Min() - 100;
+            foreach (var r in w.Value.GetProperty("rows").EnumerateArray())
+            {
+                var key = r.GetProperty("key").GetString()!;
+                target.Blocked.Remove(key);
+                var shared = r.TryGetProperty("shared", out var s) ? s.EnumerateArray().Select(x => x.GetString()!).ToArray() : [];
+                var kind = r.GetProperty("kind").GetString()!;
+                var field = new StatsField(r.GetProperty("label").GetString()!, kind, r.GetProperty("component").GetString()!, r.GetProperty("resource").GetString()!,
+                    r.GetProperty("record").GetInt64(), r.GetProperty("offset").GetInt32(), "u32", null, null, null, kind != "component" || shared.Length > 0, true)
+                    { Order = ++order, Section = Text(r, "section"), Note = Text(r, "note"), SharedConsumers = shared };
+                if (!target.Fields.ContainsKey(key)) target.Fields[key] = field;
+                var coop = r.GetProperty("coop").GetString()!;
+                var stock = r.GetProperty("stock").GetInt64().ToString(CultureInfo.InvariantCulture);
+                schema.AddSwap(target.Fields[key], resource, coop switch { "" => "", "r" => "/r", "f" => "/f", _ => "/" + stock });
+            }
+        }
     }
 
     // Weapons whose shot spawns an entity instead of firing a projectile row (mappings/fired-entities.json,

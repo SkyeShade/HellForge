@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -10,34 +11,39 @@ namespace HellForge.SdkShimGen;
 // copies of each stand-in, each connected to one backend. The "host" copies create a lobby and a Party network through
 // the PlayFab C APIs; the "friend" copies join the lobby with its connection string, update their member data, connect
 // to the network with its descriptor, create an endpoint, and exchange messages with the host, exactly as two games on
-// two machines would, except that Steam networking is replaced by loopback UDP.
+// two machines would, except that Steam networking is replaced by loopback UDP. Then the host invites the friend (who
+// listens for invitations) and kicks it: the kicked game is removed and disconnected, and its join back is refused. Last,
+// the friend comes back as after a mod sync: a new backend given --rejoin and a new stand-in copy, whose game is invited
+// back into the host's new lobby once it has one of its own, and joins.
 public static unsafe class LobbyLinkSmoke
 {
     const string HostId = "110000100000001", FriendId = "110000100000002";
 
-    [StructLayout(LayoutKind.Sequential)] struct EntityKey { public byte* Id; public byte* Type; }
-    [StructLayout(LayoutKind.Sequential)] struct CreateConfiguration
+    [StructLayout(LayoutKind.Sequential)] internal struct EntityKey { public byte* Id; public byte* Type; }
+    [StructLayout(LayoutKind.Sequential)] internal struct CreateConfiguration
     {
         public uint MaxMemberCount, OwnerMigrationPolicy, AccessPolicy, SearchPropertyCount;
         public byte** SearchKeys, SearchValues;
         public uint LobbyPropertyCount;
         public byte** LobbyKeys, LobbyValues;
     }
-    [StructLayout(LayoutKind.Sequential)] struct JoinConfiguration { public uint Count; public byte** Keys, Values; }
+    [StructLayout(LayoutKind.Sequential)] internal struct JoinConfiguration { public uint Count; public byte** Keys, Values; }
 
-    sealed class Player
+    internal sealed class Player
     {
         public string Name = "";
         public nint Handle;
         public delegate* unmanaged<nint, uint*, nint*, int> Start;
         public delegate* unmanaged<nint, uint, nint, int> Finish;
         public readonly List<string> Seen = [];
+        // The connection strings of the invitations received (InviteReceived).
+        public readonly List<string> Invitations = [];
 
         // Delivers state changes until one matches (type, or type:hresult for completions), for at most five seconds.
-        public bool WaitFor(string wanted)
+        public bool WaitFor(string wanted, int milliseconds = 5000)
         {
             var clock = Stopwatch.StartNew();
-            while (clock.ElapsedMilliseconds < 5000)
+            while (clock.ElapsedMilliseconds < milliseconds)
             {
                 uint count;
                 nint changes;
@@ -45,7 +51,9 @@ public static unsafe class LobbyLinkSmoke
                 for (var i = 0; i < count; i++)
                 {
                     var change = (uint*)((nint*)changes)[i];
-                    Seen.Add(change[0] is 0 or 1 or 8 or 12 or 15 ? $"{change[0]}:{change[1]:x}" : $"{change[0]}");
+                    Seen.Add(change[0] is 0 or 1 or 5 or 8 or 12 or 15 ? $"{change[0]}:{change[1]:x}" : $"{change[0]}");
+                    // PFLobbyInviteReceivedStateChange: the connection string after the listening and inviting entities
+                    if (change[0] == 13) Invitations.Add(Marshal.PtrToStringUTF8(*(nint*)((byte*)change + 40)) ?? "");
                 }
                 Finish(Handle, count, changes);
                 var at = Seen.IndexOf(wanted);
@@ -94,6 +102,9 @@ public static unsafe class LobbyLinkSmoke
             var friendOwner = (delegate* unmanaged<nint, EntityKey**, int>)NativeLibrary.GetExport(friendLibrary, "PFLobbyGetOwner");
             var friendUpdate = (delegate* unmanaged<nint, EntityKey*, nint, JoinConfiguration*, nint, int>)NativeLibrary.GetExport(friendLibrary, "PFLobbyPostUpdate");
             var friendLeave = (delegate* unmanaged<nint, EntityKey*, nint, int>)NativeLibrary.GetExport(friendLibrary, "PFLobbyLeave");
+            var invite = (delegate* unmanaged<nint, EntityKey*, EntityKey*, nint, int>)NativeLibrary.GetExport(hostLibrary, "PFLobbySendInvite");
+            var kick = (delegate* unmanaged<nint, EntityKey*, byte, nint, int>)NativeLibrary.GetExport(hostLibrary, "PFLobbyForceRemoveMember");
+            var listen = (delegate* unmanaged<nint, EntityKey*, int>)NativeLibrary.GetExport(friendLibrary, "PFMultiplayerStartListeningForLobbyInvites");
 
             fixed (byte* hostId = Encoding.ASCII.GetBytes(HostId + "\0"), friendId = Encoding.ASCII.GetBytes(FriendId + "\0"),
                 type = "title_player_account\0"u8, k1 = "1\0"u8, v1 = "f8c9037f96047f7a\0"u8, platform = "platform_lobby\0"u8,
@@ -125,6 +136,22 @@ public static unsafe class LobbyLinkSmoke
                 Expect(friendProperty(friendLobby, k1, &text) == 0 && Marshal.PtrToStringUTF8(text) == "f8c9037f96047f7a", "The friend reads the host's lobby properties");
                 Expect(host.Player.WaitFor("2"), "The host sees the friend join");
                 Expect(hostMembers(hostLobby, &count, &list) == 0 && count == 2, "The host sees two members");
+                // each backend lists the other as a co-op peer for a sandboxed game's Steam P2P (MultiplayerHost.PeersFileName)
+                static bool Lists(string file, string hexId)
+                {
+                    for (var i = 0; i < 40; i++)
+                    {
+                        try
+                        {
+                            if (File.Exists(file) && File.ReadAllLines(file).Contains(ulong.Parse(hexId, NumberStyles.HexNumber).ToString(CultureInfo.InvariantCulture))) return true;
+                        }
+                        catch (IOException) { }
+                        Thread.Sleep(100);
+                    }
+                    return false;
+                }
+                Expect(Lists(Path.Combine(root, "host", "p2p-peers.txt"), FriendId) && Lists(Path.Combine(root, "friend", "p2p-peers.txt"), HostId),
+                    "Each backend lists the other among its co-op peers for Steam P2P");
 
                 var friendValues = stackalloc byte*[] { friendPlatform };
                 var memberUpdate = new JoinConfiguration { Count = 1, Keys = memberKeys, Values = friendValues };
@@ -138,9 +165,67 @@ public static unsafe class LobbyLinkSmoke
                 KeyFlow(root, Expect);
                 PresenceFlow(root, connectionString, Expect);
 
-                Expect(friendLeave(friendLobby, &friendKey, 0x44) == 0 && friend.Player.WaitFor("10"), "The friend leaves and is disconnected");
-                Expect(host.Player.WaitFor("4") && hostMembers(hostLobby, &count, &list) == 0 && count == 1, "The host sees the friend leave");
+                // An invitation: the host's game invites the friend, whose listening game hears it through both backends.
+                Expect(listen(friend.Player.Handle, &friendKey) == 0 && friend.Player.WaitFor("14"), "The friend listens for invitations");
+                Expect(invite(hostLobby, &hostKey, &friendKey, 0x66) == 0 && host.Player.WaitFor("15:0"), "The host's invitation is taken");
+                Expect(friend.Player.WaitFor("13"), "The friend's game receives the invitation");
+
+                // The kick (PFLobbyForceRemoveMember): MemberRemoved then the completion for the host; for the kicked game
+                // its member removed, then Disconnecting and Disconnected; a join back is refused as not joinable.
+                Expect(kick(hostLobby, &friendKey, 1, 0x77) == 0, "The host kicks the friend");
+                Expect(host.Player.WaitFor("4") && host.Player.WaitFor("5:0") && hostMembers(hostLobby, &count, &list) == 0 && count == 1,
+                    "The host sees the friend removed, then the kick complete");
+                Expect(friend.Player.WaitFor("4") && friend.Player.WaitFor("9") && friend.Player.WaitFor("10"), "The kicked friend is removed and disconnected");
+                nint rejoined = 0;
+                fixed (byte* connectionBytes = Encoding.UTF8.GetBytes(connectionString + "\0"))
+                    Expect(join(friend.Player.Handle, &friendKey, connectionBytes, &friendJoin, 0x88, &rejoined) == 0 && friend.Player.WaitFor("1:89236227"),
+                        "The kicked friend cannot join again");
+                Expect(hostMembers(hostLobby, &count, &list) == 0 && count == 1, "The host's lobby keeps one member");
+                _ = friendLeave;
                 Expect(hostLeave(hostLobby, &hostKey, 0x55) == 0 && host.Player.WaitFor("10"), "The host leaves its lobby");
+
+                // Rejoining after a mod sync: the friend's next session (a new backend on the friend's port, given the sync
+                // file naming the host's new lobby, and a new copy of the stand-in) is invited back once its game has a
+                // lobby of its own, and joins with the invitation's connection string.
+                nint secondLobby = 0, ownLobby = 0, back = 0;
+                Expect(create(host.Player.Handle, &hostKey, &configuration, &hostJoin, 0x91, &secondLobby) == 0 && host.Player.WaitFor("0:0"), "The host opens a new lobby");
+                Expect(connection(secondLobby, &text) == 0, "The new lobby has a connection string");
+                var secondConnection = Marshal.PtrToStringUTF8(text) ?? "";
+                processes[1].Kill(true);
+                processes[1].WaitForExit(10000);
+                var syncFile = Path.Combine(root, "mod-sync", "session.json");
+                new HellForge.Core.ModSyncSession(HostId, "Host", secondConnection, "smoke", []).Write(syncFile);
+                var againPipe = $"hellforge-link-again-{Guid.NewGuid():N}";
+                processes.Add(StartBackend(backend, Path.Combine(root, "friend-again"), againPipe, $"udp:{FriendId}:{ports.Item2}:{HostId}={ports.Item1}", ["--rejoin", syncFile]));
+                var againReady = Path.Combine(root, "friend-again", "ready.json");
+                var readyClock = Stopwatch.StartNew();
+                while (!File.Exists(againReady) && readyClock.ElapsedMilliseconds < 20000) Thread.Sleep(50);
+                Expect(File.Exists(againReady), "The friend's next session's backend starts with --rejoin");
+                var again = Load(Path.Combine(standIns, "PlayFabMultiplayerWin.dll"), Path.Combine(root, "lobby-friend-again.dll"), againPipe, "friend again");
+                var againCreate = (delegate* unmanaged<nint, EntityKey*, CreateConfiguration*, JoinConfiguration*, nint, nint*, int>)NativeLibrary.GetExport(again.Library, "PFMultiplayerCreateAndJoinLobby");
+                var againListen = (delegate* unmanaged<nint, EntityKey*, int>)NativeLibrary.GetExport(again.Library, "PFMultiplayerStartListeningForLobbyInvites");
+                var againJoin = (delegate* unmanaged<nint, EntityKey*, byte*, JoinConfiguration*, nint, nint*, int>)NativeLibrary.GetExport(again.Library, "PFMultiplayerJoinLobby");
+                var againMembers = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(again.Library, "PFLobbyGetMembers");
+                Expect(againListen(again.Player.Handle, &friendKey) == 0 && again.Player.WaitFor("14"), "The friend's next game listens for invitations from the start");
+                var friendOwnJoin = new JoinConfiguration { Count = 0 };
+                Expect(againCreate(again.Player.Handle, &friendKey, &configuration, &friendOwnJoin, 0x92, &ownLobby) == 0 && again.Player.WaitFor("0:0"),
+                    "The friend's next game reaches the ship (its own lobby)");
+                Expect(again.Player.WaitFor("13", 20000) && again.Player.Invitations.LastOrDefault() == secondConnection,
+                    "The friend's next game receives the host's invitation into its new lobby");
+                fixed (byte* connectionBytes = Encoding.UTF8.GetBytes(secondConnection + "\0"))
+                    Expect(againJoin(again.Player.Handle, &friendKey, connectionBytes, &friendJoin, 0x93, &back) == 0 && again.Player.WaitFor("1:0"),
+                        "The friend's next game takes the invitation and joins");
+                Expect(againMembers(back, &count, &list) == 0 && count == 2 && host.Player.WaitFor("2") && hostMembers(secondLobby, &count, &list) == 0 && count == 2,
+                    "Both games see the friend back in the host's lobby");
+                // the backend keeps its log open
+                string FriendLog()
+                {
+                    using var stream = new FileStream(Path.Combine(root, "friend-again", "multiplayer.log"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    return new StreamReader(stream).ReadToEnd();
+                }
+                var logClock = Stopwatch.StartNew();
+                while (!FriendLog().Contains("Rejoin: back in Host's lobby", StringComparison.Ordinal) && logClock.ElapsedMilliseconds < 5000) Thread.Sleep(50);
+                Expect(FriendLog().Contains("Rejoin: back in Host's lobby", StringComparison.Ordinal), "The friend's backend logs the rejoin");
             }
             return Report(problems, root);
         }
@@ -374,7 +459,7 @@ public static unsafe class LobbyLinkSmoke
         createEndpoint(*network, user, 0, 0, 0, 0x303, endpoint);
     }
 
-    static (nint Library, Player Player) Load(string original, string copy, string pipe, string name)
+    internal static (nint Library, Player Player) Load(string original, string copy, string pipe, string name)
     {
         File.Copy(original, copy, overwrite: true);
         Environment.SetEnvironmentVariable("HELLFORGE_PIPE", pipe);
@@ -392,11 +477,13 @@ public static unsafe class LobbyLinkSmoke
         return (library, player);
     }
 
-    static Process StartBackend(string backend, string evidence, string pipe, string link)
+    internal static Process StartBackend(string backend, string evidence, string pipe, string link, IEnumerable<string>? more = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in new[] { backend, "--port", "0", "--evidence", evidence, "--lifetime-seconds", "120", "--pipe", pipe, "--link", link, "--mod-digest", "smoke" })
+        foreach (var argument in new[] { backend, "--port", "0", "--evidence", evidence, "--lifetime-seconds", "120", "--pipe", pipe, "--link", link, "--mod-digest", "smoke" }.Concat(more ?? []))
             start.ArgumentList.Add(argument);
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>()) start.Environment[name] = value;
         var process = Process.Start(start) ?? throw new IOException("Could not start the backend.");
         process.OutputDataReceived += (_, _) => { };
         process.ErrorDataReceived += (_, _) => { };
@@ -405,7 +492,7 @@ public static unsafe class LobbyLinkSmoke
         return process;
     }
 
-    static int FreePort()
+    internal static int FreePort()
     {
         using var probe = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         return ((IPEndPoint)probe.Client.LocalEndPoint!).Port;

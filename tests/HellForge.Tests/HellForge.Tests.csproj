@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <!-- the session runner's game job, which stands alone (SessionJobTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Session/HostBoundedProcess.cs" Link="Session/HostBoundedProcess.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>
+  <!-- which running games keep a session from starting (SessionJobTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Session/GameProcesses.cs" Link="Session/GameProcesses.cs" /></ItemGroup>
 </Project>

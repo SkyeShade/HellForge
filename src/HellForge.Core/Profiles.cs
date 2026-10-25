@@ -144,11 +144,26 @@ public static partial class ProfileStore
         return LoadFlag(paths, "liveWar") ? WarLive : WarFrozen;
     }
 
+    // The all-planets war's subfaction seed (backend --war-seed): 0, the default layout, unless one was typed or rolled.
+    public static uint LoadSubfactionSeed(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && uint.TryParse(SessionFiles.Text(settings, "subfactionSeed"), NumberStyles.None,
+            CultureInfo.InvariantCulture, out var seed) ? seed : 0;
+    public static void SaveSubfactionSeed(ISessionPaths paths, uint seed) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths), seed);
+
     // The engine's own log (--log-to-file), copied into the session's logs. On unless switched off (multiplayer testing).
     public static bool LoadEngineLog(ISessionPaths paths) => LoadFlag(paths, "engineLog");
     // Off unless chosen: a full memory dump of the game when it crashes (large), for bug reports.
     public static bool LoadCrashDump(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "crashDump") == "true";
+
+    // Off unless chosen (experimental in the 0.3.0 betas): the game at low integrity, with Steam through the session's
+    // Steam broker (HellForge.Session play --sandbox, docs/steam-bridge.md).
+    public static bool LoadSandbox(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "sandbox") == "true";
+    public static void SaveSandbox(ISessionPaths paths, bool enabled) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), sandbox: enabled);
 
     // The game's launch options, as typed (GameLaunchOptions); empty unless set.
     public static string LoadLaunchOptions(ISessionPaths paths) =>
@@ -181,12 +196,15 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
 
-    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions)
+    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions,
+        uint? seed = null, bool? sandbox = null)
     {
         try
         {
+            var subfactionSeed = (seed ?? LoadSubfactionSeed(paths)).ToString(CultureInfo.InvariantCulture);
+            var sandboxed = sandbox ?? LoadSandbox(paths);
             Directory.CreateDirectory(paths.HostRoot);
-            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions }, WriteOptions) + "\n");
+            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions, subfactionSeed, sandbox = sandboxed }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.
     }

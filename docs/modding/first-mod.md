@@ -33,7 +33,7 @@ field and constant you will meet.
      "version": "0.1.0",
      "description": "Liberator Tweaks: a HellForge code mod. Source in src/.",
      "gameplay": true,
-     "code": { "dll": "my_mod.dll", "sdk": 13 }
+     "code": { "dll": "my_mod.dll", "sdk": 15 }
    }
    ```
 
@@ -58,7 +58,7 @@ It creates `mods\liberator-tweaks` (the part of the id after the dot), with `"dl
 
 ```
 mods/liberator-tweaks/
-  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 13}
+  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 15}
   src/my_mod.c         the mod's C source
   CMakeLists.txt       for IDEs (Rider, CLion, VS Code)
   CMakePresets.json    the IDE build settings: HellForge's pinned Zig, CMake and Ninja
@@ -242,6 +242,10 @@ does the same, and `--out <folder>` writes the zip elsewhere, but never into an 
 Players drop the zip into their `mods` folder as it is, or unpacked, but not both, since two copies of one id load
 neither. They need no DLL and no tools setup: their HellForge downloads Zig by itself the first time and builds the
 sources. Friends who play together need the same gameplay mods; the Mods page shows the modlist code to compare.
+
+Once the mod has a page (GitHub, Nexus Mods), add its address to the manifest as `"url": "https://..."`. The Mods page
+links it, and players who join a friend running your mod get a GET IT button for it in game
+([tools and sharing](tools.md#players-who-join-you)).
 
 A code mod runs inside the game with the player's permissions, so players should only enable code mods from people they
 trust.

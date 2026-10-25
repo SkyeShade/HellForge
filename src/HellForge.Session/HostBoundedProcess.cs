@@ -14,13 +14,16 @@ using System.Threading;
 public sealed class HostBoundedProcess : IDisposable {
     IntPtr job, thread; Timer deadline; public Process Process {get;private set;}
     public bool DeadlineExpired {get;private set;}
-    public HostBoundedProcess(string executable,string arguments,string workingDirectory,string profile,int seconds) {
+    // singleProcess: the job holds the game alone (an active-process limit of 1), so it cannot start other programs.
+    // token: when non-zero, CreateProcessAsUser with this token (a lowered integrity level); the caller owns the handle.
+    public HostBoundedProcess(string executable,string arguments,string workingDirectory,string profile,int seconds,bool singleProcess=false,IntPtr token=default) {
         // 0 means no deadline (play sessions); the job still kills the game when its owner exits.
         if(seconds<0||seconds>330)throw new ArgumentOutOfRangeException("seconds");
         var pi=new PI();IntPtr env=IntPtr.Zero;
         try {
             job=CreateJobObjectW(IntPtr.Zero,null);if(job==IntPtr.Zero)Fail("CreateJobObject");
             var limits=new LIMIT();limits.Basic.Flags=0x2000;
+            if(singleProcess){limits.Basic.Flags|=0x8;limits.Basic.ActiveLimit=1;}
             if(!SetInformationJobObject(job,9,ref limits,Marshal.SizeOf(typeof(LIMIT))))Fail("Job limits");
             var variables=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             foreach(DictionaryEntry item in Environment.GetEnvironmentVariables())variables[(string)item.Key]=(string)item.Value;
@@ -32,7 +35,9 @@ public sealed class HostBoundedProcess : IDisposable {
             var pairs=new List<string>();foreach(var item in variables)pairs.Add(item.Key+"="+item.Value);
             env=Marshal.StringToHGlobalUni(String.Join("\0",pairs.ToArray())+"\0\0");
             var si=new SI();si.Size=Marshal.SizeOf(typeof(SI));
-            if(!CreateProcessW(executable,new StringBuilder("\""+executable+"\" "+arguments),IntPtr.Zero,IntPtr.Zero,false,0x404,env,workingDirectory,ref si,out pi))Fail("Create suspended");
+            var cmd=new StringBuilder("\""+executable+"\" "+arguments);
+            if(token!=IntPtr.Zero){if(!CreateProcessAsUserW(token,executable,cmd,IntPtr.Zero,IntPtr.Zero,false,0x404,env,workingDirectory,ref si,out pi))Fail("Create suspended (low integrity)");}
+            else{if(!CreateProcessW(executable,cmd,IntPtr.Zero,IntPtr.Zero,false,0x404,env,workingDirectory,ref si,out pi))Fail("Create suspended");}
             thread=pi.Thread;
             if(!AssignProcessToJobObject(job,pi.Process))Fail("Assign suspended process");
             bool member;if(!IsProcessInJob(pi.Process,job,out member)||!member)throw new InvalidOperationException("Job membership not verified");
@@ -53,6 +58,7 @@ public sealed class HostBoundedProcess : IDisposable {
     [StructLayout(LayoutKind.Sequential)]struct LIMIT{public BASIC Basic;public IO Io;public UIntPtr ProcessMemory,JobMemory,PeakProcessMemory,PeakJobMemory;}
     [StructLayout(LayoutKind.Sequential)]struct ACCOUNTING{public long UserTime,KernelTime,PeriodUser,PeriodKernel;public uint PageFaults,Total,Active,Terminated;}
     [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string app,StringBuilder command,IntPtr pa,IntPtr ta,bool inherit,uint flags,IntPtr env,string cwd,ref SI si,out PI pi);
+    [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessAsUserW(IntPtr token,string app,StringBuilder command,IntPtr pa,IntPtr ta,bool inherit,uint flags,IntPtr env,string cwd,ref SI si,out PI pi);
     [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateJobObjectW(IntPtr attrs,string name);
     [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetInformationJobObject(IntPtr job,int cls,ref LIMIT info,int size);
     [DllImport("kernel32.dll",SetLastError=true)]static extern bool QueryInformationJobObject(IntPtr job,int cls,ref ACCOUNTING info,int size,out uint returned);

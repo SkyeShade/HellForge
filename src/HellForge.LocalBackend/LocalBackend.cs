@@ -17,6 +17,14 @@ public static class LocalBackend
     // The error bodies the backend answers with ({"errorCode": "HELLFORGE_..."}).
     static JsonObject Error(string code) => new() { ["errorCode"] = code };
 
+    // A request from a program on this PC, not from a web page in the player's browser: the Host is the loopback address
+    // the backend listens on (a DNS-rebinding page sends its own name), and none of a browser's marks is there (Origin,
+    // Referer, Sec-Fetch-*). The game, the session runner and the launcher send none of them.
+    public static bool FromLocalProgram(HttpRequest request) =>
+        request.Host.Host is "127.0.0.1" or "localhost" or "[::1]" &&
+        !request.Headers.ContainsKey("Origin") && !request.Headers.ContainsKey("Referer") &&
+        !request.Headers.Keys.Any(k => k.StartsWith("Sec-Fetch-", StringComparison.OrdinalIgnoreCase));
+
     // A response body: a JSON node or element, written compactly as the serializer writes them.
     static byte[] Utf8(object response)
     {
@@ -78,7 +86,7 @@ public static class LocalBackend
     public static WebApplication Create(int port, string evidenceDirectory, LoginMode mode, bool startupFixtures = false,
         ProfileStore? profile = null, string? itemCatalog = null, string? fixtureOverride = null, bool captureMissionBodies = false,
         WarClock? warClock = null, AccountKeys? accountKeys = null, LiveWar? liveWar = null, FriendPresence? presence = null,
-        RegisteredItems? registeredItems = null, bool openWar = false, WarServer? warServer = null)
+        RegisteredItems? registeredItems = null, bool openWar = false, uint warSeed = 0, WarServer? warServer = null)
     {
         if (port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
@@ -109,7 +117,7 @@ public static class LocalBackend
         if (openWar)
         {
             if (!startupFixtures) throw new ArgumentException("The all-planets war requires startup fixtures.");
-            fixtures[$"/WarSeason/{LiveWar.WarId}/Status"] = OpenWar.Status(fixtures[$"/WarSeason/{LiveWar.WarId}/warinfo"], fixtures[$"/WarSeason/{LiveWar.WarId}/Status"]);
+            fixtures[$"/WarSeason/{LiveWar.WarId}/Status"] = OpenWar.Status(fixtures[$"/WarSeason/{LiveWar.WarId}/warinfo"], fixtures[$"/WarSeason/{LiveWar.WarId}/Status"], seed: warSeed);
             liveWar = null;
         }
         if (startupFixtures) profile ??= ProfileStore.Open(null);
@@ -195,7 +203,13 @@ public static class LocalBackend
             WarServer.Reply? forwarded = null;
             try
             {
-                if (warServer != null && WarServer.Forwards(request.Path))
+                if (!FromLocalProgram(request))
+                {
+                    status = StatusCodes.Status403Forbidden;
+                    outcome = "web_page_rejected";
+                    response = Error("HELLFORGE_NOT_FROM_THIS_PC");
+                }
+                else if (warServer != null && WarServer.Forwards(request.Path))
                 {
                     // A war server's route: it goes there as it is, and its answer comes back as it is (WarServer).
                     using var buffer = new MemoryStream();
@@ -279,22 +293,25 @@ public static class LocalBackend
                 }
                 else if (request.Path.StartsWithSegments("/lobby", out var lobbyPath))
                 {
-                    // The game's own lobby for friends' social tabs, and friends' lobbies for its own (FriendPresence).
+                    // The game's own lobby for friends' social tabs and the lobby directory, and friends' and the directory's
+                    // lobbies for its own social tab and Galactic Map (FriendPresence, Multiplayer.DirectoryService).
                     var rest = lobbyPath.Value ?? "";
                     var segments = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                    (string Method, string Shape)? expected = segments switch
+                    (string[] Methods, string Shape)? expected = segments switch
                     {
-                        [] => ("PUT", "lobby"),
-                        ["accounts"] => ("POST", "accounts"),
-                        ["clear"] => ("DELETE", "clear"),
-                        [_, "member"] => ("POST", "member"),
+                        [] => (["PUT"], "lobby"),
+                        ["accounts"] => (["POST"], "accounts"),
+                        ["clear"] => (["DELETE"], "clear"),
+                        [_, "member"] => (["POST"], "member"),
+                        [_, "live"] => (["GET", "PUT"], "live"),
+                        [_] => (["GET"], "get"),
                         _ => null
                     };
                     if (expected is not { } route) { }
-                    else if (request.Method != route.Method)
+                    else if (!route.Methods.Contains(request.Method))
                     {
                         status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = route.Method;
+                        context.Response.Headers.Allow = string.Join(", ", route.Methods);
                         outcome = "method_rejected";
                         response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
                     }
@@ -320,6 +337,22 @@ public static class LocalBackend
                                 presence.ClearLocal();
                                 outcome = "lobby_cleared";
                                 break;
+                            case "live" when request.Method == "PUT":
+                            {
+                                using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true }, context.RequestAborted);
+                                presence.SetLocalLive(segments[0], body.RootElement);
+                                outcome = "lobby_live_published";
+                                break;
+                            }
+                            // Never seen called by the game so far (docs/multiplayer.md step 7); a lobby unknown here is a
+                            // 404, logged with its outcome.
+                            case "live" or "get":
+                            {
+                                var found = route.Shape == "live" ? presence.LiveRecord(segments[0]) : presence.LobbyRecord(segments[0]);
+                                if (found != null) { response = found; outcome = route.Shape == "live" ? "lobby_live" : "lobby_record"; }
+                                else { status = StatusCodes.Status404NotFound; response = Error("HELLFORGE_LOBBY_NOT_FOUND"); outcome = "lobby_unknown"; }
+                                break;
+                            }
                             default:
                             {
                                 using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true }, context.RequestAborted);

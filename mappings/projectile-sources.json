@@ -1,0 +1,1495 @@
+{
+ "format": 1,
+ "build": "25480438",
+ "source": "HD2Mods research/blocked-projectile-swaps (2026-10-23: decoded game.dll 2E2C3B7C..., HD2Runtime datalibrary, 10 snapshots); scripts/ExportProjectileSources.py",
+ "note": "coop: how shots.c finds the weapon's round: '' ProjectileWeapon +0, 'r' WeaponRounds +64, 'f' +576, 'stock' this row's stock type",
+ "weapons": {
+  "A/G-16 Gatling Sentry / weapon": {
+   "resource": "0xEF85D6CF58E31D70",
+   "path": "bit 7 (WeaponMagazine), pattern branch (magazine_type 1)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "magazine.pattern_1.projectile",
+     "label": "Projectile (round 1 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xEF85D6CF58E31D70",
+     "record": 162,
+     "offset": 4,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_2.projectile",
+     "label": "Projectile (round 2 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xEF85D6CF58E31D70",
+     "record": 162,
+     "offset": 8,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_3.projectile",
+     "label": "Projectile (round 3 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xEF85D6CF58E31D70",
+     "record": 162,
+     "offset": 12,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_4.projectile",
+     "label": "Projectile (round 4 of 5, tracer)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xEF85D6CF58E31D70",
+     "record": 162,
+     "offset": 16,
+     "stock": 242,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_5.projectile",
+     "label": "Projectile (round 5 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xEF85D6CF58E31D70",
+     "record": 162,
+     "offset": 20,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    }
+   ]
+  },
+  "A/MG-43 Machine Gun Sentry / weapon": {
+   "resource": "0x37CDE43876BA26BB",
+   "path": "bit 7 (WeaponMagazine), pattern branch (magazine_type 1)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "magazine.pattern_1.projectile",
+     "label": "Projectile (round 1 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x37CDE43876BA26BB",
+     "record": 165,
+     "offset": 4,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_2.projectile",
+     "label": "Projectile (round 2 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x37CDE43876BA26BB",
+     "record": 165,
+     "offset": 8,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_3.projectile",
+     "label": "Projectile (round 3 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x37CDE43876BA26BB",
+     "record": 165,
+     "offset": 12,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_4.projectile",
+     "label": "Projectile (round 4 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x37CDE43876BA26BB",
+     "record": 165,
+     "offset": 16,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_5.projectile",
+     "label": "Projectile (round 5 of 5, tracer)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x37CDE43876BA26BB",
+     "record": 165,
+     "offset": 20,
+     "stock": 242,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    }
+   ]
+  },
+  "AC-8 Autocannon": {
+   "resource": "0xA8CFFB316F0B5C5F",
+   "path": "bit 8 (WeaponRounds) (component membership; not live in any snapshot)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.feed_primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xA8CFFB316F0B5C5F",
+     "record": 23,
+     "offset": 64,
+     "stock": 115,
+     "coop": "r"
+    }
+   ]
+  },
+  "EXO-55 Breakthrough Exosuit / right_gun": {
+   "resource": "0xDF51FE8D62F294BE",
+   "path": "bit 8 (WeaponRounds) (component membership; not live in any snapshot)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.feed_primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xDF51FE8D62F294BE",
+     "record": 0,
+     "offset": 64,
+     "stock": 68,
+     "coop": "r"
+    }
+   ]
+  },
+  "GL-52 De-Escalator": {
+   "resource": "0xFE3B29B2CFA63F9B",
+   "path": "bit 8 (WeaponRounds) (component membership; not live in any snapshot)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.feed_primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xFE3B29B2CFA63F9B",
+     "record": 24,
+     "offset": 64,
+     "stock": 222,
+     "coop": "r"
+    }
+   ]
+  },
+  "GP-31 Grenade Pistol": {
+   "resource": "0x52E4334E6A128CAF",
+   "path": "bit 8 (WeaponRounds) (component membership; not live in any snapshot)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.feed_primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x52E4334E6A128CAF",
+     "record": 19,
+     "offset": 64,
+     "stock": 263,
+     "coop": "r"
+    }
+   ]
+  },
+  "GR-8 Recoilless Rifle": {
+   "resource": "0x9F80D67A12A7E40F",
+   "path": "bit 7, magazine_type 0 -> ProjectileWeapon +0; each pellet then takes +576 while the weapon function query 0x1787500(entity, 8) == 1",
+   "confidence": "high for the code path; medium for which state the function is in by default on each weapon",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x9F80D67A12A7E40F",
+     "record": 260,
+     "offset": 0,
+     "stock": 153,
+     "coop": ""
+    },
+    {
+     "key": "function_ammo.projectile",
+     "label": "Programmable ammo projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x9F80D67A12A7E40F",
+     "record": 260,
+     "offset": 576,
+     "stock": 36,
+     "coop": "f",
+     "note": "While its weapon function is on, this projectile replaces the fired one."
+    }
+   ]
+  },
+  "LAS-17 Double-Edge Sickle": {
+   "resource": "0x295BEB26DC4F8FF1",
+   "path": "explicit type from the heat fire (0x7627B0) once a level is reached; below level 1: 0 -> resolver bit 9 (WeaponHeat) -> ProjectileWeapon +0",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile (below heat level 1)",
+     "section": "Heat",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x295BEB26DC4F8FF1",
+     "record": 214,
+     "offset": 0,
+     "stock": 149,
+     "coop": ""
+    },
+    {
+     "key": "heat.level_1.projectile",
+     "label": "Projectile (heat level 1)",
+     "section": "Heat",
+     "kind": "component",
+     "component": "WeaponHeatComponentData",
+     "resource": "0x295BEB26DC4F8FF1",
+     "record": 21,
+     "offset": 4,
+     "stock": 185,
+     "coop": "stock",
+     "note": "Fired at 50 heat or more (live, next shot)."
+    },
+    {
+     "key": "heat.level_2.projectile",
+     "label": "Projectile (heat level 2)",
+     "section": "Heat",
+     "kind": "component",
+     "component": "WeaponHeatComponentData",
+     "resource": "0x295BEB26DC4F8FF1",
+     "record": 21,
+     "offset": 28,
+     "stock": 219,
+     "coop": "stock",
+     "note": "Fired at 100 heat or more (live, next shot)."
+    },
+    {
+     "key": "heat.level_3.projectile",
+     "label": "Projectile (heat level 3)",
+     "section": "Heat",
+     "kind": "component",
+     "component": "WeaponHeatComponentData",
+     "resource": "0x295BEB26DC4F8FF1",
+     "record": 21,
+     "offset": 52,
+     "stock": 25,
+     "coop": "stock",
+     "note": "Fired at 190 heat or more (live, next shot)."
+    }
+   ]
+  },
+  "M-1000 Maxigun": {
+   "resource": "0x43A58CB89CFA197C",
+   "path": "bit 10 (WeaponLinkedAmmo): the linked deposit (its backpack) is looked up in the ObjectiveShell manager [game+0x3326710]; a miss (any backpack) falls back to 0x515100 on the Maxigun itself -> ProjectileWeapon +0",
+   "confidence": "medium-high: code proven; that no backpack owns component 176 is from the decoded owner list; no live Maxigun in any snapshot",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x43A58CB89CFA197C",
+     "record": 257,
+     "offset": 0,
+     "stock": 306,
+     "coop": ""
+    }
+   ]
+  },
+  "MG-43 Machine Gun": {
+   "resource": "0x11C27D3BABB38956",
+   "path": "bit 7 (WeaponMagazine), pattern branch (magazine_type 1)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "magazine.pattern_1.projectile",
+     "label": "Projectile (round 1 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 255,
+     "offset": 4,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_2.projectile",
+     "label": "Projectile (round 2 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 255,
+     "offset": 8,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_3.projectile",
+     "label": "Projectile (round 3 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 255,
+     "offset": 12,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_4.projectile",
+     "label": "Projectile (round 4 of 5)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 255,
+     "offset": 16,
+     "stock": 148,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_5.projectile",
+     "label": "Projectile (round 5 of 5, tracer)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 255,
+     "offset": 20,
+     "stock": 242,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 5; the round already chambered keeps its type."
+    }
+   ]
+  },
+  "MGX-42 Bullet Storm": {
+   "resource": "0xB16C9D490AA59B77",
+   "path": "bit 7 (WeaponMagazine), pattern branch (magazine_type 1)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "magazine.pattern_1.projectile",
+     "label": "Projectile (round 1 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 4,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_2.projectile",
+     "label": "Projectile (round 2 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 8,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_3.projectile",
+     "label": "Projectile (round 3 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 12,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_4.projectile",
+     "label": "Projectile (round 4 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 16,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_5.projectile",
+     "label": "Projectile (round 5 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 20,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_6.projectile",
+     "label": "Projectile (round 6 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 24,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_7.projectile",
+     "label": "Projectile (round 7 of 8)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 28,
+     "stock": 61,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    },
+    {
+     "key": "magazine.pattern_8.projectile",
+     "label": "Projectile (round 8 of 8, tracer)",
+     "section": "Magazine pattern",
+     "kind": "component",
+     "component": "WeaponMagazineComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 244,
+     "offset": 32,
+     "stock": 184,
+     "coop": "stock",
+     "note": "Round n of a magazine fires entry (n - 1) % 8; the round already chambered keeps its type."
+    }
+   ]
+  },
+  "MP-98 Knight": {
+   "resource": "0x9571CA51F0DAF35B",
+   "path": "bit 7 (WeaponMagazine), magazine_type 0 -> ProjectileWeapon +0 (effective record: private copy when an ammunition option is equipped)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile (standard ammunition)",
+     "section": "Ammunition",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x9571CA51F0DAF35B",
+     "record": 130,
+     "offset": 0,
+     "stock": 215,
+     "coop": "",
+     "note": "Its round with no ammunition option equipped; an equipped option replaces it."
+    },
+    {
+     "key": "ammunition.explosive.projectile",
+     "label": "Projectile (EXPLOSIVE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x0BCD6F93EAB8DB93",
+     "record": 49,
+     "offset": 162056,
+     "stock": 173,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.full_metal_jacket.projectile",
+     "label": "Projectile (FULL METAL JACKET)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0xC756800DA816EFE1",
+     "record": 50,
+     "offset": 162124,
+     "stock": 291,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.hollow_point.projectile",
+     "label": "Projectile (HOLLOW POINT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x70564BCA8BDD43D1",
+     "record": 51,
+     "offset": 162128,
+     "stock": 337,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer",
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.high_velocity.projectile",
+     "label": "Projectile (HIGH VELOCITY)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x484D20B65C791D31",
+     "record": 52,
+     "offset": 162132,
+     "stock": 76,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.plasma.projectile",
+     "label": "Projectile (PLASMA)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x803B8F8F573C5810",
+     "record": 53,
+     "offset": 162200,
+     "stock": 4,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.ripper.projectile",
+     "label": "Projectile (RIPPER)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x8F69372E792D01F0",
+     "record": 54,
+     "offset": 162268,
+     "stock": 244,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.thermite.projectile",
+     "label": "Projectile (THERMITE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x5572DDACAA81E5A2",
+     "record": 55,
+     "offset": 162336,
+     "stock": 283,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    },
+    {
+     "key": "ammunition.toxic.projectile",
+     "label": "Projectile (TOXIC)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x6DC61C8BA6ECF1F1",
+     "record": 56,
+     "offset": 162404,
+     "stock": 156,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-19 Redeemer"
+     ]
+    }
+   ]
+  },
+  "PLAS-101 Purifier": {
+   "resource": "0xFB3A19078694708A",
+   "path": "explicit type (charge release passes the level projectile as the fire function's 6th argument); resolver fallback bit 7 (WeaponMagazine, magazine_type 0) -> ProjectileWeapon +0 only when a level's projectile is 0",
+   "confidence": "high for selection and offsets; components.json has no WeaponCharge +4/+28/+52 fields yet (add them, ref projectile)",
+   "rows": [
+    {
+     "key": "charge.level_1.projectile",
+     "label": "Projectile (partial charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xFB3A19078694708A",
+     "record": 4,
+     "offset": 4,
+     "stock": 129,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    },
+    {
+     "key": "charge.level_2.projectile",
+     "label": "Projectile (full charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xFB3A19078694708A",
+     "record": 4,
+     "offset": 28,
+     "stock": 296,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    }
+   ]
+  },
+  "PLAS-15 Loyalist": {
+   "resource": "0xAA69A60D74A3EC54",
+   "path": "explicit type (charge release passes the level projectile as the fire function's 6th argument); resolver fallback bit 7 (WeaponMagazine, magazine_type 0) -> ProjectileWeapon +0 only when a level's projectile is 0",
+   "confidence": "high for selection and offsets; components.json has no WeaponCharge +4/+28/+52 fields yet (add them, ref projectile)",
+   "rows": [
+    {
+     "key": "charge.level_1.projectile",
+     "label": "Projectile (partial charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xAA69A60D74A3EC54",
+     "record": 5,
+     "offset": 4,
+     "stock": 70,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    },
+    {
+     "key": "charge.level_2.projectile",
+     "label": "Projectile (full charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xAA69A60D74A3EC54",
+     "record": 5,
+     "offset": 28,
+     "stock": 341,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    },
+    {
+     "key": "charge.level_3.projectile",
+     "label": "Projectile (overcharge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xAA69A60D74A3EC54",
+     "record": 5,
+     "offset": 52,
+     "stock": 341,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    }
+   ]
+  },
+  "PLAS-45 Epoch": {
+   "resource": "0xE8D5F49AD7780E54",
+   "path": "explicit type (charge release passes the level projectile as the fire function's 6th argument); resolver fallback bit 7 (WeaponMagazine, magazine_type 0) -> ProjectileWeapon +0 only when a level's projectile is 0",
+   "confidence": "high for selection and offsets; components.json has no WeaponCharge +4/+28/+52 fields yet (add them, ref projectile)",
+   "rows": [
+    {
+     "key": "charge.level_1.projectile",
+     "label": "Projectile (partial charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 8,
+     "offset": 4,
+     "stock": 165,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    },
+    {
+     "key": "charge.level_2.projectile",
+     "label": "Projectile (full charge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 8,
+     "offset": 28,
+     "stock": 193,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    },
+    {
+     "key": "charge.level_3.projectile",
+     "label": "Projectile (overcharge)",
+     "section": "Charge",
+     "kind": "component",
+     "component": "WeaponChargeComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 8,
+     "offset": 52,
+     "stock": 193,
+     "coop": "stock",
+     "note": "Fired on release at this charge (live, from the next release)."
+    }
+   ]
+  },
+  "RL-77 Airburst Rocket Launcher": {
+   "resource": "0x26E40437EA275296",
+   "path": "bit 7, magazine_type 0 -> ProjectileWeapon +0; each pellet then takes +576 while the weapon function query 0x1787500(entity, 8) == 1",
+   "confidence": "high for the code path; medium for which state the function is in by default on each weapon",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x26E40437EA275296",
+     "record": 241,
+     "offset": 0,
+     "stock": 312,
+     "coop": ""
+    },
+    {
+     "key": "function_ammo.projectile",
+     "label": "Programmable ammo projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x26E40437EA275296",
+     "record": 241,
+     "offset": 576,
+     "stock": 96,
+     "coop": "f",
+     "note": "While its weapon function is on, this projectile replaces the fired one."
+    }
+   ]
+  },
+  "SG-20 Halt": {
+   "resource": "0x4E310B1FE4C52B52",
+   "path": "bit 8 (WeaponRounds) (component membership: WeaponRounds, no WeaponMagazine/WeaponHeat; not live in any snapshot)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "ammunition.projectile",
+     "label": "Projectile (FLECHETTES, default)",
+     "section": "Ammunition",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x1CA7D387BC0A4220",
+     "record": 100,
+     "offset": 165396,
+     "stock": 183,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn).",
+     "shared": [
+      "SG-8 Punisher"
+     ]
+    },
+    {
+     "key": "ammunition.stun_alternate.projectile",
+     "label": "Alternate projectile (Stun ALTERNATE, default)",
+     "section": "Ammunition",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xC907AF231668279E",
+     "record": 121,
+     "offset": 166760,
+     "stock": 191,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn)."
+    }
+   ]
+  },
+  "SG-8 Punisher": {
+   "resource": "0x41EAC4A03987FAA0",
+   "path": "bit 8 (WeaponRounds)",
+   "confidence": "high for the selector and the delta data; medium for 'private copy built from type record + deltas' (code pattern of 0x4FDD20 and the AR-23 Liberator live control on ProjectileWeapon; no live SG-8 with a non-default option in any snapshot)",
+   "rows": [
+    {
+     "key": "ammunition.projectile",
+     "label": "Projectile (BUCKSHOT, default)",
+     "section": "Ammunition",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0xEDFFFD1502ADD998",
+     "record": 96,
+     "offset": 165124,
+     "stock": 260,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn)."
+    },
+    {
+     "key": "ammunition.birdshot.projectile",
+     "label": "Projectile (BIRDSHOT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x82D00C0AF762E0CB",
+     "record": 94,
+     "offset": 164988,
+     "stock": 232,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.bugshot.projectile",
+     "label": "Projectile (BUGSHOT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x0351CD22322FDDD8",
+     "record": 98,
+     "offset": 165260,
+     "stock": 199,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.flechettes.projectile",
+     "label": "Projectile (FLECHETTES)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x1CA7D387BC0A4220",
+     "record": 100,
+     "offset": 165396,
+     "stock": 183,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "SG-20 Halt"
+     ]
+    },
+    {
+     "key": "ammunition.liberty_fire.projectile",
+     "label": "Projectile (LIBERTY FIRE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x3A38A1B24E98F963",
+     "record": 102,
+     "offset": 165532,
+     "stock": 292,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.fragmentation.projectile",
+     "label": "Projectile (FRAGMENTATION)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0xA0FBA1B0951355EE",
+     "record": 104,
+     "offset": 165668,
+     "stock": 322,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.magnum.projectile",
+     "label": "Projectile (MAGNUM)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x1D0133C666A1560C",
+     "record": 106,
+     "offset": 165804,
+     "stock": 217,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.magnum_triball.projectile",
+     "label": "Projectile (MAGNUM TRIBALL)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0xCFFD71258FA24441",
+     "record": 107,
+     "offset": 165872,
+     "stock": 73,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.dual_sabot.projectile",
+     "label": "Projectile (DUAL SABOT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x93415ACAB1A0F6C7",
+     "record": 110,
+     "offset": 166076,
+     "stock": 1,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.dual_sabot_2.projectile",
+     "label": "Projectile (DUAL SABOT #2)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x41A73BA7FC17B2CF",
+     "record": 111,
+     "offset": 166144,
+     "stock": 332,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.high_velocity_sabot.projectile",
+     "label": "Projectile (HIGH VELOCITY SABOT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x9B9A2D550291C045",
+     "record": 113,
+     "offset": 166280,
+     "stock": 37,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.scatter_shot.projectile",
+     "label": "Projectile (SCATTER SHOT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0xF96B58DE3C6979A5",
+     "record": 116,
+     "offset": 166484,
+     "stock": 14,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.slug.projectile",
+     "label": "Projectile (SLUG)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0x6E1BF17D8644D55E",
+     "record": 118,
+     "offset": 166620,
+     "stock": 240,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.tri_ball.projectile",
+     "label": "Projectile (TRI-BALL)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:64",
+     "resource": "0xCFE099BCDB8C556C",
+     "record": 122,
+     "offset": 166828,
+     "stock": 47,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.buckshot_alternate.projectile",
+     "label": "Alternate projectile (BUCKSHOT ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xA690FCD14E23B689",
+     "record": 95,
+     "offset": 165056,
+     "stock": 232,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.buckshot_alternate_2.projectile",
+     "label": "Alternate projectile (BUCKSHOT ALTERNATE #2)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x72C773711B11EE87",
+     "record": 97,
+     "offset": 165192,
+     "stock": 260,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.bugshot_alternate.projectile",
+     "label": "Alternate projectile (BUGSHOT ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x52CA642EE0F5E0AA",
+     "record": 99,
+     "offset": 165328,
+     "stock": 199,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.flechettes_alternate.projectile",
+     "label": "Alternate projectile (FLECHETTES ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xCB196DF0AB4F4E8A",
+     "record": 101,
+     "offset": 165464,
+     "stock": 183,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.liberty_fire_alternate.projectile",
+     "label": "Alternate projectile (LIBERTY FIRE ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x65B05A36506D5EC1",
+     "record": 103,
+     "offset": 165600,
+     "stock": 292,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.fragmentation_alternate.projectile",
+     "label": "Alternate projectile (FRAGMENTATION ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x3C3DAB1AC09B562A",
+     "record": 105,
+     "offset": 165736,
+     "stock": 322,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.magnum_triball_alternate.projectile",
+     "label": "Alternate projectile (MAGNUM TRIBALL ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xC463DC713A8B633B",
+     "record": 108,
+     "offset": 165940,
+     "stock": 73,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.magnum_alternate.projectile",
+     "label": "Alternate projectile (MAGNUM ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x1A42077D068B2B9F",
+     "record": 109,
+     "offset": 166008,
+     "stock": 217,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.dual_sabot_alternate.projectile",
+     "label": "Alternate projectile (DUAL SABOT ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xF1B4090B0CE79B13",
+     "record": 112,
+     "offset": 166212,
+     "stock": 332,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.high_velocity_sabot_alternate.projectile",
+     "label": "Alternate projectile (HIGH VELOCITY SABOT ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xA0A48FA1C312210F",
+     "record": 114,
+     "offset": 166348,
+     "stock": 37,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.dual_sabot_alternate_2.projectile",
+     "label": "Alternate projectile (DUAL SABOT ALTERNATE #2)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x9EA53BBEF19CA02D",
+     "record": 115,
+     "offset": 166416,
+     "stock": 1,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.scatter_shot_alternate.projectile",
+     "label": "Alternate projectile (SCATTER SHOT ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0x03FD5E185A78614F",
+     "record": 117,
+     "offset": 166552,
+     "stock": 14,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.slug_alternate.projectile",
+     "label": "Alternate projectile (SLUG ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xFF044B90EFE00CD7",
+     "record": 119,
+     "offset": 166688,
+     "stock": 240,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    },
+    {
+     "key": "ammunition.tri_ball_alternate.projectile",
+     "label": "Alternate projectile (TRI-BALL ALTERNATE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "117:68",
+     "resource": "0xFE77E85CB1F18E01",
+     "record": 123,
+     "offset": 166896,
+     "stock": 47,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped."
+    }
+   ]
+  },
+  "SG-88 Break-Action Shotgun": {
+   "resource": "0x52071F49263415E4",
+   "path": "bit 8 (WeaponRounds)",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "attack.feed_primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x52071F49263415E4",
+     "record": 12,
+     "offset": 64,
+     "stock": 217,
+     "coop": "r"
+    }
+   ]
+  },
+  "SMG-37 Defender": {
+   "resource": "0x4E4A613EB9BF5C24",
+   "path": "bit 7 (WeaponMagazine), magazine_type 0 -> ProjectileWeapon +0 of the private copy",
+   "confidence": "high",
+   "rows": [
+    {
+     "key": "ammunition.projectile",
+     "label": "Projectile (FULL METAL JACKET, default)",
+     "section": "Ammunition",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x29E062AE68BA8E41",
+     "record": 37,
+     "offset": 161240,
+     "stock": 3,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn).",
+     "shared": [
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.explosive.projectile",
+     "label": "Projectile (Explosive)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x2E607CD03AF9BCA1",
+     "record": 36,
+     "offset": 161172,
+     "stock": 230,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.hollow_point.projectile",
+     "label": "Projectile (HOLLOW POINT)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x24119E6626A45D60",
+     "record": 38,
+     "offset": 161308,
+     "stock": 105,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.high_velocity.projectile",
+     "label": "Projectile (HIGH VELOCITY)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x80ECDD041C8B35AA",
+     "record": 39,
+     "offset": 161376,
+     "stock": 168,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.plasma.projectile",
+     "label": "Projectile (Plasma)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0xAF7FDAE98CA1A59F",
+     "record": 40,
+     "offset": 161444,
+     "stock": 168,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker"
+     ]
+    },
+    {
+     "key": "ammunition.ripper.projectile",
+     "label": "Projectile (Ripper)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x19F66B84566F6ECC",
+     "record": 41,
+     "offset": 161512,
+     "stock": 109,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker",
+      "P-4 Senator"
+     ]
+    },
+    {
+     "key": "ammunition.thermite.projectile",
+     "label": "Projectile (THERMITE)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x44E57265C52841CC",
+     "record": 42,
+     "offset": 161580,
+     "stock": 287,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker",
+      "P-4 Senator"
+     ]
+    },
+    {
+     "key": "ammunition.toxic.projectile",
+     "label": "Projectile (TOXIC)",
+     "section": "Ammunition options",
+     "kind": "EntityDelta",
+     "component": "321:0",
+     "resource": "0x5A27A88BFEF36014",
+     "record": 43,
+     "offset": 161648,
+     "stock": 204,
+     "coop": "stock",
+     "note": "Applies to a weapon built after the change (the next call-in or respawn). Only while this ammunition is equipped.",
+     "shared": [
+      "P-2 Peacemaker",
+      "P-4 Senator"
+     ]
+    }
+   ]
+  },
+  "TD-110 Maelstrom / attach_tank_gun": {
+   "resource": "0xD58AE6A04EDB10DE",
+   "path": "bit 7 (WeaponMagazine), ProjectileWeapon +0 branch (magazine_type 0)",
+   "confidence": "high (code + data); HD2Runtime's classifier flags any nonzero pattern regardless of magazine_type (research_active_projectile_sources.py:235-241)",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0xD58AE6A04EDB10DE",
+     "record": 65,
+     "offset": 0,
+     "stock": 251,
+     "coop": ""
+    }
+   ]
+  },
+  "TD-110 Maelstrom / slot_2": {
+   "resource": "0x3A061009AA31E9CB",
+   "path": "bit 7, magazine_type 0 -> ProjectileWeapon +0; each pellet then takes +576 while the weapon function query 0x1787500(entity, 8) == 1",
+   "confidence": "high for the code path; medium for which state the function is in by default on each weapon",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x3A061009AA31E9CB",
+     "record": 67,
+     "offset": 0,
+     "stock": 324,
+     "coop": ""
+    },
+    {
+     "key": "function_ammo.projectile",
+     "label": "Programmable ammo projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x3A061009AA31E9CB",
+     "record": 67,
+     "offset": 576,
+     "stock": 36,
+     "coop": "f",
+     "note": "While its weapon function is on, this projectile replaces the fired one."
+    }
+   ]
+  },
+  "TD-220 Bastion MK XVI / attach_tank_gun": {
+   "resource": "0x1FA1F596769225C2",
+   "path": "bit 7, magazine_type 0 -> ProjectileWeapon +0; each pellet then takes +576 while the weapon function query 0x1787500(entity, 8) == 1",
+   "confidence": "high for the code path; medium for which state the function is in by default on each weapon",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x1FA1F596769225C2",
+     "record": 63,
+     "offset": 0,
+     "stock": 13,
+     "coop": ""
+    },
+    {
+     "key": "function_ammo.projectile",
+     "label": "Programmable ammo projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x1FA1F596769225C2",
+     "record": 63,
+     "offset": 576,
+     "stock": 36,
+     "coop": "f",
+     "note": "While its weapon function is on, this projectile replaces the fired one."
+    }
+   ]
+  },
+  "TD-220 Bastion MK XVI / attach_tank_gun_mg": {
+   "resource": "0x439F9E65C18567DA",
+   "path": "bit 7 (WeaponMagazine), ProjectileWeapon +0 branch (magazine_type 0)",
+   "confidence": "high (code + data); HD2Runtime's classifier flags any nonzero pattern regardless of magazine_type (research_active_projectile_sources.py:235-241)",
+   "rows": [
+    {
+     "key": "attack.primary.projectile",
+     "label": "Projectile",
+     "section": "Projectile",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x439F9E65C18567DA",
+     "record": 64,
+     "offset": 0,
+     "stock": 275,
+     "coop": ""
+    }
+   ]
+  }
+ }
+}

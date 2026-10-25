@@ -52,14 +52,16 @@ static class SessionLaunchTests
                 "--open-war", "--game-options", "-windowed"]), "Open war, launch options: " + string.Join(" ", open));
             var frozen = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, []));
             check(!frozen.Contains("--live-war") && !frozen.Contains("--open-war"), "The frozen war needs nothing.");
+            var sandboxed = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], Sandbox: true));
+            check(sandboxed[^1] == "--sandbox" && !frozen.Contains("--sandbox"), "Sandboxed only when chosen: " + string.Join(" ", sandboxed));
             var token = Path.Combine(root, "war-token.txt");
             var server = SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [],
-                new WarServerOptions("https://War.Example:8443/", null, token)));
+                WarServer: new WarServerOptions("https://War.Example:8443/", null, token)));
             check(server.SequenceEqual(["play", "--install", paths.Install.Root, "--profile", profile.Folder, "--template", profile.Template,
                 "--local-playfab", "--war-server", "https://war.example:8443", "--war-server-token", token]), "War server: " + string.Join(" ", server));
             var refused = 0;
             foreach (var missing in new WarServerOptions?[] { null, new("http://war.example", null, null), new("https://war.example/api", null, null) })
-                try { SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [], missing)); }
+                try { SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [], WarServer: missing)); }
                 catch (ArgumentException) { refused++; }
             check(refused == 3, "A war server session without an https origin was given a command line.");
         });
@@ -71,6 +73,25 @@ static class SessionLaunchTests
             try { ProfileStore.SaveWar(paths, ProfileStore.WarServer); }
             catch (ArgumentException) { refused = true; }
             check(refused && ProfileStore.LoadWar(paths) == ProfileStore.WarLive, "A war server was saved as the launcher's war.");
+        });
+
+        test("The sandbox is off unless chosen, and offered only by an engine built with the Steam bridge", () =>
+        {
+            var paths = Install("launch-sandbox");
+            check(!ProfileStore.LoadSandbox(paths), "Off without a settings file.");
+            ProfileStore.SaveCrashDump(paths, true);
+            check(!ProfileStore.LoadSandbox(paths), "Saving another choice keeps it off.");
+            ProfileStore.SaveSandbox(paths, true);
+            ProfileStore.SaveWar(paths, ProfileStore.WarOpen);
+            check(ProfileStore.LoadSandbox(paths) && ProfileStore.LoadCrashDump(paths), "Chosen, it stays on through other choices.");
+            ProfileStore.SaveSandbox(paths, false);
+            check(!ProfileStore.LoadSandbox(paths), "Switched off again.");
+            var shims = Directory.CreateDirectory(Path.Combine(paths.Install.App, "sdk-shims")).FullName;
+            check(!SessionRunner.HasSteamBridge(paths), "No stand-ins' build.json: no bridge.");
+            File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}}""");
+            check(!SessionRunner.HasSteamBridge(paths), "Built without the Steamworks SDK: no bridge.");
+            File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}, "steamBridge": "AB12"}""");
+            check(SessionRunner.HasSteamBridge(paths), "Built with it.");
         });
 
         test("A session's run folder is the one the session runner named after it started, not an earlier one", () =>
@@ -85,6 +106,21 @@ static class SessionLaunchTests
             var run = Path.Combine(paths.RunsFolder, "now");
             File.WriteAllText(paths.SessionFile, $$"""{"runId": "now", "run": {{System.Text.Json.JsonSerializer.Serialize(run)}}, "startedUtc": "{{DateTime.UtcNow:o}}"}""");
             check(SessionRunner.RunSince(paths, started) == run, "This session's run.");
+        });
+
+        test("A PC without the Visual C++ 2012 or 2015-2022 x64 runtime is told which to install before the game starts", () =>
+        {
+            var system = Directory.CreateDirectory(Path.Combine(root, "vc-runtimes")).FullName;
+            var none = VisualCppRuntimes.Problem(system, "press Play again.");
+            check(none != null && none.Contains("2012") && none.Contains("2015-2022") && none.EndsWith("press Play again."), "Both missing: " + none);
+            File.WriteAllText(Path.Combine(system, "msvcr110.dll"), "synthetic");
+            File.WriteAllText(Path.Combine(system, "vcruntime140.dll"), "synthetic");
+            var partial = VisualCppRuntimes.Problem(system, "start setup again.");
+            check(partial != null && !partial.Contains("2012") && partial.Contains("2015-2022") && partial.Contains("a Microsoft runtime"),
+                "msvcp140.dll missing: " + partial);
+            File.WriteAllText(Path.Combine(system, "msvcp140.dll"), "synthetic");
+            check(VisualCppRuntimes.Problem(system, "start setup again.") == null, "Every runtime is there.");
+            check(File.Exists(Path.Combine(VisualCppRuntimes.SystemFolder, "kernel32.dll")), "Not the 64-bit system folder: " + VisualCppRuntimes.SystemFolder);
         });
     }
 }

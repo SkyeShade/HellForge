@@ -339,7 +339,9 @@ square texture. The title is shown in capitals, as the game's names are.
 
 Level 11 has its own enemy tech level, 11. Each roster row (0x80) holds a spawn weight per tech level at +0x30, with 8
 unused bytes before them, so the weights move 4 bytes down and level 11's (level 10's to begin with) goes after them; the
-six readers' displacements follow. Compositions allowing up to tech 10 allow 11 (318 rows), and the director's clamp of
+six readers' displacements follow. That is every row of all six rosters: the sixth (0x21CB470, one row) is read by the
+same readers, and left in place it read level 1 as 0 and had no composition at 11. Compositions allowing up to tech 10
+allow 11 (319 rows), and the director's clamp of
 the tech level becomes 11. The level gets its own budgets. A single enemy group still holds at most 32 enemies (more
 crashes the game), so bigger budgets mean more groups more often.
 
@@ -467,8 +469,8 @@ board's special missions use for levels 1 to 3, which may then not appear at tho
 
 This section explains where the SDK's field and content names come from and which files are generated from them.
 
-SDK 6 names the fields of component records, so a mod never writes an offset (the plan is in
-[sdk-roadmap.md](sdk-roadmap.md)). One source names them: `mappings/components.json` (per component: index, record
+SDK 6 names the fields of component records, so a mod never writes an offset (how they grow is in
+[sdk-roadmap.md](sdk-roadmap.md#mappings)). One source names them: `mappings/components.json` (per component: index, record
 size, the game build whose layout it is, and fields with offset, type, count, meaning, source and whether the game
 confirmed it) and `mappings/catalog.json` (vanilla content by name). `HellForge.Cli sdk-headers --repo .` generates
 these files from them:
@@ -688,8 +690,11 @@ one. Stats files take the same references, with the same waits.
 
 `load_package(mod, package)` loads a catalogue package through the game's own RefcountedPackageSystem (its request
 checked byte for byte), on the game thread, once per session, and holds it for the session: at most 64, and never when
-the game's reference map is 3/4 full. Residency is read from the engine's package list. Loading is per client; nothing
-is advertised to other players.
+the game's reference map is 3/4 full. Residency is read from the engine's package list. A mod's `load_package` is per
+client, and nothing it loads is advertised to other players. In co-op the loader also tells the session's backend which
+packages it holds for this machine's own edits, mods and actions (the live pipe's `packages` line), and loads the
+lobby's other packages when the backend asks (`preload`); a friend's may not take the last 16 of the 64
+([multiplayer.md](multiplayer.md#assets-in-co-op)).
 
 ### The game thread
 
@@ -708,6 +713,51 @@ editor's settings and set again at every boot). Its weapon and grenade silhouett
 its text is in the game's own FS Sinclair, both extracted from the installation's game copy into the editor's folder
 (`game-icons.bin`, `fs-sinclair*.ttf`; never published). Its buttons play the game's menu sounds through the game's own
 UI sound path (checked byte for byte; silent on another build).
+
+The ENEMIES group is the HD2R Editor's Enemies pages: Terminids, Automatons, Illuminate, Structures and Other Entities.
+These are the 1,170-odd entities HD2Runtime's enemy catalogue lists, from `mappings/entities.json`
+(`scripts/ExportEntities.py`, which reads HD2Runtime's `domains/enemy_authoring.lua` and `enemy_controls.lua` as
+literals). Each entity's page has Health & Armor, a group per damage zone, a group per attack, and its other sections
+(Spawning, Director Multipliers, Shield, Size & Geometry...), with only the fields whose exact bytes the engine maps
+(`mappings/components.json`): about 38,800 rows, every row the HD2R Editor lets you edit there but one (its authored
+value lies outside its own write range). `scripts/ImportSchemaMappings.py <HD2Runtime>` names the fields of components
+the mappings have (each damage zone's, the HiveMind's director multipliers), and adds the components the entity profile
+locates (`src/HellForge.Core/entity-profile.json`: Unit, AiSpawner, SquadTransportFormation, SquadTransport, Gore,
+StratagemBlocker, Bughole); `HellForge.Cli sdk-headers` then regenerates the engine's tables and `ExportEntities.py`
+offers them. The profile's entries for those come from the entity file's own frames (`scripts/ExportEntityProfile.py`
+EXTRA: each frame found by the component index the u32 before it holds, as the game's loader 0xFDB440 reads it; the
+method reproduces every other entry). With a third path, the exporter writes the rest by entity and reason: rows the
+HD2R Editor only shows. Rows are keyed as the HD2R Editor's are
+(`en|<entity>|<path>:<zone or attack>:<field>`), so its presets import and export them, and a stats file saves them under
+`"enemies"`. The Helldiver's own entity adds its main fields (health, armor, constitution, regeneration) to the Helldiver
+page, and the MS-11 Solo Silo's rack and missile are parts of its stratagem's page (`StatsSchema.EntityParts`), each
+leaving out bytes the page shows already. Only an enemy class's main health and zone armor are proven in game
+(HD2Runtime's evidence); the rest are marked unverified.
+
+The SPAWNING group is the HD2R Editor's Mission Difficulty, Spawn Rosters and Spawn Compositions, from
+`mappings/director.json` (`scripts/ExportDirector.py`, from HD2Runtime's `domains/enemy_director.lua`), written by
+`native/mod-loader/director.c`:
+
+- **Mission Difficulty:** a level's `DifficultySettings` row (1 to 10, and 11 with a mod that adds it). It holds the HD2R
+  Editor's three budgets, plus the objectives and per-faction patrol interval and cap. Without level 11 the game's own
+  table is written: the copy HD2Runtime edits, and every other of its 19 copies that held the same bytes.
+- **Spawn Rosters:** an enemy's spawn weight at each difficulty (`EnemyRoster`, a row by `(roster << 16) | row` in
+  `difficulty.c`'s roster order). The weights sit at +0x30, or at +0x2C once level 11 gave every row an 11th, which is
+  then `EnemyRosterLevel11`.
+- **Spawn Compositions:** a squad (`EnemyComposition`, `(roster << 16) | (family - 1 << 12) | row`). It holds its groups'
+  counts and emission times, its weight, cost multiplier and post-schedule duration, and the tech levels and player
+  counts it is drawn at.
+- **Demolition Templates:** the force a destruction stage requires (`DemolitionTemplate`, a row by its index, 1 to 9;
+  "none" and "Count" are not offered), 1 to 255, shared by every stage that names it. The templates are 16-byte rows at
+  `[[game.dll + 0x346D928] + 0x30]` (HD2Runtime's destructionGlobal); all eleven must hold their index and the bytes
+  HD2Runtime read before anything is written, and edits wait until the destruction system exists. Untested in game.
+
+Every write, live or from Local Stats at boot (`StatsDirectorReady`), is checked against the row as it is: a squad's
+groups total at most 32 (the AI squad queue's capacity; a 33rd entry crashed the game in HD2Runtime's research), a group
+with no roster key takes no count, the lowest tech level and player count may not exceed the highest, tech levels go to
+11 only with level 11, and weights are finite. The director reads these tables when a mission is set up, so a change
+applies from the next mission. Only the host's tables decide what spawns. None of it is proven in game yet (HD2Runtime's
+director research is offline). Demolition templates and destruction models are not here yet.
 
 Every change and reset is staged until APPLY (F9), so DISCARD takes any of them back. Once applied, a change goes
 through `set_live` and into Local Stats, so it comes back at every boot.
@@ -737,9 +787,9 @@ booster's fields, and two Advanced categories (Projectiles, Damage Types) reach 
 ### The live pipe
 
 The live pipe is `native/mod-loader/live.c` on the game's side and `src/HellForge.Core/LiveEdit.cs` on the backend's.
-The local backend serves `\\.\pipe\hellforge-live-<run id>` (current user only) for co-op stats sharing (its
-`StatsShare`, with `src/HellForge.Core/StatsSync.cs`: a joiner plays with the host's Local Stats), and the loader
-connects once the entity data has loaded.
+The local backend serves `\\.\pipe\hellforge-live-<run id>` (current user only) for co-op (its `StatsShare`, with
+`src/HellForge.Core/StatsSync.cs`: a joiner of a host who shares its stats plays with them; and its `AssetShare`: the
+lobby's packages, `packages` up and `preload` down), and the loader connects once the entity data has loaded.
 
 Requests name a field as the stats schema does (kind, component, resource, record, offset, storage), with `set`,
 `reset` and `get`. Each becomes a `set_live` edit of the Local Stats mod (`zz.local.stats`), so conflicts with other
@@ -786,9 +836,12 @@ armory shows; the weapon's damage decides its real armor penetration.
 
 ### Co-op
 
-Over the live pipe, a joiner plays with the host's Local Stats, including attachments, the in-game editor's mod content
-values, its arm swaps (Mounted Weapons) and hellpod payloads, and its editor shows the host's changes read-only. Armor
-perks stay solo only. [multiplayer.md](multiplayer.md#stats-in-co-op) has the backend's side.
+Every player keeps their own Local Stats, and the editor stays editable when joined; every machine loads the packages
+the others' changes need, and fires each player's projectile swaps as theirs (`native/mod-loader/shots.c`; see
+[multiplayer.md](multiplayer.md#shots-in-co-op)). A host may share its stats instead: then, over the live pipe, a joiner plays with the host's
+Local Stats, including attachments, the in-game editor's mod content values, its arm swaps (Mounted Weapons) and hellpod
+payloads, and its editor shows the host's changes read-only (`HfApi.stats_source`, SDK 15, says which). Armor perks
+stay solo only. [multiplayer.md](multiplayer.md#stats-in-co-op) has the backend's side.
 
 ## Event sources
 
@@ -859,7 +912,7 @@ for byte what the research scripts `artifacts/registry/build_gold_liberator.py` 
 ## Where to go next
 
 - [engine.md](engine.md): the engine's parts, building and tests.
-- [sdk-roadmap.md](sdk-roadmap.md): how the SDK got here and what is planned.
+- [sdk-roadmap.md](sdk-roadmap.md): what is planned for the SDK.
 - [engine-roadmap.md](engine-roadmap.md): network isolation and co-op sync plans.
 - [multiplayer.md](multiplayer.md): how co-op works.
 - [sdk-reference.md](sdk-reference.md): every SDK call, component, table and constant.

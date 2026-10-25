@@ -55,6 +55,33 @@ public static partial class DataSpecs
     [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
     private static partial Regex HexColour();
 
+    // The resource types a spec may copy and stay content for mod sync (ModSets.ClassOf), each with the one edit HellForge
+    // reviewed for it: a unit's mesh (and its physics), a material's colours, a texture's colour lookup, an effect's
+    // colour curves. An include also takes the game's sound banks: it adds the game's own bytes unchanged.
+    static readonly HashSet<ulong> CopiedTypes = [ResourceTypes.Unit, ResourceTypes.Material, ResourceTypes.Texture, ResourceTypes.Particles];
+    static readonly HashSet<ulong> IncludedTypes = [.. CopiedTypes, ResourceTypes.Hash("wwise_bank"), ResourceTypes.Hash("wwise_dep")];
+
+    // Whether HellForge checks everything the spec builds, so mod sync may take it from any host: no "replace" (it writes
+    // any 8 bytes over any value at any offset), only the types above (never lua), and each edit only on its own type.
+    // Icons are always checked: a 256 x 256 PNG becomes a texture and its GUI material. Null: checked; otherwise why not.
+    public static string? Unchecked(DataSpec spec)
+    {
+        foreach (var resource in spec.Patches.SelectMany(p => p.Resources))
+            switch (resource)
+            {
+                case IncludeResources include when !IncludedTypes.Contains(include.Type):
+                    return $"{include.Where} includes {ResourceTypes.Describe(include.Type)} resources";
+                case CopyResource copy when !CopiedTypes.Contains(copy.Type):
+                    return $"{copy.Where} copies a {ResourceTypes.Describe(copy.Type)} resource";
+                case CopyResource copy when copy.Replace.Count > 0:
+                    return $"{copy.Where} replaces values (\"replace\")";
+                case CopyResource copy when copy.Curves != null && copy.Type != ResourceTypes.Particles || copy.Colours != null && copy.Type != ResourceTypes.Material ||
+                    copy.Lut != null && copy.Type != ResourceTypes.Texture:
+                    return $"{copy.Where} edits a {ResourceTypes.Describe(copy.Type)} resource as another type";
+            }
+        return null;
+    }
+
     // The spec of a mod folder, or null when it has none. Its structure and input files are checked here; whether the
     // game has what it names is checked when it is built.
     public static DataSpec? Load(string folder)
@@ -70,7 +97,19 @@ public static partial class DataSpecs
         catch (InvalidDataException error) { throw new InvalidDataException($"{FileName}: {error.Message}"); }
     }
 
-    static DataSpec Parse(JsonElement root, string folder)
+    // A spec from its text alone, its input files not looked for (folder null): what mod sync reads of a download before
+    // its other files (ModSets.Declared).
+    public static DataSpec FromJson(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return Parse(document.RootElement, null);
+        }
+        catch (JsonException error) { throw new InvalidDataException($"{FileName}: {error.Message}"); }
+    }
+
+    static DataSpec Parse(JsonElement root, string? folder)
     {
         Fields(root, "", "format", "patches");
         if (!root.TryGetProperty("format", out var format) || format.ValueKind != JsonValueKind.Number || !format.TryGetInt32(out var version) || version != 1)
@@ -96,7 +135,7 @@ public static partial class DataSpecs
         return new(patches, [.. inputs]);
     }
 
-    static DataResource Resource(JsonElement e, string at, string folder, ISet<string> inputs)
+    static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
         var kinds = new[] { "copy", "include", "icon" }.Where(k => e.TryGetProperty(k, out _)).ToList();
@@ -116,7 +155,7 @@ public static partial class DataSpecs
                 var png = Text(e, "icon", at).Replace('\\', '/');
                 if (Path.IsPathRooted(png) || png.Split('/').Any(part => part is "" or "." or "..") || !png.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException($"{at}: icon is a .png file in the mod folder, such as \"icons/my_stratagem.png\".");
-                if (!File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
+                if (folder != null && !File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
                 var prepare = e.TryGetProperty("prepare", out _) ? Text(e, "prepare", at) : "raw";
                 if (prepare is not ("raw" or "auto" or "image")) throw new InvalidDataException($"{at}: prepare is raw, auto or image.");
                 inputs.Add(png);
@@ -184,7 +223,7 @@ public static partial class DataSpecs
             var obj = Text(meshSpec, "obj", $"{at}.mesh").Replace('\\', '/');
             if (Path.IsPathRooted(obj) || obj.Split('/').Any(part => part is "" or "." or "..") || !obj.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException($"{at}.mesh: obj is an .obj file in the mod folder, such as \"models/cube.obj\".");
-            if (!File.Exists(Path.Combine(folder, obj))) throw new InvalidDataException($"{at}.mesh: {obj} is missing.");
+            if (folder != null && !File.Exists(Path.Combine(folder, obj))) throw new InvalidDataException($"{at}.mesh: {obj} is missing.");
             var scale = meshSpec.TryGetProperty("scale", out var sc) ? (sc.ValueKind == JsonValueKind.Number && sc.GetDouble() is > 0 and < 1000 and var v ? v : throw new InvalidDataException($"{at}.mesh: scale is a positive number.")) : 1.0;
             var yUp = !meshSpec.TryGetProperty("yUp", out var up) || (up.ValueKind is JsonValueKind.True or JsonValueKind.False ? up.GetBoolean() : throw new InvalidDataException($"{at}.mesh: yUp is true or false."));
             inputs.Add(obj);

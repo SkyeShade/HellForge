@@ -103,7 +103,7 @@ int Load(const std::wstring& gameIcons)
             uint8_t channels = 1;
             if (version >= 2) { if (at >= data.size()) break; channels = p[at++]; }
             size_t bytes = (size_t)w * h * channels;
-            if (w == 0 || h == 0 || w > 1024 || h > 1024 || (channels != 1 && channels != 4) || at + bytes > data.size() || kind > PASSIVE) break;
+            if (w == 0 || h == 0 || w > 1024 || h > 1024 || (channels != 1 && channels != 4) || at + bytes > data.size() || (kind > PASSIVE && kind != FACTION && kind != DIFFICULTY)) break;
             std::vector<uint32_t> pixels;
             if (channels == 1) pixels = White(p + at, (size_t)w * h);
             else { pixels.resize((size_t)w * h); memcpy(pixels.data(), p + at, bytes); }

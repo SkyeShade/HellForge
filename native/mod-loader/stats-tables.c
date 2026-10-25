@@ -226,6 +226,42 @@ static uintptr_t MeleeVolume(uint64_t rva)
     return 0;
 }
 
+static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready); /* fields.c */
+
+/* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
+ * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. Each is
+ * checked as a live edit is (a squad within the queue's capacity, ranges in order); a difficulty row of the game's own
+ * table goes to every copy that held the same bytes. */
+static int g_directorDone;
+static void StatsDirectorReady(void)
+{
+    static ULONGLONG first;
+    if (g_directorDone) return;
+    ULONGLONG now = GetTickCount64();
+    if (!first) first = now;
+    int ready = 1;
+    for (int i = 0; i < g_statCount && ready; i++)
+        if (DirectorStride(g_stats[i].kind) && g_stats[i].mod->loaded) TableRowOf(g_stats[i].kind, (uint64_t)g_stats[i].record, &ready);
+    if (!ready && now - first < 120000) return;
+    g_directorDone = 1;
+    for (int i = 0; i < g_statCount; i++)
+    {
+        StatEdit* e = &g_stats[i];
+        uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
+        if (!stride || !e->mod->loaded) continue;
+        int found = 1;
+        uintptr_t row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
+        const char* why = NULL;
+        if (!row) { StatsRefuse(e, "no such row, or its table is not as reviewed"); continue; }
+        if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { StatsRefuse(e, "no such field in its row"); continue; }
+        if ((why = DirectorRefuses(e->kind, row, e->offset, &e->value, size)) != NULL) { StatsRefuse(e, why); continue; }
+        uint32_t before = 0;
+        SafeRead(row + e->offset, &before, size);
+        StatsWrite(e, row + e->offset);
+        if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
+    }
+}
+
 /* Stats edits of the hit volumes, once game.dll's data reads as reviewed (refused if it never does within 60 s). */
 static void StatsMeleeReady(void)
 {

@@ -31,4 +31,19 @@ if($LASTEXITCODE){throw 'Building HellForge-Setup.exe failed.'}
 $result=Join-Path $package 'HellForge-Setup.exe'
 Copy-Item -LiteralPath (Join-Path $setup 'HellForge-Setup.exe') -Destination $result -Force
 $file=Get-Item -LiteralPath $result
+
+# HellForge-Linux-scripts.zip, the release's second file: linux/ and docs/linux.md in a HellForge-Linux folder. Entries are
+# named here, with '/': a zip made by Windows PowerShell can name them 'folder\file', which Linux unpacks as one file name
+# (a test zip handed out on Discord did).
+$linuxZip=Join-Path $package 'HellForge-Linux-scripts.zip'
+if(Test-Path -LiteralPath $linuxZip){Remove-Item -LiteralPath $linuxZip}
+$archive=[IO.Compression.ZipFile]::Open($linuxZip,[IO.Compression.ZipArchiveMode]::Create)
+try{
+    $files=@(Get-ChildItem -LiteralPath (Join-Path $project 'linux') -File|Sort-Object Name)+@(Get-Item -LiteralPath (Join-Path $project 'docs/linux.md'))
+    foreach($source in $files){
+        $entry=$archive.CreateEntry('HellForge-Linux/'+$source.Name,[IO.Compression.CompressionLevel]::Optimal)
+        $entry.LastWriteTime=$source.LastWriteTime
+        $out=$entry.Open();try{$bytes=[IO.File]::ReadAllBytes($source.FullName);$out.Write($bytes,0,$bytes.Length)}finally{$out.Dispose()}
+    }
+}finally{$archive.Dispose()}
 Write-Output ('Built {0} ({1:N0} MB, app archive {2:N0} MB). SHA-256 {3}' -f $file.FullName,($file.Length/1MB),((Get-Item -LiteralPath $zip).Length/1MB),(Get-FileHash -LiteralPath $result).Hash)

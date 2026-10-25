@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using HellForge.Core.GameData;
 
@@ -41,6 +42,9 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public string? Archive { get; init; }
     // The mod has a data spec (hellforge-data.json), whose patches are generated per installation (ModDataCache).
     public bool HasDataSpec { get; init; }
+    // Why HellForge does not check all of the data spec's output (DataSpecs.Unchecked: a "replace", or a type outside the
+    // reviewed ones), or null: mod sync takes such a spec as raw data (ModSets.ClassOf).
+    public string? UncheckedSpec { get; init; }
     // The folder of the spec's generated patches for this session, set by ModDataCache.Prepare.
     public string? GeneratedData { get; init; }
     // A cosmetic pack (CosmeticPacks): its options, the player's choice, and the folders that choice stages.
@@ -53,6 +57,9 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public string? Icon { get; init; }
     // A patch of it holds Lua scripts (ModCatalog.HoldsLua): an HD2Runtime or Bingus Shared Loader mod, or one made for them.
     public bool Lua { get; init; }
+    // Where players get it (the manifest's "url", an https:// address: ModCatalog.WebAddress), or null. The Mods page links
+    // it, and mod sync's prompt offers it (GET IT) to a joiner who has to install the mod themselves.
+    public string? Url { get; init; }
 }
 
 public static partial class ModCatalog
@@ -66,13 +73,26 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 13;
+    public const int SdkVersion = 15;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
 
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]{0,63}$")]
     private static partial Regex ModId();
+    public static bool IsModId(string id) => ModId().IsMatch(id);
+
+    // A mod's web address ("url" in its manifest; a mod set's entry from a host): https:// only, at most MaxUrl characters,
+    // a host name with a dot and the default port, and nothing a browser or the shell could read as something else (no user
+    // name or password, spaces, quotes, backslashes, control or non-ASCII characters). The address as given, or null.
+    public const int MaxUrl = 200;
+    public static string? WebAddress(string? text)
+    {
+        if (text == null || text.Length is < 12 or > MaxUrl || !text.StartsWith("https://", StringComparison.Ordinal)) return null;
+        if (text.Any(c => c <= ' ' || c >= 0x7F || c is '"' or '\\' or '\'' or '<' or '>' or '`' or '^' or '{' or '}' or '|')) return null;
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.HostNameType == UriHostNameType.Dns &&
+            uri.Host.Contains('.') && uri.UserInfo.Length == 0 && uri.IsDefaultPort ? text : null;
+    }
 
     [GeneratedRegex("^[0-9a-f]{16}\\.patch_([0-9]{1,4})(\\.gpu_resources|\\.stream)?$")]
     public static partial Regex PatchFile();
@@ -125,7 +145,8 @@ public static partial class ModCatalog
                 }
                 else mod = Parse(folder, profile);
                 mod = mod with { Archive = archive };
-                mods.Add(settings.Disabled.Contains(mod.Id) ? mod with { Enabled = false } : mod);
+                // Local Stats (the in-game editor's saved changes) is always on: the Mods page does not list it
+                mods.Add(settings.Disabled.Contains(mod.Id) && mod.Id != LocalStatsId ? mod with { Enabled = false } : mod);
             }
             catch (Exception error) when (error is InvalidDataException or JsonException or IOException)
             {
@@ -179,10 +200,22 @@ public static partial class ModCatalog
 
     public static List<ModManifest> Active(IEnumerable<ModManifest> mods) => mods.Where(m => m.Enabled).ToList();
 
+    // A manifest of the wrong shape (a value of another JSON kind where an object, list or number belongs) is an
+    // InvalidDataException, as any other bad manifest: a downloaded one comes from another machine (mod sync).
     public static ModManifest Parse(string folder, EntityProfile profile)
+    {
+        try { return ParseManifest(folder, profile); }
+        catch (Exception error) when (error is InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
+        {
+            throw new InvalidDataException("the manifest is malformed: " + error.Message);
+        }
+    }
+
+    static ModManifest ParseManifest(string folder, EntityProfile profile)
     {
         using var document = JsonDocument.Parse(File.ReadAllText(ManifestIn(folder) ?? Path.Combine(folder, ManifestName)));
         var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) throw new InvalidDataException("the manifest is not a JSON object.");
         if (Integer(root, "format") != 1) throw new InvalidDataException("format must be 1.");
         var id = Text(root, "id");
         if (!ModId().IsMatch(id)) throw new InvalidDataException("id must be 1-64 lowercase letters, digits, '.', '_' or '-'.");
@@ -196,12 +229,14 @@ public static partial class ModCatalog
         var writes = new List<ComponentWrite>();
         if (root.TryGetProperty("native", out var native))
         {
+            if (native.ValueKind != JsonValueKind.Object) throw new InvalidDataException("native must be an object.");
             if (native.TryGetProperty("networkFieldTypes", out var list))
-                foreach (var item in list.EnumerateArray())
+                foreach (var item in Items(list, "native.networkFieldTypes"))
                 {
                     var typeName = Text(item, "name");
                     if (!FieldTypeName().IsMatch(typeName)) throw new InvalidDataException("A network field type name is malformed.");
-                    var expect = item.GetProperty("expect");
+                    var expect = item.TryGetProperty("expect", out var pinned) && pinned.ValueKind == JsonValueKind.Object ? pinned
+                        : throw new InvalidDataException($"{typeName}: expect is required.");
                     var edit = new NetworkFieldTypeEdit(typeName, Integer(expect, "kind"), Integer(expect, "bits"), Integer(expect, "min"), Integer(item, "bits"));
                     // Only an integer field may be widened, never past 31 bits (32-bit ints are not range checked).
                     if (edit.ExpectKind != 1 || edit.ExpectBits is < 1 or > 31 || edit.Bits <= edit.ExpectBits || edit.Bits > 31)
@@ -209,7 +244,7 @@ public static partial class ModCatalog
                     types.Add(edit);
                 }
             if (native.TryGetProperty("componentWrites", out var components))
-                foreach (var item in components.EnumerateArray())
+                foreach (var item in Items(components, "native.componentWrites"))
                 {
                     var component = Text(item, "component");
                     if (!profile.Components.TryGetValue(component, out var schema))
@@ -219,7 +254,7 @@ public static partial class ModCatalog
                         !ulong.TryParse(resourceText[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var resource) || resource == 0)
                         throw new InvalidDataException("A component write needs a resource like 0x056DE1C5E21E723E.");
                     var fields = new List<ComponentFieldEdit>();
-                    foreach (var field in item.GetProperty("fields").EnumerateArray())
+                    foreach (var field in Items(item.TryGetProperty("fields", out var listed) ? listed : default, component + " fields"))
                     {
                         var edit = new ComponentFieldEdit(Text(field, "name"), Integer(field, "offset"), (uint)Integer(field, "expect"), (uint)Integer(field, "value"));
                         if (edit.Offset < 0 || edit.Offset % 4 != 0 || edit.Offset + 4 > schema.Stride)
@@ -265,7 +300,8 @@ public static partial class ModCatalog
                 data.Add(fileName);
             }
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
-        var spec = DataSpecs.Load(folder) != null;
+        var dataSpec = DataSpecs.Load(folder);
+        var spec = dataSpec != null;
         var stats = StatsData.Load(folder, profile);
         if (stats.Count > 0 || writes.Count > 0) gameplay = true;
         // A mod of Lua patches alone is the player's own: client-only, outside the modlist code.
@@ -278,8 +314,10 @@ public static partial class ModCatalog
             var full = Path.GetFullPath(Path.Combine(folder, iconPath.Replace('\\', '/')));
             if (LocalInstall.Within(full, folder) && File.Exists(full)) icon = full;
         }
+        // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
+        var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         return new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, HasDataSpec = spec, Stats = stats, Icon = icon, Lua = lua };
+            { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url };
     }
 
     // What friends compare before playing together: every gameplay mod's id, version and exact files. "none" without any.
@@ -304,42 +342,74 @@ public static partial class ModCatalog
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.Lines)))[..16].ToLowerInvariant()))]);
     }
 
-    static IEnumerable<(ModManifest Mod, string Lines)> Compared(IEnumerable<ModManifest> mods)
+    // Each compared mod with its counted files (ModSets.Files) and its lines (ModSets.Block): the digest and the
+    // fingerprints come from these lines, and mod sync's content hash is their SHA-256 (ModSets.Hash).
+    internal static IEnumerable<(ModManifest Mod, List<ModFile> Files, string Lines)> Compared(IEnumerable<ModManifest> mods)
     {
         // by id, whatever the load order: friends need the same gameplay mods, not the same order. A different order is
         // the players' to sort out (which mod wins a conflict); what mods add is numbered by mod id, the same for everyone.
-        foreach (var mod in mods.Where(m => m.Gameplay && m.Id != LocalStatsId).OrderBy(m => m.Id, StringComparer.Ordinal))
+        foreach (var mod in mods.Where(Counted).OrderBy(m => m.Id, StringComparer.Ordinal))
         {
-            var lines = new StringBuilder();
-            lines.Append(mod.Id).Append('|').Append(mod.Version).Append('\n');
-            if (mod.HasDataSpec) lines.Append("data-builder|").Append(ModDataBuilder.Version).Append('\n');
-            // a zipped mod by what its zip ships, not the files it writes into its unpacked folder as it runs (key bindings, a
-            // cache: each player's own); a zip that cannot be read again is compared by its folder
-            var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
-            // a bundled mod (the in-game editor) by the files HellForge ships for it, not what the player saved beside them
-            var shipped = BundledMods.ShippedFiles(mod.Folder);
-            var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
-            foreach (var file in files.Where(f => !IsWorkspaceFile(f))
-                .Where(f => shipped == null || shipped.Contains(f))
-                // a source mod by its sources: the DLL in its folder (an IDE's build) is not what loads (ModBuilds)
-                .Where(f => !mod.HasSource || !(f == mod.CodeDll || f.EndsWith(".lib", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
-                .Order(StringComparer.Ordinal))
-                lines.Append(file).Append('|').Append(zipped?[file] ?? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(mod.Folder, file))))).Append('\n');
-            yield return (mod, lines.ToString());
+            var files = ModSets.Files(mod);
+            yield return (mod, files, ModSets.Block(mod, files));
         }
     }
 
+    // The mods the digest counts: gameplay mods except Local Stats.
+    public static bool Counted(ModManifest mod) => mod.Gameplay && mod.Id != LocalStatsId;
+
+    // The files the digest counts in a mod (relative, '/'), in order, with the SHA-256 it takes from the mod's zip (null:
+    // read the file). A zipped mod by what its zip ships, not the files it writes into its unpacked folder as it runs (key
+    // bindings, a cache: each player's own); a zip that cannot be read again is compared by its folder. A bundled mod (the
+    // in-game editor) by the files HellForge ships for it, not what the player saved beside them. A source mod by its
+    // sources: the DLL in its folder (an IDE's build) is not what loads (ModBuilds).
+    internal static IEnumerable<(string Path, string? Sha256)> DigestFiles(ModManifest mod)
+    {
+        var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
+        var shipped = BundledMods.ShippedFiles(mod.Folder);
+        var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
+        return files.Where(f => !IsWorkspaceFile(f))
+            .Where(f => shipped == null || shipped.Contains(f))
+            .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
+            .Order(StringComparer.Ordinal)
+            .Select(f => (f, zipped?[f]));
+    }
+
+    internal static bool SourceBuildOutput(ModManifest mod, string relative) =>
+        relative == mod.CodeDll || relative.EndsWith(".lib", StringComparison.OrdinalIgnoreCase) || relative.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase);
+
+    // A mod's file, read while another program may have it open (a spreadsheet kept beside the mod, open in Excel:
+    // File.ReadAllBytes is refused then, issue 18).
+    internal static byte[] ReadShared(string path)
+    {
+        using var stream = OpenShared(path);
+        var bytes = new byte[stream.Length];
+        stream.ReadExactly(bytes);
+        return bytes;
+    }
+
+    internal static FileStream OpenShared(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    // An editor's files, not the mod's: dot files and folders, an IDE's build folder and user settings, and Office's lock
+    // (~$name) and temporary (.tmp) files, which it holds open with no sharing at all.
     internal static bool IsWorkspaceFile(string relative)
     {
         var parts = relative.Split('/');
-        return parts.Any(p => p.StartsWith('.')) || parts[0] == "build" || relative.EndsWith(".user", StringComparison.OrdinalIgnoreCase);
+        return parts.Any(p => p.StartsWith('.') || p.StartsWith("~$", StringComparison.Ordinal)) || parts[0] == "build" ||
+            relative.EndsWith(".user", StringComparison.OrdinalIgnoreCase) || relative.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
     }
 
+    // A list's items, each an object.
+    static IEnumerable<JsonElement> Items(JsonElement list, string name) =>
+        list.ValueKind == JsonValueKind.Array && list.EnumerateArray().All(i => i.ValueKind == JsonValueKind.Object) ? list.EnumerateArray()
+            : throw new InvalidDataException($"{name} must be a list of objects.");
+
     static string Text(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : throw new InvalidDataException($"{name} is required.");
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()! : throw new InvalidDataException($"{name} is required.");
 
     static int Integer(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) && number is >= int.MinValue and <= uint.MaxValue
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) && number is >= int.MinValue and <= uint.MaxValue
             ? unchecked((int)number) : throw new InvalidDataException($"{name} must be an integer.");
 }
 
@@ -609,8 +679,9 @@ public static class ModLoaderPlan
     }
 }
 
-// The Mods page's settings: <installation>/mods/hellforge-mods.json {"format":1,"disabled":[ids],"order":[ids],"packs":{...}}.
-// Mods are on by default, so a mod dropped into the folder loads without any setup.
+// The Mods page's settings: <installation>/mods/hellforge-mods.json {"format":1,"disabled":[ids],"order":[ids],"packs":{...},
+// "blocked":[ids],"trusted":[TrustedMod],"share":true,"showEditedStats":false,"listPublic":true,"hostStats":false}. Mods are on by default, so a mod
+// dropped into the folder loads without any setup.
 public static class ModSettings
 {
     public const string FileName = "hellforge-mods.json";
@@ -621,8 +692,29 @@ public static class ModSettings
     public static string? LastWritten { get; private set; }
 
     // What the Mods page keeps: mods switched off, the order (top first; the bottom mod loads first, as in the
-    // community's managers), and each cosmetic pack's choice.
-    public sealed record State(HashSet<string> Disabled, List<string> Order, Dictionary<string, CosmeticPacks.Choice> Choices);
+    // community's managers), and each cosmetic pack's choice. Mod sync (ModSyncPlan): mods whose lobbies the player never
+    // wants to see or join (Blocked, by id), and whether joiners may download this player's mods when hosting (Share).
+    // The Galactic Map's public lobbies: whether lobbies whose host plays with edited stats (which joiners take) are shown,
+    // and whether this player's own lobby is listed for other HellForge players while it is Public (ListPublic, on by
+    // default; off, a Public lobby still admits whoever reaches it, but no stranger can find it).
+    // HostStats: hosting, whether friends play with this player's editor changes (the in-game editor's Local Stats, mod
+    // content values and arm swaps) instead of their own (off by default: everyone keeps their own; StatsShare).
+    // Trusted: mods the player trusted on mod sync's prompt (TRUST), each by its exact content (id and content hash), with
+    // its name and version, the Steam friend who hosted it and when: they download as the verified list's do (ModSyncPlan).
+    public sealed record State(HashSet<string> Disabled, List<string> Order, Dictionary<string, CosmeticPacks.Choice> Choices)
+    {
+        public HashSet<string> Blocked { get; } = new(StringComparer.Ordinal);
+        public List<TrustedMod> Trusted { get; } = [];
+        public bool Trusts(string id, string hash) => Trusted.Any(t => t.Id == id && t.Hash == hash);
+        public bool Share { get; set; } = true;
+        public bool ShowEditedStats { get; set; }
+        public bool ListPublic { get; set; } = true;
+        public bool HostStats { get; set; }
+        // Off by default: a stranger's traffic only reaches this machine when the player turns this on. Friends are
+        // always accepted. Off, this machine's lobby is not listed in the lobby directory, a search shows friends'
+        // listings only, and a join to a stranger's lobby is refused with the reason (docs/multiplayer.md).
+        public bool PlayWithStrangers { get; set; }
+    }
 
     public static State Read(string modsFolder)
     {
@@ -636,6 +728,16 @@ public static class ModSettings
             var root = document.RootElement;
             if (root.TryGetProperty("disabled", out var list) && list.ValueKind == JsonValueKind.Array)
                 foreach (var e in list.EnumerateArray()) if (e.ValueKind == JsonValueKind.String) state.Disabled.Add(e.GetString()!);
+            if (root.TryGetProperty("blocked", out var blocked) && blocked.ValueKind == JsonValueKind.Array)
+                foreach (var e in blocked.EnumerateArray()) if (e.ValueKind == JsonValueKind.String) state.Blocked.Add(e.GetString()!);
+            if (root.TryGetProperty("trusted", out var trusted) && trusted.ValueKind == JsonValueKind.Array)
+                foreach (var e in trusted.EnumerateArray())
+                    if (TrustedMod.Read(e) is { } mod && !state.Trusts(mod.Id, mod.Hash)) state.Trusted.Add(mod);
+            if (root.TryGetProperty("share", out var share) && share.ValueKind == JsonValueKind.False) state.Share = false;
+            if (root.TryGetProperty("showEditedStats", out var edited) && edited.ValueKind == JsonValueKind.True) state.ShowEditedStats = true;
+            if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
+            if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
+            if (root.TryGetProperty("playWithStrangers", out var strangers) && strangers.ValueKind == JsonValueKind.True) state.PlayWithStrangers = true;
             if (root.TryGetProperty("order", out var order) && order.ValueKind == JsonValueKind.Array)
                 foreach (var e in order.EnumerateArray()) if (e.ValueKind == JsonValueKind.String && !state.Order.Contains(e.GetString()!)) state.Order.Add(e.GetString()!);
             if (root.TryGetProperty("packs", out var packs) && packs.ValueKind == JsonValueKind.Object)
@@ -670,23 +772,87 @@ public static class ModSettings
 
     public static void SetChoice(string modsFolder, string id, CosmeticPacks.Choice choice) => Change(modsFolder, state => state.Choices[id] = choice);
 
+    // Mod sync's blocklist: a lobby running a blocked mod is hidden and never joined (ModSyncPlan).
+    public static void SetBlocked(string modsFolder, string id, bool blocked) => Change(modsFolder, state =>
+    {
+        if (blocked) state.Blocked.Add(id);
+        else state.Blocked.Remove(id);
+    });
+
+    // Mod sync's trusted mods: one the player trusted (that exact content) downloads from a Steam friend as a verified one
+    // does; untrusted (the Mods page), it is the player's to install again.
+    public static void SetTrusted(string modsFolder, TrustedMod mod) => Change(modsFolder, state =>
+    {
+        state.Trusted.RemoveAll(t => t.Id == mod.Id && t.Hash == mod.Hash);
+        state.Trusted.Add(mod);
+    });
+
+    public static void Untrust(string modsFolder, string id, string hash) => Change(modsFolder, state => state.Trusted.RemoveAll(t => t.Id == id && t.Hash == hash));
+
+    // Hosting: whether joiners who lack this player's mods may download them from this machine.
+    public static void SetShare(string modsFolder, bool share) => Change(modsFolder, state => state.Share = share);
+
+    // The Galactic Map: whether public lobbies whose host plays with edited stats are shown.
+    public static void SetShowEditedStats(string modsFolder, bool show) => Change(modsFolder, state => state.ShowEditedStats = show);
+
+    // Hosting: whether this player's Public lobbies are listed on other HellForge players' Galactic Map.
+    public static void SetListPublic(string modsFolder, bool list) => Change(modsFolder, state => state.ListPublic = list);
+    // Multiplayer: whether people who are not Steam friends can reach this machine through the lobby directory.
+    public static void SetPlayWithStrangers(string modsFolder, bool allow) => Change(modsFolder, state => state.PlayWithStrangers = allow);
+    public static bool PlayWithStrangers(string modsFolder) => Read(modsFolder).PlayWithStrangers;
+
+    // Hosting: whether friends play with this player's editor changes instead of their own.
+    public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
+
     static void Change(string modsFolder, Action<State> change)
     {
         var state = Read(modsFolder);
         change(state);
         Directory.CreateDirectory(modsFolder);
         var path = Path.Combine(modsFolder, FileName);
-        var packs = state.Choices.OrderBy(c => c.Key, StringComparer.Ordinal).ToDictionary(c => c.Key, c => new
+        var root = new JsonObject
         {
-            off = c.Value.Off.Order(StringComparer.Ordinal).ToList(),
-            sub = c.Value.Sub.OrderBy(s => s.Key, StringComparer.Ordinal).ToDictionary(s => s.Key, s => s.Value)
-        });
-        var text = JsonSerializer.Serialize(new { format = 1, disabled = state.Disabled.Order(StringComparer.Ordinal), order = state.Order, packs },
-            new JsonSerializerOptions { WriteIndented = true }) + "\n";
+            ["format"] = 1,
+            ["disabled"] = new JsonArray([.. state.Disabled.Order(StringComparer.Ordinal).Select(id => (JsonNode?)id)]),
+            ["order"] = new JsonArray([.. state.Order.Select(id => (JsonNode?)id)]),
+            ["packs"] = new JsonObject(state.Choices.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => KeyValuePair.Create(c.Key, (JsonNode?)new JsonObject
+            {
+                ["off"] = new JsonArray([.. c.Value.Off.Order(StringComparer.Ordinal).Select(o => (JsonNode?)o)]),
+                ["sub"] = new JsonObject(c.Value.Sub.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => KeyValuePair.Create(s.Key, (JsonNode?)s.Value)))
+            }))),
+            ["blocked"] = new JsonArray([.. state.Blocked.Order(StringComparer.Ordinal).Select(id => (JsonNode?)id)]),
+            ["trusted"] = new JsonArray([.. state.Trusted.Select(t => (JsonNode?)t.ToJson())]),
+            ["share"] = state.Share,
+            ["showEditedStats"] = state.ShowEditedStats,
+            ["listPublic"] = state.ListPublic,
+            ["hostStats"] = state.HostStats,
+            ["playWithStrangers"] = state.PlayWithStrangers
+        };
+        var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         File.WriteAllText(path + ".tmp", text);
         LastWritten = text;
         File.Move(path + ".tmp", path, overwrite: true);
         File.Delete(Path.Combine(modsFolder, LegacyFileName));
+    }
+}
+
+// A mod the player trusted on mod sync's prompt: its id and content hash (ModSets.ContentHash: that exact content, no
+// other version or bytes), its name and version as the host listed them, the Steam friend who hosted it (their name, then
+// their SteamID64) and when (UTC, ISO 8601). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
+public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since)
+{
+    public JsonObject ToJson() => new()
+    {
+        ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since
+    };
+
+    public static TrustedMod? Read(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object) return null;
+        string Text(string name, int max) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Length <= max &&
+            !v.GetString()!.Any(char.IsControl) ? v.GetString()! : "";
+        var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40));
+        return ModCatalog.IsModId(mod.Id) && ModSets.Hex(mod.Hash, 64) ? mod : null;
     }
 }
 

@@ -262,7 +262,7 @@ HF_ASSERT_OFFSET(HfWeaponData, fire_ability_2, 944);
 typedef struct HfWeaponMagazine
 {
     uint32_t magazine_type;                      /* +0x00 1: rounds follow pattern (unverified) [respawn?] */
-    uint32_t pattern[32];                        /* +0x04 projectile types of successive rounds [respawn?] */
+    uint32_t pattern[32];                        /* +0x04 projectile types of successive rounds; with magazine_type 1, round n fires entry (n - 1) % count (game.dll 0x7456D0); never 0 inside the count, which is fixed at spawn [respawn?] */
     uint32_t first_projectile;                   /* +0x84 the projectile type chambered first (unverified) [respawn?] */
     uint32_t capacity;                           /* +0x88 rounds per magazine (a turret's live count is an 11-bit network field: at most 2047) [respawn?] */
     uint32_t starting_magazines;                 /* +0x8C spare magazines at the start (unverified) [respawn?] */
@@ -771,7 +771,19 @@ HF_ASSERT_OFFSET(HfStatusEffectSettings, duration, 40);
 typedef struct HfHealth
 {
     int32_t health;                              /* +0x00 entity.health (unverified) [respawn?] */
-    uint8_t _unknown_04[276];
+    float health_change_rate;                    /* +0x04 Health change rate (unverified) [respawn?] */
+    uint8_t health_change_rate_disabled;         /* +0x08 Health change rate disabled (unverified) [respawn?] */
+    uint8_t _unknown_09[3];
+    float regeneration_cooldown;                 /* +0x0C Regeneration cooldown (unverified) [respawn?] */
+    uint32_t regeneration_segments;              /* +0x10 Regeneration segments (unverified) [respawn?] */
+    float regeneration_change_rate;              /* +0x14 Regeneration change rate (unverified) [respawn?] */
+    int32_t constitution;                        /* +0x18 Constitution (unverified) [respawn?] */
+    float constitution_rate;                     /* +0x1C Constitution rate (unverified) [respawn?] */
+    uint8_t _unknown_20[4];
+    float zone_bleedout_change_rate;             /* +0x24 Zone bleedout change rate (unverified) [respawn?] */
+    uint8_t _unknown_28[228];
+    float durable_resistance_7;                  /* +0x10C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_110[8];
     uint32_t armor_118;                          /* +0x118 Main armor (armor_class) (unverified) [respawn?] */
     uint8_t _unknown_11C[104];
     float explosive_damage_percentage;           /* +0x184 Explosion damage share (unverified) [respawn?] */
@@ -783,12 +795,18 @@ typedef struct HfHealth
     uint32_t armor;                              /* +0x2E0 zone.armor (unverified) [respawn?] */
     uint8_t _unknown_2E4[12];
     int32_t health_2f0;                          /* +0x2F0 zone.health (unverified) [respawn?] */
-    uint8_t _unknown_2F4[12];
+    int32_t zone_0_constitution;                 /* +0x2F4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2F8[3];
+    uint8_t zone_0_downs_on_death;               /* +0x2FB Downs on death (unverified) [respawn?] */
+    uint8_t zone_0_fatal;                        /* +0x2FC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_2FD[3];
     float affects_main_health;                   /* +0x300 Damage forwarded to main health (ratio) (unverified) [respawn?] */
     uint8_t _unknown_304[71];
     uint8_t zone_0_affected_by_explosions;       /* +0x34B Own explosion share (unverified) [respawn?] */
     float zone_0_explosive_damage_percentage;    /* +0x34C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_350[420];
+    uint8_t _unknown_350[12];
+    uint8_t zone_0_main_health_capped;           /* +0x35C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_35D[407];
     uint32_t damage_multiplier_3;                /* +0x4F4 Damage multiplier (unverified) [respawn?] */
     uint32_t damage_multiplier_dps_3;            /* +0x4F8 Damage over time multiplier (unverified) [respawn?] */
     float durable_resistance_3;                  /* +0x4FC Durable damage share (unverified) [respawn?] */
@@ -796,12 +814,18 @@ typedef struct HfHealth
     uint32_t armor_2;                            /* +0x508 Shield plate armor (unverified) [respawn?] */
     uint8_t _unknown_50C[12];
     int32_t health_2;                            /* +0x518 Shield plate health (unverified) [respawn?] */
-    uint8_t _unknown_51C[12];
+    int32_t zone_1_constitution;                 /* +0x51C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_520[3];
+    uint8_t zone_1_downs_on_death;               /* +0x523 Downs on death (unverified) [respawn?] */
+    uint8_t zone_1_fatal;                        /* +0x524 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_525[3];
     float zone_1_affects_main_health;            /* +0x528 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_52C[71];
     uint8_t zone_1_affected_by_explosions;       /* +0x573 Own explosion share (unverified) [respawn?] */
     float zone_1_explosive_damage_percentage;    /* +0x574 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_578[420];
+    uint8_t _unknown_578[12];
+    uint8_t zone_1_main_health_capped;           /* +0x584 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_585[407];
     uint32_t damage_multiplier;                  /* +0x71C Damage multiplier (unverified) [respawn?] */
     uint32_t damage_multiplier_dps;              /* +0x720 Damage over time multiplier (unverified) [respawn?] */
     float durable_resistance;                    /* +0x724 Durable damage share (unverified) [respawn?] */
@@ -809,12 +833,18 @@ typedef struct HfHealth
     uint32_t zone_2_armor;                       /* +0x730 Armor (unverified) [respawn?] */
     uint8_t _unknown_734[12];
     int32_t zone_2_health;                       /* +0x740 Health (unverified) [respawn?] */
-    uint8_t _unknown_744[12];
+    int32_t zone_2_constitution;                 /* +0x744 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_748[3];
+    uint8_t zone_2_downs_on_death;               /* +0x74B Downs on death (unverified) [respawn?] */
+    uint8_t zone_2_fatal;                        /* +0x74C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_74D[3];
     float zone_2_affects_main_health;            /* +0x750 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_754[71];
     uint8_t zone_2_affected_by_explosions;       /* +0x79B Own explosion share (unverified) [respawn?] */
     float zone_2_explosive_damage_percentage;    /* +0x79C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_7A0[420];
+    uint8_t _unknown_7A0[12];
+    uint8_t zone_2_main_health_capped;           /* +0x7AC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_7AD[407];
     uint32_t damage_multiplier_2;                /* +0x944 Damage multiplier (unverified) [respawn?] */
     uint32_t damage_multiplier_dps_2;            /* +0x948 Damage over time multiplier (unverified) [respawn?] */
     float durable_resistance_2;                  /* +0x94C Durable damage share (unverified) [respawn?] */
@@ -822,12 +852,18 @@ typedef struct HfHealth
     uint32_t zone_3_armor;                       /* +0x958 Armor (unverified) [respawn?] */
     uint8_t _unknown_95C[12];
     int32_t zone_3_health;                       /* +0x968 Health (unverified) [respawn?] */
-    uint8_t _unknown_96C[12];
+    int32_t zone_3_constitution;                 /* +0x96C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_970[3];
+    uint8_t zone_3_downs_on_death;               /* +0x973 Downs on death (unverified) [respawn?] */
+    uint8_t zone_3_fatal;                        /* +0x974 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_975[3];
     float zone_3_affects_main_health;            /* +0x978 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_97C[71];
     uint8_t zone_3_affected_by_explosions;       /* +0x9C3 Own explosion share (unverified) [respawn?] */
     float zone_3_explosive_damage_percentage;    /* +0x9C4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_9C8[420];
+    uint8_t _unknown_9C8[12];
+    uint8_t zone_3_main_health_capped;           /* +0x9D4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_9D5[407];
     uint32_t damage_multiplier_5;                /* +0xB6C Damage multiplier (unverified) [respawn?] */
     uint32_t damage_multiplier_dps_5;            /* +0xB70 Damage over time multiplier (unverified) [respawn?] */
     float durable_resistance_5;                  /* +0xB74 Durable damage share (unverified) [respawn?] */
@@ -835,12 +871,18 @@ typedef struct HfHealth
     uint32_t zone_4_armor;                       /* +0xB80 Armor (unverified) [respawn?] */
     uint8_t _unknown_B84[12];
     int32_t zone_4_health;                       /* +0xB90 Health (unverified) [respawn?] */
-    uint8_t _unknown_B94[12];
+    int32_t zone_4_constitution;                 /* +0xB94 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_B98[3];
+    uint8_t zone_4_downs_on_death;               /* +0xB9B Downs on death (unverified) [respawn?] */
+    uint8_t zone_4_fatal;                        /* +0xB9C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_B9D[3];
     float zone_4_affects_main_health;            /* +0xBA0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_BA4[71];
     uint8_t zone_4_affected_by_explosions;       /* +0xBEB Own explosion share (unverified) [respawn?] */
     float zone_4_explosive_damage_percentage;    /* +0xBEC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_BF0[420];
+    uint8_t _unknown_BF0[12];
+    uint8_t zone_4_main_health_capped;           /* +0xBFC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_BFD[407];
     uint32_t damage_multiplier_6;                /* +0xD94 Damage multiplier (unverified) [respawn?] */
     uint32_t damage_multiplier_dps_6;            /* +0xD98 Damage over time multiplier (unverified) [respawn?] */
     float durable_resistance_6;                  /* +0xD9C Durable damage share (unverified) [respawn?] */
@@ -848,277 +890,581 @@ typedef struct HfHealth
     uint32_t zone_5_armor;                       /* +0xDA8 Armor (unverified) [respawn?] */
     uint8_t _unknown_DAC[12];
     int32_t zone_5_health;                       /* +0xDB8 Health (unverified) [respawn?] */
-    uint8_t _unknown_DBC[12];
+    int32_t zone_5_constitution;                 /* +0xDBC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_DC0[3];
+    uint8_t zone_5_downs_on_death;               /* +0xDC3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_5_fatal;                        /* +0xDC4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_DC5[3];
     float zone_5_affects_main_health;            /* +0xDC8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_DCC[71];
     uint8_t zone_5_affected_by_explosions;       /* +0xE13 Own explosion share (unverified) [respawn?] */
     float zone_5_explosive_damage_percentage;    /* +0xE14 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_E18[440];
+    uint8_t _unknown_E18[12];
+    uint8_t zone_5_main_health_capped;           /* +0xE24 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_E25[415];
+    float zone_6_durable_resistance;             /* +0xFC4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_FC8[8];
     uint32_t zone_6_armor;                       /* +0xFD0 Armor (unverified) [respawn?] */
     uint8_t _unknown_FD4[12];
     int32_t zone_6_health;                       /* +0xFE0 Health (unverified) [respawn?] */
-    uint8_t _unknown_FE4[12];
+    int32_t zone_6_constitution;                 /* +0xFE4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_FE8[3];
+    uint8_t zone_6_downs_on_death;               /* +0xFEB Downs on death (unverified) [respawn?] */
+    uint8_t zone_6_fatal;                        /* +0xFEC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_FED[3];
     float zone_6_affects_main_health;            /* +0xFF0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_FF4[71];
     uint8_t zone_6_affected_by_explosions;       /* +0x103B Own explosion share (unverified) [respawn?] */
     float zone_6_explosive_damage_percentage;    /* +0x103C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1040[440];
+    uint8_t _unknown_1040[12];
+    uint8_t zone_6_main_health_capped;           /* +0x104C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_104D[415];
+    float zone_7_durable_resistance;             /* +0x11EC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_11F0[8];
     uint32_t zone_7_armor;                       /* +0x11F8 Armor (unverified) [respawn?] */
     uint8_t _unknown_11FC[12];
     int32_t zone_7_health;                       /* +0x1208 Health (unverified) [respawn?] */
-    uint8_t _unknown_120C[12];
+    int32_t zone_7_constitution;                 /* +0x120C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1210[3];
+    uint8_t zone_7_downs_on_death;               /* +0x1213 Downs on death (unverified) [respawn?] */
+    uint8_t zone_7_fatal;                        /* +0x1214 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_1215[3];
     float zone_7_affects_main_health;            /* +0x1218 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_121C[71];
     uint8_t zone_7_affected_by_explosions;       /* +0x1263 Own explosion share (unverified) [respawn?] */
     float zone_7_explosive_damage_percentage;    /* +0x1264 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1268[440];
+    uint8_t _unknown_1268[12];
+    uint8_t zone_7_main_health_capped;           /* +0x1274 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_1275[415];
+    float zone_8_durable_resistance;             /* +0x1414 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1418[8];
     uint32_t zone_8_armor;                       /* +0x1420 Armor (unverified) [respawn?] */
     uint8_t _unknown_1424[12];
     int32_t zone_8_health;                       /* +0x1430 Health (unverified) [respawn?] */
-    uint8_t _unknown_1434[12];
+    int32_t zone_8_constitution;                 /* +0x1434 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1438[3];
+    uint8_t zone_8_downs_on_death;               /* +0x143B Downs on death (unverified) [respawn?] */
+    uint8_t zone_8_fatal;                        /* +0x143C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_143D[3];
     float zone_8_affects_main_health;            /* +0x1440 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_1444[71];
     uint8_t zone_8_affected_by_explosions;       /* +0x148B Own explosion share (unverified) [respawn?] */
     float zone_8_explosive_damage_percentage;    /* +0x148C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1490[440];
+    uint8_t _unknown_1490[12];
+    uint8_t zone_8_main_health_capped;           /* +0x149C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_149D[415];
+    float zone_9_durable_resistance;             /* +0x163C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1640[8];
     uint32_t zone_9_armor;                       /* +0x1648 Armor (unverified) [respawn?] */
     uint8_t _unknown_164C[12];
     int32_t zone_9_health;                       /* +0x1658 Health (unverified) [respawn?] */
-    uint8_t _unknown_165C[12];
+    int32_t zone_9_constitution;                 /* +0x165C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1660[3];
+    uint8_t zone_9_downs_on_death;               /* +0x1663 Downs on death (unverified) [respawn?] */
+    uint8_t zone_9_fatal;                        /* +0x1664 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_1665[3];
     float zone_9_affects_main_health;            /* +0x1668 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_166C[71];
     uint8_t zone_9_affected_by_explosions;       /* +0x16B3 Own explosion share (unverified) [respawn?] */
     float zone_9_explosive_damage_percentage;    /* +0x16B4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_16B8[440];
+    uint8_t _unknown_16B8[12];
+    uint8_t zone_9_main_health_capped;           /* +0x16C4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_16C5[415];
+    float zone_10_durable_resistance;            /* +0x1864 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1868[8];
     uint32_t zone_10_armor;                      /* +0x1870 Armor (unverified) [respawn?] */
     uint8_t _unknown_1874[12];
     int32_t zone_10_health;                      /* +0x1880 Health (unverified) [respawn?] */
-    uint8_t _unknown_1884[12];
+    int32_t zone_10_constitution;                /* +0x1884 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1888[3];
+    uint8_t zone_10_downs_on_death;              /* +0x188B Downs on death (unverified) [respawn?] */
+    uint8_t zone_10_fatal;                       /* +0x188C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_188D[3];
     float zone_10_affects_main_health;           /* +0x1890 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_1894[71];
     uint8_t zone_10_affected_by_explosions;      /* +0x18DB Own explosion share (unverified) [respawn?] */
     float zone_10_explosive_damage_percentage;   /* +0x18DC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_18E0[440];
+    uint8_t _unknown_18E0[12];
+    uint8_t zone_10_main_health_capped;          /* +0x18EC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_18ED[415];
+    float zone_11_durable_resistance;            /* +0x1A8C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1A90[8];
     uint32_t zone_11_armor;                      /* +0x1A98 Armor (unverified) [respawn?] */
     uint8_t _unknown_1A9C[12];
     int32_t zone_11_health;                      /* +0x1AA8 Health (unverified) [respawn?] */
-    uint8_t _unknown_1AAC[12];
+    int32_t zone_11_constitution;                /* +0x1AAC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1AB0[3];
+    uint8_t zone_11_downs_on_death;              /* +0x1AB3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_11_fatal;                       /* +0x1AB4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_1AB5[3];
     float zone_11_affects_main_health;           /* +0x1AB8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_1ABC[71];
     uint8_t zone_11_affected_by_explosions;      /* +0x1B03 Own explosion share (unverified) [respawn?] */
     float zone_11_explosive_damage_percentage;   /* +0x1B04 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1B08[440];
+    uint8_t _unknown_1B08[12];
+    uint8_t zone_11_main_health_capped;          /* +0x1B14 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_1B15[415];
+    float zone_12_durable_resistance;            /* +0x1CB4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1CB8[8];
     uint32_t zone_12_armor;                      /* +0x1CC0 Armor (unverified) [respawn?] */
     uint8_t _unknown_1CC4[12];
     int32_t zone_12_health;                      /* +0x1CD0 Health (unverified) [respawn?] */
-    uint8_t _unknown_1CD4[12];
+    int32_t zone_12_constitution;                /* +0x1CD4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1CD8[3];
+    uint8_t zone_12_downs_on_death;              /* +0x1CDB Downs on death (unverified) [respawn?] */
+    uint8_t zone_12_fatal;                       /* +0x1CDC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_1CDD[3];
     float zone_12_affects_main_health;           /* +0x1CE0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_1CE4[71];
     uint8_t zone_12_affected_by_explosions;      /* +0x1D2B Own explosion share (unverified) [respawn?] */
     float zone_12_explosive_damage_percentage;   /* +0x1D2C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1D30[440];
+    uint8_t _unknown_1D30[12];
+    uint8_t zone_12_main_health_capped;          /* +0x1D3C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_1D3D[415];
+    float zone_13_durable_resistance;            /* +0x1EDC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_1EE0[8];
     uint32_t zone_13_armor;                      /* +0x1EE8 Armor (unverified) [respawn?] */
     uint8_t _unknown_1EEC[12];
     int32_t zone_13_health;                      /* +0x1EF8 Health (unverified) [respawn?] */
-    uint8_t _unknown_1EFC[12];
+    int32_t zone_13_constitution;                /* +0x1EFC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_1F00[3];
+    uint8_t zone_13_downs_on_death;              /* +0x1F03 Downs on death (unverified) [respawn?] */
+    uint8_t zone_13_fatal;                       /* +0x1F04 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_1F05[3];
     float zone_13_affects_main_health;           /* +0x1F08 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_1F0C[71];
     uint8_t zone_13_affected_by_explosions;      /* +0x1F53 Own explosion share (unverified) [respawn?] */
     float zone_13_explosive_damage_percentage;   /* +0x1F54 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_1F58[440];
+    uint8_t _unknown_1F58[12];
+    uint8_t zone_13_main_health_capped;          /* +0x1F64 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_1F65[415];
+    float zone_14_durable_resistance;            /* +0x2104 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2108[8];
     uint32_t zone_14_armor;                      /* +0x2110 Armor (unverified) [respawn?] */
     uint8_t _unknown_2114[12];
     int32_t zone_14_health;                      /* +0x2120 Health (unverified) [respawn?] */
-    uint8_t _unknown_2124[12];
+    int32_t zone_14_constitution;                /* +0x2124 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2128[3];
+    uint8_t zone_14_downs_on_death;              /* +0x212B Downs on death (unverified) [respawn?] */
+    uint8_t zone_14_fatal;                       /* +0x212C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_212D[3];
     float zone_14_affects_main_health;           /* +0x2130 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_2134[71];
     uint8_t zone_14_affected_by_explosions;      /* +0x217B Own explosion share (unverified) [respawn?] */
     float zone_14_explosive_damage_percentage;   /* +0x217C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_2180[440];
+    uint8_t _unknown_2180[12];
+    uint8_t zone_14_main_health_capped;          /* +0x218C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_218D[415];
+    float zone_15_durable_resistance;            /* +0x232C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2330[8];
     uint32_t zone_15_armor;                      /* +0x2338 Armor (unverified) [respawn?] */
     uint8_t _unknown_233C[12];
     int32_t zone_15_health;                      /* +0x2348 Health (unverified) [respawn?] */
-    uint8_t _unknown_234C[12];
+    int32_t zone_15_constitution;                /* +0x234C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2350[3];
+    uint8_t zone_15_downs_on_death;              /* +0x2353 Downs on death (unverified) [respawn?] */
+    uint8_t zone_15_fatal;                       /* +0x2354 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_2355[3];
     float zone_15_affects_main_health;           /* +0x2358 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_235C[71];
     uint8_t zone_15_affected_by_explosions;      /* +0x23A3 Own explosion share (unverified) [respawn?] */
     float zone_15_explosive_damage_percentage;   /* +0x23A4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_23A8[440];
+    uint8_t _unknown_23A8[12];
+    uint8_t zone_15_main_health_capped;          /* +0x23B4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_23B5[415];
+    float zone_16_durable_resistance;            /* +0x2554 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2558[8];
     uint32_t zone_16_armor;                      /* +0x2560 Armor (unverified) [respawn?] */
     uint8_t _unknown_2564[12];
     int32_t zone_16_health;                      /* +0x2570 Health (unverified) [respawn?] */
-    uint8_t _unknown_2574[12];
+    int32_t zone_16_constitution;                /* +0x2574 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2578[3];
+    uint8_t zone_16_downs_on_death;              /* +0x257B Downs on death (unverified) [respawn?] */
+    uint8_t zone_16_fatal;                       /* +0x257C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_257D[3];
     float zone_16_affects_main_health;           /* +0x2580 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_2584[71];
     uint8_t zone_16_affected_by_explosions;      /* +0x25CB Own explosion share (unverified) [respawn?] */
     float zone_16_explosive_damage_percentage;   /* +0x25CC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_25D0[440];
+    uint8_t _unknown_25D0[12];
+    uint8_t zone_16_main_health_capped;          /* +0x25DC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_25DD[415];
+    float zone_17_durable_resistance;            /* +0x277C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2780[8];
     uint32_t zone_17_armor;                      /* +0x2788 Armor (unverified) [respawn?] */
     uint8_t _unknown_278C[12];
     int32_t zone_17_health;                      /* +0x2798 Health (unverified) [respawn?] */
-    uint8_t _unknown_279C[12];
+    int32_t zone_17_constitution;                /* +0x279C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_27A0[3];
+    uint8_t zone_17_downs_on_death;              /* +0x27A3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_17_fatal;                       /* +0x27A4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_27A5[3];
     float zone_17_affects_main_health;           /* +0x27A8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_27AC[71];
     uint8_t zone_17_affected_by_explosions;      /* +0x27F3 Own explosion share (unverified) [respawn?] */
     float zone_17_explosive_damage_percentage;   /* +0x27F4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_27F8[440];
+    uint8_t _unknown_27F8[12];
+    uint8_t zone_17_main_health_capped;          /* +0x2804 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_2805[415];
+    float zone_18_durable_resistance;            /* +0x29A4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_29A8[8];
     uint32_t zone_18_armor;                      /* +0x29B0 Armor (unverified) [respawn?] */
     uint8_t _unknown_29B4[12];
     int32_t zone_18_health;                      /* +0x29C0 Health (unverified) [respawn?] */
-    uint8_t _unknown_29C4[12];
+    int32_t zone_18_constitution;                /* +0x29C4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_29C8[3];
+    uint8_t zone_18_downs_on_death;              /* +0x29CB Downs on death (unverified) [respawn?] */
+    uint8_t zone_18_fatal;                       /* +0x29CC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_29CD[3];
     float zone_18_affects_main_health;           /* +0x29D0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_29D4[71];
     uint8_t zone_18_affected_by_explosions;      /* +0x2A1B Own explosion share (unverified) [respawn?] */
     float zone_18_explosive_damage_percentage;   /* +0x2A1C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_2A20[440];
+    uint8_t _unknown_2A20[12];
+    uint8_t zone_18_main_health_capped;          /* +0x2A2C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_2A2D[415];
+    float zone_19_durable_resistance;            /* +0x2BCC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2BD0[8];
     uint32_t zone_19_armor;                      /* +0x2BD8 Armor (unverified) [respawn?] */
     uint8_t _unknown_2BDC[12];
     int32_t zone_19_health;                      /* +0x2BE8 Health (unverified) [respawn?] */
-    uint8_t _unknown_2BEC[12];
+    int32_t zone_19_constitution;                /* +0x2BEC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2BF0[3];
+    uint8_t zone_19_downs_on_death;              /* +0x2BF3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_19_fatal;                       /* +0x2BF4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_2BF5[3];
     float zone_19_affects_main_health;           /* +0x2BF8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_2BFC[71];
     uint8_t zone_19_affected_by_explosions;      /* +0x2C43 Own explosion share (unverified) [respawn?] */
     float zone_19_explosive_damage_percentage;   /* +0x2C44 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_2C48[440];
+    uint8_t _unknown_2C48[12];
+    uint8_t zone_19_main_health_capped;          /* +0x2C54 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_2C55[415];
+    float zone_20_durable_resistance;            /* +0x2DF4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_2DF8[8];
     uint32_t zone_20_armor;                      /* +0x2E00 Armor (unverified) [respawn?] */
     uint8_t _unknown_2E04[12];
     int32_t zone_20_health;                      /* +0x2E10 Health (unverified) [respawn?] */
-    uint8_t _unknown_2E14[12];
+    int32_t zone_20_constitution;                /* +0x2E14 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_2E18[3];
+    uint8_t zone_20_downs_on_death;              /* +0x2E1B Downs on death (unverified) [respawn?] */
+    uint8_t zone_20_fatal;                       /* +0x2E1C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_2E1D[3];
     float zone_20_affects_main_health;           /* +0x2E20 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_2E24[71];
     uint8_t zone_20_affected_by_explosions;      /* +0x2E6B Own explosion share (unverified) [respawn?] */
     float zone_20_explosive_damage_percentage;   /* +0x2E6C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_2E70[440];
+    uint8_t _unknown_2E70[12];
+    uint8_t zone_20_main_health_capped;          /* +0x2E7C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_2E7D[415];
+    float zone_21_durable_resistance;            /* +0x301C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3020[8];
     uint32_t zone_21_armor;                      /* +0x3028 Armor (unverified) [respawn?] */
     uint8_t _unknown_302C[12];
     int32_t zone_21_health;                      /* +0x3038 Health (unverified) [respawn?] */
-    uint8_t _unknown_303C[12];
+    int32_t zone_21_constitution;                /* +0x303C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3040[3];
+    uint8_t zone_21_downs_on_death;              /* +0x3043 Downs on death (unverified) [respawn?] */
+    uint8_t zone_21_fatal;                       /* +0x3044 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_3045[3];
     float zone_21_affects_main_health;           /* +0x3048 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_304C[71];
     uint8_t zone_21_affected_by_explosions;      /* +0x3093 Own explosion share (unverified) [respawn?] */
     float zone_21_explosive_damage_percentage;   /* +0x3094 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3098[440];
+    uint8_t _unknown_3098[12];
+    uint8_t zone_21_main_health_capped;          /* +0x30A4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_30A5[415];
+    float zone_22_durable_resistance;            /* +0x3244 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3248[8];
     uint32_t zone_22_armor;                      /* +0x3250 Armor (unverified) [respawn?] */
     uint8_t _unknown_3254[12];
     int32_t zone_22_health;                      /* +0x3260 Health (unverified) [respawn?] */
-    uint8_t _unknown_3264[12];
+    int32_t zone_22_constitution;                /* +0x3264 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3268[3];
+    uint8_t zone_22_downs_on_death;              /* +0x326B Downs on death (unverified) [respawn?] */
+    uint8_t zone_22_fatal;                       /* +0x326C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_326D[3];
     float zone_22_affects_main_health;           /* +0x3270 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_3274[71];
     uint8_t zone_22_affected_by_explosions;      /* +0x32BB Own explosion share (unverified) [respawn?] */
     float zone_22_explosive_damage_percentage;   /* +0x32BC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_32C0[440];
+    uint8_t _unknown_32C0[12];
+    uint8_t zone_22_main_health_capped;          /* +0x32CC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_32CD[415];
+    float zone_23_durable_resistance;            /* +0x346C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3470[8];
     uint32_t zone_23_armor;                      /* +0x3478 Armor (unverified) [respawn?] */
     uint8_t _unknown_347C[12];
     int32_t zone_23_health;                      /* +0x3488 Health (unverified) [respawn?] */
-    uint8_t _unknown_348C[12];
+    int32_t zone_23_constitution;                /* +0x348C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3490[3];
+    uint8_t zone_23_downs_on_death;              /* +0x3493 Downs on death (unverified) [respawn?] */
+    uint8_t zone_23_fatal;                       /* +0x3494 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_3495[3];
     float zone_23_affects_main_health;           /* +0x3498 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_349C[71];
     uint8_t zone_23_affected_by_explosions;      /* +0x34E3 Own explosion share (unverified) [respawn?] */
     float zone_23_explosive_damage_percentage;   /* +0x34E4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_34E8[440];
+    uint8_t _unknown_34E8[12];
+    uint8_t zone_23_main_health_capped;          /* +0x34F4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_34F5[415];
+    float zone_24_durable_resistance;            /* +0x3694 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3698[8];
     uint32_t zone_24_armor;                      /* +0x36A0 Armor (unverified) [respawn?] */
     uint8_t _unknown_36A4[12];
     int32_t zone_24_health;                      /* +0x36B0 Health (unverified) [respawn?] */
-    uint8_t _unknown_36B4[12];
+    int32_t zone_24_constitution;                /* +0x36B4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_36B8[3];
+    uint8_t zone_24_downs_on_death;              /* +0x36BB Downs on death (unverified) [respawn?] */
+    uint8_t zone_24_fatal;                       /* +0x36BC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_36BD[3];
     float zone_24_affects_main_health;           /* +0x36C0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_36C4[71];
     uint8_t zone_24_affected_by_explosions;      /* +0x370B Own explosion share (unverified) [respawn?] */
     float zone_24_explosive_damage_percentage;   /* +0x370C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3710[440];
+    uint8_t _unknown_3710[12];
+    uint8_t zone_24_main_health_capped;          /* +0x371C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_371D[415];
+    float zone_25_durable_resistance;            /* +0x38BC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_38C0[8];
     uint32_t zone_25_armor;                      /* +0x38C8 Armor (unverified) [respawn?] */
     uint8_t _unknown_38CC[12];
     int32_t zone_25_health;                      /* +0x38D8 Health (unverified) [respawn?] */
-    uint8_t _unknown_38DC[12];
+    int32_t zone_25_constitution;                /* +0x38DC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_38E0[3];
+    uint8_t zone_25_downs_on_death;              /* +0x38E3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_25_fatal;                       /* +0x38E4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_38E5[3];
     float zone_25_affects_main_health;           /* +0x38E8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_38EC[71];
     uint8_t zone_25_affected_by_explosions;      /* +0x3933 Own explosion share (unverified) [respawn?] */
     float zone_25_explosive_damage_percentage;   /* +0x3934 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3938[440];
+    uint8_t _unknown_3938[12];
+    uint8_t zone_25_main_health_capped;          /* +0x3944 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_3945[415];
+    float zone_26_durable_resistance;            /* +0x3AE4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3AE8[8];
     uint32_t zone_26_armor;                      /* +0x3AF0 Armor (unverified) [respawn?] */
     uint8_t _unknown_3AF4[12];
     int32_t zone_26_health;                      /* +0x3B00 Health (unverified) [respawn?] */
-    uint8_t _unknown_3B04[12];
+    int32_t zone_26_constitution;                /* +0x3B04 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3B08[3];
+    uint8_t zone_26_downs_on_death;              /* +0x3B0B Downs on death (unverified) [respawn?] */
+    uint8_t zone_26_fatal;                       /* +0x3B0C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_3B0D[3];
     float zone_26_affects_main_health;           /* +0x3B10 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_3B14[71];
     uint8_t zone_26_affected_by_explosions;      /* +0x3B5B Own explosion share (unverified) [respawn?] */
     float zone_26_explosive_damage_percentage;   /* +0x3B5C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3B60[440];
+    uint8_t _unknown_3B60[12];
+    uint8_t zone_26_main_health_capped;          /* +0x3B6C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_3B6D[415];
+    float zone_27_durable_resistance;            /* +0x3D0C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3D10[8];
     uint32_t zone_27_armor;                      /* +0x3D18 Armor (unverified) [respawn?] */
     uint8_t _unknown_3D1C[12];
     int32_t zone_27_health;                      /* +0x3D28 Health (unverified) [respawn?] */
-    uint8_t _unknown_3D2C[12];
+    int32_t zone_27_constitution;                /* +0x3D2C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3D30[3];
+    uint8_t zone_27_downs_on_death;              /* +0x3D33 Downs on death (unverified) [respawn?] */
+    uint8_t zone_27_fatal;                       /* +0x3D34 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_3D35[3];
     float zone_27_affects_main_health;           /* +0x3D38 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_3D3C[71];
     uint8_t zone_27_affected_by_explosions;      /* +0x3D83 Own explosion share (unverified) [respawn?] */
     float zone_27_explosive_damage_percentage;   /* +0x3D84 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3D88[440];
+    uint8_t _unknown_3D88[12];
+    uint8_t zone_27_main_health_capped;          /* +0x3D94 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_3D95[415];
+    float zone_28_durable_resistance;            /* +0x3F34 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_3F38[8];
     uint32_t zone_28_armor;                      /* +0x3F40 Armor (unverified) [respawn?] */
     uint8_t _unknown_3F44[12];
     int32_t zone_28_health;                      /* +0x3F50 Health (unverified) [respawn?] */
-    uint8_t _unknown_3F54[12];
+    int32_t zone_28_constitution;                /* +0x3F54 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_3F58[3];
+    uint8_t zone_28_downs_on_death;              /* +0x3F5B Downs on death (unverified) [respawn?] */
+    uint8_t zone_28_fatal;                       /* +0x3F5C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_3F5D[3];
     float zone_28_affects_main_health;           /* +0x3F60 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_3F64[71];
     uint8_t zone_28_affected_by_explosions;      /* +0x3FAB Own explosion share (unverified) [respawn?] */
     float zone_28_explosive_damage_percentage;   /* +0x3FAC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_3FB0[440];
+    uint8_t _unknown_3FB0[12];
+    uint8_t zone_28_main_health_capped;          /* +0x3FBC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_3FBD[415];
+    float zone_29_durable_resistance;            /* +0x415C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_4160[8];
     uint32_t zone_29_armor;                      /* +0x4168 Armor (unverified) [respawn?] */
     uint8_t _unknown_416C[12];
     int32_t zone_29_health;                      /* +0x4178 Health (unverified) [respawn?] */
-    uint8_t _unknown_417C[12];
+    int32_t zone_29_constitution;                /* +0x417C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_4180[3];
+    uint8_t zone_29_downs_on_death;              /* +0x4183 Downs on death (unverified) [respawn?] */
+    uint8_t zone_29_fatal;                       /* +0x4184 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_4185[3];
     float zone_29_affects_main_health;           /* +0x4188 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_418C[71];
     uint8_t zone_29_affected_by_explosions;      /* +0x41D3 Own explosion share (unverified) [respawn?] */
     float zone_29_explosive_damage_percentage;   /* +0x41D4 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_41D8[440];
+    uint8_t _unknown_41D8[12];
+    uint8_t zone_29_main_health_capped;          /* +0x41E4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_41E5[415];
+    float zone_30_durable_resistance;            /* +0x4384 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_4388[8];
     uint32_t zone_30_armor;                      /* +0x4390 Armor (unverified) [respawn?] */
     uint8_t _unknown_4394[12];
     int32_t zone_30_health;                      /* +0x43A0 Health (unverified) [respawn?] */
-    uint8_t _unknown_43A4[12];
+    int32_t zone_30_constitution;                /* +0x43A4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_43A8[3];
+    uint8_t zone_30_downs_on_death;              /* +0x43AB Downs on death (unverified) [respawn?] */
+    uint8_t zone_30_fatal;                       /* +0x43AC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_43AD[3];
     float zone_30_affects_main_health;           /* +0x43B0 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_43B4[71];
     uint8_t zone_30_affected_by_explosions;      /* +0x43FB Own explosion share (unverified) [respawn?] */
     float zone_30_explosive_damage_percentage;   /* +0x43FC Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_4400[440];
+    uint8_t _unknown_4400[12];
+    uint8_t zone_30_main_health_capped;          /* +0x440C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_440D[415];
+    float zone_31_durable_resistance;            /* +0x45AC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_45B0[8];
     uint32_t zone_31_armor;                      /* +0x45B8 Armor (unverified) [respawn?] */
     uint8_t _unknown_45BC[12];
     int32_t zone_31_health;                      /* +0x45C8 Health (unverified) [respawn?] */
-    uint8_t _unknown_45CC[12];
+    int32_t zone_31_constitution;                /* +0x45CC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_45D0[3];
+    uint8_t zone_31_downs_on_death;              /* +0x45D3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_31_fatal;                       /* +0x45D4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_45D5[3];
     float zone_31_affects_main_health;           /* +0x45D8 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_45DC[71];
     uint8_t zone_31_affected_by_explosions;      /* +0x4623 Own explosion share (unverified) [respawn?] */
     float zone_31_explosive_damage_percentage;   /* +0x4624 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_4628[440];
+    uint8_t _unknown_4628[12];
+    uint8_t zone_31_main_health_capped;          /* +0x4634 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_4635[415];
+    float zone_32_durable_resistance;            /* +0x47D4 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_47D8[8];
     uint32_t zone_32_armor;                      /* +0x47E0 Armor (unverified) [respawn?] */
     uint8_t _unknown_47E4[12];
     int32_t zone_32_health;                      /* +0x47F0 Health (unverified) [respawn?] */
-    uint8_t _unknown_47F4[12];
+    int32_t zone_32_constitution;                /* +0x47F4 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_47F8[3];
+    uint8_t zone_32_downs_on_death;              /* +0x47FB Downs on death (unverified) [respawn?] */
+    uint8_t zone_32_fatal;                       /* +0x47FC Fatal (unverified) [respawn?] */
+    uint8_t _unknown_47FD[3];
     float zone_32_affects_main_health;           /* +0x4800 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_4804[71];
     uint8_t zone_32_affected_by_explosions;      /* +0x484B Own explosion share (unverified) [respawn?] */
     float zone_32_explosive_damage_percentage;   /* +0x484C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_4850[440];
+    uint8_t _unknown_4850[12];
+    uint8_t zone_32_main_health_capped;          /* +0x485C Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_485D[415];
+    float zone_33_durable_resistance;            /* +0x49FC Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_4A00[8];
     uint32_t zone_33_armor;                      /* +0x4A08 Armor (unverified) [respawn?] */
     uint8_t _unknown_4A0C[12];
     int32_t zone_33_health;                      /* +0x4A18 Health (unverified) [respawn?] */
-    uint8_t _unknown_4A1C[12];
+    int32_t zone_33_constitution;                /* +0x4A1C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_4A20[3];
+    uint8_t zone_33_downs_on_death;              /* +0x4A23 Downs on death (unverified) [respawn?] */
+    uint8_t zone_33_fatal;                       /* +0x4A24 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_4A25[3];
     float zone_33_affects_main_health;           /* +0x4A28 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_4A2C[71];
     uint8_t zone_33_affected_by_explosions;      /* +0x4A73 Own explosion share (unverified) [respawn?] */
     float zone_33_explosive_damage_percentage;   /* +0x4A74 Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_4A78[440];
+    uint8_t _unknown_4A78[12];
+    uint8_t zone_33_main_health_capped;          /* +0x4A84 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_4A85[415];
+    float zone_34_durable_resistance;            /* +0x4C24 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_4C28[8];
     uint32_t zone_34_armor;                      /* +0x4C30 Armor (unverified) [respawn?] */
     uint8_t _unknown_4C34[12];
     int32_t zone_34_health;                      /* +0x4C40 Health (unverified) [respawn?] */
-    uint8_t _unknown_4C44[12];
+    int32_t zone_34_constitution;                /* +0x4C44 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_4C48[3];
+    uint8_t zone_34_downs_on_death;              /* +0x4C4B Downs on death (unverified) [respawn?] */
+    uint8_t zone_34_fatal;                       /* +0x4C4C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_4C4D[3];
     float zone_34_affects_main_health;           /* +0x4C50 Affects main health (unverified) [respawn?] */
     uint8_t _unknown_4C54[71];
     uint8_t zone_34_affected_by_explosions;      /* +0x4C9B Own explosion share (unverified) [respawn?] */
     float zone_34_explosive_damage_percentage;   /* +0x4C9C Explosion damage taken (unverified) [respawn?] */
-    uint8_t _unknown_4CA0[2480];
+    uint8_t _unknown_4CA0[12];
+    uint8_t zone_34_main_health_capped;          /* +0x4CAC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_4CAD[415];
+    float zone_35_durable_resistance;            /* +0x4E4C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_4E50[8];
+    uint32_t zone_35_armor;                      /* +0x4E58 Armor (unverified) [respawn?] */
+    uint8_t _unknown_4E5C[12];
+    int32_t zone_35_health;                      /* +0x4E68 Health (unverified) [respawn?] */
+    int32_t zone_35_constitution;                /* +0x4E6C Constitution (unverified) [respawn?] */
+    uint8_t _unknown_4E70[3];
+    uint8_t zone_35_downs_on_death;              /* +0x4E73 Downs on death (unverified) [respawn?] */
+    uint8_t zone_35_fatal;                       /* +0x4E74 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_4E75[3];
+    float zone_35_affects_main_health;           /* +0x4E78 Affects main health (unverified) [respawn?] */
+    uint8_t _unknown_4E7C[72];
+    float zone_35_explosive_damage_percentage;   /* +0x4EC4 Explosive damage percentage (unverified) [respawn?] */
+    uint8_t _unknown_4EC8[12];
+    uint8_t zone_35_main_health_capped;          /* +0x4ED4 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_4ED5[415];
+    float zone_36_durable_resistance;            /* +0x5074 Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_5078[8];
+    uint32_t zone_36_armor;                      /* +0x5080 Armor (unverified) [respawn?] */
+    uint8_t _unknown_5084[12];
+    int32_t zone_36_health;                      /* +0x5090 Health (unverified) [respawn?] */
+    int32_t zone_36_constitution;                /* +0x5094 Constitution (unverified) [respawn?] */
+    uint8_t _unknown_5098[3];
+    uint8_t zone_36_downs_on_death;              /* +0x509B Downs on death (unverified) [respawn?] */
+    uint8_t zone_36_fatal;                       /* +0x509C Fatal (unverified) [respawn?] */
+    uint8_t _unknown_509D[3];
+    float zone_36_affects_main_health;           /* +0x50A0 Affects main health (unverified) [respawn?] */
+    uint8_t _unknown_50A4[72];
+    float zone_36_explosive_damage_percentage;   /* +0x50EC Explosive damage percentage (unverified) [respawn?] */
+    uint8_t _unknown_50F0[12];
+    uint8_t zone_36_main_health_capped;          /* +0x50FC Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_50FD[415];
+    float zone_37_durable_resistance;            /* +0x529C Durable resistance (unverified) [respawn?] */
+    uint8_t _unknown_52A0[8];
+    uint32_t zone_37_armor;                      /* +0x52A8 Armor (unverified) [respawn?] */
+    uint8_t _unknown_52AC[12];
+    int32_t zone_37_health;                      /* +0x52B8 Health (unverified) [respawn?] */
+    int32_t zone_37_constitution;                /* +0x52BC Constitution (unverified) [respawn?] */
+    uint8_t _unknown_52C0[3];
+    uint8_t zone_37_downs_on_death;              /* +0x52C3 Downs on death (unverified) [respawn?] */
+    uint8_t zone_37_fatal;                       /* +0x52C4 Fatal (unverified) [respawn?] */
+    uint8_t _unknown_52C5[3];
+    float zone_37_affects_main_health;           /* +0x52C8 Affects main health (unverified) [respawn?] */
+    uint8_t _unknown_52CC[72];
+    float zone_37_explosive_damage_percentage;   /* +0x5314 Explosive damage percentage (unverified) [respawn?] */
+    uint8_t _unknown_5318[12];
+    uint8_t zone_37_main_health_capped;          /* +0x5324 Main health capped (unverified) [respawn?] */
+    uint8_t _unknown_5325[811];
 } HfHealth;
 HF_ASSERT_SIZE(HfHealth, 22096);
 HF_ASSERT_OFFSET(HfHealth, health, 0);
 #define HF_TYPE_Health_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, health_change_rate, 4);
+#define HF_TYPE_Health_health_change_rate HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, health_change_rate_disabled, 8);
+#define HF_TYPE_Health_health_change_rate_disabled HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, regeneration_cooldown, 12);
+#define HF_TYPE_Health_regeneration_cooldown HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, regeneration_segments, 16);
+#define HF_TYPE_Health_regeneration_segments HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, regeneration_change_rate, 20);
+#define HF_TYPE_Health_regeneration_change_rate HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, constitution, 24);
+#define HF_TYPE_Health_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, constitution_rate, 28);
+#define HF_TYPE_Health_constitution_rate HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_bleedout_change_rate, 36);
+#define HF_TYPE_Health_zone_bleedout_change_rate HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, durable_resistance_7, 268);
+#define HF_TYPE_Health_durable_resistance_7 HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, armor_118, 280);
 #define HF_TYPE_Health_armor_118 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, explosive_damage_percentage, 388);
@@ -1133,12 +1479,20 @@ HF_ASSERT_OFFSET(HfHealth, armor, 736);
 #define HF_TYPE_Health_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, health_2f0, 752);
 #define HF_TYPE_Health_health_2f0 HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_0_constitution, 756);
+#define HF_TYPE_Health_zone_0_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_0_downs_on_death, 763);
+#define HF_TYPE_Health_zone_0_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_0_fatal, 764);
+#define HF_TYPE_Health_zone_0_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, affects_main_health, 768);
 #define HF_TYPE_Health_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_0_affected_by_explosions, 843);
 #define HF_TYPE_Health_zone_0_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_0_explosive_damage_percentage, 844);
 #define HF_TYPE_Health_zone_0_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_0_main_health_capped, 860);
+#define HF_TYPE_Health_zone_0_main_health_capped HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_3, 1268);
 #define HF_TYPE_Health_damage_multiplier_3 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_dps_3, 1272);
@@ -1149,12 +1503,20 @@ HF_ASSERT_OFFSET(HfHealth, armor_2, 1288);
 #define HF_TYPE_Health_armor_2 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, health_2, 1304);
 #define HF_TYPE_Health_health_2 HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_1_constitution, 1308);
+#define HF_TYPE_Health_zone_1_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_1_downs_on_death, 1315);
+#define HF_TYPE_Health_zone_1_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_1_fatal, 1316);
+#define HF_TYPE_Health_zone_1_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_1_affects_main_health, 1320);
 #define HF_TYPE_Health_zone_1_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_1_affected_by_explosions, 1395);
 #define HF_TYPE_Health_zone_1_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_1_explosive_damage_percentage, 1396);
 #define HF_TYPE_Health_zone_1_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_1_main_health_capped, 1412);
+#define HF_TYPE_Health_zone_1_main_health_capped HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier, 1820);
 #define HF_TYPE_Health_damage_multiplier HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_dps, 1824);
@@ -1165,12 +1527,20 @@ HF_ASSERT_OFFSET(HfHealth, zone_2_armor, 1840);
 #define HF_TYPE_Health_zone_2_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_2_health, 1856);
 #define HF_TYPE_Health_zone_2_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_2_constitution, 1860);
+#define HF_TYPE_Health_zone_2_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_2_downs_on_death, 1867);
+#define HF_TYPE_Health_zone_2_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_2_fatal, 1868);
+#define HF_TYPE_Health_zone_2_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_2_affects_main_health, 1872);
 #define HF_TYPE_Health_zone_2_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_2_affected_by_explosions, 1947);
 #define HF_TYPE_Health_zone_2_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_2_explosive_damage_percentage, 1948);
 #define HF_TYPE_Health_zone_2_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_2_main_health_capped, 1964);
+#define HF_TYPE_Health_zone_2_main_health_capped HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_2, 2372);
 #define HF_TYPE_Health_damage_multiplier_2 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_dps_2, 2376);
@@ -1181,12 +1551,20 @@ HF_ASSERT_OFFSET(HfHealth, zone_3_armor, 2392);
 #define HF_TYPE_Health_zone_3_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_3_health, 2408);
 #define HF_TYPE_Health_zone_3_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_3_constitution, 2412);
+#define HF_TYPE_Health_zone_3_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_3_downs_on_death, 2419);
+#define HF_TYPE_Health_zone_3_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_3_fatal, 2420);
+#define HF_TYPE_Health_zone_3_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_3_affects_main_health, 2424);
 #define HF_TYPE_Health_zone_3_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_3_affected_by_explosions, 2499);
 #define HF_TYPE_Health_zone_3_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_3_explosive_damage_percentage, 2500);
 #define HF_TYPE_Health_zone_3_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_3_main_health_capped, 2516);
+#define HF_TYPE_Health_zone_3_main_health_capped HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_5, 2924);
 #define HF_TYPE_Health_damage_multiplier_5 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_dps_5, 2928);
@@ -1197,12 +1575,20 @@ HF_ASSERT_OFFSET(HfHealth, zone_4_armor, 2944);
 #define HF_TYPE_Health_zone_4_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_4_health, 2960);
 #define HF_TYPE_Health_zone_4_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_4_constitution, 2964);
+#define HF_TYPE_Health_zone_4_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_4_downs_on_death, 2971);
+#define HF_TYPE_Health_zone_4_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_4_fatal, 2972);
+#define HF_TYPE_Health_zone_4_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_4_affects_main_health, 2976);
 #define HF_TYPE_Health_zone_4_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_4_affected_by_explosions, 3051);
 #define HF_TYPE_Health_zone_4_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_4_explosive_damage_percentage, 3052);
 #define HF_TYPE_Health_zone_4_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_4_main_health_capped, 3068);
+#define HF_TYPE_Health_zone_4_main_health_capped HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_6, 3476);
 #define HF_TYPE_Health_damage_multiplier_6 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, damage_multiplier_dps_6, 3480);
@@ -1213,302 +1599,654 @@ HF_ASSERT_OFFSET(HfHealth, zone_5_armor, 3496);
 #define HF_TYPE_Health_zone_5_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_5_health, 3512);
 #define HF_TYPE_Health_zone_5_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_5_constitution, 3516);
+#define HF_TYPE_Health_zone_5_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_5_downs_on_death, 3523);
+#define HF_TYPE_Health_zone_5_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_5_fatal, 3524);
+#define HF_TYPE_Health_zone_5_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_5_affects_main_health, 3528);
 #define HF_TYPE_Health_zone_5_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_5_affected_by_explosions, 3603);
 #define HF_TYPE_Health_zone_5_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_5_explosive_damage_percentage, 3604);
 #define HF_TYPE_Health_zone_5_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_5_main_health_capped, 3620);
+#define HF_TYPE_Health_zone_5_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_6_durable_resistance, 4036);
+#define HF_TYPE_Health_zone_6_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_6_armor, 4048);
 #define HF_TYPE_Health_zone_6_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_6_health, 4064);
 #define HF_TYPE_Health_zone_6_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_6_constitution, 4068);
+#define HF_TYPE_Health_zone_6_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_6_downs_on_death, 4075);
+#define HF_TYPE_Health_zone_6_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_6_fatal, 4076);
+#define HF_TYPE_Health_zone_6_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_6_affects_main_health, 4080);
 #define HF_TYPE_Health_zone_6_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_6_affected_by_explosions, 4155);
 #define HF_TYPE_Health_zone_6_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_6_explosive_damage_percentage, 4156);
 #define HF_TYPE_Health_zone_6_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_6_main_health_capped, 4172);
+#define HF_TYPE_Health_zone_6_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_7_durable_resistance, 4588);
+#define HF_TYPE_Health_zone_7_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_7_armor, 4600);
 #define HF_TYPE_Health_zone_7_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_7_health, 4616);
 #define HF_TYPE_Health_zone_7_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_7_constitution, 4620);
+#define HF_TYPE_Health_zone_7_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_7_downs_on_death, 4627);
+#define HF_TYPE_Health_zone_7_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_7_fatal, 4628);
+#define HF_TYPE_Health_zone_7_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_7_affects_main_health, 4632);
 #define HF_TYPE_Health_zone_7_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_7_affected_by_explosions, 4707);
 #define HF_TYPE_Health_zone_7_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_7_explosive_damage_percentage, 4708);
 #define HF_TYPE_Health_zone_7_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_7_main_health_capped, 4724);
+#define HF_TYPE_Health_zone_7_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_8_durable_resistance, 5140);
+#define HF_TYPE_Health_zone_8_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_8_armor, 5152);
 #define HF_TYPE_Health_zone_8_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_8_health, 5168);
 #define HF_TYPE_Health_zone_8_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_8_constitution, 5172);
+#define HF_TYPE_Health_zone_8_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_8_downs_on_death, 5179);
+#define HF_TYPE_Health_zone_8_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_8_fatal, 5180);
+#define HF_TYPE_Health_zone_8_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_8_affects_main_health, 5184);
 #define HF_TYPE_Health_zone_8_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_8_affected_by_explosions, 5259);
 #define HF_TYPE_Health_zone_8_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_8_explosive_damage_percentage, 5260);
 #define HF_TYPE_Health_zone_8_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_8_main_health_capped, 5276);
+#define HF_TYPE_Health_zone_8_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_9_durable_resistance, 5692);
+#define HF_TYPE_Health_zone_9_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_9_armor, 5704);
 #define HF_TYPE_Health_zone_9_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_9_health, 5720);
 #define HF_TYPE_Health_zone_9_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_9_constitution, 5724);
+#define HF_TYPE_Health_zone_9_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_9_downs_on_death, 5731);
+#define HF_TYPE_Health_zone_9_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_9_fatal, 5732);
+#define HF_TYPE_Health_zone_9_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_9_affects_main_health, 5736);
 #define HF_TYPE_Health_zone_9_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_9_affected_by_explosions, 5811);
 #define HF_TYPE_Health_zone_9_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_9_explosive_damage_percentage, 5812);
 #define HF_TYPE_Health_zone_9_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_9_main_health_capped, 5828);
+#define HF_TYPE_Health_zone_9_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_10_durable_resistance, 6244);
+#define HF_TYPE_Health_zone_10_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_10_armor, 6256);
 #define HF_TYPE_Health_zone_10_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_10_health, 6272);
 #define HF_TYPE_Health_zone_10_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_10_constitution, 6276);
+#define HF_TYPE_Health_zone_10_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_10_downs_on_death, 6283);
+#define HF_TYPE_Health_zone_10_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_10_fatal, 6284);
+#define HF_TYPE_Health_zone_10_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_10_affects_main_health, 6288);
 #define HF_TYPE_Health_zone_10_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_10_affected_by_explosions, 6363);
 #define HF_TYPE_Health_zone_10_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_10_explosive_damage_percentage, 6364);
 #define HF_TYPE_Health_zone_10_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_10_main_health_capped, 6380);
+#define HF_TYPE_Health_zone_10_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_11_durable_resistance, 6796);
+#define HF_TYPE_Health_zone_11_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_11_armor, 6808);
 #define HF_TYPE_Health_zone_11_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_11_health, 6824);
 #define HF_TYPE_Health_zone_11_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_11_constitution, 6828);
+#define HF_TYPE_Health_zone_11_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_11_downs_on_death, 6835);
+#define HF_TYPE_Health_zone_11_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_11_fatal, 6836);
+#define HF_TYPE_Health_zone_11_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_11_affects_main_health, 6840);
 #define HF_TYPE_Health_zone_11_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_11_affected_by_explosions, 6915);
 #define HF_TYPE_Health_zone_11_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_11_explosive_damage_percentage, 6916);
 #define HF_TYPE_Health_zone_11_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_11_main_health_capped, 6932);
+#define HF_TYPE_Health_zone_11_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_12_durable_resistance, 7348);
+#define HF_TYPE_Health_zone_12_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_12_armor, 7360);
 #define HF_TYPE_Health_zone_12_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_12_health, 7376);
 #define HF_TYPE_Health_zone_12_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_12_constitution, 7380);
+#define HF_TYPE_Health_zone_12_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_12_downs_on_death, 7387);
+#define HF_TYPE_Health_zone_12_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_12_fatal, 7388);
+#define HF_TYPE_Health_zone_12_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_12_affects_main_health, 7392);
 #define HF_TYPE_Health_zone_12_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_12_affected_by_explosions, 7467);
 #define HF_TYPE_Health_zone_12_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_12_explosive_damage_percentage, 7468);
 #define HF_TYPE_Health_zone_12_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_12_main_health_capped, 7484);
+#define HF_TYPE_Health_zone_12_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_13_durable_resistance, 7900);
+#define HF_TYPE_Health_zone_13_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_13_armor, 7912);
 #define HF_TYPE_Health_zone_13_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_13_health, 7928);
 #define HF_TYPE_Health_zone_13_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_13_constitution, 7932);
+#define HF_TYPE_Health_zone_13_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_13_downs_on_death, 7939);
+#define HF_TYPE_Health_zone_13_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_13_fatal, 7940);
+#define HF_TYPE_Health_zone_13_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_13_affects_main_health, 7944);
 #define HF_TYPE_Health_zone_13_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_13_affected_by_explosions, 8019);
 #define HF_TYPE_Health_zone_13_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_13_explosive_damage_percentage, 8020);
 #define HF_TYPE_Health_zone_13_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_13_main_health_capped, 8036);
+#define HF_TYPE_Health_zone_13_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_14_durable_resistance, 8452);
+#define HF_TYPE_Health_zone_14_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_14_armor, 8464);
 #define HF_TYPE_Health_zone_14_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_14_health, 8480);
 #define HF_TYPE_Health_zone_14_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_14_constitution, 8484);
+#define HF_TYPE_Health_zone_14_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_14_downs_on_death, 8491);
+#define HF_TYPE_Health_zone_14_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_14_fatal, 8492);
+#define HF_TYPE_Health_zone_14_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_14_affects_main_health, 8496);
 #define HF_TYPE_Health_zone_14_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_14_affected_by_explosions, 8571);
 #define HF_TYPE_Health_zone_14_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_14_explosive_damage_percentage, 8572);
 #define HF_TYPE_Health_zone_14_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_14_main_health_capped, 8588);
+#define HF_TYPE_Health_zone_14_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_15_durable_resistance, 9004);
+#define HF_TYPE_Health_zone_15_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_15_armor, 9016);
 #define HF_TYPE_Health_zone_15_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_15_health, 9032);
 #define HF_TYPE_Health_zone_15_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_15_constitution, 9036);
+#define HF_TYPE_Health_zone_15_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_15_downs_on_death, 9043);
+#define HF_TYPE_Health_zone_15_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_15_fatal, 9044);
+#define HF_TYPE_Health_zone_15_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_15_affects_main_health, 9048);
 #define HF_TYPE_Health_zone_15_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_15_affected_by_explosions, 9123);
 #define HF_TYPE_Health_zone_15_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_15_explosive_damage_percentage, 9124);
 #define HF_TYPE_Health_zone_15_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_15_main_health_capped, 9140);
+#define HF_TYPE_Health_zone_15_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_16_durable_resistance, 9556);
+#define HF_TYPE_Health_zone_16_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_16_armor, 9568);
 #define HF_TYPE_Health_zone_16_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_16_health, 9584);
 #define HF_TYPE_Health_zone_16_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_16_constitution, 9588);
+#define HF_TYPE_Health_zone_16_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_16_downs_on_death, 9595);
+#define HF_TYPE_Health_zone_16_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_16_fatal, 9596);
+#define HF_TYPE_Health_zone_16_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_16_affects_main_health, 9600);
 #define HF_TYPE_Health_zone_16_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_16_affected_by_explosions, 9675);
 #define HF_TYPE_Health_zone_16_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_16_explosive_damage_percentage, 9676);
 #define HF_TYPE_Health_zone_16_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_16_main_health_capped, 9692);
+#define HF_TYPE_Health_zone_16_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_17_durable_resistance, 10108);
+#define HF_TYPE_Health_zone_17_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_17_armor, 10120);
 #define HF_TYPE_Health_zone_17_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_17_health, 10136);
 #define HF_TYPE_Health_zone_17_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_17_constitution, 10140);
+#define HF_TYPE_Health_zone_17_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_17_downs_on_death, 10147);
+#define HF_TYPE_Health_zone_17_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_17_fatal, 10148);
+#define HF_TYPE_Health_zone_17_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_17_affects_main_health, 10152);
 #define HF_TYPE_Health_zone_17_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_17_affected_by_explosions, 10227);
 #define HF_TYPE_Health_zone_17_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_17_explosive_damage_percentage, 10228);
 #define HF_TYPE_Health_zone_17_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_17_main_health_capped, 10244);
+#define HF_TYPE_Health_zone_17_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_18_durable_resistance, 10660);
+#define HF_TYPE_Health_zone_18_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_18_armor, 10672);
 #define HF_TYPE_Health_zone_18_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_18_health, 10688);
 #define HF_TYPE_Health_zone_18_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_18_constitution, 10692);
+#define HF_TYPE_Health_zone_18_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_18_downs_on_death, 10699);
+#define HF_TYPE_Health_zone_18_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_18_fatal, 10700);
+#define HF_TYPE_Health_zone_18_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_18_affects_main_health, 10704);
 #define HF_TYPE_Health_zone_18_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_18_affected_by_explosions, 10779);
 #define HF_TYPE_Health_zone_18_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_18_explosive_damage_percentage, 10780);
 #define HF_TYPE_Health_zone_18_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_18_main_health_capped, 10796);
+#define HF_TYPE_Health_zone_18_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_19_durable_resistance, 11212);
+#define HF_TYPE_Health_zone_19_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_19_armor, 11224);
 #define HF_TYPE_Health_zone_19_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_19_health, 11240);
 #define HF_TYPE_Health_zone_19_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_19_constitution, 11244);
+#define HF_TYPE_Health_zone_19_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_19_downs_on_death, 11251);
+#define HF_TYPE_Health_zone_19_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_19_fatal, 11252);
+#define HF_TYPE_Health_zone_19_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_19_affects_main_health, 11256);
 #define HF_TYPE_Health_zone_19_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_19_affected_by_explosions, 11331);
 #define HF_TYPE_Health_zone_19_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_19_explosive_damage_percentage, 11332);
 #define HF_TYPE_Health_zone_19_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_19_main_health_capped, 11348);
+#define HF_TYPE_Health_zone_19_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_20_durable_resistance, 11764);
+#define HF_TYPE_Health_zone_20_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_20_armor, 11776);
 #define HF_TYPE_Health_zone_20_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_20_health, 11792);
 #define HF_TYPE_Health_zone_20_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_20_constitution, 11796);
+#define HF_TYPE_Health_zone_20_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_20_downs_on_death, 11803);
+#define HF_TYPE_Health_zone_20_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_20_fatal, 11804);
+#define HF_TYPE_Health_zone_20_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_20_affects_main_health, 11808);
 #define HF_TYPE_Health_zone_20_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_20_affected_by_explosions, 11883);
 #define HF_TYPE_Health_zone_20_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_20_explosive_damage_percentage, 11884);
 #define HF_TYPE_Health_zone_20_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_20_main_health_capped, 11900);
+#define HF_TYPE_Health_zone_20_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_21_durable_resistance, 12316);
+#define HF_TYPE_Health_zone_21_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_21_armor, 12328);
 #define HF_TYPE_Health_zone_21_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_21_health, 12344);
 #define HF_TYPE_Health_zone_21_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_21_constitution, 12348);
+#define HF_TYPE_Health_zone_21_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_21_downs_on_death, 12355);
+#define HF_TYPE_Health_zone_21_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_21_fatal, 12356);
+#define HF_TYPE_Health_zone_21_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_21_affects_main_health, 12360);
 #define HF_TYPE_Health_zone_21_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_21_affected_by_explosions, 12435);
 #define HF_TYPE_Health_zone_21_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_21_explosive_damage_percentage, 12436);
 #define HF_TYPE_Health_zone_21_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_21_main_health_capped, 12452);
+#define HF_TYPE_Health_zone_21_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_22_durable_resistance, 12868);
+#define HF_TYPE_Health_zone_22_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_22_armor, 12880);
 #define HF_TYPE_Health_zone_22_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_22_health, 12896);
 #define HF_TYPE_Health_zone_22_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_22_constitution, 12900);
+#define HF_TYPE_Health_zone_22_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_22_downs_on_death, 12907);
+#define HF_TYPE_Health_zone_22_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_22_fatal, 12908);
+#define HF_TYPE_Health_zone_22_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_22_affects_main_health, 12912);
 #define HF_TYPE_Health_zone_22_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_22_affected_by_explosions, 12987);
 #define HF_TYPE_Health_zone_22_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_22_explosive_damage_percentage, 12988);
 #define HF_TYPE_Health_zone_22_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_22_main_health_capped, 13004);
+#define HF_TYPE_Health_zone_22_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_23_durable_resistance, 13420);
+#define HF_TYPE_Health_zone_23_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_23_armor, 13432);
 #define HF_TYPE_Health_zone_23_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_23_health, 13448);
 #define HF_TYPE_Health_zone_23_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_23_constitution, 13452);
+#define HF_TYPE_Health_zone_23_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_23_downs_on_death, 13459);
+#define HF_TYPE_Health_zone_23_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_23_fatal, 13460);
+#define HF_TYPE_Health_zone_23_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_23_affects_main_health, 13464);
 #define HF_TYPE_Health_zone_23_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_23_affected_by_explosions, 13539);
 #define HF_TYPE_Health_zone_23_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_23_explosive_damage_percentage, 13540);
 #define HF_TYPE_Health_zone_23_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_23_main_health_capped, 13556);
+#define HF_TYPE_Health_zone_23_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_24_durable_resistance, 13972);
+#define HF_TYPE_Health_zone_24_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_24_armor, 13984);
 #define HF_TYPE_Health_zone_24_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_24_health, 14000);
 #define HF_TYPE_Health_zone_24_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_24_constitution, 14004);
+#define HF_TYPE_Health_zone_24_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_24_downs_on_death, 14011);
+#define HF_TYPE_Health_zone_24_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_24_fatal, 14012);
+#define HF_TYPE_Health_zone_24_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_24_affects_main_health, 14016);
 #define HF_TYPE_Health_zone_24_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_24_affected_by_explosions, 14091);
 #define HF_TYPE_Health_zone_24_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_24_explosive_damage_percentage, 14092);
 #define HF_TYPE_Health_zone_24_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_24_main_health_capped, 14108);
+#define HF_TYPE_Health_zone_24_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_25_durable_resistance, 14524);
+#define HF_TYPE_Health_zone_25_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_25_armor, 14536);
 #define HF_TYPE_Health_zone_25_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_25_health, 14552);
 #define HF_TYPE_Health_zone_25_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_25_constitution, 14556);
+#define HF_TYPE_Health_zone_25_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_25_downs_on_death, 14563);
+#define HF_TYPE_Health_zone_25_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_25_fatal, 14564);
+#define HF_TYPE_Health_zone_25_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_25_affects_main_health, 14568);
 #define HF_TYPE_Health_zone_25_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_25_affected_by_explosions, 14643);
 #define HF_TYPE_Health_zone_25_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_25_explosive_damage_percentage, 14644);
 #define HF_TYPE_Health_zone_25_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_25_main_health_capped, 14660);
+#define HF_TYPE_Health_zone_25_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_26_durable_resistance, 15076);
+#define HF_TYPE_Health_zone_26_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_26_armor, 15088);
 #define HF_TYPE_Health_zone_26_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_26_health, 15104);
 #define HF_TYPE_Health_zone_26_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_26_constitution, 15108);
+#define HF_TYPE_Health_zone_26_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_26_downs_on_death, 15115);
+#define HF_TYPE_Health_zone_26_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_26_fatal, 15116);
+#define HF_TYPE_Health_zone_26_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_26_affects_main_health, 15120);
 #define HF_TYPE_Health_zone_26_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_26_affected_by_explosions, 15195);
 #define HF_TYPE_Health_zone_26_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_26_explosive_damage_percentage, 15196);
 #define HF_TYPE_Health_zone_26_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_26_main_health_capped, 15212);
+#define HF_TYPE_Health_zone_26_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_27_durable_resistance, 15628);
+#define HF_TYPE_Health_zone_27_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_27_armor, 15640);
 #define HF_TYPE_Health_zone_27_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_27_health, 15656);
 #define HF_TYPE_Health_zone_27_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_27_constitution, 15660);
+#define HF_TYPE_Health_zone_27_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_27_downs_on_death, 15667);
+#define HF_TYPE_Health_zone_27_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_27_fatal, 15668);
+#define HF_TYPE_Health_zone_27_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_27_affects_main_health, 15672);
 #define HF_TYPE_Health_zone_27_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_27_affected_by_explosions, 15747);
 #define HF_TYPE_Health_zone_27_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_27_explosive_damage_percentage, 15748);
 #define HF_TYPE_Health_zone_27_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_27_main_health_capped, 15764);
+#define HF_TYPE_Health_zone_27_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_28_durable_resistance, 16180);
+#define HF_TYPE_Health_zone_28_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_28_armor, 16192);
 #define HF_TYPE_Health_zone_28_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_28_health, 16208);
 #define HF_TYPE_Health_zone_28_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_28_constitution, 16212);
+#define HF_TYPE_Health_zone_28_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_28_downs_on_death, 16219);
+#define HF_TYPE_Health_zone_28_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_28_fatal, 16220);
+#define HF_TYPE_Health_zone_28_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_28_affects_main_health, 16224);
 #define HF_TYPE_Health_zone_28_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_28_affected_by_explosions, 16299);
 #define HF_TYPE_Health_zone_28_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_28_explosive_damage_percentage, 16300);
 #define HF_TYPE_Health_zone_28_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_28_main_health_capped, 16316);
+#define HF_TYPE_Health_zone_28_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_29_durable_resistance, 16732);
+#define HF_TYPE_Health_zone_29_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_29_armor, 16744);
 #define HF_TYPE_Health_zone_29_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_29_health, 16760);
 #define HF_TYPE_Health_zone_29_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_29_constitution, 16764);
+#define HF_TYPE_Health_zone_29_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_29_downs_on_death, 16771);
+#define HF_TYPE_Health_zone_29_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_29_fatal, 16772);
+#define HF_TYPE_Health_zone_29_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_29_affects_main_health, 16776);
 #define HF_TYPE_Health_zone_29_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_29_affected_by_explosions, 16851);
 #define HF_TYPE_Health_zone_29_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_29_explosive_damage_percentage, 16852);
 #define HF_TYPE_Health_zone_29_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_29_main_health_capped, 16868);
+#define HF_TYPE_Health_zone_29_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_30_durable_resistance, 17284);
+#define HF_TYPE_Health_zone_30_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_30_armor, 17296);
 #define HF_TYPE_Health_zone_30_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_30_health, 17312);
 #define HF_TYPE_Health_zone_30_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_30_constitution, 17316);
+#define HF_TYPE_Health_zone_30_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_30_downs_on_death, 17323);
+#define HF_TYPE_Health_zone_30_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_30_fatal, 17324);
+#define HF_TYPE_Health_zone_30_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_30_affects_main_health, 17328);
 #define HF_TYPE_Health_zone_30_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_30_affected_by_explosions, 17403);
 #define HF_TYPE_Health_zone_30_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_30_explosive_damage_percentage, 17404);
 #define HF_TYPE_Health_zone_30_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_30_main_health_capped, 17420);
+#define HF_TYPE_Health_zone_30_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_31_durable_resistance, 17836);
+#define HF_TYPE_Health_zone_31_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_31_armor, 17848);
 #define HF_TYPE_Health_zone_31_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_31_health, 17864);
 #define HF_TYPE_Health_zone_31_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_31_constitution, 17868);
+#define HF_TYPE_Health_zone_31_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_31_downs_on_death, 17875);
+#define HF_TYPE_Health_zone_31_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_31_fatal, 17876);
+#define HF_TYPE_Health_zone_31_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_31_affects_main_health, 17880);
 #define HF_TYPE_Health_zone_31_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_31_affected_by_explosions, 17955);
 #define HF_TYPE_Health_zone_31_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_31_explosive_damage_percentage, 17956);
 #define HF_TYPE_Health_zone_31_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_31_main_health_capped, 17972);
+#define HF_TYPE_Health_zone_31_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_32_durable_resistance, 18388);
+#define HF_TYPE_Health_zone_32_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_32_armor, 18400);
 #define HF_TYPE_Health_zone_32_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_32_health, 18416);
 #define HF_TYPE_Health_zone_32_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_32_constitution, 18420);
+#define HF_TYPE_Health_zone_32_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_32_downs_on_death, 18427);
+#define HF_TYPE_Health_zone_32_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_32_fatal, 18428);
+#define HF_TYPE_Health_zone_32_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_32_affects_main_health, 18432);
 #define HF_TYPE_Health_zone_32_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_32_affected_by_explosions, 18507);
 #define HF_TYPE_Health_zone_32_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_32_explosive_damage_percentage, 18508);
 #define HF_TYPE_Health_zone_32_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_32_main_health_capped, 18524);
+#define HF_TYPE_Health_zone_32_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_33_durable_resistance, 18940);
+#define HF_TYPE_Health_zone_33_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_33_armor, 18952);
 #define HF_TYPE_Health_zone_33_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_33_health, 18968);
 #define HF_TYPE_Health_zone_33_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_33_constitution, 18972);
+#define HF_TYPE_Health_zone_33_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_33_downs_on_death, 18979);
+#define HF_TYPE_Health_zone_33_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_33_fatal, 18980);
+#define HF_TYPE_Health_zone_33_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_33_affects_main_health, 18984);
 #define HF_TYPE_Health_zone_33_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_33_affected_by_explosions, 19059);
 #define HF_TYPE_Health_zone_33_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_33_explosive_damage_percentage, 19060);
 #define HF_TYPE_Health_zone_33_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_33_main_health_capped, 19076);
+#define HF_TYPE_Health_zone_33_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_34_durable_resistance, 19492);
+#define HF_TYPE_Health_zone_34_durable_resistance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_34_armor, 19504);
 #define HF_TYPE_Health_zone_34_armor HF_TYPE_U32
 HF_ASSERT_OFFSET(HfHealth, zone_34_health, 19520);
 #define HF_TYPE_Health_zone_34_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_34_constitution, 19524);
+#define HF_TYPE_Health_zone_34_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_34_downs_on_death, 19531);
+#define HF_TYPE_Health_zone_34_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_34_fatal, 19532);
+#define HF_TYPE_Health_zone_34_fatal HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_34_affects_main_health, 19536);
 #define HF_TYPE_Health_zone_34_affects_main_health HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_34_affected_by_explosions, 19611);
 #define HF_TYPE_Health_zone_34_affected_by_explosions HF_TYPE_U8
 HF_ASSERT_OFFSET(HfHealth, zone_34_explosive_damage_percentage, 19612);
 #define HF_TYPE_Health_zone_34_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_34_main_health_capped, 19628);
+#define HF_TYPE_Health_zone_34_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_35_durable_resistance, 20044);
+#define HF_TYPE_Health_zone_35_durable_resistance HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_35_armor, 20056);
+#define HF_TYPE_Health_zone_35_armor HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, zone_35_health, 20072);
+#define HF_TYPE_Health_zone_35_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_35_constitution, 20076);
+#define HF_TYPE_Health_zone_35_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_35_downs_on_death, 20083);
+#define HF_TYPE_Health_zone_35_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_35_fatal, 20084);
+#define HF_TYPE_Health_zone_35_fatal HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_35_affects_main_health, 20088);
+#define HF_TYPE_Health_zone_35_affects_main_health HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_35_explosive_damage_percentage, 20164);
+#define HF_TYPE_Health_zone_35_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_35_main_health_capped, 20180);
+#define HF_TYPE_Health_zone_35_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_36_durable_resistance, 20596);
+#define HF_TYPE_Health_zone_36_durable_resistance HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_36_armor, 20608);
+#define HF_TYPE_Health_zone_36_armor HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, zone_36_health, 20624);
+#define HF_TYPE_Health_zone_36_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_36_constitution, 20628);
+#define HF_TYPE_Health_zone_36_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_36_downs_on_death, 20635);
+#define HF_TYPE_Health_zone_36_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_36_fatal, 20636);
+#define HF_TYPE_Health_zone_36_fatal HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_36_affects_main_health, 20640);
+#define HF_TYPE_Health_zone_36_affects_main_health HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_36_explosive_damage_percentage, 20716);
+#define HF_TYPE_Health_zone_36_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_36_main_health_capped, 20732);
+#define HF_TYPE_Health_zone_36_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_37_durable_resistance, 21148);
+#define HF_TYPE_Health_zone_37_durable_resistance HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_37_armor, 21160);
+#define HF_TYPE_Health_zone_37_armor HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, zone_37_health, 21176);
+#define HF_TYPE_Health_zone_37_health HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_37_constitution, 21180);
+#define HF_TYPE_Health_zone_37_constitution HF_TYPE_I32
+HF_ASSERT_OFFSET(HfHealth, zone_37_downs_on_death, 21187);
+#define HF_TYPE_Health_zone_37_downs_on_death HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_37_fatal, 21188);
+#define HF_TYPE_Health_zone_37_fatal HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, zone_37_affects_main_health, 21192);
+#define HF_TYPE_Health_zone_37_affects_main_health HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_37_explosive_damage_percentage, 21268);
+#define HF_TYPE_Health_zone_37_explosive_damage_percentage HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, zone_37_main_health_capped, 21284);
+#define HF_TYPE_Health_zone_37_main_health_capped HF_TYPE_U8
 
 /* JumppackComponentData (component 264, 280-byte records): (from the stats schema) */
 #define HfJumppack_INFO "JumppackComponentData", 25480438u
@@ -1603,7 +2341,8 @@ typedef struct HfShield
     float radius;                                /* +0x00 shield.radius (unverified) [respawn?] */
     uint8_t _unknown_04[72];
     float durability;                            /* +0x4C shield.durability (unverified) [respawn?] */
-    uint8_t _unknown_50[8];
+    float armor;                                 /* +0x50 Armor (unverified) [respawn?] */
+    uint8_t _unknown_54[4];
     float recharge_delay;                        /* +0x58 shield.recharge_delay (unverified) [respawn?] */
     float broken_recharge_delay;                 /* +0x5C shield.broken_recharge_delay (unverified) [respawn?] */
     float recharge_rate;                         /* +0x60 shield.recharge_rate (unverified) [respawn?] */
@@ -1614,6 +2353,8 @@ HF_ASSERT_OFFSET(HfShield, radius, 0);
 #define HF_TYPE_Shield_radius HF_TYPE_F32
 HF_ASSERT_OFFSET(HfShield, durability, 76);
 #define HF_TYPE_Shield_durability HF_TYPE_F32
+HF_ASSERT_OFFSET(HfShield, armor, 80);
+#define HF_TYPE_Shield_armor HF_TYPE_F32
 HF_ASSERT_OFFSET(HfShield, recharge_delay, 88);
 #define HF_TYPE_Shield_recharge_delay HF_TYPE_F32
 HF_ASSERT_OFFSET(HfShield, broken_recharge_delay, 92);
@@ -1720,13 +2461,16 @@ HF_ASSERT_OFFSET(HfBeamWeapon, pulse_seconds, 112);
 typedef struct HfWeaponHeat
 {
     float level_1_threshold;                     /* +0x00 Heat level 1 threshold (heat_units) (unverified) [respawn?] */
-    uint8_t _unknown_04[16];
+    uint32_t level_1_projectile;                 /* +0x04 the projectile a shot at heat level 1 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_08[12];
     uint32_t level_1_self_status;                /* +0x14 Heat level 1 status on the wielder (unverified) [respawn?] */
     float level_2_threshold;                     /* +0x18 Heat level 2 threshold (heat_units) (unverified) [respawn?] */
-    uint8_t _unknown_1C[16];
+    uint32_t level_2_projectile;                 /* +0x1C the projectile a shot at heat level 2 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_20[12];
     uint32_t level_2_self_status;                /* +0x2C Heat level 2 status on the wielder (unverified) [respawn?] */
     float level_3_threshold;                     /* +0x30 Heat level 3 threshold (heat_units) (unverified) [respawn?] */
-    uint8_t _unknown_34[16];
+    uint32_t level_3_projectile;                 /* +0x34 the projectile a shot at heat level 3 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_38[12];
     uint32_t level_3_self_status;                /* +0x44 Heat level 3 status on the wielder (unverified) [respawn?] */
     float fire_rate_multiplier_max;              /* +0x48 Fire rate multiplier at maximum heat (multiplier) (unverified) [respawn?] */
     float fire_rate_curve_exponent;              /* +0x4C Heat fire rate curve exponent (factor) (unverified) [respawn?] */
@@ -1756,14 +2500,20 @@ typedef struct HfWeaponHeat
 HF_ASSERT_SIZE(HfWeaponHeat, 592);
 HF_ASSERT_OFFSET(HfWeaponHeat, level_1_threshold, 0);
 #define HF_TYPE_WeaponHeat_level_1_threshold HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponHeat, level_1_projectile, 4);
+#define HF_TYPE_WeaponHeat_level_1_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, level_1_self_status, 20);
 #define HF_TYPE_WeaponHeat_level_1_self_status HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, level_2_threshold, 24);
 #define HF_TYPE_WeaponHeat_level_2_threshold HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponHeat, level_2_projectile, 28);
+#define HF_TYPE_WeaponHeat_level_2_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, level_2_self_status, 44);
 #define HF_TYPE_WeaponHeat_level_2_self_status HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, level_3_threshold, 48);
 #define HF_TYPE_WeaponHeat_level_3_threshold HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponHeat, level_3_projectile, 52);
+#define HF_TYPE_WeaponHeat_level_3_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, level_3_self_status, 68);
 #define HF_TYPE_WeaponHeat_level_3_self_status HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponHeat, fire_rate_multiplier_max, 72);
@@ -1991,11 +2741,14 @@ HF_ASSERT_OFFSET(HfVehicleMotion, steering_response_speed, 364);
 typedef struct HfWeaponCharge
 {
     float level_1;                               /* +0x00 Minimum charge time (seconds) (unverified) [respawn?] */
-    uint8_t _unknown_04[20];
+    uint32_t level_1_projectile;                 /* +0x04 the projectile a release at charge level 1 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_08[16];
     float level_2;                               /* +0x18 Full charge time (seconds) (unverified) [respawn?] */
-    uint8_t _unknown_1C[20];
+    uint32_t level_2_projectile;                 /* +0x1C the projectile a release at charge level 2 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_20[16];
     float level_3;                               /* +0x30 Overcharge time (seconds) (unverified) [respawn?] */
-    uint8_t _unknown_34[20];
+    uint32_t level_3_projectile;                 /* +0x34 the projectile a release at charge level 3 fires (passed to the fire function as its explicit type) (unverified) [respawn?] */
+    uint8_t _unknown_38[16];
     float minimum_seconds;                       /* +0x48 Projectile speed multiplier at minimum charge (deprecated id) (multiplier) (unverified) [respawn?] */
     float maximum_seconds;                       /* +0x4C Projectile speed multiplier at full overcharge (deprecated id) (multiplier) (unverified) [respawn?] */
     float damage_multiplier_min;                 /* +0x50 Damage multiplier at minimum charge (multiplier) (unverified) [respawn?] */
@@ -2019,10 +2772,16 @@ typedef struct HfWeaponCharge
 HF_ASSERT_SIZE(HfWeaponCharge, 216);
 HF_ASSERT_OFFSET(HfWeaponCharge, level_1, 0);
 #define HF_TYPE_WeaponCharge_level_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponCharge, level_1_projectile, 4);
+#define HF_TYPE_WeaponCharge_level_1_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponCharge, level_2, 24);
 #define HF_TYPE_WeaponCharge_level_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponCharge, level_2_projectile, 28);
+#define HF_TYPE_WeaponCharge_level_2_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponCharge, level_3, 48);
 #define HF_TYPE_WeaponCharge_level_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponCharge, level_3_projectile, 52);
+#define HF_TYPE_WeaponCharge_level_3_projectile HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponCharge, minimum_seconds, 72);
 #define HF_TYPE_WeaponCharge_minimum_seconds HF_TYPE_F32
 HF_ASSERT_OFFSET(HfWeaponCharge, maximum_seconds, 76);
@@ -2158,11 +2917,296 @@ typedef struct HfHiveMind
 {
     uint8_t _unknown_00[116];
     float mission_duration;                      /* +0x74 Mission timer in seconds (60 to 2500; the game cuts longer countdowns to 2500). Set it aboard the ship before launch (unverified) [respawn?] */
-    uint8_t _unknown_78[964];
+    uint8_t _unknown_78[376];
+    float patrol_clock_rate_players_1;           /* +0x1F0 Patrol clock rate players 1 (unverified) [respawn?] */
+    float patrol_clock_rate_players_2;           /* +0x1F4 Patrol clock rate players 2 (unverified) [respawn?] */
+    float patrol_clock_rate_players_3;           /* +0x1F8 Patrol clock rate players 3 (unverified) [respawn?] */
+    float patrol_clock_rate_players_4;           /* +0x1FC Patrol clock rate players 4 (unverified) [respawn?] */
+    uint8_t _unknown_200[24];
+    float queue_limit_progress_1;                /* +0x218 Queue limit progress 1 (unverified) [respawn?] */
+    float queue_limit_progress_2;                /* +0x21C Queue limit progress 2 (unverified) [respawn?] */
+    float queue_limit_progress_3;                /* +0x220 Queue limit progress 3 (unverified) [respawn?] */
+    float queue_limit_progress_4;                /* +0x224 Queue limit progress 4 (unverified) [respawn?] */
+    float queue_limit_progress_5;                /* +0x228 Queue limit progress 5 (unverified) [respawn?] */
+    float queue_limit_players_1;                 /* +0x22C Queue limit players 1 (unverified) [respawn?] */
+    float queue_limit_players_2;                 /* +0x230 Queue limit players 2 (unverified) [respawn?] */
+    float queue_limit_players_3;                 /* +0x234 Queue limit players 3 (unverified) [respawn?] */
+    float queue_limit_players_4;                 /* +0x238 Queue limit players 4 (unverified) [respawn?] */
+    float queue_limit_conditional_state;         /* +0x23C Queue limit conditional state (unverified) [respawn?] */
+    float queue_limit_secondary_progress_1;      /* +0x240 Queue limit secondary progress 1 (unverified) [respawn?] */
+    float queue_limit_secondary_progress_2;      /* +0x244 Queue limit secondary progress 2 (unverified) [respawn?] */
+    float queue_limit_secondary_progress_3;      /* +0x248 Queue limit secondary progress 3 (unverified) [respawn?] */
+    float queue_limit_secondary_progress_4;      /* +0x24C Queue limit secondary progress 4 (unverified) [respawn?] */
+    float queue_limit_secondary_progress_5;      /* +0x250 Queue limit secondary progress 5 (unverified) [respawn?] */
+    float refill_clock_rate_progress_1;          /* +0x254 Refill clock rate progress 1 (unverified) [respawn?] */
+    float refill_clock_rate_progress_2;          /* +0x258 Refill clock rate progress 2 (unverified) [respawn?] */
+    float refill_clock_rate_progress_3;          /* +0x25C Refill clock rate progress 3 (unverified) [respawn?] */
+    float refill_clock_rate_progress_4;          /* +0x260 Refill clock rate progress 4 (unverified) [respawn?] */
+    float refill_clock_rate_progress_5;          /* +0x264 Refill clock rate progress 5 (unverified) [respawn?] */
+    float refill_clock_rate_players_1;           /* +0x268 Refill clock rate players 1 (unverified) [respawn?] */
+    float refill_clock_rate_players_2;           /* +0x26C Refill clock rate players 2 (unverified) [respawn?] */
+    float refill_clock_rate_players_3;           /* +0x270 Refill clock rate players 3 (unverified) [respawn?] */
+    float refill_clock_rate_players_4;           /* +0x274 Refill clock rate players 4 (unverified) [respawn?] */
+    float refill_clock_rate_conditional_state;   /* +0x278 Refill clock rate conditional state (unverified) [respawn?] */
+    float refill_clock_rate_secondary_progress_1; /* +0x27C Refill clock rate secondary progress 1 (unverified) [respawn?] */
+    float refill_clock_rate_secondary_progress_2; /* +0x280 Refill clock rate secondary progress 2 (unverified) [respawn?] */
+    float refill_clock_rate_secondary_progress_3; /* +0x284 Refill clock rate secondary progress 3 (unverified) [respawn?] */
+    float refill_clock_rate_secondary_progress_4; /* +0x288 Refill clock rate secondary progress 4 (unverified) [respawn?] */
+    float refill_clock_rate_secondary_progress_5; /* +0x28C Refill clock rate secondary progress 5 (unverified) [respawn?] */
+    float batch_size_progress_1;                 /* +0x290 Batch size progress 1 (unverified) [respawn?] */
+    float batch_size_progress_2;                 /* +0x294 Batch size progress 2 (unverified) [respawn?] */
+    float batch_size_progress_3;                 /* +0x298 Batch size progress 3 (unverified) [respawn?] */
+    float batch_size_progress_4;                 /* +0x29C Batch size progress 4 (unverified) [respawn?] */
+    float batch_size_progress_5;                 /* +0x2A0 Batch size progress 5 (unverified) [respawn?] */
+    float batch_size_players_1;                  /* +0x2A4 Batch size players 1 (unverified) [respawn?] */
+    float batch_size_players_2;                  /* +0x2A8 Batch size players 2 (unverified) [respawn?] */
+    float batch_size_players_3;                  /* +0x2AC Batch size players 3 (unverified) [respawn?] */
+    float batch_size_players_4;                  /* +0x2B0 Batch size players 4 (unverified) [respawn?] */
+    float batch_size_conditional_state;          /* +0x2B4 Batch size conditional state (unverified) [respawn?] */
+    float batch_size_secondary_progress_1;       /* +0x2B8 Batch size secondary progress 1 (unverified) [respawn?] */
+    float batch_size_secondary_progress_2;       /* +0x2BC Batch size secondary progress 2 (unverified) [respawn?] */
+    float batch_size_secondary_progress_3;       /* +0x2C0 Batch size secondary progress 3 (unverified) [respawn?] */
+    float batch_size_secondary_progress_4;       /* +0x2C4 Batch size secondary progress 4 (unverified) [respawn?] */
+    float batch_size_secondary_progress_5;       /* +0x2C8 Batch size secondary progress 5 (unverified) [respawn?] */
+    float minimum_batch_size_progress_1;         /* +0x2CC Minimum batch size progress 1 (unverified) [respawn?] */
+    float minimum_batch_size_progress_2;         /* +0x2D0 Minimum batch size progress 2 (unverified) [respawn?] */
+    float minimum_batch_size_progress_3;         /* +0x2D4 Minimum batch size progress 3 (unverified) [respawn?] */
+    float minimum_batch_size_progress_4;         /* +0x2D8 Minimum batch size progress 4 (unverified) [respawn?] */
+    float minimum_batch_size_progress_5;         /* +0x2DC Minimum batch size progress 5 (unverified) [respawn?] */
+    float minimum_batch_size_players_1;          /* +0x2E0 Minimum batch size players 1 (unverified) [respawn?] */
+    float minimum_batch_size_players_2;          /* +0x2E4 Minimum batch size players 2 (unverified) [respawn?] */
+    float minimum_batch_size_players_3;          /* +0x2E8 Minimum batch size players 3 (unverified) [respawn?] */
+    float minimum_batch_size_players_4;          /* +0x2EC Minimum batch size players 4 (unverified) [respawn?] */
+    float minimum_batch_size_conditional_state;  /* +0x2F0 Minimum batch size conditional state (unverified) [respawn?] */
+    float minimum_batch_size_secondary_progress_1; /* +0x2F4 Minimum batch size secondary progress 1 (unverified) [respawn?] */
+    float minimum_batch_size_secondary_progress_2; /* +0x2F8 Minimum batch size secondary progress 2 (unverified) [respawn?] */
+    float minimum_batch_size_secondary_progress_3; /* +0x2FC Minimum batch size secondary progress 3 (unverified) [respawn?] */
+    float minimum_batch_size_secondary_progress_4; /* +0x300 Minimum batch size secondary progress 4 (unverified) [respawn?] */
+    float minimum_batch_size_secondary_progress_5; /* +0x304 Minimum batch size secondary progress 5 (unverified) [respawn?] */
+    float release_clock_rate_progress_1;         /* +0x308 Release clock rate progress 1 (unverified) [respawn?] */
+    float release_clock_rate_progress_2;         /* +0x30C Release clock rate progress 2 (unverified) [respawn?] */
+    float release_clock_rate_progress_3;         /* +0x310 Release clock rate progress 3 (unverified) [respawn?] */
+    float release_clock_rate_progress_4;         /* +0x314 Release clock rate progress 4 (unverified) [respawn?] */
+    float release_clock_rate_progress_5;         /* +0x318 Release clock rate progress 5 (unverified) [respawn?] */
+    float release_clock_rate_players_1;          /* +0x31C Release clock rate players 1 (unverified) [respawn?] */
+    float release_clock_rate_players_2;          /* +0x320 Release clock rate players 2 (unverified) [respawn?] */
+    float release_clock_rate_players_3;          /* +0x324 Release clock rate players 3 (unverified) [respawn?] */
+    float release_clock_rate_players_4;          /* +0x328 Release clock rate players 4 (unverified) [respawn?] */
+    float release_clock_rate_conditional_state;  /* +0x32C Release clock rate conditional state (unverified) [respawn?] */
+    float release_clock_rate_secondary_progress_1; /* +0x330 Release clock rate secondary progress 1 (unverified) [respawn?] */
+    float release_clock_rate_secondary_progress_2; /* +0x334 Release clock rate secondary progress 2 (unverified) [respawn?] */
+    float release_clock_rate_secondary_progress_3; /* +0x338 Release clock rate secondary progress 3 (unverified) [respawn?] */
+    float release_clock_rate_secondary_progress_4; /* +0x33C Release clock rate secondary progress 4 (unverified) [respawn?] */
+    float release_clock_rate_secondary_progress_5; /* +0x340 Release clock rate secondary progress 5 (unverified) [respawn?] */
+    uint8_t _unknown_344[60];
+    float shared_cooldown_duration_progress_1;   /* +0x380 Shared cooldown duration progress 1 (unverified) [respawn?] */
+    float shared_cooldown_duration_progress_2;   /* +0x384 Shared cooldown duration progress 2 (unverified) [respawn?] */
+    float shared_cooldown_duration_progress_3;   /* +0x388 Shared cooldown duration progress 3 (unverified) [respawn?] */
+    float shared_cooldown_duration_progress_4;   /* +0x38C Shared cooldown duration progress 4 (unverified) [respawn?] */
+    float shared_cooldown_duration_progress_5;   /* +0x390 Shared cooldown duration progress 5 (unverified) [respawn?] */
+    float shared_cooldown_duration_players_1;    /* +0x394 Shared cooldown duration players 1 (unverified) [respawn?] */
+    float shared_cooldown_duration_players_2;    /* +0x398 Shared cooldown duration players 2 (unverified) [respawn?] */
+    float shared_cooldown_duration_players_3;    /* +0x39C Shared cooldown duration players 3 (unverified) [respawn?] */
+    float shared_cooldown_duration_players_4;    /* +0x3A0 Shared cooldown duration players 4 (unverified) [respawn?] */
+    float shared_cooldown_duration_conditional_state; /* +0x3A4 Shared cooldown duration conditional state (unverified) [respawn?] */
+    float shared_cooldown_duration_secondary_progress_1; /* +0x3A8 Shared cooldown duration secondary progress 1 (unverified) [respawn?] */
+    float shared_cooldown_duration_secondary_progress_2; /* +0x3AC Shared cooldown duration secondary progress 2 (unverified) [respawn?] */
+    float shared_cooldown_duration_secondary_progress_3; /* +0x3B0 Shared cooldown duration secondary progress 3 (unverified) [respawn?] */
+    float shared_cooldown_duration_secondary_progress_4; /* +0x3B4 Shared cooldown duration secondary progress 4 (unverified) [respawn?] */
+    float shared_cooldown_duration_secondary_progress_5; /* +0x3B8 Shared cooldown duration secondary progress 5 (unverified) [respawn?] */
+    uint8_t _unknown_3BC[128];
 } HfHiveMind;
 HF_ASSERT_SIZE(HfHiveMind, 1084);
 HF_ASSERT_OFFSET(HfHiveMind, mission_duration, 116);
 #define HF_TYPE_HiveMind_mission_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, patrol_clock_rate_players_1, 496);
+#define HF_TYPE_HiveMind_patrol_clock_rate_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, patrol_clock_rate_players_2, 500);
+#define HF_TYPE_HiveMind_patrol_clock_rate_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, patrol_clock_rate_players_3, 504);
+#define HF_TYPE_HiveMind_patrol_clock_rate_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, patrol_clock_rate_players_4, 508);
+#define HF_TYPE_HiveMind_patrol_clock_rate_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_progress_1, 536);
+#define HF_TYPE_HiveMind_queue_limit_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_progress_2, 540);
+#define HF_TYPE_HiveMind_queue_limit_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_progress_3, 544);
+#define HF_TYPE_HiveMind_queue_limit_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_progress_4, 548);
+#define HF_TYPE_HiveMind_queue_limit_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_progress_5, 552);
+#define HF_TYPE_HiveMind_queue_limit_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_players_1, 556);
+#define HF_TYPE_HiveMind_queue_limit_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_players_2, 560);
+#define HF_TYPE_HiveMind_queue_limit_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_players_3, 564);
+#define HF_TYPE_HiveMind_queue_limit_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_players_4, 568);
+#define HF_TYPE_HiveMind_queue_limit_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_conditional_state, 572);
+#define HF_TYPE_HiveMind_queue_limit_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_secondary_progress_1, 576);
+#define HF_TYPE_HiveMind_queue_limit_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_secondary_progress_2, 580);
+#define HF_TYPE_HiveMind_queue_limit_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_secondary_progress_3, 584);
+#define HF_TYPE_HiveMind_queue_limit_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_secondary_progress_4, 588);
+#define HF_TYPE_HiveMind_queue_limit_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, queue_limit_secondary_progress_5, 592);
+#define HF_TYPE_HiveMind_queue_limit_secondary_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_progress_1, 596);
+#define HF_TYPE_HiveMind_refill_clock_rate_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_progress_2, 600);
+#define HF_TYPE_HiveMind_refill_clock_rate_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_progress_3, 604);
+#define HF_TYPE_HiveMind_refill_clock_rate_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_progress_4, 608);
+#define HF_TYPE_HiveMind_refill_clock_rate_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_progress_5, 612);
+#define HF_TYPE_HiveMind_refill_clock_rate_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_players_1, 616);
+#define HF_TYPE_HiveMind_refill_clock_rate_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_players_2, 620);
+#define HF_TYPE_HiveMind_refill_clock_rate_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_players_3, 624);
+#define HF_TYPE_HiveMind_refill_clock_rate_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_players_4, 628);
+#define HF_TYPE_HiveMind_refill_clock_rate_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_conditional_state, 632);
+#define HF_TYPE_HiveMind_refill_clock_rate_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_secondary_progress_1, 636);
+#define HF_TYPE_HiveMind_refill_clock_rate_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_secondary_progress_2, 640);
+#define HF_TYPE_HiveMind_refill_clock_rate_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_secondary_progress_3, 644);
+#define HF_TYPE_HiveMind_refill_clock_rate_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_secondary_progress_4, 648);
+#define HF_TYPE_HiveMind_refill_clock_rate_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, refill_clock_rate_secondary_progress_5, 652);
+#define HF_TYPE_HiveMind_refill_clock_rate_secondary_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_progress_1, 656);
+#define HF_TYPE_HiveMind_batch_size_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_progress_2, 660);
+#define HF_TYPE_HiveMind_batch_size_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_progress_3, 664);
+#define HF_TYPE_HiveMind_batch_size_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_progress_4, 668);
+#define HF_TYPE_HiveMind_batch_size_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_progress_5, 672);
+#define HF_TYPE_HiveMind_batch_size_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_players_1, 676);
+#define HF_TYPE_HiveMind_batch_size_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_players_2, 680);
+#define HF_TYPE_HiveMind_batch_size_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_players_3, 684);
+#define HF_TYPE_HiveMind_batch_size_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_players_4, 688);
+#define HF_TYPE_HiveMind_batch_size_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_conditional_state, 692);
+#define HF_TYPE_HiveMind_batch_size_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_secondary_progress_1, 696);
+#define HF_TYPE_HiveMind_batch_size_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_secondary_progress_2, 700);
+#define HF_TYPE_HiveMind_batch_size_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_secondary_progress_3, 704);
+#define HF_TYPE_HiveMind_batch_size_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_secondary_progress_4, 708);
+#define HF_TYPE_HiveMind_batch_size_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, batch_size_secondary_progress_5, 712);
+#define HF_TYPE_HiveMind_batch_size_secondary_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_progress_1, 716);
+#define HF_TYPE_HiveMind_minimum_batch_size_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_progress_2, 720);
+#define HF_TYPE_HiveMind_minimum_batch_size_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_progress_3, 724);
+#define HF_TYPE_HiveMind_minimum_batch_size_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_progress_4, 728);
+#define HF_TYPE_HiveMind_minimum_batch_size_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_progress_5, 732);
+#define HF_TYPE_HiveMind_minimum_batch_size_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_players_1, 736);
+#define HF_TYPE_HiveMind_minimum_batch_size_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_players_2, 740);
+#define HF_TYPE_HiveMind_minimum_batch_size_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_players_3, 744);
+#define HF_TYPE_HiveMind_minimum_batch_size_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_players_4, 748);
+#define HF_TYPE_HiveMind_minimum_batch_size_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_conditional_state, 752);
+#define HF_TYPE_HiveMind_minimum_batch_size_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_secondary_progress_1, 756);
+#define HF_TYPE_HiveMind_minimum_batch_size_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_secondary_progress_2, 760);
+#define HF_TYPE_HiveMind_minimum_batch_size_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_secondary_progress_3, 764);
+#define HF_TYPE_HiveMind_minimum_batch_size_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_secondary_progress_4, 768);
+#define HF_TYPE_HiveMind_minimum_batch_size_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, minimum_batch_size_secondary_progress_5, 772);
+#define HF_TYPE_HiveMind_minimum_batch_size_secondary_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_progress_1, 776);
+#define HF_TYPE_HiveMind_release_clock_rate_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_progress_2, 780);
+#define HF_TYPE_HiveMind_release_clock_rate_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_progress_3, 784);
+#define HF_TYPE_HiveMind_release_clock_rate_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_progress_4, 788);
+#define HF_TYPE_HiveMind_release_clock_rate_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_progress_5, 792);
+#define HF_TYPE_HiveMind_release_clock_rate_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_players_1, 796);
+#define HF_TYPE_HiveMind_release_clock_rate_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_players_2, 800);
+#define HF_TYPE_HiveMind_release_clock_rate_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_players_3, 804);
+#define HF_TYPE_HiveMind_release_clock_rate_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_players_4, 808);
+#define HF_TYPE_HiveMind_release_clock_rate_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_conditional_state, 812);
+#define HF_TYPE_HiveMind_release_clock_rate_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_secondary_progress_1, 816);
+#define HF_TYPE_HiveMind_release_clock_rate_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_secondary_progress_2, 820);
+#define HF_TYPE_HiveMind_release_clock_rate_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_secondary_progress_3, 824);
+#define HF_TYPE_HiveMind_release_clock_rate_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_secondary_progress_4, 828);
+#define HF_TYPE_HiveMind_release_clock_rate_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, release_clock_rate_secondary_progress_5, 832);
+#define HF_TYPE_HiveMind_release_clock_rate_secondary_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_progress_1, 896);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_progress_2, 900);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_progress_3, 904);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_progress_4, 908);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_progress_5, 912);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_progress_5 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_players_1, 916);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_players_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_players_2, 920);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_players_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_players_3, 924);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_players_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_players_4, 928);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_players_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_conditional_state, 932);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_conditional_state HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_1, 936);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_secondary_progress_1 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_2, 940);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_secondary_progress_2 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_3, 944);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_secondary_progress_3 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_4, 948);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_secondary_progress_4 HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_5, 952);
+#define HF_TYPE_HiveMind_shared_cooldown_duration_secondary_progress_5 HF_TYPE_F32
 
 /* OrbitalAbilityComponentData (component 308, 552-byte records): OrbitalAbilityComponentData (fields from the stats schema) */
 #define HfOrbitalAbility_INFO "OrbitalAbilityComponentData", 25480438u
@@ -2524,6 +3568,269 @@ HF_ASSERT_OFFSET(HfAbilityWeapon, mode1_spends_round, 72);
 #define HF_TYPE_AbilityWeapon_mode1_spends_round HF_TYPE_U8
 HF_ASSERT_OFFSET(HfAbilityWeapon, mode1_always, 73);
 #define HF_TYPE_AbilityWeapon_mode1_always HF_TYPE_U8
+
+/* EnemyRoster (40-byte table rows, found by id): an enemy roster row's spawn weights (a row by (roster << 16) | row; the weights wherever level 11 put them) */
+#define HfEnemyRoster_INFO "EnemyRoster", 25480438u
+typedef struct HfEnemyRoster
+{
+    float weights[10];                           /* +0x00 spawn weight at tech levels (difficulties) 1 to 10 (unverified) [mission?] */
+} HfEnemyRoster;
+HF_ASSERT_SIZE(HfEnemyRoster, 40);
+HF_ASSERT_OFFSET(HfEnemyRoster, weights, 0);
+#define HF_TYPE_EnemyRoster_weights HF_TYPE_F32
+
+/* EnemyRosterLevel11 (4-byte table rows, found by id): an enemy roster row's spawn weight at level 11 (only with a mod that adds it) */
+#define HfEnemyRosterLevel11_INFO "EnemyRosterLevel11", 25480438u
+typedef struct HfEnemyRosterLevel11
+{
+    float weight;                                /* +0x00 spawn weight at level 11 (unverified) [mission?] */
+} HfEnemyRosterLevel11;
+HF_ASSERT_SIZE(HfEnemyRosterLevel11, 4);
+HF_ASSERT_OFFSET(HfEnemyRosterLevel11, weight, 0);
+#define HF_TYPE_EnemyRosterLevel11_weight HF_TYPE_F32
+
+/* EnemyComposition (280-byte table rows, found by id): an enemy squad composition (a row by (roster << 16) | (family << 12) | row) */
+#define HfEnemyComposition_INFO "EnemyComposition", 25480438u
+typedef struct HfEnemyComposition
+{
+    uint32_t group_0_key;                        /* +0x00 group 1: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_0_count;                      /* +0x04 group 1: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_0_emission_time;                 /* +0x08 group 1: emission time (s) (unverified) [mission?] */
+    uint32_t group_1_key;                        /* +0x0C group 2: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_1_count;                      /* +0x10 group 2: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_1_emission_time;                 /* +0x14 group 2: emission time (s) (unverified) [mission?] */
+    uint32_t group_2_key;                        /* +0x18 group 3: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_2_count;                      /* +0x1C group 3: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_2_emission_time;                 /* +0x20 group 3: emission time (s) (unverified) [mission?] */
+    uint32_t group_3_key;                        /* +0x24 group 4: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_3_count;                      /* +0x28 group 4: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_3_emission_time;                 /* +0x2C group 4: emission time (s) (unverified) [mission?] */
+    uint32_t group_4_key;                        /* +0x30 group 5: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_4_count;                      /* +0x34 group 5: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_4_emission_time;                 /* +0x38 group 5: emission time (s) (unverified) [mission?] */
+    uint32_t group_5_key;                        /* +0x3C group 6: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_5_count;                      /* +0x40 group 6: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_5_emission_time;                 /* +0x44 group 6: emission time (s) (unverified) [mission?] */
+    uint32_t group_6_key;                        /* +0x48 group 7: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_6_count;                      /* +0x4C group 7: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_6_emission_time;                 /* +0x50 group 7: emission time (s) (unverified) [mission?] */
+    uint32_t group_7_key;                        /* +0x54 group 8: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_7_count;                      /* +0x58 group 8: how many (the groups total at most 32) (unverified) [mission?] */
+    float group_7_emission_time;                 /* +0x5C group 8: emission time (s) (unverified) [mission?] */
+    uint8_t _unknown_60[128];
+    float weight;                                /* +0xE0 how often it is picked (unverified) [mission?] */
+    float cost_multiplier;                       /* +0xE4 its cost against the budget (unverified) [mission?] */
+    float post_schedule_duration;                /* +0xE8 post-schedule duration (s) (unverified) [mission?] */
+    uint32_t minimum_tech_level;                 /* +0xEC lowest tech level (difficulty) (unverified) [mission?] */
+    uint32_t maximum_tech_level;                 /* +0xF0 highest tech level (difficulty) (unverified) [mission?] */
+    uint32_t minimum_players;                    /* +0xF4 fewest players (unverified) [mission?] */
+    uint32_t maximum_players;                    /* +0xF8 most players (unverified) [mission?] */
+    uint8_t _unknown_FC[28];
+} HfEnemyComposition;
+HF_ASSERT_SIZE(HfEnemyComposition, 280);
+HF_ASSERT_OFFSET(HfEnemyComposition, group_0_key, 0);
+#define HF_TYPE_EnemyComposition_group_0_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_0_count, 4);
+#define HF_TYPE_EnemyComposition_group_0_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_0_emission_time, 8);
+#define HF_TYPE_EnemyComposition_group_0_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_1_key, 12);
+#define HF_TYPE_EnemyComposition_group_1_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_1_count, 16);
+#define HF_TYPE_EnemyComposition_group_1_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_1_emission_time, 20);
+#define HF_TYPE_EnemyComposition_group_1_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_2_key, 24);
+#define HF_TYPE_EnemyComposition_group_2_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_2_count, 28);
+#define HF_TYPE_EnemyComposition_group_2_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_2_emission_time, 32);
+#define HF_TYPE_EnemyComposition_group_2_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_3_key, 36);
+#define HF_TYPE_EnemyComposition_group_3_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_3_count, 40);
+#define HF_TYPE_EnemyComposition_group_3_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_3_emission_time, 44);
+#define HF_TYPE_EnemyComposition_group_3_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_4_key, 48);
+#define HF_TYPE_EnemyComposition_group_4_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_4_count, 52);
+#define HF_TYPE_EnemyComposition_group_4_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_4_emission_time, 56);
+#define HF_TYPE_EnemyComposition_group_4_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_5_key, 60);
+#define HF_TYPE_EnemyComposition_group_5_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_5_count, 64);
+#define HF_TYPE_EnemyComposition_group_5_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_5_emission_time, 68);
+#define HF_TYPE_EnemyComposition_group_5_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_6_key, 72);
+#define HF_TYPE_EnemyComposition_group_6_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_6_count, 76);
+#define HF_TYPE_EnemyComposition_group_6_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_6_emission_time, 80);
+#define HF_TYPE_EnemyComposition_group_6_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_7_key, 84);
+#define HF_TYPE_EnemyComposition_group_7_key HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_7_count, 88);
+#define HF_TYPE_EnemyComposition_group_7_count HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, group_7_emission_time, 92);
+#define HF_TYPE_EnemyComposition_group_7_emission_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, weight, 224);
+#define HF_TYPE_EnemyComposition_weight HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, cost_multiplier, 228);
+#define HF_TYPE_EnemyComposition_cost_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, post_schedule_duration, 232);
+#define HF_TYPE_EnemyComposition_post_schedule_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEnemyComposition, minimum_tech_level, 236);
+#define HF_TYPE_EnemyComposition_minimum_tech_level HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, maximum_tech_level, 240);
+#define HF_TYPE_EnemyComposition_maximum_tech_level HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, minimum_players, 244);
+#define HF_TYPE_EnemyComposition_minimum_players HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyComposition, maximum_players, 248);
+#define HF_TYPE_EnemyComposition_maximum_players HF_TYPE_U32
+
+/* UnitComponentData (component 88, 136-byte records): UnitComponentData (fields from the stats schema) */
+#define HfUnit_INFO "UnitComponentData", 25480438u
+typedef struct HfUnit
+{
+    uint8_t _unknown_00[8];
+    float scale_min;                             /* +0x08 Scale min (unverified) [respawn?] */
+    uint8_t _unknown_0C[4];
+    float radius;                                /* +0x10 Radius (unverified) [respawn?] */
+    uint8_t _unknown_14[116];
+} HfUnit;
+HF_ASSERT_SIZE(HfUnit, 136);
+HF_ASSERT_OFFSET(HfUnit, scale_min, 8);
+#define HF_TYPE_Unit_scale_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfUnit, radius, 16);
+#define HF_TYPE_Unit_radius HF_TYPE_F32
+
+/* SquadTransportFormationComponentData (component 122, 48-byte records): SquadTransportFormationComponentData (fields from the stats schema) */
+#define HfSquadTransportFormation_INFO "SquadTransportFormationComponentData", 25480438u
+typedef struct HfSquadTransportFormation
+{
+    uint8_t _unknown_00[4];
+    uint32_t passenger_formation_0_dimension_0;  /* +0x04 Passenger formation 0 dimension 0 (unverified) [respawn?] */
+    uint32_t passenger_formation_0_dimension_1;  /* +0x08 Passenger formation 0 dimension 1 (unverified) [respawn?] */
+    uint8_t _unknown_0C[16];
+    uint32_t passenger_formation_1_dimension_0;  /* +0x1C Passenger formation 1 dimension 0 (unverified) [respawn?] */
+    uint32_t passenger_formation_1_dimension_1;  /* +0x20 Passenger formation 1 dimension 1 (unverified) [respawn?] */
+    uint8_t _unknown_24[12];
+} HfSquadTransportFormation;
+HF_ASSERT_SIZE(HfSquadTransportFormation, 48);
+HF_ASSERT_OFFSET(HfSquadTransportFormation, passenger_formation_0_dimension_0, 4);
+#define HF_TYPE_SquadTransportFormation_passenger_formation_0_dimension_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSquadTransportFormation, passenger_formation_0_dimension_1, 8);
+#define HF_TYPE_SquadTransportFormation_passenger_formation_0_dimension_1 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSquadTransportFormation, passenger_formation_1_dimension_0, 28);
+#define HF_TYPE_SquadTransportFormation_passenger_formation_1_dimension_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSquadTransportFormation, passenger_formation_1_dimension_1, 32);
+#define HF_TYPE_SquadTransportFormation_passenger_formation_1_dimension_1 HF_TYPE_U32
+
+/* SquadTransportComponentData (component 97, 136-byte records): SquadTransportComponentData (fields from the stats schema) */
+#define HfSquadTransport_INFO "SquadTransportComponentData", 25480438u
+typedef struct HfSquadTransport
+{
+    uint32_t grid_dimension_0;                   /* +0x00 Grid dimension 0 (unverified) [respawn?] */
+    uint32_t grid_dimension_1;                   /* +0x04 Grid dimension 1 (unverified) [respawn?] */
+    uint8_t _unknown_08[128];
+} HfSquadTransport;
+HF_ASSERT_SIZE(HfSquadTransport, 136);
+HF_ASSERT_OFFSET(HfSquadTransport, grid_dimension_0, 0);
+#define HF_TYPE_SquadTransport_grid_dimension_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSquadTransport, grid_dimension_1, 4);
+#define HF_TYPE_SquadTransport_grid_dimension_1 HF_TYPE_U32
+
+/* GoreComponentData (component 230, 33488-byte records): GoreComponentData (fields from the stats schema) */
+#define HfGore_INFO "GoreComponentData", 25480438u
+typedef struct HfGore
+{
+    float whole_body_gib_damage;                 /* +0x00 Whole body gib damage (unverified) [respawn?] */
+    uint8_t _unknown_04[33484];
+} HfGore;
+HF_ASSERT_SIZE(HfGore, 33488);
+HF_ASSERT_OFFSET(HfGore, whole_body_gib_damage, 0);
+#define HF_TYPE_Gore_whole_body_gib_damage HF_TYPE_F32
+
+/* AiSpawnerComponentData (component 182, 196-byte records): AiSpawnerComponentData (fields from the stats schema) */
+#define HfAiSpawner_INFO "AiSpawnerComponentData", 25480438u
+typedef struct HfAiSpawner
+{
+    uint8_t _unknown_00[28];
+    float initial_release_delay;                 /* +0x1C Initial release delay (unverified) [respawn?] */
+    uint8_t _unknown_20[104];
+    uint32_t queue_limit;                        /* +0x88 Queue limit (unverified) [respawn?] */
+    uint32_t batch_size;                         /* +0x8C Batch size (unverified) [respawn?] */
+    uint32_t minimum_batch_size;                 /* +0x90 Minimum batch size (unverified) [respawn?] */
+    float refill_delay;                          /* +0x94 Refill delay (unverified) [respawn?] */
+    float release_delay;                         /* +0x98 Release delay (unverified) [respawn?] */
+    float serialized_release_delay;              /* +0x9C Serialized release delay (unverified) [respawn?] */
+    float delay_variance;                        /* +0xA0 Delay variance (unverified) [respawn?] */
+    uint8_t alternate_roster;                    /* +0xA4 Alternate roster (unverified) [respawn?] */
+    uint8_t _unknown_A5[31];
+} HfAiSpawner;
+HF_ASSERT_SIZE(HfAiSpawner, 196);
+HF_ASSERT_OFFSET(HfAiSpawner, initial_release_delay, 28);
+#define HF_TYPE_AiSpawner_initial_release_delay HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiSpawner, queue_limit, 136);
+#define HF_TYPE_AiSpawner_queue_limit HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAiSpawner, batch_size, 140);
+#define HF_TYPE_AiSpawner_batch_size HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAiSpawner, minimum_batch_size, 144);
+#define HF_TYPE_AiSpawner_minimum_batch_size HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAiSpawner, refill_delay, 148);
+#define HF_TYPE_AiSpawner_refill_delay HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiSpawner, release_delay, 152);
+#define HF_TYPE_AiSpawner_release_delay HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiSpawner, serialized_release_delay, 156);
+#define HF_TYPE_AiSpawner_serialized_release_delay HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiSpawner, delay_variance, 160);
+#define HF_TYPE_AiSpawner_delay_variance HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiSpawner, alternate_roster, 164);
+#define HF_TYPE_AiSpawner_alternate_roster HF_TYPE_U8
+
+/* StratagemBlockerComponentData (component 25, 20-byte records): StratagemBlockerComponentData (fields from the stats schema) */
+#define HfStratagemBlocker_INFO "StratagemBlockerComponentData", 25480438u
+typedef struct HfStratagemBlocker
+{
+    uint8_t _unknown_00[12];
+    float radius;                                /* +0x0C Radius (unverified) [respawn?] */
+    uint8_t initially_enabled;                   /* +0x10 Initially enabled (unverified) [respawn?] */
+    uint8_t _unknown_11[3];
+} HfStratagemBlocker;
+HF_ASSERT_SIZE(HfStratagemBlocker, 20);
+HF_ASSERT_OFFSET(HfStratagemBlocker, radius, 12);
+#define HF_TYPE_StratagemBlocker_radius HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStratagemBlocker, initially_enabled, 16);
+#define HF_TYPE_StratagemBlocker_initially_enabled HF_TYPE_U8
+
+/* BugholeComponentData (component 216, 40-byte records): BugholeComponentData (fields from the stats schema) */
+#define HfBughole_INFO "BugholeComponentData", 25480438u
+typedef struct HfBughole
+{
+    uint8_t _unknown_00[12];
+    float emission_radius;                       /* +0x0C Emission radius (unverified) [respawn?] */
+    uint8_t _unknown_10[24];
+} HfBughole;
+HF_ASSERT_SIZE(HfBughole, 40);
+HF_ASSERT_OFFSET(HfBughole, emission_radius, 12);
+#define HF_TYPE_Bughole_emission_radius HF_TYPE_F32
+
+/* DemolitionTemplate (16-byte table rows, found by id): a demolition template (a row by its index, 1 to 9): the force a destruction stage that names it requires, shared by every such stage */
+#define HfDemolitionTemplate_INFO "DemolitionTemplate", 25480438u
+typedef struct HfDemolitionTemplate
+{
+    uint32_t index;                              /* +0x00 its index (not edited) (unverified) [now?] */
+    uint32_t force;                              /* +0x04 the force a stage naming it requires, 1 to 255 (the incoming force is narrowed to a byte) (unverified) [now?] */
+    uint8_t _unknown_08[8];
+} HfDemolitionTemplate;
+HF_ASSERT_SIZE(HfDemolitionTemplate, 16);
+HF_ASSERT_OFFSET(HfDemolitionTemplate, index, 0);
+#define HF_TYPE_DemolitionTemplate_index HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDemolitionTemplate, force, 4);
+#define HF_TYPE_DemolitionTemplate_force HF_TYPE_U32
 
 #pragma pack(pop)
 

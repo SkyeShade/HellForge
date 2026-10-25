@@ -1,0 +1,467 @@
+{
+ "scope": "The galactic war effects that set enemy subfactions (effect type 40: each adds one enemy tag to a planet's missions, which the spawn director's roster rows and squads require). Read from the live server's /WarSeason/GalacticWarEffects in the retained snapshots of 2026-10-14 (HD2Mods research/subfactions); the community mirror has no copy of that endpoint. Without them every planet effect the war names is inert. Each subfaction's planets also carry an effect of type 71 in the frozen war, its \"flag\" here (1306 and 1307 are always together, so which of 1308 and 1309 is whose is a guess; Spore Burst 1244 and Illuminate Invasion 1413 are on no planet, so theirs are unknown): taken to be the war table's subfaction flag, not yet seen in game.",
+ "subfactions": [
+  {
+   "id": 1202,
+   "name": "Jet Brigade",
+   "faction": 3,
+   "flag": 1203
+  },
+  {
+   "id": 1243,
+   "name": "Predator Strain",
+   "faction": 2,
+   "flag": 1245
+  },
+  {
+   "id": 1244,
+   "name": "Spore Burst Strain",
+   "faction": 2
+  },
+  {
+   "id": 1248,
+   "name": "Incineration Corps",
+   "faction": 3,
+   "flag": 1249
+  },
+  {
+   "id": 1303,
+   "name": "Rupture Strain",
+   "faction": 2,
+   "flag": 1310
+  },
+  {
+   "id": 1306,
+   "name": "Dragonroach",
+   "faction": 2,
+   "flag": 1308
+  },
+  {
+   "id": 1307,
+   "name": "Hive Lord",
+   "faction": 2,
+   "flag": 1309
+  },
+  {
+   "id": 1360,
+   "name": "Cyborgs",
+   "faction": 3,
+   "flag": 1361
+  },
+  {
+   "id": 1377,
+   "name": "Illuminate Harvest",
+   "faction": 4,
+   "flag": 1378
+  },
+  {
+   "id": 1380,
+   "name": "Illuminate Engineers",
+   "faction": 4,
+   "flag": 1379
+  },
+  {
+   "id": 1401,
+   "name": "SEAF allies",
+   "faction": 0,
+   "flag": 1400
+  },
+  {
+   "id": 1402,
+   "name": "Illuminate Body Horror",
+   "faction": 4,
+   "flag": 1403
+  },
+  {
+   "id": 1413,
+   "name": "Illuminate Invasion",
+   "faction": 4
+  }
+ ],
+ "effects": [
+  {
+   "id": 1202,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 529482282,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 764761771,
+   "descriptionGamePlayShortHash": 3606292614,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2922304745
+   ]
+  },
+  {
+   "id": 1243,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 2213459101,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 2836488201,
+   "descriptionGamePlayShortHash": 3892164947,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2313485354
+   ]
+  },
+  {
+   "id": 1244,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 1933807093,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 1930397100,
+   "descriptionGamePlayShortHash": 1809814133,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2745424799
+   ]
+  },
+  {
+   "id": 1248,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 2699559952,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3020342282,
+   "descriptionGamePlayShortHash": 661732031,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1703232728
+   ]
+  },
+  {
+   "id": 1303,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 3194699693,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3440904531,
+   "descriptionGamePlayShortHash": 3791066525,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2423391486
+   ]
+  },
+  {
+   "id": 1306,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 586323553,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 759169633,
+   "descriptionGamePlayShortHash": 3417599614,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2681574458
+   ]
+  },
+  {
+   "id": 1307,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 4110106158,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 2873543664,
+   "descriptionGamePlayShortHash": 4291059164,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    424440415
+   ]
+  },
+  {
+   "id": 1360,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 3954544086,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3824390044,
+   "descriptionGamePlayShortHash": 2415400475,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    141977090
+   ]
+  },
+  {
+   "id": 1377,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 757203167,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 1420765141,
+   "descriptionGamePlayShortHash": 1213377445,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    35348659
+   ]
+  },
+  {
+   "id": 1380,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 3850600755,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 174601617,
+   "descriptionGamePlayShortHash": 1871405586,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    3792924074
+   ]
+  },
+  {
+   "id": 1401,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 110179205,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 2198899767,
+   "descriptionGamePlayShortHash": 236262588,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    3126357841
+   ]
+  },
+  {
+   "id": 1402,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 3067002074,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 1106423529,
+   "descriptionGamePlayShortHash": 2216659196,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    4253783814
+   ]
+  },
+  {
+   "id": 1413,
+   "gameplayEffectId32": 0,
+   "effectType": 40,
+   "flags": 1,
+   "nameHash": 4078058638,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 4087370110,
+   "descriptionGamePlayShortHash": 1403536972,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    872028856
+   ]
+  },
+  {
+   "id": 1203,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 2232702098,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3176669199,
+   "descriptionGamePlayShortHash": 4166386514,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1045188094
+   ]
+  },
+  {
+   "id": 1245,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 4119785905,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3407154363,
+   "descriptionGamePlayShortHash": 1196994687,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    3923464812
+   ]
+  },
+  {
+   "id": 1249,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1905612455,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 1623712229,
+   "descriptionGamePlayShortHash": 2403469794,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    173102335
+   ]
+  },
+  {
+   "id": 1310,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 125217715,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3000581748,
+   "descriptionGamePlayShortHash": 3906038084,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1445539563
+   ]
+  },
+  {
+   "id": 1308,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1519081470,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3346915951,
+   "descriptionGamePlayShortHash": 4239432734,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1772407687
+   ]
+  },
+  {
+   "id": 1309,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 4043185720,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 2161473465,
+   "descriptionGamePlayShortHash": 1380376990,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2509900961
+   ]
+  },
+  {
+   "id": 1361,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1833547084,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 4031555600,
+   "descriptionGamePlayShortHash": 2908273961,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2693256615
+   ]
+  },
+  {
+   "id": 1378,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1808243368,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3537113968,
+   "descriptionGamePlayShortHash": 1963250708,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    3616799310
+   ]
+  },
+  {
+   "id": 1379,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1555311427,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3244052745,
+   "descriptionGamePlayShortHash": 25717685,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    2286663220
+   ]
+  },
+  {
+   "id": 1400,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 1261993335,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3203635020,
+   "descriptionGamePlayShortHash": 941163558,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1227833482
+   ]
+  },
+  {
+   "id": 1403,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 552152078,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 110090379,
+   "descriptionGamePlayShortHash": 968631311,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1011342526
+   ]
+  }
+ ]
+}

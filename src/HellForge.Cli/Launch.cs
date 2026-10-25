@@ -55,7 +55,7 @@ static class Launch
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            WarServerChoice(war, options));
+            Sandbox: Yes(options, "--sandbox", ProfileStore.LoadSandbox(paths)), WarServer: WarServerChoice(war, options));
         string? warServer = session.WarServer?.Origin;
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
@@ -203,6 +203,7 @@ static class Launch
                 multiplayer = ProfileStore.LoadSdkShims(paths),
                 engineLog = ProfileStore.LoadEngineLog(paths),
                 crashDump = ProfileStore.LoadCrashDump(paths),
+                sandbox = ProfileStore.LoadSandbox(paths),
                 gameOptions = ProfileStore.LoadLaunchOptions(paths)
             },
             session = new
@@ -350,6 +351,7 @@ static class Launch
         NoSession();
         var enabled = on switch { "yes" => true, "no" => false, _ => throw new ArgumentException("--on takes yes or no.") };
         Find(install, id);
+        if (id == ModCatalog.LocalStatsId && !enabled) throw new InvalidDataException("Local Stats is always on: it holds the in-game editor's saved changes (reset them in the editor).");
         ModSettings.SetEnabled(install.Mods, id, enabled);
         return new { id, enabled };
     }
@@ -427,11 +429,14 @@ static class Launch
         if (options.ContainsKey("--multiplayer")) ProfileStore.SaveSdkShims(paths, Yes(options, "--multiplayer", true));
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
         if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
+        if (options.ContainsKey("--sandbox")) ProfileStore.SaveSandbox(paths, Yes(options, "--sandbox", false));
         if (options.TryGetValue("--game-options", out var typed))
         {
             _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself
             ProfileStore.SaveLaunchOptions(paths, typed);
         }
+        // Play with strangers is the mods settings' (hellforge-mods.json), which the backend reads, even during a session.
+        if (options.ContainsKey("--strangers")) ModSettings.SetPlayWithStrangers(install.Mods, Yes(options, "--strangers", false));
         return new
         {
             profile = ProfileStore.LoadSelected(paths),
@@ -441,6 +446,9 @@ static class Launch
             engineLog = ProfileStore.LoadEngineLog(paths),
             crashDump = ProfileStore.LoadCrashDump(paths),
             gameOptions = ProfileStore.LoadLaunchOptions(paths),
+            sandbox = ProfileStore.LoadSandbox(paths),
+            steamBridge = SessionRunner.HasSteamBridge(paths),
+            playWithStrangers = ModSettings.PlayWithStrangers(install.Mods),
             file = paths.SettingsFile
         };
     }

@@ -1,11 +1,15 @@
 """Name every stats-schema field in mappings/components.json (so the live editor and the SDK check one layout).
 
-Usage: py scripts/ImportSchemaMappings.py
+Usage: py scripts/ImportSchemaMappings.py [<HD2Runtime 0.40.1>]
 
 For each field of src/HellForge.Core/stats-schema.json (component records and settings tables) whose bytes no mapping
 names, adds a field to its component (one the mappings lack is added from src/HellForge.Core/entity-profile.json),
 named after the schema key's last segment, unverified, its source the schema key; its live timing is the component's.
 A field that would overlap a mapped one of another type is reported, not added.
+
+With HD2Runtime's checkout, also the HD2R Editor's Enemies fields of components the mappings have (scripts/ExportEntities.py:
+an entity's main fields, each damage zone's, the HiveMind's director multipliers), named after the field id's last
+segment and a damage zone's by its slot ("zone_12_health"); run ExportEntities.py again afterwards to offer them.
 """
 import json
 import re
@@ -26,7 +30,7 @@ def name_of(component):
     return n
 
 
-def main():
+def main(runtime=None):
     schema = json.loads((ROOT / 'src/HellForge.Core/stats-schema.json').read_text(encoding='utf-8'))
     profile = json.loads((ROOT / 'src/HellForge.Core/entity-profile.json').read_text(encoding='utf-8'))['components']
     path = ROOT / 'mappings/components.json'
@@ -50,7 +54,18 @@ def main():
                                                                       'storage': f['storage'], 'name': f['label']}, **({'ref': f['ref']} if f.get('ref') else {}))
                                                       for f in fields}}
                     for category, targets in parity.items() for name, fields in targets.items()}
-    for cat, targets in list(schema['targets'].items()) + [('vehicles-extra', extra), ('melee-extra', melee_extra), ('parity-extra', parity_extra)]:
+    # the HD2R Editor's Enemies fields the mappings lack, for components they have (scripts/ExportEntities.py)
+    entity_extra = {}
+    if runtime:
+        sys.path.insert(0, str(Path(__file__).parent))
+        sys.dont_write_bytecode = True
+        from ExportEntities import export  # noqa: E402
+        unmapped = export(Path(runtime))[3]
+        entity_extra = {'entities': {'fields': {('%s@%s+%d' % (u['key'], u['component'], u['offset'])): {
+            'kind': 'component' if u['kind'] == 'component' else u['component'], 'component': u['component'], 'offset': u['offset'],
+            'storage': u['storage'], 'name': u['label'], 'id': u['key']} for u in unmapped}}}
+    for cat, targets in list(schema['targets'].items()) + [('vehicles-extra', extra), ('melee-extra', melee_extra), ('parity-extra', parity_extra),
+                                                           ('entities-extra', entity_extra)]:
         for tname, t in targets.items():
             for key, f in t['fields'].items():
                 kind = f['kind']
@@ -99,11 +114,13 @@ def main():
                 if off + size > c['stride']:
                     conflicts.append(f'{component} +{off}: outside its {c["stride"]}-byte record')
                     continue
+                if cat == 'entities-extra':
+                    key = f['id']  # its HD2Runtime field id, without the entry's address suffix
                 last = key.split('.')
                 # a slot of a list ("presentation.traits.1", "fire_rate.modes.x"): named with its list
                 last = '_'.join(last[-2:]) if len(last) > 1 and (last[-1].isdigit() or last[-1] in ('x', 'y', 'z')) else last[-1]
-                zoned = cat == 'vehicles-extra' or (cat == 'parity-extra' and key.startswith('zone'))  # "zone_3_armor"
-                if cat == 'parity-extra' and key.startswith('zone.'):
+                zoned = cat == 'vehicles-extra' or (cat in ('parity-extra', 'entities-extra') and key.startswith('zone'))  # "zone_3_armor"
+                if cat in ('parity-extra', 'entities-extra') and key.startswith('zone.'):
                     key = 'zone_%d%s' % ((off - 520) // 552, key[4:])  # a page's single zone, by its number
                 base = re.sub(r'[^a-z0-9_]', '_', (key.replace('.', '_') if zoned else last).lower()) or 'field'
                 if base[0].isdigit():
@@ -114,7 +131,7 @@ def main():
                     field = f'{base}_{i}'
                     i += 1
                 c['fields'][field] = {'offset': off, 'type': f['storage'], 'meaning': f.get('name') or key, 'verified': False,
-                                      'source': f'stats-schema {key}'}
+                                      'source': f'HD2Runtime enemy catalogue {f["id"]}' if cat == 'entities-extra' else f'stats-schema {key}'}
                 if f.get('ref'):
                     c['fields'][field]['ref'] = f['ref']
                 added += 1
@@ -127,6 +144,6 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 1:
+    if len(sys.argv) > 2:
         sys.exit(__doc__)
-    main()
+    main(*sys.argv[1:])

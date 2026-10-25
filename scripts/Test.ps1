@@ -40,6 +40,12 @@ try {
     & dotnet $cli inspect --manfiest $manifest
     if ($LASTEXITCODE -ne 1) { throw 'Unknown CLI option was accepted.' }
     Write-Output 'PASS unknown CLI option rejected'
+
+    # The verified list's entry for a mod: its content hash and class, and the entry to copy.
+    $hashed = (& dotnet $cli mod-hash --mod (Join-Path $projectRoot 'examples/mods/machine-gun-10k-code') | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0 -or $hashed.hash -notmatch '^[0-9a-f]{64}$' -or $hashed.class -ne 'code' -or
+        $hashed.entry.hash -ne $hashed.hash) { throw 'mod-hash did not report the example mod.' }
+    Write-Output 'PASS mod-hash reports a mod''s content hash, class and verified-list entry'
     Write-Output 'All checks passed. Fixtures remain under artifacts for review.'
 }
 finally {

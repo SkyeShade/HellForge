@@ -35,6 +35,52 @@ static class OpenWarTests
         var shares = owner.Where(o => o.Key != 0).GroupBy(o => o.Value).ToDictionary(g => g.Key, g => g.Count());
         check(shares.Count == 3 && shares.Values.All(n => n >= 60), "Each enemy holds a large share of the galaxy: " + string.Join(", ", shares.Select(s => s.Key + "=" + s.Value)));
         check(OpenWar.Status(info, frozen).GetRawText() == open.GetRawText(), "The same on every machine.");
+        // subfactions: the effect definitions are served, a planet holds only its enemy's, every Illuminate planet one
+        var subfactions = OpenWar.Subfactions();
+        var definitions = LocalBackend.LoadStartupFixtures()["/WarSeason/GalacticWarEffects"];
+        var flags = OpenWar.Flags();
+        check(definitions.GetArrayLength() == 24 && definitions.EnumerateArray().All(e => e.GetProperty("effectType").GetInt32() == 40 ?
+            subfactions.ContainsKey(e.GetProperty("id").GetInt32()) : e.GetProperty("effectType").GetInt32() == 71 && flags.Values.Contains(e.GetProperty("id").GetInt32())),
+            "The 13 subfaction effects and 11 flags are served (not an empty list).");
+        var onPlanet = open.GetProperty("planetActiveEffects").EnumerateArray()
+            .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32()))
+            .Where(e => subfactions.TryGetValue(e.Id, out var f) && f != 0).ToList();
+        check(onPlanet.All(e => owner[e.Index] == subfactions[e.Id]), "No planet keeps another enemy's subfaction.");
+        var illuminate = owner.Where(o => o.Value == 4).Select(o => o.Key).ToList();
+        check(illuminate.All(i => onPlanet.Any(e => e.Index == i)), "Every Illuminate planet has an Illuminate subfaction.");
+        check(owner[171] == 2 && onPlanet.Contains((171, 1243)), "A frozen-war subfaction of the planet's enemy stays (Predator Strain on 171).");
+        var all = open.GetProperty("planetActiveEffects").EnumerateArray()
+            .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32())).ToList();
+        // (the SEAF's, 1401, is any enemy's: all, not onPlanet)
+        check(all.Where(e => flags.ContainsKey(e.Id)).All(e => all.Count(x => x == (e.Index, flags[e.Id])) == 1) &&
+              all.Where(e => flags.Values.Contains(e.Id)).All(e => all.Any(x => x.Index == e.Index && flags.TryGetValue(x.Id, out var f) && f == e.Id)),
+            "Each subfaction on a planet has its flag there once, and no flag is without its subfaction (1245 with 1243 on 171).");
+        // a subfaction seed deals every sector anew, within its enemy's own; the same seed, the same war; 0 the default
+        List<(int Index, int Id)> Dealt(JsonElement war) => war.GetProperty("planetActiveEffects").EnumerateArray()
+            .Select(e => (e.GetProperty("index").GetInt32(), e.GetProperty("galacticEffectId").GetInt32()))
+            .Where(e => subfactions.TryGetValue(e.Item2, out var f) && f != 0).OrderBy(e => e).ToList();
+        var seeded = OpenWar.Status(info, frozen, seed: 12345);
+        var reseeded = OpenWar.Status(info, frozen, seed: 999);
+        check(OpenWar.Status(info, frozen, seed: 0).GetRawText() == open.GetRawText(), "Seed 0 is the default layout.");
+        check(OpenWar.Status(info, frozen, seed: 12345).GetRawText() == seeded.GetRawText() && !Dealt(seeded).SequenceEqual(Dealt(open)) &&
+              !Dealt(seeded).SequenceEqual(Dealt(reseeded)), "A seed deals another layout, the same each time.");
+        check(Dealt(seeded).All(e => owner[e.Index] == subfactions[e.Id]) && illuminate.All(i => Dealt(seeded).Any(e => e.Index == i)),
+            "A seeded layout keeps each planet to its enemy's subfactions, and every Illuminate planet has one.");
+        // Cyberstan (the Automatons' home world): its 8 Megafactory regions are served available, at full health, with its
+        // campaign; the frozen war's other region rows stay
+        var regionInfos = info.GetProperty("planetRegions").EnumerateArray().Where(r => r.GetProperty("planetIndex").GetInt32() == 260)
+            .ToDictionary(r => r.GetProperty("regionIndex").GetInt32(), r => r.GetProperty("maxHealth").GetInt64());
+        var cyberstan = open.GetProperty("planetRegions").EnumerateArray().Where(r => r.GetProperty("planetIndex").GetInt32() == 260).ToList();
+        check(owner[260] == 3 && regionInfos.Count == 8 && cyberstan.Count == 8 && cyberstan.All(r => r.GetProperty("owner").GetInt32() == 3 &&
+              r.GetProperty("isAvailable").GetBoolean() && r.GetProperty("health").GetInt64() == regionInfos[r.GetProperty("regionIndex").GetInt32()] &&
+              r.EnumerateObject().Count() == 8) && campaigns.Any(c => c.GetProperty("planetIndex").GetInt32() == 260),
+            "Cyberstan's 8 regions are available, the Automatons', at full health, with its campaign.");
+        check(open.GetProperty("planetRegions").GetArrayLength() == frozen.GetProperty("planetRegions").GetArrayLength() + 8,
+            "The other planets' region rows stay.");
+        foreach (var faction in new[] { 2, 3 })
+            check(onPlanet.Where(e => owner[e.Index] == faction).Select(e => e.Id).Distinct().Count() >= 2 &&
+                  owner.Count(o => o.Value == faction) > onPlanet.Count(e => owner[e.Index] == faction),
+                $"Faction {faction}: several subfactions across its sectors, and planets without one.");
 
         // served by the backend in place of the frozen war
         await using var app = LocalBackend.Create(0, Path.Combine(root, "open-war-backend"), LoginMode.LocalSession, true, openWar: true);

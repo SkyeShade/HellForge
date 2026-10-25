@@ -2,15 +2,19 @@
   <ItemGroup><EmbeddedResource Include="supported-build.json" />
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />
     <EmbeddedResource Include="stats-schema.json" LogicalName="HellForge.Core.stats-schema.json" />
+    <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
     <EmbeddedResource Include="../../mappings/hud-icons.json" LogicalName="HellForge.Core.mappings.hud-icons.json" />
     <EmbeddedResource Include="../../mappings/boosters.json" LogicalName="HellForge.Core.mappings.boosters.json" />
     <EmbeddedResource Include="../../mappings/passives.json" LogicalName="HellForge.Core.mappings.passives.json" />
     <EmbeddedResource Include="../../mappings/references.json" LogicalName="HellForge.Core.mappings.references.json" />
+    <EmbeddedResource Include="../../mappings/projectile-sources.json" LogicalName="HellForge.Core.mappings.projectile-sources.json" />
     <EmbeddedResource Include="../../mappings/armor-perks.json" LogicalName="HellForge.Core.mappings.armor-perks.json" />
     <EmbeddedResource Include="../../mappings/hd2r-keys.json" LogicalName="HellForge.Core.mappings.hd2r-keys.json" />
     <EmbeddedResource Include="../../mappings/vehicles.json" LogicalName="HellForge.Core.mappings.vehicles.json" />
+    <EmbeddedResource Include="../../mappings/entities.json" LogicalName="HellForge.Core.mappings.entities.json" />
+    <EmbeddedResource Include="../../mappings/director.json" LogicalName="HellForge.Core.mappings.director.json" />
     <EmbeddedResource Include="../../mappings/attachments.json" LogicalName="HellForge.Core.mappings.attachments.json" />
     <EmbeddedResource Include="../../mappings/melee.json" LogicalName="HellForge.Core.mappings.melee.json" />
     <EmbeddedResource Include="../../mappings/fired-entities.json" LogicalName="HellForge.Core.mappings.fired-entities.json" />

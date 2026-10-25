@@ -4,9 +4,11 @@ using System.Globalization;
 namespace HellForge.Core;
 
 // A session's choices, as the launcher's Settings page keeps them (launcher-settings.json, ProfileStore) or as another
-// launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse).
+// launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse). ModSync:
+// the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: the game at low
+// integrity (ProfileStore.LoadSandbox). WarServer: the war server of war "server", for that one session.
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    WarServerOptions? WarServer = null);
+    string? ModSync = null, bool Sandbox = false, WarServerOptions? WarServer = null);
 
 // A war server (war "server", HellForge.Cli play --war server): the local backend forwards the game's Arrowhead routes to
 // it (docs/external-launchers.md, "War servers"). Chosen for one session; launcher-settings.json never keeps it. The
@@ -53,7 +55,12 @@ public sealed class SessionRunner
         if (options.SdkShims) arguments.Add("--multiplayer");
         // the galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing
         if (options.War == ProfileStore.WarLive) arguments.AddRange(["--live-war", Path.Combine(paths.HostRoot, "live-war.json")]);
-        else if (options.War == ProfileStore.WarOpen) arguments.Add("--open-war");
+        else if (options.War == ProfileStore.WarOpen)
+        {
+            arguments.Add("--open-war");
+            // its subfaction seed (0, the default layout, needs nothing)
+            if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
+        }
         // a war server, for this session only: the game's Arrowhead routes are forwarded to it
         else if (options.War == ProfileStore.WarServer)
         {
@@ -65,8 +72,17 @@ public sealed class SessionRunner
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)
         if (options.GameOptions.Count > 0) arguments.AddRange(["--game-options", GameLaunchOptions.CommandLine(options.GameOptions)]);
+        if (options.ModSync != null) arguments.AddRange(["--mod-sync", options.ModSync]);
+        if (options.Sandbox) arguments.Add("--sandbox");
         return arguments;
     }
+
+    // Whether the engine was built with the Steam bridge (the Steamworks SDK): its stand-ins' build.json pins the bridge
+    // build, which a sandboxed session needs (<app>/sdk-shims, beside the session runner's folder).
+    public static bool HasSteamBridge(ISessionPaths paths) =>
+        Path.GetDirectoryName(Path.GetDirectoryName(paths.Session)) is { } app &&
+        SessionFiles.ReadJson(Path.Combine(app, "sdk-shims", "build.json")) is { } build &&
+        SessionFiles.Text(build, "steamBridge") is { Length: > 0 };
 
     public void Start(ISessionPaths paths, LocalProfile profile, SessionOptions options)
     {

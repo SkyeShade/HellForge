@@ -5,8 +5,9 @@ using System.Text;
 using HellForge.Core;
 using HellForge.LocalBackend.Multiplayer;
 
-// The host's stats in co-op, end to end: two backends' lobbies and stats sharing over the in-memory network, the
-// joiner's game a fake mod loader on its live-edit pipe that answers every request and records it.
+// Stats in co-op, end to end: two backends' lobbies and stats sharing over the in-memory network, the joiner's game a
+// fake mod loader on its live-edit pipe that answers every request and records it. The host shares its stats, stops
+// (every player keeps their own) and shares again.
 static class StatsShareTests
 {
     const ulong HostId = 0x110000100000011, GuestId = 0x110000100000012;
@@ -105,7 +106,8 @@ static class StatsShareTests
         var guestLobby = new LobbyService(guestLink, guestInbox.Add, _ => { }, "mods");
         var log = new ConcurrentQueue<string>();
         var runId = "stats-test-" + Guid.NewGuid().ToString("N")[..8];
-        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue);
+        var sharing = true; /* the host's Mods page switch (ModSettings.HostStats) */
+        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue, () => Volatile.Read(ref sharing));
         await using var guestShare = new StatsShare(guestLink, guestLobby, runId, guestMods, id => id == HostId ? "Friend Host" : "?", log.Enqueue);
         check(!File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts), "A host's files left by a session cut short are removed.");
         void Wire(IPeerTransport link, LobbyService lobby, StatsShare share) => link.Received += (peer, bytes) =>
@@ -120,7 +122,7 @@ static class StatsShareTests
 
         // Alone, the game is told it is solo and nothing changes.
         var alone = game.Take(1);
-        check(alone.SequenceEqual(["session\tsolo\t"]), "Alone, the game is solo: " + string.Join(" | ", alone));
+        check(alone.SequenceEqual(["session\tsolo\tstats=own\t"]), "Alone, the game is solo: " + string.Join(" | ", alone));
 
         // The guest joins the host's lobby: its game plays with the host's values, its own Eruptor change gives way.
         hostLobby.FromLocal(MultiplayerTests.Create("c1", HostId));
@@ -132,23 +134,53 @@ static class StatsShareTests
         var eruptor = StatsSchema.Current.Targets["weapons"]["R-36 Eruptor"].Fields["weapon.fire_rate"];
         string Id(StatsField f) => string.Join('\t', f.Kind, f.Component, Convert.ToUInt64(f.Resource[2..], 16).ToString("x16", CultureInfo.InvariantCulture),
             f.Record.ToString(CultureInfo.InvariantCulture), f.Offset.ToString(CultureInfo.InvariantCulture), f.Storage);
-        check(joined.Contains("session\tjoiner\tFriend Host") && joined.Contains($"set\t{Id(liberator)}\t{Bits(900)}\t{(liberator.Shared ? 1 : 0)}") &&
+        check(joined.Contains("session\tjoiner\tstats=host\tFriend Host") && joined.Contains($"set\t{Id(liberator)}\t{Bits(900)}\t{(liberator.Shared ? 1 : 0)}") &&
             joined.Contains($"base\t{Id(eruptor)}") && joined.Count == 3, "Joined: the host's values, the joiner's own at their base: " + string.Join(" | ", joined));
         check(Eventually(() => Read(guestHostValues) == silo), "Joined: the host's mod content values are in the joiner's editor folder.");
         check(Eventually(() => Read(guestHostStats) == Read(hostFile)), "Joined: the host's Local Stats file is beside them, for the editor to show.");
         check(Eventually(() => Read(guestHostMounts) == "{\"M-102 Gunner FRV|mount.slot_0\":4}"), "Joined: the host's arm swaps are beside them: " + Read(guestHostMounts));
         File.WriteAllText(hostModValues, silo.Replace(":2}", ":3}"));
         check(Eventually(() => Read(guestHostValues) == silo.Replace(":2}", ":3}")), "The host's change of a mod content value arrives.");
+        // A host's file the editor's native reader should not see: nesting past the limits is left out, text that is not
+        // JSON reaches no file at all; then the real values come back.
+        File.WriteAllText(hostModValues, "{\"format\":1,\"deep\":" + string.Concat(Enumerable.Repeat("{\"n\":", 20)) + "1" + new string('}', 20) + "}");
+        check(Eventually(() => Read(guestHostValues) is { } cut && cut.StartsWith("{\"format\":1,", StringComparison.Ordinal) &&
+            cut.Split("{\"n\"").Length - 1 < 6), "Nesting past the limits is cut: " + Read(guestHostValues));
+        File.WriteAllText(hostModValues, "{\"format\":1,");
+        check(Eventually(() => !File.Exists(guestHostValues)), "A host's file that is not JSON reaches no file.");
+        File.WriteAllText(hostModValues, silo.Replace(":2}", ":3}"));
+        check(Eventually(() => Read(guestHostValues) == silo.Replace(":2}", ":3}")), "The host's values come back.");
+        // Keys as long as a "mod:" category with a 64-character mod id, and a content name, are kept.
+        var longKeys = "{\"format\":1,\"mod:" + new string('a', 64) + "/silo\":{\"" + new string('a', 64) + "/silo/" + new string('b', 60) + "\":{\"stratagem.cooldown\":60}}}";
+        File.WriteAllText(hostModValues, longKeys);
+        check(Eventually(() => Read(guestHostValues) == longKeys), "Long mod keys are kept: " + Read(guestHostValues));
+        File.WriteAllText(hostModValues, silo.Replace(":2}", ":3}"));
+        check(Eventually(() => Read(guestHostValues) == silo.Replace(":2}", ":3}")), "The host's values come back after the long keys.");
 
         // The host applies a change: it reaches the joiner's game.
         File.WriteAllText(hostFile, Stats("\"AR-23 Liberator\":{\"weapon.fire_rate\":1000}"));
         var changed = game.Take(1);
         check(changed.SequenceEqual([$"set\t{Id(liberator)}\t{Bits(1000)}\t{(liberator.Shared ? 1 : 0)}"]), "The host's change arrives: " + string.Join(" | ", changed));
 
+        // The host stops sharing (the default): the joiner keeps its own values, its editor unlocked, the host's files gone.
+        Volatile.Write(ref sharing, false);
+        var own = game.Take(3);
+        check(own.Contains("session\tjoiner\tstats=own\tFriend Host") && own.Contains($"set\t{Id(liberator)}\t{Bits(700)}\t{(liberator.Shared ? 1 : 0)}") &&
+            own.Contains($"set\t{Id(eruptor)}\t{Bits(400)}\t{(eruptor.Shared ? 1 : 0)}") && own.Count == 3,
+            "Not shared: the joiner's own values while joined: " + string.Join(" | ", own));
+        check(Eventually(() => !File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts)), "Not shared: no host's files beside the joiner's editor.");
+        File.WriteAllText(hostFile, Stats("\"AR-23 Liberator\":{\"weapon.fire_rate\":1100}"));
+        check(game.Take(0).Count == 0, "Not shared: the host's change stays the host's.");
+        // ... and shares again: the host's values come back
+        Volatile.Write(ref sharing, true);
+        var again = game.Take(3);
+        check(again.Contains("session\tjoiner\tstats=host\tFriend Host") && again.Contains($"set\t{Id(liberator)}\t{Bits(1100)}\t{(liberator.Shared ? 1 : 0)}") &&
+            again.Contains($"base\t{Id(eruptor)}") && again.Count == 3, "Shared again: the host's values: " + string.Join(" | ", again));
+
         // The host's lobby closes: the joiner's own values come back and it is solo again.
         hostLobby.FromLocal(new Frame("lobby.leave").Add("l1").Add(created.Text(3)).Add(""));
         var left = game.Take(3);
-        check(left.Contains("session\tsolo\t") && left.Contains($"set\t{Id(liberator)}\t{Bits(700)}\t{(liberator.Shared ? 1 : 0)}") &&
+        check(left.Contains("session\tsolo\tstats=own\t") && left.Contains($"set\t{Id(liberator)}\t{Bits(700)}\t{(liberator.Shared ? 1 : 0)}") &&
             left.Contains($"set\t{Id(eruptor)}\t{Bits(400)}\t{(eruptor.Shared ? 1 : 0)}") && left.Count == 3,
             "Without the host: the joiner's own values: " + string.Join(" | ", left));
         check(Eventually(() => !File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts)), "Without the host: its files are gone (the editor's own come back).");

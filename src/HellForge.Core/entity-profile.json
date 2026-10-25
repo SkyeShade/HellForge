@@ -16,6 +16,16 @@
    "stride": 88,
    "type": 4287831141
   },
+  "AiSpawnerComponentData": {
+   "offset": 7293320,
+   "header": "772615bc4c444c4401000000772615bc681d00000100000000000000",
+   "index": 182,
+   "indices": 66,
+   "records": 33,
+   "recordOffset": 1056,
+   "stride": 196,
+   "type": 3155502711
+  },
   "ArcWeaponComponentData": {
    "offset": 27492496,
    "header": "eda97bb84c444c4401000000eda97bb8b00400000100000000000000",
@@ -76,6 +86,16 @@
    "stride": 192,
    "type": 3451667416
   },
+  "BugholeComponentData": {
+   "offset": 7710424,
+   "header": "f3b10f174c444c4401000000f3b10f17900000000100000000000000",
+   "index": 216,
+   "indices": 4,
+   "records": 2,
+   "recordOffset": 64,
+   "stride": 40,
+   "type": 386904563
+  },
   "DepositComponentData": {
    "offset": 7287344,
    "header": "85ba35c44c444c440100000085ba35c4701500000100000000000000",
@@ -115,6 +135,16 @@
    "recordOffset": 2272,
    "stride": 360,
    "type": 4124023692
+  },
+  "GoreComponentData": {
+   "offset": 18975672,
+   "header": "7a9c418d4c444c44010000007a9c418df0e56a000100000000000000",
+   "index": 230,
+   "indices": 418,
+   "records": 209,
+   "recordOffset": 6688,
+   "stride": 33488,
+   "type": 2369887354
   },
   "HealthComponentData": {
    "offset": 7825176,
@@ -305,6 +335,36 @@
    "recordOffset": 736,
    "stride": 224,
    "type": 2387939622
+  },
+  "SquadTransportComponentData": {
+   "offset": 2080624,
+   "header": "d83cb9d24c444c4401000000d83cb9d2f00300000100000000000000",
+   "index": 97,
+   "indices": 12,
+   "records": 6,
+   "recordOffset": 192,
+   "stride": 136,
+   "type": 3535355096
+  },
+  "SquadTransportFormationComponentData": {
+   "offset": 5909184,
+   "header": "c7e78c494c444c4401000000c7e78c49201c00000100000000000000",
+   "index": 122,
+   "indices": 180,
+   "records": 90,
+   "recordOffset": 2880,
+   "stride": 48,
+   "type": 1233971143
+  },
+  "StratagemBlockerComponentData": {
+   "offset": 681424,
+   "header": "b78a5f8c4c444c4401000000b78a5f8c700100000100000000000000",
+   "index": 25,
+   "indices": 14,
+   "records": 7,
+   "recordOffset": 224,
+   "stride": 20,
+   "type": 2355071671
   },
   "TagComponentData": {
    "offset": 205496,

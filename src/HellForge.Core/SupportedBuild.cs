@@ -24,6 +24,19 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
         path is "bin/GameGuard.des" or "tools/GGSetup.exe" or "tools/gguninst.exe" ||
         path.StartsWith("bin/GameGuard/", StringComparison.Ordinal);
 
+    // Upscaler libraries players swap for newer versions (DLSS, XeSS, FSR): graphics only, no gameplay. They must be
+    // present, but any version counts as the build's, so sessions start with a swapped one and repairs keep it.
+    public static bool IsReplaceable(string path) =>
+        path is "bin/nvngx_dlss.dll" or "bin/libxess.dll" or "bin/amd_fidelityfx_upscaler_dx12.dll";
+
+    // A file in place that counts as the build's: its content, or any version of a replaceable one.
+    public static bool Accepts(string path, SupportedFile file)
+    {
+        var info = new FileInfo(path);
+        return info.Exists && (IsReplaceable(file.Path) ||
+            info.Length == file.Size && Sha1(path).Equals(file.Sha1, StringComparison.OrdinalIgnoreCase));
+    }
+
     static readonly Lazy<SupportedBuild> current = new(LoadEmbedded);
     public static SupportedBuild Current => current.Value;
 
@@ -79,7 +92,7 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
         var path = Path.Combine(gameRoot, file.Path);
         if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
         var info = new FileInfo(path);
-        return info.Exists && info.Length == file.Size;
+        return info.Exists && (info.Length == file.Size || IsReplaceable(file.Path));
     });
 
     public static string Sha1(string path)
@@ -105,6 +118,7 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
             var path = Path.Combine(gameRoot, file.Path);
             var info = new FileInfo(path);
             if (!info.Exists) problems.Add("missing: " + file.Path);
+            else if (IsReplaceable(file.Path)) { }
             else if (info.Length != file.Size) problems.Add("wrong size: " + file.Path);
             else
             {

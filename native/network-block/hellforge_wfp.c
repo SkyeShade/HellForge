@@ -1,10 +1,10 @@
 // HellForge's network block, placed straight into the Windows Filtering Platform (WFP) instead of as Windows
 // Firewall rules. It does the same job as scripts/Install-NetworkBlock.ps1's firewall rules did: the copied game's
-// programs reach loopback (the local backend) and nothing else. Putting the block in WFP directly means it holds
+// programs reach the local backend's loopback port and nothing else. Putting the block in WFP directly means it holds
 // even when Windows Firewall is switched off, and a high-weight sublayer makes our BLOCK win the platform's
 // arbitration over a security suite's or VPN's own permit sublayer (the beta's Kaspersky/VPN problem).
 //
-//   hellforge_wfp install   <providerGuid> <displayName> <programsFile> [reportFile]
+//   hellforge_wfp install   <providerGuid> <displayName> <programsFile> <port> [reportFile]
 //   hellforge_wfp uninstall <providerGuid> [reportFile]
 //   hellforge_wfp status    <providerGuid> <programsFile> [reportFile]
 //
@@ -34,6 +34,7 @@ DEFINE_GUID(HF_LAYER_ALE_AUTH_RECV_ACCEPT_V4, 0xe1cd9fe7,0xf4b5,0x4273,0x96,0xc0
 DEFINE_GUID(HF_LAYER_ALE_AUTH_RECV_ACCEPT_V6, 0xa3b42c97,0x9f04,0x4672,0xb8,0x7e,0xce,0xe9,0xc4,0x83,0x25,0x7f);
 DEFINE_GUID(HF_CONDITION_ALE_APP_ID,          0xd78e1e87,0x8644,0x4ea5,0x94,0x37,0xd8,0x09,0xec,0xef,0xc9,0x71);
 DEFINE_GUID(HF_CONDITION_IP_REMOTE_ADDRESS,   0xb235ae9a,0x1d64,0x49b8,0xa4,0x4c,0x5f,0xf3,0xd9,0x09,0x50,0x45);
+DEFINE_GUID(HF_CONDITION_IP_REMOTE_PORT,      0xc35a604d,0xd22b,0x4e1a,0x91,0xb4,0x68,0xf6,0x74,0xee,0x67,0x4b);
 
 // One sublayer, shared by every HellForge installation's block, at the top weight so its BLOCK is authoritative.
 // It is owned by no provider (providerKey NULL), so uninstalling one installation never needs to remove it.
@@ -54,6 +55,7 @@ DEFINE_GUID(HF_SUBLAYER, 0x4e6f2b1a,0x9d3c,0x4f7a,0xb2,0x10,0x8c,0x55,0xd1,0x3e,
 
 static const UINT8 WEIGHT_PERMIT = 0x0f; // loopback is permitted over the block beneath it
 static const UINT8 WEIGHT_BLOCK  = 0x08;
+static UINT16 gPort = 0; // install: the one loopback port the outbound permit allows (the backend's)
 
 // The four ALE layers the block covers: outbound (connect) and inbound (recv/accept), v4 and v6. ALE_AUTH_CONNECT is
 // classified for TCP connects and the first outbound UDP packet both, so UDP is covered without a separate layer.
@@ -62,6 +64,7 @@ static const GUID *const LAYERS[4] = {
     &HF_LAYER_ALE_AUTH_RECV_ACCEPT_V4, &HF_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
 };
 static int LayerIsV6(const GUID *layer){ return layer == &HF_LAYER_ALE_AUTH_CONNECT_V6 || layer == &HF_LAYER_ALE_AUTH_RECV_ACCEPT_V6; }
+static int LayerIsConnect(const GUID *layer){ return layer == &HF_LAYER_ALE_AUTH_CONNECT_V4 || layer == &HF_LAYER_ALE_AUTH_CONNECT_V6; }
 
 #define FILTERS_PER_PROGRAM 8 // (permit loopback + block) over the four layers
 
@@ -91,6 +94,7 @@ static int Report(const wchar_t *reportPath, const char *status, const char *act
     fprintf(f, "{\"action\":\"%s\",\"status\":\"%s\"", action, status);
     if(programs >= 0) fprintf(f, ",\"programs\":%d", programs);
     if(filters >= 0)  fprintf(f, ",\"filters\":%d", filters);
+    if(gPort > 0)     fprintf(f, ",\"port\":%u", (unsigned)gPort);
     if(failure){ fputs(",\"failure\":", f); JsonEscape(f, failure); }
     fputs("}\n", f);
     if(f != stdout) fclose(f);
@@ -141,7 +145,7 @@ static DWORD AddPair(HANDLE engine, const GUID *provider, const GUID *layer, FWP
     FWP_V6_ADDR_AND_MASK v6m; memset(&v6m, 0, sizeof v6m); v6m.addr[15] = 1; v6m.prefixLength = 128;
 
     for(int permit = 1; permit >= 0; --permit){ // permit filter first, then the block beneath it
-        FWPM_FILTER_CONDITION0 cond[2];
+        FWPM_FILTER_CONDITION0 cond[3];
         memset(cond, 0, sizeof cond);
         UINT32 nCond = 0;
 
@@ -157,6 +161,13 @@ static DWORD AddPair(HANDLE engine, const GUID *provider, const GUID *layer, FWP
             if(v6){ cond[nCond].conditionValue.type = FWP_V6_ADDR_MASK; cond[nCond].conditionValue.v6AddrMask = &v6m; }
             else  { cond[nCond].conditionValue.type = FWP_V4_ADDR_MASK; cond[nCond].conditionValue.v4AddrMask = &v4; }
             ++nCond;
+            if(gPort > 0 && LayerIsConnect(layer)){
+                cond[nCond].fieldKey = HF_CONDITION_IP_REMOTE_PORT;
+                cond[nCond].matchType = FWP_MATCH_EQUAL;
+                cond[nCond].conditionValue.type = FWP_UINT16;
+                cond[nCond].conditionValue.uint16 = gPort;
+                ++nCond;
+            }
         }
 
         FWPM_FILTER0 filter;
@@ -247,10 +258,16 @@ int wmain(int argc, wchar_t **argv){
 
     const wchar_t *programsFile = NULL, *reportFile = NULL;
     if(isInstall){
-        if(argc < 6) return Report(NULL, "failed", action, -1, -1, "install needs <providerGuid> <displayName> <programsFile> [reportFile].");
+        if(argc < 6) return Report(NULL, "failed", action, -1, -1, "install needs <providerGuid> <displayName> <programsFile> <port> [reportFile].");
         gDisplayName = argv[3];
         programsFile = argv[4];
-        reportFile = argc >= 6 ? argv[5] : NULL;
+        reportFile = argc >= 7 ? argv[6] : NULL;
+        // Digits only, 1-65535: a port that does not parse must never turn into 0, which would permit every port.
+        wchar_t *end = NULL;
+        unsigned long portVal = (argv[5][0] >= L'0' && argv[5][0] <= L'9') ? wcstoul(argv[5], &end, 10) : 0;
+        if(!end || *end != L'\0' || portVal < 1 || portVal > 65535)
+            return Report(reportFile, "failed", action, -1, -1, "The port must be a number from 1 to 65535.");
+        gPort = (UINT16)portVal;
     } else if(isUninstall){
         reportFile = argc >= 4 ? argv[3] : NULL;
     } else { // status

@@ -11,8 +11,10 @@ static class EditorTests
             var catalog = EditorCatalog.Build();
             check(catalog["format"]!.GetValue<int>() == EditorCatalog.Format && catalog["build"]!.GetValue<string>() == StatsSchema.Current.Build, "Format and build.");
             var navs = catalog["categories"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()).ToList();
-            check(navs.SequenceEqual(["primary", "secondary", "throwables", "offensive", "defensive", "support", "backpacks", "vehicles", "mission", "boosters", "helldiver", "perks", "statuses", "explosions", "projectiles", "damage"]),
-                "Weapons, stratagems, boosters, the Helldiver: " + string.Join(", ", navs));
+            check(navs.SequenceEqual(["primary", "secondary", "throwables", "offensive", "defensive", "support", "backpacks", "vehicles", "mission", "boosters", "helldiver", "perks",
+                    "terminids", "automatons", "illuminate", "structures", "entities", "difficulty", "rosters", "compositions", "demolition", "statuses", "explosions",
+                    "projectiles", "damage"]),
+                "Weapons, stratagems, boosters, the Helldiver, the enemies, spawning: " + string.Join(", ", navs));
             var objects = catalog["objects"]!.AsArray().Select(o => o!.AsObject()).ToList();
             foreach (var nav in navs)
                 check(objects.Count(o => o["category"]!.GetValue<string>() == nav && o["id"]!.GetValue<string>() != "helldiver/armor-perks") == StatsCatalog.Items.Count(i => i.Nav == nav), $"Every {nav} item is listed.");
@@ -22,8 +24,17 @@ static class EditorTests
             check(noIcon.Count == 0, "Every weapon, throwable and strike has a HUD sprite: " + string.Join(", ", noIcon));
             var groupOf = new Dictionary<string, string> { ["weapon"] = "weapons", ["throwable"] = "throwables", ["stratagem"] = "stratagems", ["booster"] = "boosters" };
             groupOf["passive"] = "passives";
-            check(objects.Where(o => o["icon"] != null).All(o => sprites[groupOf[o["icon"]!.GetValue<string>()]].ContainsKey(o["sprite"]?.GetValue<string>() ?? o["name"]!.GetValue<string>())),
+            groupOf["difficulty"] = "difficulties";
+            // level 11's icon is its mod's (the game has none), the others the game's
+            check(objects.Where(o => o["icon"] != null && !(o["icon"]!.GetValue<string>() == "difficulty" && o["sprite"]?.GetValue<string>() == "11"))
+                .All(o => sprites[groupOf[o["icon"]!.GetValue<string>()]].ContainsKey(o["sprite"]?.GetValue<string>() ?? o["name"]!.GetValue<string>())),
                 "An icon names a sprite of its group.");
+            var difficulties = objects.Where(o => o["category"]!.GetValue<string>() == "difficulty").ToList();
+            check(difficulties.Select(o => o["name"]!.GetValue<string>()).Take(3).SequenceEqual(["D1 · Trivial", "D2 · Easy", "D3 · Medium"]) &&
+                difficulties.All(o => o["icon"]?.GetValue<string>() == "difficulty"), "Mission difficulties are D1 to D11, in order, with their icons.");
+            var roster = objects.First(o => o["id"]!.GetValue<string>() == "rosters/automatons/row_1");
+            check(roster["subtitle"]!.GetValue<string>() == "Automatons · Row 1" && roster["group"]!.GetValue<string>() == "Automatons" &&
+                roster["faction"]!.GetValue<string>() == "automatons", "A roster row shows its roster and row, its faction's chip and emblem.");
 
             var rows = 0;
             foreach (var o in objects)
@@ -146,12 +157,13 @@ static class EditorTests
                 "An attachment's field is read through get_stat: kind, component, resource, record.");
             var targets = StatsSchema.Current.Targets;
             var helldiver = targets["helldiver"]["Helldiver"].Fields;
-            check(helldiver.Count == 53 && helldiver["helldiver.stamina.cost_jump"] is { Component: "AvatarComponentData", Offset: 76 } &&
+            check(helldiver.Count == 66 && helldiver["unit.scale_min"].Component == "UnitComponentData" && helldiver["entity.health"] is { Component: "HealthComponentData", Record: 76, Offset: 0 } &&
+                helldiver["helldiver.stamina.cost_jump"] is { Component: "AvatarComponentData", Offset: 76 } &&
                 helldiver["arm_left:zone.health"] is { Component: "HealthComponentData", Record: 76, Offset: 1856, Storage: "i32", Section: "Left arm" } &&
                 helldiver["head:zone.damage_multiplier"].Choices.Any(c => c.Label == "Critical") &&
                 helldiver["helldiver.supply.stims_from_supply"].Component == "InventoryComponentData", "HD2R Editor's Helldiver page.");
             check(StatsCatalog.Sections(StatsCatalog.Items.Single(i => i.Nav == "helldiver")).Select(s => s.Title)
-                .SequenceEqual(["Speed", "Stamina", "Player refill", "Damage", "Damage Zones"]), "Its sections.");
+                .SequenceEqual(["Health", "Speed", "Stamina", "Player refill", "Damage", "Size & Geometry", "Damage Zones"]), "Its sections (main health first).");
             check(targets["stratagems"]["LIFT-850 Jump Pack"].Fields["payload.spawn_count"] is { Component: "HellpodRackComponentData", Offset: 556, Max: 4 } &&
                 targets["stratagems"]["Orbital Laser"].Fields["orbital.duration"] is { Component: "OrbitalAbilityComponentData", Resource: "0xEC3575E7A93793BB", Offset: 460 } &&
                 targets["boosters"]["Experimental Infusion"].Fields["status.incoming_damage_scale"] is { Kind: "StatusMultiplier", Component: "2", Offset: 4 },
@@ -160,6 +172,69 @@ static class EditorTests
             check(liberatorMelee["zone_1:melee.volume_x"] is { Kind: "MeleeHitVolume", Offset: 40, Shared: true } volume && volume.Record > 0x3000000 &&
                 LiveApplies.Of(volume)?.When == "now" && targets["weapons"]["CQC-30 Stun Baton"].Fields["tuning:melee.stamina_cost"].Component == "MeleeWeaponComponentData",
                 "Melee: a weapon's hit volumes (static in game.dll, by RVA; live) and a melee weapon's stamina cost.");
+        });
+
+        test("The HD2R Editor's Enemies pages: every entity with the fields the engine writes, by HD2R row id; deployed entities on their stratagem's page", () =>
+        {
+            var enemies = StatsSchema.Current.Targets["enemies"];
+            check(enemies.Count > 1000 && enemies.Values.Count(e => e.Family == "terminids") > 30 && enemies.Values.Count(e => e.Family == "automatons") > 60,
+                "Over a thousand entities, each on its faction's (or Structures', or Other entities') page: " + enemies.Count);
+            check(enemies["Bile Titan"].Fields["entity::entity.health"] is { Kind: "component", Component: "HealthComponentData", Resource: "0x9E2E17F2CCCCAFDD", Offset: 0, Unverified: false }
+                && enemies["Bile Titan"].Label == "Bile Titan - Strider", "An enemy's main health: its own HealthComponent record, proven in game (HD2Runtime's evidence).");
+            check(enemies.Values.SelectMany(e => e.Fields).All(f => SdkMappings.Current.FieldAt(f.Value.Kind == "component" ? f.Value.Component : f.Value.Kind, f.Value.Offset, f.Value.Storage) != null),
+                "Every field offered is one the engine maps (mappings/components.json).");
+            check(!enemies.ContainsKey("avatar_helldiver"), "The Helldiver's own entity is the Helldiver page's, not an enemy.");
+            var silo = StatsCatalog.Items.Single(i => i.Id == "stratagems/MS-11 Solo Silo");
+            var siloRows = StatsCatalog.Sections(silo).SelectMany(s => s.Groups).SelectMany(g => g.Rows).ToList();
+            check(silo.Parts.Any(p => p is { Category: "enemies", Target: "weapon_rack_mini_missile_silo", Title: "Rack" }) &&
+                  silo.Parts.Any(p => p is { Category: "enemies", Target: "mini_missile_silo", Title: "Missile" }) &&
+                  !StatsCatalog.Items.Any(i => i.Nav == "entities" && i.Parts.Any(p => p.Target == "mini_missile_silo")),
+                "The Solo Silo's rack and missile are parts of its page, not Other entities.");
+            check(siloRows.GroupBy(r => StatsCatalog.LinkKey(r.Field)).All(g => g.Count() == 1) &&
+                  StatsCatalog.Sections(silo).SelectMany(s => s.Groups).Any(g => g.Title == "Rack · Health & Armor"),
+                "No bytes twice on its page (the missile's attack is the weapon's explosion), and each part's groups say whose.");
+            var catalog = EditorCatalog.Build();
+            var titan = catalog["objects"]!.AsArray().Select(o => o!.AsObject()).Single(o => o["id"]!.GetValue<string>() == "enemies/Bile Titan");
+            var health = titan["page"]!.AsArray().SelectMany(c => c!["subs"]!.AsArray()).SelectMany(s => s!["rows"]!.AsArray()).First(r => r!["key"]!.GetValue<string>() == "entity::entity.health")!;
+            check(titan["category"]!.GetValue<string>() == "terminids" && health["hd2r"]![0]!.GetValue<string>() == "en|Bile Titan|entity::entity.health",
+                "In the in-game editor's catalogue under Terminids, its rows keyed as HD2R Editor presets name them.");
+            var saved = StatsData.Parse("""{"format":1,"enemies":{"Bile Titan":{"entity::entity.health":7000}},"helldiver":{"Helldiver":{"entity.health":200}}}""",
+                EntityProfile.Current);
+            check(saved.Any(e => e is { Component: "HealthComponentData", Resource: 0x9E2E17F2CCCCAFDD, Offset: 0, Value: 7000 }) &&
+                  saved.Any(e => e is { Component: "HealthComponentData", Resource: 0x4D1C334D294DFA97, Record: 76, Offset: 0, Value: 200 }),
+                "Saved in Local Stats, an enemy's and the Helldiver's main health come back at the next boot: " + string.Join(", ", saved.Select(e => e.Key)));
+        });
+
+        test("The HD2R Editor's Spawning pages: difficulties, spawn rosters and compositions, as the engine names their rows (director.c)", () =>
+        {
+            var targets = StatsSchema.Current.Targets;
+            check(targets["difficulty"].Count == 11 && targets["rosters"].Count == 191 && targets["compositions"].Count == 452,
+                "11 difficulties (11 with a mod that adds it), 191 roster rows, 452 compositions.");
+            var scavenger = targets["rosters"]["terminids/row_0"];
+            check(scavenger.Label == "Scavenger - Scavenger Tier 1" && scavenger.Fields["spawn.weight_3"] is { Kind: "EnemyRoster", Record: 0, Offset: 8, Storage: "f32" } &&
+                  scavenger.Fields["spawn.weight_11"] is { Kind: "EnemyRosterLevel11", Offset: 0 } &&
+                  targets["rosters"]["automatons/row_4"].Fields["spawn.weight_1"].Record == (2 << 16 | 4),
+                "A roster row by (roster << 16) | row in the engine's roster order; its weights from 0, level 11's of its own.");
+            var patrol = targets["compositions"]["automatons/family_1/row_0"];
+            check(patrol.Class == "patrol" && patrol.Fields["composition.weight"] is { Kind: "EnemyComposition", Record: 2 << 16, Offset: 0xE0 } &&
+                  targets["compositions"]["terminids/family_3/row_2"].Fields["composition.weight"].Record == (0 << 16 | 2 << 12 | 2),
+                "A composition by (roster << 16) | (family - 1 << 12) | row.");
+            var hellbomb = targets["demolition"]["Hellbomb"];
+            check(targets["demolition"].Count == 9 && hellbomb.Fields["demolition.force"] is { Kind: "DemolitionTemplate", Record: 6, Offset: 4, Storage: "u32", Min: 1, Max: 255 } &&
+                  !targets["demolition"].ContainsKey("none") && !targets["demolition"].ContainsKey("Count"),
+                "A demolition template by its index, its force 1 to 255; none and Count are not offered.");
+            check(targets.Where(t => t.Key is "difficulty" or "rosters" or "compositions" or "demolition").SelectMany(t => t.Value.Values).SelectMany(t => t.Fields.Values)
+                    .All(f => SdkMappings.Current.FieldAt(f.Kind, f.Offset, f.Storage) != null),
+                "Every field is one the engine maps (mappings/components.json).");
+            var saved = StatsData.Parse("""{"format":1,"compositions":{"automatons/family_1/row_0":{"composition.group_0_count":4}},"rosters":{"terminids/row_0":{"spawn.weight_11":2}},"difficulty":{"7":{"difficulty.encounter_points":500}}}""",
+                EntityProfile.Current);
+            check(saved.Any(e => e is { Kind: "EnemyComposition", Record: 2 << 16, Offset: 4, Value: 4 }) && saved.Any(e => e is { Kind: "EnemyRosterLevel11", Record: 0 }) &&
+                  saved.Any(e => e is { Kind: "DifficultySettings", Record: 7, Offset: 0xE4 }),
+                "Saved in Local Stats, they come back at the next boot: " + string.Join(", ", saved.Select(e => e.Key)));
+            var catalog = EditorCatalog.Build();
+            var row = catalog["objects"]!.AsArray().Select(o => o!.AsObject()).Single(o => o["id"]!.GetValue<string>() == "compositions/automatons/family_1/row_0")["page"]!
+                .AsArray().SelectMany(c => c!["subs"]!.AsArray()).SelectMany(s => s!["rows"]!.AsArray()).First(r => r!["key"]!.GetValue<string>() == "composition.weight")!;
+            check(row["hd2r"]![0]!.GetValue<string>() == "ed|composition/automatons/family_1/row_0|composition.weight", "Keyed as HD2R Editor presets name them.");
         });
 
         test("The editor's icons are the game's sprite pixels: block formats decoded exactly, written in the editor's format", () =>

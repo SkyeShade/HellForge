@@ -164,7 +164,7 @@ public sealed class StatsDraft
 public static class StatsEditorData
 {
     public const string ModId = "zz.local.stats";
-    const string Marker = "hellforge-stats-editor-v1";
+    public const string Marker = "hellforge-stats-editor-v1";
     public static JsonObject Empty => new() { ["format"] = 1 };
 
     public static StatsObservation ReadSnapshot(string path)

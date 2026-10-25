@@ -4,6 +4,10 @@
 #include <assert.h>
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
+#include "live_sync_test.c"
+#include "director_test.c"
+#include "shots_test.c"
+#include "rounds_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -418,7 +422,7 @@ static void DifficultyFixture(void)
     for (size_t i = 0; i < 6; i++) game[kWeightReaders[i][0] + kWeightReaders[i][1]] = 0x30;
     memcpy(game + DIF_TECH_CLAMP, kKeepTen, 5);
     uint8_t* rosterRows = game + 0x3400000, *compositions = game + 0x3500000;
-    for (size_t r = 0, at = 0; r < 5; r++)
+    for (size_t r = 0, at = 0; r < DIF_ROSTERS; r++)
     {
         uint64_t rows = (uint64_t)(uintptr_t)(rosterRows + at * 0x80), count = kRosters[r].rows;
         memcpy(game + kRosters[r].descriptor, &rows, 8); memcpy(game + kRosters[r].descriptor + 8, &count, 8);
@@ -476,6 +480,7 @@ static void DifficultyFixture(void)
     for (size_t i = 0; i < 6; i++) assert(game[kWeightReaders[i][0] + kWeightReaders[i][1]] == 0x2C);
     assert(*(float*)(rosterRows + 0x2C) == 0.0f && *(float*)(rosterRows + 0x2C + 4 * 9) == 9.0f && *(float*)(rosterRows + 0x54) == 9.0f);
     assert(*(float*)(rosterRows + 50 * 0x80 + 0x2C) == 105.0f && *(float*)(rosterRows + 50 * 0x80 + 0x54) == 114.0f);
+    assert(*(float*)(rosterRows + 191 * 0x80 + 0x2C) == 500.0f && *(float*)(rosterRows + 191 * 0x80 + 0x54) == 509.0f); /* the sixth roster's row */
     assert(*(uint32_t*)(compositions + 0xF0) == 11 && *(uint32_t*)(compositions + (DIF_COMPOSITIONS_UP_TO_TEN + 1) * 0x118 + 0xF0) == 5);
     assert(*(uint32_t*)(game + DIF_TECH_CLAMP + 1) == 11 && row[0xEC] == 11);
     assert(*(uint32_t*)(row + 0x28) == 8 && *(uint32_t*)(row + 0x2C) == 2 && *(float*)(row + 0xF0) == 2.0f && *(float*)(row + 0xF8) == 1.7f);
@@ -910,12 +915,16 @@ static void DifficultyFixture(void)
             memcpy(in, &seed, 4); memcpy(in + 8, &row, 4); memcpy(in + 0xC, &faction, 4); memcpy(in + 0x10, &level, 4);
             uint32_t ids[32] = {0xA1, 0xA9};
             int32_t classes[32] = {0, 3};
+            uint32_t logged = g_mixLoggedCount;
             uint32_t n = MixMission(in, 2, ids, classes, 1);
             assert(n == 4 && ids[2] == 0xB1 && classes[2] == 0 && ids[3] == 0xB2 && classes[3] == 1 && in[0x14] == 0);
+            assert(g_mixLoggedCount == logged + 1); /* the mix is logged */
             uint32_t again[32] = {0xA1, 0xA9};
             assert(MixMission(in, 2, again, NULL, 1) == 4 && again[2] == 0xB1 && again[3] == 0xB2);
+            assert(g_mixLoggedCount == logged + 1); /* the same mix again is not */
             uint32_t other[32] = {0xA1, 0xA9};
             assert(MixMission(in, 2, other, NULL, 2) == 2); /* the partner is not placed on layout 2 */
+            assert(g_mixLoggedCount == logged + 1); /* no mix, no line */
             in[0x14] = DIF_MIX_MARK; /* a nested call only reports its layout */
             assert(MixMission(in, 2, other, NULL, 5) == 2 && in[0x15] == 5 && in[0x16] == 1);
             /* The radar station: row 20 gets it as a weight-0 optional entry; the mission keeps it in place of its last
@@ -1416,8 +1425,21 @@ static void LiveFixture(void)
     strcpy(line, "session\t15\tjoiner\tFriend One");
     LiveRequest(line, reply, sizeof reply); assert(!strcmp(reply, "15\tok\tnow"));
     ApiSession(NULL, &session); assert(session.role == HF_SESSION_JOINER && !strcmp(session.host, "Friend One") && session.version == before + 1);
-    strcpy(line, "session\t16\tsolo");
-    LiveRequest(line, reply, sizeof reply); ApiSession(NULL, &session); assert(session.role == HF_SESSION_SOLO && session.host[0] == 0);
+    assert(ApiStatsSource(NULL) == HF_STATS_HOST); /* a joiner without stats= plays with the host's, as before SDK 15 */
+    strcpy(line, "session\t15\tjoiner\tstats=own\tFriend One");
+    LiveRequest(line, reply, sizeof reply); ApiSession(NULL, &session);
+    assert(!strcmp(reply, "15\tok\tnow") && session.role == HF_SESSION_JOINER && !strcmp(session.host, "Friend One") &&
+        session.version == before + 2 && ApiStatsSource(NULL) == HF_STATS_OWN);
+    strcpy(line, "session\t15\tjoiner\tstats=host\tFriend One");
+    LiveRequest(line, reply, sizeof reply); assert(ApiStatsSource(NULL) == HF_STATS_HOST);
+    strcpy(line, "session\t15\thost\tstats=host"); /* hosting, friends play with this machine's */
+    LiveRequest(line, reply, sizeof reply); ApiSession(NULL, &session);
+    assert(session.role == HF_SESSION_HOST && session.host[0] == 0 && ApiStatsSource(NULL) == HF_STATS_HOST);
+    strcpy(line, "session\t15\thost\tstats=own");
+    LiveRequest(line, reply, sizeof reply); assert(ApiStatsSource(NULL) == HF_STATS_OWN);
+    strcpy(line, "session\t16\tsolo\tstats=host"); /* solo: always this machine's own */
+    LiveRequest(line, reply, sizeof reply); ApiSession(NULL, &session);
+    assert(session.role == HF_SESSION_SOLO && session.host[0] == 0 && ApiStatsSource(NULL) == HF_STATS_OWN);
     /* notice (SDK 12): the backend's message for the player, a title and its lines, numbered */
     HfNotice notice;
     ApiNotice(NULL, &notice); assert(notice.version == 0);
@@ -1429,6 +1451,9 @@ static void LiveFixture(void)
     strcpy(line, "notice\t18\tinfo\tA title only");
     LiveRequest(line, reply, sizeof reply); ApiNotice(NULL, &notice);
     assert(notice.version == 2 && notice.kind == HF_NOTICE_INFO && !strcmp(notice.title, "A title only") && notice.text[0] == 0);
+    strcpy(line, "notice	19	brief	FRIEND TWO couldn't join	Their gameplay mods don't match yours.");
+    LiveRequest(line, reply, sizeof reply); ApiNotice(NULL, &notice);
+    assert(notice.version == 3 && notice.kind == HF_NOTICE_BRIEF && !strcmp(notice.text, "Their gameplay mods don't match yours."));
 
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);
     g_fakeRecordCount = g_componentCount = g_editCount = 0;
@@ -1872,6 +1897,38 @@ static void RefsFixture(void)
     /* load_package: catalogue packages only */
     assert(ApiLoadPackage(mod, 0x1234) == 0);
     assert(ApiLoadPackage(mod, packageId) == HF_PACKAGE_RESIDENT);
+
+    /* Co-op assets: this machine's own packages go to the session's backend ("packages"); the lobby's come back
+     * ("preload") and are asked for as friends', which neither count as this machine's own nor take its last 16. */
+    char list[PKG_MAX_HELD * 17 + 2], expect[64], line[4096], reply[512];
+    snprintf(expect, sizeof expect, "%016llx", (unsigned long long)packageId);
+    PackagesOwnList(list, sizeof list); assert(!strcmp(list, expect));
+    uint64_t friendId = 0;
+    for (size_t i = 0; i < sizeof kRefPackages / sizeof kRefPackages[0] && !friendId; i++) if (kRefPackages[i].id != packageId) friendId = kRefPackages[i].id;
+    InterlockedExchange(&g_packagesDirty, 0);
+    int held = g_heldCount;
+    snprintf(line, sizeof line, "preload\t21\t%016llx,%016llx", (unsigned long long)friendId, (unsigned long long)packageId);
+    LiveRequest(line, reply, sizeof reply);
+    assert(!strcmp(reply, "21\tok\tnow") && g_heldCount == held + 1 && !g_held[held].own && g_held[held].id == friendId && !g_packagesDirty);
+    PackagesOwnList(list, sizeof list); assert(!strcmp(list, expect)); /* a friend's is not sent on */
+    PackagesRequest(); assert(g_held[held].requested); /* requested on the game thread as this machine's own are */
+    assert(ApiLoadPackage(mod, friendId) == HF_PACKAGE_LOADING && g_held[held].own && g_packagesDirty); /* now this machine's too */
+    PackagesOwnList(list, sizeof list); assert(strstr(list, expect) && strchr(list, ','));
+    strcpy(line, "preload\t22\t-"); LiveRequest(line, reply, sizeof reply); assert(!strcmp(reply, "22\tok\tnow"));
+    strcpy(line, "preload\t23\tnot-hex-at-all!!"); LiveRequest(line, reply, sizeof reply); assert(!strncmp(reply, "23\trefused\t", 11));
+    snprintf(line, sizeof line, "preload\t24\t+%015llx", (unsigned long long)friendId); LiveRequest(line, reply, sizeof reply);
+    assert(!strncmp(reply, "24\trefused\t", 11));
+    /* friends' packages stop 16 short of the 64; this machine's own still get them */
+    size_t next = 0;
+    for (int n = 0; n < PKG_MAX_HELD; n++)
+    {
+        while (next < sizeof kRefPackages / sizeof kRefPackages[0] && (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId)) next++;
+        snprintf(line, sizeof line, "preload\t25\t%016llx", (unsigned long long)kRefPackages[next++].id);
+        LiveRequest(line, reply, sizeof reply);
+    }
+    assert(g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE);
+    while (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId) next++;
+    assert(ApiLoadPackage(mod, kRefPackages[next].id) == HF_PACKAGE_LOADING && g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE + 1);
 
     g_statCount = 0;
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);
@@ -3054,10 +3111,14 @@ int main(int argc, char** argv)
     g_modCount = 2;
     FieldsFixture();
     LiveFixture();
+    LiveSyncFixture();
     LuaBridgeFixture();
     ActionsFixture();
     PassivesFixture();
     RefsFixture();
+    DirectorFixture();
+    ShotsFixture();
+    RoundsFixture();
     PerksFixture();
     {
         /* thousands of edits (an editor applying a preset): the list grows, none refused */
@@ -3280,8 +3341,8 @@ int main(int argc, char** argv)
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
-        "shared records, array elements, pipe requests; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
+        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn");
     return 0;
 }

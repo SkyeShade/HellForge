@@ -4,6 +4,10 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using HellForge.LocalBackend;
 
+// The checks block threads (waits on queues and files) beside backends whose timers run on the thread pool; on a two-core
+// CI runner the pool grows too slowly for them and a stats share's 1 s tick missed an 8 s wait (CI, 2026-10-24).
+ThreadPool.GetMinThreads(out var workers, out var ports);
+ThreadPool.SetMinThreads(Math.Max(workers, 32), ports);
 var root = Path.GetFullPath(Path.Combine("artifacts", "local-backend-tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
 var results = new List<object>();
@@ -18,6 +22,43 @@ var bodies = new[] { "{}", "{\"gmiStr\":null}", "{\"gmiStr\":\"\"}",
 var failed = false;
 try
 {
+    // A web page in the player's browser is refused: another Host (DNS rebinding), or a browser's marks (Origin, Referer,
+    // Sec-Fetch-*). A program on this PC is served, by 127.0.0.1 or localhost.
+    {
+        await using var app = LocalBackend.Create(0, Path.Combine(root, "web-pages"), LoginMode.LocalSession);
+        await app.StartAsync();
+        try
+        {
+            var address = new Uri(app.Urls.Single());
+            using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }) { BaseAddress = address, Timeout = TimeSpan.FromSeconds(10) };
+            foreach (var (header, value) in new[] { ("Host", "attacker.example:80"), ("Origin", "https://attacker.example"),
+                         ("Referer", "https://attacker.example/page"), ("Sec-Fetch-Site", "cross-site") })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "/config/locator.json");
+                if (header == "Host") request.Headers.Host = value;
+                else request.Headers.TryAddWithoutValidation(header, value);
+                using var response = await client.SendAsync(request);
+                Check(response.StatusCode == HttpStatusCode.Forbidden && (await response.Content.ReadAsStringAsync()).Contains("HELLFORGE_NOT_FROM_THIS_PC"),
+                    $"A request with {header}: {value} was served.");
+            }
+            foreach (var host in new[] { address.Authority, "localhost:" + address.Port, "[::1]:" + address.Port })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "/config/locator.json") { Headers = { Host = host } };
+                using var response = await client.SendAsync(request);
+                Check(response.StatusCode == HttpStatusCode.OK, $"A request to {host} was refused.");
+            }
+            // A browser's mark with this PC's own Host (a page served from loopback itself) is refused too.
+            foreach (var (header, value) in new[] { ("Referer", "http://127.0.0.1/"), ("Sec-Fetch-Mode", "no-cors") })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "/config/locator.json") { Headers = { Host = address.Authority } };
+                request.Headers.TryAddWithoutValidation(header, value);
+                using var response = await client.SendAsync(request);
+                Check(response.StatusCode == HttpStatusCode.Forbidden, $"A request to {address.Authority} with {header} was served.");
+            }
+            Console.WriteLine("PASS web pages: another Host, Origin, Referer and Sec-Fetch-* refused; 127.0.0.1, localhost and [::1] served");
+        }
+        finally { await app.StopAsync(); }
+    }
     foreach (var mode in new[] { LoginMode.RejectGmi, LoginMode.LocalSession })
     {
         var evidence = Path.Combine(root, mode.ToString());
@@ -32,7 +73,7 @@ try
             var backendAddress = address;
             using (var locatorRequest = new HttpRequestMessage(HttpMethod.Get, "/config/locator.json"))
             {
-                locatorRequest.Headers.Host = "untrusted.invalid";
+                locatorRequest.Headers.Host = "localhost:1"; /* a loopback name on another port: the URL still comes from the socket */
                 using var response = await client.SendAsync(locatorRequest);
                 Check(response.StatusCode == HttpStatusCode.OK, "Local locator failed.");
                 using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -246,6 +287,12 @@ try
         BitConverter.GetBytes(steamId).CopyTo(ticket, 12);
         Check(PlayFabService.SteamIdFromTicket(Convert.ToHexString(ticket)) == steamId, "Steam ID not read from the ticket.");
         Check(PlayFabService.SteamIdFromTicket("00") == null && PlayFabService.SteamIdFromTicket(new string('0', 104)) == null, "Malformed ticket accepted.");
+        // several installations on one PC: HELLFORGE_IDENTITY only with HELLFORGE_MULTI_INSTANCE, and only a SteamID64
+        static Func<string, string?> Env(string? multi, string? identity) => name => name == "HELLFORGE_MULTI_INSTANCE" ? multi : name == "HELLFORGE_IDENTITY" ? identity : null;
+        Check(PlayFabService.IdentityOverride(Env("1", "76561199000000002")) == 76561199000000002UL &&
+            PlayFabService.IdentityOverride(Env(null, "76561199000000002")) == null && PlayFabService.IdentityOverride(Env("1", "12345")) == null &&
+            PlayFabService.IdentityOverride(Env("1", "-1")) == null && PlayFabService.IdentityOverride(Env("1", null)) == null,
+            "HELLFORGE_IDENTITY applies only beside HELLFORGE_MULTI_INSTANCE, and only as a SteamID64.");
         var playFab = new PlayFabService();
         using var login = JsonDocument.Parse($"{{\"TitleId\":\"974A9\",\"SteamTicket\":\"{Convert.ToHexString(ticket)}\"}}");
         var (loginStatus, loginReply, _) = playFab.Handle("/playfab/Client/LoginWithSteam", login.RootElement);
@@ -271,6 +318,22 @@ try
             listed[1]!["Objects"]!.AsObject().Count == 0, "Profile objects lack the escaped form the client reads.");
         Check(listed.All(profile => profile!["Lineage"]!["MasterPlayerAccountId"]!.GetValue<string>().Length <= 20 &&
             profile["Lineage"]!["TitlePlayerAccountId"]!.GetValue<string>().Length <= 20), "Lineage ids exceed the client's 21-byte buffers.");
+        // Bounded: what the game sets is shared with friends (FriendPresence.SetLocalObjects).
+        static string Objects(string id, IEnumerable<string> items) =>
+            "{\"Entity\":{\"Id\":\"" + id + "\",\"Type\":\"title_player_account\"},\"Objects\":[" + string.Join(",", items) + "]}";
+        using var many = JsonDocument.Parse(Objects("110000100000001", Enumerable.Range(0, 40).Select(i => $"{{\"DataObject\":{i},\"ObjectName\":\"o{i}\"}}")));
+        var manyResults = playFab.Handle("/playfab/Object/SetObjects", many.RootElement).Reply["data"]!["SetResults"]!.AsArray();
+        using var big = JsonDocument.Parse(Objects("110000100000001", [$"{{\"DataObject\":\"{new string('x', PlayFabService.MaxObjectBytes)}\",\"ObjectName\":\"testament_platform_user_name\"}}"]));
+        var bigResult = playFab.Handle("/playfab/Object/SetObjects", big.RootElement).Reply["data"]!["SetResults"]![0]!;
+        Check(manyResults.Count(r => r!["SetResult"]!.GetValue<string>() == "Updated") == PlayFabService.MaxObjectsPerEntity - 2 &&
+            manyResults.Count(r => r!["SetResult"]!.GetValue<string>() == "None") == 40 - (PlayFabService.MaxObjectsPerEntity - 2) &&
+            bigResult["SetResult"]!.GetValue<string>() == "None", "Profile objects are not bounded per entity and in size.");
+        var entities = Enumerable.Range(0, PlayFabService.MaxEntities + 1).Select(i =>
+        {
+            using var one = JsonDocument.Parse(Objects((0x110000100000100 + i).ToString("X"), ["{\"DataObject\":1,\"ObjectName\":\"a\"}"]));
+            return playFab.Handle("/playfab/Object/SetObjects", one.RootElement).Status;
+        }).ToList();
+        Check(entities.Count(s => s == 200) == PlayFabService.MaxEntities - 1 && entities.Last() == 400, "Profile objects are not bounded in entities: " + string.Join(",", entities));
         using var unknown = JsonDocument.Parse("{}");
         Check(playFab.Handle("/playfab/Client/Unknown", unknown.RootElement).Status == 400, "Unknown PlayFab call succeeded.");
     }
@@ -521,7 +584,23 @@ try
     Console.WriteLine($"PASS command line: the session runner's {passed.Count} backend options");
     await StatsShareTests.Run(root, Check);
     results.Add(new { mode = "stats-share", outcome = "passed" });
-    Console.WriteLine("PASS stats share: a joiner plays with the host's Local Stats (joined, changed, host gone), its live-edit pipe");
+    Console.WriteLine("PASS stats share: a joiner plays with the host's Local Stats when it shares them (joined, changed, not shared, shared again, host gone), its live-edit pipe");
+    await AssetShareTests.Run(root, Check);
+    results.Add(new { mode = "asset-share", outcome = "passed" });
+    Console.WriteLine("PASS asset share: every game loads the lobby's packages less its own, a joiner's new package reaches the others, malformed lists dropped, each player's projectile swaps reach every game");
+    RecordGuardTests.Run(root, Check);
+    await DirectoryTests.Run(root, Check);
+    results.Add(new { mode = "directory", outcome = "passed" });
+    Console.WriteLine("PASS lobby directory: the map's filter, listing values, publishing rules, search and records, edited stats, blocked and unjoinable mods, hostile listings, the listing switch, strangers");
+    await PrivacyTests.Run(Check);
+    results.Add(new { mode = "lobby-privacy", outcome = "passed" });
+    Console.WriteLine("PASS lobby privacy: Public, Friends only and Invite only against friends, strangers and invited players; kicks and no rejoin; invitations; frame limits; the stranger gate's limits and memory");
+    await ModSyncTests.Run(root, Check);
+    results.Add(new { mode = "mod-sync", outcome = "passed" });
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, never a stranger's; the live pipe");
+    await RejoinTests.Run(root, Check);
+    results.Add(new { mode = "rejoin", outcome = "passed" });
+    Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");

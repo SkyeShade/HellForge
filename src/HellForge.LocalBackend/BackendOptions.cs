@@ -8,8 +8,8 @@ public static class BackendOptions
     public static readonly string[] Names =
     [
         "--port", "--mode", "--evidence", "--startup-fixtures", "--profile-dir", "--lifetime-seconds", "--profile-template",
-        "--item-catalog", "--fixture-override", "--capture-mission-bodies", "--pipe", "--link", "--mod-digest", "--mod-list", "--mods", "--live-war", "--war",
-        "--war-server", "--war-server-ca", "--war-server-token",
+        "--item-catalog", "--fixture-override", "--capture-mission-bodies", "--pipe", "--sandbox", "--link", "--mod-digest", "--mod-list", "--mods", "--modset", "--directory", "--live-war", "--war", "--war-seed",
+        "--rejoin", "--war-server", "--war-server-ca", "--war-server-token",
     ];
 
     public static Dictionary<string, string> Parse(IReadOnlyList<string> args)

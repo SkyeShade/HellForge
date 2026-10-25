@@ -28,6 +28,10 @@ public static class EditorCatalog
         ("vehicles", "Vehicles", "STRATAGEMS", "support"), ("mission", "Mission", "STRATAGEMS", "support"),
         ("boosters", "Boosters", "EQUIPMENT", null),
         ("helldiver", "Helldiver", "HELLDIVER", null), ("perks", "Armor perks", "HELLDIVER", null),
+        ("terminids", "Terminids", "ENEMIES", null), ("automatons", "Automatons", "ENEMIES", null), ("illuminate", "Illuminate", "ENEMIES", null),
+        ("structures", "Structures", "ENEMIES", null), ("entities", "Other Entities", "ENEMIES", null),
+        ("difficulty", "Mission Difficulty", "SPAWNING", null), ("rosters", "Spawn Rosters", "SPAWNING", null),
+        ("compositions", "Spawn Compositions", "SPAWNING", null), ("demolition", "Demolition Templates", "SPAWNING", null),
         ("statuses", "Status Effects", "EFFECTS", null),
         ("explosions", "Explosions", "ADVANCED", null), ("projectiles", "Projectiles", "ADVANCED", null), ("damage", "Damage Types", "ADVANCED", null),
     ];
@@ -40,6 +44,8 @@ public static class EditorCatalog
     {
         ["primary"] = ["Assault Rifle", "Marksman Rifle", "Submachine Gun", "Shotgun", "Explosive", "Energy-Based", "Special"],
         ["secondary"] = ["Pistol", "Melee", "Special"],
+        // the HD2R Editor's filter by faction (StatsCatalog.FactionLabel)
+        ["rosters"] = ["Terminids", "Automatons", "Illuminate", "Super Earth", "Unknown"],
     };
     const string Sep = " · ";
 
@@ -153,14 +159,29 @@ public static class EditorCatalog
     // The HD2R keys on a row's bytes, the row's own first (same item, same field id), and how their value is stored.
     static void Hd2rKeys(JsonObject json, StatsRow row, StatsItem item)
     {
-        if (!Hd2rByAddress.Value.TryGetValue(row.Field.Hd2rAddress, out var keys)) return;
+        // An entity's rows are the HD2R Editor's Enemies rows already ('en|<entity>|<row id>', mappings/entities.json); the
+        // Helldiver's main fields are its avatar entity's.
+        string? entity = row.Part.Category == "enemies" ? $"en|{row.Part.Target}|{row.Key}" : row.Field.Hd2rKey;
+        if (!Hd2rByAddress.Value.TryGetValue(row.Field.Hd2rAddress, out var keys))
+        {
+            if (entity == null && row.Part.Category == "helldiver" && row.Key.StartsWith("entity.", StringComparison.Ordinal))
+                entity = "en|avatar_helldiver|entity::" + row.Key;
+            if (entity == null) return;
+            json["hd2r"] = new JsonArray(entity);
+            json["hd2rKind"] = "number";
+            return;
+        }
         keys = keys.Where(k => k.Kind != "ap").ToList(); /* the displayed armor penetration: its own row (ApLabelRow) */
-        if (keys.Count == 0) return;
+        if (keys.Count == 0)
+        {
+            if (entity != null) (json["hd2r"], json["hd2rKind"]) = (new JsonArray(entity), "number");
+            return;
+        }
         var names = new HashSet<string>(item.Parts.Select(p => p.Target).Append(item.Name), StringComparer.Ordinal);
         var ordered = keys.OrderBy(k => names.Contains(k.Object) ? 0 : 1).ThenBy(k => k.Field == row.Key ? 0 : 1).ThenBy(k => k.Key, StringComparer.Ordinal).ToList();
         // bytes many items share (a melee hit volume, ~100 weapons): each item's row carries its own keys only
         if (ordered.Count > 8 && ordered.Any(k => names.Contains(k.Object))) ordered = ordered.Where(k => names.Contains(k.Object)).ToList();
-        json["hd2r"] = new JsonArray(ordered.Select(k => (JsonNode)k.Key).ToArray());
+        json["hd2r"] = new JsonArray((entity != null ? [entity] : Array.Empty<string>()).Concat(ordered.Select(k => k.Key)).Select(k => (JsonNode)k).ToArray());
         json["hd2rKind"] = ordered[0].Kind;
         // keys whose values are not the field's number (a flag, a name, a list): how each reads
         var structured = ordered.Where(k => k.Slot >= 0).ToList();
@@ -233,7 +254,7 @@ public static class EditorCatalog
 
     // What a reference row picks (projectile, explosion, status), from its mapping's "ref"; a weapon's ammunition delta
     // is its projectile.
-    static string? Pick(StatsField f) => f.Kind == "EntityDelta" ? (f.Component == "321:0" ? "projectile" : null) :
+    static string? Pick(StatsField f) => f.Kind == "EntityDelta" ? (f.Component is "321:0" or "117:64" or "117:68" ? "projectile" : null) :
         SdkMappings.Current.FieldAt(f.Kind == "component" ? f.Component : f.Kind, f.Offset, f.Storage)?.Ref is { } r && r != "damage" ? r : null;
 
     // The page's attack branch of a key ("" its main round), as StatsCatalog places it.
@@ -545,14 +566,29 @@ public static class EditorCatalog
             page.Insert(callIn.c != null ? callIn.i + 1 : page.Count, podCategory); /* right after the call-in */
         }
         // A weapon HD2R Editor offers no projectile swap for: why (shown on its page).
-        var refused = item.Parts.Where(p => p.Category == "weapons").Select(p => ReferenceData.Value["refused"]![p.Target]).FirstOrDefault(r => r != null);
+        var refused = item.Parts.Where(p => p.Category == "weapons" && !StatsSchema.Current.Targets["weapons"][p.Target].Fields.Keys.Any(k => k.EndsWith(".projectile", StringComparison.Ordinal)))
+            .Select(p => ReferenceData.Value["refused"]![p.Target]).FirstOrDefault(r => r != null);
+        // a mission difficulty: its level's icon and "D10 · Super Helldive" (the game's icons, levels 1 to 10; level 11's
+        // is its mod's)
+        var level = item.Nav == "difficulty" ? item.Parts[0].Target : null;
         return new JsonObject
         {
-            ["id"] = item.Id, ["name"] = item.Name, ["category"] = category, ["subtitle"] = item.Group,
-            ["icon"] = Icon(item, main), ["tone"] = tone, ["search"] = item.Search, ["page"] = page,
+            ["id"] = item.Id, ["name"] = level != null && item.Name.StartsWith("Difficulty ", StringComparison.Ordinal) ? "D" + item.Name["Difficulty ".Length..] : item.Name,
+            ["category"] = category, ["subtitle"] = item.Line ?? item.Group,
+            // the filter chip it is under, where the line under its name is not it (a roster row's faction)
+            ["group"] = item.Line != null ? item.Group : null,
+            ["icon"] = level != null ? "difficulty" : Icon(item, main), ["tone"] = tone, ["search"] = item.Search, ["page"] = page,
             ["notOffered"] = refused?.GetValue<string>(),
-            // an armor perk: its passive's icon (by the game's name), and what it does (HD2R Editor's "Perk details")
-            ["sprite"] = item.Nav == "perks" ? PerkSprite(item.Name) : null,
+            // an armor perk: its passive's icon (by the game's name), and what it does (HD2R Editor's "Perk details");
+            // a difficulty: its level
+            ["sprite"] = item.Nav == "perks" ? PerkSprite(item.Name) : level,
+            // an entity's faction, whose emblem the editor draws (the HD2R Editor's: the Helldivers' is Super Earth's)
+            ["faction"] = item.Faction switch
+            {
+                "terminids" or "automatons" or "illuminate" or "super_earth" => item.Faction,
+                "helldivers" => "super_earth",
+                _ => null
+            },
             ["detail"] = item.Nav == "perks" ? PerkDetail(item, page.Count) : null,
         };
     }
@@ -650,6 +686,12 @@ public static class EditorCatalog
             ["also"] = also.Count > 0 ? new JsonArray(also.Select(a => (JsonNode)a).ToArray()) : null,
             ["link"] = StatsCatalog.LinkKey(f),
         };
+        // weapons this row reaches only when they equip the same ammunition (bug-report-0035), and that ammunition
+        if (StatsCatalog.AlsoIfEquipped(row) is { Item: { } ammo, Names.Count: > 0 } equipped)
+        {
+            json["alsoIf"] = new JsonArray(equipped.Names.Select(n => (JsonNode)n).ToArray());
+            json["alsoAmmo"] = ammo;
+        }
         // get_stat: a field get_live cannot read (entity deltas, say), by the address the session's stats snapshot reads
         if (!live) json["stat"] = new JsonArray(f.Kind, f.Component, f.Resource, f.Record);
         // a field with named values (a flag, an enum, a trait or fire mode slot): picked from them
@@ -660,6 +702,12 @@ public static class EditorCatalog
         var pick = Pick(f);
         if (pick != null) json["pick"] = pick;
         if (StatsCatalog.Unlimited(f)) { json["unlimited"] = true; json["label"] = row.Label + " (next launch)"; } /* UINT32_MAX: unlimited, -1 in the stats file */
+        // a roster row's weight at one difficulty: "D10 weight", with that difficulty's icon beside it (the HD2R Editor's)
+        if (row.Part.Category == "rosters" && System.Text.RegularExpressions.Regex.Match(row.Key, @"^spawn\.weight_(\d+)$") is { Success: true } weight)
+        {
+            json["difficulty"] = int.Parse(weight.Groups[1].Value, CultureInfo.InvariantCulture);
+            json["label"] = "D" + weight.Groups[1].Value + " weight";
+        }
         var slot = System.Text.RegularExpressions.Regex.Match(row.Key, @"^(.*?)status_([1-4])_(type|strength)$");
         if (slot.Success && f.Kind == "DamageInfo") { json["slot"] = int.Parse(slot.Groups[2].Value, CultureInfo.InvariantCulture); json["slots"] = slot.Groups[1].Value; }
         if (pick == "explosion" && ReferenceData.Value["payload"]!["excluded"]![$"{row.Part.Category}/{row.Part.Target}/{row.Key}"] is JsonArray excluded)

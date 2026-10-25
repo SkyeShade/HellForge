@@ -14,6 +14,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //   party.endpointGone [networkId, uid]
 //   party.leave       [networkId]
 //   party.message     [networkId, senderUid, options, targets ("" = everyone, else comma-separated uids), payload]
+//   party.kick        [networkId, node] (this machine's DLL, hosting: the game kicked a device or user; Kick)
 // Events (from the host's backend):
 //   party.connected   [op, result (0 = ok), networkId, the six configuration numbers, endpointBase, endpointCount,
 //                     (uid, node, entityId)...]; endpointBase starts the block of EndpointBlock ids the joining machine
@@ -100,6 +101,25 @@ public sealed class PartyService
         }
     }
 
+    // The host kicked a machine from its lobby (LobbyService.Kicked): it leaves every network hosted here as if lost, the
+    // others are told, and the kicked machine hears that each network is gone. Whatever it sends afterwards is dropped (it
+    // has no endpoints and is no network's node), and it cannot connect again (no longer in a lobby here).
+    public void Expel(ulong node)
+    {
+        if (node == LobbyService.LocalNode) return;
+        lock (gate)
+            foreach (var network in hosted.Values.Where(n => n.Nodes.Contains(node)).ToList())
+            {
+                RemoveNode(network, node);
+                Send(node, new Frame("party.networkGone").Add(network.Id), true);
+                log($"Removed a kicked machine from Party network {network.Id}.");
+            }
+    }
+
+    // The game's own Party kick (PartyNetworkKickDevice/KickUser from the Party stand-in: party.kick [networkId, entity id
+    // or node]): the host's lobby kicks that machine (Kick, LobbyService), which removes it here too (Expel).
+    public Func<ulong, bool>? Kick { get; set; }
+
     // A friend's machine stopped answering: it leaves the networks hosted here, and networks it hosted are gone.
     public void PeerLost(ulong peer)
     {
@@ -131,6 +151,14 @@ public sealed class PartyService
 
     void Route(Frame frame)
     {
+        if (frame.Type == "party.kick")
+        {
+            // under this lock the lobby service's is taken (as inHostedLobby does), and its Kicked handler comes back to Expel
+            // on this thread once the lobby's lock is released
+            if (hosted.ContainsKey(frame.Text(0)) && LobbyService.TryNode(frame.Text(1), out var kicked) && kicked != LocalId && Kick?.Invoke(kicked) == false)
+                log("The game kicked a Party device that is in no lobby here.");
+            return;
+        }
         if (frame.Type == "party.host")
         {
             var network = new HostedNetwork(frame.Text(0)) { Configuration = Enumerable.Range(1, 6).Select(frame.Text).ToArray() };

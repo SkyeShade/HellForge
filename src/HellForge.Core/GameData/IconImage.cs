@@ -70,6 +70,9 @@ public static class IconImage
         return data;
     }
 
+    // The most image data ReadPng inflates (4096 x 4096 in 8-bit RGBA, with its row filters).
+    const long MaxImageBytes = 4096L * (4096 * 4 + 1);
+
     public static ReadOnlySpan<byte> PngSignature => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
     // (width, height, RGBA) of a non-interlaced PNG: 8- and 16-bit, every colour type; anything else is refused.
@@ -104,17 +107,19 @@ public static class IconImage
             throw new InvalidDataException($"unsupported PNG bit depth {depth}.");
         if (colour == 3 && palette == null) throw new InvalidDataException("palette PNG without a palette.");
         if (width is < 1 or > 8192 || height is < 1 or > 8192) throw new InvalidDataException("the PNG is too large.");
-        byte[] raw;
-        idat.Position = 0;
-        using (var inflate = new ZLibStream(idat, CompressionMode.Decompress))
-        using (var inflated = new MemoryStream())
-        {
-            inflate.CopyTo(inflated);
-            raw = inflated.ToArray();
-        }
         var bits = channels * depth;
         int stride = (width * bits + 7) / 8, step = Math.Max(1, bits / 8);
-        if (raw.Length != (long)height * (stride + 1)) throw new InvalidDataException("PNG image data has the wrong size.");
+        // The image data's size follows from the header: checked before inflating, and never inflated past it (a few KB of
+        // zlib can claim gigabytes; a mod's PNG may come from another machine, mod sync).
+        var expected = (long)height * (stride + 1);
+        if (expected > MaxImageBytes) throw new InvalidDataException("the PNG is too large.");
+        var raw = new byte[expected];
+        idat.Position = 0;
+        using (var inflate = new ZLibStream(idat, CompressionMode.Decompress))
+        {
+            var read = inflate.ReadAtLeast(raw, raw.Length, throwOnEndOfStream: false);
+            if (read != raw.Length || inflate.Read(new byte[1]) != 0) throw new InvalidDataException("PNG image data has the wrong size.");
+        }
         var rgba = new byte[(long)width * height * 4];
         var previous = new byte[stride];
         var samples = new int[width * channels];
