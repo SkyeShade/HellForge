@@ -18,13 +18,15 @@ namespace HellForge.LocalBackend;
 // warinfo is unchanged.
 //
 // Subfactions (galactic-war-effects.json): a planet's type-40 effects add the enemy tags its missions spawn from (the
-// Predator Strain, Jet Brigade, the Illuminate's...). A planet keeps the frozen war's subfaction effects of its new enemy
-// and loses another enemy's; each sector then gets one of its enemy's subfactions or none, picked by a stable hash of the
-// sector's name (the same on every machine of a lobby, which each build their missions' tags themselves). An Illuminate
-// sector always gets one: every Illuminate squad needs an Illuminate tag (HD2Mods research/subfactions). A subfaction
-// seed (the launcher's, backend --war-seed) other than 0 deals every sector's anew from that seed, the frozen war's
-// included: a player who dislikes the layout rolls another. In co-op the host's war decides (whether a joiner with another
-// seed loads the host's subfaction enemies is to be tested: each game builds its missions' tags from its own war).
+// Predator Strain, Jet Brigade, the Illuminate's...), each with its flag on the war table (type 71). Dealt (the launcher's
+// "Deal subfactions", backend --war-subfactions, on by default), every enemy planet gets them anew, planet by planet,
+// from the seed (the launcher's, backend --war-seed): half of each enemy's planets get none, the others one of that
+// enemy's subfactions. Not dealt, a planet keeps the frozen war's subfactions of its new enemy and loses another enemy's.
+// Either way an Illuminate planet always has one: every Illuminate squad needs an Illuminate tag (HD2Mods
+// research/subfactions). SEAF allies (an effect of any enemy) are dealt the same way (--war-seaf): about one enemy planet
+// in eight; not dealt, the frozen war's stay. Stable hashes of the planet and the seed, so the same on every machine of a
+// lobby (each builds its missions' tags itself). In co-op the host's war decides (whether a joiner with another seed loads
+// the host's subfaction enemies is to be tested).
 //
 // An enemy's home world (warInfo homeWorlds: Cyberstan, the Automatons') has no operations of its own from its campaign:
 // the game strips its map's drop points (game.dll 0x12D88FB), and its operations come from its regions instead (the
@@ -68,7 +70,8 @@ public static class OpenWar
         return data.RootElement.GetProperty("sectors").EnumerateObject().ToDictionary(s => int.Parse(s.Name, System.Globalization.CultureInfo.InvariantCulture), s => s.Value.GetString()!);
     }
 
-    public static JsonElement Status(JsonElement warInfo, JsonElement status, IReadOnlyDictionary<int, string>? sectors = null, uint seed = 0)
+    public static JsonElement Status(JsonElement warInfo, JsonElement status, IReadOnlyDictionary<int, string>? sectors = null, uint seed = 0,
+        bool dealSubfactions = true, bool dealSeaf = true)
     {
         sectors ??= Sectors();
         var planets = warInfo.GetProperty("planetInfos");
@@ -143,35 +146,42 @@ public static class OpenWar
         if (node["planetRegions"] is JsonArray regions)
             foreach (var r in regions)
                 if (r?["planetIndex"] is { } at && changed.TryGetValue((int)at, out var enemy)) r["owner"] = enemy;
-        // subfactions: the new enemy's own, else one per sector (or none), always one on an Illuminate planet; each with
-        // its flag (the frozen war's flags go, and come back with the subfactions kept or dealt)
+        // subfactions and SEAF allies: dealt planet by planet from the seed, or the frozen war's (its enemy's) kept; an
+        // Illuminate planet always has one; each with its flag (the frozen war's flags go, and come back with them)
         var subfactions = Subfactions();
         var flags = Flags();
         var flagIds = flags.Values.ToHashSet();
         var now = planetStatus.ToDictionary(p => (int)p!["index"]!, p => (int)p!["owner"]!);
         var effects = new JsonArray();
         var has = new HashSet<int>();
+        var text = seed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        uint Roll(int index, string what) => StableHash(index.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/" + what + "/" + text);
+        void Add(int index, int id) => effects.Add((JsonNode)new JsonObject { ["index"] = index, ["galacticEffectId"] = id });
         foreach (var e in node["planetActiveEffects"] as JsonArray ?? [])
         {
             int index = (int)e!["index"]!, id = (int)e["galacticEffectId"]!;
             if (flagIds.Contains(id)) continue;
-            if (subfactions.TryGetValue(id, out var of) && of != 0)
+            if (subfactions.TryGetValue(id, out var of))
             {
-                if (seed != 0 || !now.TryGetValue(index, out var holder) || holder != of) continue; /* another enemy's, or dealt anew */
-                has.Add(index);
+                if (of == 0 ? dealSeaf : dealSubfactions || !now.TryGetValue(index, out var holder) || holder != of) continue; /* dealt anew, or another enemy's */
+                if (of != 0) has.Add(index);
             }
-            effects.Add((JsonNode)new JsonObject { ["index"] = index, ["galacticEffectId"] = id });
+            Add(index, id);
         }
-        foreach (var (index, holder) in now.OrderBy(o => o.Key))
+        var held = now.Where(o => o.Value != SuperEarth && !home.Contains(o.Key) && !disabled.Contains(o.Key)).Select(o => o.Key).OrderBy(i => i).ToList();
+        foreach (var enemy in held.Select(i => now[i]).Distinct().Order())
         {
-            if (holder == SuperEarth || has.Contains(index) || home.Contains(index) || disabled.Contains(index)) continue;
-            var choices = subfactions.Where(s => s.Value == holder).Select(s => s.Key).OrderBy(id => id).ToList();
+            var choices = subfactions.Where(s => s.Value == enemy).Select(s => s.Key).OrderBy(id => id).ToList();
             if (choices.Count == 0) continue;
-            var key = sectors.TryGetValue(index, out var sector) ? sector : "planet " + index;
-            var pick = (int)(StableHash(key + "/" + holder + (seed != 0 ? "/" + seed.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")) %
-                (uint)(choices.Count + (holder == Illuminate ? 0 : 1)));
-            if (pick < choices.Count) effects.Add((JsonNode)new JsonObject { ["index"] = index, ["galacticEffectId"] = choices[pick] });
+            // dealt: half of the enemy's planets (by the seed's order) go without; not dealt, only an Illuminate planet
+            // without one gets one
+            var theirs = held.Where(i => now[i] == enemy && !has.Contains(i)).OrderBy(i => Roll(i, "order")).ThenBy(i => i).ToList();
+            var without = enemy == Illuminate ? 0 : !dealSubfactions ? theirs.Count : theirs.Count / 2;
+            foreach (var index in theirs.Skip(without)) Add(index, choices[(int)(Roll(index, "subfaction") % (uint)choices.Count)]);
         }
+        if (dealSeaf)
+            foreach (var seaf in subfactions.Where(s => s.Value == 0).Select(s => s.Key).Order())
+                foreach (var index in held.Where(i => Roll(i, "seaf/" + seaf.ToString(System.Globalization.CultureInfo.InvariantCulture)) % 8 == 0)) Add(index, seaf);
         foreach (var e in effects.ToList())
             if (flags.TryGetValue((int)e!["galacticEffectId"]!, out var flag))
                 effects.Add((JsonNode)new JsonObject { ["index"] = (int)e["index"]!, ["galacticEffectId"] = flag });

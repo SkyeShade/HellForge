@@ -54,6 +54,15 @@ static class SessionLaunchTests
             check(!frozen.Contains("--live-war") && !frozen.Contains("--open-war"), "The frozen war needs nothing.");
             var sandboxed = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], Sandbox: true));
             check(sandboxed[^1] == "--sandbox" && !frozen.Contains("--sandbox"), "Sandboxed only when chosen: " + string.Join(" ", sandboxed));
+            // the all-planets war's deals: on unless turned off (and then said), each kept through the other's and the seed's saves
+            check(ProfileStore.LoadDealSubfactions(paths) && ProfileStore.LoadDealSeaf(paths), "The all-planets war deals subfactions and SEAF allies by default.");
+            ProfileStore.SaveDealSeaf(paths, false);
+            ProfileStore.SaveSubfactionSeed(paths, 77);
+            check(ProfileStore.LoadDealSubfactions(paths) && !ProfileStore.LoadDealSeaf(paths) && ProfileStore.LoadSubfactionSeed(paths) == 77,
+                "Turning one deal off keeps the other and the seed.");
+            var dealt = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarOpen, false, false, []));
+            check(dealt.Contains("--war-seed") && dealt[dealt.IndexOf("--war-seed") + 1] == "77" && dealt.Contains("--war-seaf") &&
+                dealt[dealt.IndexOf("--war-seaf") + 1] == "no" && !dealt.Contains("--war-subfactions"), "Only what differs from the default is passed: " + string.Join(" ", dealt));
             var token = Path.Combine(root, "war-token.txt");
             var server = SessionRunner.Arguments(paths, profile, new(true, false, ProfileStore.WarServer, false, false, [],
                 WarServer: new WarServerOptions("https://War.Example:8443/", null, token)));

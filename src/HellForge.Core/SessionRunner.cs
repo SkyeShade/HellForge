@@ -58,8 +58,10 @@ public sealed class SessionRunner
         else if (options.War == ProfileStore.WarOpen)
         {
             arguments.Add("--open-war");
-            // its subfaction seed (0, the default layout, needs nothing)
+            // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
             if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
+            if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);
+            if (!ProfileStore.LoadDealSeaf(paths)) arguments.AddRange(["--war-seaf", "no"]);
         }
         // a war server, for this session only: the game's Arrowhead routes are forwarded to it
         else if (options.War == ProfileStore.WarServer)

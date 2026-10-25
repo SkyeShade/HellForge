@@ -362,14 +362,20 @@
                            Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, with no internet needed." />
                 <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Sectors get their enemy's subfactions (Predator Strain, Jet Brigade...), and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
+                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Planets get their enemy's subfactions (Predator Strain, Jet Brigade...) and SEAF allies, and Cyberstan's Megafactories can be attacked. Built from the frozen war, so it is the same on every PC and needs no internet. Applies to the next session." />
+                <CheckBox x:Name="DealSubfactionsBox" Content="Deal subfactions across the planets" Margin="28,2,0,0" />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
+                           Text="Each planet gets one of its enemy's subfactions or none, from the seed: half of each enemy's planets have none. Off, planets keep the frozen war's. Illuminate planets always have one (their squads need it)." />
+                <CheckBox x:Name="DealSeafBox" Content="Deal SEAF allies across the planets" Margin="28,2,0,0" />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="56,0,0,0"
+                           Text="About one planet in eight gets SEAF troops fighting beside you, from the seed. Off, they stay on the frozen war's planets." />
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,0">
-                  <TextBlock Text="Subfaction seed" VerticalAlignment="Center" />
+                  <TextBlock Text="Seed" VerticalAlignment="Center" />
                   <TextBox x:Name="SubfactionSeedBox" Width="130" MaxLength="10" />
                   <Button x:Name="SubfactionRandomiseButton" Content="Randomise" />
                 </StackPanel>
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Which subfactions of each enemy go on which sectors. 0 keeps the frozen war's own; any other number deals them anew, so if you dislike the layout, roll another. In co-op the host's war decides." />
+                           Text="One number deals both: the same seed gives the same planets every time, so if you dislike the layout, roll another. In co-op the host's war decides." />
               </StackPanel>
             </Border>
 

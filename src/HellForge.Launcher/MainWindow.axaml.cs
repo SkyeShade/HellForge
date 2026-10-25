@@ -130,7 +130,12 @@ public partial class MainWindow : Window
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
         foreach (var (radio, mode) in new[] { (WarLiveRadio, ProfileStore.WarLive), (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
-        // the all-planets war's subfaction seed: typed (a whole number) or rolled, saved as it changes
+        // the all-planets war's deals (subfactions, SEAF allies) and their seed: typed (a whole number) or rolled, saved as
+        // they change
+        DealSubfactionsBox.IsChecked = ProfileStore.LoadDealSubfactions(paths);
+        DealSubfactionsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveDealSubfactions(paths, DealSubfactionsBox.IsChecked == true);
+        DealSeafBox.IsChecked = ProfileStore.LoadDealSeaf(paths);
+        DealSeafBox.IsCheckedChanged += (_, _) => ProfileStore.SaveDealSeaf(paths, DealSeafBox.IsChecked == true);
         SubfactionSeedBox.Text = ProfileStore.LoadSubfactionSeed(paths).ToString(System.Globalization.CultureInfo.InvariantCulture);
         SubfactionSeedBox.TextChanged += (_, _) =>
         {

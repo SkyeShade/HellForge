@@ -48,14 +48,40 @@ static class OpenWarTests
         check(onPlanet.All(e => owner[e.Index] == subfactions[e.Id]), "No planet keeps another enemy's subfaction.");
         var illuminate = owner.Where(o => o.Value == 4).Select(o => o.Key).ToList();
         check(illuminate.All(i => onPlanet.Any(e => e.Index == i)), "Every Illuminate planet has an Illuminate subfaction.");
-        check(owner[171] == 2 && onPlanet.Contains((171, 1243)), "A frozen-war subfaction of the planet's enemy stays (Predator Strain on 171).");
+        // dealt planet by planet (the default): half of each enemy's planets without one (every Illuminate planet with one),
+        // neighbours in a sector unlike each other
+        var disabled = info.GetProperty("planetInfos").EnumerateArray().Where(p => p.TryGetProperty("disabled", out var d) && d.ValueKind == JsonValueKind.True)
+            .Select(p => p.GetProperty("index").GetInt32()).ToHashSet();
+        foreach (var faction in new[] { 2, 3 })
+        {
+            var held = owner.Where(o => o.Value == faction && !disabled.Contains(o.Key)).Select(o => o.Key).ToList();
+            var with = held.Count(i => onPlanet.Any(e => e.Index == i));
+            check(with == held.Count - held.Count / 2, $"Faction {faction}: half of its {held.Count} planets have a subfaction ({with}).");
+        }
+        check(sectors.Values.Distinct().Any(sector => onPlanet.Where(e => sectors.GetValueOrDefault(e.Index) == sector).Select(e => e.Id).Distinct().Count() >= 2),
+            "Subfactions go planet by planet: a sector holds more than one.");
+        // not dealt: the frozen war's own stay (Predator Strain on 171), and its SEAF allies
+        var kept = OpenWar.Status(info, frozen, dealSubfactions: false, dealSeaf: false);
+        List<(int Index, int Id)> Effects(JsonElement war, Func<int, bool> which) => war.GetProperty("planetActiveEffects").EnumerateArray()
+            .Select(e => (e.GetProperty("index").GetInt32(), e.GetProperty("galacticEffectId").GetInt32())).Where(e => which(e.Item2)).OrderBy(e => e).ToList();
+        bool Seaf(int id) => subfactions.TryGetValue(id, out var f) && f == 0;
+        check(owner[171] == 2 && Effects(kept, id => id == 1243).Contains((171, 1243)), "Not dealt: a frozen-war subfaction of the planet's enemy stays (Predator Strain on 171).");
+        check(Effects(kept, id => subfactions.TryGetValue(id, out var f) && f != 0).All(e => owner[e.Item1] == subfactions[e.Item2]) &&
+              illuminate.All(i => Effects(kept, id => subfactions.TryGetValue(id, out var f) && f == 4).Any(e => e.Item1 == i)),
+            "Not dealt: no planet keeps another enemy's subfaction, and every Illuminate planet still has one.");
+        check(Effects(kept, Seaf).SequenceEqual(Effects(frozen, Seaf)) && Effects(kept, Seaf).Count > 0, "Not dealt: the frozen war's SEAF allies stay.");
+        // SEAF allies dealt (the default): about one enemy planet in eight, not the frozen war's
+        var seaf = Effects(open, Seaf);
+        var enemyPlanets = owner.Count(o => o.Value != 1);
+        check(seaf.Count > enemyPlanets / 16 && seaf.Count < enemyPlanets / 4 && !seaf.SequenceEqual(Effects(frozen, Seaf)),
+            $"SEAF allies dealt across the galaxy: {seaf.Count} of {enemyPlanets} planets.");
         var all = open.GetProperty("planetActiveEffects").EnumerateArray()
             .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32())).ToList();
         // (the SEAF's, 1401, is any enemy's: all, not onPlanet)
         check(all.Where(e => flags.ContainsKey(e.Id)).All(e => all.Count(x => x == (e.Index, flags[e.Id])) == 1) &&
               all.Where(e => flags.Values.Contains(e.Id)).All(e => all.Any(x => x.Index == e.Index && flags.TryGetValue(x.Id, out var f) && f == e.Id)),
-            "Each subfaction on a planet has its flag there once, and no flag is without its subfaction (1245 with 1243 on 171).");
-        // a subfaction seed deals every sector anew, within its enemy's own; the same seed, the same war; 0 the default
+            "Each subfaction on a planet has its flag there once, and no flag is without its subfaction.");
+        // another seed deals another layout, within each planet's enemy's own; the same seed, the same war; 0 the default
         List<(int Index, int Id)> Dealt(JsonElement war) => war.GetProperty("planetActiveEffects").EnumerateArray()
             .Select(e => (e.GetProperty("index").GetInt32(), e.GetProperty("galacticEffectId").GetInt32()))
             .Where(e => subfactions.TryGetValue(e.Item2, out var f) && f != 0).OrderBy(e => e).ToList();
@@ -78,9 +104,8 @@ static class OpenWarTests
         check(open.GetProperty("planetRegions").GetArrayLength() == frozen.GetProperty("planetRegions").GetArrayLength() + 8,
             "The other planets' region rows stay.");
         foreach (var faction in new[] { 2, 3 })
-            check(onPlanet.Where(e => owner[e.Index] == faction).Select(e => e.Id).Distinct().Count() >= 2 &&
-                  owner.Count(o => o.Value == faction) > onPlanet.Count(e => owner[e.Index] == faction),
-                $"Faction {faction}: several subfactions across its sectors, and planets without one.");
+            check(onPlanet.Where(e => owner[e.Index] == faction).Select(e => e.Id).Distinct().Count() >= 2,
+                $"Faction {faction}: several subfactions across its planets.");
 
         // served by the backend in place of the frozen war
         await using var app = LocalBackend.Create(0, Path.Combine(root, "open-war-backend"), LoginMode.LocalSession, true, openWar: true);

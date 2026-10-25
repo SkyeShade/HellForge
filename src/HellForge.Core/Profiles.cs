@@ -144,7 +144,7 @@ public static partial class ProfileStore
         return LoadFlag(paths, "liveWar") ? WarLive : WarFrozen;
     }
 
-    // The all-planets war's subfaction seed (backend --war-seed): 0, the default layout, unless one was typed or rolled.
+    // The all-planets war's seed (backend --war-seed), for its subfactions and SEAF allies: 0 unless one was typed or rolled.
     public static uint LoadSubfactionSeed(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings && uint.TryParse(SessionFiles.Text(settings, "subfactionSeed"), NumberStyles.None,
             CultureInfo.InvariantCulture, out var seed) ? seed : 0;
@@ -156,6 +156,17 @@ public static partial class ProfileStore
     // Off unless chosen: a full memory dump of the game when it crashes (large), for bug reports.
     public static bool LoadCrashDump(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "crashDump") == "true";
+
+    // Whether the all-planets war deals its subfactions and its SEAF allies from the seed (backend --war-subfactions,
+    // --war-seaf): on unless turned off, which keeps the frozen war's.
+    public static bool LoadDealSubfactions(ISessionPaths paths) => LoadFlag(paths, "dealSubfactions");
+    public static bool LoadDealSeaf(ISessionPaths paths) => LoadFlag(paths, "dealSeaf");
+    public static void SaveDealSubfactions(ISessionPaths paths, bool deal) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), dealSubfactions: deal);
+    public static void SaveDealSeaf(ISessionPaths paths, bool deal) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), dealSeaf: deal);
 
     // Off unless chosen (experimental in the 0.3.0 betas): the game at low integrity, with Steam through the session's
     // Steam broker (HellForge.Session play --sandbox, docs/steam-bridge.md).
@@ -197,14 +208,16 @@ public static partial class ProfileStore
         Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
 
     static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions,
-        uint? seed = null, bool? sandbox = null)
+        uint? seed = null, bool? sandbox = null, bool? dealSubfactions = null, bool? dealSeaf = null)
     {
         try
         {
             var subfactionSeed = (seed ?? LoadSubfactionSeed(paths)).ToString(CultureInfo.InvariantCulture);
             var sandboxed = sandbox ?? LoadSandbox(paths);
+            var subfactions = dealSubfactions ?? LoadDealSubfactions(paths);
+            var seaf = dealSeaf ?? LoadDealSeaf(paths);
             Directory.CreateDirectory(paths.HostRoot);
-            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions, subfactionSeed, sandbox = sandboxed }, WriteOptions) + "\n");
+            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions, subfactionSeed, dealSubfactions = subfactions, dealSeaf = seaf, sandbox = sandboxed }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.
     }

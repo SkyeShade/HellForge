@@ -149,16 +149,18 @@ To do: make Cyberstan's missions work at difficulty 11 (Hell Forge).
 
 ### Subfactions
 
-Status: built for 0.3.0-dev.4 (steps 1 and 2), not fully working yet; needs fixing and testing in game.
+Status: built (steps 1 and 2); the war table's flags show since 0.3.0-dev.8. Co-op still needs the host's war on every
+machine.
 
 A mission's subfactions come from its planet's galactic war effects of type 40: each adds an enemy tag (Predator Strain,
 Spore Burst, Rupture, Dragonroach, Hive Lord; Jet Brigade, Incineration Corps, Cyborgs; the Illuminate's four), and the
 spawn director only picks roster rows and squads whose tags are there (0x953150). The game builds its effect table from
 /WarSeason/GalacticWarEffects, which HellForge served empty, so no planet effect worked. The backend now serves the 13
-subfaction effects, so the frozen and live wars get their own subfactions, and "All planets open" gives each sector one
-of its enemy's (or none) by a stable hash, every Illuminate planet one (HD2Mods research/subfactions). The launcher's
-subfaction seed deals them anew: 0 keeps the frozen war's own, any other number another layout, and Randomise rolls one.
-In co-op the host's war decides; whether a joiner with another seed loads the host's subfaction enemies is to be tested.
+subfaction effects and their war-table flags (type 71), so the frozen and live wars get their own subfactions. "All
+planets open" deals them planet by planet from the launcher's seed: half of each enemy's planets get none, the others one
+of that enemy's, and every Illuminate planet one (HD2Mods research/subfactions); SEAF allies go to about one planet in
+eight. Each deal has a switch in the launcher; off, the frozen war's stay. In co-op the host's war decides; whether a
+joiner with another seed loads the host's subfaction enemies is to be tested.
 
 1. Find out what decides a mission's subfaction. Done.
 2. Have "All planets open" give each planet subfactions that fit its enemy. Done.

@@ -782,6 +782,8 @@ sealed class PlaySession(PlayOptions options)
         {
             start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";
             if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
+            if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
+            if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
         }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
         // A war server: the backend forwards the game's war routes to it, and checks it before it is ready.
