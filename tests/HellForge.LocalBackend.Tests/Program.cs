@@ -500,7 +500,7 @@ try
     Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");
     await DssEverywhereTests.Run(root, Check);
     results.Add(new { mode = "dss-everywhere", outcome = "passed" });
-    Console.WriteLine("PASS DSS everywhere: every DSS effect and the station's own on every planet, once each, served only when asked");
+    Console.WriteLine("PASS DSS everywhere: every DSS effect and the station's own on every planet, once each, with their definitions, served only when asked");
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });
     Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP");

@@ -49,7 +49,7 @@ static class SessionLaunchTests
             var refused = false;
             try { DssEffects.Parse("eagle-storm,nope"); } catch (ArgumentException) { refused = true; }
             check(refused, "An unknown effect is refused.");
-            check(DssEffects.Ids(["eagle-storm", "exosuit-reserves-patriot", DssEffects.Current]).SequenceEqual([1209, 1212, 1216, 1261]), "Each effect's ids.");
+            check(DssEffects.Ids(["eagle-storm", "exosuit-reserves-patriot", DssEffects.Current]).SequenceEqual([1425, 1212, 1216, 1261]), "Each effect's ids.");
             check(DssEffects.All.Where(e => e.Key != DssEffects.Current).All(e => e.Ids.Count > 0) &&
                 DssEffects.All.SelectMany(e => e.Ids).Distinct().Count() == DssEffects.All.Sum(e => e.Ids.Count), "Every listed effect has ids of its own.");
             File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "liveWar": false}""");

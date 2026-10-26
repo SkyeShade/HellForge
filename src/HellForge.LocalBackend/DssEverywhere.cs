@@ -9,9 +9,24 @@ namespace HellForge.LocalBackend;
 // "planetIndex", "activeEffectIds"}]) and each planet's own effects ("planetActiveEffects": [{"index",
 // "galacticEffectId"}]). Each picked effect (HellForge.Core.DssEffects: the ones it can have, and with "current" the ones
 // it has now) is added to every planet's own. The station stays where it is. It applies to whichever war is served
-// (frozen, live or all-planets).
+// (frozen, live or all-planets). The game reads what an effect id does from GET /WarSeason/GalacticWarEffects at login,
+// which the startup fixtures leave empty, so the DSS effects' definitions (dss-effects.json, build 25480438) join it too.
 public static class DssEverywhere
 {
+    public const string DefinitionsPath = "/WarSeason/GalacticWarEffects";
+
+    // The served effect definitions with every DSS effect's definition added; one the list has already stays as it is.
+    public static JsonElement Definitions(JsonElement definitions)
+    {
+        var list = definitions.ValueKind == JsonValueKind.Array ? JsonNode.Parse(definitions.GetRawText())!.AsArray() : [];
+        var known = list.Select(d => d?["id"] is JsonValue id && id.TryGetValue<int>(out var i) ? i : (int?)null).ToHashSet();
+        using var data = LocalBackend.LoadResource("dss-effects.json");
+        foreach (var definition in data.RootElement.GetProperty("effects").EnumerateArray())
+            if (known.Add(definition.GetProperty("id").GetInt32())) list.Add(JsonNode.Parse(definition.GetRawText()));
+        using var document = JsonDocument.Parse(list.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
     // The war status with the picked DSS effects on every planet it lists (planetStatus); a planet that has an effect
     // already keeps its one entry.
     public static JsonElement Status(JsonElement status, IReadOnlyCollection<string> picked)

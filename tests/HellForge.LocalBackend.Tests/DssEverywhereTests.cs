@@ -23,7 +23,8 @@ static class DssEverywhereTests
         var status = DssEverywhere.Status(frozen, all);
         var active = Active(status);
         check(planets.Count > 200 && planets.All(p => expected.All(e => active.Contains((p, e)))), "Every planet has every DSS effect.");
-        check(new[] { 1209, 1210, 1211, 1238, 1261, 1262 }.All(e => active.Contains((planets[^1], e))), "Eagle Storm, Orbital Blockade, Planetary Bombardment, Operational Support, Exosuit Reserves.");
+        check(new[] { 1425, 1210, 1237, 1214, 1238, 1261, 1262, 1384, 1385 }.All(e => active.Contains((planets[^1], e))),
+            "Eagle Storm, Orbital Blockade, Heavy Ordnance Distribution, Operational Support, Exosuit Reserves.");
         check(active.Distinct().Count() == active.Count, "No planet has an effect twice.");
         var before = Active(frozen);
         check(before.All(active.Contains), "Planets keep their own effects.");
@@ -34,7 +35,7 @@ static class DssEverywhereTests
 
         // only the picked ones; none picked, no change
         var picked = Active(DssEverywhere.Status(frozen, ["exosuit-reserves-patriot"]));
-        check(planets.All(p => picked.Contains((p, 1261))) && !picked.Contains((planets[^1], 1262)) && !picked.Contains((planets[^1], 1209)),
+        check(planets.All(p => picked.Contains((p, 1261))) && !picked.Contains((planets[^1], 1262)) && !picked.Contains((planets[^1], 1425)),
             "Only the picked effects join.");
         check(DssEverywhere.Status(frozen, []).GetRawText() == frozen.GetRawText(), "None picked, no change.");
         var withoutCurrent = Active(DssEverywhere.Status(frozen, all.Where(k => k != DssEffects.Current).ToList()));
@@ -54,6 +55,21 @@ static class DssEverywhereTests
         using (var bare = JsonDocument.Parse(none.ToJsonString()))
             check(Active(DssEverywhere.Status(bare.RootElement, all)).Count == planets.Count * DssEffects.Ids(all).Count, "Without a station, the list alone.");
 
+        // the game's definitions of every DSS effect (and of the frozen station's own), each once, kept when already listed
+        static List<int> Defined(JsonElement list) => list.EnumerateArray().Select(d => d.GetProperty("id").GetInt32()).ToList();
+        using (var empty = JsonDocument.Parse("[]"))
+        {
+            var defined = Defined(DssEverywhere.Definitions(empty.RootElement));
+            check(expected.All(defined.Contains) && defined.Distinct().Count() == defined.Count, $"Every DSS effect has its definition ({defined.Count}).");
+            check(Defined(DssEverywhere.Definitions(DssEverywhere.Definitions(empty.RootElement))).Count == defined.Count, "Adding the definitions twice changes nothing more.");
+        }
+        using (var own = JsonDocument.Parse("""[{"id": 1425, "effectType": 0}]"""))
+        {
+            var merged = DssEverywhere.Definitions(own.RootElement);
+            check(merged.EnumerateArray().Count(d => d.GetProperty("id").GetInt32() == 1425) == 1 && merged[0].GetProperty("effectType").GetInt32() == 0,
+                "A definition the list has already stays as it is.");
+        }
+
         // served by the backend, with the frozen war and the all-planets war; not without the option
         foreach (var (name, openWar, on) in new[] { ("frozen", false, true), ("open", true, true), ("off", false, false) })
         {
@@ -67,6 +83,9 @@ static class DssEverywhereTests
                 var servedActive = Active(served.RootElement).ToHashSet();
                 var everywhere = planets.All(p => expected.All(e => servedActive.Contains((p, e))));
                 check(everywhere == on, $"The backend serves every DSS effect on every planet only when asked ({name}).");
+                using var definitions = JsonDocument.Parse(await client.GetStringAsync(DssEverywhere.DefinitionsPath));
+                var servedDefinitions = Defined(definitions.RootElement);
+                check(on ? expected.All(servedDefinitions.Contains) : servedDefinitions.Count == 0, $"The backend serves the DSS effects' definitions only when asked ({name}).");
                 if (openWar) check(served.RootElement.GetProperty("campaigns").GetArrayLength() == planets.Count - 1, "Still the all-planets war.");
             }
             finally { await app.StopAsync(); }

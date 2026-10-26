@@ -142,7 +142,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--dss-ev
 | `--profile` | the selected profile | which HellForge profile plays |
 | `--war` | `live` | `live`: the current galactic war, read-only through the community mirror; `frozen`: the war HellForge ships; `open`: every planet open |
 | `--dss-everywhere` | `no` | the Democracy Space Station's effects picked with `--dss-effects` on every planet of the war |
-| `--dss-effects` | `all` | which DSS effects, comma-separated: `eagle-storm`, `orbital-blockade`, `planetary-bombardment`, `operational-support`, `exosuit-reserves-patriot`, `exosuit-reserves-emancipator`, `effect-1384`, `effect-1385`, and `current` for whatever the DSS gives now; or `all` |
+| `--dss-effects` | `all` | which DSS effects, comma-separated: `eagle-storm`, `orbital-blockade`, `heavy-ordnance-distribution`, `operational-support`, `exosuit-reserves-patriot`, `exosuit-reserves-emancipator`, `exosuit-reserves-lumberer`, `exosuit-reserves-breakthrough`, and `current` for whatever the DSS gives now; or `all`. The session also gets the game's definitions of these effects |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |

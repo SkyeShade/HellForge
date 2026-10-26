@@ -111,6 +111,8 @@ public static class LocalBackend
         }
         // --dss-everywhere <keys>: those DSS effects on every planet of whichever war is served (DssEverywhere).
         if (dssEverywhere != null && !startupFixtures) throw new ArgumentException("DSS effects on every planet require startup fixtures.");
+        // The game learns what those ids do from the effect definitions it reads at login (DssEverywhere.Definitions).
+        if (dssEverywhere != null) fixtures[DssEverywhere.DefinitionsPath] = DssEverywhere.Definitions(fixtures[DssEverywhere.DefinitionsPath]);
         if (startupFixtures) profile ??= ProfileStore.Open(null);
         // Issued session IDs, used only to classify the Authorization header in the audit.
         var sessions = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
