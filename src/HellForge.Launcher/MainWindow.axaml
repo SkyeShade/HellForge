@@ -342,6 +342,10 @@
                 <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
                            Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Built from the frozen war, so it is the same on every PC and offline. Applies to the next session." />
+                <CheckBox x:Name="DssEverywhereBox" Content="DSS effects on every planet" Margin="0,6,0,0" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="The Democracy Space Station's effects you tick below apply on every planet of whichever war you picked, not only the one it orbits. Friends need the same choices to see the same effects in co-op. Applies to the next session." />
+                <StackPanel x:Name="DssEffectsPanel" Spacing="2" Margin="28,0,0,0" />
               </StackPanel>
             </Border>
 

@@ -1,0 +1,18 @@
+{
+  "about": "The galactic effect definitions of the Democracy Space Station effects (HellForge.Core.DssEffects), as the official GET /WarSeason/GalacticWarEffects gives them for Steam build 25480438. Served in place of the empty list while DSS effects on every planet is on (DssEverywhere), so the game knows what each placed id does.",
+  "effects": [
+    {"id": 1210, "gameplayEffectId32": 0, "effectType": 83, "flags": 0, "nameHash": 848932066, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 2203434459, "descriptionGamePlayShortHash": 2912407889, "valueTypes": [4, 0], "values": [1908198785, 0]},
+    {"id": 1212, "gameplayEffectId32": 0, "effectType": 71, "flags": 1, "nameHash": 1985227902, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 2680194009, "descriptionGamePlayShortHash": 110553664, "valueTypes": [16, 0], "values": [3538839974, 0]},
+    {"id": 1213, "gameplayEffectId32": 0, "effectType": 71, "flags": 1, "nameHash": 793701494, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 3352631511, "descriptionGamePlayShortHash": 2463219996, "valueTypes": [16, 0], "values": [3960875339, 0]},
+    {"id": 1214, "gameplayEffectId32": 0, "effectType": 1, "flags": 1, "nameHash": 2158877299, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 4111374762, "descriptionGamePlayShortHash": 3798493358, "valueTypes": [2, 0], "values": [150, 0]},
+    {"id": 1215, "gameplayEffectId32": 0, "effectType": 89, "flags": 0, "nameHash": 2149309645, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 734885575, "descriptionGamePlayShortHash": 3490555416, "valueTypes": [0, 0], "values": [0, 0]},
+    {"id": 1216, "gameplayEffectId32": 0, "effectType": 88, "flags": 1, "nameHash": 425147060, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 1369265698, "descriptionGamePlayShortHash": 1212122769, "valueTypes": [2, 0], "values": [100, 0]},
+    {"id": 1237, "gameplayEffectId32": 0, "effectType": 32, "flags": 0, "nameHash": 1181673243, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 1569800370, "descriptionGamePlayShortHash": 2151089975, "valueTypes": [4, 1], "values": [4158531749, 0]},
+    {"id": 1238, "gameplayEffectId32": 0, "effectType": 1, "flags": 0, "nameHash": 3134031991, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 1625945640, "descriptionGamePlayShortHash": 765324963, "valueTypes": [2, 0], "values": [120, 0]},
+    {"id": 1261, "gameplayEffectId32": 0, "effectType": 36, "flags": 0, "nameHash": 2050925525, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 2211716048, "descriptionGamePlayShortHash": 3205119654, "valueTypes": [4, 2], "values": [3857719901, -35]},
+    {"id": 1262, "gameplayEffectId32": 0, "effectType": 36, "flags": 1, "nameHash": 238981512, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 861502802, "descriptionGamePlayShortHash": 2497862221, "valueTypes": [4, 2], "values": [754365924, -35]},
+    {"id": 1384, "gameplayEffectId32": 0, "effectType": 36, "flags": 1, "nameHash": 2556356384, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 3556716649, "descriptionGamePlayShortHash": 2364914030, "valueTypes": [4, 2], "values": [1299305542, -35]},
+    {"id": 1385, "gameplayEffectId32": 0, "effectType": 36, "flags": 1, "nameHash": 1536839978, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 2550410970, "descriptionGamePlayShortHash": 979984829, "valueTypes": [4, 2], "values": [841332828, -35]},
+    {"id": 1425, "gameplayEffectId32": 0, "effectType": 87, "flags": 1, "nameHash": 4089075400, "descriptionFluffHash": 0, "descriptionGamePlayLongHash": 1877398779, "descriptionGamePlayShortHash": 588827542, "valueTypes": [16, 0], "values": [189637473, 0]}
+  ]
+}

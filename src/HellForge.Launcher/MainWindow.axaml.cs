@@ -113,6 +113,13 @@ public partial class MainWindow : Window
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
         foreach (var (radio, mode) in new[] { (WarLiveRadio, ProfileStore.WarLive), (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
+        DssEverywhereBox.IsChecked = ProfileStore.LoadDssEverywhere(paths);
+        DssEverywhereBox.IsCheckedChanged += (_, _) =>
+        {
+            ProfileStore.SaveDssEverywhere(paths, DssEverywhereBox.IsChecked == true);
+            DssEffectsPanel.IsEnabled = DssEverywhereBox.IsChecked == true;
+        };
+        BuildDssEffects();
         EngineLogBox.IsChecked = ProfileStore.LoadEngineLog(paths);
         EngineLogBox.IsCheckedChanged += (_, _) => ProfileStore.SaveEngineLog(paths, EngineLogBox.IsChecked == true);
         CrashDumpBox.IsChecked = ProfileStore.LoadCrashDump(paths);
@@ -223,7 +230,7 @@ public partial class MainWindow : Window
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
-                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions));
+                ProfileStore.DssSessionEffects(DssEverywhereBox.IsChecked == true, ProfileStore.LoadDssEffects(paths)), EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
@@ -763,6 +770,22 @@ public partial class MainWindow : Window
         await runner.WaitForExitAsync(TimeSpan.FromSeconds(60));
         closeConfirmed = true;
         Close();
+    }
+
+    // One check box per DSS effect (DssEffects), ticked as saved; usable while "DSS effects on every planet" is on.
+    void BuildDssEffects()
+    {
+        var picked = ProfileStore.LoadDssEffects(paths).ToHashSet();
+        var boxes = new List<(CheckBox Box, string Key)>();
+        foreach (var effect in DssEffects.All)
+        {
+            var box = new CheckBox { Content = effect.Name, IsChecked = picked.Contains(effect.Key) };
+            box.IsCheckedChanged += (_, _) => ProfileStore.SaveDssEffects(paths, boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key).ToList());
+            boxes.Add((box, effect.Key));
+            DssEffectsPanel.Children.Add(box);
+            DssEffectsPanel.Children.Add(new TextBlock { Text = effect.Description, Foreground = Grey, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(28, 0, 0, 4) });
+        }
+        DssEffectsPanel.IsEnabled = DssEverywhereBox.IsChecked == true;
     }
 
     // What is wrong with the typed launch options, under their box (nothing when they can be used).

@@ -562,6 +562,12 @@ sealed class PlaySession(PlayOptions options)
         // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
         if (options.OpenWar) { start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open"; }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
+        // The DSS effects picked for every planet of whichever war is served (DssEverywhere).
+        if (options.DssEffects.Count > 0)
+        {
+            var effects = DssEffects.Text(options.DssEffects);
+            start.ArgumentList.Add("--dss-everywhere"); start.ArgumentList.Add(effects); result["dssEverywhere"] = effects;
+        }
         if (options.Multiplayer)
         {
             var link = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
