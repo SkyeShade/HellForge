@@ -34,11 +34,8 @@ Arrowhead's. A public lobby shows its players' names and its host's Steam accoun
 Privacy setting (Friends only, Invite only) keeps strangers out, and a switch on the Mods page keeps your Public lobbies
 off the map. You cannot play with the normal game's players.
 
-Joining a lobby whose host runs other gameplay mods offers to download them and restart with the host's mods. Only
-what HellForge checks itself downloads by itself: mods that run code (a DLL, sources or Lua) or carry data it cannot
-check (binary data patches, raw stats) download only when HellForge has verified that exact version. A blocklist hides lobbies
-running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
-unless you show them on the Mods page.
+Co-op can also run over the local network, with LAN co-op on (Settings > Multiplayer): other HellForge players on the
+same network find each other, a typed address covers networks that drop broadcasts, and nobody has to be a Steam friend.
 
 Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
 follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
@@ -86,7 +83,8 @@ Each step in detail, the installation's folders, updating and uninstalling are i
    Add more on the Mods page: [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so
    only enable code mods from people you trust.
 6. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
-   join from your Steam friends list.
+   join from your Steam friends list. For players on your own network instead, switch LAN co-op on in Settings >
+   Multiplayer; the first LAN session asks Windows once for the firewall rule that lets the local network reach it.
 
 ## Where to go next
 

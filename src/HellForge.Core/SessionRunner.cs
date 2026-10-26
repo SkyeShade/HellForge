@@ -7,9 +7,10 @@ namespace HellForge.Core;
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse). ModSync:
 // the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: the game at low
 // integrity (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
-// (SteamOwnershipRecord), for that one session.
+// (SteamOwnershipRecord), for that one session. Lan: co-op over the local network instead of Steam friends, with the
+// addresses typed for a network that drops broadcasts (ProfileStore.LoadLanCoop/LoadLanPeers).
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false);
+    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool Lan = false, string LanPeers = "");
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -37,6 +38,12 @@ public sealed class SessionRunner
             "--profile", Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder)), "--template", profile.Template };
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
+        // LAN co-op: the stand-ins talk to other players' backends on the local network instead of through Steam friends
+        if (options.Lan)
+        {
+            arguments.Add("--lan");
+            if (options.LanPeers.Length > 0) arguments.AddRange(["--lan-peer", options.LanPeers]);
+        }
         arguments.AddRange(WarArguments(paths, options.War));
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)

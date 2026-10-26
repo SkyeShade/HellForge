@@ -563,7 +563,7 @@ try
     Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });
-    Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP");
+    Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP, LAN on loopback");
     // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
     // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
     // repeated one is refused.

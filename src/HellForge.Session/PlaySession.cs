@@ -362,6 +362,32 @@ sealed partial class PlaySession(PlayOptions options)
         return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
+    // LAN co-op (Settings > Multiplayer): the game still talks only to the backend and the network block stays as it
+    // is; the backend is what reaches the other players, so Windows Firewall must let the local subnet reach it. One
+    // administrator prompt per installation, then the marker says it is done (the uninstall removes both).
+    void EnsureLanRule()
+    {
+        var marker = Path.Combine(install.Root, "network-block", "lan-coop.json");
+        if (File.Exists(marker))
+        {
+            var installed = Tools.ReadJson(marker);
+            if ((string?)installed?["status"] != "installed") throw new SessionFailure("LAN co-op's firewall rule is not in place (Setup > Installation puts it back).");
+            result["lanFirewall"] = installed;
+            return;
+        }
+        result["status"] = "awaiting_lan_firewall";
+        Save();
+        Say("LAN co-op lets the local network reach the backend: Windows will ask for administrator consent once.");
+        var report = Path.Combine(run, "lan-coop-install.json");
+        var elevated = new ProcessStartInfo(Tools.PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(Scripts, "Install-LanCoop.ps1")}\" " +
+            $"-ReportPath \"{report}\" -InstallRoot \"{install.Root}\"") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+        try { using var installer = Process.Start(elevated); installer?.WaitForExit(); }
+        catch (System.ComponentModel.Win32Exception) { throw new SessionFailure("Windows administrator consent was not given for LAN co-op's firewall rule."); }
+        if (Tools.ReadJson(report) is { } reportJson) result["lanFirewallInstall"] = reportJson;
+        if (!File.Exists(marker)) throw new SessionFailure("LAN co-op's firewall rule is not in place, so the local network cannot reach the backend. Allow Windows to make the change and launch again.");
+        result["lanFirewall"] = Tools.ReadJson(marker);
+    }
+
     int BlockRuleCount()
     {
         var (exit, output, error) = Tools.PowerShellCommand(BlockScript(
@@ -506,14 +532,18 @@ sealed partial class PlaySession(PlayOptions options)
     {
         BackUpGameGuard();
         var build = Tools.ReadJson(Path.Combine(Shims, "build.json"))!;
-        result["sdkShims"] = options.Multiplayer;
-        if (options.Multiplayer) SwapInShims(build);
+        // The stand-ins carry the lobby and session to other backends: over Steam friends (--multiplayer) or the local
+        // network (--lan), which needs them just the same.
+        var coOp = options.Multiplayer || options.Lan;
+        result["sdkShims"] = coOp;
+        if (coOp) SwapInShims(build);
         Ownership(Path.Combine(copy, "bin", CloudName), Path.Combine(run, "ownership.json"));
         result["ownershipConfirmed"] = true;
         var realTarget = SwapInCloud(build);
         var authorization = Stopwatch.StartNew();
         HoldInstalledGame();
         WriteAppIdHint();
+        if (options.Lan) EnsureLanRule();
         StartBackend(realTarget);
         result["steamOnline"] = true;
         var blockRules = SetUpNetworkBlock(out var linuxNamespace, out var wfpOnly);
@@ -951,7 +981,7 @@ sealed partial class PlaySession(PlayOptions options)
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         WarArguments(start);
-        if (options.Multiplayer) MultiplayerArguments(start, realSteamApi);
+        if (options.Multiplayer || options.Lan) MultiplayerArguments(start, realSteamApi);
         // The block permits only this port, so the backend has no other: say so when another program holds it.
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
             throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
@@ -981,9 +1011,6 @@ sealed partial class PlaySession(PlayOptions options)
 
     void MultiplayerArguments(ProcessStartInfo start, string realSteamApi)
     {
-        var link = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
-        File.Copy(realSteamApi, link);
-        if (Tools.Sha256(link) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
         var pipe = "hellforge-" + (string)result["runId"]!;
         // --mods: co-op plays with the host's Local Stats (StatsShare): the host's backend reads it, a joiner's restores it
         // --modset: joiners lacking this session's mods may download them (ModSync)
@@ -993,7 +1020,8 @@ sealed partial class PlaySession(PlayOptions options)
         var peerLink = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_PEER_LINK") : null;
         var directoryFolder = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_DIRECTORY_FOLDER") : null;
         if (peerLink != null && !peerLink.StartsWith("udp:", StringComparison.Ordinal)) throw new SessionFailure("HELLFORGE_PEER_LINK must be a udp: link.");
-        foreach (var argument in new[] { "--pipe", pipe, "--link", peerLink ?? "steam:" + link, "--mod-digest", modDigest, "--mods", install.Mods, "--modset", ModSetFile })
+        var link = PeerLink(start, realSteamApi, peerLink);
+        foreach (var argument in new[] { "--pipe", pipe, "--link", link, "--mod-digest", modDigest, "--mods", install.Mods, "--modset", ModSetFile })
             start.ArgumentList.Add(argument);
         if (directoryFolder != null) { start.ArgumentList.Add("--directory"); start.ArgumentList.Add(Path.GetFullPath(directoryFolder)); }
         if (peerLink != null) result["peerLink"] = peerLink;
@@ -1014,7 +1042,25 @@ sealed partial class PlaySession(PlayOptions options)
         }
         // The game inherits this environment (HostBoundedProcess).
         Environment.SetEnvironmentVariable("HELLFORGE_PIPE", pipe);
-        result["multiplayer"] = new JsonObject { ["pipe"] = pipe, ["link"] = "steam" };
+        result["multiplayer"] = new JsonObject { ["pipe"] = pipe, ["link"] = peerLink != null ? "udp" : options.Lan ? "lan" : "steam" };
+    }
+
+    // The peer link the backend gets: the test harness's udp: one (several installations on one PC), the local network
+    // (--lan: the backend announces itself on the subnet, or dials the addresses typed for a network that drops broadcasts;
+    // nothing of the real Steam library is copied for it, because LAN peers are named by the SteamID this PC is signed in
+    // as), or Steam friends' (the real steam_api64.dll copied beside the run, which the backend loads as the link).
+    string PeerLink(ProcessStartInfo start, string realSteamApi, string? peerLink)
+    {
+        if (peerLink != null) return peerLink;
+        if (options.Lan)
+        {
+            if (options.LanPeers.Length > 0) { start.ArgumentList.Add("--lan-peer"); start.ArgumentList.Add(options.LanPeers); }
+            return "lan";
+        }
+        var library = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
+        File.Copy(realSteamApi, library);
+        if (Tools.Sha256(library) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
+        return "steam:" + library;
     }
 
     // Waits up to 30 s for the backend's ready.json and records its loopback origin and profile.

@@ -49,8 +49,8 @@ Reference and related pages:
   each profile.
 - [Build patches](downpatch.md): for maintainers; how setup patches a newer Steam build and how to publish a patch after
   a game update.
-- [Co-op and public lobbies](multiplayer.md): how HellForge's co-op, mod sync and public lobbies work, and the research
-  log from building them.
+- [Co-op and public lobbies](multiplayer.md): how HellForge's co-op (over Steam friends or the local network), mod
+  sync and public lobbies work, and the research log from building them.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
   two games under one Steam account.
 - [Stratagem selection categories](stratagem-categories.md): the research behind SDK 8's selection headings.

@@ -107,6 +107,10 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
+        LanCoopBox.IsChecked = ProfileStore.LoadLanCoop(paths);
+        LanCoopBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLanCoop(paths, LanCoopBox.IsChecked == true);
+        LanPeersBox.Text = ProfileStore.LoadLanPeers(paths);
+        LanPeersBox.TextChanged += (_, _) => ProfileStore.SaveLanPeers(paths, LanPeersBox.Text?.Trim() ?? "");
         // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
         StrangersBox.IsEnabled = paths.ModsFolder != null;
         StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
@@ -237,6 +241,8 @@ public partial class MainWindow : Window
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
         if (LocalPlayFabBox.IsChecked != true) Append("Local PlayFab is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
         if (SdkShimsBox.IsChecked != true) Append("Lobby and session through Steam friends is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
+        if (LanCoopBox.IsChecked == true)
+            Append("LAN co-op is on (Settings > Multiplayer): other HellForge players on this network can join, and this PC joins theirs.", LauncherLine);
         List<string> gameOptions;
         try { gameOptions = HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
         catch (InvalidDataException error)
@@ -250,7 +256,8 @@ public partial class MainWindow : Window
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
-                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
+                Lan: LanCoopBox.IsChecked == true, LanPeers: LanPeersBox.Text?.Trim() ?? ""));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
@@ -407,6 +414,11 @@ public partial class MainWindow : Window
                 RenderSteps(NetworkStep, false);
                 if (!stopRequested) SetStatus("Approve the Windows prompt to place a network block for this session.", Phase.Attention,
                     "It keeps the copied game off the internet until the session ends.");
+                break;
+            case "awaiting_lan_firewall":
+                RenderSteps(NetworkStep, false);
+                if (!stopRequested) SetStatus("Approve the Windows prompt to let your network reach this PC.", Phase.Attention,
+                    "Asked once: LAN co-op's firewall rule lets HellForge players on this network connect. The network block and the game stay as they are.");
                 break;
             case "patching":
                 RenderSteps(LaunchStep, false);

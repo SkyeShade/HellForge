@@ -39,6 +39,7 @@ static class Launch
     static void Emit(object value) => Console.WriteLine(JsonSerializer.Serialize(value, Line));
 
     // play: the launcher's saved choices (launcher-settings.json), each replaced by its option when given.
+    // lint-ok: R10 one branch more than the limit, for the LAN co-op option and its typed addresses.
     public static int Play(Dictionary<string, string> options)
     {
         if (!SessionRunner.IsSupported) throw new InvalidDataException(SessionRunner.UnsupportedMessage);
@@ -55,7 +56,9 @@ static class Launch
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false));
+            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
+            Lan: Yes(options, "--lan", ProfileStore.LoadLanCoop(paths)),
+            LanPeers: options.TryGetValue("--lan-peer", out var lanPeers) ? lanPeers : ProfileStore.LoadLanPeers(paths));
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -466,6 +469,8 @@ static class Launch
         }
         if (options.ContainsKey("--local-playfab")) ProfileStore.SaveLocalPlayFab(paths, Yes(options, "--local-playfab", true));
         if (options.ContainsKey("--multiplayer")) ProfileStore.SaveSdkShims(paths, Yes(options, "--multiplayer", true));
+        if (options.ContainsKey("--lan")) ProfileStore.SaveLanCoop(paths, Yes(options, "--lan", false));
+        if (options.TryGetValue("--lan-peer", out var lanPeers)) ProfileStore.SaveLanPeers(paths, lanPeers);
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
         if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
         if (options.ContainsKey("--sandbox")) ProfileStore.SaveSandbox(paths, Yes(options, "--sandbox", false));
@@ -482,6 +487,8 @@ static class Launch
             war = ProfileStore.LoadWar(paths),
             localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
             multiplayer = ProfileStore.LoadSdkShims(paths),
+            lanCoop = ProfileStore.LoadLanCoop(paths),
+            lanPeers = ProfileStore.LoadLanPeers(paths),
             engineLog = ProfileStore.LoadEngineLog(paths),
             crashDump = ProfileStore.LoadCrashDump(paths),
             gameOptions = ProfileStore.LoadLaunchOptions(paths),

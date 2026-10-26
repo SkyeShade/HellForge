@@ -332,6 +332,10 @@
                 <CheckBox x:Name="SdkShimsBox" Content="Lobby and session through Steam friends" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
+                <CheckBox x:Name="LanCoopBox" Content="LAN co-op (the local network instead of Steam friends)" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Plays with HellForge on the same local network: the stand-ins look for other players' backends on your subnet, then connect to them directly, with no Steam friends check (so anyone on the network who runs HellForge can join; use it on a network you trust). Players still need the same gameplay mods. The first time, Windows asks once to let the local network reach the backend." />
+                <TextBox x:Name="LanPeersBox" Watermark="Only if the network drops broadcasts: 192.168.1.20, 192.168.1.31" />
                 <CheckBox x:Name="StrangersBox" Content="Play with strangers" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Off: only Steam friends reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs." />

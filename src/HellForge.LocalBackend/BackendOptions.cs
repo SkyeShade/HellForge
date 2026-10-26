@@ -8,7 +8,7 @@ public static class BackendOptions
     public static readonly string[] Names =
     [
         "--port", "--mode", "--evidence", "--startup-fixtures", "--profile-dir", "--lifetime-seconds", "--profile-template",
-        "--item-catalog", "--fixture-override", "--capture-mission-bodies", "--pipe", "--sandbox", "--link", "--mod-digest", "--mod-list", "--mods", "--modset", "--directory", "--live-war", "--war", "--war-seed", "--war-subfactions", "--war-seaf",
+        "--item-catalog", "--fixture-override", "--capture-mission-bodies", "--pipe", "--sandbox", "--link", "--lan-peer", "--mod-digest", "--mod-list", "--mods", "--modset", "--directory", "--live-war", "--war", "--war-seed", "--war-subfactions", "--war-seaf",
         "--rejoin",
     ];
 

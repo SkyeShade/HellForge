@@ -178,6 +178,13 @@ public static partial class ProfileStore
     public static string LoadLaunchOptions(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "launchOptions") : "";
 
+    // LAN co-op: the stand-ins reach other players' backends on the local network instead of through Steam friends.
+    // Off unless chosen; the addresses are what a player types for a network that drops the discovery broadcasts.
+    public static bool LoadLanCoop(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "lanCoop") == "true";
+    public static string LoadLanPeers(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "lanPeers") : "";
+
     static bool LoadFlag(ISessionPaths paths, string name) =>
         SessionFiles.ReadJson(paths.SettingsFile) is not { } settings || SessionFiles.Text(settings, name) != "false";
 
@@ -202,9 +209,17 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
+    public static void SaveLanCoop(ISessionPaths paths, bool enabled) => Save(paths, Saved(paths) with { LanCoop = enabled });
+    public static void SaveLanPeers(ISessionPaths paths, string text) => Save(paths, Saved(paths) with { LanPeers = text });
+
+    // What the file holds now, for a Save that changes one of it.
+    static SavedSettings Saved(ISessionPaths paths) =>
+        new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths),
+            LoadSubfactionSeed(paths), LoadSandbox(paths), LoadDealSubfactions(paths), LoadDealSeaf(paths), LoadLanCoop(paths), LoadLanPeers(paths));
+
     // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions or DealSeaf keeps the saved one.
     sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
-        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null);
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? LanCoop = null, string? LanPeers = null);
 
     static void Save(ISessionPaths paths, SavedSettings saved)
     {
@@ -214,12 +229,14 @@ public static partial class ProfileStore
             var sandboxed = saved.Sandbox ?? LoadSandbox(paths);
             var subfactions = saved.DealSubfactions ?? LoadDealSubfactions(paths);
             var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
+            var lanCoop = saved.LanCoop ?? LoadLanCoop(paths);
+            var lanPeers = saved.LanPeers ?? LoadLanPeers(paths);
             Directory.CreateDirectory(paths.HostRoot);
             File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, lanCoop, lanPeers
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

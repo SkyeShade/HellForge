@@ -9,6 +9,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //   link "none"                                  this machine only (hosting works, joins fail)
 //   link "steam:<steam_api64.dll>"               Steam networking: friends, and strangers through the lobby directory
 //   link "udp:<id>:<port>:<peer id>=<port>,..."  loopback UDP between backends on one PC (test harness; ids in hex)
+//   link "lan" or "lan:<port>"                   the local network (LanTransport; --lan-peer <ip>[,<ip>] for direct addresses)
 public sealed class MultiplayerHost : IAsyncDisposable
 {
     readonly PipeHost pipes;
@@ -63,7 +64,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         this.warClock = warClock;
         logFile = new StreamWriter(Path.Combine(settings.EvidenceDirectory, "multiplayer.log"), append: true) { AutoFlush = true };
         peersFile = Path.Combine(settings.EvidenceDirectory, PeersFileName);
-        transport = CreateTransport(settings.Link, Log);
+        transport = CreateTransport(settings.Link, settings.LanPeers, Log);
         pipes = new PipeHost(settings.PipeName, Log);
         Lobby = new LobbyService(transport, pipes.SendLobby, Log, settings.ModDigest, warClock, settings.ModList);
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
@@ -213,13 +214,20 @@ public sealed class MultiplayerHost : IAsyncDisposable
         (transport?.IsFriend(peer) == false ? "Player " : "Steam friend ") + LobbyService.EntityId(peer);
 
     // HELLFORGE_TEST_STRANGERS=1: friends are treated as strangers (testing the lobby directory's stranger path with two
-    // friends' PCs; docs/multiplayer.md step 7).
-    static IPeerTransport? CreateTransport(string link, Action<string> log)
+    // friends' PCs; docs/multiplayer.md step 7). lanPeers: the addresses typed for LAN co-op (a network that drops
+    // broadcasts), comma separated; every LAN machine is a friend here, the address list only decides where to look.
+    static IPeerTransport? CreateTransport(string link, string? lanPeers, Action<string> log)
     {
         if (link == "none") return null;
         var strangers = Environment.GetEnvironmentVariable("HELLFORGE_TEST_STRANGERS") == "1";
         if (strangers) log("Test mode (HELLFORGE_TEST_STRANGERS): Steam friends are treated as strangers: no presence, the directory's gate.");
         if (link.StartsWith("steam:", StringComparison.Ordinal)) return new SteamPeerTransport(link[6..], log) { TreatFriendsAsStrangers = strangers };
+        if (link == "lan" || link.StartsWith("lan:", StringComparison.Ordinal))
+        {
+            var lanPort = link.Length > 4 ? int.Parse(link[4..], CultureInfo.InvariantCulture) : LanTransport.DefaultPort;
+            var lanAddresses = (lanPeers ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return new LanTransport(lanPort, lanAddresses, log);
+        }
         var parts = link.Split(':');
         if (parts is ["udp", var id, var port, var peers] && LobbyService.TryNode(id, out var localId) && int.TryParse(port, out var localPort))
         {
@@ -233,7 +241,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
             }
             return new UdpLoopbackTransport(localId, localPort, table) { TreatPeersAsStrangers = strangers };
         }
-        throw new ArgumentException("--link must be none, steam:<steam_api64.dll> or udp:<id>:<port>:<peer>=<port>,...");
+        throw new ArgumentException("--link must be none, steam:<steam_api64.dll>, lan or udp:<id>:<port>:<peer>=<port>,...");
     }
 
     // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, and the peers
@@ -422,6 +430,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
 // ModSetFile: the session's mod set (mods-stage --modset), which joiners lacking its mods may download. Directory: the
 // lobby directory (by default Steam's for a Steam link; DirectoryFolder a folder's, for the loopback harness; none otherwise).
 // RejoinFile: the session after a mod sync (ModSyncSession), whose host's lobby the game is invited back into.
+// LanPeers: the addresses typed for LAN co-op, comma separated (a link "lan": see LanTransport).
 public sealed record MultiplayerSettings(string PipeName, string Link, string ModDigest, string EvidenceDirectory)
 {
     public WarClock? WarClock { get; init; }
@@ -433,4 +442,5 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public ILobbyDirectory? Directory { get; init; }
     public string? DirectoryFolder { get; init; }
     public string? RejoinFile { get; init; }
+    public string? LanPeers { get; init; }
 }

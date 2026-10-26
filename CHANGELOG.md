@@ -15,6 +15,10 @@ On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
   Public lobbies on the Galactic Map" on the Mods page keeps yours off it (#3, #17, #24).
 - **Play with strangers** (Settings > MULTIPLAYER), off by default. Off, only your Steam friends can join you, you can
   only join friends, and your Public lobby is not listed (#24).
+- **LAN co-op** (Settings > MULTIPLAYER), off by default. Other HellForge players on your local network find each
+  other and join each other's lobbies without Steam friends or Steam invites; type their addresses when the network
+  drops broadcasts. The same gameplay mods are still required, the first LAN session asks Windows once for the
+  firewall rule that lets your network reach the backend, and peers on your network are trusted like friends (#76).
 - **Lobby privacy decides who joins:** Public lets in any HellForge player (with Play with strangers on), Friends only
   your Steam friends, and Invite only the people you invite. In-game invites and kicking work (#17).
 - **Mod sync.** A join refused because your mods differ from the host's now shows a MOD SYNC prompt with each of the
@@ -122,6 +126,9 @@ See [docs/external-launchers.md](docs/external-launchers.md).
 - `mods` still lists Local Stats (tag `local-stats`), and `mod-switch --id zz.local.stats --on no` is refused (#36).
 - `launcher-settings.json` gains `subfactionSeed`, `dealSubfactions` and `dealSeaf`, which `play --war open` uses
   (1440557, #38).
+- `play --lan yes` (and `settings --lan yes`) runs co-op over the local network instead of Steam friends;
+  `--lan-peer <ip>[,<ip>]` adds the addresses typed for a network that drops broadcasts. `launcher-settings.json`
+  gains `lanCoop` and `lanPeers`, and `result.json`'s `multiplayer.link` reads `lan` (#76).
 - `play --full-ownership-check yes` asks Steam for this session even when a recent check holds. `result.json` gains
   `ownershipCheck` (`full` or `recent`) and, for a reused check, `ownershipConfirmedUtc` (#69).
 - `languages` lists the language packs pinned for the supported build, and `language-add --name <language>` copies one

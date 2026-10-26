@@ -323,7 +323,7 @@ if($bridge){foreach($name in @('steam_api64_bridge.dll','hellforge_steam_broker.
 # build.json's standIns pin names this one with -SteamCensus, since the session checks the stand-in it swaps in against it.
 if($SteamCensus){Copy-Item -LiteralPath (Join-Path $census 'steam_api64.dll') -Destination $shimTarget -Force}
 $scriptTarget=New-Item -ItemType Directory (Join-Path $staging 'scripts')
-foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
+foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Install-LanCoop.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
 # The WFP block tool ships beside the block scripts that drive it.
 Copy-Item -LiteralPath (Join-Path $out 'hellforge_wfp.exe') -Destination $scriptTarget
 foreach($name in @('LICENSE','LICENSE-EXCEPTION')){Copy-Item -LiteralPath (Join-Path $project $name) -Destination $staging}
