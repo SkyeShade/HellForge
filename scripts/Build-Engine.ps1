@@ -181,7 +181,7 @@ if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join
 $shimTarget=New-Item -ItemType Directory (Join-Path $staging 'sdk-shims')
 foreach($name in @('build.json','PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','MinHook-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}
 $scriptTarget=New-Item -ItemType Directory (Join-Path $staging 'scripts')
-foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
+foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Install-LanCoop.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
 # The WFP block tool ships beside the block scripts that drive it.
 Copy-Item -LiteralPath (Join-Path $out 'hellforge_wfp.exe') -Destination $scriptTarget
 foreach($name in @('LICENSE','LICENSE-EXCEPTION')){Copy-Item -LiteralPath (Join-Path $project $name) -Destination $staging}

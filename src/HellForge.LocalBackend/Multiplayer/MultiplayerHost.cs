@@ -8,6 +8,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //   link "none"                                  this machine only (hosting works, joins fail)
 //   link "steam:<steam_api64.dll>"               Steam networking, friends only
 //   link "udp:<id>:<port>:<peer id>=<port>,..."  loopback UDP between backends on one PC (test harness; ids in hex)
+//   link "lan" or "lan:<port>"                   the local network (LanTransport; --lan-peer <ip>[,<ip>] for direct addresses)
 public sealed class MultiplayerHost : IAsyncDisposable
 {
     readonly PipeHost pipes;
@@ -33,12 +34,12 @@ public sealed class MultiplayerHost : IAsyncDisposable
     static readonly TimeSpan PresenceInterval = TimeSpan.FromSeconds(10);
 
     MultiplayerHost(string pipeName, string link, string modDigest, string evidenceDirectory, WarClock? warClock, AccountKeys? accountKeys,
-        FriendPresence? presence, string? modList)
+        FriendPresence? presence, string? modList, string? lanPeers)
     {
         this.presence = presence;
         this.warClock = warClock;
         logFile = new StreamWriter(Path.Combine(evidenceDirectory, "multiplayer.log"), append: true) { AutoFlush = true };
-        transport = CreateTransport(link, Log);
+        transport = CreateTransport(link, lanPeers, Log);
         pipes = new PipeHost(pipeName, Log);
         Lobby = new LobbyService(transport, pipes.SendLobby, Log, modDigest, warClock, modList);
         // A refused join, in both games (the in-game editor shows it over the game): the joiner's says why, the host's who.
@@ -71,9 +72,9 @@ public sealed class MultiplayerHost : IAsyncDisposable
     }
 
     public static MultiplayerHost Start(string pipeName, string link, string modDigest, string evidenceDirectory, WarClock? warClock = null,
-        AccountKeys? accountKeys = null, FriendPresence? presence = null, string? modsFolder = null, string? modList = null)
+        AccountKeys? accountKeys = null, FriendPresence? presence = null, string? modsFolder = null, string? modList = null, string? lanPeers = null)
     {
-        var host = new MultiplayerHost(pipeName, link, modDigest, evidenceDirectory, warClock, accountKeys, presence, modList);
+        var host = new MultiplayerHost(pipeName, link, modDigest, evidenceDirectory, warClock, accountKeys, presence, modList, lanPeers);
         host.transport?.Start();
         // The session's live-edit pipe is "hellforge-live-" + the run id, the pipe name's own suffix ("hellforge-<run id>").
         if (host.transport != null && modsFolder != null && pipeName.StartsWith("hellforge-", StringComparison.Ordinal))
@@ -98,10 +99,16 @@ public sealed class MultiplayerHost : IAsyncDisposable
     string FriendName(ulong peer) =>
         (transport as IFriendSource)?.HellForgeFriends.FirstOrDefault(f => f.SteamId == peer)?.Name ?? "Steam friend " + LobbyService.EntityId(peer);
 
-    static IPeerTransport? CreateTransport(string link, Action<string> log)
+    static IPeerTransport? CreateTransport(string link, string? lanPeers, Action<string> log)
     {
         if (link == "none") return null;
         if (link.StartsWith("steam:", StringComparison.Ordinal)) return new SteamPeerTransport(link[6..], log);
+        if (link == "lan" || link.StartsWith("lan:", StringComparison.Ordinal))
+        {
+            var lanPort = link.Length > 4 ? int.Parse(link[4..], CultureInfo.InvariantCulture) : LanTransport.DefaultPort;
+            var lanAddresses = (lanPeers ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return new LanTransport(lanPort, lanAddresses, log);
+        }
         var parts = link.Split(':');
         if (parts is ["udp", var id, var port, var peers] && LobbyService.TryNode(id, out var localId) && int.TryParse(port, out var localPort))
         {
@@ -115,7 +122,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
             }
             return new UdpLoopbackTransport(localId, localPort, table);
         }
-        throw new ArgumentException("--link must be none, steam:<steam_api64.dll> or udp:<id>:<port>:<peer>=<port>,...");
+        throw new ArgumentException("--link must be none, steam:<steam_api64.dll>, lan or udp:<id>:<port>:<peer>=<port>,...");
     }
 
     // Pings every friend this machine shares a lobby or network with; a friend unheard for PeerTimeout is gone.

@@ -5,7 +5,8 @@ namespace HellForge.Core;
 
 // A session's choices, as the launcher's Settings page keeps them (launcher-settings.json, ProfileStore) or as another
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse).
-public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions);
+public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
+    bool Lan = false, string LanPeers = "");
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -33,6 +34,12 @@ public sealed class SessionRunner
             "--profile", Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder)), "--template", profile.Template };
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
+        // LAN co-op: the stand-ins talk to other players' backends on the local network instead of through Steam friends
+        if (options.Lan)
+        {
+            arguments.Add("--lan");
+            if (options.LanPeers.Length > 0) arguments.AddRange(["--lan-peer", options.LanPeers]);
+        }
         // the galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing
         if (options.War == ProfileStore.WarLive) arguments.AddRange(["--live-war", Path.Combine(paths.HostRoot, "live-war.json")]);
         else if (options.War == ProfileStore.WarOpen) arguments.Add("--open-war");

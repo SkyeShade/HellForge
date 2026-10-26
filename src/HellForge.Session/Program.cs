@@ -2,14 +2,15 @@ using HellForge.Session;
 
 // HellForge.Session.exe: the engine's session runner (docs/engine.md).
 //   play --install <installation> --profile <profile folder> [--template <name>] [--local-playfab] [--multiplayer]
-//        [--live-war <cache file> | --open-war] [--engine-log] [--game-options <the player's launch options>]
+//        [--lan] [--lan-peer <ip>[,<ip>]] [--live-war <cache file> | --open-war] [--engine-log]
+//        [--game-options <the player's launch options>]
 //   version
 //   census <network-census.jsonl>   (a session's network census, summarised as the session's result.json holds it)
 //   network-probe <backend port> <report>   (the network block's probe as a Linux session runs it, PlaySession.NetworkProbeInProcess)
 // A session reports through its run folder (logs/sessions/<run>: result.json and the rest, as the launcher reads them);
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
-    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] | version | census <log>";
+    "[--local-playfab] [--multiplayer] [--lan] [--lan-peer <ip>[,<ip>]] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
@@ -42,6 +43,8 @@ for (var i = 1; i < args.Length; i++)
         case "--open-war": options.OpenWar = true; break;
         case "--local-playfab": options.LocalPlayFab = true; break;
         case "--multiplayer": options.Multiplayer = true; break;
+        case "--lan": options.Lan = true; break;
+        case "--lan-peer": options.LanPeers = Value(); break;
         case "--engine-log": options.EngineLog = true; break;
         case "--game-options": gameOptions = Value(); break;
         default: Console.Error.WriteLine(Usage); return 2;
@@ -73,6 +76,8 @@ sealed class PlayOptions
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
     public bool LocalPlayFab { get; set; }
     public bool Multiplayer { get; set; }
+    public bool Lan { get; set; } /* the local network instead of Steam (LanTransport); implies the stand-ins */
+    public string LanPeers { get; set; } = ""; /* addresses a player typed, for networks without broadcast */
     public bool EngineLog { get; set; }
     public List<string> GameOptions { get; set; } = [];
 }

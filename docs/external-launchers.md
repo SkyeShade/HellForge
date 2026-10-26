@@ -117,12 +117,12 @@ the first one is used). Write the whole file at once, to a temporary file and th
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+`--multiplayer`, `--lan`, `--lan-peer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones given, checks
+them as `play` would, and prints every setting:
 
 ```json
-{"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "file": "<installation>\\launcher-settings.json"}
+{"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "lanCoop": false, "lanPeers": "",
+ "engineLog": true, "crashDump": false, "gameOptions": "", "file": "<installation>\\launcher-settings.json"}
 ```
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
@@ -132,7 +132,8 @@ lists and creates profiles; `settings --profile <name>` selects one.
 
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
-                       [--engine-log yes | no] [--crash-dump yes | no] [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
+                       [--lan yes | no] [--lan-peer <ip>[,<ip>]] [--engine-log yes | no] [--crash-dump yes | no]
+                       [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
@@ -141,6 +142,8 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--war` | `live` | `live`: the current galactic war, read-only through the community mirror; `frozen`: the war HellForge ships; `open`: every planet open |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
+| `--lan` | `no` | LAN co-op: peers on the local network instead of Steam friends (still needs Local PlayFab and `--multiplayer`, which set up the stand-ins); the first session asks for the firewall rule |
+| `--lan-peer` | the launcher's typed addresses | addresses to try when the network drops broadcasts, for example `192.168.1.20,192.168.1.31` |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
@@ -159,6 +162,7 @@ was not built...). Closing `play` does not stop the session; `stop` does.
 | `preparing` | building mods that ship sources, then checking the copied game (progress in `<run>\mod-builds.json`) |
 | `awaiting_network_block_install` | Windows asks the player, once, to install the network block |
 | `awaiting_windows_firewall_consent` | Windows asks for this session's firewall rules |
+| `awaiting_lan_firewall` | Windows asks, once per installation, for the rule that lets the local network reach the backend (LAN co-op) |
 | `patching` | launching the game |
 | `observing` | the game is running |
 | `observed` | the session ended normally |

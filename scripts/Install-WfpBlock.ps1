@@ -35,6 +35,8 @@ try{
     if($Uninstall){
         $r=Invoke-Wfp @('uninstall',$HellForgeWfpProvider)
         if($r.status -ne 'uninstalled'){throw ('The WFP filters were not removed: '+$r.failure)}
+        # LAN co-op's firewall rule (Windows Firewall, not WFP) is this installation's too: removed in the same consent.
+        & (Join-Path $PSScriptRoot 'Install-LanCoop.ps1') -Uninstall -InstallRoot $HellForgeInstallRoot|Out-Null
         if(Test-Path -LiteralPath $HellForgeBlockRoot){Remove-Item -LiteralPath $HellForgeBlockRoot -Recurse -Force}
         $state.status='uninstalled'
     }else{

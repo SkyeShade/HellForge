@@ -21,9 +21,10 @@ The copy is offline. It talks to a local backend on your PC in place of Arrowhea
 in the Windows Filtering Platform stops it reaching anything but this PC. It never connects to official servers, so it
 cannot be used to play online with a modified game.
 
-Co-op with Steam friends is the only multiplayer. You host or join friends from your Steam friends list who also run
-HellForge with the same gameplay mods; HellForge checks the mods before a join. There is no matchmaking, there are no
-public lobbies, and you cannot play with the normal game's players.
+Co-op runs with Steam friends, or over the local network with LAN co-op on (Settings > Multiplayer) and nobody else
+needed: other HellForge players on the same network find each other, and a typed address covers networks that drop
+broadcasts. Players need the same gameplay mods, and HellForge checks them before a join. There is no matchmaking, there
+are no public lobbies, and you cannot play with the normal game's players.
 
 Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
 follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
@@ -69,7 +70,8 @@ Each step in detail, the installation's folders, updating and uninstalling are i
    Add more on the Mods page: [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so
    only enable code mods from people you trust.
 6. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
-   join from your Steam friends list.
+   join from your Steam friends list. For players on your own network instead, switch LAN co-op on in Settings >
+   Multiplayer; the first LAN session asks Windows once for the firewall rule that lets the local network reach it.
 
 ## Where to go next
 

@@ -151,36 +151,44 @@ public static partial class ProfileStore
     public static string LoadLaunchOptions(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "launchOptions") : "";
 
+    // LAN co-op: the stand-ins reach other players' backends on the local network instead of through Steam friends.
+    // Off unless chosen; the addresses are what a player types for a network that drops the discovery broadcasts.
+    public static bool LoadLanCoop(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "lanCoop") == "true";
+    public static string LoadLanPeers(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "lanPeers") : "";
+
     static bool LoadFlag(ISessionPaths paths, string name) =>
         SessionFiles.ReadJson(paths.SettingsFile) is not { } settings || SessionFiles.Text(settings, name) != "false";
 
-    public static void SaveSelected(ISessionPaths paths, string name) =>
-        Save(paths, name, LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+    public static void SaveSelected(ISessionPaths paths, string name) => Save(paths, name: name);
+    public static void SaveLocalPlayFab(ISessionPaths paths, bool enabled) => Save(paths, localPlayFab: enabled);
+    public static void SaveSdkShims(ISessionPaths paths, bool enabled) => Save(paths, sdkShims: enabled);
+    public static void SaveWar(ISessionPaths paths, string war) => Save(paths, war: war);
+    public static void SaveCrashDump(ISessionPaths paths, bool enabled) => Save(paths, crashDump: enabled);
+    public static void SaveEngineLog(ISessionPaths paths, bool enabled) => Save(paths, engineLog: enabled);
+    public static void SaveLaunchOptions(ISessionPaths paths, string text) => Save(paths, launchOptions: text);
+    public static void SaveLanCoop(ISessionPaths paths, bool enabled) => Save(paths, lanCoop: enabled);
+    public static void SaveLanPeers(ISessionPaths paths, string text) => Save(paths, lanPeers: text);
 
-    public static void SaveLocalPlayFab(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), enabled, LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
-
-    public static void SaveSdkShims(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
-
-    public static void SaveWar(ISessionPaths paths, string war) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
-
-    public static void SaveCrashDump(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths));
-
-    public static void SaveEngineLog(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), enabled, LoadCrashDump(paths), LoadLaunchOptions(paths));
-
-    public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
-
-    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions)
+    // Every switch in the settings file, written at once; a null keeps what the file holds (so each Save above names only
+    // the switch it changes).
+    static void Save(ISessionPaths paths, string? name = null, bool? localPlayFab = null, bool? sdkShims = null, string? war = null,
+        bool? engineLog = null, bool? crashDump = null, string? launchOptions = null, bool? lanCoop = null, string? lanPeers = null)
     {
+        name ??= LoadSelected(paths);
+        localPlayFab ??= LoadLocalPlayFab(paths);
+        sdkShims ??= LoadSdkShims(paths);
+        war ??= LoadWar(paths);
+        engineLog ??= LoadEngineLog(paths);
+        crashDump ??= LoadCrashDump(paths);
+        launchOptions ??= LoadLaunchOptions(paths);
+        lanCoop ??= LoadLanCoop(paths);
+        lanPeers ??= LoadLanPeers(paths);
         try
         {
             Directory.CreateDirectory(paths.HostRoot);
-            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions }, WriteOptions) + "\n");
+            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions, lanCoop, lanPeers }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.
     }

@@ -221,6 +221,32 @@ sealed class PlaySession(PlayOptions options)
         return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
+    // LAN co-op (Settings > Multiplayer): the game still talks only to the backend and the network block stays as it
+    // is; the backend is what reaches the other players, so Windows Firewall must let the local subnet reach it. One
+    // administrator prompt per installation, then the marker says it is done (the uninstall removes both).
+    void EnsureLanRule()
+    {
+        var marker = Path.Combine(install.Root, "network-block", "lan-coop.json");
+        if (File.Exists(marker))
+        {
+            var installed = Tools.ReadJson(marker);
+            if ((string?)installed?["status"] != "installed") throw new SessionFailure("LAN co-op's firewall rule is not in place (Setup > Installation puts it back).");
+            result["lanFirewall"] = installed;
+            return;
+        }
+        result["status"] = "awaiting_lan_firewall";
+        Save();
+        Say("LAN co-op lets the local network reach the backend: Windows will ask for administrator consent once.");
+        var report = Path.Combine(run, "lan-coop-install.json");
+        var elevated = new ProcessStartInfo(Tools.PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(Scripts, "Install-LanCoop.ps1")}\" " +
+            $"-ReportPath \"{report}\" -InstallRoot \"{install.Root}\"") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+        try { using var installer = Process.Start(elevated); installer?.WaitForExit(); }
+        catch (System.ComponentModel.Win32Exception) { throw new SessionFailure("Windows administrator consent was not given for LAN co-op's firewall rule."); }
+        if (Tools.ReadJson(report) is { } reportJson) result["lanFirewallInstall"] = reportJson;
+        if (!File.Exists(marker)) throw new SessionFailure("LAN co-op's firewall rule is not in place, so the local network cannot reach the backend. Allow Windows to make the change and launch again.");
+        result["lanFirewall"] = Tools.ReadJson(marker);
+    }
+
     int BlockRuleCount()
     {
         var (exit, output, error) = Tools.PowerShellCommand(BlockScript(
@@ -313,8 +339,11 @@ sealed class PlaySession(PlayOptions options)
             foreach (var name in erlBefore) File.Copy(Path.Combine(guardFolder, name), Path.Combine(erlBackup, name));
         }
         var build = Tools.ReadJson(Path.Combine(Shims, "build.json"))!;
-        result["sdkShims"] = options.Multiplayer;
-        if (options.Multiplayer)
+        // The stand-ins carry the lobby and session to other backends: over Steam friends (--multiplayer) or the local
+        // network (--lan), which needs them just the same.
+        var coOp = options.Multiplayer || options.Lan;
+        result["sdkShims"] = coOp;
+        if (coOp)
         {
             Directory.CreateDirectory(shimOriginals);
             var hashes = new JsonObject();
@@ -384,6 +413,7 @@ sealed class PlaySession(PlayOptions options)
         if (File.Exists(hint)) { File.Delete(hint); result["staleAppIdHintRemoved"] = true; }
         File.WriteAllText(hint, "553850\n", Encoding.ASCII);
 
+        if (options.Lan) EnsureLanRule();
         StartBackend(realTarget);
         result["steamOnline"] = true;
         // Setup places the block as WFP filters (hellforge_wfp) and drops a marker; with it (or HELLFORGE_WFP_ONLY for
@@ -562,14 +592,25 @@ sealed class PlaySession(PlayOptions options)
         // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
         if (options.OpenWar) { start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open"; }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
-        if (options.Multiplayer)
+        if (options.Multiplayer || options.Lan)
         {
-            var link = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
-            File.Copy(realSteamApi, link);
-            if (Tools.Sha256(link) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
+            var link = "lan";
+            if (options.Lan)
+            {
+                // The local network: the backend finds the other players on its subnet itself; typed addresses are for
+                // networks that drop broadcasts. No Steam library is needed, peers are named by the SteamID they log in as.
+                if (options.LanPeers.Length > 0) { start.ArgumentList.Add("--lan-peer"); start.ArgumentList.Add(options.LanPeers); }
+            }
+            else
+            {
+                link = Path.Combine(Directory.CreateDirectory(Path.Combine(run, "steam-link")).FullName, "steam_api64.dll");
+                File.Copy(realSteamApi, link);
+                if (Tools.Sha256(link) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
+                link = "steam:" + link;
+            }
             var pipe = "hellforge-" + (string)result["runId"]!;
             // --mods: co-op plays with the host's Local Stats (StatsShare): the host's backend reads it, a joiner's restores it
-            foreach (var argument in new[] { "--pipe", pipe, "--link", "steam:" + link, "--mod-digest", modDigest, "--mods", install.Mods }) start.ArgumentList.Add(argument);
+            foreach (var argument in new[] { "--pipe", pipe, "--link", link, "--mod-digest", modDigest, "--mods", install.Mods }) start.ArgumentList.Add(argument);
             // --mod-list: the digest's mods one by one, so a refused join can say which differ (ModlistDiff)
             if (modList != null)
             {
@@ -580,7 +621,7 @@ sealed class PlaySession(PlayOptions options)
             }
             // The game inherits this environment (HostBoundedProcess).
             Environment.SetEnvironmentVariable("HELLFORGE_PIPE", pipe);
-            result["multiplayer"] = new JsonObject { ["pipe"] = pipe, ["link"] = "steam" };
+            result["multiplayer"] = new JsonObject { ["pipe"] = pipe, ["link"] = options.Lan ? "lan" : "steam" };
         }
         server = Process.Start(start) ?? throw new SessionFailure("The local backend did not start.");
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };

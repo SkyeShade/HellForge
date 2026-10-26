@@ -1,7 +1,7 @@
-# Friends-only co-op
+# Co-op: Steam friends, or the local network
 
-This page explains how HellForge's co-op with Steam friends works: first for players, then for contributors working on
-it. The second half is the research and build log from October 2026, kept as history.
+This page explains how HellForge's co-op works, with Steam friends or over the local network: first for players, then
+for contributors working on it. The second half is the research and build log from October 2026, kept as history.
 
 Friends, each running HellForge with their own local backend, play together through the game's own social menu and
 join flow. There is no port forwarding and no central HellForge server. The copied game never reaches PlayFab,
@@ -9,15 +9,21 @@ Arrowhead's services or vanilla players' sessions.
 
 ## How co-op works for players
 
-1. In the launcher, open Settings. The MULTIPLAYER card has two switches, "Local PlayFab" and "Lobby and session through
-   Steam friends". Both are on by default, and both are needed. A change applies to the next session. (The launcher's
-   console still calls them experimental.)
+1. In the launcher, open Settings. The MULTIPLAYER card has "Local PlayFab" and "Lobby and session through Steam
+   friends", both on by default and both needed for co-op, and "LAN co-op", off by default. A change applies to the next
+   session. (The launcher's console still calls the first two experimental.)
 2. Compare modlist codes. Friends need the same gameplay mods, in the same versions with the same files; the order is
    up to each player, and cosmetic mods, packs and Lua mods are each player's own. The Mods page shows the code.
    [mods.md](mods.md#playing-with-friends) describes what each player sees when a join is refused.
 3. Start a session. In the game's social menu, the friends list shows Steam friends who are playing HELLDIVERS 2 with
    HellForge running, and you join their game from there. Steam sign-in, Steam friends and Steam lobbies are the real
    ones.
+   For players on the same network instead, switch "LAN co-op" on in the same card (and, only if the network drops
+   broadcasts, type the host's IP address in the field below it). Nobody has to be a Steam friend: every HellForge backend
+   on the subnet announces itself, the two find each other, and the game's social menu lists the other player as a friend
+   you can join. The first LAN session asks Windows for one administrator consent, for the firewall rule that lets the
+   local network reach this PC's backend. The rule names this PC's backend only, and only for the local subnet. Anyone
+   who can reach that port can join, so keep LAN co-op off on networks you do not trust.
 4. While you are in a friend's lobby, you play with the host's Local Stats (the in-game editor's saved changes). Your
    in-game editor turns grey and read-only, with "READ-ONLY · HOST: <name>" in its header. The host's shows "HOSTING ·
    FRIENDS PLAY WITH YOUR STATS".
@@ -48,6 +54,10 @@ With "Lobby and session through Steam friends" on (`--multiplayer`, settings key
 3. starts the backend with `--pipe hellforge-<run id> --link steam:<dll> --mod-digest <digest> --mods <mods folder>`
    and, when there is one, `--mod-list <run>/modlist.txt`;
 4. sets `HELLFORGE_PIPE` for the game, so the stand-ins can find the backend.
+
+With "LAN co-op" on (`--lan`, settings key `lanCoop`), the session runner does the same (the stand-ins and the session
+need them just the same), and starts the backend with `--link lan` instead: no Steam library is copied for a peer link,
+and typed addresses go in `--lan-peer <ip>[,<ip>]`.
 
 With multiplayer off, no DLLs are swapped and the backend gets no pipe.
 
@@ -83,6 +93,7 @@ Friends' backends talk to each other; the copied game itself keeps talking to lo
 | Piece | Source | What it does |
 |---|---|---|
 | Steam link | `Multiplayer/SteamPeerTransport.cs` | `ISteamNetworkingMessages` in the backend process (which is not firewalled), channel 0, reliable or unreliable sends with AutoRestartBrokenSession. Accepts sessions from Steam friends only. |
+| LAN link | `Multiplayer/LanTransport.cs` | Backends announce themselves on the subnet (UDP 47991: broadcast, and unicast to typed addresses) and pair over TCP on the same port, one connection per peer, frames length-prefixed. A peer is known by the SteamID64 of the Steam account signed in on its PC, so the game sees it as a friend. Unauthenticated: anyone who announces itself on the LAN is a peer. |
 | Presence | `SteamPeerTransport.cs`, `FriendPresence.cs` | Sets the Steam rich presence key `hellforge` (to the protocol string) and clears it on exit; every 5 s, lists Steam friends playing HD2 (app 553850) who have the key. |
 | Lobbies | `Multiplayer/LobbyService.cs` | The creator's backend owns each lobby, and the lobby stand-in mirrors it from events. |
 | Party | `Multiplayer/PartyService.cs` | The host's backend owns each Party network, admits only its lobby members, assigns endpoint ids and routes the game's messages (guaranteed delivery is a reliable Steam message). |
@@ -92,6 +103,30 @@ Friends' backends talk to each other; the copied game itself keeps talking to lo
 Paths in the table are under `src/HellForge.LocalBackend/`. Endpoint ids requested by this machine's game start at
 1000; each friend's endpoints take ids in a block of 64 starting at 4096. The lobby's size limit is the game's own
 `maxMembers`. Test transports (in memory, and loopback UDP) stand in for Steam in the tests.
+
+### The local network link
+
+`LanTransport` (`Multiplayer/LanTransport.cs`) is the other side of the same transport interface, so lobbies, Party
+traffic, presence, keys and stats ride it unchanged. What differs is who may be a peer and how one is found:
+
+- Each backend announces itself every 2 s (UDP 47991) with its SteamID64 and port: to `255.255.255.255`, to each
+  interface's subnet broadcast, and to any address typed in Settings (`--lan-peer`). The announcement carries the
+  sender's address with it, so the receiving backend learns the sender's address without a broadcast of its own.
+- The backend with the smaller SteamID dials; the larger one never does, so two backends cannot build rival connections.
+  When only the larger one hears an announcement, it answers with its own, addressed back to the sender.
+- The connection is TCP on the same port (47991), one per peer. Every frame is a 4-byte little-endian length and then
+  the frame (`Frame.Encode`), at most 60 000 bytes, so frames arrive ordered and whole as the Steam link's reliable
+  messages do; the unreliable flag is ignored.
+- The peer's SteamID64 is read from `HKCU\Software\Valve\Steam\ActiveProcess` (`ActiveUser`), the account the game
+  logs in as, so PlayFab ids (`PlayFabService.MasterId`) and lobby member ids line up exactly as with the Steam link,
+  and the peer shows in the social menu like a Steam friend (named from its id; there is no persona name to read).
+- Trust: nothing authenticates a peer beyond "it announced itself on the local network", unlike the Steam link, which
+  accepts only the signed-in account's friends. Keep LAN co-op off on networks you do not trust.
+- The backend is not in the network block (`scripts/NetworkBlock.Common.ps1` lists the game's executables), so the block
+  needs no change. What LAN co-op needs is one inbound Windows Firewall rule for
+  `app/backend/HellForge.LocalBackend.exe`, TCP and UDP 47991, local subnet only, installed by
+  `scripts/Install-LanCoop.ps1` on the first LAN session (one administrator consent; marker
+  `network-block/lan-coop.json`) and removed by the uninstall.
 
 The protocol is `hellforge-mp-6`: mods set up in id order, added entities numbered by resource id, and mod content
 values in `stats.set`. A backend with another protocol is refused.
@@ -174,7 +209,7 @@ Everyone in a session plays with the host's Local Stats. The design is in [sdk-r
   values come back (`set`, or `reset` where it had none).
 - Not synced: a stats mod's own records (`"own"`), and armor perks, which are solo only (with more than one player,
   everyone gets the armor's own).
-- Trust: joiners take the host's values. That is fine for friends-only co-op.
+- Trust: joiners take the host's values. That is fine for co-op with friends and on a trusted local network.
 
 ### When the host leaves
 
@@ -211,7 +246,8 @@ one HellForge runs (25480438) use Easy Anti-Cheat instead.
 
 ### Tests
 
-`tests/HellForge.LocalBackend.Tests` holds the multiplayer and stats sharing checks (`MultiplayerTests.cs`,
+`tests/HellForge.LocalBackend.Tests` holds the multiplayer and stats sharing checks, including a LAN pair (both typed
+addresses, and one side typed alone) on loopback (`MultiplayerTests.cs`,
 `StatsShareTests.cs`). `HellForge.SdkShimGen smoke-lobby-link` runs two backend processes over loopback UDP and two
 copies of each stand-in through the PlayFab C APIs: create, join, member data, Party connect, endpoints, a 1,200-byte
 message and a broadcast, and leaving.

@@ -231,6 +231,36 @@ static class MultiplayerTests
         first.Send(GuestId, new Frame("ping").Add("udp").Encode(), true);
         var delivered = await Task.WhenAny(arrived.Task, Task.Delay(5000)) == arrived.Task;
         check(delivered && arrived.Task.Result.Item1 == HostId && arrived.Task.Result.Item2.Text(0) == "udp", "Loopback UDP delivers a frame with its sender");
+
+        // LAN co-op: two backends on the local network (here loopback, with the addresses a player would type) find each
+        // other, pair over TCP, list each other as friends, and deliver frames with their sender. A typed address needs
+        // no broadcast, so it is the only path a loopback test can take; the three cases are both typed, the larger
+        // SteamID typed alone, and the smaller SteamID typed alone.
+        async Task<bool> LanPair(bool firstTyped, bool secondTyped)
+        {
+            var ports = (FreePort(), FreePort());
+            using var first = new LanTransport(HostId, ports.Item1, firstTyped ? [$"127.0.0.1:{ports.Item2}"] : [], _ => { });
+            using var second = new LanTransport(GuestId, ports.Item2, secondTyped ? [$"127.0.0.1:{ports.Item1}"] : [], _ => { });
+            var there = new TaskCompletionSource<(ulong, Frame)>();
+            var back = new TaskCompletionSource<(ulong, Frame)>();
+            second.Received += (from, bytes) => there.TrySetResult((from, Frame.Decode(bytes)));
+            first.Received += (from, bytes) => back.TrySetResult((from, Frame.Decode(bytes)));
+            bool Linked() => first.HellForgeFriends.Any(f => f.SteamId == GuestId) && second.HellForgeFriends.Any(f => f.SteamId == HostId);
+            first.Start();
+            second.Start();
+            for (var waited = 0; !Linked() && waited < 50; waited++) await Task.Delay(100);
+            if (!Linked()) return false;
+            first.Send(GuestId, new Frame("ping").Add("lan").Encode(), true);
+            second.Send(HostId, new Frame("pong").Add("lan").Encode(), true);
+            var arrived = await Task.WhenAny(there.Task, Task.Delay(5000)) == there.Task;
+            var returned = await Task.WhenAny(back.Task, Task.Delay(5000)) == back.Task;
+            return arrived && there.Task.Result.Item1 == HostId && there.Task.Result.Item2.Text(0) == "lan" &&
+                   returned && back.Task.Result.Item1 == GuestId;
+        }
+
+        check(await LanPair(firstTyped: true, secondTyped: true), "LAN co-op pairs two backends that both know each other's address and carries frames both ways with their sender");
+        check(await LanPair(firstTyped: false, secondTyped: true), "LAN co-op pairs when only the larger SteamID typed the other's address");
+        check(await LanPair(firstTyped: true, secondTyped: false), "LAN co-op pairs when only the smaller SteamID typed the other's address");
     }
 
     // The Party network: only lobby members connect; endpoints get ids; messages reach the machines that own the targets.

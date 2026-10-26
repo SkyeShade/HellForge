@@ -14,7 +14,7 @@ if (args.Contains("--help"))
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
-    Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ.");
+    Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|lan|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends (lan: the local network, plus --lan-peer <ip>[,<ip>] for addresses typed by a player); --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ.");
     return 0;
 }
 if (args is ["profile", "show", var showDirectory])
@@ -104,7 +104,7 @@ try
     var modList = options.GetValueOrDefault("--mod-list") is { } modListFile ? File.ReadAllText(modListFile) : null;
     await using var multiplayer = pipeName != null
         ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence, warClock, accountKeys, presence,
-            options.GetValueOrDefault("--mods"), modList)
+            options.GetValueOrDefault("--mods"), modList, options.GetValueOrDefault("--lan-peer"))
         : null;
     var ready = new System.Text.Json.Nodes.JsonObject
     {

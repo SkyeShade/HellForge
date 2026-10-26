@@ -54,7 +54,9 @@ static class Launch
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
-            GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)));
+            GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
+            Yes(options, "--lan", ProfileStore.LoadLanCoop(paths)),
+            options.TryGetValue("--lan-peer", out var lanPeers) ? lanPeers : ProfileStore.LoadLanPeers(paths));
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -404,6 +406,8 @@ static class Launch
         }
         if (options.ContainsKey("--local-playfab")) ProfileStore.SaveLocalPlayFab(paths, Yes(options, "--local-playfab", true));
         if (options.ContainsKey("--multiplayer")) ProfileStore.SaveSdkShims(paths, Yes(options, "--multiplayer", true));
+        if (options.ContainsKey("--lan")) ProfileStore.SaveLanCoop(paths, Yes(options, "--lan", false));
+        if (options.TryGetValue("--lan-peer", out var lanPeers)) ProfileStore.SaveLanPeers(paths, lanPeers);
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
         if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
         if (options.TryGetValue("--game-options", out var typed))
@@ -417,6 +421,8 @@ static class Launch
             war = ProfileStore.LoadWar(paths),
             localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
             multiplayer = ProfileStore.LoadSdkShims(paths),
+            lanCoop = ProfileStore.LoadLanCoop(paths),
+            lanPeers = ProfileStore.LoadLanPeers(paths),
             engineLog = ProfileStore.LoadEngineLog(paths),
             crashDump = ProfileStore.LoadCrashDump(paths),
             gameOptions = ProfileStore.LoadLaunchOptions(paths),
