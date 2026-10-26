@@ -1,6 +1,6 @@
 # HellForge roadmap
 
-What HellForge can do today, what is being tested, and what comes after. Updated 2026-10-24 for HellForge 0.3.0-dev.9.
+What HellForge can do today, what is being tested, and what comes after. Updated 2026-10-26 for HellForge 0.3.0-beta.
 Nothing here has a date, and stability comes first.
 
 ## At a glance
@@ -18,10 +18,10 @@ Nothing here has a date, and stability comes first.
 | Public lobbies, privacy, invites, kicking | Testing | Built for 0.3.0; needs two-PC tests |
 | Faster mod sync | Testing | Built for 0.3.0 |
 | Lockdown: strangers off by default, narrowed network block, mods held read-only | Testing | Built for 0.3.0-dev.5 (PR 24); needs in-game tests |
-| Sandbox (the game at low integrity, Steam through a broker) | Experimental | Built for 0.3.0-dev.5, off by default (Settings > Sandbox); a mission, a controller and two-PC co-op untested |
+| Sandbox (the game at low integrity, Steam through a broker) | Testing | On by default since the 0.3.0 beta (Settings > Sandbox), Windows only; old installations get the WFP block on their first sandboxed session |
 | Host-leaves fix | Next | Planned |
 | Co-op tools for mods | Next | Planned |
-| Cyberstan missions | Testing | Built for 0.3.0-dev.4 (All planets open); difficulty 11 left |
+| Cyberstan, Meridia and 5 more planets | Testing | Built for 0.3.0-dev.4 (All planets open); the six planets without missions and difficulty 11 on Cyberstan added, untested |
 | Super Earth missions | Later | Research done (research/cyberstan sketches it) |
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
@@ -41,7 +41,7 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
 (session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.3.0-dev.9, engine 0.1.37, mod SDK 15.
+Versions: HellForge 0.3.0-beta, engine 0.1.40, mod SDK 15.
 
 ## Done in 0.2.0-beta
 
@@ -145,7 +145,20 @@ CYBERSTAN", difficulties 4 to 10). The war never served those regions, so it off
 each of an enemy home world's regions as the enemy's, at full health and available (HD2Mods research/cyberstan). To test:
 each region at difficulty 4 and 10, the map and biome loading, the campaign panel, and a friend joining.
 
-To do: make Cyberstan's missions work at difficulty 11 (Hell Forge).
+Difficulty 11 (Hell Forge): the war table keeps level 11 in a part of the mission board that belongs to region 7, so a
+planet with a region 7 got no level 11, and Cyberstan is the only one. Each Cyberstan region's level 11 now takes that
+region's level 1 slot, which stays empty because its regions start at difficulty 4 (`difficulty.c`, the mission board).
+To test: a region at difficulty 11.
+
+### Meridia and the other planets without missions
+
+Status: built, needs testing in game.
+
+Six planets had a campaign in "All planets open" but no missions: the frozen war keeps a mission modifier on each with
+which the campaign builder offers none (HD2Mods research/cyberstan). They are Meridia (1229, the Supercolony biome), Ivis
+and Moradesh (1252), Calypso (1418), Penta (1352) and Angel's Venture (1241). "All planets open" now leaves those effects
+out, so each has missions at every level, 11 included, against its sector's enemy (Meridia the Terminids'). To test, on
+Meridia first: the map loads, a mission at 1 and at 11, extraction.
 
 ### Subfactions
 
@@ -159,8 +172,9 @@ spawn director only picks roster rows and squads whose tags are there (0x953150)
 subfaction effects and their war-table flags (type 71), so the frozen and live wars get their own subfactions. "All
 planets open" deals them planet by planet from the launcher's seed: half of each enemy's planets get none, the others one
 of that enemy's, and every Illuminate planet one (HD2Mods research/subfactions); SEAF allies go to about one planet in
-eight. Each deal has a switch in the launcher; off, the frozen war's stay. In co-op the host's war decides; whether a
-joiner with another seed loads the host's subfaction enemies is to be tested.
+eight. Key planets keep their own and are never dealt others: Cyberstan its Cyborgs, and Oshaune, the Terminid hive
+world, its Rupture Strain, Dragonroach and Hive Lord. Each deal has a switch in the launcher; off, the frozen war's stay.
+In co-op the host's war decides; whether a joiner with another seed loads the host's subfaction enemies is to be tested.
 
 1. Find out what decides a mission's subfaction. Done.
 2. Have "All planets open" give each planet subfactions that fit its enemy. Done.

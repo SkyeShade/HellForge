@@ -4,10 +4,14 @@
 channel (phase 2), the generated bridge with its first allow-list (phase 3), and the session side of phase 4. In game,
 one sandboxed solo session reached the title screen (2026-10-23, phase 4 below); a mission, a controller and co-op are
 untested. The allow-list covers the calls one census run saw, and the next census (a controller, a whole mission, the
-social tab) will show what it misses. A session is sandboxed only when asked: the launcher's Settings > Sandbox, "Run
-the game sandboxed (experimental)", off by default and offered only by an engine built with the Steam bridge;
-`HellForge.Cli play --sandbox yes` or `settings --sandbox yes`; `HellForge.Session play --sandbox`; or
-`HELLFORGE_SANDBOX=1`. Only an engine built with the Steamworks SDK has the bridge; nothing here ships yet.
+social tab) will show what it misses. Since the 0.3.0 beta a session is sandboxed by default: the launcher's Settings >
+Sandbox, "Run the game sandboxed", is on unless turned off (`launcher-settings.json` `sandboxed`; the earlier betas'
+`sandbox` key is not read, so every installation starts sandboxed once). It is offered only by an engine built with the
+Steam bridge and only on Windows (`SessionRunner.CanSandbox`; under Wine/Proton the network namespace is the block and
+the sandbox is untested). `HellForge.Cli play --sandbox yes|no` or `settings --sandbox yes|no`; `HellForge.Session play
+--sandbox`; or `HELLFORGE_SANDBOX=1`. Only an engine built with the Steamworks SDK has the bridge. An installation that
+still has the older Windows Firewall rules gets the WFP block placed by its first sandboxed session, with one Windows
+prompt (Windows Firewall never filters loopback, so those rules cannot keep the game from the PC's other programs).
 
 ## Why
 
@@ -187,7 +191,7 @@ rather than run on Valve's DLL.
 | `SteamUser021` | `BLoggedOn`, `GetSteamID` | snapshot | |
 | `SteamUser021` | `GetAuthSessionTicket`, `CancelAuthTicket` | call | ticket buffer at most 1024 bytes |
 | `SteamFriends017` | `GetPersonaName` | snapshot | |
-| `SteamFriends017` | `GetFriendCount`, `GetFriendByIndex`, `GetFriendRelationship`, `GetUserRestrictions` | call | read only |
+| `SteamFriends017` | `GetFriendCount`, `GetFriendByIndex`, `GetFriendRelationship`, `GetUserRestrictions`, `GetFriendPersonaState`, `GetFriendPersonaName`, `GetFriendGamePlayed` (its `FriendGameInfo_t`, 24 bytes out) | call | read only; the last three since 0.3.0-dev.10: the social menu showed every friend offline without them |
 | `SteamFriends017` | `SetRichPresence`, `ClearRichPresence` | call | reviewed 2026-10-24: strings friends see; key at most 64, value at most 256 printable characters, every key logged; the key `hellforge` (HellForge's own, how friends' backends find this one) refused in any case |
 | `SteamUtils010` | `GetAppID` | local | 553850 |
 | `SteamUtils010` | `GetIPCountry`, `IsSteamRunningOnSteamDeck` | snapshot | |
@@ -250,7 +254,8 @@ lobby stays listed.
   Labelling at creation, at or below one's own integrity, needs no admin. Relabelling an existing folder needs
   WRITE_OWNER, which a standard account seldom has on its own folders: the first in-game try stopped there
   (2026-10-23). The folder holds:
-  - the mod loader's, the stand-ins' and the census's logs, the stats snapshot, and the editor's saves;
+  - the mod loader's, the stand-ins' and the census's logs, the stats snapshot, the editor's saves, and the items mods
+    registered (`registered-items.json`, which the backend reads from here when it runs with `--sandbox`);
   - `environment/`, a copy of `userdata/environment` (the game's AppData and temp);
   - `userdata/`, the user-data root `data/settings.ini` points at for the session (`prepare-session --user-data`): a
     copy of the profile's folder (settings, saves, the cloud folder), the shader cache (110 MB on the test PC) and the

@@ -17,10 +17,6 @@ if($InstallRoot){
 }
 . (Join-Path $PSScriptRoot 'NetworkBlock.Common.ps1')
 $state=[ordered]@{action=$(if($Uninstall){'uninstall'}else{'install'});status='preparing'}
-function No-Links([string]$Path){
-    $item=Get-Item -LiteralPath $Path -Force
-    while($item){if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked target path.'};$item=if($item -is [IO.DirectoryInfo]){$item.Parent}else{$item.Directory}}
-}
 try{
     if(-not $InstallRoot -and $env:HELLFORGE_RESEARCH -ne '1'){throw 'Without -InstallRoot this is the research copy: set HELLFORGE_RESEARCH=1 to use it.'}
     $state.group=$HellForgeBlockGroup

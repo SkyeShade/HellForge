@@ -50,6 +50,21 @@ function New-HellForgeBlockProbe{
     }
 }
 
+# Refuses a path when it or a folder above it is a link (a reparse point), which could send the block's files or rules
+# elsewhere. It names what it found, since the player has to undo it: junctions, symbolic links, OneDrive and other cloud
+# placeholders, and files compressed with CompactGUI or compact /exe are all reparse points.
+function No-Links([string]$Path){
+    $item=Get-Item -LiteralPath $Path -Force
+    while($item){
+        if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
+            throw ('Linked target path: '+$item.FullName+' is a link or a special file (a junction or symbolic link, a OneDrive or other '+
+                'cloud placeholder, or a file compressed with CompactGUI or compact /exe). Move HellForge to a plain folder, or undo the '+
+                'link or compression there, then run Settings > Installation.')
+        }
+        $item=if($item -is [IO.DirectoryInfo]){$item.Parent}else{$item.Directory}
+    }
+}
+
 function Get-HellForgeBlockedPrograms([string]$Copy){
     $programs=[Collections.Generic.List[string]]::new()
     foreach($file in Get-ChildItem -LiteralPath $Copy -File -Recurse){

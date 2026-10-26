@@ -84,23 +84,30 @@ static class SessionLaunchTests
             check(refused && ProfileStore.LoadWar(paths) == ProfileStore.WarLive, "A war server was saved as the launcher's war.");
         });
 
-        test("The sandbox is off unless chosen, and offered only by an engine built with the Steam bridge", () =>
+        test("The sandbox is on unless turned off, and offered only by an engine built with the Steam bridge", () =>
         {
             var paths = Install("launch-sandbox");
-            check(!ProfileStore.LoadSandbox(paths), "Off without a settings file.");
+            check(ProfileStore.LoadSandbox(paths), "On without a settings file.");
             ProfileStore.SaveCrashDump(paths, true);
-            check(!ProfileStore.LoadSandbox(paths), "Saving another choice keeps it off.");
-            ProfileStore.SaveSandbox(paths, true);
-            ProfileStore.SaveWar(paths, ProfileStore.WarOpen);
-            check(ProfileStore.LoadSandbox(paths) && ProfileStore.LoadCrashDump(paths), "Chosen, it stays on through other choices.");
+            check(ProfileStore.LoadSandbox(paths), "Saving another choice keeps it on.");
             ProfileStore.SaveSandbox(paths, false);
-            check(!ProfileStore.LoadSandbox(paths), "Switched off again.");
+            ProfileStore.SaveWar(paths, ProfileStore.WarOpen);
+            check(!ProfileStore.LoadSandbox(paths) && ProfileStore.LoadCrashDump(paths), "Turned off, it stays off through other choices.");
+            ProfileStore.SaveSandbox(paths, true);
+            check(ProfileStore.LoadSandbox(paths), "Switched on again.");
+            // an earlier beta's file says "sandbox": false for everyone who never chose: not read, so it starts sandboxed once
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "war": "frozen", "sandbox": false}""");
+            check(ProfileStore.LoadSandbox(paths), "An earlier beta's \"sandbox\": false is not read.");
             var shims = Directory.CreateDirectory(Path.Combine(paths.Install.App, "sdk-shims")).FullName;
             check(!SessionRunner.HasSteamBridge(paths), "No stand-ins' build.json: no bridge.");
             File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}}""");
             check(!SessionRunner.HasSteamBridge(paths), "Built without the Steamworks SDK: no bridge.");
+            check(ProfileStore.LoadSandbox(paths) && !SessionRunner.SandboxByDefault(paths), "On, but a session is not sandboxed without the bridge.");
             File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}, "steamBridge": "AB12"}""");
             check(SessionRunner.HasSteamBridge(paths), "Built with it.");
+            check(SessionRunner.CanSandbox(paths) && SessionRunner.SandboxByDefault(paths), "With the bridge on Windows, a session is sandboxed by default.");
+            ProfileStore.SaveSandbox(paths, false);
+            check(!SessionRunner.SandboxByDefault(paths), "Unless turned off.");
         });
 
         test("A session's run folder is the one the session runner named after it started, not an earlier one", () =>

@@ -343,6 +343,33 @@ sealed class PlaySession(PlayOptions options)
         return off > 0 ? -1 : rules;
     }
 
+    // Places the WFP block for the backend's port alone (Install-WfpBlock.ps1, as setup does), with one Windows prompt; its
+    // report goes into the result under reportKey. The backend already runs on that port (install.BackendPort is the
+    // computed one while the marker names none). Null when placed, else why not.
+    string? PlaceWfpBlock(string reason, string reportName, string reportKey, string message)
+    {
+        result["networkBlockInstallReason"] = reason;
+        result["status"] = "awaiting_network_block_install";
+        Save();
+        Say(message);
+        var report = Path.Combine(run, reportName);
+        var elevated = new ProcessStartInfo(Tools.PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(Scripts, "Install-WfpBlock.ps1")}\" " +
+            $"-InstallRoot \"{install.Root}\" -ReportPath \"{report}\" -BackendPort {install.ComputedBackendPort}")
+            { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
+        string? why = null;
+        try { using var installer = Process.Start(elevated); installer?.WaitForExit(); }
+        catch (System.ComponentModel.Win32Exception) { why = "Windows administrator consent was not given"; }
+        if (Tools.ReadJson(report) is { } placed)
+        {
+            result[reportKey] = placed.DeepClone();
+            if (why == null && (string?)placed["status"] != "installed") why = (string?)placed["failure"] ?? "the install did not finish";
+        }
+        else why ??= "the install wrote no report";
+        result["status"] = "preparing";
+        // placed is what the marker says (the script writes it only once the block is in place): the backend's port
+        return install.BlockedBackendPort() == new Uri((string)result["backendOrigin"]!).Port ? null : why ?? "the placed block names another port";
+    }
+
     // Wine (Proton): its ntdll exports wine_get_version, Windows' does not.
     static bool UnderWine()
     {
@@ -524,38 +551,34 @@ sealed class PlaySession(PlayOptions options)
         if (!linuxNamespace && (UnderWine() || (File.Exists(marker) && File.ReadAllText(marker).Contains("linux-netns", StringComparison.Ordinal))))
             throw new SessionFailure("On Linux, HellForge's game runs only in its network namespace: start HellForge with linux/hellforge-linux.sh.");
         var blockRules = 0;
+        // Windows Firewall never filters loopback, so with its rules the game reaches every program on this PC. A sandboxed
+        // session on an installation that still has them (set up before the WFP block, as 0.2.0 did) places the WFP block
+        // first, with one Windows prompt; the old rules stay and only block more.
+        if (!linuxNamespace && !wfpOnly && options.Sandbox)
+        {
+            var why = PlaceWfpBlock("the installation has the older Windows Firewall rules, which a sandboxed session cannot use", "network-block-wfp.json",
+                "networkBlockSwitch", "The sandbox needs HellForge's newer network block, which lets the game reach HellForge's backend alone: placing it now. " +
+                "Windows will ask for administrator consent once.");
+            if (why != null)
+                throw new SessionFailure("A sandboxed session needs the WFP network block, and it could not be placed (" + why +
+                    "). Run Settings > Installation, or turn off Settings > Sandbox.");
+            result["networkBlockSwitched"] = true;
+            wfpOnly = true;
+        }
         if (linuxNamespace)
             result["networkBlock"] = "linux-netns";
         else if (wfpOnly)
         {
             result["networkBlock"] = "wfp";
             // A block placed before it was narrowed to the backend's port still permits every loopback port: it is placed
-            // again for the backend's port alone (Install-WfpBlock.ps1, as setup does), with one Windows prompt. The backend
-            // already runs on that port (install.BackendPort is the computed one while the marker names none).
+            // again for the backend's port alone.
             var narrowed = !File.Exists(marker) || install.BlockedBackendPort() != null;
             if (!narrowed)
             {
-                result["networkBlockInstallReason"] = "the block predates its narrowing to the backend's port";
-                result["status"] = "awaiting_network_block_install";
-                Save();
-                Say("The network block still lets the game reach every program on this PC: placing it again for HellForge's backend alone. " +
+                var why = PlaceWfpBlock("the block predates its narrowing to the backend's port", "network-block-narrow.json", "networkBlockNarrow",
+                    "The network block still lets the game reach every program on this PC: placing it again for HellForge's backend alone. " +
                     "Windows will ask for administrator consent once.");
-                var report = Path.Combine(run, "network-block-narrow.json");
-                var elevated = new ProcessStartInfo(Tools.PowerShell, $"-NoProfile -ExecutionPolicy Bypass -File \"{Path.Combine(Scripts, "Install-WfpBlock.ps1")}\" " +
-                    $"-InstallRoot \"{install.Root}\" -ReportPath \"{report}\" -BackendPort {install.ComputedBackendPort}")
-                    { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
-                string? why = null;
-                try { using var installer = Process.Start(elevated); installer?.WaitForExit(); }
-                catch (System.ComponentModel.Win32Exception) { why = "Windows administrator consent was not given"; }
-                if (Tools.ReadJson(report) is { } placed)
-                {
-                    result["networkBlockNarrow"] = placed.DeepClone();
-                    if (why == null && (string?)placed["status"] != "installed") why = (string?)placed["failure"] ?? "the install did not finish";
-                }
-                else why ??= "the install wrote no report";
-                narrowed = install.BlockedBackendPort() == new Uri((string)result["backendOrigin"]!).Port;
-                if (!narrowed && why == null) why = "the placed block names another port";
-                result["status"] = "preparing";
+                narrowed = why == null;
                 // A sandboxed game must not reach other programs on this PC; otherwise the session goes on as before.
                 if (!narrowed && options.Sandbox)
                     throw new SessionFailure("A sandboxed session needs the network block narrowed to HellForge's backend, and it could not be placed again (" + why +
@@ -566,10 +589,6 @@ sealed class PlaySession(PlayOptions options)
         }
         else
         {
-            // Windows Firewall never filters loopback, so with its rules the game reaches every program on this PC.
-            if (options.Sandbox)
-                throw new SessionFailure("A sandboxed session needs the WFP network block, and this installation still has the older Windows Firewall rules. " +
-                    "Run Settings > Installation to place it, or turn off Settings > Sandbox.");
             result["networkBlock"] = "persistent";
             var blockProblems = BlockProblems();
             if (blockProblems.Length > 0)

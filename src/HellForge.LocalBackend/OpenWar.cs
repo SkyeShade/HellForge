@@ -22,6 +22,8 @@ namespace HellForge.LocalBackend;
 // "Deal subfactions", backend --war-subfactions, on by default), every enemy planet gets them anew, planet by planet,
 // from the seed (the launcher's, backend --war-seed): half of each enemy's planets get none, the others one of that
 // enemy's subfactions. Not dealt, a planet keeps the frozen war's subfactions of its new enemy and loses another enemy's.
+// Key planets keep theirs either way and are not dealt any: the enemy home worlds (Cyberstan's Cyborgs) and Oshaune, the
+// Terminid hive world (Rupture Strain, Dragonroach and Hive Lord).
 // Either way an Illuminate planet always has one: every Illuminate squad needs an Illuminate tag (HD2Mods
 // research/subfactions). SEAF allies (an effect of any enemy) are dealt the same way (--war-seaf): about one enemy planet
 // in eight; not dealt, the frozen war's stay. Stable hashes of the planet and the seed, so the same on every machine of a
@@ -33,12 +35,21 @@ namespace HellForge.LocalBackend;
 // Megafactories: operation type 13, "LIBERATE CYBERSTAN", difficulties 4 to 10; the region generator 0x11E44D0). So each of
 // its warInfo regions gets a status row: its enemy's, at full health (flags 1 with health 0 reads as taken) and available
 // (HD2Mods research/cyberstan). Not tested in game.
+//
+// Six planets keep a mission modifier (type 71, its settings' byte +0x4c bit 2) with which the campaign builder offers
+// no missions on the planet (0x11E3D5A): Meridia 1229, Ivis and Moradesh 1252, Calypso 1418, Penta 1352, Angel's
+// Venture 1241 (1228 and 1230 are of the kind too, on no planet). They go, so every campaign has missions.
+// Super Earth's home world stays Super Earth's, with no faction: no campaign, no enemy, no effects (none dealt, none kept).
 public static class OpenWar
 {
     public const string Mode = "open";
     // Campaign ids: past the war's own (about 51000 in war-data.json), one per planet.
     public const int CampaignIdBase = 900000;
     const int SuperEarth = 1, Illuminate = 4;
+    // The effects that keep a planet's campaign from offering missions, which go.
+    static readonly HashSet<int> NoMissions = [1228, 1229, 1230, 1241, 1252, 1352, 1418];
+    // Key planets besides the enemy home worlds, which keep their frozen-war subfactions: Oshaune, the Terminid hive world.
+    static readonly HashSet<int> KeyPlanets = [212];
 
     // The subfaction effects by id, with the enemy each belongs to (0: any enemy).
     public static IReadOnlyDictionary<int, int> Subfactions()
@@ -152,6 +163,13 @@ public static class OpenWar
         var flags = Flags();
         var flagIds = flags.Values.ToHashSet();
         var now = planetStatus.ToDictionary(p => (int)p!["index"]!, p => (int)p!["owner"]!);
+        var enemyHomes = new HashSet<int>();
+        if (warInfo.TryGetProperty("homeWorlds", out var worlds))
+            foreach (var h in worlds.EnumerateArray())
+                if (h.GetProperty("race").GetInt32() != SuperEarth)
+                    foreach (var i in h.GetProperty("planetIndices").EnumerateArray()) enemyHomes.Add(i.GetInt32());
+        // key planets keep the frozen war's subfactions of their enemy, dealt or not: the enemy home worlds and KeyPlanets
+        bool Key(int index) => enemyHomes.Contains(index) || KeyPlanets.Contains(index);
         var effects = new JsonArray();
         var has = new HashSet<int>();
         var text = seed.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -160,10 +178,11 @@ public static class OpenWar
         foreach (var e in node["planetActiveEffects"] as JsonArray ?? [])
         {
             int index = (int)e!["index"]!, id = (int)e["galacticEffectId"]!;
-            if (flagIds.Contains(id)) continue;
+            if (flagIds.Contains(id) || NoMissions.Contains(id) || home.Contains(index)) continue;
             if (subfactions.TryGetValue(id, out var of))
             {
-                if (of == 0 ? dealSeaf : dealSubfactions || !now.TryGetValue(index, out var holder) || holder != of) continue; /* dealt anew, or another enemy's */
+                if (!now.TryGetValue(index, out var holder) || of != 0 && holder != of) continue; /* another enemy's */
+                if (of == 0 ? dealSeaf : dealSubfactions && !Key(index)) continue; /* dealt anew */
                 if (of != 0) has.Add(index);
             }
             Add(index, id);
@@ -187,11 +206,6 @@ public static class OpenWar
                 effects.Add((JsonNode)new JsonObject { ["index"] = (int)e["index"]!, ["galacticEffectId"] = flag });
         node["planetActiveEffects"] = effects;
         // an enemy home world's regions: its operations (Cyberstan's Megafactories)
-        var enemyHomes = new HashSet<int>();
-        if (warInfo.TryGetProperty("homeWorlds", out var worlds))
-            foreach (var h in worlds.EnumerateArray())
-                if (h.GetProperty("race").GetInt32() != SuperEarth)
-                    foreach (var i in h.GetProperty("planetIndices").EnumerateArray()) enemyHomes.Add(i.GetInt32());
         if (enemyHomes.Count > 0 && warInfo.TryGetProperty("planetRegions", out var regionInfos))
         {
             var rows = node["planetRegions"] as JsonArray ?? [];

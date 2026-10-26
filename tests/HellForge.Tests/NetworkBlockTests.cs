@@ -70,6 +70,38 @@ static class NetworkBlockTests
                 "Install-WfpBlock.ps1 takes -BackendPort and records it in the marker.");
         });
 
+        test("Scripts: the ownership probe starts without Start-Process, and a link in the block's path is refused by name", () =>
+        {
+            if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder above the test)"); return; }
+            // Windows PowerShell reads [ ] in Start-Process's -WorkingDirectory and redirect paths as wildcards: an installation
+            // folder with brackets failed every ownership check
+            check(!File.ReadAllLines(Path.Combine(scripts, "Test-SteamOwnership.ps1")).Where(l => !l.TrimStart().StartsWith('#'))
+                    .Any(l => l.Contains("Start-Process", StringComparison.OrdinalIgnoreCase)),
+                "Test-SteamOwnership.ps1 starts the probe through .NET.");
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (link check skipped: Windows only)"); return; }
+            var folder = Directory.CreateDirectory(Path.Combine(root, "[links] test")).FullName;
+            var real = Directory.CreateDirectory(Path.Combine(folder, "real", "game", "bin")).FullName;
+            File.WriteAllText(Path.Combine(real, "helldivers2.exe"), "x");
+            var linked = Path.Combine(folder, "linked");
+            using (var junction = Process.Start(new ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", linked, Path.Combine(folder, "real")]) { UseShellExecute = false, RedirectStandardOutput = true })!)
+                junction.WaitForExit();
+            if (!Directory.Exists(linked)) { Console.WriteLine("  (link check skipped: could not make a junction)"); return; }
+            string NoLinks(string path)
+            {
+                var script = $"$HellForgeInstallRoot='{folder.Replace("'", "''")}'; . '{Path.Combine(scripts, "NetworkBlock.Common.ps1").Replace("'", "''")}'; " +
+                    $"try {{ No-Links '{path.Replace("'", "''")}'; 'none' }} catch {{ $_.Exception.Message }}";
+                using var shell = Process.Start(new ProcessStartInfo("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+                    { UseShellExecute = false, RedirectStandardOutput = true })!;
+                var output = shell.StandardOutput.ReadToEnd().Trim();
+                shell.WaitForExit();
+                return output;
+            }
+            check(NoLinks(Path.Combine(real, "helldivers2.exe")) == "none", "A plain path (brackets in its name included) passes.");
+            var refused = NoLinks(Path.Combine(linked, "game", "bin", "helldivers2.exe"));
+            check(refused.StartsWith("Linked target path: " + linked + " is a link", StringComparison.Ordinal), "A path through a junction is refused, naming the junction: " + refused);
+            Directory.Delete(linked);
+        });
+
         test("Network block probe: with a second loopback port it reports how both connects end", () =>
         {
             if (!OperatingSystem.IsWindows() || Scripts() is not { } scripts) { Console.WriteLine("  (skipped: Windows only)"); return; }

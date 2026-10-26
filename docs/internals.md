@@ -137,8 +137,8 @@ this is in [modding/content.md](modding/content.md).
 
 HellForge adds the weapon to the game's entity data when that loads (the file is never changed), to the engine's
 network types (so it can be equipped and synced), to the armory, and to the backend's item catalogue and the player's
-inventory (`<session>/registered-items.json`). The loader's `modloader.log` and the mod's log record each step, and
-`native/mod-loader/registry.c` explains how.
+inventory (`registered-items.json` in the session folder, or its `game` folder when sandboxed). The loader's
+`modloader.log` and the mod's log record each step, and `native/mod-loader/registry.c` explains how.
 
 In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
 
@@ -462,8 +462,10 @@ of a difficulty within a mission's range keeps 10, so nothing picks 11 by chance
 
 ### Mission board
 
-The war table generates three missions per level into a 110-slot board per planet. Level 11's three take slots the
-board's special missions use for levels 1 to 3, which may then not appear at those levels.
+The war table generates three missions per level into a 110-slot board per planet: 30 for the planet's own (levels 1 to
+10), then 10 for each of up to 8 regions. Level 11 takes region 7's ten: the planet's three and one for each of regions
+0 to 6. A planet with a region 7 (only Cyberstan) offers no level 11 of its own (it offers none at any level) and puts
+each region's level 11 in that region's level 1 slot, which its regions (difficulty 4 and up) never use.
 
 ## Named fields
 

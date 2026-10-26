@@ -86,6 +86,13 @@ public sealed class SessionRunner
         SessionFiles.ReadJson(Path.Combine(app, "sdk-shims", "build.json")) is { } build &&
         SessionFiles.Text(build, "steamBridge") is { Length: > 0 };
 
+    // Whether the sandbox can be offered: an engine built with the Steam bridge, on Windows (under Wine/Proton the game's
+    // block is the network namespace, and the sandbox is untested there).
+    public static bool CanSandbox(ISessionPaths paths) => HasSteamBridge(paths) && !LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested;
+
+    // Whether a session is sandboxed unless told otherwise: the setting (on unless turned off), where it can be offered.
+    public static bool SandboxByDefault(ISessionPaths paths) => CanSandbox(paths) && ProfileStore.LoadSandbox(paths);
+
     public void Start(ISessionPaths paths, LocalProfile profile, SessionOptions options)
     {
         if (!IsSupported) throw new PlatformNotSupportedException(UnsupportedMessage);

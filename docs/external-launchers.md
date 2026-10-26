@@ -132,7 +132,7 @@ and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": false, "steamBridge": true, "playWithStrangers": false,
+ "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false,
  "file": "<installation>\\launcher-settings.json"}
 ```
 
@@ -166,7 +166,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
-| `--sandbox` | `no` | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); only with an engine built with the Steam bridge (`settings` prints `steamBridge`), experimental |
+| `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |
 

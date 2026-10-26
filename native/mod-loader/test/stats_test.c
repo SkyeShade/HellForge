@@ -385,6 +385,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_SELECTION_END, kSelectionPin, 7);
     memcpy(game + DIF_GRANT_SITE, kGrantPin, 7);
     memcpy(game + DIF_SPREAD_REFERENCE, kSpreadReferencePin, 10);
+    memcpy(game + DIF_HASH_INSERT_END, kHashInsertEndPin, sizeof kHashInsertEndPin);
     memcpy(game + DIF_BOARD_REGION_MAX, kBoardRegionMaxPin, 5); memcpy(game + DIF_BOARD_REGION_SITE, kBoardRegionPin, 6);
     memcpy(game + DIF_BOARD_PLANET_SITE, kBoardPlanetPin, 7); memcpy(game + DIF_BOARD_DEFENCE_SITE, kBoardPlanetPin, 7);
     game[DIF_MISSIONS + 130 * DIF_MISSION_ROW + 0x34] = 6; /* row 130 (allows up to 100): a city Blitz */
@@ -1060,6 +1061,39 @@ static void DifficultyFixture(void)
             assert(game[DIF_SPREAD_REFERENCE] == 0xE9 && !memcmp(spread, kSpreadReferenceStub, 19));
             memcpy(&rel, spread + 20, 4); assert(spread + 24 + rel == game + DIF_SPREAD_REFERENCE_BACK);
         }
+        {
+            /* the hash insert's end: a jump to the guard, the rest int3; run as the game would reach it (rcx the slot or
+             * null, esi the value, r9d the key, the caller's rsi at [rsp+0x10]): a slot gets key and value, a full table
+             * (no slot) writes nothing and is counted, rsi comes back either way */
+            memcpy(&rel, game + DIF_HASH_INSERT_END + 1, 4);
+            uint8_t* guard = game + DIF_HASH_INSERT_END + 5 + rel;
+            assert(game[DIF_HASH_INSERT_END] == 0xE9 && !memcmp(guard, kHashInsertEndStub, sizeof kHashInsertEndStub));
+            for (int i = 5; i < 12; i++) assert(game[DIF_HASH_INSERT_END + i] == 0xCC);
+            assert(g_hashFullCount == (volatile LONG*)(guard + 0x1000) && *g_hashFullCount == 0);
+            uint32_t entry[2] = {0xAAAAAAAAu, 0xBBBBBBBBu};
+            uint64_t kept = 0;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                uint32_t* slot = pass == 0 ? entry : NULL;
+                __asm__ volatile(
+                    "push %%rsi\n\t"
+                    "sub $0x28, %%rsp\n\t"
+                    "movabs $0x5151515151515151, %%rsi\n\t"
+                    "mov %%rsi, 0x8(%%rsp)\n\t"        /* the caller's rsi, at [rsp+0x10] once the call pushes */
+                    "mov %[slot], %%rcx\n\t"
+                    "mov $0x22222222, %%esi\n\t"
+                    "mov $0x11111111, %%r9d\n\t"
+                    "call *%[guard]\n\t"
+                    "mov %%rsi, %%rax\n\t"
+                    "add $0x28, %%rsp\n\t"
+                    "pop %%rsi\n\t"
+                    : "=a"(kept)
+                    : [slot] "r"(slot), [guard] "r"(guard)
+                    : "rcx", "rsi", "r9", "memory", "cc");
+                assert(kept == 0x5151515151515151ull);
+            }
+            assert(entry[0] == 0x11111111u && entry[1] == 0x22222222u && *g_hashFullCount == 1);
+        }
         for (int i = 0; i < 3; i++)
         {
             memcpy(&rel, game + kBoardSites[i].site + 1, 4);
@@ -1454,6 +1488,12 @@ static void LiveFixture(void)
     strcpy(line, "notice	19	brief	FRIEND TWO couldn't join	Their gameplay mods don't match yours.");
     LiveRequest(line, reply, sizeof reply); ApiNotice(NULL, &notice);
     assert(notice.version == 3 && notice.kind == HF_NOTICE_BRIEF && !strcmp(notice.text, "Their gameplay mods don't match yours."));
+    /* the live pipe is named after the run folder: the log folder, or, sandboxed, the run of its game folder */
+    wchar_t pipe[MAX_PATH];
+    assert(LivePipePath(L"C:\\HellForge\\logs\\sessions\\0123abcd", pipe, MAX_PATH) && !wcscmp(pipe, L"\\\\.\\pipe\\hellforge-live-0123abcd"));
+    assert(LivePipePath(L"C:\\HellForge\\logs\\sessions\\0123abcd\\game", pipe, MAX_PATH) && !wcscmp(pipe, L"\\\\.\\pipe\\hellforge-live-0123abcd"));
+    assert(LivePipePath(L"C:\\HellForge\\logs\\sessions\\0123abcd\\Game", pipe, MAX_PATH) && !wcscmp(pipe, L"\\\\.\\pipe\\hellforge-live-0123abcd"));
+    assert(!LivePipePath(L"game", pipe, MAX_PATH) && !LivePipePath(L"C:\\HellForge\\", pipe, MAX_PATH));
 
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);
     g_fakeRecordCount = g_componentCount = g_editCount = 0;

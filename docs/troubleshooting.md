@@ -201,6 +201,12 @@ Installation > Check and repair. For the security codes, see
 backend must answer on this PC and a connection to the outside must be refused. The session's `network-probe.json`
 records what the check saw; include the logs when you ask.
 
+"Network block was not installed: Linked target path: <path> is a link or a special file" means a folder or file on
+the way to the game copy is a link: a junction or symbolic link (a Documents folder moved to another drive is often
+one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
+it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example
+`C:\HellForge`), or undo the link or compression at the path the message names, then run Settings > Installation.
+
 ## Playing with friends
 
 Friends need the same gameplay mods, versions and files, and the same HellForge version. When they differ, the join is

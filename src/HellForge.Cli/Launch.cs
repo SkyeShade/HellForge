@@ -55,7 +55,7 @@ static class Launch
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            Sandbox: Yes(options, "--sandbox", ProfileStore.LoadSandbox(paths)), WarServer: WarServerChoice(war, options));
+            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), WarServer: WarServerChoice(war, options));
         string? warServer = session.WarServer?.Origin;
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);

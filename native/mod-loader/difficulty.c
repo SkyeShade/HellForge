@@ -1109,12 +1109,29 @@ static const uint8_t kSpreadReferenceStub[24] = {
     0x45, 0x31, 0xE4,                                                 /*  6 xor r12d, r12d (none: location 0) */
     0x41, 0x8B, 0xC4, 0x4C, 0x69, 0xE0, 0xE0, 0x00, 0x00, 0x00,       /*  9 mov eax, r12d; imul r12, rax, 0xe0 */
     0xE9, 0, 0, 0, 0};                                                /* 19 jmp 0xF7CED2 (rel32 at 20) */
+/* The game's hash insert (0x172F790, 704 callers) probes every slot for the key or an empty one and, finding neither in
+ * a full table, writes the entry through a null slot (0x172F7F2, writing 0x4). A level-11 city map (twice the radius)
+ * registered more destructibles than the world's destruction-record map holds ([game + 0x346D528] + 0xC5F48, 0x8000
+ * slots set at 0x13DF877; its records at +0xC5F78) and ended the game as the mission launched. A full table now skips
+ * the entry and counts it (DifficultyWatch logs the count): that destructible has no record lookup instead of the game
+ * ending. A table with room is unchanged. The map cannot simply grow: its storage is inline, followed by another table. */
+#define DIF_HASH_INSERT_END 0x172F7F2u
+static const uint8_t kHashInsertEndPin[12] = {0x89, 0x71, 0x04, 0x48, 0x8B, 0x74, 0x24, 0x10, 0x44, 0x89, 0x09, 0xC3};
+static const uint8_t kHashInsertEndStub[26] = {
+    0x48, 0x85, 0xC9, 0x75, 0x09,                                     /*  0 test rcx, rcx; jne 14 */
+    0xF0, 0xFF, 0x05, 0xF4, 0x0F, 0x00, 0x00,                         /*  5 lock inc dword [rip+0xff4] (the count, next page) */
+    0xEB, 0x06,                                                       /* 12 jmp 20 */
+    0x89, 0x71, 0x04, 0x44, 0x89, 0x09,                               /* 14 mov [rcx+4], esi; mov [rcx], r9d */
+    0x48, 0x8B, 0x74, 0x24, 0x10, 0xC3};                              /* 20 mov rsi, [rsp+0x10]; ret */
+static volatile LONG* g_hashFullCount;
 /* The war table's mission board: 110 slots of 0x5C per planet: 0..29 the
  * planet's missions (3 per level 1..10), 30..109 regions 0..7 (10 levels each). City and factory maps only come from
  * regions (Super Earth's mega cities), whose generator (0x11E44D0) stopped at 10 (0x11E46F1, mov ebp, 10), and the
  * planet generators (campaign 0x11E3C10, defence 0x11E4060) put level 11 at slots 30..32, region 0's levels 1..3. Level
- * 11 now uses region 7's block: the planet's at 100 + n, region r's at 103 + r; a planet with a region 7 (war state
- * +0x23018: {planet, region, settings} x count +0x26018) gets no level 11. Levels 1..10 keep every slot. */
+ * 11 now uses region 7's block: the planet's at 100 + n, region r's at 103 + r. A planet with a region 7 (war state
+ * +0x23018: {planet, region, settings} x count +0x26018; only Cyberstan, whose 8 Megafactories offer levels 4 and up and
+ * whose planet offers none) gets no level 11 of its own, and region r's goes to its level 1 slot (30 + 10r). Levels
+ * 1..10 keep every slot. */
 #define DIF_BOARD_REGION_MAX 0x11E46F1u
 #define DIF_BOARD_REGION_SITE 0x11E4744u
 #define DIF_BOARD_PLANET_SITE 0x11E3E67u
@@ -1123,12 +1140,21 @@ static const uint8_t kBoardRegionMaxPin[5] = {0xBD, 0x0A, 0x00, 0x00, 0x00};
 static const uint8_t kBoardRegionPin[6] = {0x8B, 0xC2, 0x48, 0x6B, 0xF8, 0x5C};
 static const uint8_t kBoardPlanetPin[7] = {0x41, 0x8B, 0xC3, 0x48, 0x6B, 0xF8, 0x5C};
 /* {site, length, stub, size, back rel32 at, back, skip rel32 at, skip} */
-static const uint8_t kBoardRegionStub[80] = {
-    0x83, 0xFB, 0x0B, 0x72, 0x36, 0x83, 0xFE, 0x06, 0x77, 0x3C, 0x48, 0x8B, 0x44, 0x24, 0x38, 0x8B,
-    0x54, 0x24, 0x40, 0x44, 0x8B, 0x80, 0x18, 0x60, 0x02, 0x00, 0x48, 0x05, 0x18, 0x30, 0x02, 0x00,
-    0x45, 0x85, 0xC0, 0x74, 0x13, 0x39, 0x10, 0x75, 0x06, 0x83, 0x78, 0x04, 0x07, 0x73, 0x17, 0x48,
-    0x83, 0xC0, 0x18, 0x41, 0xFF, 0xC8, 0xEB, 0xE8, 0x8D, 0x56, 0x67, 0x8B, 0xC2, 0x48, 0x6B, 0xF8,
-    0x5C, 0xE9, 0x00, 0x00, 0x00, 0x00, 0x48, 0x8B, 0x44, 0x24, 0x20, 0xE9, 0x00, 0x00, 0x00, 0x00};
+/* ebx the level, esi the region (-1: none), [rsp+0x38] the war state, [rsp+0x40] the planet, edx the slot */
+static const uint8_t kBoardRegionStub[93] = {
+    0x83, 0xFB, 0x0B, 0x72, 0x43,                                     /*  0 cmp ebx, 11; jb 72 */
+    0x83, 0xFE, 0x07, 0x77, 0x49,                                     /*  5 cmp esi, 7; ja 83 (none, or past the board) */
+    0x48, 0x8B, 0x44, 0x24, 0x38, 0x8B, 0x54, 0x24, 0x40,             /* 10 mov rax, [rsp+0x38]; mov edx, [rsp+0x40] */
+    0x44, 0x8B, 0x80, 0x18, 0x60, 0x02, 0x00, 0x48, 0x05, 0x18, 0x30, 0x02, 0x00, /* 19 r8d = the count; rax = the regions */
+    0x45, 0x85, 0xC0, 0x74, 0x13,                                     /* 32 test r8d, r8d; je 56 */
+    0x39, 0x10, 0x75, 0x06, 0x83, 0x78, 0x04, 0x07, 0x73, 0x13,       /* 37 the planet's region 7: jae 66 */
+    0x48, 0x83, 0xC0, 0x18, 0x41, 0xFF, 0xC8, 0xEB, 0xE8,             /* 47 add rax, 0x18; dec r8d; jmp 32 */
+    0x83, 0xFE, 0x06, 0x77, 0x16,                                     /* 56 cmp esi, 6; ja 83 */
+    0x8D, 0x56, 0x67, 0xEB, 0x06,                                     /* 61 lea edx, [rsi+103]; jmp 72 */
+    0x6B, 0xD6, 0x0A, 0x83, 0xC2, 0x1E,                               /* 66 imul edx, esi, 10; add edx, 30 (its level 1) */
+    0x8B, 0xC2, 0x48, 0x6B, 0xF8, 0x5C,                               /* 72 mov eax, edx; imul rdi, rax, 0x5c */
+    0xE9, 0x00, 0x00, 0x00, 0x00,                                     /* 78 jmp 0x11E474A (rel32 at 79) */
+    0x48, 0x8B, 0x44, 0x24, 0x20, 0xE9, 0x00, 0x00, 0x00, 0x00};      /* 83 mov rax, [rsp+0x20]; jmp 0x11E4821 (rel32 at 89) */
 static const uint8_t kBoardPlanetStub[70] = {
     0x41, 0x83, 0xFE, 0x0B, 0x72, 0x2F, 0x48, 0x8B, 0x44, 0x24, 0x38, 0x44, 0x8B, 0x80, 0xF8, 0xFF,
     0xFD, 0xFF, 0x48, 0x2D, 0x08, 0x30, 0x02, 0x00, 0x45, 0x85, 0xC0, 0x74, 0x14, 0x44, 0x39, 0x20,
@@ -1142,7 +1168,7 @@ static const uint8_t kBoardDefenceStub[71] = {
     0xEB, 0xE8, 0x44, 0x8D, 0x5E, 0x64, 0x41, 0x8B, 0xC3, 0x48, 0x6B, 0xF8, 0x5C, 0xE9, 0x00, 0x00,
     0x00, 0x00, 0xE9, 0x00, 0x00, 0x00, 0x00};
 static const struct { uint32_t site; uint8_t length; const uint8_t* stub; uint8_t size, backAt; uint32_t back; uint8_t skipAt; uint32_t skip; } kBoardSites[3] = {
-    {DIF_BOARD_REGION_SITE, 6, kBoardRegionStub, sizeof kBoardRegionStub, 66, 0x11E474Au, 76, 0x11E4821u},
+    {DIF_BOARD_REGION_SITE, 6, kBoardRegionStub, sizeof kBoardRegionStub, 79, 0x11E474Au, 89, 0x11E4821u},
     {DIF_BOARD_PLANET_SITE, 7, kBoardPlanetStub, sizeof kBoardPlanetStub, 61, 0x11E3E6Eu, 66, 0x11E4002u},
     {DIF_BOARD_DEFENCE_SITE, 7, kBoardDefenceStub, sizeof kBoardDefenceStub, 62, 0x11E428Eu, 67, 0x11E4429u}};
 /* Mission stratagems (HfDifficulty.mission_stratagem): every player's mission
@@ -2284,6 +2310,9 @@ static const char* DifficultySitesFailed(uintptr_t game, int* waiting)
             return "the war table's mission board is not the reviewed one";
         if (SafeRead(game + DIF_SPREAD_REFERENCE, board, 7) || memcmp(board, kSpreadReferencePin, 7) != 0)
             return "the map generator's location spreading is not the reviewed one";
+        uint8_t insertEnd[sizeof kHashInsertEndPin];
+        if (SafeRead(game + DIF_HASH_INSERT_END, insertEnd, sizeof insertEnd) || memcmp(insertEnd, kHashInsertEndPin, sizeof insertEnd) != 0)
+            return "the game's hash insert is not the reviewed one";
     }
     uint8_t iconCall[5];
     int32_t iconRel;
@@ -3020,6 +3049,15 @@ static int InstallDifficulty(uintptr_t game, int pinsReady)
         uint8_t spreadJump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
         rel = (int32_t)((uintptr_t)spread - (game + DIF_SPREAD_REFERENCE + 5)); memcpy(spreadJump + 1, &rel, 4);
         if (ApiWrite(game + DIF_SPREAD_REFERENCE, spreadJump, 10)) return RefuseDifficulty("the location spreading could not be guarded");
+        uint8_t* insertEnd = AllocateNearGame(game, 0x2000); /* the stub's page (+0), its count's page (+0x1000, stays writable) */
+        if (insertEnd == NULL) return RefuseDifficulty("no memory within 2 GB of game.dll for the hash insert's guard");
+        memcpy(insertEnd, kHashInsertEndStub, sizeof kHashInsertEndStub);
+        g_hashFullCount = (volatile LONG*)(insertEnd + 0x1000);
+        DWORD insertProtect;
+        VirtualProtect(insertEnd, 0x1000, PAGE_EXECUTE_READ, &insertProtect);
+        uint8_t insertJump[12] = {0xE9, 0, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
+        rel = (int32_t)((uintptr_t)insertEnd - (game + DIF_HASH_INSERT_END + 5)); memcpy(insertJump + 1, &rel, 4);
+        if (ApiWrite(game + DIF_HASH_INSERT_END, insertJump, 12)) return RefuseDifficulty("the game's hash insert could not be guarded");
     }
     if (g_difficulty.flags & HF_DIFFICULTY_SECOND_PRIMARY) MixInstall(game);
     if (g_difficulty.grant != 0)
@@ -3602,6 +3640,19 @@ static void DifficultyWatch(void)
         {
             if (changed == 0 || g_zoneDiag[4] != cursor) { cursor = g_zoneDiag[4]; changed = GetTickCount64(); }
             else if (GetTickCount64() - changed >= 300) { dumpedTable = g_zoneDiag[0]; changed = 0; ZoneDump(); }
+        }
+    }
+    {
+        /* entries the hash insert's guard skipped in full tables (destructibles past the destruction-record map), at most
+         * one line in 5 s */
+        static LONG reported;
+        static ULONGLONG fullLogged;
+        LONG full = g_hashFullCount != NULL ? *g_hashFullCount : 0;
+        if (full != reported && GetTickCount64() - fullLogged >= 5000)
+        {
+            reported = full;
+            fullLogged = GetTickCount64();
+            Note("difficulty: a full hash table skipped %ld entries so far (a map's destructibles past the 32768 the world's destruction-record map holds; the game used to end there)", full);
         }
     }
     static uint32_t seen[4], pockets;

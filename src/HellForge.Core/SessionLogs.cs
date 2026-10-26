@@ -78,6 +78,20 @@ public static partial class SessionLogs
 
     public sealed record Exported(string Zip, int Files, int Skipped);
 
+    // Whether a file of a run (its path in the run) goes into the zip. A sandboxed session keeps the game's AppData and temp
+    // (game/environment) and its user data (game/userdata: saves, the cloud folder, the shader cache) in its run folder
+    // (docs/steam-bridge.md, "The rest of a low-integrity session"); they are the player's, not logs, and another
+    // program the game started may have left its own there (a browser's profile, on one tester's PC). Only the game's
+    // logs and crash data of game/userdata go.
+    static bool InExport(string relative)
+    {
+        var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length < 3 || !parts[0].Equals("game", StringComparison.OrdinalIgnoreCase)) return true;
+        if (parts[1].Equals("environment", StringComparison.OrdinalIgnoreCase)) return false;
+        return !parts[1].Equals("userdata", StringComparison.OrdinalIgnoreCase) ||
+            parts[2].Equals("logs", StringComparison.OrdinalIgnoreCase) || parts[2].Equals("crash_data", StringComparison.OrdinalIgnoreCase);
+    }
+
     // A session's logs zipped to send to whoever helps (the launcher's Save logs to Desktop, HellForge.Cli logs --export).
     // Text files and names in it do not name the PC (Privacy), whoever wrote them (a mod's own log, the game's console
     // logs); other files (a crash dump) go in as they are. A running session still has its logs open, so each file is
@@ -86,10 +100,11 @@ public static partial class SessionLogs
     // come from gameLogs (the installation's userdata/logs).
     public static Exported Export(string run, string? gameLogs, string target)
     {
-        // programs are left out: the run's steam-link folder holds a copy of Valve's steam_api64.dll, which is no log
+        // programs are left out (the run's steam-link folder holds a copy of Valve's steam_api64.dll, which is no log), and
+        // so is what a sandboxed game kept of the player's (InExport)
         var files = Directory.EnumerateFiles(run, "*", SearchOption.AllDirectories)
             .Where(file => !Path.GetExtension(file).Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
-                           !Path.GetExtension(file).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+                           !Path.GetExtension(file).Equals(".exe", StringComparison.OrdinalIgnoreCase) && InExport(Path.GetRelativePath(run, file)))
             .Select(file => (file, name: Path.Combine(Path.GetFileName(run), Path.GetRelativePath(run, file)))).ToList();
         if (!Directory.Exists(Path.Combine(run, "engine-logs")) && gameLogs != null && Directory.Exists(gameLogs))
         {

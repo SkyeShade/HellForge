@@ -23,18 +23,27 @@ if (-not $NoBuild -and -not (Test-Path -LiteralPath $installedProbe)) {
 }
 $report = Join-Path $run 'result.json'
 $probe = if (Test-Path -LiteralPath $installedProbe) { [IO.Path]::GetFullPath($installedProbe) } else { Join-Path $projectRoot 'src/HellForge.SteamProbe/bin/Debug/net10.0/HellForge.SteamProbe.exe' }
-$process = Start-Process -FilePath $probe -WindowStyle Hidden -WorkingDirectory $run -PassThru -ArgumentList @(
-    ('"' + (Join-Path $run 'steam_api64.dll') + '"'), $expectedHash, ('"' + $report + '"')) `
-    -RedirectStandardOutput (Join-Path $run 'stdout.txt') -RedirectStandardError (Join-Path $run 'stderr.txt')
-[void]$process.Handle # Retain a process handle so PowerShell can retrieve the exit code after a fast exit.
-if (-not $process.WaitForExit(15000)) {
-    $process.Kill()
-    $process.WaitForExit()
+# Started through .NET, not Start-Process: Windows PowerShell reads [ ] in Start-Process's -WorkingDirectory and redirect
+# paths as wildcards, so an installation folder with brackets in its name failed every check ("did not resolve to a file").
+$start = [Diagnostics.ProcessStartInfo]::new($probe)
+$start.Arguments = '"' + (Join-Path $run 'steam_api64.dll') + '" ' + $expectedHash + ' "' + $report + '"'
+$start.WorkingDirectory = $run
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+$start.RedirectStandardOutput = $true
+$start.RedirectStandardError = $true
+$process = [Diagnostics.Process]::Start($start)
+$stdout = $process.StandardOutput.ReadToEndAsync()
+$stderr = $process.StandardError.ReadToEndAsync()
+$exited = $process.WaitForExit(15000)
+if (-not $exited) { $process.Kill(); $process.WaitForExit() }
+[IO.File]::WriteAllText((Join-Path $run 'stdout.txt'), $stdout.Result)
+[IO.File]::WriteAllText((Join-Path $run 'stderr.txt'), $stderr.Result)
+if (-not $exited) {
     [ordered]@{ status = 'ownership_unverified'; readyToLaunchGame = $false; failure = 'Steam probe timed out.' } |
         ConvertTo-Json | Set-Content -LiteralPath $report
     throw ('Steam ownership check timed out. Evidence: ' + $run)
 }
-$process.Refresh()
 if ($process.ExitCode -ne 0) { throw ('Steam ownership was not confirmed. Evidence: ' + $run) }
 $observation = Get-Content -Raw -LiteralPath $report | ConvertFrom-Json
 if ($observation.localClientOwnershipConfirmed -ne $true) { throw 'Live probe returned incomplete ownership evidence.' }

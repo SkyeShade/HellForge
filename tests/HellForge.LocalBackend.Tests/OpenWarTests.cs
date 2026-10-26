@@ -18,6 +18,20 @@ static class OpenWarTests
         var campaigns = open.GetProperty("campaigns").EnumerateArray().ToList();
         check(campaigns.Count == planets - 1, $"Every planet but Super Earth has a campaign: {campaigns.Count} of {planets - 1}.");
         check(owner[0] == 1 && campaigns.All(c => c.GetProperty("planetIndex").GetInt32() != 0), "Super Earth stays Super Earth's, with no campaign.");
+        foreach (var war in new[] { open, OpenWar.Status(info, frozen, seed: 12345), OpenWar.Status(info, frozen, dealSubfactions: false, dealSeaf: false) })
+            check(war.GetProperty("planetActiveEffects").EnumerateArray().All(e => e.GetProperty("index").GetInt32() != 0) &&
+                  war.GetProperty("planetRegions").EnumerateArray().All(r => r.GetProperty("planetIndex").GetInt32() != 0),
+                "Super Earth has no faction: no effects (subfactions, flags, SEAF) and no region rows, dealt or not.");
+        // Meridia, Ivis, Moradesh, Calypso, Penta, Angel's Venture: their no-missions modifiers go, so their campaigns offer
+        // missions; each an enemy's, with its campaign
+        var blocked = new (int Planet, int Effect)[] { (64, 1229), (51, 1252), (85, 1252), (97, 1418), (115, 1352), (127, 1241) };
+        bool Has(JsonElement war, int planet, int effect) => war.GetProperty("planetActiveEffects").EnumerateArray()
+            .Any(e => e.GetProperty("index").GetInt32() == planet && e.GetProperty("galacticEffectId").GetInt32() == effect);
+        foreach (var (planet, effect) in blocked)
+            check(Has(frozen, planet, effect) && !Has(open, planet, effect) && owner[planet] is 2 or 3 or 4 &&
+                  campaigns.Any(c => c.GetProperty("planetIndex").GetInt32() == planet),
+                $"Planet {planet} loses effect {effect}, which blocks its missions, and is an enemy's ({owner[planet]}) with a campaign.");
+        check(Has(open, 97, 1190), "Calypso keeps its other effect (1190).");
         check(campaigns.All(c => c.GetProperty("type").GetInt32() == 0 && c.GetProperty("race").GetInt32() == 1 && owner[c.GetProperty("planetIndex").GetInt32()] is 2 or 3 or 4),
             "Each campaign is a liberation (type 0, race 1) of an enemy-held planet.");
         check(campaigns.Select(c => c.GetProperty("id").GetInt32()).Distinct().Count() == campaigns.Count, "Campaign ids are unique.");
@@ -52,11 +66,23 @@ static class OpenWarTests
         // neighbours in a sector unlike each other
         var disabled = info.GetProperty("planetInfos").EnumerateArray().Where(p => p.TryGetProperty("disabled", out var d) && d.ValueKind == JsonValueKind.True)
             .Select(p => p.GetProperty("index").GetInt32()).ToHashSet();
+        // key planets (Cyberstan, Oshaune) keep the frozen war's subfactions, so they are not dealt
+        var keyPlanets = new[] { 260, 212 };
         foreach (var faction in new[] { 2, 3 })
         {
-            var held = owner.Where(o => o.Value == faction && !disabled.Contains(o.Key)).Select(o => o.Key).ToList();
+            var held = owner.Where(o => o.Value == faction && !disabled.Contains(o.Key) && !keyPlanets.Contains(o.Key)).Select(o => o.Key).ToList();
             var with = held.Count(i => onPlanet.Any(e => e.Index == i));
             check(with == held.Count - held.Count / 2, $"Faction {faction}: half of its {held.Count} planets have a subfaction ({with}).");
+        }
+        foreach (var war in new[] { open, OpenWar.Status(info, frozen, seed: 12345), OpenWar.Status(info, frozen, seed: 999) })
+        {
+            var at = war.GetProperty("planetActiveEffects").EnumerateArray()
+                .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32())).ToHashSet();
+            List<int> Subfactions(int planet) => [.. at.Where(e => e.Index == planet && subfactions.TryGetValue(e.Id, out var f) && f != 0).Select(e => e.Id).Order()];
+            check(owner[260] == 3 && Subfactions(260).SequenceEqual([1360]) && at.Contains((260, 1361)),
+                "Cyberstan keeps its Cyborgs (1360) and their flag, whatever the seed: " + string.Join(",", Subfactions(260)));
+            check(owner[212] == 2 && Subfactions(212).SequenceEqual([1303, 1306, 1307]) && new[] { 1310, 1308, 1309 }.All(f => at.Contains((212, f))),
+                "Oshaune keeps the Rupture Strain, Dragonroach and Hive Lord, with their flags, whatever the seed: " + string.Join(",", Subfactions(212)));
         }
         check(sectors.Values.Distinct().Any(sector => onPlanet.Where(e => sectors.GetValueOrDefault(e.Index) == sector).Select(e => e.Id).Distinct().Count() >= 2),
             "Subfactions go planet by planet: a sector holds more than one.");

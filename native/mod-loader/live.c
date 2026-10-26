@@ -691,11 +691,21 @@ static int LiveFlush(HANDLE pipe, OVERLAPPED* op)
 /* Connects to the launcher's pipe while the session runs; one connection at a time. The pipe is overlapped: a
  * synchronous handle serializes its I/O, so an answer written from another thread would wait for the next request. This
  * thread waits for either a request or a queued answer, and does all the writing. */
+/* The live pipe's path for a log folder: named after the session's run folder, which is the log folder, or, sandboxed,
+ * holds it as its game folder (the folder the game may write, docs/steam-bridge.md). 0 when it has none. */
+static int LivePipePath(const wchar_t* logs, wchar_t* path, size_t size)
+{
+    wchar_t run[MAX_PATH];
+    if (swprintf(run, MAX_PATH, L"%ls", logs) < 0) return 0;
+    wchar_t* session = wcsrchr(run, L'\\');
+    if (session != NULL && _wcsicmp(session + 1, L"game") == 0) { *session = 0; session = wcsrchr(run, L'\\'); }
+    return session != NULL && session[1] != 0 && swprintf(path, size, L"\\\\.\\pipe\\hellforge-live-%ls", session + 1) >= 0;
+}
+
 static DWORD WINAPI LiveWatch(void* parameter)
 {
-    const wchar_t* session = wcsrchr(g_logs, L'\\');
     wchar_t path[MAX_PATH];
-    if (session == NULL || swprintf(path, MAX_PATH, L"\\\\.\\pipe\\hellforge-live-%ls", session + 1) < 0) return 0;
+    if (!LivePipePath(g_logs, path, MAX_PATH)) return 0;
     g_liveOutEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
     OVERLAPPED readOp = {0}, writeOp = {0};
     readOp.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);

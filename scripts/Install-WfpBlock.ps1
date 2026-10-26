@@ -14,10 +14,6 @@ $env:TEMP=$env:TMP=(New-Item -ItemType Directory (Join-Path $HellForgeInstallRoo
 $copy=Join-Path $HellForgeInstallRoot 'game'
 . (Join-Path $PSScriptRoot 'NetworkBlock.Common.ps1')
 $state=[ordered]@{action=$(if($Uninstall){'uninstall'}else{'install'});status='preparing';block='wfp'}
-function No-Links([string]$Path){
-    $item=Get-Item -LiteralPath $Path -Force
-    while($item){if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked target path.'};$item=if($item -is [IO.DirectoryInfo]){$item.Parent}else{$item.Directory}}
-}
 # Runs the tool and returns its report object; throws with the tool's own words on failure.
 function Invoke-Wfp([string[]]$Arguments){
     $report=Join-Path $HellForgeBlockRoot 'wfp-tool.json'

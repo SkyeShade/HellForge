@@ -508,8 +508,9 @@ Off:
 
 On, strangers' games send this one data nobody checks for them: HellForge is open source, anti-cheat is off and a
 modified build can lie about its mods, so a flaw in the game's network code could let a stranger run code on this PC
-(lockdown plan item 10). The launcher's warning says so. Until the game runs sandboxed ([steam-bridge.md](steam-bridge.md)),
-play with strangers only when that risk is acceptable.
+(lockdown plan item 10). The launcher's warning says so. The sandbox, on by default since the 0.3.0 beta
+([steam-bridge.md](steam-bridge.md)), limits what such code could reach; without it, play with strangers only when that
+risk is acceptable.
 
 ### The join gate
 

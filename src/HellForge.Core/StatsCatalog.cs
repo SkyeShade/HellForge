@@ -363,7 +363,10 @@ public static class StatsCatalog
             // out the bytes the page shows already (the Solo Silo missile's attack is the weapon's explosion).
             foreach (var (key, field) in target.Fields.GroupBy(f => LinkKey(f.Value))
                          .Select(g => g.OrderBy(f => f.Value.Name.Contains("deprecated", StringComparison.OrdinalIgnoreCase)).ThenBy(f => f.Value.Order).First())
-                         .Where(f => shown.Add(LinkKey(f.Value)) || part.Category != "enemies"))
+                         .Where(f => shown.Add(LinkKey(f.Value)) || part.Category != "enemies")
+                         // a weapon's input bindings: the in-game editor binds rate of fire itself when a weapon has more
+                         // than one rate (app.cpp BindRateInput), as the HD2R Editor does
+                         .Where(f => !f.Key.StartsWith("weapon_function.", StringComparison.Ordinal)))
             {
                 var (category, group, rank) = Place(part.Category, key, roles, field.Section);
                 var label = Label(key, field);

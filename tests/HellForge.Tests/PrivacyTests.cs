@@ -65,6 +65,14 @@ static class PrivacyTests
             File.WriteAllText(Path.Combine(newest, "session.log"), "Session result: " + Path.Combine(profile, "HellForge", "result.json"));
             Directory.CreateDirectory(Path.Combine(newest, "steam-link"));
             File.WriteAllBytes(Path.Combine(newest, "steam-link", "steam_api64.dll"), [0x4D, 0x5A, 0, 0]);
+            // a sandboxed session's game folder: its logs go, the player's AppData copy and user data do not
+            void Put(string relative) { var file = Path.Combine(newest, relative); Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllText(file, "x"); }
+            Put(Path.Combine("game", "modloader.log"));
+            Put(Path.Combine("game", "userdata", "logs", "console_1.txt"));
+            Put(Path.Combine("game", "userdata", "crash_data", "settings.dat"));
+            Put(Path.Combine("game", "userdata", "profiles", "actual", "saves", "user_settings.config"));
+            Put(Path.Combine("game", "userdata", "shader_cache", "pipeline_library.cache"));
+            Put(Path.Combine("game", "environment", "Roaming", "Some Browser", "Default", "Local Storage", "leveldb", "000003.log"));
             var runs = SessionLogs.Runs(sessions);
             check(runs.Count == 3 && runs.All(r => r.Id.Length == 32), "Runs: " + string.Join(", ", runs.Select(r => r.Id)));
             check(runs.Single(r => r.Id == new string('b', 32)).Status == "failed" && runs.Single(r => r.Id == new string('c', 32)).Status == null,
@@ -77,6 +85,9 @@ static class PrivacyTests
             var names = archive.Entries.Select(e => e.FullName).ToList();
             check(exported.Skipped == 0 && names.All(n => !n.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) && names.Any(n => n.EndsWith("session.log")),
                 "Export entries: " + string.Join(", ", names));
+            check(names.Any(n => n.EndsWith("game/modloader.log")) && names.Any(n => n.EndsWith("userdata/logs/console_1.txt")) &&
+                  names.Any(n => n.EndsWith("crash_data/settings.dat")) && !names.Any(n => n.Contains("/environment/") || n.Contains("/profiles/") || n.Contains("/shader_cache/")),
+                "A sandboxed session's export holds its logs and crash data, not the player's AppData copy, saves or shader cache: " + string.Join(", ", names));
             using var reader = new StreamReader(archive.Entries.Single(e => e.FullName.EndsWith("session.log")).Open());
             var text = reader.ReadToEnd();
             check(!text.Contains(profile, StringComparison.OrdinalIgnoreCase) && text.Contains(Privacy.ProfileMark), "The exported log names the user folder: " + text);

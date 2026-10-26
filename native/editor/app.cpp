@@ -916,41 +916,61 @@ double Effective(const Row* row)
     return s.read ? s.now : 0;
 }
 
-/* Added rates (rate slots X and Z, ProjectileWeapon +4 / +12) are selectable only while an input is bound to rate of
- * fire (WeaponData +184 / +188 = 2: the press dispatcher reaches the rate cycle only for it, game.dll 0x75541F; the
- * cycle skips empty slots, 0x617A0B; HD2Mods research\coop-weapon-stats). Filling X or Z binds a free input with them;
- * emptying both takes that binding off again, unless the weapon has it itself. Returns what it says to the player. */
+/* A weapon's input binding (WeaponData +184 left, +188 right; 2 rate of fire), the field get_live and set_live take. */
+HfField InputField(int input) { return HfField{"WeaponDataComponentData", g_layout, (uint16_t)(input ? 188 : 184), 4, HF_TYPE_U32, 0}; }
+
+/* An input's binding now and its base, read from the game (the catalogue has no row for it). */
+bool ReadInput(const Row* rate, int input, double* now, double* base)
+{
+    if (!HasGetLive()) return false;
+    HfField field = InputField(input);
+    HfLiveValue value;
+    if (!g_host.api->get_live(g_host.mod, rate->ref, &field, &value)) return false;
+    *now = value.now.number;
+    *base = value.base.number;
+    return true;
+}
+
+/* An input to rate of fire, or back to its base (bind false), in the game and in Local Stats. */
+void SetInput(const Row* rate, int input, bool bind)
+{
+    const char* key = input ? "weapon_function.right" : "weapon_function.left";
+    HfField field = InputField(input);
+    HfValue v{HF_TYPE_U32, 2, 0};
+    g_host.api->set_live(g_host.mod, rate->ref, &field, bind ? &v : nullptr, bind ? 0 : HF_LIVE_BASE);
+    if (bind) localstats::Set(rate->category, rate->target, key, 2, true);
+    else localstats::Remove(rate->category, rate->target, key);
+}
+
+/* More than one rate of fire (rate slots X and Z, ProjectileWeapon +4 / +12, beside Y) is selectable only while an input
+ * is bound to rate of fire (WeaponData +184 / +188 = 2: the press dispatcher reaches the rate cycle only for it,
+ * game.dll 0x75541F; the cycle skips empty slots, 0x617A0B; HD2Mods research\coop-weapon-stats). The editor sets it
+ * itself, as the HD2R Editor does: a weapon given more than one rate gets a free input bound (the left, else the right)
+ * unless one is bound already (the MG-206's right input, say); a weapon back to one rate loses the binding the editor
+ * gave it. Returns what it says to the player: only when it cannot, or when two rates are the same. */
 std::string BindRateInput(const Row* rate)
 {
     auto entry = [&](const char* key) { return g_catalog.Entry(rate->category, rate->target, key); };
     const Row *x = entry("fire_rate.modes.x"), *y = entry("weapon.fire_rate"), *z = entry("fire_rate.modes.z");
-    const Row* inputs[2] = {entry("weapon_function.left"), entry("weapon_function.right")};
-    double xv = x ? Effective(x) : 0, zv = z ? Effective(z) : 0;
-    bool added = xv != 0 || zv != 0;
-    const Row *bound = nullptr, *free = nullptr;
-    for (const Row* input : inputs)
+    double xv = x ? Effective(x) : 0, zv = z ? Effective(z) : 0, yv = y ? Effective(y) : 0;
+    bool several = xv != 0 || zv != 0;
+    double now[2], base[2];
+    bool known[2] = {ReadInput(rate, 0, &now[0], &base[0]), ReadInput(rate, 1, &now[1], &base[1])};
+    if (!known[0]) return ""; /* no input to bind on this weapon */
+    bool bound = now[0] == 2 || (known[1] && now[1] == 2);
+    if (!several)
     {
-        if (input == nullptr) continue;
-        double v = Effective(input);
-        if (v == 2) bound = input;
-        else if (v == 0 && free == nullptr && input->OptionOf(2)) free = input;
-    }
-    if (!added)
-    {
-        if (bound != nullptr && Live(bound, true).base != 2) { ResetRow(bound); return bound->label + " is back to its own: no added rates"; }
+        for (int i = 0; i < 2; i++) if (known[i] && now[i] == 2 && base[i] != 2) SetInput(rate, i, false);
         return "";
     }
-    std::string said;
-    if (bound == nullptr)
+    if (!bound)
     {
-        if (free == nullptr) return "Both inputs are in use: the added rates of fire can't be selected";
-        ApplyRow(free, 2);
-        said = free->label + " set to Rate of fire, so the added rates can be selected (from the next respawn)";
+        int input = now[0] == 0 ? 0 : known[1] && now[1] == 0 ? 1 : -1;
+        if (input < 0) return "Both of the weapon's inputs are in use, so its other rates of fire can't be selected";
+        SetInput(rate, input, true);
     }
-    double yv = y ? Effective(y) : 0;
-    if ((xv != 0 && (xv == yv || xv == zv)) || (zv != 0 && zv == yv))
-        said += std::string(said.empty() ? "" : "; ") + "two rates of fire are the same, so a press may seem to do nothing";
-    return said;
+    if ((xv != 0 && (xv == yv || xv == zv)) || (zv != 0 && zv == yv)) return "Two rates of fire are the same, so a press may seem to do nothing";
+    return "";
 }
 
 void Apply()

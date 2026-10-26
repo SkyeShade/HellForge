@@ -14,6 +14,11 @@ static class RegisteredItemsTests
         check(RegisteredItems.Attachment(2309820280, Liberator) == 3441477456, "Weapon child hash does not invert.");
         // The mod loader names the same package in the weapon's customization record (registry.c Rehome): 2800332670.
         check(RegisteredItems.PackageFor(3391943729, Liberator, Gold) == 2800332670, "Mastery package id differs from the mod loader's.");
+        // Read where the mod loader writes them: the run, or a sandboxed game's run/game (its only writable folder)
+        var run = Path.Combine(root, "run");
+        check(RegisteredItems.PathFor(Path.Combine(run, "backend"), sandboxed: false) == Path.Combine(Path.GetFullPath(run), "registered-items.json") &&
+              RegisteredItems.PathFor(Path.Combine(run, "backend"), sandboxed: true) == Path.Combine(Path.GetFullPath(run), "game", "registered-items.json"),
+            "Registered items are read from the run, or sandboxed from its game folder.");
 
         var fixtures = LocalBackend.LoadStartupFixtures();
         var folder = Path.Combine(root, "registered-items");

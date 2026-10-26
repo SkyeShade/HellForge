@@ -118,10 +118,11 @@ public partial class MainWindow : Window
             try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
         };
-        // The sandbox (docs/steam-bridge.md): off unless chosen, and only with an engine built with the Steam bridge.
+        // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
+        // Windows (SessionRunner.CanSandbox).
         var steamBridge = SessionRunner.HasSteamBridge(paths);
-        SandboxBox.IsEnabled = steamBridge;
-        SandboxBox.IsChecked = steamBridge && ProfileStore.LoadSandbox(paths);
+        SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
+        SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
         SandboxUnavailable.IsVisible = !steamBridge;
         SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
         var war = ProfileStore.LoadWar(paths);

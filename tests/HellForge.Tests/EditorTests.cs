@@ -35,6 +35,8 @@ static class EditorTests
             var roster = objects.First(o => o["id"]!.GetValue<string>() == "rosters/automatons/row_1");
             check(roster["subtitle"]!.GetValue<string>() == "Automatons · Row 1" && roster["group"]!.GetValue<string>() == "Automatons" &&
                 roster["faction"]!.GetValue<string>() == "automatons", "A roster row shows its roster and row, its faction's chip and emblem.");
+            check(!catalog.ToJsonString().Contains("\"weapon_function.", StringComparison.Ordinal),
+                "A weapon's input bindings are not rows: the editor binds rate of fire itself when a weapon has more than one rate.");
 
             var rows = 0;
             foreach (var o in objects)

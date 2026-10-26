@@ -169,6 +169,18 @@
         "GetFriendRelationship": {
           "mode": "call"
         },
+        "GetFriendPersonaState": {
+          "mode": "call"
+        },
+        "GetFriendPersonaName": {
+          "mode": "call"
+        },
+        "GetFriendGamePlayed": {
+          "mode": "call",
+          "outBytes": {
+            "pFriendGameInfo": 24
+          }
+        },
         "GetUserRestrictions": {
           "mode": "call"
         },

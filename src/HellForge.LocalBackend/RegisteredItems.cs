@@ -42,6 +42,15 @@ public sealed class RegisteredItems(string path)
     // Responses the copies are made from (the backend's startup bodies), set by LocalBackend.
     public Func<string, JsonElement?>? Source { get; set; }
 
+    // Where the mod loader writes them: the game's log folder, which is the session's run (the backend evidence folder's
+    // parent) or, sandboxed, the run's game folder, the one the game may write (PlaySession's gameOut). Read from the run,
+    // a sandboxed session lost them all: mods' weapons and stratagems, level 11 and the raised difficulty cap.
+    public static string PathFor(string evidence, bool sandboxed)
+    {
+        var run = Path.GetDirectoryName(Path.GetFullPath(evidence))!;
+        return Path.Combine(sandboxed ? Path.Combine(run, "game") : run, "registered-items.json");
+    }
+
     public IReadOnlyList<Item> Load()
     {
         try
