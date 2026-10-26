@@ -2,14 +2,15 @@ using HellForge.Session;
 
 // HellForge.Session.exe: the engine's session runner (docs/engine.md).
 //   play --install <installation> --profile <profile folder> [--template <name>] [--local-playfab] [--multiplayer]
-//        [--live-war <cache file> | --open-war] [--engine-log] [--game-options <the player's launch options>]
+//        [--live-war <cache file> | --open-war] [--dss-everywhere <effect,...>] [--engine-log]
+//        [--game-options <the player's launch options>]
 //   version
 //   census <network-census.jsonl>   (a session's network census, summarised as the session's result.json holds it)
 //   network-probe <backend port> <report>   (the network block's probe as a Linux session runs it, PlaySession.NetworkProbeInProcess)
 // A session reports through its run folder (logs/sessions/<run>: result.json and the rest, as the launcher reads them);
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
-    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] | version | census <log>";
+    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--dss-everywhere <effect,...>] [--engine-log] [--game-options <options>] | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
@@ -40,6 +41,7 @@ for (var i = 1; i < args.Length; i++)
         case "--template": options.Template = Value(); break;
         case "--live-war": options.LiveWar = Value(); break;
         case "--open-war": options.OpenWar = true; break;
+        case "--dss-everywhere": options.DssEffects = HellForge.Core.DssEffects.Parse(Value()); break;
         case "--local-playfab": options.LocalPlayFab = true; break;
         case "--multiplayer": options.Multiplayer = true; break;
         case "--engine-log": options.EngineLog = true; break;
@@ -71,6 +73,7 @@ sealed class PlayOptions
     public string? Template { get; set; }
     public string? LiveWar { get; set; }
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
+    public List<string> DssEffects { get; set; } = []; /* the DSS effects on every planet (backend --dss-everywhere <keys>); none when empty */
     public bool LocalPlayFab { get; set; }
     public bool Multiplayer { get; set; }
     public bool EngineLog { get; set; }

@@ -14,6 +14,7 @@ if (args.Contains("--help"))
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
+    Console.WriteLine("--dss-everywhere <effect,...> adds those Democracy Space Station effects to every planet of the war served: all, or some of " + string.Join(", ", HellForge.Core.DssEffects.Keys) + ".");
     Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ.");
     return 0;
 }
@@ -90,6 +91,9 @@ try
     var war = options.GetValueOrDefault("--war");
     if (war != null && war != OpenWar.Mode) throw new ArgumentException("--war takes \"" + OpenWar.Mode + "\".");
     var openWar = war == OpenWar.Mode;
+    // --dss-everywhere <effect,...>: those DSS effects on every planet (DssEverywhere).
+    var dssEverywhere = options.GetValueOrDefault("--dss-everywhere") is { } dssText ? HellForge.Core.DssEffects.Parse(dssText) : null;
+    if (dssEverywhere != null && !startupFixtures) throw new ArgumentException("--dss-everywhere requires --startup-fixtures true.");
     await using var liveWar = !openWar && options.GetValueOrDefault("--live-war") is { } liveWarCache && startupFixtures
         ? await LiveWar.StartAsync(liveWarCache, warClock, message =>
         {
@@ -97,7 +101,7 @@ try
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
     await using var app = LocalBackend.Create(port, evidence, mode, startupFixtures, profile, options.GetValueOrDefault("--item-catalog"),
-        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar);
+        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, dssEverywhere);
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
     // --mod-list <file>: the digest's mods one by one (ModlistDiff's form), so a refused join can say which differ

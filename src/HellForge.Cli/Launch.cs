@@ -53,6 +53,8 @@ static class Launch
             throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
+            ProfileStore.DssSessionEffects(Yes(options, "--dss-everywhere", ProfileStore.LoadDssEverywhere(paths)),
+                options.TryGetValue("--dss-effects", out var effects) ? DssEffects.Parse(effects) : ProfileStore.LoadDssEffects(paths)),
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)));
         var profiles = ProfileStore.List(paths);
@@ -180,6 +182,8 @@ static class Launch
             {
                 profile = ProfileStore.LoadSelected(paths),
                 war = ProfileStore.LoadWar(paths),
+                dssEverywhere = ProfileStore.LoadDssEverywhere(paths),
+                dssEffects = ProfileStore.LoadDssEffects(paths),
                 localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
                 multiplayer = ProfileStore.LoadSdkShims(paths),
                 engineLog = ProfileStore.LoadEngineLog(paths),
@@ -402,6 +406,8 @@ static class Launch
                 throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
             ProfileStore.SaveWar(paths, war);
         }
+        if (options.ContainsKey("--dss-everywhere")) ProfileStore.SaveDssEverywhere(paths, Yes(options, "--dss-everywhere", false));
+        if (options.TryGetValue("--dss-effects", out var effects)) ProfileStore.SaveDssEffects(paths, DssEffects.Parse(effects));
         if (options.ContainsKey("--local-playfab")) ProfileStore.SaveLocalPlayFab(paths, Yes(options, "--local-playfab", true));
         if (options.ContainsKey("--multiplayer")) ProfileStore.SaveSdkShims(paths, Yes(options, "--multiplayer", true));
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
@@ -415,6 +421,8 @@ static class Launch
         {
             profile = ProfileStore.LoadSelected(paths),
             war = ProfileStore.LoadWar(paths),
+            dssEverywhere = ProfileStore.LoadDssEverywhere(paths),
+            dssEffects = ProfileStore.LoadDssEffects(paths),
             localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
             multiplayer = ProfileStore.LoadSdkShims(paths),
             engineLog = ProfileStore.LoadEngineLog(paths),

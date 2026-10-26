@@ -141,6 +141,25 @@ public static partial class ProfileStore
         return LoadFlag(paths, "liveWar") ? WarLive : WarFrozen;
     }
 
+    // Off unless chosen: the Democracy Space Station's effects picked in LoadDssEffects, on every planet of whichever war
+    // is served (backend --dss-everywhere, DssEverywhere).
+    public static bool LoadDssEverywhere(ISessionPaths paths) =>
+        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "dssEverywhere") == "true";
+
+    // The DSS effects picked for every planet (DssEffects keys, in its order): every one unless chosen otherwise. Keys this
+    // version does not know are left out.
+    public static IReadOnlyList<string> LoadDssEffects(ISessionPaths paths)
+    {
+        if (SessionFiles.ReadJson(paths.SettingsFile) is not { } settings || !settings.TryGetProperty("dssEffects", out var list) ||
+            list.ValueKind != JsonValueKind.Array)
+            return DssEffects.Keys;
+        var keys = list.EnumerateArray().Where(k => k.ValueKind == JsonValueKind.String).Select(k => k.GetString()!).ToList();
+        return DssEffects.Keys.Where(keys.Contains).ToList();
+    }
+
+    // What a session puts on every planet: the picked effects when the setting is on, else none.
+    public static IReadOnlyList<string> DssSessionEffects(bool everywhere, IReadOnlyList<string> effects) => everywhere ? effects : [];
+
     // The engine's own log (--log-to-file), copied into the session's logs. On unless switched off (multiplayer testing).
     public static bool LoadEngineLog(ISessionPaths paths) => LoadFlag(paths, "engineLog");
     // Off unless chosen: a full memory dump of the game when it crashes (large), for bug reports.
@@ -155,32 +174,38 @@ public static partial class ProfileStore
         SessionFiles.ReadJson(paths.SettingsFile) is not { } settings || SessionFiles.Text(settings, name) != "false";
 
     public static void SaveSelected(ISessionPaths paths, string name) =>
-        Save(paths, name, LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, name, LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
 
     public static void SaveLocalPlayFab(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), enabled, LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, LoadSelected(paths), enabled, LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
 
     public static void SaveSdkShims(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
 
     public static void SaveWar(ISessionPaths paths, string war) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+
+    public static void SaveDssEverywhere(ISessionPaths paths, bool enabled) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), enabled, LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+
+    public static void SaveDssEffects(ISessionPaths paths, IReadOnlyList<string> effects) =>
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), effects, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
 
     public static void SaveCrashDump(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths));
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths));
 
     public static void SaveEngineLog(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), enabled, LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), enabled, LoadCrashDump(paths), LoadLaunchOptions(paths));
 
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
+        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadDssEverywhere(paths), LoadDssEffects(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
 
-    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions)
+    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool dssEverywhere, IReadOnlyList<string> dssEffects, bool engineLog, bool crashDump, string launchOptions)
     {
         try
         {
             Directory.CreateDirectory(paths.HostRoot);
-            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions }, WriteOptions) + "\n");
+            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, dssEverywhere, dssEffects, engineLog, crashDump, launchOptions }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.
     }

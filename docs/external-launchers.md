@@ -116,13 +116,14 @@ the first one is used). Write the whole file at once, to a temporary file and th
 `play` uses the launcher's settings unless an option replaces one, so a player gets the same session from either
 launcher. It never changes `launcher-settings.json`.
 
-To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--dss-everywhere`,
+`--dss-effects`, `--local-playfab`, `--multiplayer`, `--engine-log`, `--crash-dump`, `--game-options`), saves the ones
+given, checks them as `play` would, and prints every setting:
 
 ```json
-{"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "file": "<installation>\\launcher-settings.json"}
+{"profile": "default", "war": "live", "dssEverywhere": false, "dssEffects": ["eagle-storm", "orbital-blockade", ...],
+ "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false, "gameOptions": "",
+ "file": "<installation>\\launcher-settings.json"}
 ```
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
@@ -131,14 +132,17 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ## Sessions
 
 ```
-HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
-                       [--engine-log yes | no] [--crash-dump yes | no] [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
+HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--dss-everywhere yes | no] [--dss-effects all | <effect,...>]
+                       [--local-playfab yes | no] [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no]
+                       [--game-options "<launch options>"] [--wait yes] [--dry-run yes]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
 | `--war` | `live` | `live`: the current galactic war, read-only through the community mirror; `frozen`: the war HellForge ships; `open`: every planet open |
+| `--dss-everywhere` | `no` | the Democracy Space Station's effects picked with `--dss-effects` on every planet of the war |
+| `--dss-effects` | `all` | which DSS effects, comma-separated: `eagle-storm`, `orbital-blockade`, `planetary-bombardment`, `operational-support`, `exosuit-reserves-patriot`, `exosuit-reserves-emancipator`, `effect-1384`, `effect-1385`, and `current` for whatever the DSS gives now; or `all` |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |

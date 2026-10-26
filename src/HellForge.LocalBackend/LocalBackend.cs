@@ -78,7 +78,7 @@ public static class LocalBackend
     public static WebApplication Create(int port, string evidenceDirectory, LoginMode mode, bool startupFixtures = false,
         ProfileStore? profile = null, string? itemCatalog = null, string? fixtureOverride = null, bool captureMissionBodies = false,
         WarClock? warClock = null, AccountKeys? accountKeys = null, LiveWar? liveWar = null, FriendPresence? presence = null,
-        RegisteredItems? registeredItems = null, bool openWar = false)
+        RegisteredItems? registeredItems = null, bool openWar = false, IReadOnlyList<string>? dssEverywhere = null)
     {
         if (port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
@@ -109,6 +109,8 @@ public static class LocalBackend
             fixtures[$"/WarSeason/{LiveWar.WarId}/Status"] = OpenWar.Status(fixtures[$"/WarSeason/{LiveWar.WarId}/warinfo"], fixtures[$"/WarSeason/{LiveWar.WarId}/Status"]);
             liveWar = null;
         }
+        // --dss-everywhere <keys>: those DSS effects on every planet of whichever war is served (DssEverywhere).
+        if (dssEverywhere != null && !startupFixtures) throw new ArgumentException("DSS effects on every planet require startup fixtures.");
         if (startupFixtures) profile ??= ProfileStore.Open(null);
         // Issued session IDs, used only to classify the Authorization header in the audit.
         var sessions = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
@@ -467,6 +469,9 @@ public static class LocalBackend
                     {
                         status = StatusCodes.Status200OK;
                         outcome = source;
+                        // The picked DSS effects join every planet of the war status (DssEverywhere).
+                        if (dssEverywhere != null && string.Equals(request.Path.Value, $"/WarSeason/{LiveWar.WarId}/Status", StringComparison.OrdinalIgnoreCase))
+                            startupBody = DssEverywhere.Status(startupBody, dssEverywhere);
                         // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems).
                         response = registeredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
                     }
