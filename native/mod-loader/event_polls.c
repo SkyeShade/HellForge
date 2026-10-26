@@ -86,28 +86,30 @@ static EvpSource g_evpSources[] = {
 };
 static int g_evpPlayers; /* the player list's pins: 1 read as reviewed, -1 not */
 
+/* One polled source a mod listens to, proven (with the player list's pins first). */
+static void EvpSourceInstall(EvpSource* s, uintptr_t game, uintptr_t exe, ULONGLONG waited)
+{
+    if (s->state != 0 || !AnyListener(s->kind)) return;
+    if (strcmp(g_build, "25480438")) { s->state = -1; Note("events: %s not read (unsupported build); no %s events", s->what, EventName(s->kind)); return; }
+    if (g_evpPlayers == 0 && EvpProve(game, exe, kEvpPlayerPins, sizeof kEvpPlayerPins / sizeof kEvpPlayerPins[0])) g_evpPlayers = 1;
+    int proven = g_evpPlayers == 1 && EvpProve(game, exe, s->pins, s->count);
+    if (!proven)
+    {
+        if (waited < 60000) return;
+        if (g_evpPlayers == 0) g_evpPlayers = -1;
+        s->state = -1;
+        Note("events: %s are not the reviewed ones; no %s events", g_evpPlayers < 0 ? "the player list's reads" : s->what, EventName(s->kind));
+        return;
+    }
+    s->state = 1;
+    Note("events: reading %s (%s events)", s->what, EventName(s->kind));
+}
+
 /* The watch loop: proves each polled source a mod listens to (60 s for the code to decode). */
 static void EventPollsInstall(uintptr_t game, ULONGLONG waited)
 {
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
-    for (size_t i = 0; i < sizeof g_evpSources / sizeof g_evpSources[0]; i++)
-    {
-        EvpSource* s = &g_evpSources[i];
-        if (s->state != 0 || !AnyListener(s->kind)) continue;
-        if (strcmp(g_build, "25480438")) { s->state = -1; Note("events: %s not read (unsupported build); no %s events", s->what, EventName(s->kind)); continue; }
-        if (g_evpPlayers == 0 && EvpProve(game, exe, kEvpPlayerPins, sizeof kEvpPlayerPins / sizeof kEvpPlayerPins[0])) g_evpPlayers = 1;
-        int proven = g_evpPlayers == 1 && EvpProve(game, exe, s->pins, s->count);
-        if (!proven)
-        {
-            if (waited < 60000) continue;
-            if (g_evpPlayers == 0) g_evpPlayers = -1;
-            s->state = -1;
-            Note("events: %s are not the reviewed ones; no %s events", g_evpPlayers < 0 ? "the player list's reads" : s->what, EventName(s->kind));
-            continue;
-        }
-        s->state = 1;
-        Note("events: reading %s (%s events)", s->what, EventName(s->kind));
-    }
+    for (size_t i = 0; i < sizeof g_evpSources / sizeof g_evpSources[0]; i++) EvpSourceInstall(&g_evpSources[i], game, exe, waited);
 }
 static int EvpOn(uint32_t kind)
 {
@@ -124,6 +126,15 @@ static int EvpPtr(uintptr_t at, uintptr_t* out)
 }
 static uint32_t EvpU32(uintptr_t at, uint32_t fallback) { uint32_t v; return SafeRead(at, &v, 4) ? fallback : v; }
 
+/* A found key's value at `at`: 1 with *value, 0 unreadable or none (-1). */
+static int EvpHashValue(uintptr_t at, uint32_t* value)
+{
+    uint32_t v;
+    if (SafeRead(at, &v, 4) || v == 0xFFFFFFFFu) return 0;
+    *value = v;
+    return 1;
+}
+
 /* The game's u32 hash maps: a header {u64 buckets, u32 capacity, u32 empty key, u32 multiplier}, buckets of `stride`
  * bytes {u32 key, ... the value at valueAt}, probed from key * multiplier. 1 with *value, 0 absent or unreadable. */
 static int EvpHash(uintptr_t header, uint32_t key, uint32_t stride, uint32_t valueAt, uint32_t* value)
@@ -137,14 +148,9 @@ static int EvpHash(uintptr_t header, uint32_t key, uint32_t stride, uint32_t val
     for (uint32_t i = 0; i < probes; i++)
     {
         uint64_t at = buckets + (uint64_t)((start + i) % capacity) * stride;
-        uint32_t k, v;
+        uint32_t k;
         if (SafeRead((uintptr_t)at, &k, 4)) return 0;
-        if (k == key)
-        {
-            if (SafeRead((uintptr_t)at + valueAt, &v, 4) || v == 0xFFFFFFFFu) return 0;
-            *value = v;
-            return 1;
-        }
+        if (k == key) return EvpHashValue((uintptr_t)at + valueAt, value);
         if (k == empty) return 0;
     }
     return 0;
@@ -219,34 +225,42 @@ static int EvpHealthOf(uintptr_t game, uint32_t entity, uintptr_t* record, int32
     return 1;
 }
 
+static EvpHealth* EvpHealthKnown(uint32_t avatar)
+{
+    EvpHealth* known = NULL;
+    for (int k = 0; k < g_evpHealthCount; k++) if (g_evpHealth[k].avatar == avatar) known = &g_evpHealth[k];
+    return known;
+}
+
+/* A player's Helldiver against the last update: its health up while alive or downed, in the same record, is a heal. */
+static void PollHealOf(uintptr_t game, const EvpPlayer* p)
+{
+    uintptr_t record; int32_t health, max; uint32_t life;
+    if (!p->avatar || !EvpHealthOf(game, p->avatar, &record, &health, &life, &max)) return;
+    EvpHealth* known = EvpHealthKnown(p->avatar);
+    if (known == NULL && g_evpHealthCount < (int)(sizeof g_evpHealth / sizeof g_evpHealth[0]))
+    {
+        known = &g_evpHealth[g_evpHealthCount++];
+        *known = (EvpHealth){p->avatar, record, health, life, 1}; /* the start: no heal on first sight */
+        return;
+    }
+    if (known == NULL) return;
+    known->seen = 1;
+    if (known->record == record && life < 2 && health > known->health)
+    {
+        HfHealEvent e = {{sizeof e, HF_ON_HEAL, 0}, p->avatar, health - known->health, health, max, p->peer, (uint32_t)p->local};
+        Dispatch(&e.info);
+    }
+    known->record = record; known->health = health; known->life = life;
+}
+
 static void PollHeal(uintptr_t game)
 {
     EvpPlayer players[EVT_MAX_PLAYERS];
     int count = EvpPlayers(game, players);
     if (count < 0) return;
     for (int k = 0; k < g_evpHealthCount; k++) g_evpHealth[k].seen = 0;
-    for (int i = 0; i < count; i++)
-    {
-        const EvpPlayer* p = &players[i];
-        uintptr_t record; int32_t health, max; uint32_t life;
-        if (!p->avatar || !EvpHealthOf(game, p->avatar, &record, &health, &life, &max)) continue;
-        EvpHealth* known = NULL;
-        for (int k = 0; k < g_evpHealthCount; k++) if (g_evpHealth[k].avatar == p->avatar) known = &g_evpHealth[k];
-        if (known == NULL && g_evpHealthCount < (int)(sizeof g_evpHealth / sizeof g_evpHealth[0]))
-        {
-            known = &g_evpHealth[g_evpHealthCount++];
-            *known = (EvpHealth){p->avatar, record, health, life, 1}; /* the start: no heal on first sight */
-            continue;
-        }
-        if (known == NULL) continue;
-        known->seen = 1;
-        if (known->record == record && life < 2 && health > known->health)
-        {
-            HfHealEvent e = {{sizeof e, HF_ON_HEAL, 0}, p->avatar, health - known->health, health, max, p->peer, (uint32_t)p->local};
-            Dispatch(&e.info);
-        }
-        known->record = record; known->health = health; known->life = life;
-    }
+    for (int i = 0; i < count; i++) PollHealOf(game, &players[i]);
     for (int k = 0; k < g_evpHealthCount;)
         if (!g_evpHealth[k].seen) g_evpHealth[k] = g_evpHealth[--g_evpHealthCount];
         else k++;
@@ -260,6 +274,21 @@ typedef struct EvpStats { uint32_t player; int32_t main[4], total[4]; uint64_t s
 static EvpStats g_evpStats;
 static int g_evpStatsHeld;
 static ULONGLONG g_evpStatsNext;
+
+/* Source block b: its resource, and its part of each stat (added to the totals). */
+static void EvpStatsBlock(const uint8_t* block, int b, EvpStats* out)
+{
+    memcpy(&out->source[b], block, 8);
+    if (out->source[b] == 0) return;
+    for (int e = 0; e < 16; e++)
+    {
+        uint32_t key; int32_t value;
+        memcpy(&key, block + 8 + e * 0x14, 4);
+        if (key == 0) break;
+        memcpy(&value, block + 8 + e * 0x14 + 4, 4);
+        for (int k = 0; k < 4; k++) if (key == kEvpStats[k]) { out->value[b][k] += value; out->total[k] += value; }
+    }
+}
 
 /* The local player's stats now: the stat table's value and each source block's part; 0 unreadable. */
 static int EvpStatsOf(uintptr_t game, uint32_t player, EvpStats* out)
@@ -280,21 +309,42 @@ static int EvpStatsOf(uintptr_t game, uint32_t player, EvpStats* out)
     if (!EvpPtr(record + 0x18, &sources)) return 1;
     static uint8_t blocks[EVP_SOURCE_BLOCKS * 0x148];
     if (SafeRead(sources, blocks, sizeof blocks)) return 0;
+    for (int b = 0; b < EVP_SOURCE_BLOCKS; b++) EvpStatsBlock(blocks + b * 0x148, b, out);
+    return 1;
+}
+
+/* A source's value of stat k at the last check (0 when it had none). */
+static int32_t EvpStatBefore(uint64_t source, int k)
+{
+    int32_t before = 0;
+    for (int c = 0; c < EVP_SOURCE_BLOCKS; c++) if (g_evpStats.source[c] == source) before = g_evpStats.value[c][k];
+    return before;
+}
+
+/* A source's growth into the event's sources: the largest growths first. */
+static void EvpStatSource(HfStatEvent* e, uint64_t source, int32_t grew)
+{
+    int at = (int)e->count;
+    while (at > 0 && e->sources[at - 1].added < grew) { if (at < HF_STAT_SOURCES) e->sources[at] = e->sources[at - 1]; at--; }
+    if (at < HF_STAT_SOURCES) { e->sources[at] = (HfStatSource){source, grew, 0}; if (e->count < HF_STAT_SOURCES) e->count++; }
+}
+
+/* Stat k's growth since the last check, if it grew: its event, with the sources that grew. */
+static void EvpStatGrew(uint32_t player, int k, const EvpStats* now)
+{
+    int32_t added = now->total[k] - g_evpStats.total[k];
+    if (added <= 0) return;
+    HfStatEvent e = {{sizeof e, HF_ON_STAT, 0}, kEvpStats[k], added, now->total[k], 0, player, 0, {{0}}};
+    int32_t main = now->main[k] - g_evpStats.main[k];
+    e.unattributed = main > 0 ? main : 0;
     for (int b = 0; b < EVP_SOURCE_BLOCKS; b++)
     {
-        const uint8_t* block = blocks + b * 0x148;
-        memcpy(&out->source[b], block, 8);
-        if (out->source[b] == 0) continue;
-        for (int e = 0; e < 16; e++)
-        {
-            uint32_t key; int32_t value;
-            memcpy(&key, block + 8 + e * 0x14, 4);
-            if (key == 0) break;
-            memcpy(&value, block + 8 + e * 0x14 + 4, 4);
-            for (int k = 0; k < 4; k++) if (key == kEvpStats[k]) { out->value[b][k] += value; out->total[k] += value; }
-        }
+        if (now->source[b] == 0) continue;
+        int32_t grew = now->value[b][k] - EvpStatBefore(now->source[b], k);
+        if (grew <= 0) continue;
+        EvpStatSource(&e, now->source[b], grew);
     }
-    return 1;
+    Dispatch(&e.info);
 }
 
 static void PollStats(uintptr_t game)
@@ -312,27 +362,7 @@ static void PollStats(uintptr_t game)
     int reset = !g_evpStatsHeld || g_evpStats.player != player;
     for (int k = 0; k < 4 && !reset; k++) if (now_.total[k] < g_evpStats.total[k]) reset = 1;
     if (!reset)
-        for (int k = 0; k < 4; k++)
-        {
-            int32_t added = now_.total[k] - g_evpStats.total[k];
-            if (added <= 0) continue;
-            HfStatEvent e = {{sizeof e, HF_ON_STAT, 0}, kEvpStats[k], added, now_.total[k], 0, player, 0, {{0}}};
-            int32_t main = now_.main[k] - g_evpStats.main[k];
-            e.unattributed = main > 0 ? main : 0;
-            for (int b = 0; b < EVP_SOURCE_BLOCKS; b++)
-            {
-                if (now_.source[b] == 0) continue;
-                int32_t before = 0;
-                for (int c = 0; c < EVP_SOURCE_BLOCKS; c++) if (g_evpStats.source[c] == now_.source[b]) before = g_evpStats.value[c][k];
-                int32_t grew = now_.value[b][k] - before;
-                if (grew <= 0) continue;
-                /* the largest growths first */
-                int at = (int)e.count;
-                while (at > 0 && e.sources[at - 1].added < grew) { if (at < HF_STAT_SOURCES) e.sources[at] = e.sources[at - 1]; at--; }
-                if (at < HF_STAT_SOURCES) { e.sources[at] = (HfStatSource){now_.source[b], grew, 0}; if (e.count < HF_STAT_SOURCES) e.count++; }
-            }
-            Dispatch(&e.info);
-        }
+        for (int k = 0; k < 4; k++) EvpStatGrew(player, k, &now_);
     g_evpStats = now_;
     g_evpStatsHeld = 1;
 }
@@ -420,6 +450,43 @@ static int EvpUnitPosition(uint32_t unit, float* position)
     return 1;
 }
 
+/* A destructible's slot (its descriptor pointer p and world index): its descriptor read again when either changed,
+ * and the range of the bug holes' indexes widened to it. */
+static void EvpHoleScan(EvpHole* h, uint64_t p, int32_t index, int32_t* first, int32_t* last)
+{
+    if (p < 0x10000 || (p >> 32) > 0x7FFF || index < 0) { h->descriptor = 0; return; }
+    if (h->descriptor != (uintptr_t)p || h->index != index)
+    {
+        uint8_t d[24];
+        memset(h, 0, sizeof *h);
+        if (SafeRead((uintptr_t)p, d, sizeof d)) return;
+        h->descriptor = (uintptr_t)p; h->index = index; h->stage = -1; /* the start */
+        memcpy(&h->resource, d, 8); memcpy(&h->entity, d + 8, 4); memcpy(&h->unit, d + 12, 4);
+        h->owned = d[0x14] & 1;
+        for (size_t k = 0; k < sizeof kEvpHoles / sizeof kEvpHoles[0]; k++) if (kEvpHoles[k] == h->resource) h->hole = 1;
+    }
+    if (!h->hole) return;
+    if (*first < 0 || h->index < *first) *first = h->index;
+    if (h->index > *last) *last = h->index;
+}
+
+/* A bug hole's destruction record (records: from index `first`): its stage leaving 0 closes it. */
+static void EvpHoleStage(EvpHole* h, const uint8_t* records, int32_t first)
+{
+    if (!h->descriptor || !h->hole) return;
+    const uint8_t* r = records + (size_t)(h->index - first) * 12;
+    uint32_t unit; memcpy(&unit, r, 4);
+    int stage = r[7], registered = r[8] & 1;
+    if (unit != h->unit || !registered) { h->descriptor = 0; return; } /* read again next time */
+    if (h->stage == 0 && stage > 0 && AnyListener(HF_ON_BUGHOLE))
+    {
+        HfBugholeEvent e = {{sizeof e, HF_ON_BUGHOLE, 0}, h->entity, h->unit, h->resource, (uint32_t)stage, h->owned, {0}, 0};
+        e.has_position = (uint32_t)EvpUnitPosition(h->unit, e.position);
+        Dispatch(&e.info);
+    }
+    h->stage = stage;
+}
+
 static void PollBugholes(uintptr_t game)
 {
     ULONGLONG now = GetTickCount64();
@@ -435,46 +502,13 @@ static void PollBugholes(uintptr_t game)
     static int32_t indexes[EVP_MAX_DESTRUCTIBLES];
     if (count == 0 || SafeRead(manager + 0x4030, pointers, count * 8) || SafeRead(manager + 0x6030, indexes, count * 4)) return;
     int32_t first = -1, last = -1;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        EvpHole* h = &g_evpHoles[i];
-        uint64_t p = pointers[i];
-        if (p < 0x10000 || (p >> 32) > 0x7FFF || indexes[i] < 0) { h->descriptor = 0; continue; }
-        if (h->descriptor != (uintptr_t)p || h->index != indexes[i])
-        {
-            uint8_t d[24];
-            memset(h, 0, sizeof *h);
-            if (SafeRead((uintptr_t)p, d, sizeof d)) continue;
-            h->descriptor = (uintptr_t)p; h->index = indexes[i]; h->stage = -1; /* the start */
-            memcpy(&h->resource, d, 8); memcpy(&h->entity, d + 8, 4); memcpy(&h->unit, d + 12, 4);
-            h->owned = d[0x14] & 1;
-            for (size_t k = 0; k < sizeof kEvpHoles / sizeof kEvpHoles[0]; k++) if (kEvpHoles[k] == h->resource) h->hole = 1;
-        }
-        if (!h->hole) continue;
-        if (first < 0 || h->index < first) first = h->index;
-        if (h->index > last) last = h->index;
-    }
+    for (uint32_t i = 0; i < count; i++) EvpHoleScan(&g_evpHoles[i], pointers[i], indexes[i], &first, &last);
     if (first < 0 || last - first >= 65536) return;
     size_t bytes = (size_t)(last - first + 1) * 12;
     uint8_t* records = (uint8_t*)malloc(bytes);
     if (records == NULL) return;
     if (!SafeRead(world + 0xC5F78 + (uintptr_t)first * 12, records, bytes))
-        for (uint32_t i = 0; i < count; i++)
-        {
-            EvpHole* h = &g_evpHoles[i];
-            if (!h->descriptor || !h->hole) continue;
-            const uint8_t* r = records + (size_t)(h->index - first) * 12;
-            uint32_t unit; memcpy(&unit, r, 4);
-            int stage = r[7], registered = r[8] & 1;
-            if (unit != h->unit || !registered) { h->descriptor = 0; continue; } /* read again next time */
-            if (h->stage == 0 && stage > 0 && AnyListener(HF_ON_BUGHOLE))
-            {
-                HfBugholeEvent e = {{sizeof e, HF_ON_BUGHOLE, 0}, h->entity, h->unit, h->resource, (uint32_t)stage, h->owned, {0}, 0};
-                e.has_position = (uint32_t)EvpUnitPosition(h->unit, e.position);
-                Dispatch(&e.info);
-            }
-            h->stage = stage;
-        }
+        for (uint32_t i = 0; i < count; i++) EvpHoleStage(&g_evpHoles[i], records, first);
     free(records);
 }
 

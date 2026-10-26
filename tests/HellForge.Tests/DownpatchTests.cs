@@ -88,7 +88,7 @@ static class DownpatchTests
             }
             const string Copy = """{"path": "bin/same.dll", "op": "copy"}""";
             const string Add = """{"path": "data/added.bin", "op": "add"}""";
-            void Apply(string zip) => Downpatcher.ApplyPack(steam, game, zip, pack, build, "", null, null, default);
+            void Apply(string zip) => Downpatcher.ApplyPack(new(steam, game, zip, pack, build, "", null), null, default);
 
             // outside the list, ../ or a file left out: refused before anything is written
             foreach (var (name, files) in new[] { ("escape", Copy + "," + Add + """,{"path": "../evil.dll", "op": "add"}"""),
@@ -104,7 +104,7 @@ static class DownpatchTests
             check(!File.Exists(Path.Combine(game, "data", "added.bin")) && !File.Exists(Path.Combine(game, "data", "added.bin.partial")), "A wrong file was kept.");
 
             // a pack for another build is refused
-            reject(() => Downpatcher.ApplyPack(steam, game, Pack("other", Copy + "," + Add, added), pack with { SourceBuild = "1" }, build, "", null, null, default));
+            reject(() => Downpatcher.ApplyPack(new(steam, game, Pack("other", Copy + "," + Add, added), pack with { SourceBuild = "1" }, build, "", null), null, default));
 
             Apply(Pack("good", Copy + "," + Add, added));
             check(File.ReadAllBytes(Path.Combine(game, "bin", "same.dll")).SequenceEqual(same) &&

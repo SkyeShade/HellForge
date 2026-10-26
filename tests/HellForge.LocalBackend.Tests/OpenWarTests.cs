@@ -83,6 +83,9 @@ static class OpenWarTests
                 "Cyberstan keeps its Cyborgs (1360) and their flag, whatever the seed: " + string.Join(",", Subfactions(260)));
             check(owner[212] == 2 && Subfactions(212).SequenceEqual([1303, 1306, 1307]) && new[] { 1310, 1308, 1309 }.All(f => at.Contains((212, f))),
                 "Oshaune keeps the Rupture Strain, Dragonroach and Hive Lord, with their flags, whatever the seed: " + string.Join(",", Subfactions(212)));
+            // seen in game: 1308 is Hive Lord's flag and 1309 Dragonroach's (the other way round, each planet showed the other's)
+            check(at.Where(e => e.Id is 1306 or 1307).All(e => at.Contains((e.Index, e.Id == 1306 ? 1309 : 1308)) && (e.Index == 212 || !at.Contains((e.Index, e.Id == 1306 ? 1308 : 1309)))),
+                "A Dragonroach planet shows Dragonroach's flag (1309) and a Hive Lord planet Hive Lord's (1308), not each other's.");
         }
         check(sectors.Values.Distinct().Any(sector => onPlanet.Where(e => sectors.GetValueOrDefault(e.Index) == sector).Select(e => e.Id).Distinct().Count() >= 2),
             "Subfactions go planet by planet: a sector holds more than one.");
@@ -134,7 +137,7 @@ static class OpenWarTests
                 $"Faction {faction}: several subfactions across its planets.");
 
         // served by the backend in place of the frozen war
-        await using var app = LocalBackend.Create(0, Path.Combine(root, "open-war-backend"), LoginMode.LocalSession, true, openWar: true);
+        await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "open-war-backend"), LoginMode.LocalSession) { StartupFixtures = true, OpenWar = true });
         await app.StartAsync();
         try
         {

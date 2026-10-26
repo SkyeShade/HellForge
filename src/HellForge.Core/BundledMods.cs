@@ -78,41 +78,7 @@ public static class BundledMods
         {
             var name = Path.GetFileName(shipped);
             var target = Path.Combine(install.Mods, name);
-            try
-            {
-                var bundled = FolderIdentity(shipped);
-                if (bundled != null && !Settle(install, name, target, bundled, log)) continue;
-                if (Directory.Exists(Path.Combine(target, "src")))
-                {
-                    log?.Invoke($"Bundled mod {name}: mods/{name} has sources of its own, so HellForge's built copy is not installed over it.");
-                    continue;
-                }
-                var changed = false;
-                var files = Directory.GetFiles(shipped, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(shipped, f).Replace('\\', '/')).ToList();
-                foreach (var relative in files)
-                {
-                    var file = Path.Combine(shipped, relative);
-                    var destination = Path.Combine(target, relative);
-                    if (File.Exists(destination) && Same(file, destination)) continue;
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Copy(file, destination, overwrite: true);
-                    changed = true;
-                }
-                // the files an earlier version shipped and this one does not
-                var list = Path.Combine(target, ListName);
-                var before = File.Exists(list) ? File.ReadAllLines(list).Where(l => l.Length > 0).ToList() : [];
-                foreach (var stale in before.Except(files, StringComparer.OrdinalIgnoreCase))
-                {
-                    var path = Path.GetFullPath(Path.Combine(target, stale));
-                    if (!path.StartsWith(Path.GetFullPath(target) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) continue;
-                    File.Delete(path);
-                    changed = true;
-                }
-                if (!before.SequenceEqual(files, StringComparer.OrdinalIgnoreCase))
-                    File.WriteAllLines(list, files);
-                if (changed) log?.Invoke($"Bundled mod {name}: installed from this HellForge version.");
-                if (name.Equals(EditorFolder, StringComparison.OrdinalIgnoreCase)) EditorData(install, target, changed, log);
-            }
+            try { SyncOne(install, shipped, name, target, log); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
                 problems.Add($"{name} (bundled with HellForge) could not be installed: {error.Message}");
@@ -121,19 +87,64 @@ public static class BundledMods
         return problems;
     }
 
+    // One bundled mod into mods/<name>, unless a copy with sources of its own keeps its place.
+    static void SyncOne(InstallLayout install, string shipped, string name, string target, Action<string>? log)
+    {
+        var bundled = FolderIdentity(shipped);
+        if (bundled != null && !Settle(install, name, target, bundled, log)) return;
+        if (Directory.Exists(Path.Combine(target, "src")))
+        {
+            log?.Invoke($"Bundled mod {name}: mods/{name} has sources of its own, so HellForge's built copy is not installed over it.");
+            return;
+        }
+        var files = Directory.GetFiles(shipped, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(shipped, f).Replace('\\', '/')).ToList();
+        var changed = CopyShipped(shipped, target, files);
+        // the files an earlier version shipped and this one does not
+        var list = Path.Combine(target, ListName);
+        var before = File.Exists(list) ? File.ReadAllLines(list).Where(l => l.Length > 0).ToList() : [];
+        if (DeleteStale(target, before.Except(files, StringComparer.OrdinalIgnoreCase))) changed = true;
+        if (!before.SequenceEqual(files, StringComparer.OrdinalIgnoreCase))
+            File.WriteAllLines(list, files);
+        if (changed) log?.Invoke($"Bundled mod {name}: installed from this HellForge version.");
+        if (name.Equals(EditorFolder, StringComparison.OrdinalIgnoreCase)) EditorData(install, target, changed, log);
+    }
+
+    // The shipped files that are missing or differ in target, copied: true when any was.
+    static bool CopyShipped(string shipped, string target, List<string> files)
+    {
+        var changed = false;
+        foreach (var relative in files)
+        {
+            var file = Path.Combine(shipped, relative);
+            var destination = Path.Combine(target, relative);
+            if (File.Exists(destination) && Same(file, destination)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, overwrite: true);
+            changed = true;
+        }
+        return changed;
+    }
+
+    // Files listed as shipped before that are still inside target, deleted: true when any was.
+    static bool DeleteStale(string target, IEnumerable<string> stale)
+    {
+        var changed = false;
+        foreach (var relative in stale)
+        {
+            var path = Path.GetFullPath(Path.Combine(target, relative));
+            if (!path.StartsWith(Path.GetFullPath(target) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) continue;
+            File.Delete(path);
+            changed = true;
+        }
+        return changed;
+    }
+
     // Every other copy of a bundled mod (its id) in mods: retired, unless one is a modder's (sources of its own) of the
     // same version or newer, which keeps its place: false, the bundled one is not installed. mods/<name> itself is
     // retired when it holds an older modder's copy or another mod.
     static bool Settle(InstallLayout install, string name, string target, Identity bundled, Action<string>? log)
     {
-        var copies = new List<(string Path, bool Archive, Identity Id, bool Source)>();
-        if (Directory.Exists(install.Mods))
-        {
-            foreach (var folder in Directory.GetDirectories(install.Mods).Where(f => !Path.GetFileName(f).StartsWith('.')))
-                if (FolderIdentity(folder) is { } id) copies.Add((folder, false, id, Directory.Exists(Path.Combine(folder, "src"))));
-            foreach (var archive in Directory.GetFiles(install.Mods, "*.zip"))
-                if (ZipIdentity(archive) is { } id) copies.Add((archive, true, id, false)); /* a zip's sources are its author's; HellForge's build replaces it */
-        }
+        var copies = Copies(install);
         var own = copies.FirstOrDefault(c => !c.Archive && Path.GetFullPath(c.Path).Equals(Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase));
         var keeper = copies.FirstOrDefault(c => c.Id.Id == bundled.Id && c.Source && c.Id.Version >= bundled.Version);
         if (keeper.Path != null)
@@ -149,6 +160,18 @@ public static class BundledMods
         return true;
     }
 
+    // The mods in mods (folders, not hidden ones, and zips) with an identity.
+    static List<(string Path, bool Archive, Identity Id, bool Source)> Copies(InstallLayout install)
+    {
+        var copies = new List<(string Path, bool Archive, Identity Id, bool Source)>();
+        if (!Directory.Exists(install.Mods)) return copies;
+        foreach (var folder in Directory.GetDirectories(install.Mods).Where(f => !Path.GetFileName(f).StartsWith('.')))
+            if (FolderIdentity(folder) is { } id) copies.Add((folder, false, id, Directory.Exists(Path.Combine(folder, "src"))));
+        foreach (var archive in Directory.GetFiles(install.Mods, "*.zip"))
+            if (ZipIdentity(archive) is { } id) copies.Add((archive, true, id, false)); /* a zip's sources are its author's; HellForge's build replaces it */
+        return copies;
+    }
+
     static void Retire(InstallLayout install, string name, string target, string path, bool archive, Identity id, Action<string>? log)
     {
         var retired = Directory.CreateDirectory(Path.Combine(install.Root, RetiredFolder)).FullName;
@@ -158,21 +181,26 @@ public static class BundledMods
             destination = Path.Combine(retired, archive ? $"{label}-{n}.zip" : $"{label}-{n}");
         // what the player saved in a copy of this mod comes along to the bundled one (a zip holds none); the bundled
         // copy's own saved files win
-        string? hold = null;
-        if (!archive && id.Id == FolderIdentity(Path.Combine(Folder(install), name))?.Id && Kept.TryGetValue(name, out var kept))
-        {
-            hold = Path.Combine(install.Temp, "bundled-keep-" + Guid.NewGuid().ToString("N")[..8]);
-            foreach (var keep in kept)
-            {
-                var from = Path.Combine(path, keep);
-                if (keep.EndsWith('/') && Directory.Exists(from)) CopyTree(from, Path.Combine(hold, keep), overwrite: true);
-                else if (File.Exists(from)) { Directory.CreateDirectory(hold); File.Copy(from, Path.Combine(hold, keep)); }
-            }
-        }
+        var hold = archive ? null : HoldKept(install, name, path, id);
         if (archive) File.Move(path, destination);
         else Directory.Move(path, destination);
         if (hold != null && Directory.Exists(hold)) { CopyTree(hold, target, overwrite: false); Directory.Delete(hold, recursive: true); }
         log?.Invoke($"Bundled mod {name}: the other copy {Path.GetFileName(path)} (version {id.Text}) was moved to {RetiredFolder}/{Path.GetFileName(destination)}; HellForge's built copy replaces it.");
+    }
+
+    // A folder copy's kept files, held in a temporary folder until the bundled copy is in place: its path, or null when
+    // the copy is another mod or the mod keeps nothing.
+    static string? HoldKept(InstallLayout install, string name, string path, Identity id)
+    {
+        if (id.Id != FolderIdentity(Path.Combine(Folder(install), name))?.Id || !Kept.TryGetValue(name, out var kept)) return null;
+        var hold = Path.Combine(install.Temp, "bundled-keep-" + Guid.NewGuid().ToString("N")[..8]);
+        foreach (var keep in kept)
+        {
+            var from = Path.Combine(path, keep);
+            if (keep.EndsWith('/') && Directory.Exists(from)) CopyTree(from, Path.Combine(hold, keep), overwrite: true);
+            else if (File.Exists(from)) { Directory.CreateDirectory(hold); File.Copy(from, Path.Combine(hold, keep)); }
+        }
+        return hold;
     }
 
     static void CopyTree(string from, string to, bool overwrite)

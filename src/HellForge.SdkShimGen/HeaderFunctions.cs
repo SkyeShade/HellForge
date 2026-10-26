@@ -51,16 +51,22 @@ public static partial class HeaderFunctions
             else if (i < list.Length && list[i] == ')') depth--;
             else if (i == list.Length || (list[i] == ',' && depth == 0))
             {
-                var text = Normalize(list[start..i]);
+                if (ParseParameter(list[start..i]) is { } parameter) parameters.Add(parameter);
                 start = i + 1;
-                if (text.Length == 0 || text == "void") continue;
-                var name = TrailingIdentifier().Match(text);
-                if (!name.Success) throw new FormatException("Unnamed parameter: " + text);
-                var writeOnly = text.Contains("_Out", StringComparison.Ordinal);
-                parameters.Add(new(text, name.Groups[1].Value, writeOnly || text.Contains("_Inout", StringComparison.Ordinal), writeOnly));
             }
         }
         return parameters;
+    }
+
+    // One parameter from its text ("void" and the empty tail become null); IsOutput/WriteOnly from its SAL annotations.
+    static Parameter? ParseParameter(string chunk)
+    {
+        var text = Normalize(chunk);
+        if (text.Length == 0 || text == "void") return null;
+        var name = TrailingIdentifier().Match(text);
+        if (!name.Success) throw new FormatException("Unnamed parameter: " + text);
+        var writeOnly = text.Contains("_Out", StringComparison.Ordinal);
+        return new(text, name.Groups[1].Value, writeOnly || text.Contains("_Inout", StringComparison.Ordinal), writeOnly);
     }
 
     static string Normalize(string text) => Regex.Replace(text, @"\s+", " ").Trim();

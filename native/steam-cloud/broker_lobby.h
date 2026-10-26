@@ -35,3 +35,11 @@ void* BrokerLobbiesResolve(const char* flat);
 bool BrokerLobbiesNext(BrokerLobbies* lobbies, BrokerLocalResult* out);
 /* Leaves every lobby this instance is in (the broker is ending). */
 void BrokerLobbiesClose(BrokerLobbies* lobbies);
+
+/* Tests: where an instance's P2P socket listens, in place of BROKER_P2P_PORT_BASE + its SteamID % 1000 (NULL puts that
+ * back). An instance whose port is 0 binds any free one, which BrokerLobbiesPort reads back: two test runs at once never
+ * share a port. */
+typedef uint16_t (*BrokerP2PPortFn)(uint64_t id);
+void BrokerLobbiesPorts(BrokerP2PPortFn portOf);
+/* The port this instance's P2P socket is bound to; 0 when it has none. */
+uint16_t BrokerLobbiesPort(const BrokerLobbies* lobbies);

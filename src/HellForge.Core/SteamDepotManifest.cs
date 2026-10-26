@@ -38,6 +38,12 @@ public static class SteamDepotManifest
         }
         if (payload.IsEmpty || metadata.IsEmpty) throw new InvalidDataException("Not a Steam depot manifest.");
 
+        var (depot, manifest, encrypted) = ReadMetadata(metadata);
+        return new(depot, manifest, encrypted, ReadFiles(payload));
+    }
+
+    static (uint Depot, ulong Manifest, bool Encrypted) ReadMetadata(ReadOnlySpan<byte> metadata)
+    {
         uint depot = 0;
         ulong manifest = 0;
         var encrypted = false;
@@ -48,13 +54,18 @@ public static class SteamDepotManifest
             else if (field == 4 && type == 0) encrypted = reader.Varint() != 0;
             else reader.Skip(type);
         }
+        return (depot, manifest, encrypted);
+    }
+
+    static List<DepotFile> ReadFiles(ReadOnlySpan<byte> payload)
+    {
         var files = new List<DepotFile>();
         for (var reader = new ProtoReader(payload); reader.Next(out var field, out var type);)
         {
             if (field == 1 && type == 2) files.Add(ReadFile(reader.Bytes()));
             else reader.Skip(type);
         }
-        return new(depot, manifest, encrypted, files);
+        return files;
     }
 
     static DepotFile ReadFile(ReadOnlySpan<byte> data)

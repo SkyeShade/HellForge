@@ -20,31 +20,54 @@
 
 static const char* const kRefNames[] = {"", "projectile", "explosion", "status effect", "damage", "mounted weapon", "pickup"};
 
+static const RefMountSlot* RefMountSlotOf(uint64_t vehicle, uint32_t slot)
+{
+    const RefMountSlot* s = NULL;
+    for (size_t i = 0; i < sizeof kRefMountSlots / sizeof kRefMountSlots[0]; i++)
+        if (kRefMountSlots[i].vehicle == vehicle && kRefMountSlots[i].slot == slot) s = &kRefMountSlots[i];
+    return s;
+}
+/* A weapon the mount slot can hold, by its resource; NULL none. */
+static const RefMount* RefMountAllowedIn(const RefMountSlot* s, uint64_t resource)
+{
+    const RefMount* m = NULL;
+    for (uint16_t i = 0; i < s->count; i++) if (kRefMounts[kRefMountAllowed[s->first + i]].resource == resource) m = &kRefMounts[kRefMountAllowed[s->first + i]];
+    return m;
+}
+
 /* A vehicle's mount slot (HD2R Editor's arm swap; MountComponentData slot k +24k: the mounted entity's resource): the
  * value must be a weapon HD2Runtime allows in that slot (its vanilla occupant first), written once its package is
  * resident. A value back at the field's original needs no check. */
 static int RefMountCheck(uint64_t vehicle, uint32_t slot, uint64_t value, uint64_t original, char* why, size_t whySize)
 {
     if (value == original) return REF_OK;
-    const RefMountSlot* s = NULL;
-    for (size_t i = 0; i < sizeof kRefMountSlots / sizeof kRefMountSlots[0]; i++)
-        if (kRefMountSlots[i].vehicle == vehicle && kRefMountSlots[i].slot == slot) s = &kRefMountSlots[i];
+    const RefMountSlot* s = RefMountSlotOf(vehicle, slot);
     if (s == NULL) { snprintf(why, whySize, "slot %u of %016llx is not a mount slot HellForge's catalogue knows", slot, (unsigned long long)vehicle); return REF_REFUSED; }
-    const RefMount* m = NULL;
-    for (uint16_t i = 0; i < s->count; i++) if (kRefMounts[kRefMountAllowed[s->first + i]].resource == value) m = &kRefMounts[kRefMountAllowed[s->first + i]];
+    const RefMount* m = RefMountAllowedIn(s, value);
     if (m == NULL) { snprintf(why, whySize, "%016llx is not a weapon this slot can hold", (unsigned long long)value); return REF_REFUSED; }
-    if (original != kRefMounts[kRefMountAllowed[s->first]].resource && original != value)
-    {
-        int ours = 0;
-        for (uint16_t i = 0; i < s->count; i++) if (kRefMounts[kRefMountAllowed[s->first + i]].resource == original) ours = 1;
-        if (!ours) { snprintf(why, whySize, "the slot holds %016llx, not its vanilla weapon", (unsigned long long)original); return REF_REFUSED; }
-    }
+    if (original != kRefMounts[kRefMountAllowed[s->first]].resource && original != value && RefMountAllowedIn(s, original) == NULL)
+    { snprintf(why, whySize, "the slot holds %016llx, not its vanilla weapon", (unsigned long long)original); return REF_REFUSED; }
     if (m->package == 0) return REF_OK;
     const char *name, *failed;
     int state = PackageWant(kRefPackages[m->package - 1].id, &name, &failed);
     if (state == PKG_FAILED) { snprintf(why, whySize, "the weapon needs package %s, which did not load: %s", name, failed); return REF_REFUSED; }
     if (state == PKG_WAITING) { snprintf(why, whySize, "waits for package %s (mounted weapon)", name); return REF_WAIT; }
     return REF_OK;
+}
+
+static const RefPodSlot* RefPodSlotOf(uint64_t rack, uint32_t slot)
+{
+    const RefPodSlot* s = NULL;
+    for (size_t i = 0; i < sizeof kRefPodSlots / sizeof kRefPodSlots[0]; i++)
+        if (kRefPodSlots[i].rack == rack && kRefPodSlots[i].slot == slot) s = &kRefPodSlots[i];
+    return s;
+}
+/* A pickup a hellpod can deliver, by its resource; NULL none. */
+static const RefPickup* RefPickupOf(uint64_t resource)
+{
+    const RefPickup* p = NULL;
+    for (size_t i = 0; i < sizeof kRefPickups / sizeof kRefPickups[0]; i++) if (kRefPickups[i].resource == resource) p = &kRefPickups[i];
+    return p;
 }
 
 /* A call-in's hellpod slot (HD2R Editor's pod payload; HellpodRackComponentData slot k +64k: the item's entity
@@ -54,19 +77,12 @@ static int RefMountCheck(uint64_t vehicle, uint32_t slot, uint64_t value, uint64
 static int RefPickupCheck(uint64_t rack, uint32_t slot, uint64_t value, uint64_t original, char* why, size_t whySize)
 {
     if (value == original) return REF_OK;
-    const RefPodSlot* s = NULL;
-    for (size_t i = 0; i < sizeof kRefPodSlots / sizeof kRefPodSlots[0]; i++)
-        if (kRefPodSlots[i].rack == rack && kRefPodSlots[i].slot == slot) s = &kRefPodSlots[i];
+    const RefPodSlot* s = RefPodSlotOf(rack, slot);
     if (s == NULL) { snprintf(why, whySize, "slot %u of %016llx is not a hellpod slot HellForge's catalogue knows", slot, (unsigned long long)rack); return REF_REFUSED; }
-    const RefPickup* p = NULL;
-    for (size_t i = 0; i < sizeof kRefPickups / sizeof kRefPickups[0]; i++) if (kRefPickups[i].resource == value) p = &kRefPickups[i];
+    const RefPickup* p = RefPickupOf(value);
     if (value != 0 && p == NULL) { snprintf(why, whySize, "%016llx is not a pickup a hellpod can deliver", (unsigned long long)value); return REF_REFUSED; }
-    if (original != s->vanilla && original != 0)
-    {
-        int ours = 0;
-        for (size_t i = 0; i < sizeof kRefPickups / sizeof kRefPickups[0]; i++) if (kRefPickups[i].resource == original) ours = 1;
-        if (!ours) { snprintf(why, whySize, "the slot holds %016llx, not its vanilla item", (unsigned long long)original); return REF_REFUSED; }
-    }
+    if (original != s->vanilla && original != 0 && RefPickupOf(original) == NULL)
+    { snprintf(why, whySize, "the slot holds %016llx, not its vanilla item", (unsigned long long)original); return REF_REFUSED; }
     if (p == NULL || p->package == 0) return REF_OK;
     const char *name, *failed;
     int state = PackageWant(kRefPackages[p->package - 1].id, &name, &failed);
@@ -94,46 +110,35 @@ static int RefLoops(uint32_t explosion, uint64_t projectile, int depth)
     return RefLoops(impact, projectile, depth + 1) || (expiry != impact && RefLoops(expiry, projectile, depth + 1));
 }
 
-/* Whether the value can be written now: REF_OK, REF_WAIT (its table or its packages are not ready yet; *why says
- * which) or REF_REFUSED (*why). self: the projectile type whose row the explosion is set on, else 0. */
-static int RefCheck(uint32_t ref, uint32_t value, uint32_t original, uint64_t self, char* why, size_t whySize)
+static int RefStatusKnown(uint32_t value)
 {
-    if (ref == REF_NONE || value == original) return REF_OK;
-    const char* kind = ref < sizeof kRefNames / sizeof kRefNames[0] ? kRefNames[ref] : "?";
-    if (value == 0 && (ref == REF_EXPLOSION || ref == REF_STATUS)) return REF_OK;
-    if (ref == REF_STATUS)
-    {
-        for (size_t i = 0; i < sizeof kRefStatuses / sizeof kRefStatuses[0]; i++) if (kRefStatuses[i] == value) return REF_OK;
-        snprintf(why, whySize, "%u is not a status effect a damage type can apply", value);
-        return REF_REFUSED;
-    }
+    for (size_t i = 0; i < sizeof kRefStatuses / sizeof kRefStatuses[0]; i++) if (kRefStatuses[i] == value) return 1;
+    return 0;
+}
+
+/* Whether the game's table has the value's row: REF_OK, REF_WAIT while the table loads, else REF_REFUSED (*why). */
+static int RefTableHas(uint32_t ref, uint32_t value, const char* kind, char* why, size_t whySize)
+{
     const char* table = ref == REF_PROJECTILE ? "ProjectileSettings" : ref == REF_EXPLOSION ? "ExplosionSettings" : "DamageInfo";
     int ready = 1;
-    if (!g_tableRow(table, value, &ready))
-    {
-        if (!ready) { snprintf(why, whySize, "waits for the %s table to load", kind); return REF_WAIT; }
-        snprintf(why, whySize, "the game has no %s %u", kind, value);
-        return REF_REFUSED;
-    }
-    if (ref == REF_DAMAGE) return REF_OK;
-    const RefRow* row;
-    if (ref == REF_PROJECTILE)
-    {
-        uint32_t type = value;
-        for (uint32_t i = 0; i < g_projectileCount; i++) if (g_projectiles[i].type == value) type = g_projectiles[i].base;
-        row = RefRowOf(kRefProjectiles, sizeof kRefProjectiles / sizeof kRefProjectiles[0], type);
-    }
-    else row = RefRowOf(kRefExplosions, sizeof kRefExplosions / sizeof kRefExplosions[0], value);
-    if (row == NULL)
-    {
-        snprintf(why, whySize, "%s %u is not one HellForge's catalogue knows the packages of", kind, value);
-        return REF_REFUSED;
-    }
-    if (ref == REF_EXPLOSION && self != 0 && RefLoops(value, self, 0))
-    {
-        snprintf(why, whySize, "explosion %u's shrapnel fires projectile %llu again (a shot that spawns itself)", value, (unsigned long long)self);
-        return REF_REFUSED;
-    }
+    if (g_tableRow(table, value, &ready)) return REF_OK;
+    if (!ready) { snprintf(why, whySize, "waits for the %s table to load", kind); return REF_WAIT; }
+    snprintf(why, whySize, "the game has no %s %u", kind, value);
+    return REF_REFUSED;
+}
+
+/* The catalogue's row of a projectile (a mod's type by its base) or an explosion; NULL none. */
+static const RefRow* RefCatalogueRow(uint32_t ref, uint32_t value)
+{
+    if (ref != REF_PROJECTILE) return RefRowOf(kRefExplosions, sizeof kRefExplosions / sizeof kRefExplosions[0], value);
+    uint32_t type = value;
+    for (uint32_t i = 0; i < g_projectileCount; i++) if (g_projectiles[i].type == value) type = g_projectiles[i].base;
+    return RefRowOf(kRefProjectiles, sizeof kRefProjectiles / sizeof kRefProjectiles[0], type);
+}
+
+/* A catalogued row's packages (two at most): REF_OK resident, REF_WAIT while one loads, REF_REFUSED when one did not. */
+static int RefPackages(const RefRow* row, const char* kind, uint32_t value, char* why, size_t whySize)
+{
     int waiting = 0;
     uint16_t packages[2] = {row->package, row->package2};
     for (int k = 0; k < 2; k++)
@@ -145,6 +150,36 @@ static int RefCheck(uint32_t ref, uint32_t value, uint32_t original, uint64_t se
         if (state == PKG_WAITING) { snprintf(why, whySize, "waits for package %s (%s %u)", name, kind, value); waiting = 1; }
     }
     return waiting ? REF_WAIT : REF_OK;
+}
+
+/* Whether the value can be written now: REF_OK, REF_WAIT (its table or its packages are not ready yet; *why says
+ * which) or REF_REFUSED (*why). self: the projectile type whose row the explosion is set on, else 0. */
+static int RefCheck(uint32_t ref, uint32_t value, uint32_t original, uint64_t self, char* why, size_t whySize)
+{
+    if (ref == REF_NONE || value == original) return REF_OK;
+    const char* kind = ref < sizeof kRefNames / sizeof kRefNames[0] ? kRefNames[ref] : "?";
+    if (value == 0 && (ref == REF_EXPLOSION || ref == REF_STATUS)) return REF_OK;
+    if (ref == REF_STATUS)
+    {
+        if (RefStatusKnown(value)) return REF_OK;
+        snprintf(why, whySize, "%u is not a status effect a damage type can apply", value);
+        return REF_REFUSED;
+    }
+    int state = RefTableHas(ref, value, kind, why, whySize);
+    if (state != REF_OK) return state;
+    if (ref == REF_DAMAGE) return REF_OK;
+    const RefRow* row = RefCatalogueRow(ref, value);
+    if (row == NULL)
+    {
+        snprintf(why, whySize, "%s %u is not one HellForge's catalogue knows the packages of", kind, value);
+        return REF_REFUSED;
+    }
+    if (ref == REF_EXPLOSION && self != 0 && RefLoops(value, self, 0))
+    {
+        snprintf(why, whySize, "explosion %u's shrapnel fires projectile %llu again (a shot that spawns itself)", value, (unsigned long long)self);
+        return REF_REFUSED;
+    }
+    return RefPackages(row, kind, value, why, whySize);
 }
 
 /* SDK 9, copy_row: a settings row's bytes (offset, size) replaced live by another row's of the same table (HD2R Editor's
@@ -211,22 +246,28 @@ static int RowCopyInto(HfMod* mod, const RefRowCopy* spec, uint32_t from)
     return state;
 }
 
-static int ApiCopyRow(HfMod* mod, const char* table, uint64_t row, uint64_t from, uint32_t offset, uint32_t size)
+/* The catalogue's row a copy goes into (its table, row, offset and size); NULL none. */
+static const RefRowCopy* RowCopySpec(const char* table, uint64_t row, uint32_t offset, uint32_t size)
 {
-    if (mod == NULL || table == NULL) return 0;
     const RefRowCopy* spec = NULL;
     for (size_t i = 0; i < sizeof kRefRowCopies / sizeof kRefRowCopies[0]; i++)
         if (kRefRowCopies[i].table && !strcmp(kRefRowCopies[i].table, table) && kRefRowCopies[i].row == row &&
             kRefRowCopies[i].offset == offset && kRefRowCopies[i].size == size) spec = &kRefRowCopies[i];
-    if (spec == NULL) { ApiLog(mod, "copy_row: %s %llu +%u (%u bytes) is not a row HellForge copies into", table, (unsigned long long)row, offset, size); return 0; }
-    if (spec->with != 0) { ApiLog(mod, "copy_row: %s %llu follows row %u's copy (copy into that row)", table, (unsigned long long)row, spec->with); return 0; }
+    return spec;
+}
+
+/* Whether the row takes the donor: none (0), itself, or a donor the catalogue lists for it. */
+static int RowCopyDonor(const RefRowCopy* spec, uint64_t row, uint64_t from)
+{
     int donor = from == 0 || from == row;
     for (uint16_t i = 0; i < spec->count && !donor; i++) if (kRefRowDonors[spec->first + i] == from) donor = 1;
-    if (!donor) { ApiLog(mod, "copy_row: %s %llu does not take %llu", table, (unsigned long long)row, (unsigned long long)from); return 0; }
-    uint32_t donorRow = from == row ? 0 : (uint32_t)from;
-    AcquireSRWLockExclusive(&g_rowCopyLock);
-    int state = RowCopyInto(mod, spec, donorRow);
-    /* the rows that follow it (the Urchin's final discharge with its repeated pulse) take the same donor, or their own back */
+    return donor;
+}
+
+/* the rows that follow it (the Urchin's final discharge with its repeated pulse) take the same donor, or their own back;
+ * one refused puts the row's own back too. The copy's state after them. g_rowCopyLock held. */
+static int RowCopyFollowers(HfMod* mod, const RefRowCopy* spec, uint32_t donorRow, int state)
+{
     for (size_t i = 0; i < sizeof kRefRowCopies / sizeof kRefRowCopies[0]; i++)
     {
         const RefRowCopy* follower = &kRefRowCopies[i];
@@ -234,6 +275,20 @@ static int ApiCopyRow(HfMod* mod, const char* table, uint64_t row, uint64_t from
         int followed = RowCopyInto(mod, follower, state == REF_REFUSED ? 0 : donorRow);
         if (followed == REF_REFUSED && state != REF_REFUSED) { RowCopyInto(mod, spec, 0); state = REF_REFUSED; }
     }
+    return state;
+}
+
+static int ApiCopyRow(HfMod* mod, const char* table, uint64_t row, uint64_t from, uint32_t offset, uint32_t size)
+{
+    if (mod == NULL || table == NULL) return 0;
+    const RefRowCopy* spec = RowCopySpec(table, row, offset, size);
+    if (spec == NULL) { ApiLog(mod, "copy_row: %s %llu +%u (%u bytes) is not a row HellForge copies into", table, (unsigned long long)row, offset, size); return 0; }
+    if (spec->with != 0) { ApiLog(mod, "copy_row: %s %llu follows row %u's copy (copy into that row)", table, (unsigned long long)row, spec->with); return 0; }
+    if (!RowCopyDonor(spec, row, from)) { ApiLog(mod, "copy_row: %s %llu does not take %llu", table, (unsigned long long)row, (unsigned long long)from); return 0; }
+    uint32_t donorRow = from == row ? 0 : (uint32_t)from;
+    AcquireSRWLockExclusive(&g_rowCopyLock);
+    int state = RowCopyInto(mod, spec, donorRow);
+    state = RowCopyFollowers(mod, spec, donorRow, state);
     ReleaseSRWLockExclusive(&g_rowCopyLock);
     return state == REF_REFUSED ? 0 : HF_APPLIES_NOW;
 }
@@ -264,6 +319,13 @@ static int RefStatusGap(uintptr_t row, uint32_t offset, uint32_t value)
     return 0;
 }
 
+/* A field edit's 8-byte value, and the field's original (the edit's, else what the field holds). */
+static void RefWide(const FieldEdit* e, const uint8_t* at, uint64_t* wide, uint64_t* was)
+{
+    memcpy(wide, e->value, 8);
+    memcpy(was, e->hasOriginal ? e->original : at, 8);
+}
+
 /* A field edit's reference (ApplyEdit): REF_OK to write, else waiting or refused (done here). */
 static int RefEdit(FieldEdit* e, const uint8_t* at)
 {
@@ -273,18 +335,15 @@ static int RefEdit(FieldEdit* e, const uint8_t* at)
     char why[256];
     uint64_t self = e->table && !strcmp(e->component->component, "ProjectileSettings") ? e->entity : 0;
     int state;
+    uint64_t wide, was;
     if (e->field->ref == REF_MOUNT)
     {
-        uint64_t wide, was;
-        memcpy(&wide, e->value, 8);
-        memcpy(&was, e->hasOriginal ? e->original : at, 8);
+        RefWide(e, at, &wide, &was);
         state = RefMountCheck(e->entity, e->field->offset / 24, wide, was, why, sizeof why);
     }
     else if (e->field->ref == REF_PICKUP)
     {
-        uint64_t wide, was;
-        memcpy(&wide, e->value, 8);
-        memcpy(&was, e->hasOriginal ? e->original : at, 8);
+        RefWide(e, at, &wide, &was);
         state = RefPickupCheck(e->entity, e->field->offset / 64, wide, was, why, sizeof why);
     }
     else state = RefCheck(e->field->ref, value, original, self, why, sizeof why);

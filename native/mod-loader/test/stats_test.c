@@ -8,6 +8,7 @@
 #include "director_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
+#include "network_types_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -385,6 +386,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_SELECTION_END, kSelectionPin, 7);
     memcpy(game + DIF_GRANT_SITE, kGrantPin, 7);
     memcpy(game + DIF_SPREAD_REFERENCE, kSpreadReferencePin, 10);
+    memcpy(game + DIF_HASH_INSERT_END, kHashInsertEndPin, sizeof kHashInsertEndPin);
     memcpy(game + DIF_BOARD_REGION_MAX, kBoardRegionMaxPin, 5); memcpy(game + DIF_BOARD_REGION_SITE, kBoardRegionPin, 6);
     memcpy(game + DIF_BOARD_PLANET_SITE, kBoardPlanetPin, 7); memcpy(game + DIF_BOARD_DEFENCE_SITE, kBoardPlanetPin, 7);
     game[DIF_MISSIONS + 130 * DIF_MISSION_ROW + 0x34] = 6; /* row 130 (allows up to 100): a city Blitz */
@@ -1059,6 +1061,39 @@ static void DifficultyFixture(void)
             uint8_t* spread = game + DIF_SPREAD_REFERENCE + 5 + rel;
             assert(game[DIF_SPREAD_REFERENCE] == 0xE9 && !memcmp(spread, kSpreadReferenceStub, 19));
             memcpy(&rel, spread + 20, 4); assert(spread + 24 + rel == game + DIF_SPREAD_REFERENCE_BACK);
+        }
+        {
+            /* the hash insert's end: a jump to the guard, the rest int3; run as the game would reach it (rcx the slot or
+             * null, esi the value, r9d the key, the caller's rsi at [rsp+0x10]): a slot gets key and value, a full table
+             * (no slot) writes nothing and is counted, rsi comes back either way */
+            memcpy(&rel, game + DIF_HASH_INSERT_END + 1, 4);
+            uint8_t* guard = game + DIF_HASH_INSERT_END + 5 + rel;
+            assert(game[DIF_HASH_INSERT_END] == 0xE9 && !memcmp(guard, kHashInsertEndStub, sizeof kHashInsertEndStub));
+            for (int i = 5; i < 12; i++) assert(game[DIF_HASH_INSERT_END + i] == 0xCC);
+            assert(g_hashFullCount == (volatile LONG*)(guard + 0x1000) && *g_hashFullCount == 0);
+            uint32_t entry[2] = {0xAAAAAAAAu, 0xBBBBBBBBu};
+            uint64_t kept = 0;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                uint32_t* slot = pass == 0 ? entry : NULL;
+                __asm__ volatile(
+                    "push %%rsi\n\t"
+                    "sub $0x28, %%rsp\n\t"
+                    "movabs $0x5151515151515151, %%rsi\n\t"
+                    "mov %%rsi, 0x8(%%rsp)\n\t"        /* the caller's rsi, at [rsp+0x10] once the call pushes */
+                    "mov %[slot], %%rcx\n\t"
+                    "mov $0x22222222, %%esi\n\t"
+                    "mov $0x11111111, %%r9d\n\t"
+                    "call *%[guard]\n\t"
+                    "mov %%rsi, %%rax\n\t"
+                    "add $0x28, %%rsp\n\t"
+                    "pop %%rsi\n\t"
+                    : "=a"(kept)
+                    : [slot] "r"(slot), [guard] "r"(guard)
+                    : "rcx", "rsi", "r9", "memory", "cc");
+                assert(kept == 0x5151515151515151ull);
+            }
+            assert(entry[0] == 0x11111111u && entry[1] == 0x22222222u && *g_hashFullCount == 1);
         }
         for (int i = 0; i < 3; i++)
         {
@@ -3049,7 +3084,8 @@ static void HookChainFixture(void)
     wchar_t savedLogs[MAX_PATH];
     wcscpy(savedLogs, g_logs);
     GetTempPathW(MAX_PATH, g_logs);
-    wcscat(g_logs, L"hellforge-hook-chain");
+    /* this process's own folder: another run at the same time writes and deletes its own hooks.tsv */
+    swprintf(g_logs + wcslen(g_logs), MAX_PATH - wcslen(g_logs), L"hellforge-hook-chain-%lu", GetCurrentProcessId());
     CreateDirectoryW(g_logs, NULL);
 
     /* HellForge's own first: the function runs through it */
@@ -3312,6 +3348,7 @@ int main(int argc, char** argv)
     }
     DifficultyFixture();
     NetSwitchFixture();
+    NetworkTypesFixture();
     {
         /* game.dll mapped at the top of the address space (a tester's PC: level 11 refused, "no memory within 2 GB"):
          * nothing fits above it, so the moved tables go below it, still within a signed 32-bit offset */

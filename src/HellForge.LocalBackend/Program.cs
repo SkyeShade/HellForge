@@ -113,17 +113,24 @@ try
             lock (liveWarLog) File.AppendAllText(liveWarLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
-    await using var app = LocalBackend.Create(port, evidence, mode, startupFixtures, profile, options.GetValueOrDefault("--item-catalog"),
-        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, warSeed, dealSubfactions, dealSeaf);
+    await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
+    {
+        StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
+        FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf
+    });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
     HellForge.Core.PipeServer.LowIntegrityClients = sandboxed;
     // --mod-list <file>: the digest's mods one by one (ModlistDiff's form), so a refused join can say which differ
     var modList = options.GetValueOrDefault("--mod-list") is { } modListFile ? File.ReadAllText(modListFile) : null;
     await using var multiplayer = pipeName != null
-        ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence, warClock, accountKeys, presence,
-            options.GetValueOrDefault("--mods"), modList, options.GetValueOrDefault("--modset"), directoryFolder: options.GetValueOrDefault("--directory"),
-            rejoinFile: options.GetValueOrDefault("--rejoin"))
+        ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(new(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence)
+        {
+            WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
+            ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin")
+        })
         : null;
     var ready = new System.Text.Json.Nodes.JsonObject
     {

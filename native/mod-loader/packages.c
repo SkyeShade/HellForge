@@ -106,6 +106,23 @@ static uintptr_t PackageSystem(double* fill)
     return system;
 }
 
+/* A package's parts: PKG_RESIDENT when every one is loaded, else PKG_WAITING. */
+static int PackagePartsState(uintptr_t package)
+{
+    uintptr_t parts = 0;
+    uint32_t partCount = 0;
+    if (SafeRead(package + PKG_PART_COUNT, &partCount, 4) || partCount == 0 || partCount > 64 ||
+        SafeRead(package + PKG_PARTS, &parts, 8) || !parts) return PKG_WAITING;
+    for (uint32_t p = 0; p < partCount; p++)
+    {
+        uintptr_t part = 0;
+        uint32_t state = 0;
+        if (SafeRead(parts + p * 8u, &part, 8) || !part || SafeRead(part + PKG_PART_STATE, &state, 4) || state != PKG_LOADED)
+            return PKG_WAITING;
+    }
+    return PKG_RESIDENT;
+}
+
 /* Whether the engine has a package: PKG_RESIDENT (every part loaded), else PKG_WAITING (loading, queued, absent or
  * unreadable). */
 static int PackageResident(uint64_t id)
@@ -118,20 +135,10 @@ static int PackageResident(uint64_t id)
         count > 8192 || (count && (SafeRead(resources + PKG_LIST, &list, 8) || !list))) return PKG_WAITING;
     for (uint32_t i = 0; i < count; i++)
     {
-        uintptr_t package = 0, parts = 0;
+        uintptr_t package = 0;
         uint64_t pid = 0;
-        uint32_t partCount = 0;
         if (SafeRead(list + i * 8u, &package, 8) || !package || SafeRead(package + PKG_ID, &pid, 8) || pid != id) continue;
-        if (SafeRead(package + PKG_PART_COUNT, &partCount, 4) || partCount == 0 || partCount > 64 ||
-            SafeRead(package + PKG_PARTS, &parts, 8) || !parts) return PKG_WAITING;
-        for (uint32_t p = 0; p < partCount; p++)
-        {
-            uintptr_t part = 0;
-            uint32_t state = 0;
-            if (SafeRead(parts + p * 8u, &part, 8) || !part || SafeRead(part + PKG_PART_STATE, &state, 4) || state != PKG_LOADED)
-                return PKG_WAITING;
-        }
-        return PKG_RESIDENT;
+        return PackagePartsState(package);
     }
     return PKG_WAITING;
 }
@@ -143,6 +150,45 @@ static const RefPackage* CataloguePackage(uint64_t id)
 }
 
 static void LivePackagesChanged(void); /* live.c: this machine's own packages changed, for the session's backend */
+
+static HeldPackage* PackageHeld(uint64_t id)
+{
+    HeldPackage* held = NULL;
+    for (int i = 0; i < g_heldCount; i++) if (g_held[i].id == id) held = &g_held[i];
+    return held;
+}
+
+/* A catalogue package held from now on, wanted first for this machine (own) or a friend's change. g_packagesLock held. */
+static HeldPackage* PackageHold(uint64_t id, const RefPackage* known, int own, int* added)
+{
+    HeldPackage* held = &g_held[g_heldCount++];
+    memset(held, 0, sizeof *held);
+    held->id = id;
+    held->name = known->name;
+    held->since = GetTickCount64();
+    held->own = own;
+    if (added != NULL) *added = 1;
+    if (g_tickState < 0) { held->failed = 1; snprintf(held->why, sizeof held->why, "the game thread's update could not be hooked"); }
+    Note("package %016llx (%s) wanted%s", (unsigned long long)id, known->name, own ? "" : " for a friend's change");
+    return held;
+}
+
+/* A held package's state: failed, resident once requested, else waiting until 90 s are up (then failed, logged; *changed
+ * when it was this machine's own). g_packagesLock held. */
+static int PackageHeldState(HeldPackage* held, uint64_t id, int* changed)
+{
+    if (held->failed) return PKG_FAILED;
+    if (held->requested && PackageResident(id) == PKG_RESIDENT) return PKG_RESIDENT;
+    if (GetTickCount64() - held->since > PKG_TIMEOUT_MS)
+    {
+        held->failed = 1;
+        *changed |= held->own;
+        snprintf(held->why, sizeof held->why, "it was %s for 90 seconds", held->requested ? "not resident" : "not requested");
+        Note("package %016llx (%s) failed: %s", (unsigned long long)id, held->name, held->why);
+        return PKG_FAILED;
+    }
+    return PKG_WAITING;
+}
 
 /* A catalogue package HellForge wants resident: asked for on the first call (the game thread requests it), then
  * PKG_WAITING until the engine has every part, PKG_RESIDENT, or PKG_FAILED (*why says why). own: for this machine's
@@ -156,9 +202,8 @@ static int PackageWantAs(uint64_t id, int own, const char** name, const char** w
     if (added != NULL) *added = 0;
     if (known == NULL) { *why = notInCatalogue; return PKG_FAILED; }
     AcquireSRWLockExclusive(&g_packagesLock);
-    HeldPackage* held = NULL;
-    for (int i = 0; i < g_heldCount; i++) if (g_held[i].id == id) held = &g_held[i];
-    int result = PKG_WAITING, changed = 0;
+    HeldPackage* held = PackageHeld(id);
+    int changed = 0;
     if (held == NULL && g_heldCount >= (own ? PKG_MAX_HELD : PKG_MAX_HELD - PKG_OWN_RESERVE))
     {
         *why = own ? "HellForge holds 64 packages already (its budget)" :
@@ -166,30 +211,9 @@ static int PackageWantAs(uint64_t id, int own, const char** name, const char** w
         ReleaseSRWLockExclusive(&g_packagesLock);
         return PKG_FAILED;
     }
-    if (held == NULL)
-    {
-        held = &g_held[g_heldCount++];
-        memset(held, 0, sizeof *held);
-        held->id = id;
-        held->name = known->name;
-        held->since = GetTickCount64();
-        held->own = own;
-        changed = own;
-        if (added != NULL) *added = 1;
-        if (g_tickState < 0) { held->failed = 1; snprintf(held->why, sizeof held->why, "the game thread's update could not be hooked"); }
-        Note("package %016llx (%s) wanted%s", (unsigned long long)id, known->name, own ? "" : " for a friend's change");
-    }
+    if (held == NULL) { held = PackageHold(id, known, own, added); changed = own; }
     else if (own && !held->own) { held->own = 1; changed = 1; } /* a friend's first, now this machine's too */
-    if (held->failed) result = PKG_FAILED;
-    else if (held->requested && PackageResident(id) == PKG_RESIDENT) result = PKG_RESIDENT;
-    else if (GetTickCount64() - held->since > PKG_TIMEOUT_MS)
-    {
-        held->failed = 1;
-        changed |= held->own;
-        snprintf(held->why, sizeof held->why, "it was %s for 90 seconds", held->requested ? "not resident" : "not requested");
-        Note("package %016llx (%s) failed: %s", (unsigned long long)id, held->name, held->why);
-        result = PKG_FAILED;
-    }
+    int result = PackageHeldState(held, id, &changed);
     *why = held->why;
     ReleaseSRWLockExclusive(&g_packagesLock);
     if (changed) LivePackagesChanged();

@@ -138,6 +138,14 @@ static void LivePackagesChanged(void)
     if (g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
 }
 
+/* Whether the `length` characters at `at` are all hex digits. */
+static int HexDigits(const char* at, size_t length)
+{
+    int hex = 1;
+    for (size_t i = 0; hex && i < length; i++) hex = (at[i] >= '0' && at[i] <= '9') || ((at[i] | 0x20) >= 'a' && (at[i] | 0x20) <= 'f');
+    return hex;
+}
+
 /* preload: the lobby's packages (list: 16 hex digits each, comma separated, or "-"), each asked for as a friend's. At
  * most 256: four players' 64. */
 static void PreloadLine(const char* seq, const char* list, char* reply, size_t size)
@@ -148,8 +156,7 @@ static void PreloadLine(const char* seq, const char* list, char* reply, size_t s
     for (const char* at = list; strcmp(list, "-") && *at;)
     {
         size_t length = strcspn(at, ",");
-        int hex = length == 16 && count < PRELOAD_MAX;
-        for (size_t i = 0; hex && i < length; i++) hex = (at[i] >= '0' && at[i] <= '9') || ((at[i] | 0x20) >= 'a' && (at[i] | 0x20) <= 'f');
+        int hex = length == 16 && count < PRELOAD_MAX && HexDigits(at, length);
         if (!hex) { snprintf(reply, size, "%s\trefused\tmalformed preload", seq); return; }
         ids[count++] = strtoull(at, NULL, 16);
         at += length + (at[length] == ',');
@@ -248,6 +255,22 @@ static void SyncModLine(char* line, char* reply, size_t size)
     snprintf(reply, size, "%s\tok\tnow", f[1]);
 }
 
+/* Whether every one of the first `mods` indices of g_syncNext arrived. */
+static int SyncNextSeen(uint64_t mods)
+{
+    int seen = 1;
+    for (uint64_t i = 0; i < mods && seen; i++) seen = (g_syncNextSeen[i / 64] >> (i % 64)) & 1;
+    return seen;
+}
+
+/* Why a syncstate line cannot stand (NULL: it can): a published offer's mod count changed, or a new offer's syncmod lines
+ * did not all arrive. Called with g_syncLock held. */
+static const char* SyncStateRefused(int fresh, uint64_t version, uint64_t mods, int seen)
+{
+    return !fresh && (uint32_t)mods != g_sync.mods ? "its mod count changed without its mods" :
+        fresh && mods > 0 && (g_syncNextVersion != (uint32_t)version || !seen) ? "its syncmod lines are missing" : NULL;
+}
+
 static void SyncStateLine(char* line, char* reply, size_t size)
 {
     char* f[9];
@@ -258,12 +281,10 @@ static void SyncStateLine(char* line, char* reply, size_t size)
         !SyncNumber(f[7], &mods))
     { snprintf(reply, size, "%s\trefused\tmalformed syncstate", n >= 2 ? f[1] : "-"); return; }
     if (mods > SYNC_MAX_MODS) { snprintf(reply, size, "%s\trefused\tan offer lists at most %d mods", f[1], SYNC_MAX_MODS); return; }
-    int seen = 1; /* every one of the first `mods` indices arrived */
-    for (uint64_t i = 0; i < mods && seen; i++) seen = (g_syncNextSeen[i / 64] >> (i % 64)) & 1;
+    int seen = SyncNextSeen(mods);
     AcquireSRWLockExclusive(&g_syncLock);
     int fresh = (uint32_t)version != g_sync.version;
-    const char* why = !fresh && (uint32_t)mods != g_sync.mods ? "its mod count changed without its mods" :
-        fresh && mods > 0 && (g_syncNextVersion != (uint32_t)version || !seen) ? "its syncmod lines are missing" : NULL;
+    const char* why = SyncStateRefused(fresh, version, mods, seen);
     if (why != NULL)
     {
         ReleaseSRWLockExclusive(&g_syncLock);
@@ -329,34 +350,49 @@ static int ApiSyncMod(HfMod* mod, uint32_t index, HfSyncMod* out)
     return 1;
 }
 
+static const char* SyncAnswerWord(uint32_t answer)
+{
+    return answer == HF_SYNC_ACCEPT ? "accept" : answer == HF_SYNC_DECLINE ? "decline" : answer == HF_SYNC_RESTART ? "restart" :
+        answer == HF_SYNC_BLOCK ? "block" : answer == HF_SYNC_TRUST ? "trust" : answer == HF_SYNC_OPEN ? "open" : NULL;
+}
+
+/* The mod id an answer names, without control characters, into id (`size` bytes); its length. */
+static size_t SyncAnswerId(const char* modId, char* id, size_t size)
+{
+    size_t n = 0;
+    for (const char* c = modId != NULL ? modId : ""; *c && n < size - 1; c++) if ((unsigned char)*c >= 0x20 && *c != 0x7F) id[n++] = *c;
+    id[n] = 0;
+    return n;
+}
+
+/* A line queued for LiveWatch to write, when a backend is connected and it fits; whether it was. */
+static int LiveQueue(const char* line, int length)
+{
+    AcquireSRWLockExclusive(&g_liveOutLock);
+    int queued = g_liveConnected && length > 0 && g_liveOutUsed + (size_t)length <= sizeof g_liveOut;
+    if (queued) { memcpy(g_liveOut + g_liveOutUsed, line, (size_t)length); g_liveOutUsed += (size_t)length; }
+    ReleaseSRWLockExclusive(&g_liveOutLock);
+    if (queued && g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
+    return queued;
+}
+
 /* SDK 14, sync_answer: the player's answer to the offer of that version, queued for the backend. 0 when another offer
  * came since, none stands, or no backend is connected. */
 static int ApiSyncAnswer(HfMod* mod, uint32_t version, uint32_t answer, const char* modId)
 {
     (void)mod;
-    const char* word = answer == HF_SYNC_ACCEPT ? "accept" : answer == HF_SYNC_DECLINE ? "decline" : answer == HF_SYNC_RESTART ? "restart" :
-        answer == HF_SYNC_BLOCK ? "block" : answer == HF_SYNC_TRUST ? "trust" : answer == HF_SYNC_OPEN ? "open" : NULL;
+    const char* word = SyncAnswerWord(answer);
     if (word == NULL) return 0;
     char id[65] = "-";
     int named = answer == HF_SYNC_BLOCK || answer == HF_SYNC_TRUST || answer == HF_SYNC_OPEN; /* these name their mod */
-    if (named)
-    {
-        size_t n = 0;
-        for (const char* c = modId != NULL ? modId : ""; *c && n < sizeof id - 1; c++) if ((unsigned char)*c >= 0x20 && *c != 0x7F) id[n++] = *c;
-        id[n] = 0;
-        if (n == 0) return 0;
-    }
+    if (named && SyncAnswerId(modId, id, sizeof id) == 0) return 0;
     AcquireSRWLockShared(&g_syncLock);
     int current = g_sync.state != HF_SYNC_NONE && g_sync.version == version;
     ReleaseSRWLockShared(&g_syncLock);
     if (!current) { Note("mod sync: answer %s to offer %u dropped: it is not the current offer", word, version); return 0; }
     char line[128];
     int length = snprintf(line, sizeof line, "syncanswer\t%u\t%s\t%s\n", version, word, id);
-    AcquireSRWLockExclusive(&g_liveOutLock);
-    int queued = g_liveConnected && length > 0 && g_liveOutUsed + (size_t)length <= sizeof g_liveOut;
-    if (queued) { memcpy(g_liveOut + g_liveOutUsed, line, (size_t)length); g_liveOutUsed += (size_t)length; }
-    ReleaseSRWLockExclusive(&g_liveOutLock);
-    if (queued && g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
+    int queued = LiveQueue(line, length);
     Note("mod sync %u: the player answered %s%s%s%s", version, word, named ? " " : "", named ? id : "",
         queued ? "" : " (not sent: no backend connected)");
     return queued;
@@ -436,77 +472,136 @@ static const char* LiveExtraHolder(uintptr_t address, uint32_t* value)
     return NULL;
 }
 
-/* verb "set" (bits), "reset" (the rank's value taken away: the one under it shows, else what the address held before
- * this session's first live write), "base" (the editors' value taken away, and without the Local Stats mod's edits) or
- * "get" (*now only), by a mod of `rank` (mod: the Lua or code mod; NULL for the editors). HF_APPLIES_RESPAWN, or 0 with
- * *why. */
-static int LiveExtraWrite(const char* verb, int rank, HfMod* mod, const char* kind, const char* component, uint64_t resource,
-    int64_t record, uint32_t offset, uint32_t bytes, int floating, uint32_t bits, uint32_t* now, const char** why)
+/* A live write of an entity delta or status multiplier: verb "set" (bits), "reset" (the rank's value taken away: the one
+ * under it shows, else what the address held before this session's first live write), "base" (the editors' value taken
+ * away, and without the Local Stats mod's edits) or "get", by a mod of `rank` (mod: the Lua or code mod; NULL for the
+ * editors), to the field of `bytes` bytes (floating: an f32) at `offset` of the record. */
+typedef struct LiveExtraEdit
+{
+    const char* verb;
+    int rank;
+    HfMod* mod;
+    const char* kind;
+    const char* component;
+    uint64_t resource;
+    int64_t record;
+    uint32_t offset, bytes;
+    int floating;
+    uint32_t bits;
+} LiveExtraEdit;
+enum { LIVE_EXTRA_REFUSED, LIVE_EXTRA_KEPT, LIVE_EXTRA_WRITTEN }; /* LiveExtraApply */
+
+static int LiveExtraFind(uintptr_t address)
+{
+    int slot = -1;
+    for (int i = 0; i < g_liveExtraCount; i++) if (g_liveExtra[i].address == address) slot = i;
+    return slot;
+}
+
+/* The edit's rank's value set, or taken away when it is this mod's (or the editors'); 0 when it is another mod's: none
+ * of this one's is here. */
+static int LiveExtraLayerSet(LiveExtraLayer* own, const LiveExtraEdit* c, int set)
+{
+    if (set) { own->held = 1; own->bits = c->bits; own->mod = c->mod; return 1; }
+    if (c->rank == RANK_EDITOR || own->mod == c->mod) { own->held = 0; own->mod = NULL; return 1; }
+    return 0;
+}
+
+/* The highest rank holding a value at x (-1 none); *held whether any does. */
+static int LiveExtraTop(const LiveExtra* x, int* held)
+{
+    int top = -1;
+    *held = 0;
+    for (int r = RANK_EDITOR; r >= RANK_CODE; r--) if (x->layer[r].held) { *held = 1; if (top < 0) top = r; }
+    return top;
+}
+
+/* base: another mod's value, else what the Local Stats mod's boot edit replaced, else what it held before */
+static uint32_t LiveExtraBase(uintptr_t at, const LiveExtra* x)
+{
+    int other = 0, local = 0;
+    uint32_t otherValue = 0, localOriginal = 0;
+    for (int i = 0; i < g_statCount; i++)
+    {
+        const StatEdit* s = &g_stats[i];
+        if (!s->applied || s->address != at) continue;
+        if (strcmp(s->mod->id, LIVE_MOD_ID)) { other = 1; otherValue = s->value; }
+        else if (!local) { local = 1; localOriginal = s->original; }
+    }
+    return other ? otherValue : local ? localOriginal : x->before;
+}
+
+/* What the address holds after the edit: the top rank's value, else (reset) what it held before, else its base. */
+static uint32_t LiveExtraWant(uintptr_t at, const LiveExtra* x, int top, int reset)
+{
+    if (top >= 0) return x->layer[top].bits;
+    if (reset) return x->before;
+    return LiveExtraBase(at, x);
+}
+
+/* `want` written at `at`, and read back as written. */
+static int LiveExtraStore(uintptr_t at, uint32_t want, uint32_t bytes)
+{
+    uint32_t check = 0;
+    return !ApiWrite(at, &want, bytes) && !SafeRead(at, &check, bytes) && (bytes == 1 ? (uint8_t)check == (uint8_t)want : check == want);
+}
+
+/* The edit at `at`, which holds `now`: *want, what it wrote there. LIVE_EXTRA_KEPT when there was nothing to write
+ * (get, or nothing of this mod's to take away), LIVE_EXTRA_REFUSED with *why. Called with g_statsLock held. */
+static int LiveExtraApply(const LiveExtraEdit* c, uintptr_t at, uint32_t now, uint32_t* want, const char** why)
+{
+    if (!strcmp(c->verb, "get")) return LIVE_EXTRA_KEPT;
+    int slot = LiveExtraFind(at);
+    int reset = !strcmp(c->verb, "reset"), set = !strcmp(c->verb, "set");
+    if (reset && slot < 0) return LIVE_EXTRA_KEPT;
+    if (slot < 0)
+    {
+        if (g_liveExtraCount == LIVE_EXTRA_MAX) { *why = "too many live attachment changes"; return LIVE_EXTRA_REFUSED; }
+        slot = g_liveExtraCount++;
+        memset(&g_liveExtra[slot], 0, sizeof g_liveExtra[slot]);
+        g_liveExtra[slot].address = at;
+        g_liveExtra[slot].before = now;
+    }
+    LiveExtra* x = &g_liveExtra[slot];
+    if (!LiveExtraLayerSet(&x->layer[c->rank], c, set)) return LIVE_EXTRA_KEPT;
+    int held, top = LiveExtraTop(x, &held);
+    *want = LiveExtraWant(at, x, top, reset);
+    if (c->floating) { float v; memcpy(&v, want, 4); if (!isfinite(v)) { *why = "not a finite number"; return LIVE_EXTRA_REFUSED; } }
+    int written = LiveExtraStore(at, *want, c->bytes);
+    if (written && reset && !held) g_liveExtra[slot] = g_liveExtra[--g_liveExtraCount];
+    if (!written) { *why = "the write did not hold"; return LIVE_EXTRA_REFUSED; }
+    return LIVE_EXTRA_WRITTEN;
+}
+
+/* The edit (get: *now only). HF_APPLIES_RESPAWN, or 0 with *why. */
+static int LiveExtraWrite(const LiveExtraEdit* c, uint32_t* now, const char** why)
 {
     StatEdit e;
     memset(&e, 0, sizeof e);
-    snprintf(e.kind, sizeof e.kind, "%s", kind);
-    snprintf(e.component, sizeof e.component, "%s", component);
-    e.resource = resource;
-    e.record = record;
-    e.offset = offset;
+    snprintf(e.kind, sizeof e.kind, "%s", c->kind);
+    snprintf(e.component, sizeof e.component, "%s", c->component);
+    e.resource = c->resource;
+    e.record = c->record;
+    e.offset = c->offset;
     *now = 0;
     int table = StatsExtraKind(e.kind);
-    if (table < 0 || !LiveExtraKind(kind)) { *why = "not an entity delta or status multiplier"; return 0; }
+    if (table < 0 || !LiveExtraKind(c->kind)) { *why = "not an entity delta or status multiplier"; return 0; }
     if (!g_statsExtraDone[table]) { *why = "its table is not loaded yet"; return 0; }
     AcquireSRWLockExclusive(&g_statsLock);
     uintptr_t at = !strcmp(g_build, "25480438") ? StatsExtraRow(&e) : 0;
-    if (!at || SafeRead(at, now, bytes))
+    if (!at || SafeRead(at, now, c->bytes))
     {
         ReleaseSRWLockExclusive(&g_statsLock);
         *why = "the delta's table or ownership is not as reviewed";
         return 0;
     }
-    if (!strcmp(verb, "get")) { ReleaseSRWLockExclusive(&g_statsLock); return HF_APPLIES_RESPAWN; }
-    int slot = -1;
-    for (int i = 0; i < g_liveExtraCount; i++) if (g_liveExtra[i].address == at) slot = i;
-    int reset = !strcmp(verb, "reset"), set = !strcmp(verb, "set");
-    if (reset && slot < 0) { ReleaseSRWLockExclusive(&g_statsLock); return HF_APPLIES_RESPAWN; }
-    if (slot < 0)
-    {
-        if (g_liveExtraCount == LIVE_EXTRA_MAX) { ReleaseSRWLockExclusive(&g_statsLock); *why = "too many live attachment changes"; return 0; }
-        slot = g_liveExtraCount++;
-        memset(&g_liveExtra[slot], 0, sizeof g_liveExtra[slot]);
-        g_liveExtra[slot].address = at;
-        g_liveExtra[slot].before = *now;
-    }
-    LiveExtra* x = &g_liveExtra[slot];
-    LiveExtraLayer* own = &x->layer[rank];
-    if (set) { own->held = 1; own->bits = bits; own->mod = mod; }
-    else if (rank == RANK_EDITOR || own->mod == mod) { own->held = 0; own->mod = NULL; }
-    else { ReleaseSRWLockExclusive(&g_statsLock); return HF_APPLIES_RESPAWN; } /* another mod's value: none of this one's here */
-    int top = -1, held = 0;
-    for (int r = RANK_EDITOR; r >= RANK_CODE; r--) if (x->layer[r].held) { held = 1; if (top < 0) top = r; }
-    uint32_t want;
-    if (top >= 0) want = x->layer[top].bits;
-    else if (reset) want = x->before;
-    else
-    {
-        /* base: another mod's value, else what the Local Stats mod's boot edit replaced, else what it held before */
-        int other = 0, local = 0;
-        uint32_t otherValue = 0, localOriginal = 0;
-        for (int i = 0; i < g_statCount; i++)
-        {
-            const StatEdit* s = &g_stats[i];
-            if (!s->applied || s->address != at) continue;
-            if (strcmp(s->mod->id, LIVE_MOD_ID)) { other = 1; otherValue = s->value; }
-            else if (!local) { local = 1; localOriginal = s->original; }
-        }
-        want = other ? otherValue : local ? localOriginal : x->before;
-    }
-    if (floating) { float v; memcpy(&v, &want, 4); if (!isfinite(v)) { ReleaseSRWLockExclusive(&g_statsLock); *why = "not a finite number"; return 0; } }
-    uint32_t check = 0;
-    int written = !ApiWrite(at, &want, bytes) && !SafeRead(at, &check, bytes) && (bytes == 1 ? (uint8_t)check == (uint8_t)want : check == want);
-    if (written && reset && !held) g_liveExtra[slot] = g_liveExtra[--g_liveExtraCount];
+    uint32_t want = 0;
+    int applied = LiveExtraApply(c, at, *now, &want, why);
     ReleaseSRWLockExclusive(&g_statsLock);
-    if (!written) { *why = "the write did not hold"; return 0; }
-    ApiLog(mod != NULL ? mod : LiveMod(), "live %s %s %s +%u (record %lld) of %016llx: %08x -> %08x (expected from the next respawn)", verb, kind,
-        component, offset, (long long)record, (unsigned long long)resource, *now, want);
+    if (applied == LIVE_EXTRA_REFUSED) return 0;
+    if (applied == LIVE_EXTRA_KEPT) return HF_APPLIES_RESPAWN;
+    ApiLog(c->mod != NULL ? c->mod : LiveMod(), "live %s %s %s +%u (record %lld) of %016llx: %08x -> %08x (expected from the next respawn)", c->verb,
+        c->kind, c->component, c->offset, (long long)c->record, (unsigned long long)c->resource, *now, want);
     return HF_APPLIES_RESPAWN;
 }
 
@@ -520,8 +615,9 @@ static void LiveExtraRequest(const char* verb, char** f, const char* seq, char* 
     { snprintf(reply, size, "%s	refused	malformed request", seq); return; }
     uint32_t now = 0;
     const char* why = "refused";
-    int applies = LiveExtraWrite(verb, RANK_EDITOR, NULL, f[2], f[3], resource, strtoll(f[5], NULL, 10), (uint32_t)strtoul(f[6], NULL, 10), bytes,
-        !strcmp(storage, "f32"), !strcmp(verb, "set") ? (uint32_t)strtoul(f[8], NULL, 16) : 0, &now, &why);
+    LiveExtraEdit edit = {verb, RANK_EDITOR, NULL, f[2], f[3], resource, strtoll(f[5], NULL, 10), (uint32_t)strtoul(f[6], NULL, 10), bytes,
+        !strcmp(storage, "f32"), !strcmp(verb, "set") ? (uint32_t)strtoul(f[8], NULL, 16) : 0};
+    int applies = LiveExtraWrite(&edit, &now, &why);
     if (!applies) snprintf(reply, size, "%s	refused	%s", seq, why);
     else if (!strcmp(verb, "get")) snprintf(reply, size, "%s	ok	respawn	%08x", seq, now);
     else snprintf(reply, size, "%s	ok	respawn", seq);
@@ -543,11 +639,142 @@ static int ApiSetStat(HfMod* mod, const HfStat* stat, const HfValue* value, uint
     uint32_t now = 0;
     const char* why = "refused";
     int rank = ModRank(mod);
-    int applies = LiveExtraWrite(value != NULL ? "set" : (flags & HF_LIVE_BASE) && rank == RANK_EDITOR ? "base" : "reset", rank,
+    LiveExtraEdit edit = {value != NULL ? "set" : (flags & HF_LIVE_BASE) && rank == RANK_EDITOR ? "base" : "reset", rank,
         rank == RANK_EDITOR ? NULL : mod, stat->kind, stat->component, stat->resource, stat->record, stat->offset, bytes, type == HF_TYPE_F32,
-        bits, &now, &why);
+        bits};
+    int applies = LiveExtraWrite(&edit, &now, &why);
     if (!applies) ApiLog(mod, "set_stat %s %s +%u refused: %s", stat->kind, stat->component, stat->offset, why);
     return applies;
+}
+
+/* session <seq> <solo|host|joiner> [stats=<own|host>] [<host name>] */
+static void SessionLine(char** f, int n, char* reply, size_t size)
+{
+    uint32_t role = !strcmp(f[2], "joiner") ? HF_SESSION_JOINER : !strcmp(f[2], "host") ? HF_SESSION_HOST : HF_SESSION_SOLO;
+    int marked = n >= 4 && !strncmp(f[3], "stats=", 6);
+    uint32_t stats = marked && !strcmp(f[3] + 6, "own") ? HF_STATS_OWN : HF_STATS_HOST;
+    SetSession(role, stats, n >= 4 + marked ? f[3 + marked] : "");
+    snprintf(reply, size, "%s\tok\tnow", f[1]);
+}
+
+/* A set, reset, base or get request for a mapped field, as LiveFieldRequest parsed it (f: its fields). */
+typedef struct LiveField
+{
+    char** f;
+    const char* seq;
+    int set, base;
+    const SdkComponent* c;
+    uint32_t type;
+    long long record;
+    unsigned long offset;
+    uint64_t target;
+    HfField field;
+    HfMod* mod;
+} LiveField;
+
+static uint32_t LiveStorageType(const char* storage)
+{
+    return !strcmp(storage, "f32") ? HF_TYPE_F32 : !strcmp(storage, "u32") ? HF_TYPE_U32 : !strcmp(storage, "i32") ? HF_TYPE_I32 :
+        !strcmp(storage, "u8") ? HF_TYPE_U8 : 0;
+}
+
+/* The component, storage, record and offset the request names, and its target (a component's resource, a table's row):
+ * 0 with the refusal in reply. */
+static int LiveFieldNamed(LiveField* r, char* reply, size_t size)
+{
+    char** f = r->f;
+    const char *kind = f[2], *storage = f[7];
+    r->c = SdkComponentNamed(!strcmp(kind, "component") ? f[3] : kind);
+    r->type = LiveStorageType(storage);
+    char* end;
+    uint64_t resource = strtoull(f[4], &end, 16);
+    r->record = strtoll(f[5], NULL, 10);
+    r->offset = strtoul(f[6], NULL, 10);
+    if (r->c == NULL || r->type == 0 || *end || r->offset > 0xFFFF || (r->c->table != (strcmp(kind, "component") != 0)))
+    { snprintf(reply, size, "%s\trefused\tHellForge has no mappings for %s %s", r->seq, kind, f[3]); return 0; }
+    r->target = !r->c->table ? resource : !strcmp(kind, "StratagemDefinition") ? StratagemTypeOf((uint32_t)r->record) : (uint64_t)r->record;
+    if (r->target == 0) { snprintf(reply, size, "%s\trefused\tno such %s row", r->seq, kind); return 0; }
+    return 1;
+}
+
+/* The record the field is in, as an edit of it would find it (sf NULL: none). */
+static uint8_t* LiveFieldRecord(const LiveField* r, const SdkComponent* resolved, const SdkField* sf, int* waiting)
+{
+    FieldEdit probe = {r->mod, EDIT_SET, r->target, 0, resolved, sf};
+    probe.table = r->c->table;
+    probe.shared = 1;
+    return sf != NULL ? EditRecord(&probe, r->target, 0, waiting) : NULL;
+}
+
+/* get: what the field holds now, and when a change to it applies. */
+static void LiveFieldGet(const LiveField* r, char* reply, size_t size)
+{
+    const SdkComponent* resolved = NULL;
+    const SdkField* sf = ResolveField(r->mod, "live get", &r->field, &resolved);
+    int waiting = 0;
+    uint8_t* record = LiveFieldRecord(r, resolved, sf, &waiting);
+    uint32_t bits = 0;
+    g_reasonMod = NULL;
+    if (record == NULL || SafeRead((uintptr_t)(record + sf->offset), &bits, sf->size == 1 ? 1 : 4))
+    { snprintf(reply, size, "%s\trefused\t%s", r->seq, sf == NULL ? g_liveReason : waiting ? "its table is not loaded yet" : "no such record"); return; }
+    snprintf(reply, size, "%s\tok\t%s\t%08x", r->seq, AppliesName((int)sf->applies), bits);
+}
+
+/* set (the value sent), reset or base, as a set_live edit of the Local Stats mod's. When it applies (HF_APPLIES_...), or 0. */
+static int LiveFieldChange(const LiveField* r)
+{
+    if (!r->set) return ApiSetLive(r->mod, r->target, &r->field, NULL, r->base ? HF_LIVE_BASE : 0);
+    uint32_t bits = (uint32_t)strtoul(r->f[8], NULL, 16);
+    HfValue value = {r->type, 0.0, 0};
+    if (r->type == HF_TYPE_F32) { float v; memcpy(&v, &bits, 4); value.number = v; }
+    else if (r->type == HF_TYPE_I32) value.number = (int32_t)bits;
+    else value.number = bits;
+    return ApiSetLive(r->mod, r->target, &r->field, &value, r->f[9][0] == '1' ? HF_LIVE_SHARED : 0);
+}
+
+/* Every live change, with what the record holds afterwards, so a session log shows what the game got. */
+static void LiveFieldLog(const LiveField* r, int applies)
+{
+    const SdkComponent* resolved = NULL;
+    const SdkField* sf = applies ? ResolveField(r->mod, "live", &r->field, &resolved) : NULL;
+    uint32_t now = 0;
+    int waiting = 0;
+    uint8_t* at = LiveFieldRecord(r, resolved, sf, &waiting);
+    int readable = at != NULL && !SafeRead((uintptr_t)(at + sf->offset), &now, sf->size == 1 ? 1 : 4);
+    ApiLog(r->mod, "live %s %s +%lu (%s %s, record %lld) of %016llx: %s%s%s", r->set ? "set" : r->base ? "base" : "reset", r->c->name, r->offset,
+        r->f[2], r->f[3], r->record, (unsigned long long)r->target, applies ? "applies " : "refused: ",
+        applies ? AppliesName(applies) : (g_liveReason[0] ? g_liveReason : "?"), "");
+    if (readable) ApiLog(r->mod, "  %s at 0x%llx now holds %08x%s", sf->name, (unsigned long long)(uintptr_t)(at + sf->offset), now,
+        r->set ? (strtoul(r->f[8], NULL, 16) == now ? " (as sent)" : " (NOT as sent)") : "");
+}
+
+/* set, reset, base and get: a field as the stats schema names it. */
+static void LiveFieldRequest(char** f, int n, char* reply, size_t size)
+{
+    const char* seq = f[1];
+    int set = !strcmp(f[0], "set"), reset = !strcmp(f[0], "reset"), get = !strcmp(f[0], "get"), base = !strcmp(f[0], "base");
+    if (!(set && n == 10) && !((reset || get || base) && n == 8)) { snprintf(reply, size, "%s\trefused\tmalformed request", seq); return; }
+    if (LiveExtraKind(f[2])) { LiveExtraRequest(f[0], f, seq, reply, size); return; }
+    LiveField r = {f, seq, set, base};
+    if (!LiveFieldNamed(&r, reply, size)) return;
+    r.field = (HfField){r.c->component, r.c->layout, (uint16_t)r.offset, (uint16_t)(r.type == HF_TYPE_U8 ? 1 : 4), r.type, 0};
+    r.mod = LiveMod();
+    g_liveReason[0] = 0;
+    g_reasonMod = r.mod;
+    if (get) { LiveFieldGet(&r, reply, size); return; }
+    int applies = LiveFieldChange(&r);
+    g_reasonMod = NULL;
+    if (applies == 0) snprintf(reply, size, "%s\trefused\t%s", seq, g_liveReason[0] ? g_liveReason : "refused");
+    else snprintf(reply, size, "%s\tok\t%s", seq, AppliesName(applies));
+    LiveFieldLog(&r, applies);
+}
+
+/* A request that sets a list of the lobby's (ShotsSetRules, RoundsSetLobby): ok, or refused with why. */
+static void ListLine(const char* seq, const char* list, int (*set)(const char* list, const char** why), char* reply, size_t size)
+{
+    const char* why = NULL;
+    if (set(list, &why)) snprintf(reply, size, "%s\tok\tnow", seq);
+    else snprintf(reply, size, "%s\trefused\t%s", seq, why);
 }
 
 /* One request; the reply goes to `reply`. Also the native fixture's entry point. */
@@ -559,99 +786,17 @@ static void LiveRequest(char* line, char* reply, size_t size)
     int n = Split(line, f, 12);
     if (n < 2) { snprintf(reply, size, "-\trefused\tmalformed request"); return; }
     const char* seq = f[1];
-    if (!strcmp(f[0], "session") && n >= 3)
-    {
-        uint32_t role = !strcmp(f[2], "joiner") ? HF_SESSION_JOINER : !strcmp(f[2], "host") ? HF_SESSION_HOST : HF_SESSION_SOLO;
-        int marked = n >= 4 && !strncmp(f[3], "stats=", 6);
-        uint32_t stats = marked && !strcmp(f[3] + 6, "own") ? HF_STATS_OWN : HF_STATS_HOST;
-        SetSession(role, stats, n >= 4 + marked ? f[3 + marked] : "");
-        snprintf(reply, size, "%s\tok\tnow", seq);
-        return;
-    }
+    if (!strcmp(f[0], "session") && n >= 3) { SessionLine(f, n, reply, size); return; }
     if (!strcmp(f[0], "preload") && n == 3) { PreloadLine(seq, f[2], reply, size); return; }
-    if (!strcmp(f[0], "shots") && n == 3)
-    {
-        const char* why = NULL;
-        if (ShotsSetRules(f[2], &why)) snprintf(reply, size, "%s	ok	now", seq);
-        else snprintf(reply, size, "%s	refused	%s", seq, why);
-        return;
-    }
-    if (!strcmp(f[0], "rounds") && n == 3)
-    {
-        const char* why = NULL;
-        if (RoundsSetLobby(f[2], &why)) snprintf(reply, size, "%s	ok	now", seq);
-        else snprintf(reply, size, "%s	refused	%s", seq, why);
-        return;
-    }
+    if (!strcmp(f[0], "shots") && n == 3) { ListLine(seq, f[2], ShotsSetRules, reply, size); return; }
+    if (!strcmp(f[0], "rounds") && n == 3) { ListLine(seq, f[2], RoundsSetLobby, reply, size); return; }
     if (!strcmp(f[0], "notice") && n >= 4)
     {
         SetNotice(f + 2, n - 2);
         snprintf(reply, size, "%s\tok\tnow", seq);
         return;
     }
-    int set = !strcmp(f[0], "set"), reset = !strcmp(f[0], "reset"), get = !strcmp(f[0], "get"), base = !strcmp(f[0], "base");
-    if (!(set && n == 10) && !((reset || get || base) && n == 8)) { snprintf(reply, size, "%s\trefused\tmalformed request", seq); return; }
-    const char *kind = f[2], *storage = f[7];
-    if (LiveExtraKind(kind)) { LiveExtraRequest(f[0], f, seq, reply, size); return; }
-    const SdkComponent* c = SdkComponentNamed(!strcmp(kind, "component") ? f[3] : kind);
-    uint32_t type = !strcmp(storage, "f32") ? HF_TYPE_F32 : !strcmp(storage, "u32") ? HF_TYPE_U32 : !strcmp(storage, "i32") ? HF_TYPE_I32 :
-        !strcmp(storage, "u8") ? HF_TYPE_U8 : 0;
-    char* end;
-    uint64_t resource = strtoull(f[4], &end, 16);
-    long long record = strtoll(f[5], NULL, 10);
-    unsigned long offset = strtoul(f[6], NULL, 10);
-    if (c == NULL || type == 0 || *end || offset > 0xFFFF || (c->table != (strcmp(kind, "component") != 0)))
-    { snprintf(reply, size, "%s\trefused\tHellForge has no mappings for %s %s", seq, kind, f[3]); return; }
-    uint64_t target = !c->table ? resource : !strcmp(kind, "StratagemDefinition") ? StratagemTypeOf((uint32_t)record) : (uint64_t)record;
-    if (target == 0) { snprintf(reply, size, "%s\trefused\tno such %s row", seq, kind); return; }
-    HfField field = {c->component, c->layout, (uint16_t)offset, (uint16_t)(type == HF_TYPE_U8 ? 1 : 4), type, 0};
-    HfMod* mod = LiveMod();
-    g_liveReason[0] = 0;
-    g_reasonMod = mod;
-    int applies = 0;
-    if (get)
-    {
-        const SdkComponent* resolved = NULL;
-        const SdkField* sf = ResolveField(mod, "live get", &field, &resolved);
-        FieldEdit probe = {mod, EDIT_SET, target, 0, resolved, sf};
-        probe.table = c->table;
-        probe.shared = 1;
-        int waiting = 0;
-        uint8_t* record = sf != NULL ? EditRecord(&probe, target, 0, &waiting) : NULL;
-        uint32_t bits = 0;
-        g_reasonMod = NULL;
-        if (record == NULL || SafeRead((uintptr_t)(record + sf->offset), &bits, sf->size == 1 ? 1 : 4))
-        { snprintf(reply, size, "%s\trefused\t%s", seq, sf == NULL ? g_liveReason : waiting ? "its table is not loaded yet" : "no such record"); return; }
-        snprintf(reply, size, "%s\tok\t%s\t%08x", seq, AppliesName((int)sf->applies), bits);
-        return;
-    }
-    if (set)
-    {
-        uint32_t bits = (uint32_t)strtoul(f[8], NULL, 16);
-        HfValue value = {type, 0.0, 0};
-        if (type == HF_TYPE_F32) { float v; memcpy(&v, &bits, 4); value.number = v; }
-        else if (type == HF_TYPE_I32) value.number = (int32_t)bits;
-        else value.number = bits;
-        applies = ApiSetLive(mod, target, &field, &value, f[9][0] == '1' ? HF_LIVE_SHARED : 0);
-    }
-    else applies = ApiSetLive(mod, target, &field, NULL, base ? HF_LIVE_BASE : 0);
-    g_reasonMod = NULL;
-    if (applies == 0) snprintf(reply, size, "%s\trefused\t%s", seq, g_liveReason[0] ? g_liveReason : "refused");
-    else snprintf(reply, size, "%s\tok\t%s", seq, AppliesName(applies));
-    /* Every live change, with what the record holds afterwards, so a session log shows what the game got. */
-    const SdkComponent* resolved = NULL;
-    const SdkField* sf = applies ? ResolveField(mod, "live", &field, &resolved) : NULL;
-    uint32_t now = 0;
-    int waiting = 0;
-    FieldEdit probe = {mod, EDIT_SET, target, 0, resolved, sf};
-    probe.table = c->table;
-    probe.shared = 1;
-    uint8_t* at = sf != NULL ? EditRecord(&probe, target, 0, &waiting) : NULL;
-    int readable = at != NULL && !SafeRead((uintptr_t)(at + sf->offset), &now, sf->size == 1 ? 1 : 4);
-    ApiLog(mod, "live %s %s +%lu (%s %s, record %lld) of %016llx: %s%s%s", set ? "set" : base ? "base" : "reset", c->name, offset, kind, f[3], record,
-        (unsigned long long)target, applies ? "applies " : "refused: ", applies ? AppliesName(applies) : (g_liveReason[0] ? g_liveReason : "?"), "");
-    if (readable) ApiLog(mod, "  %s at 0x%llx now holds %08x%s", sf->name, (unsigned long long)(uintptr_t)(at + sf->offset), now,
-        set ? (strtoul(f[8], NULL, 16) == now ? " (as sent)" : " (NOT as sent)") : "");
+    LiveFieldRequest(f, n, reply, size);
 }
 
 /* One write on the overlapped pipe, waited for. */
@@ -688,6 +833,86 @@ static int LiveFlush(HANDLE pipe, OVERLAPPED* op)
     return length > 0 && (size_t)length < sizeof line && LiveWrite(pipe, op, line, (size_t)length);
 }
 
+/* A connection's start or end: whether answers can be queued, none queued yet. */
+static void LiveOutConnected(int connected)
+{
+    AcquireSRWLockExclusive(&g_liveOutLock);
+    g_liveConnected = connected;
+    g_liveOutUsed = 0;
+    ReleaseSRWLockExclusive(&g_liveOutLock);
+}
+
+/* The complete lines in buffer[0, used) answered in order, until a reply cannot be written (*open 0); the rest of the
+ * buffer, an unfinished line, moved to its start. Returns that rest's length. */
+static size_t LiveLines(HANDLE pipe, OVERLAPPED* writeOp, char* buffer, size_t used, size_t capacity, int* open)
+{
+    char reply[512];
+    char* start = buffer;
+    for (char* newline; *open && (newline = memchr(start, '\n', used - (size_t)(start - buffer))) != NULL; start = newline + 1)
+    {
+        *newline = 0;
+        if (newline > start && newline[-1] == '\r') newline[-1] = 0;
+        if (*start == 0) continue;
+        LiveRequest(start, reply, sizeof reply);
+        *open = LiveSend(pipe, writeOp, reply);
+    }
+    used -= (size_t)(start - buffer);
+    memmove(buffer, start, used);
+    if (used >= capacity - 1) used = 0; /* a line too long to be a request */
+    return used;
+}
+
+/* A connection's requests answered and its queued lines written, until it breaks. A read still pending then is
+ * cancelled and waited for here, while its buffer is in scope: a late completion would write into reused stack. */
+static void LiveServe(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
+{
+    char buffer[8192];
+    size_t used = 0;
+    int open = 1, reading = 0;
+    while (open)
+    {
+        if (!reading)
+        {
+            ResetEvent(readOp->hEvent);
+            if (!ReadFile(pipe, buffer + used, (DWORD)(sizeof buffer - 1 - used), NULL, readOp) && GetLastError() != ERROR_IO_PENDING) break;
+            reading = 1;
+        }
+        HANDLE waits[2] = {readOp->hEvent, g_liveOutEvent};
+        DWORD woke = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+        if (woke == WAIT_OBJECT_0 + 1) { open = LiveFlush(pipe, writeOp); continue; }
+        if (woke != WAIT_OBJECT_0) break;
+        DWORD read = 0;
+        reading = 0;
+        if (!GetOverlappedResult(pipe, readOp, &read, FALSE) || read == 0) break;
+        used = LiveLines(pipe, writeOp, buffer, used + read, sizeof buffer, &open);
+    }
+    if (reading)
+    {
+        DWORD read;
+        CancelIoEx(pipe, readOp);
+        GetOverlappedResult(pipe, readOp, &read, TRUE);
+    }
+}
+
+/* One connection to the launcher's pipe, from its hello to its end. */
+static void LiveConnected(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
+{
+    Note("live editor connected");
+    LiveOutConnected(1);
+    char hello[160];
+    snprintf(hello, sizeof hello, "hello\t%d\t%s\t%s", LIVE_PROTOCOL, g_build, g_statsSchema[0] ? g_statsSchema : "-");
+    InterlockedExchange(&g_packagesDirty, 1); /* the backend gets this machine's own packages as it connects */
+    if (LiveSend(pipe, writeOp, hello) && LiveFlush(pipe, writeOp)) LiveServe(pipe, readOp, writeOp);
+    LiveOutConnected(0);
+    CloseHandle(pipe);
+    Note("live editor disconnected");
+    SetSession(HF_SESSION_SOLO, HF_STATS_OWN, ""); /* the backend is gone: nothing tells this game it is joined */
+    const char* none;
+    ShotsSetRules("-", &none); /* nor whose swaps friends' shots fire */
+    RoundsSetLobby("-", &none); /* nor their edited rounds */
+    SyncClear();
+}
+
 /* Connects to the launcher's pipe while the session runs; one connection at a time. The pipe is overlapped: a
  * synchronous handle serializes its I/O, so an answer written from another thread would wait for the next request. This
  * thread waits for either a request or a queued answer, and does all the writing. */
@@ -716,62 +941,6 @@ static DWORD WINAPI LiveWatch(void* parameter)
         if (!g_fired[HF_EVENT_ENTITIES_READY]) { Sleep(500); continue; }
         HANDLE pipe = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
         if (pipe == INVALID_HANDLE_VALUE) { Sleep(2000); continue; }
-        Note("live editor connected");
-        AcquireSRWLockExclusive(&g_liveOutLock);
-        g_liveConnected = 1;
-        g_liveOutUsed = 0;
-        ReleaseSRWLockExclusive(&g_liveOutLock);
-        char hello[160];
-        snprintf(hello, sizeof hello, "hello\t%d\t%s\t%s", LIVE_PROTOCOL, g_build, g_statsSchema[0] ? g_statsSchema : "-");
-        char buffer[8192], reply[512];
-        size_t used = 0;
-        InterlockedExchange(&g_packagesDirty, 1); /* the backend gets this machine's own packages as it connects */
-        int open = LiveSend(pipe, &writeOp, hello) && LiveFlush(pipe, &writeOp), reading = 0;
-        while (open)
-        {
-            if (!reading)
-            {
-                ResetEvent(readOp.hEvent);
-                if (!ReadFile(pipe, buffer + used, (DWORD)(sizeof buffer - 1 - used), NULL, &readOp) && GetLastError() != ERROR_IO_PENDING) break;
-                reading = 1;
-            }
-            HANDLE waits[2] = {readOp.hEvent, g_liveOutEvent};
-            DWORD woke = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
-            if (woke == WAIT_OBJECT_0 + 1) { open = LiveFlush(pipe, &writeOp); continue; }
-            if (woke != WAIT_OBJECT_0) break;
-            DWORD read = 0;
-            reading = 0;
-            if (!GetOverlappedResult(pipe, &readOp, &read, FALSE) || read == 0) break;
-            used += read;
-            char* start = buffer;
-            for (char* newline; open && (newline = memchr(start, '\n', used - (size_t)(start - buffer))) != NULL; start = newline + 1)
-            {
-                *newline = 0;
-                if (newline > start && newline[-1] == '\r') newline[-1] = 0;
-                if (*start == 0) continue;
-                LiveRequest(start, reply, sizeof reply);
-                open = LiveSend(pipe, &writeOp, reply);
-            }
-            used -= (size_t)(start - buffer);
-            memmove(buffer, start, used);
-            if (used >= sizeof buffer - 1) used = 0; /* a line too long to be a request */
-        }
-        if (reading)
-        {
-            DWORD read;
-            CancelIoEx(pipe, &readOp);
-            GetOverlappedResult(pipe, &readOp, &read, TRUE);
-        }
-        AcquireSRWLockExclusive(&g_liveOutLock);
-        g_liveConnected = 0;
-        g_liveOutUsed = 0;
-        ReleaseSRWLockExclusive(&g_liveOutLock);
-        CloseHandle(pipe);
-        Note("live editor disconnected");
-        SetSession(HF_SESSION_SOLO, HF_STATS_OWN, ""); /* the backend is gone: nothing tells this game it is joined */
-        const char* none;
-        ShotsSetRules("-", &none); /* nor whose swaps friends' shots fire */
-        RoundsSetLobby("-", &none); /* nor their edited rounds */
-        SyncClear();
+        LiveConnected(pipe, &readOp, &writeOp);
     }
 }

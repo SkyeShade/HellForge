@@ -6,9 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- HellForge's version, one line per release: every assembly's, shown in the launcher's and HellForge-Setup's
          corner (AppVersion) with the commit the SDK appends. -->
-    <Version>0.3.0-dev.11</Version>
+    <Version>0.3.0-beta</Version>
     <!-- The engine's version (the session runner, local backend, mod loader and stand-ins: scripts/Build-Engine.ps1's
          hellforge-engine-<version>.zip and its engine.json), one line per engine change. -->
-    <EngineVersion>0.1.39</EngineVersion>
+    <EngineVersion>0.1.40</EngineVersion>
   </PropertyGroup>
 </Project>

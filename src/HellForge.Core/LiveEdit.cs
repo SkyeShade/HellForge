@@ -78,20 +78,7 @@ public sealed class LiveEditServer : IAsyncDisposable
                 pipe = server;
                 writer = new StreamWriter(server, new UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
                 using var reader = new StreamReader(server, new UTF8Encoding(false));
-                while (await reader.ReadLineAsync(stop.Token) is { } line)
-                {
-                    var parts = line.Split('\t');
-                    if (parts[0] == "hello" && parts.Length == 4 && parts[1] == Protocol.ToString(CultureInfo.InvariantCulture))
-                    {
-                        (GameBuild, GameSchema, Connected) = (parts[2], parts[3], true);
-                        StateChanged?.Invoke();
-                    }
-                    else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var seq))
-                    {
-                        lock (pending) if (pending.Remove(seq, out var waiter)) waiter.TrySetResult(line);
-                    }
-                    else if (parts[0].Length > 0 && parts[0].All(char.IsAsciiLetterLower)) Received?.Invoke(parts);
-                }
+                while (await reader.ReadLineAsync(stop.Token) is { } line) Receive(line);
             }
             catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
             finally
@@ -104,6 +91,22 @@ public sealed class LiveEditServer : IAsyncDisposable
                 if (!stop.IsCancellationRequested) StateChanged?.Invoke();
             }
         }
+    }
+
+    // A line from the game: its hello, a reply to a request, or a line of its own (Received).
+    void Receive(string line)
+    {
+        var parts = line.Split('\t');
+        if (parts[0] == "hello" && parts.Length == 4 && parts[1] == Protocol.ToString(CultureInfo.InvariantCulture))
+        {
+            (GameBuild, GameSchema, Connected) = (parts[2], parts[3], true);
+            StateChanged?.Invoke();
+        }
+        else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var seq))
+        {
+            lock (pending) if (pending.Remove(seq, out var waiter)) waiter.TrySetResult(line);
+        }
+        else if (parts[0].Length > 0 && parts[0].All(char.IsAsciiLetterLower)) Received?.Invoke(parts);
     }
 
     // A stats field as a request names it: kind, component, resource, record, offset, storage.
@@ -160,10 +163,10 @@ public sealed class LiveEditServer : IAsyncDisposable
 
     // Mod sync (HfApi sync_state / sync_mod): an offer's mods, index 0 up, then its state, which publishes them in the
     // game. A progress update is the state alone, with the same version. Words, not numbers, for actions, classes and states.
-    // url: where players get the mod (ModCatalog.WebAddress, at most 200 characters), or "-".
-    public Task<LiveResult> SyncModAsync(int version, int index, string action, string modClass, long bytes, string id, string name, string modVersion, string? url = null) =>
-        SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), action, modClass, Invariant(bytes), Field(id), Field(name), Field(modVersion),
-            ModCatalog.WebAddress(url) ?? "-"));
+    // The mod's url: where players get it (ModCatalog.WebAddress, at most 200 characters), or "-".
+    public Task<LiveResult> SyncModAsync(int version, int index, SyncItem item) =>
+        SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class),
+            Invariant(item.Mod.Bytes), Field(item.Mod.Id), Field(item.Mod.Name), Field(item.Mod.Version), ModCatalog.WebAddress(item.Mod.Url) ?? "-"));
     public Task<LiveResult> SyncStateAsync(int version, string state, string host, long bytes, long done, int mods, string message) =>
         SendAsync("syncstate", string.Join('\t', Invariant(version), state, Field(host), Invariant(bytes), Invariant(done), Invariant(mods), Field(message)));
 

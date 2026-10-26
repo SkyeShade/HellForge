@@ -23,6 +23,23 @@ public static class NativeModApplier
     {
         using var log = new StreamWriter(logPath, append: true) { AutoFlush = true };
         void Log(string text) => log.WriteLine($"{DateTime.UtcNow:HH\\:mm\\:ss.fff} {Privacy.Scrub(text)}");
+        var native = LoadNativeMods(install, folders, Log);
+        if (native.Count == 0) { Log("No native mods."); return 0; }
+        var process = OpenProcess(ProcessAccess, false, pid);
+        if (process == 0) { Log($"Could not open the game process ({Marshal.GetLastWin32Error()})."); return 1; }
+        try
+        {
+            if (!string.Equals(ImagePath(process), Path.GetFullPath(expectedExe), StringComparison.OrdinalIgnoreCase))
+            { Log("The process is not the copied game."); return 1; }
+            ApplyUntilExit(process, expectedExe, native, statusPath, Log);
+            return 0;
+        }
+        finally { CloseHandle(process); }
+    }
+
+    // The session's native mods with network type edits (folders, else the installation's enabled mods).
+    static List<ModManifest> LoadNativeMods(InstallLayout install, IReadOnlyList<string>? folders, Action<string> Log)
+    {
         var native = new List<ModManifest>();
         if (folders == null)
         {
@@ -36,41 +53,36 @@ public static class NativeModApplier
                 try { native.Add(ModCatalog.Parse(folder, EntityProfile.Current)); }
                 catch (Exception error) when (error is InvalidDataException or JsonException or IOException) { Log($"Mod not loaded: {folder}: {error.Message}"); }
             }
-        native = native.Where(m => m.NetworkFieldTypes.Count > 0).ToList();
-        if (native.Count == 0) { Log("No native mods."); return 0; }
-        var process = OpenProcess(ProcessAccess, false, pid);
-        if (process == 0) { Log($"Could not open the game process ({Marshal.GetLastWin32Error()})."); return 1; }
-        try
+        return native.Where(m => m.NetworkFieldTypes.Count > 0).ToList();
+    }
+
+    // Applies the network type edits every poll until the game exits, logging each outcome once as it changes.
+    static void ApplyUntilExit(nint process, string expectedExe, List<ModManifest> native, string statusPath, Action<string> Log)
+    {
+        var types = native.SelectMany(m => m.NetworkFieldTypes.Select(t => (Mod: m.Id, Edit: t))).ToList();
+        var state = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        void Report(string key, string value)
         {
-            if (!string.Equals(ImagePath(process), Path.GetFullPath(expectedExe), StringComparison.OrdinalIgnoreCase))
-            { Log("The process is not the copied game."); return 1; }
-            var types = native.SelectMany(m => m.NetworkFieldTypes.Select(t => (Mod: m.Id, Edit: t))).ToList();
-            var state = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            void Report(string key, string value)
-            {
-                if (state.TryGetValue(key, out var old) && old == value) return;
-                state[key] = value;
-                Log($"{key}: {value}");
-                File.WriteAllText(statusPath, JsonSerializer.Serialize(state, SessionJson.Default.SortedDictionaryStringString));
-            }
-            Log($"Applying {types.Count} network type edit(s) from " +
-                string.Join(", ", native.Select(m => $"{m.Id} {m.Version}")) + ".");
-            long exe = 0;
-            var clock = Stopwatch.StartNew();
-            while (WaitForSingleObject(process, 0) != 0)
-            {
-                try
-                {
-                    if (exe == 0) exe = MainModule(process, expectedExe);
-                    if (exe != 0) foreach (var (mod, edit) in types) Report($"{mod}: network type {edit.Name}", NetworkType(process, exe, edit));
-                }
-                catch (Win32Exception) { } // The game is changing a page right now; try again.
-                Thread.Sleep(clock.Elapsed.TotalMinutes < 3 ? 100 : 1000);
-            }
-            Log("The game exited.");
-            return 0;
+            if (state.TryGetValue(key, out var old) && old == value) return;
+            state[key] = value;
+            Log($"{key}: {value}");
+            File.WriteAllText(statusPath, JsonSerializer.Serialize(state, SessionJson.Default.SortedDictionaryStringString));
         }
-        finally { CloseHandle(process); }
+        Log($"Applying {types.Count} network type edit(s) from " +
+            string.Join(", ", native.Select(m => $"{m.Id} {m.Version}")) + ".");
+        long exe = 0;
+        var clock = Stopwatch.StartNew();
+        while (WaitForSingleObject(process, 0) != 0)
+        {
+            try
+            {
+                if (exe == 0) exe = MainModule(process, expectedExe);
+                if (exe != 0) foreach (var (mod, edit) in types) Report($"{mod}: network type {edit.Name}", NetworkType(process, exe, edit));
+            }
+            catch (Win32Exception) { } // The game is changing a page right now; try again.
+            Thread.Sleep(clock.Elapsed.TotalMinutes < 3 ? 100 : 1000);
+        }
+        Log("The game exited.");
     }
 
     // "applied", "waiting" (not loaded yet) or why it was left alone.
@@ -99,10 +111,22 @@ public static class NativeModApplier
     {
         if (region == 0) return write.Fields.Select(f => (f.Name, "waiting"));
         var schema = profile.Components[write.Component];
+        if (SelectRecord(process, region, schema, write, out var address) is { } why) return write.Fields.Select(f => (f.Name, why));
+        // Materialized: the writes happen once, here, as the original loop did (not lazily on enumeration).
+        return write.Fields.Select(field => (field.Name, WriteField(process, address, field))).ToList();
+    }
+
+    // Whether the component section's header and index are the reviewed shape.
+    static bool ValidSection(byte[] index, ComponentSchema schema) =>
+        BinaryPrimitives.ReadUInt32LittleEndian(index) == schema.Index && Convert.ToHexString(index, 4, 28) == schema.Header.ToUpperInvariant() &&
+        schema.RecordOffset == schema.Indices * 16 && schema.RecordOffset + (long)schema.Records * schema.Stride <= BinaryPrimitives.ReadUInt32LittleEndian(index.AsSpan(20));
+
+    // The address of the record this write's resource owns alone (set only on success), or why it is left alone / waiting.
+    static string? SelectRecord(nint process, long region, ComponentSchema schema, ComponentWrite write, out long address)
+    {
+        address = 0;
         var index = Read(process, region + schema.Offset - 4, 32 + schema.RecordOffset);
-        if (BinaryPrimitives.ReadUInt32LittleEndian(index) != schema.Index || Convert.ToHexString(index, 4, 28) != schema.Header.ToUpperInvariant() ||
-            schema.RecordOffset != schema.Indices * 16 || schema.RecordOffset + (long)schema.Records * schema.Stride > BinaryPrimitives.ReadUInt32LittleEndian(index.AsSpan(20)))
-            return write.Fields.Select(f => (f.Name, "left alone: the component section is not as reviewed"));
+        if (!ValidSection(index, schema)) return "left alone: the component section is not as reviewed";
         int selected = -1, owners = 0;
         var records = new List<int>();
         for (var row = 0; row < schema.Indices; row++)
@@ -111,27 +135,28 @@ public static class NativeModApplier
             var resource = BinaryPrimitives.ReadUInt64LittleEndian(index.AsSpan(at));
             var record = (int)BinaryPrimitives.ReadUInt32LittleEndian(index.AsSpan(at + 8));
             if (record >= schema.Records || BinaryPrimitives.ReadUInt32LittleEndian(index.AsSpan(at + 12)) != 0)
-                return write.Fields.Select(f => (f.Name, "left alone: the component index is not as reviewed"));
+                return "left alone: the component index is not as reviewed";
             if (resource == write.Resource) { owners++; selected = record; }
             if (resource != 0) records.Add(record);
         }
-        if (owners != 1) return write.Fields.Select(f => (f.Name, owners == 0 ? "waiting" : "left alone: the entity owns several records"));
+        if (owners != 1) return owners == 0 ? "waiting" : "left alone: the entity owns several records";
         // The record must belong to this entity alone, or the edit would change others too.
-        if (records.Count(r => r == selected) != 1) return write.Fields.Select(f => (f.Name, "left alone: the record is shared with another entity"));
-        var address = region + schema.Offset + 28 + schema.RecordOffset + (long)selected * schema.Stride;
-        var results = new List<(string, string)>();
-        foreach (var field in write.Fields)
-        {
-            var value = BinaryPrimitives.ReadUInt32LittleEndian(Read(process, address + field.Offset, 4));
-            if (value == field.Value) { results.Add((field.Name, $"applied ({field.Expect} -> {field.Value})")); continue; }
-            if (value != field.Expect) { results.Add((field.Name, $"left alone: found {value}, expected {field.Expect}")); continue; }
-            var bytes = new byte[4];
-            BinaryPrimitives.WriteUInt32LittleEndian(bytes, field.Value);
-            WriteData(process, address + field.Offset, bytes);
-            results.Add((field.Name, BinaryPrimitives.ReadUInt32LittleEndian(Read(process, address + field.Offset, 4)) == field.Value
-                ? $"applied ({field.Expect} -> {field.Value})" : "write did not stick"));
-        }
-        return results;
+        if (records.Count(r => r == selected) != 1) return "left alone: the record is shared with another entity";
+        address = region + schema.Offset + 28 + schema.RecordOffset + (long)selected * schema.Stride;
+        return null;
+    }
+
+    // One field of a selected record: applied (written if needed), left alone, or waiting is not reached here.
+    static string WriteField(nint process, long address, ComponentFieldEdit field)
+    {
+        var value = BinaryPrimitives.ReadUInt32LittleEndian(Read(process, address + field.Offset, 4));
+        if (value == field.Value) return $"applied ({field.Expect} -> {field.Value})";
+        if (value != field.Expect) return $"left alone: found {value}, expected {field.Expect}";
+        var bytes = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, field.Value);
+        WriteData(process, address + field.Offset, bytes);
+        return BinaryPrimitives.ReadUInt32LittleEndian(Read(process, address + field.Offset, 4)) == field.Value
+            ? $"applied ({field.Expect} -> {field.Value})" : "write did not stick";
     }
 
     // The entity region: one private, committed allocation of exactly the profile's size starting with its map header.
@@ -142,18 +167,10 @@ public static class NativeModApplier
         while (VirtualQueryEx(process, address, out var info, Marshal.SizeOf<MemoryInfo>()) != 0)
         {
             var next = info.BaseAddress + info.RegionSize;
-            if (info.State == 0x1000 && info.Type == 0x20000 && info.BaseAddress == info.AllocationBase && info.Protect is 2 or 4 &&
-                info.RegionSize == profile.EntityRegionSize)
+            if (IsCandidateRegion(info, profile) && StartsWith(process, info.BaseAddress, header))
             {
-                try
-                {
-                    if (Read(process, info.BaseAddress, 28).AsSpan().SequenceEqual(header))
-                    {
-                        if (found != 0) return 0; // Two candidates: not as reviewed.
-                        found = info.BaseAddress;
-                    }
-                }
-                catch (Win32Exception) { }
+                if (found != 0) return 0; // Two candidates: not as reviewed.
+                found = info.BaseAddress;
             }
             if (next <= address) break;
             address = next;
@@ -161,9 +178,15 @@ public static class NativeModApplier
         return found;
     }
 
-    static bool IsEntityRegion(nint process, long region, EntityProfile profile)
+    // A private, committed allocation of exactly the profile's size that starts at its own base.
+    static bool IsCandidateRegion(MemoryInfo info, EntityProfile profile) =>
+        info.State == 0x1000 && info.Type == 0x20000 && info.BaseAddress == info.AllocationBase && info.Protect is 2 or 4 &&
+        info.RegionSize == profile.EntityRegionSize;
+
+    // Whether the region starts with the map header (decoded once, before the search).
+    static bool StartsWith(nint process, long region, byte[] header)
     {
-        try { return Read(process, region, 28).AsSpan().SequenceEqual(Convert.FromHexString(profile.MapHeader)); }
+        try { return Read(process, region, 28).AsSpan().SequenceEqual(header); }
         catch (Win32Exception) { return false; }
     }
 

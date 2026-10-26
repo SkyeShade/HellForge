@@ -425,36 +425,39 @@ static void BridgeCostReport(const char *span)
     g_bridgeCost.since = GetTickCount64();
 }
 
+// A bridged game's frame (SteamAPI_RunCallbacks): the minute's cost report when it is due, then the callbacks the
+// broker queued, timed.
+static void BridgeRunCallbacks(void)
+{
+    // the idle frame: one read of the ring's sequence and of the tick count, no system call
+    g_bridgeCost.frames++;
+    if (g_bridged && GetTickCount64() - g_bridgeCost.since >= 60000)
+    {
+        if (g_bridgeCost.since != 0) BridgeCostReport("the last minute");
+        else g_bridgeCost.since = GetTickCount64();
+    }
+    if (!g_bridged || !GameChannelPending(&g_bridge)) return;
+    uint32_t id, size;
+    uint8_t data[BRIDGE_RING_DATA_SIZE];
+    LARGE_INTEGER start, end;
+    QueryPerformanceCounter(&start);
+    while (GameChannelReadCallback(&g_bridge, &id, data, sizeof data, &size))
+    {
+        g_bridgeCost.callbacks++;
+#ifdef HELLFORGE_BRIDGE_BUILD
+        BridgeDispatch(id, data, size);
+#endif
+    }
+    QueryPerformanceCounter(&end);
+    uint64_t ticks = (uint64_t)(end.QuadPart - start.QuadPart);
+    g_bridgeCost.callbackFrames++;
+    g_bridgeCost.ticks += ticks;
+    if (ticks > g_bridgeCost.maxTicks) g_bridgeCost.maxTicks = ticks;
+}
+
 HELLFORGE_API void __cdecl SteamAPI_RunCallbacks(void)
 {
-    if (g_bridgeRequested)
-    {
-        // the idle frame: one read of the ring's sequence and of the tick count, no system call
-        g_bridgeCost.frames++;
-        if (g_bridged && GetTickCount64() - g_bridgeCost.since >= 60000)
-        {
-            if (g_bridgeCost.since != 0) BridgeCostReport("the last minute");
-            else g_bridgeCost.since = GetTickCount64();
-        }
-        if (!g_bridged || !GameChannelPending(&g_bridge)) return;
-        uint32_t id, size;
-        uint8_t data[BRIDGE_RING_DATA_SIZE];
-        LARGE_INTEGER start, end;
-        QueryPerformanceCounter(&start);
-        while (GameChannelReadCallback(&g_bridge, &id, data, sizeof data, &size))
-        {
-            g_bridgeCost.callbacks++;
-#ifdef HELLFORGE_BRIDGE_BUILD
-            BridgeDispatch(id, data, size);
-#endif
-        }
-        QueryPerformanceCounter(&end);
-        uint64_t ticks = (uint64_t)(end.QuadPart - start.QuadPart);
-        g_bridgeCost.callbackFrames++;
-        g_bridgeCost.ticks += ticks;
-        if (ticks > g_bridgeCost.maxTicks) g_bridgeCost.maxTicks = ticks;
-        return;
-    }
+    if (g_bridgeRequested) { BridgeRunCallbacks(); return; }
     VoidFn forward = REAL(VoidFn, "SteamAPI_RunCallbacks");
     if (forward) forward();
 }
@@ -464,9 +467,9 @@ HELLFORGE_API int __cdecl SteamAPI_IsSteamRunning(void)
     if (g_bridgeRequested)
     {
         uint8_t running = 0;
-        uint32_t size = 0, status = BRIDGE_STATUS_UNKNOWN;
-        if (!g_bridged || !GameChannelCall(&g_bridge, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &running, 1, &size, &status) ||
-            status != BRIDGE_STATUS_OK || size != 1)
+        GameChannelReply reply = { &running, 1, 0, BRIDGE_STATUS_UNKNOWN };
+        if (!g_bridged || !GameChannelCall(&g_bridge, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &reply) ||
+            reply.status != BRIDGE_STATUS_OK || reply.size != 1)
             return 0;
         return running;
     }

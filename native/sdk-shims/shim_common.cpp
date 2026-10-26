@@ -33,6 +33,13 @@ void OpenLog()
         OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
+// A policy entry's value: 1 for "ok", 2 for "fail", 0 for anything else.
+uint8_t PolicyValue(const char* value)
+{
+    if (strcmp(value, "ok") == 0) return 1;
+    return strcmp(value, "fail") == 0 ? 2 : 0;
+}
+
 void ReadPolicy()
 {
     char text[4096];
@@ -44,7 +51,7 @@ void ReadPolicy()
         char* equals = strchr(entry, '=');
         if (equals == nullptr) continue;
         *equals = '\0';
-        uint8_t value = strcmp(equals + 1, "ok") == 0 ? 1 : strcmp(equals + 1, "fail") == 0 ? 2 : 0;
+        uint8_t value = PolicyValue(equals + 1);
         for (uint32_t i = 0; i < g_functionCount && i < MaximumFunctions; i++)
             if (value != 0 && strcmp(g_functions[i].name, entry) == 0) policy[i] = value;
     }

@@ -509,14 +509,7 @@ public partial class MainWindow
     {
         var details = new StackPanel { Spacing = 8, Margin = new(12, 10, 0, 2) };
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
-        var changes = new List<string>();
-        foreach (var type in mod.NetworkFieldTypes) changes.Add($"network field {type.Name}: {type.ExpectBits} -> {type.Bits} bits");
-        foreach (var write in mod.ComponentWrites)
-            foreach (var field in write.Fields) changes.Add($"{write.Component} {field.Name}: {field.Expect} -> {field.Value}");
-        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} stats change{(mod.Stats.Count == 1 ? "" : "s")}");
-        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} game data file{(mod.DataFiles.Count == 1 ? "" : "s")}");
-        if (mod.HasDataSpec) changes.Add("game data built from your game copy (a data spec)");
-        if (mod.HasCode) changes.Add($"runs code inside the game: {mod.CodeDll} (only enable mods from people you trust)");
+        var changes = ModChanges(mod);
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
         if (build is { } b)
             details.Children.Add(new TextBlock { Text = b.Text, FontSize = 12, Foreground = b.Colour, TextWrapping = TextWrapping.Wrap,
@@ -534,6 +527,20 @@ public partial class MainWindow
         details.Children.Add(new TextBlock { Text = $"{mod.Id}  ·  {mod.Archive ?? Path.GetFileName(mod.Folder)}", FontSize = 11, Classes = { "muted" } });
         if (RemoveConfirmation(mod) is { } confirm) details.Children.Add(confirm);
         return details;
+    }
+
+    // The one-line summaries of what a mod changes: network field types, component writes, stats, data files, a data spec, code.
+    static List<string> ModChanges(ModManifest mod)
+    {
+        var changes = new List<string>();
+        foreach (var type in mod.NetworkFieldTypes) changes.Add($"network field {type.Name}: {type.ExpectBits} -> {type.Bits} bits");
+        foreach (var write in mod.ComponentWrites)
+            foreach (var field in write.Fields) changes.Add($"{write.Component} {field.Name}: {field.Expect} -> {field.Value}");
+        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} stats change{(mod.Stats.Count == 1 ? "" : "s")}");
+        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} game data file{(mod.DataFiles.Count == 1 ? "" : "s")}");
+        if (mod.HasDataSpec) changes.Add("game data built from your game copy (a data spec)");
+        if (mod.HasCode) changes.Add($"runs code inside the game: {mod.CodeDll} (only enable mods from people you trust)");
+        return changes;
     }
 
     // A pack's options: each switched on or off, with its variant (sub-option) where it has some; saved per pack.

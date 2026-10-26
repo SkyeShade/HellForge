@@ -94,7 +94,9 @@ exchange.
 ### The stand-in DLLs
 
 `native/sdk-shims` holds the hand-written parts of the two stand-ins (`lobby_shim.cpp`, `party_shim.cpp`, `link.cpp`,
-`shim_common.cpp`). `src/HellForge.SdkShimGen` generates a logged stub for every other export from Microsoft's public SDK
+`shim_common.cpp`). The hand-written exports stay in `lobby_shim.cpp` and `party_shim.cpp`, which the generator reads;
+their state and backend code are in headers only they include (`lobby_state.h`, `lobby_remote.h`, `party_state.h`,
+`party_network.h`). `src/HellForge.SdkShimGen` generates a logged stub for every other export from Microsoft's public SDK
 headers, and `scripts/Build-Engine.ps1` builds them ([engine.md](engine.md)). Every call is logged to the session folder.
 
 Each stand-in connects to the pipe named in `HELLFORGE_PIPE` and says `hello [lobby|party, pid]`. The backend then owns

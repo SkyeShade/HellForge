@@ -70,6 +70,38 @@ static class NetworkBlockTests
                 "Install-WfpBlock.ps1 takes -BackendPort and records it in the marker.");
         });
 
+        test("Scripts: the ownership probe starts without Start-Process, and a link in the block's path is refused by name", () =>
+        {
+            if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder above the test)"); return; }
+            // Windows PowerShell reads [ ] in Start-Process's -WorkingDirectory and redirect paths as wildcards: an installation
+            // folder with brackets failed every ownership check
+            check(!File.ReadAllLines(Path.Combine(scripts, "Test-SteamOwnership.ps1")).Where(l => !l.TrimStart().StartsWith('#'))
+                    .Any(l => l.Contains("Start-Process", StringComparison.OrdinalIgnoreCase)),
+                "Test-SteamOwnership.ps1 starts the probe through .NET.");
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (link check skipped: Windows only)"); return; }
+            var folder = Directory.CreateDirectory(Path.Combine(root, "[links] test")).FullName;
+            var real = Directory.CreateDirectory(Path.Combine(folder, "real", "game", "bin")).FullName;
+            File.WriteAllText(Path.Combine(real, "helldivers2.exe"), "x");
+            var linked = Path.Combine(folder, "linked");
+            using (var junction = Process.Start(new ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", linked, Path.Combine(folder, "real")]) { UseShellExecute = false, RedirectStandardOutput = true })!)
+                junction.WaitForExit();
+            if (!Directory.Exists(linked)) { Console.WriteLine("  (link check skipped: could not make a junction)"); return; }
+            string NoLinks(string path)
+            {
+                var script = $"$HellForgeInstallRoot='{folder.Replace("'", "''")}'; . '{Path.Combine(scripts, "NetworkBlock.Common.ps1").Replace("'", "''")}'; " +
+                    $"try {{ No-Links '{path.Replace("'", "''")}'; 'none' }} catch {{ $_.Exception.Message }}";
+                using var shell = Process.Start(new ProcessStartInfo("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+                    { UseShellExecute = false, RedirectStandardOutput = true })!;
+                var output = shell.StandardOutput.ReadToEnd().Trim();
+                shell.WaitForExit();
+                return output;
+            }
+            check(NoLinks(Path.Combine(real, "helldivers2.exe")) == "none", "A plain path (brackets in its name included) passes.");
+            var refused = NoLinks(Path.Combine(linked, "game", "bin", "helldivers2.exe"));
+            check(refused.StartsWith("Linked target path: " + linked + " is a link", StringComparison.Ordinal), "A path through a junction is refused, naming the junction: " + refused);
+            Directory.Delete(linked);
+        });
+
         test("Network block probe: with a second loopback port it reports how both connects end", () =>
         {
             if (!OperatingSystem.IsWindows() || Scripts() is not { } scripts) { Console.WriteLine("  (skipped: Windows only)"); return; }
@@ -97,6 +129,29 @@ static class NetworkBlockTests
                 "The report carries both loopback results.");
             Probe("41000", report);
             check(!File.ReadAllText(report).Contains("otherLoopbackTcpError", StringComparison.Ordinal), "Without it the report is as before (the session's probe).");
+        });
+
+        test("Network block probe: a report passes only as the session always required, and a failure says which part failed", () =>
+        {
+            string? Problem(string json, bool narrowed = false) => NetworkBlockProbe.Problem(System.Text.Json.Nodes.JsonNode.Parse(json), narrowed);
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"externalIpv6TcpError":10013}""") == null, "A holding block failed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"externalIpv6TcpError":10051,"loopbackTcpError":0,"otherLoopbackTcpError":10013}""", true) == null,
+                "A holding narrowed block failed (IPv6 is not required).");
+            // the 0.2.0 tickets (0050, 0072, 0087, 0091): the filters no longer applied, the outside connect waited
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":-1,"externalIpv6TcpError":10051}""") is { } waited &&
+                waited.Contains("not stopping the game's connections", StringComparison.Ordinal), "A connect let out passed or was not named.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":0,"externalIpv6TcpError":10051}""") is { } answered && answered.Contains("error 0", StringComparison.Ordinal),
+                "A connect something answered passed.");
+            // ticket 0069: an older HellForge's backend on a random port behind a block narrowed by a newer one
+            check(Problem("""{"loopbackHttpPassed":false,"externalIpv4TcpError":10013,"externalIpv6TcpError":10013}""") is { } own &&
+                own.Contains("stops the game reaching HellForge's own backend", StringComparison.Ordinal), "A refused backend passed or was not named.");
+            check(Problem("""{"loopbackHttpPassed":false,"externalIpv4TcpError":-1}""") is { } unreachable && unreachable.Contains("cannot reach", StringComparison.Ordinal),
+                "An unreachable backend passed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"loopbackTcpError":0,"otherLoopbackTcpError":10061}""", true) is { } wide &&
+                wide.Contains("other programs on this PC", StringComparison.Ordinal), "A narrowed block letting other loopback ports through passed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013}""", true) != null, "A narrowed block's report without the other port passed.");
+            check(NetworkBlockProbe.Problem(null, false) != null && Problem("[]") != null && Problem("""{"loopbackHttpPassed":"yes","externalIpv4TcpError":"10013"}""") != null,
+                "No report, or one of another shape, passed.");
         });
     }
 }

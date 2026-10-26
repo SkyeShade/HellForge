@@ -1,5 +1,5 @@
 {
- "scope": "The galactic war effects that set enemy subfactions (effect type 40: each adds one enemy tag to a planet's missions, which the spawn director's roster rows and squads require). Read from the live server's /WarSeason/GalacticWarEffects in the retained snapshots of 2026-10-14 (HD2Mods research/subfactions); the community mirror has no copy of that endpoint. Without them every planet effect the war names is inert. Each subfaction's planets also carry an effect of type 71 in the frozen war, its \"flag\" here (1306 and 1307 are always together, so which of 1308 and 1309 is whose is a guess; Spore Burst 1244 and Illuminate Invasion 1413 are on no planet, so theirs are unknown): taken to be the war table's subfaction flag, not yet seen in game.",
+ "scope": "The galactic war effects that set enemy subfactions (effect type 40: each adds one enemy tag to a planet's missions, which the spawn director's roster rows and squads require). Read from the live server's /WarSeason/GalacticWarEffects in the retained snapshots of 2026-10-14 (HD2Mods research/subfactions); the community mirror has no copy of that endpoint. Without them every planet effect the war names is inert. Each subfaction's planets also carry an effect of type 71 in the frozen war, its \"flag\" here (1306 and 1307 are always together in the frozen war; 1308 is Hive Lord's and 1309 Dragonroach's, as seen in game in 0.3.0-beta, where the other way round showed each one's flag on the other's planets; Spore Burst 1244 and Illuminate Invasion 1413 are on no planet, so theirs are unknown): the war table's subfaction flag.",
  "subfactions": [
   {
    "id": 1202,
@@ -34,13 +34,13 @@
    "id": 1306,
    "name": "Dragonroach",
    "faction": 2,
-   "flag": 1308
+   "flag": 1309
   },
   {
    "id": 1307,
    "name": "Hive Lord",
    "faction": 2,
-   "flag": 1309
+   "flag": 1308
   },
   {
    "id": 1360,

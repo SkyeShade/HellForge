@@ -73,13 +73,7 @@ public static unsafe class LobbySearchSmoke
                 ["--directory", directory, "--mods", StrangersOn(Path.Combine(root, "host-mods"))], environment));
             processes.Add(LobbyLinkSmoke.StartBackend(backend, Path.Combine(root, "friend"), pipes.Item2, $"udp:{FriendId}:{ports.Item2}:{HostId}={ports.Item1}",
                 ["--directory", directory, "--mods", StrangersOn(Path.Combine(root, "friend-mods"))], environment));
-            foreach (var name in new[] { "host", "friend" })
-            {
-                var ready = Path.Combine(root, name, "ready.json");
-                var clock = Stopwatch.StartNew();
-                while (!File.Exists(ready) && clock.ElapsedMilliseconds < 20000) Thread.Sleep(50);
-                Expect(File.Exists(ready), $"The {name} backend starts");
-            }
+            AwaitBackends(root, ["host", "friend"], Expect);
             if (problems.Count > 0) return problems;
             var host = LobbyLinkSmoke.Load(Path.Combine(standIns, "PlayFabMultiplayerWin.dll"), Path.Combine(root, "lobby-host.dll"), pipes.Item1, "host");
             var friend = LobbyLinkSmoke.Load(Path.Combine(standIns, "PlayFabMultiplayerWin.dll"), Path.Combine(root, "lobby-friend.dll"), pipes.Item2, "friend");
@@ -113,22 +107,9 @@ public static unsafe class LobbySearchSmoke
                 var connectionString = Marshal.PtrToStringUTF8(text) ?? "";
 
                 // The friend's map search finds it once the host's backend lists it (about a second).
-                List<Found> results = [];
-                var clock = Stopwatch.StartNew();
-                while (results.Count == 0 && clock.ElapsedMilliseconds < 15000)
-                {
-                    results = Search(friend.Player, find, &friendKey, Filter);
-                    if (results.Count == 0) Thread.Sleep(500);
-                }
+                var results = FindHostLobby(friend.Player, find, &friendKey);
                 Expect(results.Count == 1, $"The friend's search finds the host's lobby ({results.Count} found)");
-                if (results.Count == 1)
-                {
-                    var found = results[0];
-                    Expect(found.Connection == connectionString && found.LobbyId == connectionString.Split(';')[1] && found.Owner == HostId && found.Max == 4 &&
-                        found.Members == 1 && found.Lock == 0, $"The result names the lobby, its host and its members ({found})");
-                    Expect(found.Properties.GetValueOrDefault("number_key3") == "261" && found.Properties.GetValueOrDefault("string_key1") == "f8c9037f96047f7a" &&
-                        found.Properties.Count == 4, "The result carries the lobby's search properties: " + string.Join(", ", found.Properties.Keys));
-                }
+                CheckSearchResult(results, connectionString, Expect);
                 Expect(Search(friend.Player, find, &friendKey, Filter.Replace("eq 261", "eq 100")).Count == 0, "A search for another planet finds nothing");
                 Records(root, friend.Player, find, &friendKey, connectionString, strangers, Expect);
 
@@ -140,14 +121,7 @@ public static unsafe class LobbySearchSmoke
 
                 // The host leaves: its listing goes and the search finds nothing.
                 Expect(hostLeave(hostLobby, &hostKey, 0x33) == 0 && host.Player.WaitFor("10"), "The host leaves its lobby");
-                clock.Restart();
-                var gone = false;
-                while (!gone && clock.ElapsedMilliseconds < 10000)
-                {
-                    gone = Search(friend.Player, find, &friendKey, Filter).Count == 0;
-                    if (!gone) Thread.Sleep(500);
-                }
-                Expect(gone, "A lobby its host left is no longer found");
+                Expect(WaitGone(friend.Player, find, &friendKey), "A lobby its host left is no longer found");
             }
             return problems;
         }
@@ -213,6 +187,57 @@ public static unsafe class LobbySearchSmoke
         return reader.ReadToEnd();
     }
 
+    // Waits (up to 20 s each) for each named backend's ready.json.
+    static void AwaitBackends(string root, string[] names, Action<bool, string> Expect)
+    {
+        foreach (var name in names)
+        {
+            var ready = Path.Combine(root, name, "ready.json");
+            var clock = Stopwatch.StartNew();
+            while (!File.Exists(ready) && clock.ElapsedMilliseconds < 20000) Thread.Sleep(50);
+            Expect(File.Exists(ready), $"The {name} backend starts");
+        }
+    }
+
+    // The single search result names the lobby, its host and members, and carries its search properties.
+    static void CheckSearchResult(List<Found> results, string connectionString, Action<bool, string> Expect)
+    {
+        if (results.Count != 1) return;
+        var found = results[0];
+        Expect(found.Connection == connectionString && found.LobbyId == connectionString.Split(';')[1] && found.Owner == HostId && found.Max == 4 &&
+            found.Members == 1 && found.Lock == 0, $"The result names the lobby, its host and its members ({found})");
+        Expect(found.Properties.GetValueOrDefault("number_key3") == "261" && found.Properties.GetValueOrDefault("string_key1") == "f8c9037f96047f7a" &&
+            found.Properties.Count == 4, "The result carries the lobby's search properties: " + string.Join(", ", found.Properties.Keys));
+    }
+
+    // The host's lobby once the directory lists it (about a second), by the friend's map search, or empty after 15 s.
+    static List<Found> FindHostLobby(LobbyLinkSmoke.Player friend, delegate* unmanaged<nint, LobbyLinkSmoke.EntityKey*, SearchConfiguration*, nint, int> find,
+        LobbyLinkSmoke.EntityKey* friendKey)
+    {
+        List<Found> results = [];
+        var clock = Stopwatch.StartNew();
+        while (results.Count == 0 && clock.ElapsedMilliseconds < 15000)
+        {
+            results = Search(friend, find, friendKey, Filter);
+            if (results.Count == 0) Thread.Sleep(500);
+        }
+        return results;
+    }
+
+    // Waits (up to 10 s) until the friend's search no longer finds the host's lobby.
+    static bool WaitGone(LobbyLinkSmoke.Player friend, delegate* unmanaged<nint, LobbyLinkSmoke.EntityKey*, SearchConfiguration*, nint, int> find,
+        LobbyLinkSmoke.EntityKey* friendKey)
+    {
+        var clock = Stopwatch.StartNew();
+        var gone = false;
+        while (!gone && clock.ElapsedMilliseconds < 10000)
+        {
+            gone = Search(friend, find, friendKey, Filter).Count == 0;
+            if (!gone) Thread.Sleep(500);
+        }
+        return gone;
+    }
+
     // One search through the stand-in: its FindLobbiesCompleted's results, read before the batch is finished.
     static List<Found> Search(LobbyLinkSmoke.Player player, delegate* unmanaged<nint, LobbyLinkSmoke.EntityKey*, SearchConfiguration*, nint, int> find,
         LobbyLinkSmoke.EntityKey* searcher, string filter)
@@ -237,21 +262,27 @@ public static unsafe class LobbySearchSmoke
                 var change = (FindCompleted*)((nint*)changes)[i];
                 if (change->Type != FindLobbiesCompleted || change->Context != context) continue;
                 done = true;
-                for (var r = 0; change->Result == 0 && r < change->ResultCount; r++)
-                {
-                    var result = change->Results[r];
-                    var properties = new Dictionary<string, string>(StringComparer.Ordinal);
-                    for (var p = 0; p < result.PropertyCount; p++)
-                        properties[Marshal.PtrToStringUTF8((nint)result.Keys[p]) ?? ""] = Marshal.PtrToStringUTF8((nint)result.Values[p]) ?? "";
-                    results.Add(new Found(Marshal.PtrToStringUTF8((nint)result.LobbyId) ?? "", Marshal.PtrToStringUTF8((nint)result.Connection) ?? "",
-                        result.Owner != null ? Marshal.PtrToStringUTF8((nint)result.Owner->Id) ?? "" : "", result.MaxMembers, result.Members, result.Lock, properties));
-                }
+                CollectResults(change, results);
             }
             player.Finish(player.Handle, changeCount, changes);
             if (done) return results;
             Thread.Sleep(10);
         }
         return results;
+    }
+
+    // A completed search's results (each lobby's id, connection, owner, counts and search properties) into results.
+    static void CollectResults(FindCompleted* change, List<Found> results)
+    {
+        for (var r = 0; change->Result == 0 && r < change->ResultCount; r++)
+        {
+            var result = change->Results[r];
+            var properties = new Dictionary<string, string>(StringComparer.Ordinal);
+            for (var p = 0; p < result.PropertyCount; p++)
+                properties[Marshal.PtrToStringUTF8((nint)result.Keys[p]) ?? ""] = Marshal.PtrToStringUTF8((nint)result.Values[p]) ?? "";
+            results.Add(new Found(Marshal.PtrToStringUTF8((nint)result.LobbyId) ?? "", Marshal.PtrToStringUTF8((nint)result.Connection) ?? "",
+                result.Owner != null ? Marshal.PtrToStringUTF8((nint)result.Owner->Id) ?? "" : "", result.MaxMembers, result.Members, result.Lock, properties));
+        }
     }
 
     static int Report(List<string> problems, string root)

@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "buildId": "25480438",
+  "languages": [
+    {
+      "name": "japanese",
+      "dlcAppId": 2506270,
+      "manifestId": "3382210389809902281",
+      "files": [
+        {
+          "path": "data/2b6904ecb991fcf1",
+          "size": 165464,
+          "sha1": "80A71A21C408488B0E2B5D93C3AEBB37B603F277",
+          "depot": 2506270
+        },
+        {
+          "path": "data/2b6904ecb991fcf1.stream",
+          "size": 9695792,
+          "sha1": "3F3A2C53A69DD261D1D70754700202C2A7FCEBE2",
+          "depot": 2506270
+        },
+        {
+          "path": "data/33632bc69833746b",
+          "size": 98,
+          "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/36e6e5a719018781",
+          "size": 98,
+          "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/395e439fc282bc37",
+          "size": 165846,
+          "sha1": "15FDA38BE2FE96A0E54BCC1DFDE7FC549849E33D",
+          "depot": 2506270
+        },
+        {
+          "path": "data/395e439fc282bc37.stream",
+          "size": 9567938,
+          "sha1": "A42D2B1D61252CF68BBBC822F8C30F8A12130CC0",
+          "depot": 2506270
+        },
+        {
+          "path": "data/432afdb12428b80e",
+          "size": 165967,
+          "sha1": "8FB7294A9376A51A3F677DE3A2324942C346FC69",
+          "depot": 2506270
+        },
+        {
+          "path": "data/432afdb12428b80e.stream",
+          "size": 9534162,
+          "sha1": "C4708789605033751DEE0A1B3201407F94EAF3F8",
+          "depot": 2506270
+        },
+        {
+          "path": "data/4b8f9a84127fb95b",
+          "size": 270415,
+          "sha1": "8EA8F5C2CC70C0CD8C6B9E56D5C659637D12C8FA",
+          "depot": 2506270
+        },
+        {
+          "path": "data/4b8f9a84127fb95b.stream",
+          "size": 25519558,
+          "sha1": "28A97C9A15BD01A7DE980CF94C15A32A2DBDB2CE",
+          "depot": 2506270
+        },
+        {
+          "path": "data/704a293cda09b9e3",
+          "size": 98,
+          "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/71ef8d93bd802871",
+          "size": 16149,
+          "sha1": "5C18A1FF1CDFD8716D04AA6E1EB9FB9A8EBD816C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/71ef8d93bd802871.stream",
+          "size": 69460670,
+          "sha1": "49463E6336780BE55A37B6A890152CE640BCA157",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8032cfd34661b7e4",
+          "size": 149372,
+          "sha1": "60560A88679AE966CBC91BB5DC49AB2BFE945977",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8032cfd34661b7e4.stream",
+          "size": 20318925,
+          "sha1": "DFB4892E7D6CC951AF8AC4AC493E19B0158C6B4E",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8a98c9c339e9fa88",
+          "size": 270415,
+          "sha1": "8EA8F5C2CC70C0CD8C6B9E56D5C659637D12C8FA",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8a98c9c339e9fa88.stream",
+          "size": 25519558,
+          "sha1": "28A97C9A15BD01A7DE980CF94C15A32A2DBDB2CE",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8eb3ba8c8c27aa86",
+          "size": 17752,
+          "sha1": "172F31EEA8DE5C75D012C056EE2C93C16EE332BF",
+          "depot": 2506270
+        },
+        {
+          "path": "data/8eb3ba8c8c27aa86.stream",
+          "size": 4051861,
+          "sha1": "C63D39458565D34514C79AAF3CEF73040FCE8B4C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/cd606908b03291f4",
+          "size": 165352,
+          "sha1": "F11CB1977BAFD414C569893A25694E0E1A25DCDD",
+          "depot": 2506270
+        },
+        {
+          "path": "data/cd606908b03291f4.stream",
+          "size": 10715032,
+          "sha1": "4769B088983FC69F7A9FDE9244DF618E0C86AAB5",
+          "depot": 2506270
+        },
+        {
+          "path": "data/efdab187762db020",
+          "size": 662379,
+          "sha1": "47BFBE50043AF5E72F8602516E32C26A8E7B739F",
+          "depot": 2506270
+        },
+        {
+          "path": "data/efdab187762db020.stream",
+          "size": 64693686,
+          "sha1": "39320952CAF7DAEFCD4815EE67E7EE6492F6B639",
+          "depot": 2506270
+        },
+        {
+          "path": "data/f628c65c70559e26",
+          "size": 98,
+          "sha1": "34B80DDAE857DC1B18E9BF2523CE0D118BB9CE9C",
+          "depot": 2506270
+        },
+        {
+          "path": "data/f684a08f07d67b9d",
+          "size": 243153,
+          "sha1": "4705C1C790441EE8339570967D555310D8F3C5FE",
+          "depot": 2506270
+        },
+        {
+          "path": "data/f684a08f07d67b9d.stream",
+          "size": 59672997,
+          "sha1": "474AD8D504A81C00D34BEF29867DEF304BE95DFB",
+          "depot": 2506270
+        }
+      ]
+    }
+  ]
+}

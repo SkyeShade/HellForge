@@ -148,6 +148,48 @@ uint64_t Post(uint32_t event)
     }
     return playing;
 }
+
+/* Down again when the editor closes, unless a game menu had it up already. */
+void LowerMenuEffect()
+{
+    g_editorOpen = false;
+    uintptr_t object;
+    float level;
+    if (g_weRaised && MenuLevel(&object, &level))
+    {
+        float none = 0;
+        MenuRate(object, 0);
+        g_api->write(object + MENU_LEVEL, &none, sizeof none); /* no menu open: as the game has it then */
+        SetMenuEffect(0);
+    }
+    g_weRaised = false;
+}
+
+/* A sound of this kind, unless one played less than 40 ms ago (then it is skipped). */
+void PlayKind(Kind kind, ULONGLONG now)
+{
+    if (now - g_last[kind] < 40) { InterlockedIncrement(&g_skipped); return; }
+    g_last[kind] = now;
+    if (g_editorOpen) RaiseMenuEffect(false);
+    if (Post(g_events[kind]) == 0 && g_fallbacks[kind] != 0 && Post(g_fallbacks[kind]) != 0 && !g_fellBack)
+    {
+        g_fellBack = true;
+        g_api->log(g_mod, "sound: the loadout screen's sounds are not loaded here (a mission); the generic ones play instead");
+    }
+}
+
+/* The menu effect switch (game.dll +0x1328070), when it is the reviewed one: where the game keeps the effect's object. */
+void FindMenuEffect(const HfApi* api, HfMod* mod, uintptr_t base, size_t size)
+{
+    unsigned char menu[sizeof MENU_REVIEWED];
+    if (size >= MENU_SWITCH + sizeof menu && !api->read(base + MENU_SWITCH, menu, sizeof menu) && !memcmp(menu, MENU_REVIEWED, sizeof menu))
+    {
+        int32_t disp;
+        memcpy(&disp, menu + 3, 4);
+        g_menuGlobal = base + MENU_SWITCH + 7 + (intptr_t)disp;
+    }
+    else api->log(mod, "editor: the game's menu effect switch is not the reviewed one; the menu sounds are heard only with a game menu open");
+}
 } // namespace
 
 bool Flush();
@@ -163,6 +205,21 @@ void GameThread(HfMod*, float, void*)
 {
     InterlockedExchange(&g_onGameThread, 1);
     Flush();
+}
+
+/* The game thread to post the sounds on: HellForge's on_game_thread, else the menu sound manager's update hooked here. */
+static void FindGameThread(const HfApi* api, HfMod* mod, uintptr_t base, size_t size)
+{
+    unsigned char update[sizeof UPDATE_START];
+    if (api->size >= offsetof(HfApi, on_game_thread) + sizeof api->on_game_thread && api->on_game_thread != nullptr)
+    {
+        if (api->on_game_thread(mod, GameThread, nullptr)) api->log(mod, "editor: menu sounds are posted on the game thread (on_game_thread)");
+        else api->log(mod, "editor: no game thread callback; menu sounds are posted from the window's thread");
+    }
+    else if (size >= MENU_UPDATE + sizeof update && !api->read(base + MENU_UPDATE, update, sizeof update) && !memcmp(update, UPDATE_START, sizeof update) &&
+        !api->hook(mod, base + MENU_UPDATE, (void*)UpdateDetour, (void**)&g_update))
+        api->log(mod, "editor: menu sounds are posted on the game thread (the menu sound manager's update)");
+    else api->log(mod, "editor: the menu sound manager's update is not the reviewed one; menu sounds are posted from the window's thread");
 }
 
 bool Init(const HfApi* api, HfMod* mod)
@@ -190,24 +247,8 @@ bool Init(const HfApi* api, HfMod* mod)
     memcpy(&contextDisp, code + 0x1B, 4);
     g_apiGlobal = base + FUNCTION + 0x16 + (intptr_t)apiDisp;
     g_contextGlobal = base + FUNCTION + 0x1F + (intptr_t)contextDisp;
-    unsigned char menu[sizeof MENU_REVIEWED];
-    if (size >= MENU_SWITCH + sizeof menu && !api->read(base + MENU_SWITCH, menu, sizeof menu) && !memcmp(menu, MENU_REVIEWED, sizeof menu))
-    {
-        int32_t disp;
-        memcpy(&disp, menu + 3, 4);
-        g_menuGlobal = base + MENU_SWITCH + 7 + (intptr_t)disp;
-    }
-    else api->log(mod, "editor: the game's menu effect switch is not the reviewed one; the menu sounds are heard only with a game menu open");
-    unsigned char update[sizeof UPDATE_START];
-    if (api->size >= offsetof(HfApi, on_game_thread) + sizeof api->on_game_thread && api->on_game_thread != nullptr)
-    {
-        if (api->on_game_thread(mod, GameThread, nullptr)) api->log(mod, "editor: menu sounds are posted on the game thread (on_game_thread)");
-        else api->log(mod, "editor: no game thread callback; menu sounds are posted from the window's thread");
-    }
-    else if (size >= MENU_UPDATE + sizeof update && !api->read(base + MENU_UPDATE, update, sizeof update) && !memcmp(update, UPDATE_START, sizeof update) &&
-        !api->hook(mod, base + MENU_UPDATE, (void*)UpdateDetour, (void**)&g_update))
-        api->log(mod, "editor: menu sounds are posted on the game thread (the menu sound manager's update)");
-    else api->log(mod, "editor: the menu sound manager's update is not the reviewed one; menu sounds are posted from the window's thread");
+    FindMenuEffect(api, mod, base, size);
+    FindGameThread(api, mod, base, size);
     g_events[CLICK] = EventId("ui_generic_select");
     g_events[OPEN] = 1010367601u;  /* a loadout slot selected */
     g_events[BACK] = 230369812u;   /* the picker closing */
@@ -242,20 +283,7 @@ bool Flush()
 {
     LONG menu = InterlockedExchange(&g_menuWanted, 0);
     if (menu == 1) { g_editorOpen = true; RaiseMenuEffect(true); }
-    if (menu == 2)
-    {
-        g_editorOpen = false;
-        uintptr_t object;
-        float level;
-        if (g_weRaised && MenuLevel(&object, &level))
-        {
-            float none = 0;
-            MenuRate(object, 0);
-            g_api->write(object + MENU_LEVEL, &none, sizeof none); /* no menu open: as the game has it then */
-            SetMenuEffect(0);
-        }
-        g_weRaised = false;
-    }
+    if (menu == 2) LowerMenuEffect();
     LONG requested = InterlockedExchange(&g_requested, 0);
     if (requested == 0 || g_apiGlobal == 0) return requested != 0;
     ULONGLONG now = GetTickCount64();
@@ -264,17 +292,7 @@ bool Flush()
     for (Kind kind : ORDER)
         if (requested & (1 << kind))
         {
-            if (now - g_last[kind] >= 40)
-            {
-                g_last[kind] = now;
-                if (g_editorOpen) RaiseMenuEffect(false);
-                if (Post(g_events[kind]) == 0 && g_fallbacks[kind] != 0 && Post(g_fallbacks[kind]) != 0 && !g_fellBack)
-                {
-                    g_fellBack = true;
-                    g_api->log(g_mod, "sound: the loadout screen's sounds are not loaded here (a mission); the generic ones play instead");
-                }
-            }
-            else InterlockedIncrement(&g_skipped);
+            PlayKind(kind, now);
             break;
         }
     return true;

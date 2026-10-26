@@ -15,10 +15,16 @@ and [ask](#where-to-ask).
 
 ### Steam must be running and signed in
 
-HellForge keeps the game's Steam ownership check. It runs at setup and before every launch, so Steam must be running and
-signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. When it fails, setup says "The
+HellForge keeps the game's Steam ownership check. It runs at setup, and before a launch unless a check passed within the
+last 7 days for the same installation, the same Steam account (the one signed in now) and the same game build; another
+account, Steam signed out, a new game build or an older check runs it again. Either way Steam must be running and signed
+in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. When it fails, setup says "The
 ownership check did not pass: ... Make sure Steam is running and signed in, then start setup again", and a session fails
-with "Steam ownership was not confirmed: ..." followed by the reason.
+with "Steam ownership was not confirmed: ..." followed by the reason. A failed check is never reused.
+
+The last passed check is kept in the installation's `temp\steam-ownership.json`, sealed for your Windows account.
+Deleting it, `HellForge.Cli play --full-ownership-check yes` or Settings > Installation's check and repair makes
+HellForge ask Steam again.
 
 Start Steam, sign in to the account that owns the game, and try again. The launcher's idle line is a reminder: "Ready.
 Steam must be running and signed in."
@@ -197,9 +203,28 @@ Installation > Check and repair. For the security codes, see
 
 ### Other network block messages
 
-"Required loopback/egress controls failed." means the session's check of the network block did not pass: the local
-backend must answer on this PC and a connection to the outside must be refused. The session's `network-probe.json`
-records what the check saw; include the logs when you ask.
+"The network block is not holding" means the session's check of the network block did not pass: the local backend must
+answer on this PC, and a connection to the outside must be refused by the block. (Before 0.3.0 the message was
+"Required loopback/egress controls failed.") The message says which part failed:
+
+- **"not stopping the game's connections to the internet"**: the block's filters no longer apply to the game. They name
+  each program by its drive's internal device path, which for a drive other than Windows' own can change after a
+  restart (for example with a USB drive or another disk plugged in), and they stay behind when the HellForge folder is
+  moved. The session places the block again by itself, with one Windows prompt. If it still does not hold, a VPN, a
+  proxy or a security program is letting the game's traffic past it: turn it off or exclude the HellForge folder.
+- **"stops the game reaching HellForge's own backend"**: usually an older HellForge started on an installation a newer
+  one set up. Use the newer HellForge, or run Settings > Installation.
+- **"the game cannot reach HellForge's own backend on this PC"**: another firewall or security program is blocking
+  connections inside this PC (loopback). Allow HellForge's folder in it.
+
+The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
+check saw; include the logs when you ask.
+
+"Network block was not installed: Linked target path: <path> is a link or a special file" means a folder or file on
+the way to the game copy is a link: a junction or symbolic link (a Documents folder moved to another drive is often
+one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
+it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example
+`C:\HellForge`), or undo the link or compression at the path the message names, then run Settings > Installation.
 
 ## Playing with friends
 

@@ -9,7 +9,7 @@ players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK 
 > install the latest release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead. A build of
 > this branch shows `-dev.<n>` in its version.
 
-Status: development build (0.3.0-dev.11), made for modders first, so expect rough edges. The launcher shows its version
+Status: beta (0.3.0-beta), made for modders first, so expect rough edges. The launcher shows its version
 and the game build it targets in its bottom-left corner.
 
 ## What HellForge is and is not
@@ -19,8 +19,9 @@ file against Steam's hashes. This repository and HellForge-Setup.exe contain no 
 than the one HellForge runs, setup downloads a patch made from the differences between the two builds and applies it to
 your own Steam files. Your normal Steam game is never changed.
 
-The Steam ownership check stays. A genuine check runs at setup and before every launch, so Steam must be running and
-signed in to an account that owns the game or has it through Steam Family Sharing.
+The Steam ownership check stays. A genuine check runs at setup, and again before a launch unless one passed within the
+last 7 days for the same installation, Steam account and game build. Steam must be running and signed in to an account
+that owns the game or has it through Steam Family Sharing.
 
 The copy runs locally. It talks to a local backend on your PC in place of Arrowhead's online services, and a network
 block in the Windows Filtering Platform stops the game itself reaching anything but this PC; co-op goes through

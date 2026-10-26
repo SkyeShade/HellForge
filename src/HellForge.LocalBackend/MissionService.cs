@@ -116,13 +116,17 @@ public sealed class MissionService
     {
         if (node.ValueKind == JsonValueKind.Object)
             foreach (var property in node.EnumerateObject())
-            {
-                if (property.NameEquals(key)) yield return property.Value;
-                foreach (var nested in FindAll(property.Value, key)) yield return nested;
-            }
+                foreach (var found in FindIn(property, key)) yield return found;
         else if (node.ValueKind == JsonValueKind.Array)
             foreach (var element in node.EnumerateArray())
                 foreach (var nested in FindAll(element, key)) yield return nested;
+    }
+
+    // A property's value when it is the key, then the key's values inside it.
+    static IEnumerable<JsonElement> FindIn(JsonProperty property, string key)
+    {
+        if (property.NameEquals(key)) yield return property.Value;
+        foreach (var nested in FindAll(property.Value, key)) yield return nested;
     }
 
     static long? FindInt(JsonElement body, string key)

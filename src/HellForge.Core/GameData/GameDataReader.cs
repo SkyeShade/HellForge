@@ -95,23 +95,13 @@ public sealed class GameDataReader : IDisposable
         var set = wanted.ToHashSet();
         var found = new Dictionary<ResourceKey, Location>();
         if (set.Count == 0) return found;
-        foreach (var archive in items.Keys.Where(n => n.Length == 16 && !n.Contains('.')).Order(StringComparer.Ordinal))
+        foreach (var (archive, table, at) in TableEntries())
         {
-            var head = ItemBytes(archive, 0, 72);
-            if (head.Length < 72 || BinaryPrimitives.ReadUInt32LittleEndian(head) != TableMagic) continue;
-            var start = 72 + 32 * (long)BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4));
-            var count = BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(8));
-            var table = ItemBytes(archive, 0, start + 80 * (long)count);
-            for (var i = 0; i < count && start + 80 * (i + 1) <= table.Length; i++)
-            {
-                var e = table.AsSpan((int)(start + 80 * i), 80);
-                var key = new ResourceKey(BinaryPrimitives.ReadUInt64LittleEndian(e[8..]), BinaryPrimitives.ReadUInt64LittleEndian(e));
-                if (!set.Contains(key) || found.ContainsKey(key)) continue;
-                found[key] = new(archive, BinaryPrimitives.ReadUInt64LittleEndian(e[16..]), BinaryPrimitives.ReadUInt32LittleEndian(e[56..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(e[24..]), BinaryPrimitives.ReadUInt32LittleEndian(e[60..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(e[32..]), BinaryPrimitives.ReadUInt32LittleEndian(e[64..]));
-            }
-            if (found.Count == set.Count) break;
+            var e = table.AsSpan(at, 80);
+            var key = new ResourceKey(BinaryPrimitives.ReadUInt64LittleEndian(e[8..]), BinaryPrimitives.ReadUInt64LittleEndian(e));
+            if (!set.Contains(key) || found.ContainsKey(key)) continue;
+            found[key] = LocationOf(archive, e);
+            if (found.Count == set.Count) break; // before the next archive's table is read
         }
         return found;
     }
@@ -120,6 +110,21 @@ public sealed class GameDataReader : IDisposable
     public Dictionary<ulong, Location> All(ulong type)
     {
         var found = new Dictionary<ulong, Location>();
+        foreach (var (archive, table, at) in TableEntries())
+        {
+            var e = table.AsSpan(at, 80);
+            if (BinaryPrimitives.ReadUInt64LittleEndian(e[8..]) != type) continue;
+            var name = BinaryPrimitives.ReadUInt64LittleEndian(e);
+            if (found.ContainsKey(name)) continue;
+            found[name] = LocationOf(archive, e);
+        }
+        return found;
+    }
+
+    // The resource table entries of the archives, in archive name order: each archive's table (read as its entries are
+    // asked for) and where an 80-byte entry starts in it.
+    IEnumerable<(string Archive, byte[] Table, int Entry)> TableEntries()
+    {
         foreach (var archive in items.Keys.Where(n => n.Length == 16 && !n.Contains('.')).Order(StringComparer.Ordinal))
         {
             var head = ItemBytes(archive, 0, 72);
@@ -128,18 +133,14 @@ public sealed class GameDataReader : IDisposable
             var count = BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(8));
             var table = ItemBytes(archive, 0, start + 80 * (long)count);
             for (var i = 0; i < count && start + 80 * (i + 1) <= table.Length; i++)
-            {
-                var e = table.AsSpan((int)(start + 80 * i), 80);
-                if (BinaryPrimitives.ReadUInt64LittleEndian(e[8..]) != type) continue;
-                var name = BinaryPrimitives.ReadUInt64LittleEndian(e);
-                if (found.ContainsKey(name)) continue;
-                found[name] = new(archive, BinaryPrimitives.ReadUInt64LittleEndian(e[16..]), BinaryPrimitives.ReadUInt32LittleEndian(e[56..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(e[24..]), BinaryPrimitives.ReadUInt32LittleEndian(e[60..]),
-                    BinaryPrimitives.ReadUInt64LittleEndian(e[32..]), BinaryPrimitives.ReadUInt32LittleEndian(e[64..]));
-            }
+                yield return (archive, table, (int)(start + 80 * i));
         }
-        return found;
     }
+
+    static Location LocationOf(string archive, ReadOnlySpan<byte> e) =>
+        new(archive, BinaryPrimitives.ReadUInt64LittleEndian(e[16..]), BinaryPrimitives.ReadUInt32LittleEndian(e[56..]),
+            BinaryPrimitives.ReadUInt64LittleEndian(e[24..]), BinaryPrimitives.ReadUInt32LittleEndian(e[60..]),
+            BinaryPrimitives.ReadUInt64LittleEndian(e[32..]), BinaryPrimitives.ReadUInt32LittleEndian(e[64..]));
 
     // A resource's three parts; a part of size 0, or a companion file the game does not have, reads as empty.
     public ResourceParts Read(Location at) => new(Part(at.Archive, at.MainOffset, at.MainSize),
@@ -166,24 +167,33 @@ public sealed class GameDataReader : IDisposable
             var entry = item.Entries[i];
             var end = i + 1 < item.Entries.Length ? item.Entries[i + 1].ArchiveOffset : (long)item.Size;
             if (end <= start || entry.ArchiveOffset >= start + length) continue;
-            if (entry.BundleIndex >= bundles.Length) throw new InvalidDataException("bundles.nxa names a bundle it does not list.");
-            var bundle = bundles[entry.BundleIndex];
-            if (!bundle.ByOffset.TryGetValue(entry.BundleOffset, out var chunk)) throw new InvalidDataException("A bundle chunk is missing.");
-            for (long at = entry.ArchiveOffset; at < end && at < start + length; chunk++)
-            {
-                if (chunk >= bundle.Chunks.Length) throw new InvalidDataException($"{name} ends early.");
-                var next = at + bundle.Chunks[chunk].UncompressedSize;
-                if (next > start)
-                {
-                    var data = ChunkBytes(entry.BundleIndex, chunk);
-                    long lo = Math.Max(at, start), hi = Math.Min(next, start + length);
-                    data.AsSpan((int)(lo - at), (int)(hi - lo)).CopyTo(output.AsSpan((int)(lo - start)));
-                    filled += hi - lo;
-                }
-                at = next;
-            }
+            filled += CopyEntry(name, entry, end, start, output);
         }
         return filled == length ? output : output[..(int)filled];
+    }
+
+    // What one index entry (its archive bytes up to end) holds of [start, start + output.Length), from its bundle's
+    // chunks into output: how many bytes.
+    long CopyEntry(string name, Entry entry, long end, long start, byte[] output)
+    {
+        if (entry.BundleIndex >= bundles.Length) throw new InvalidDataException("bundles.nxa names a bundle it does not list.");
+        var bundle = bundles[entry.BundleIndex];
+        if (!bundle.ByOffset.TryGetValue(entry.BundleOffset, out var chunk)) throw new InvalidDataException("A bundle chunk is missing.");
+        long filled = 0;
+        for (long at = entry.ArchiveOffset; at < end && at < start + output.Length; chunk++)
+        {
+            if (chunk >= bundle.Chunks.Length) throw new InvalidDataException($"{name} ends early.");
+            var next = at + bundle.Chunks[chunk].UncompressedSize;
+            if (next > start)
+            {
+                var data = ChunkBytes(entry.BundleIndex, chunk);
+                long lo = Math.Max(at, start), hi = Math.Min(next, start + output.Length);
+                data.AsSpan((int)(lo - at), (int)(hi - lo)).CopyTo(output.AsSpan((int)(lo - start)));
+                filled += hi - lo;
+            }
+            at = next;
+        }
+        return filled;
     }
 
     byte[] ChunkBytes(int bundle, int chunk)
@@ -258,7 +268,7 @@ public static class Lz4
         {
             var token = src[s++];
             var literals = token >> 4;
-            if (literals == 15) { byte b; do { b = src[s++]; literals += b; } while (b == 255); }
+            if (literals == 15) literals = Extended(src, ref s, literals);
             if (d + literals > size || s + literals > src.Length) throw new InvalidDataException("Corrupt LZ4 block.");
             src.Slice(s, literals).CopyTo(dst.AsSpan(d));
             s += literals;
@@ -267,10 +277,25 @@ public static class Lz4
             var offset = src[s] | src[s + 1] << 8;
             s += 2;
             var match = (token & 15) + 4;
-            if ((token & 15) == 15) { byte b; do { b = src[s++]; match += b; } while (b == 255); }
+            if ((token & 15) == 15) match = Extended(src, ref s, match);
             if (offset == 0 || offset > d || d + match > size) throw new InvalidDataException("Corrupt LZ4 block.");
-            for (var i = 0; i < match; i++, d++) dst[d] = dst[d - offset];
+            CopyMatch(dst, d, offset, match);
+            d += match;
         }
         return d == size ? dst : throw new InvalidDataException("LZ4 block size mismatch.");
+    }
+
+    // A match: byte by byte from offset back, so a match longer than its offset repeats the bytes it has just written.
+    static void CopyMatch(byte[] dst, int d, int offset, int match)
+    {
+        for (var i = 0; i < match; i++) dst[d + i] = dst[d + i - offset];
+    }
+
+    // A length nibble of 15 goes on in the bytes after it: each adds to the length, up to one that is not 255.
+    static int Extended(ReadOnlySpan<byte> src, ref int s, int length)
+    {
+        byte b;
+        do { b = src[s++]; length += b; } while (b == 255);
+        return length;
     }
 }

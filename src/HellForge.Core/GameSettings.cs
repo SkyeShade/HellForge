@@ -63,24 +63,28 @@ public static partial class GameSettings
         var files = build.Files.Select(file => file.Path).ToList();
         if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files);
 
-        var seeded = false;
-        if (!Directory.Exists(profileData))
-        {
-            Directory.CreateDirectory(Path.Combine(profileData, "saves"));
-            if (vanillaUserData != null && Directory.Exists(vanillaUserData))
-            {
-                var userSettings = Path.Combine(vanillaUserData, "user_settings.config");
-                if (File.Exists(userSettings)) File.Copy(userSettings, Path.Combine(profileData, "user_settings.config"));
-                var saves = Path.Combine(vanillaUserData, "saves");
-                if (Directory.Exists(saves))
-                    foreach (var file in Directory.EnumerateFiles(saves, "*_user_settings.config"))
-                        File.Copy(file, Path.Combine(profileData, "saves", Path.GetFileName(file)));
-            }
-            seeded = true;
-        }
+        var seeded = SeedProfile(profileData, vanillaUserData);
         var original = Utf8.GetString(File.ReadAllBytes(install.OriginalSettings));
         File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, root, profile)));
         return new(build.BuildId, problems, profileData, seeded, files);
+    }
+
+    // A new profile's user data: its saves folder, with the normal game's settings when there are any. True when the
+    // profile had none yet.
+    static bool SeedProfile(string profileData, string? vanillaUserData)
+    {
+        if (Directory.Exists(profileData)) return false;
+        Directory.CreateDirectory(Path.Combine(profileData, "saves"));
+        if (vanillaUserData != null && Directory.Exists(vanillaUserData))
+        {
+            var userSettings = Path.Combine(vanillaUserData, "user_settings.config");
+            if (File.Exists(userSettings)) File.Copy(userSettings, Path.Combine(profileData, "user_settings.config"));
+            var saves = Path.Combine(vanillaUserData, "saves");
+            if (Directory.Exists(saves))
+                foreach (var file in Directory.EnumerateFiles(saves, "*_user_settings.config"))
+                    File.Copy(file, Path.Combine(profileData, "saves", Path.GetFileName(file)));
+        }
+        return true;
     }
 
     // The normal game's user data (%APPDATA%/Arrowhead/Helldivers2), where HELLDIVERS 2 keeps its options.
@@ -129,19 +133,26 @@ public static partial class GameSettings
         foreach (var (from, to, name) in pairs)
         {
             if (from.Length == 0 || !File.Exists(from)) { missing.Add(name); continue; }
-            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-            if (File.Exists(to)) File.Copy(to, to + BackupSuffix, overwrite: true);
-            else
-            {
-                if (File.Exists(to + BackupSuffix)) File.Delete(to + BackupSuffix);
-                created.Add(Path.GetRelativePath(profileData, to));
-            }
-            File.Copy(from, to + ".partial", overwrite: true);
-            File.Move(to + ".partial", to, overwrite: true);
+            ImportFile(from, to, profileData, created);
             copied.Add(name);
         }
         if (copied.Count > 0) File.WriteAllLines(Path.Combine(profileData, ImportList), created);
         return new(copied, missing);
+    }
+
+    // One file into the profile, the profile's own copy kept beside it (*.before-import); created: the files the import
+    // made where the profile had none.
+    static void ImportFile(string from, string to, string profileData, List<string> created)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+        if (File.Exists(to)) File.Copy(to, to + BackupSuffix, overwrite: true);
+        else
+        {
+            if (File.Exists(to + BackupSuffix)) File.Delete(to + BackupSuffix);
+            created.Add(Path.GetRelativePath(profileData, to));
+        }
+        File.Copy(from, to + ".partial", overwrite: true);
+        File.Move(to + ".partial", to, overwrite: true);
     }
 
     // Whether the profile has an import UndoImport can take back.

@@ -21,6 +21,13 @@ public static class UnitMesh
     sealed record Stream(int At, IReadOnlyList<Item> Items, uint Vertices, uint Stride, uint Indices, uint IndexType, uint VbOffset, uint VbSize, uint IbOffset, uint IbSize);
     sealed record Group(uint Material, uint VertexOffset, uint Vertices, uint IndexOffset, uint IndexCount, uint Id);
     sealed record UnitMeshRecord(int At, uint Type, uint AabbJoint, uint Joint, int Stream, IReadOnlyList<Group> Groups, int GroupsAt);
+    // The copied unit as Replace rewrites it: its main part (written in place), its GPU part, its meshes and the ones that
+    // get the mod's geometry.
+    sealed record Model(byte[] Main, byte[] Gpu, List<UnitMeshRecord> Meshes, HashSet<int> Replaced);
+    // The mod's geometry as each replaced mesh gets it: with its tangents, its box and its radius.
+    sealed record Geometry(Mesh Mesh, List<(double[] T, int Sign)> Tangents, double[] Lo, double[] Hi, double Radius);
+    // A mesh's vertices and its groups' index lists, as they go into the rewritten stream.
+    sealed record Block(int Mesh, byte[] Vertices, int Count, List<List<uint>> Lists);
 
     static uint U32(byte[] b, int at) => BitConverter.ToUInt32(b, at);
     static int I32(byte[] b, int at) => BitConverter.ToInt32(b, at);
@@ -46,6 +53,17 @@ public static class UnitMesh
         var end = streams.Max(s => (long)s.IbOffset + s.IbSize);
         if ((end + 15) / 16 * 16 < gpu.Length) throw new InvalidDataException("the model has GPU data after its vertex streams; HellForge cannot replace it yet.");
 
+        var model = new Model(main, gpu, meshes, Replaced(meshes, joints));
+        var geometry = Shape(mesh);
+        var output = new MemoryStream();
+        for (var si = 0; si < streams.Count; si++) WriteStream(model, streams[si], si, geometry, output);
+        RebuildLodFooters(main, Meshes(main), joints);
+        return (main, output.ToArray());
+    }
+
+    // The render and shadow meshes that get the mod's geometry, each culled by its own joint, which is not rotated or scaled.
+    static HashSet<int> Replaced(List<UnitMeshRecord> meshes, List<(double[] T, bool Plain)> joints)
+    {
         var replace = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Type is RenderMesh or ShadowMesh && meshes[i].Stream >= 0).ToHashSet();
         if (replace.Count == 0) throw new InvalidDataException("the model has no render meshes.");
         foreach (var i in replace)
@@ -53,86 +71,116 @@ public static class UnitMesh
             if (meshes[i].AabbJoint != meshes[i].Joint) throw new InvalidDataException("the model is culled by a body of its own (a c_culling mesh); HellForge cannot replace it yet.");
             if (!joints[(int)meshes[i].Joint].Plain) throw new InvalidDataException("a mesh joint of the model is rotated or scaled; HellForge cannot replace it yet.");
         }
+        return replace;
+    }
 
+    static Geometry Shape(Mesh mesh)
+    {
         var tangents = Tangents(mesh);
         double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
         foreach (var p in mesh.Positions) for (var k = 0; k < 3; k++) { lo[k] = Math.Min(lo[k], p[k]); hi[k] = Math.Max(hi[k], p[k]); }
         var radius = mesh.Positions.Max(p => Math.Sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
+        return new(mesh, tangents, lo, hi, radius);
+    }
 
-        var output = new MemoryStream();
-        for (var si = 0; si < streams.Count; si++)
+    // One vertex stream rewritten into output: its meshes' vertices, then their indices (u16, or u32 when a block needs
+    // it), with the stream's and its groups' counts and offsets set in the model's main part.
+    static void WriteStream(Model model, Stream s, int si, Geometry geometry, MemoryStream output)
+    {
+        var main = model.Main;
+        var blocks = StreamBlocks(model, s, si, geometry, ItemOffsets(s));
+        var wide = blocks.Any(b => b.Count > 0xFFFF);
+        Align(output);
+        var vbOffset = (uint)output.Length;
+        var first = new Dictionary<int, uint>();
+        uint vertexCount = 0;
+        foreach (var b in blocks) { first[b.Mesh] = vertexCount; output.Write(b.Vertices); vertexCount += (uint)b.Count; }
+        var vbSize = (uint)output.Length - vbOffset;
+        Align(output);
+        var ibOffset = (uint)output.Length;
+        uint indexCount = 0;
+        foreach (var b in blocks)
         {
-            var s = streams[si];
-            var offsets = new int[s.Items.Count];
-            var size = 0;
-            for (var k = 0; k < s.Items.Count; k++) { offsets[k] = size; size += FormatSize(s.Items[k].Format); }
-            if (size != s.Stride) throw new InvalidDataException($"a vertex stream's items take {size} bytes, not its stride {s.Stride}.");
-            var oldWide = s.IndexType == 1;
-            var own = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Stream == si).OrderBy(i => meshes[i].Groups[0].VertexOffset).ToList();
-            var blocks = new List<(int Mesh, byte[] Vertices, int Count, List<List<uint>> Lists)>();
-            foreach (var i in own)
-            {
-                var m = meshes[i];
-                if (replace.Contains(i))
-                {
-                    var vertices = new byte[mesh.Positions.Count * s.Stride];
-                    for (var v = 0; v < mesh.Positions.Count; v++)
-                        EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, mesh.Positions[v], mesh.Normals[v], tangents[v], mesh.Uvs[v]);
-                    var lists = new List<List<uint>> { mesh.Triangles.Select(t => (uint)t).ToList() };
-                    for (var g = 1; g < m.Groups.Count; g++) lists.Add([0, 0, 0]); // a group left over: one degenerate triangle
-                    blocks.Add((i, vertices, mesh.Positions.Count, lists));
-                }
-                else
-                {
-                    var g0 = m.Groups[0];
-                    var from = (int)(s.VbOffset + g0.VertexOffset * s.Stride);
-                    var lists = m.Groups.Select(g => Enumerable.Range(0, (int)g.IndexCount).Select(q => oldWide
-                        ? U32(gpu, (int)(s.IbOffset + (g.IndexOffset + q) * 4)) : BitConverter.ToUInt16(gpu, (int)(s.IbOffset + (g.IndexOffset + q) * 2))).Select(x => (uint)x).ToList()).ToList();
-                    blocks.Add((i, gpu.AsSpan(from, (int)(g0.Vertices * s.Stride)).ToArray(), (int)g0.Vertices, lists));
-                }
-            }
-            var wide = blocks.Any(b => b.Count > 0xFFFF);
-            Align(output);
-            var vbOffset = (uint)output.Length;
-            var first = new Dictionary<int, uint>();
-            uint vertexCount = 0;
-            foreach (var b in blocks) { first[b.Mesh] = vertexCount; output.Write(b.Vertices); vertexCount += (uint)b.Count; }
-            var vbSize = (uint)output.Length - vbOffset;
-            Align(output);
-            var ibOffset = (uint)output.Length;
-            uint indexCount = 0;
-            foreach (var b in blocks)
-            {
-                var m = meshes[b.Mesh];
-                for (var g = 0; g < m.Groups.Count; g++)
-                {
-                    var list = b.Lists[g];
-                    var at = m.GroupsAt + 24 * g;
-                    Write(main, at + 4, first[b.Mesh]);
-                    Write(main, at + 8, (uint)b.Count);
-                    Write(main, at + 12, indexCount);
-                    Write(main, at + 16, (uint)list.Count);
-                    foreach (var index in list)
-                        if (wide) output.Write(BitConverter.GetBytes(index)); else output.Write(BitConverter.GetBytes((ushort)index));
-                    indexCount += (uint)list.Count;
-                }
-                if (replace.Contains(b.Mesh))
-                {
-                    for (var k = 0; k < 3; k++) { WriteF(main, m.At + 8 + 4 * k, lo[k]); WriteF(main, m.At + 20 + 4 * k, hi[k]); }
-                    WriteF(main, m.At + 0x20, radius);
-                }
-            }
-            var ibSize = (uint)output.Length - ibOffset;
-            Write(main, s.At + 352, vertexCount);
-            Write(main, s.At + 392, indexCount);
-            Write(main, s.At + 396, wide ? 1u : 0u);
-            Write(main, s.At + 416, vbOffset);
-            Write(main, s.At + 420, vbSize);
-            Write(main, s.At + 424, ibOffset);
-            Write(main, s.At + 428, ibSize);
+            var m = model.Meshes[b.Mesh];
+            indexCount = WriteIndices(main, m, b, first[b.Mesh], indexCount, wide, output);
+            if (model.Replaced.Contains(b.Mesh)) WriteBox(main, m.At, geometry);
         }
-        RebuildLodFooters(main, Meshes(main), joints);
-        return (main, output.ToArray());
+        var ibSize = (uint)output.Length - ibOffset;
+        Write(main, s.At + 352, vertexCount);
+        Write(main, s.At + 392, indexCount);
+        Write(main, s.At + 396, wide ? 1u : 0u);
+        Write(main, s.At + 416, vbOffset);
+        Write(main, s.At + 420, vbSize);
+        Write(main, s.At + 424, ibOffset);
+        Write(main, s.At + 428, ibSize);
+    }
+
+    // Where each item of a stream's vertex starts; the items must fill its stride.
+    static int[] ItemOffsets(Stream s)
+    {
+        var offsets = new int[s.Items.Count];
+        var size = 0;
+        for (var k = 0; k < s.Items.Count; k++) { offsets[k] = size; size += FormatSize(s.Items[k].Format); }
+        if (size != s.Stride) throw new InvalidDataException($"a vertex stream's items take {size} bytes, not its stride {s.Stride}.");
+        return offsets;
+    }
+
+    // The stream's meshes in vertex order: a replaced one with the mod's geometry, the others as they are.
+    static List<Block> StreamBlocks(Model model, Stream s, int si, Geometry geometry, int[] offsets)
+    {
+        var meshes = model.Meshes;
+        var own = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Stream == si).OrderBy(i => meshes[i].Groups[0].VertexOffset).ToList();
+        var blocks = new List<Block>();
+        foreach (var i in own)
+            blocks.Add(model.Replaced.Contains(i) ? NewBlock(i, meshes[i], s, geometry, offsets) : OldBlock(i, meshes[i], s, model.Gpu));
+        return blocks;
+    }
+
+    static Block NewBlock(int i, UnitMeshRecord m, Stream s, Geometry geometry, int[] offsets)
+    {
+        var mesh = geometry.Mesh;
+        var vertices = new byte[mesh.Positions.Count * s.Stride];
+        for (var v = 0; v < mesh.Positions.Count; v++)
+            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, mesh.Positions[v], mesh.Normals[v], geometry.Tangents[v], mesh.Uvs[v]);
+        var lists = new List<List<uint>> { mesh.Triangles.Select(t => (uint)t).ToList() };
+        for (var g = 1; g < m.Groups.Count; g++) lists.Add([0, 0, 0]); // a group left over: one degenerate triangle
+        return new(i, vertices, mesh.Positions.Count, lists);
+    }
+
+    static Block OldBlock(int i, UnitMeshRecord m, Stream s, byte[] gpu)
+    {
+        var oldWide = s.IndexType == 1;
+        var g0 = m.Groups[0];
+        var from = (int)(s.VbOffset + g0.VertexOffset * s.Stride);
+        var lists = m.Groups.Select(g => Enumerable.Range(0, (int)g.IndexCount).Select(q => oldWide
+            ? U32(gpu, (int)(s.IbOffset + (g.IndexOffset + q) * 4)) : BitConverter.ToUInt16(gpu, (int)(s.IbOffset + (g.IndexOffset + q) * 2))).Select(x => (uint)x).ToList()).ToList();
+        return new(i, gpu.AsSpan(from, (int)(g0.Vertices * s.Stride)).ToArray(), (int)g0.Vertices, lists);
+    }
+
+    // A block's groups: their vertex and index ranges set in main, their indices into output. Returns the stream's index
+    // count after them.
+    static uint WriteIndices(byte[] main, UnitMeshRecord m, Block b, uint firstVertex, uint indexCount, bool wide, MemoryStream output)
+    {
+        for (var g = 0; g < m.Groups.Count; g++)
+        {
+            var list = b.Lists[g];
+            var at = m.GroupsAt + 24 * g;
+            Write(main, at + 4, firstVertex);
+            Write(main, at + 8, (uint)b.Count);
+            Write(main, at + 12, indexCount);
+            Write(main, at + 16, (uint)list.Count);
+            foreach (var index in list)
+                if (wide) output.Write(BitConverter.GetBytes(index)); else output.Write(BitConverter.GetBytes((ushort)index));
+            indexCount += (uint)list.Count;
+        }
+        return indexCount;
+    }
+
+    // A replaced mesh's box and radius, the mod's geometry's.
+    static void WriteBox(byte[] main, int at, Geometry geometry)
+    {
+        for (var k = 0; k < 3; k++) { WriteF(main, at + 8 + 4 * k, geometry.Lo[k]); WriteF(main, at + 20 + 4 * k, geometry.Hi[k]); }
+        WriteF(main, at + 0x20, geometry.Radius);
     }
 
     static void Align(MemoryStream output) { while (output.Length % 16 != 0) output.WriteByte(0); }
@@ -209,27 +257,8 @@ public static class UnitMesh
         {
             var at = base0 + (int)U32(m, base0 + 4 + 4 * i);
             int footers = (int)U32(m, at + 12), entries = (int)U32(m, at + 16);
-            double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
-            var any = false;
-            for (var e = 0; e < entries; e++)
-            {
-                var entry = at + (int)U32(m, at + 20 + 4 * e);
-                var count = (int)U32(m, entry + 8);
-                for (var q = 0; q < count; q++)
-                {
-                    var index = (int)U32(m, entry + 12 + 4 * q);
-                    if (index >= meshes.Count || meshes[index].Type != RenderMesh) continue;
-                    var me = meshes[index];
-                    var t = joints[(int)me.Joint].T;
-                    for (var k = 0; k < 3; k++)
-                    {
-                        lo[k] = Math.Min(lo[k], F32(m, me.At + 8 + 4 * k) + t[k]);
-                        hi[k] = Math.Max(hi[k], F32(m, me.At + 20 + 4 * k) + t[k]);
-                    }
-                    any = true;
-                }
-            }
-            if (!any) continue;
+            if (LodBox(m, at, entries, meshes, joints) is not { } box) continue;
+            var (lo, hi) = box;
             var half = Math.Sqrt(Enumerable.Range(0, 3).Sum(k => (hi[k] - lo[k]) * (hi[k] - lo[k]))) / 2;
             for (var f = 0; f < footers; f++)
             {
@@ -238,6 +267,33 @@ public static class UnitMesh
                 WriteF(m, footer + 24, half);
             }
         }
+    }
+
+    // The union of the boxes of a LOD group's render meshes (at, with entries mesh lists), each moved by its joint's
+    // translation; null when it lists none.
+    static (double[] Lo, double[] Hi)? LodBox(byte[] m, int at, int entries, List<UnitMeshRecord> meshes, List<(double[] T, bool Plain)> joints)
+    {
+        double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
+        var any = false;
+        for (var e = 0; e < entries; e++)
+        {
+            var entry = at + (int)U32(m, at + 20 + 4 * e);
+            var count = (int)U32(m, entry + 8);
+            for (var q = 0; q < count; q++)
+            {
+                var index = (int)U32(m, entry + 12 + 4 * q);
+                if (index >= meshes.Count || meshes[index].Type != RenderMesh) continue;
+                var me = meshes[index];
+                var t = joints[(int)me.Joint].T;
+                for (var k = 0; k < 3; k++)
+                {
+                    lo[k] = Math.Min(lo[k], F32(m, me.At + 8 + 4 * k) + t[k]);
+                    hi[k] = Math.Max(hi[k], F32(m, me.At + 20 + 4 * k) + t[k]);
+                }
+                any = true;
+            }
+        }
+        return any ? (lo, hi) : null;
     }
 
     static void EncodeVertex(Span<byte> out_, IReadOnlyList<Item> items, int[] offsets, double[] p, double[] n, (double[] T, int Sign) t, double[] uv)
@@ -342,6 +398,24 @@ public static class UnitMesh
         var triangles = new List<int>();
         double[] Axes(double x, double y, double z) => yUp ? [x, -z, y] : [x, y, z];
         static double Number(string s) => double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture);
+        // A face's corners (each distinct position/UV/normal corner one vertex), fanned into triangles.
+        void Face(string[] parts)
+        {
+            var face = new List<int>();
+            foreach (var corner in parts.Skip(1))
+            {
+                var q = corner.Split('/');
+                int Index(int k, int count) => k < q.Length && q[k].Length > 0
+                    ? (int.Parse(q[k], CultureInfo.InvariantCulture) is var i && i < 0 ? count + i : i - 1) : -1;
+                var key = (Index(0, positions.Count), Index(1, uvs.Count), Index(2, normals.Count));
+                if (key.Item1 < 0 || key.Item1 >= positions.Count || key.Item2 >= uvs.Count || key.Item3 >= normals.Count)
+                    throw new InvalidDataException("a face names a vertex the file does not have.");
+                if (!corners.TryGetValue(key, out var index)) { index = order.Count; corners[key] = index; order.Add(key); }
+                face.Add(index);
+            }
+            if (face.Count < 3) throw new InvalidDataException("a face has fewer than 3 corners.");
+            for (var k = 1; k + 1 < face.Count; k++) triangles.AddRange([face[0], face[k], face[k + 1]]);
+        }
         var line = 0;
         foreach (var raw in text.Split('\n'))
         {
@@ -360,24 +434,7 @@ public static class UnitMesh
                     }
                     case "vt": uvs.Add([Number(parts[1]), parts.Length > 2 ? Number(parts[2]) : 0]); break;
                     case "vn": normals.Add(Axes(Number(parts[1]), Number(parts[2]), Number(parts[3]))); break;
-                    case "f":
-                    {
-                        var face = new List<int>();
-                        foreach (var corner in parts.Skip(1))
-                        {
-                            var q = corner.Split('/');
-                            int Index(int k, int count) => k < q.Length && q[k].Length > 0
-                                ? (int.Parse(q[k], CultureInfo.InvariantCulture) is var i && i < 0 ? count + i : i - 1) : -1;
-                            var key = (Index(0, positions.Count), Index(1, uvs.Count), Index(2, normals.Count));
-                            if (key.Item1 < 0 || key.Item1 >= positions.Count || key.Item2 >= uvs.Count || key.Item3 >= normals.Count)
-                                throw new InvalidDataException("a face names a vertex the file does not have.");
-                            if (!corners.TryGetValue(key, out var index)) { index = order.Count; corners[key] = index; order.Add(key); }
-                            face.Add(index);
-                        }
-                        if (face.Count < 3) throw new InvalidDataException("a face has fewer than 3 corners.");
-                        for (var k = 1; k + 1 < face.Count; k++) triangles.AddRange([face[0], face[k], face[k + 1]]);
-                        break;
-                    }
+                    case "f": Face(parts); break;
                 }
             }
             catch (Exception error) when (error is FormatException or IndexOutOfRangeException or OverflowException)
@@ -386,22 +443,32 @@ public static class UnitMesh
             }
             catch (InvalidDataException error) { throw new InvalidDataException($"OBJ line {line}: {error.Message}"); }
         }
+        return Vertices(positions, uvs, normals, order, triangles);
+    }
+
+    // The corners as the mesh's vertices: their positions, UVs (V flipped to the game's) and normals, a corner without a
+    // normal taking its faces'.
+    static Mesh Vertices(List<double[]> positions, List<double[]> uvs, List<double[]> normals, List<(int P, int T, int N)> order, List<int> triangles)
+    {
         var pos = order.Select(c => positions[c.P]).ToList();
         var uv = order.Select(c => c.T >= 0 ? new[] { uvs[c.T][0], 1 - uvs[c.T][1] } : [0.0, 0.0]).ToList();
         var nrm = order.Select(c => c.N >= 0 ? normals[c.N] : null).ToList();
-        if (nrm.Any(n => n == null))
-        {
-            var sum = pos.Select(_ => new double[3]).ToList();
-            for (var f = 0; f + 2 < triangles.Count; f += 3)
-            {
-                int a = triangles[f], b = triangles[f + 1], c = triangles[f + 2];
-                var face = Cross([pos[b][0] - pos[a][0], pos[b][1] - pos[a][1], pos[b][2] - pos[a][2]], [pos[c][0] - pos[a][0], pos[c][1] - pos[a][1], pos[c][2] - pos[a][2]]);
-                foreach (var v in new[] { a, b, c }) for (var k = 0; k < 3; k++) sum[v][k] += face[k];
-            }
-            for (var i = 0; i < nrm.Count; i++) nrm[i] ??= sum[i];
-        }
+        if (nrm.Any(n => n == null)) FaceNormals(pos, nrm, triangles);
         if (triangles.Count == 0) throw new InvalidDataException("the OBJ has no faces.");
         if (pos.Count > 1_000_000) throw new InvalidDataException("the OBJ has over a million vertices.");
         return new(pos, nrm!, uv, triangles);
+    }
+
+    // Each vertex without a normal: the sum of its faces' normals (unnormalized: larger faces weigh more).
+    static void FaceNormals(List<double[]> pos, List<double[]?> nrm, List<int> triangles)
+    {
+        var sum = pos.Select(_ => new double[3]).ToList();
+        for (var f = 0; f + 2 < triangles.Count; f += 3)
+        {
+            int a = triangles[f], b = triangles[f + 1], c = triangles[f + 2];
+            var face = Cross([pos[b][0] - pos[a][0], pos[b][1] - pos[a][1], pos[b][2] - pos[a][2]], [pos[c][0] - pos[a][0], pos[c][1] - pos[a][1], pos[c][2] - pos[a][2]]);
+            foreach (var v in new[] { a, b, c }) for (var k = 0; k < 3; k++) sum[v][k] += face[k];
+        }
+        for (var i = 0; i < nrm.Count; i++) nrm[i] ??= sum[i];
     }
 }

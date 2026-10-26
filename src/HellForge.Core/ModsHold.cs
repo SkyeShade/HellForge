@@ -100,6 +100,15 @@ public sealed class ModsHold : IDisposable
         if (!Directory.Exists(root)) return null;
         var files = new List<string>();
         var touched = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // the top-level folders things appeared in
+        AddNewFolders(files, touched);
+        AddNewFiles(files, touched);
+        if (files.Count == 0) return null;
+        return new(files, SwitchOff(touched, say));
+    }
+
+    // The folders that appeared, but for the synced store's and a Local Stats folder its editor made.
+    void AddNewFolders(List<string> files, HashSet<string> touched)
+    {
         foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
         {
             var full = Path.GetFullPath(dir);
@@ -110,6 +119,11 @@ public sealed class ModsHold : IDisposable
             files.Add(relative + "/");
             touched.Add(TopFolder(relative));
         }
+    }
+
+    // The files that appeared, but for HellForge's own (Writable) and the manifest of a Local Stats folder its editor made.
+    void AddNewFiles(List<string> files, HashSet<string> touched)
+    {
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
             var full = Path.GetFullPath(file);
@@ -120,23 +134,27 @@ public sealed class ModsHold : IDisposable
             files.Add(relative);
             if (relative.Contains('/')) touched.Add(TopFolder(relative));
         }
-        if (files.Count == 0) return null;
+    }
+
+    // The enabled mods in the folders things appeared in, switched off: their ids.
+    List<string> SwitchOff(HashSet<string> touched, Action<string> say)
+    {
         var disabled = new List<string>();
-        if (touched.Count > 0)
-            try
+        if (touched.Count == 0) return disabled;
+        try
+        {
+            var (mods, _) = ModCatalog.Load(root);
+            foreach (var mod in mods.Where(m => m.Enabled && touched.Contains(Path.GetFullPath(m.Folder).TrimEnd('\\', '/'))))
             {
-                var (mods, _) = ModCatalog.Load(root);
-                foreach (var mod in mods.Where(m => m.Enabled && touched.Contains(Path.GetFullPath(m.Folder).TrimEnd('\\', '/'))))
-                {
-                    ModSettings.SetEnabled(root, mod.Id, false);
-                    disabled.Add(mod.Id);
-                }
+                ModSettings.SetEnabled(root, mod.Id, false);
+                disabled.Add(mod.Id);
             }
-            catch (Exception error) when (error is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
-            {
-                say("The mods files appeared in could not be switched off: " + error.Message);
-            }
-        return new(files, disabled);
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
+        {
+            say("The mods files appeared in could not be switched off: " + error.Message);
+        }
+        return disabled;
     }
 
     string TopFolder(string relative) => Path.GetFullPath(Path.Combine(root, relative.Split('/')[0]));

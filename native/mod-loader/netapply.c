@@ -50,38 +50,53 @@ static int NetComponents(uint8_t* map, uint64_t entity, uint64_t out[2])
     return 1;
 }
 
-/* Polled from the watch loop until it returns 1. pinsReady: the grace period for code still being decoded is over. */
-static int InstallNetSwitch(uintptr_t game, int pinsReady)
+/* The switch's bound, base, table load and exit as reviewed. */
+static int NetSwitchPinned(uintptr_t game)
 {
-    if (g_netSwitchState != 0) return 1;
-    if (g_networkTypesAdded != 2) return 0;                         /* RegisterNetworkTypes has not finished */
-    if (g_networkTypeCount == 0) { g_netSwitchState = 1; return 1; } /* nothing added */
     uint8_t bound[sizeof kNetBoundPin], base[sizeof kNetBasePin], load[sizeof kNetLoadPin], exit[sizeof kNetExitPin];
-    if (SafeRead(game + NET_SWITCH_BOUND, bound, sizeof bound) || memcmp(bound, kNetBoundPin, sizeof bound) != 0 ||
+    return !(SafeRead(game + NET_SWITCH_BOUND, bound, sizeof bound) || memcmp(bound, kNetBoundPin, sizeof bound) != 0 ||
         SafeRead(game + NET_SWITCH_BASE, base, sizeof base) || memcmp(base, kNetBasePin, sizeof base) != 0 ||
         SafeRead(game + NET_SWITCH_LOAD, load, sizeof load) || memcmp(load, kNetLoadPin, sizeof load) != 0 ||
-        SafeRead(game + NET_SWITCH_EXIT, exit, sizeof exit) || memcmp(exit, kNetExitPin, sizeof exit) != 0)
-        return pinsReady ? RefuseNetSwitch("its code is not the reviewed one") : 0;
-    if (g_networkVanillaTypes != NET_VANILLA_TYPES) return RefuseNetSwitch("the network configuration does not hold the 1,855 vanilla types");
+        SafeRead(game + NET_SWITCH_EXIT, exit, sizeof exit) || memcmp(exit, kNetExitPin, sizeof exit) != 0);
+}
+
+/* Whether every entry of the vanilla table is one of the switch's cases. */
+static int NetVanillaDecoded(const uint32_t* vanilla)
+{
+    for (uint32_t i = 0; i < NET_VANILLA_TYPES; i++)
+        if (vanilla[i] < NET_CASES_FIRST || vanilla[i] > NET_CASES_LAST) return 0;
+    return 1;
+}
+
+/* Why the switch cannot be extended (NULL: it can), its vanilla table read into `vanilla`. *wait: refused only once the
+ * grace for code still being decoded is over. */
+static const char* NetSwitchRefused(uintptr_t game, uint32_t* vanilla, int* wait)
+{
+    *wait = 1;
+    if (!NetSwitchPinned(game)) return "its code is not the reviewed one";
+    *wait = 0;
+    if (g_networkVanillaTypes != NET_VANILLA_TYPES) return "the network configuration does not hold the 1,855 vanilla types";
     AcquireSRWLockShared(&g_sessionLock);
     uint32_t role = g_session.role;
     ReleaseSRWLockShared(&g_sessionLock);
-    if (role != HF_SESSION_SOLO) return RefuseNetSwitch("a co-op session had already started");
+    if (role != HF_SESSION_SOLO) return "a co-op session had already started";
 
     /* The table is in the code section, ~92 KB past the pinned instructions, and the code is decoded in parts after the
      * game loads: every entry must be one of the switch's cases before it is copied (a still-encoded table copied in
      * would send every received object to garbage). */
-    static uint32_t vanilla[NET_VANILLA_TYPES];
-    if (SafeRead(game + NET_SWITCH_TABLE, vanilla, sizeof vanilla)) return RefuseNetSwitch("the vanilla table cannot be read");
-    for (uint32_t i = 0; i < NET_VANILLA_TYPES; i++)
-        if (vanilla[i] < NET_CASES_FIRST || vanilla[i] > NET_CASES_LAST)
-            return pinsReady ? RefuseNetSwitch("its table is not the reviewed one (or not decoded yet)") : 0;
-    uint32_t* table = (uint32_t*)AllocateNearGame(game, NET_TABLE_SLOTS * 4u);
-    if (table == NULL) return RefuseNetSwitch("no memory within 2 GB of game.dll for the table");
-    memcpy(table, vanilla, sizeof vanilla);
-    for (uint32_t i = NET_VANILLA_TYPES; i < NET_TABLE_SLOTS; i++) table[i] = NET_SWITCH_EXIT;
+    if (SafeRead(game + NET_SWITCH_TABLE, vanilla, NET_VANILLA_TYPES * sizeof vanilla[0])) return "the vanilla table cannot be read";
+    *wait = 1;
+    if (!NetVanillaDecoded(vanilla)) return "its table is not the reviewed one (or not decoded yet)";
+    *wait = 0;
+    return NULL;
+}
+
+/* Each added type's entry: its base's case when it has its base's component list, else the exit (logged). *highest:
+ * the highest type in the table, *mapped how many were mapped; how many keep the exit. */
+static uint32_t NetMapTypes(uint32_t* table, uint32_t* highest, uint32_t* mapped)
+{
     uint8_t* map = StatePointer(EntityState(), REG_MAP);
-    uint32_t highest = NET_VANILLA_TYPES - 1, mapped = 0, kept = 0;
+    uint32_t kept = 0;
     for (uint32_t k = 0; k < g_networkTypeCount; k++)
     {
         const NetworkType* t = &g_networkTypes[k];
@@ -91,7 +106,7 @@ static int InstallNetSwitch(uintptr_t game, int pinsReady)
             kept++;
             continue;
         }
-        if (t->index > highest) highest = t->index;
+        if (t->index > *highest) *highest = t->index;
         uint64_t own[2], copied[2];
         if (!NetComponents(map, t->entity, own) || !NetComponents(map, t->baseEntity, copied) || own[0] != copied[0] || own[1] != copied[1])
         {
@@ -100,20 +115,46 @@ static int InstallNetSwitch(uintptr_t game, int pinsReady)
             continue;
         }
         table[t->index] = table[t->base];
-        mapped++;
+        (*mapped)++;
         Note("network: type %u (%s) -> case game.dll+0x%x (base type %u)", t->index, t->name, table[t->index], t->base);
     }
-    /* The table, then the displacement, then the bound: an index above the old bound is never read before its entry is. */
+    return kept;
+}
+
+/* The table, then the displacement, then the bound: an index above the old bound is never read before its entry is.
+ * NULL when written, else why not (the vanilla table back: nothing half done). */
+static const char* NetSwitchWrite(uintptr_t game, const uint32_t* table, uint32_t newBound)
+{
     int32_t displacement = (int32_t)(int64_t)((uintptr_t)table - game);
-    if ((intptr_t)((uintptr_t)table - game) != displacement) return RefuseNetSwitch("the table is not within 2 GB of game.dll");
-    uint32_t newBound = highest;
-    if (ApiWrite(game + NET_SWITCH_LOAD + 3, &displacement, 4)) return RefuseNetSwitch("the table load could not be written");
+    if ((intptr_t)((uintptr_t)table - game) != displacement) return "the table is not within 2 GB of game.dll";
+    if (ApiWrite(game + NET_SWITCH_LOAD + 3, &displacement, 4)) return "the table load could not be written";
     if (ApiWrite(game + NET_SWITCH_BOUND + 1, &newBound, 4))
     {
         uint32_t vanilla = NET_SWITCH_TABLE;
         ApiWrite(game + NET_SWITCH_LOAD + 3, &vanilla, 4); /* the vanilla table back: nothing half done */
-        return RefuseNetSwitch("the bound could not be written");
+        return "the bound could not be written";
     }
+    return NULL;
+}
+
+/* Polled from the watch loop until it returns 1. pinsReady: the grace period for code still being decoded is over. */
+static int InstallNetSwitch(uintptr_t game, int pinsReady)
+{
+    if (g_netSwitchState != 0) return 1;
+    if (g_networkTypesAdded != 2) return 0;                         /* RegisterNetworkTypes has not finished */
+    if (g_networkTypeCount == 0) { g_netSwitchState = 1; return 1; } /* nothing added */
+    static uint32_t vanilla[NET_VANILLA_TYPES];
+    int wait = 0;
+    const char* why = NetSwitchRefused(game, vanilla, &wait);
+    if (why != NULL) return wait && !pinsReady ? 0 : RefuseNetSwitch(why);
+    uint32_t* table = (uint32_t*)AllocateNearGame(game, NET_TABLE_SLOTS * 4u);
+    if (table == NULL) return RefuseNetSwitch("no memory within 2 GB of game.dll for the table");
+    memcpy(table, vanilla, sizeof vanilla);
+    for (uint32_t i = NET_VANILLA_TYPES; i < NET_TABLE_SLOTS; i++) table[i] = NET_SWITCH_EXIT;
+    uint32_t highest = NET_VANILLA_TYPES - 1, mapped = 0, kept = NetMapTypes(table, &highest, &mapped);
+    uint32_t newBound = highest;
+    why = NetSwitchWrite(game, table, newBound);
+    if (why != NULL) return RefuseNetSwitch(why);
     g_netSwitchTable = table;
     g_netSwitchState = 1;
     Note("network: the apply switch takes %u added type(s) (bound 0x%x -> 0x%x, table at 0x%llx, %s game.dll)%s", mapped,

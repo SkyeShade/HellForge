@@ -61,6 +61,42 @@ static uintptr_t DirectorRoster(uintptr_t game, uint32_t roster, uint64_t* count
     return (uintptr_t)rows;
 }
 
+/* A demolition template's row, its table's every row as reviewed; *ready 0 while the destruction system is not made. */
+static uintptr_t DirectorDemolitionRow(uintptr_t game, uint64_t id, int* ready)
+{
+    uint64_t system = 0, table = 0;
+    if (SafeRead(game + DIR_DESTRUCTION, &system, 8) || system == 0 || SafeRead((uintptr_t)system + 0x30, &table, 8) || table == 0)
+    { *ready = 0; return 0; } /* the destruction system is not made yet */
+    for (uint32_t i = 0; i < DIR_DEMOLITION_ROWS; i++)
+    {
+        uint32_t row[4];
+        if (SafeRead((uintptr_t)table + i * DIR_DEMOLITION_ROW, row, sizeof row) || row[0] != i ||
+            row[2] != kDemolitionTail[i][0] || row[3] != kDemolitionTail[i][1]) return 0;
+    }
+    return id >= 1 && id < DIR_DEMOLITION_ROWS - 1 ? (uintptr_t)table + (uintptr_t)id * DIR_DEMOLITION_ROW : 0;
+}
+
+/* A roster row's weight (rows: the roster's `count` rows): the vanilla one, where level 11 left it, or level 11's. */
+static uintptr_t DirectorWeight(uintptr_t game, const char* kind, uintptr_t rows, uint64_t count, uint32_t row, uint64_t id)
+{
+    int moved = DirectorWeightsMoved(game);
+    if (moved < 0 || row >= count || (id >> 32) != 0) return 0;
+    uintptr_t at = rows + (uintptr_t)row * DIR_ROSTER_ROW;
+    if (!strcmp(kind, "EnemyRoster")) return at + (moved ? 0x2C : 0x30);
+    return moved ? at + 0x54 : 0; /* level 11's weight: only once it was added */
+}
+
+/* A roster's composition: row's family (its bits 12 to 15) and its index in that family. */
+static uintptr_t DirectorComposition(uintptr_t game, uint32_t roster, uint32_t row, uint64_t id)
+{
+    uint32_t family = (row >> 12) & 0xF, index = row & 0xFFF;
+    uint64_t families = 0, base = 0;
+    if (family >= DIR_FAMILIES || (id >> 32) != 0 || SafeRead(game + kRosters[roster].descriptor + 0x20 + 0x10 * family, &base, 8) ||
+        SafeRead(game + kRosters[roster].descriptor + 0x28 + 0x10 * family, &families, 8) || base == 0 || families > 4096 || index >= families)
+        return 0;
+    return (uintptr_t)base + (uintptr_t)index * DIR_COMPOSITION_ROW;
+}
+
 /* The row (the weights, for a roster's kinds) an id names, or 0: *ready 0 while game.dll's data or level 11's move is
  * still to come, else 1 (0 then: no such row, or not as reviewed). */
 static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
@@ -69,41 +105,14 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
     size_t size = 0;
     uintptr_t game = g_directorImage(&size);
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) { *ready = game == 0; return 0; }
-    if (!strcmp(kind, "DemolitionTemplate"))
-    {
-        uint64_t system = 0, table = 0;
-        if (SafeRead(game + DIR_DESTRUCTION, &system, 8) || system == 0 || SafeRead((uintptr_t)system + 0x30, &table, 8) || table == 0)
-        { *ready = 0; return 0; } /* the destruction system is not made yet */
-        for (uint32_t i = 0; i < DIR_DEMOLITION_ROWS; i++)
-        {
-            uint32_t row[4];
-            if (SafeRead((uintptr_t)table + i * DIR_DEMOLITION_ROW, row, sizeof row) || row[0] != i ||
-                row[2] != kDemolitionTail[i][0] || row[3] != kDemolitionTail[i][1]) return 0;
-        }
-        return id >= 1 && id < DIR_DEMOLITION_ROWS - 1 ? (uintptr_t)table + (uintptr_t)id * DIR_DEMOLITION_ROW : 0;
-    }
+    if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRow(game, id, ready);
     if (g_difficultyAdded && g_difficultyState == 0) { *ready = 0; return 0; } /* the weights are about to move */
     uint32_t roster = (uint32_t)(id >> 16), row = (uint32_t)(id & 0xFFFF);
     uint64_t count = 0;
     uintptr_t rows = DirectorRoster(game, roster, &count);
     if (rows == 0) return 0;
-    if (!strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11"))
-    {
-        int moved = DirectorWeightsMoved(game);
-        if (moved < 0 || row >= count || (id >> 32) != 0) return 0;
-        uintptr_t at = rows + (uintptr_t)row * DIR_ROSTER_ROW;
-        if (!strcmp(kind, "EnemyRoster")) return at + (moved ? 0x2C : 0x30);
-        return moved ? at + 0x54 : 0; /* level 11's weight: only once it was added */
-    }
-    if (!strcmp(kind, "EnemyComposition"))
-    {
-        uint32_t family = (row >> 12) & 0xF, index = row & 0xFFF;
-        uint64_t families = 0, base = 0;
-        if (family >= DIR_FAMILIES || (id >> 32) != 0 || SafeRead(game + kRosters[roster].descriptor + 0x20 + 0x10 * family, &base, 8) ||
-            SafeRead(game + kRosters[roster].descriptor + 0x28 + 0x10 * family, &families, 8) || base == 0 || families > 4096 || index >= families)
-            return 0;
-        return (uintptr_t)base + (uintptr_t)index * DIR_COMPOSITION_ROW;
-    }
+    if (!strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11")) return DirectorWeight(game, kind, rows, count, row, id);
+    if (!strcmp(kind, "EnemyComposition")) return DirectorComposition(game, roster, row, id);
     return 0;
 }
 
@@ -111,6 +120,58 @@ static int DirectorKind(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11") || !strcmp(kind, "EnemyComposition") ||
         !strcmp(kind, "DemolitionTemplate");
+}
+
+static const char* DirectorDemolitionRefuses(uint32_t offset, uint32_t bits)
+{
+    return offset != 4 ? "only a demolition template's force is edited" : bits < 1 || bits > 255 ? "a demolition force is 1 to 255" : NULL;
+}
+
+static const char* DirectorWeightRefuses(float value)
+{
+    return !isfinite(value) || value < 0 || value > 10000 ? "a spawn weight is 0 to 10000" : NULL;
+}
+
+/* A group's count (now: the composition as it would be): its group names enemies, and the groups fit the squad queue. */
+static const char* DirectorGroupRefuses(const uint8_t* now, uint32_t offset, uint32_t bits)
+{
+    uint32_t total = 0, key;
+    memcpy(&key, now + offset - 4, 4);
+    if (key == 0 && bits != 0) return "the group names no enemies";
+    for (uint32_t g = 0; g < DIR_GROUPS; g++) { uint32_t c; memcpy(&c, now + g * 12 + 4, 4); total += c; }
+    if (bits > DIR_SQUAD_CAPACITY || total > DIR_SQUAD_CAPACITY) return "a composition's groups may total at most 32 enemies (the squad queue's capacity)";
+    return NULL;
+}
+
+static const char* DirectorFloatRefuses(uint32_t offset, float value)
+{
+    if (!isfinite(value) || value < 0) return "not a finite number of 0 or more";
+    if (offset == 0xE4 && value < 0.01f) return "the cost multiplier is at least 0.01";
+    return NULL;
+}
+
+/* The tech levels and player counts (now: the composition as it would be): in range, the lowest not above the highest. */
+static const char* DirectorRangeRefuses(const uint8_t* now)
+{
+    uint32_t lowTech, highTech, lowPlayers, highPlayers, top = DirectorWeightsMoved(g_directorImage(NULL)) == 1 ? 11 : 10;
+    memcpy(&lowTech, now + 0xEC, 4); memcpy(&highTech, now + 0xF0, 4); memcpy(&lowPlayers, now + 0xF4, 4); memcpy(&highPlayers, now + 0xF8, 4);
+    if (lowTech < 1 || lowTech > top || highTech < 1 || highTech > top)
+        return top == 11 ? "tech levels are 1 to 11" : "tech levels are 1 to 10 (11 with a mod that adds it)";
+    if (lowPlayers < 1 || lowPlayers > 4 || highPlayers < 1 || highPlayers > 4) return "player counts are 1 to 4";
+    if (lowTech > highTech || lowPlayers > highPlayers) return "the lowest may not exceed the highest";
+    return NULL;
+}
+
+/* A composition's field, judged against the row as it would be. */
+static const char* DirectorCompositionRefuses(uintptr_t row, uint32_t offset, const void* bytes, uint32_t bits, float value)
+{
+    uint8_t now[DIR_COMPOSITION_ROW];
+    if (offset > DIR_COMPOSITION_ROW - 4 || SafeRead(row, now, sizeof now)) return "the composition is unreadable";
+    memcpy(now + offset, bytes, 4); /* the row as it would be */
+    if (offset < DIR_GROUPS * 12 && offset % 12 == 4) return DirectorGroupRefuses(now, offset, bits);
+    if ((offset < DIR_GROUPS * 12 && offset % 12 == 8) || (offset >= 0xE0 && offset <= 0xE8)) return DirectorFloatRefuses(offset, value);
+    if (offset >= 0xEC && offset <= 0xF8) return DirectorRangeRefuses(now);
+    return "not a field HellForge edits in a composition";
 }
 
 /* Why a write of `bytes` at row + offset is refused (NULL: allowed), judged against the row as it is now. */
@@ -122,39 +183,9 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
     if (size != 4) return "a director field is 4 bytes";
     memcpy(&bits, bytes, 4);
     memcpy(&value, bytes, 4);
-    if (!strcmp(kind, "DemolitionTemplate"))
-        return offset != 4 ? "only a demolition template's force is edited" : bits < 1 || bits > 255 ? "a demolition force is 1 to 255" : NULL;
-    if (strcmp(kind, "EnemyComposition"))
-        return !isfinite(value) || value < 0 || value > 10000 ? "a spawn weight is 0 to 10000" : NULL;
-    uint8_t now[DIR_COMPOSITION_ROW];
-    if (offset > DIR_COMPOSITION_ROW - 4 || SafeRead(row, now, sizeof now)) return "the composition is unreadable";
-    memcpy(now + offset, bytes, 4); /* the row as it would be */
-    if (offset < DIR_GROUPS * 12 && offset % 12 == 4)
-    {
-        uint32_t total = 0, key;
-        memcpy(&key, now + offset - 4, 4);
-        if (key == 0 && bits != 0) return "the group names no enemies";
-        for (uint32_t g = 0; g < DIR_GROUPS; g++) { uint32_t c; memcpy(&c, now + g * 12 + 4, 4); total += c; }
-        if (bits > DIR_SQUAD_CAPACITY || total > DIR_SQUAD_CAPACITY) return "a composition's groups may total at most 32 enemies (the squad queue's capacity)";
-        return NULL;
-    }
-    if ((offset < DIR_GROUPS * 12 && offset % 12 == 8) || (offset >= 0xE0 && offset <= 0xE8))
-    {
-        if (!isfinite(value) || value < 0) return "not a finite number of 0 or more";
-        if (offset == 0xE4 && value < 0.01f) return "the cost multiplier is at least 0.01";
-        return NULL;
-    }
-    if (offset >= 0xEC && offset <= 0xF8)
-    {
-        uint32_t lowTech, highTech, lowPlayers, highPlayers, top = DirectorWeightsMoved(g_directorImage(NULL)) == 1 ? 11 : 10;
-        memcpy(&lowTech, now + 0xEC, 4); memcpy(&highTech, now + 0xF0, 4); memcpy(&lowPlayers, now + 0xF4, 4); memcpy(&highPlayers, now + 0xF8, 4);
-        if (lowTech < 1 || lowTech > top || highTech < 1 || highTech > top)
-            return top == 11 ? "tech levels are 1 to 11" : "tech levels are 1 to 10 (11 with a mod that adds it)";
-        if (lowPlayers < 1 || lowPlayers > 4 || highPlayers < 1 || highPlayers > 4) return "player counts are 1 to 4";
-        if (lowTech > highTech || lowPlayers > highPlayers) return "the lowest may not exceed the highest";
-        return NULL;
-    }
-    return "not a field HellForge edits in a composition";
+    if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRefuses(offset, bits);
+    if (strcmp(kind, "EnemyComposition")) return DirectorWeightRefuses(value);
+    return DirectorCompositionRefuses(row, offset, bytes, bits, value);
 }
 
 /* A DifficultySettings row while the table is the game's own (no level 11): the copy HD2Runtime edits. */

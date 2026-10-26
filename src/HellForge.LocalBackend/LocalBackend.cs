@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -9,8 +7,30 @@ namespace HellForge.LocalBackend;
 
 public enum LoginMode { LocalSession, RejectGmi }
 
+// What LocalBackend.Create serves. The caller owns a supplied profile. Without one, fixtures use an unsaved default
+// profile. ItemCatalog (development) replaces the embedded catalogue with a JSON file's "items" array; FixtureOverride
+// (development) is a JSON object mapping endpoint paths to replacement bodies.
+public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMode Mode)
+{
+    public bool StartupFixtures { get; init; }
+    public ProfileStore? Profile { get; init; }
+    public string? ItemCatalog { get; init; }
+    public string? FixtureOverride { get; init; }
+    public bool CaptureMissionBodies { get; init; }
+    public WarClock? WarClock { get; init; }
+    public AccountKeys? AccountKeys { get; init; }
+    public LiveWar? LiveWar { get; init; }
+    public FriendPresence? Presence { get; init; }
+    public RegisteredItems? RegisteredItems { get; init; }
+    public bool OpenWar { get; init; }
+    public uint WarSeed { get; init; }
+    // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
+    public bool DealSubfactions { get; init; } = true;
+    public bool DealSeaf { get; init; } = true;
+}
+
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
-public static class LocalBackend
+public static partial class LocalBackend
 {
     public const int MaximumBodyBytes = 1024 * 1024;
 
@@ -80,73 +100,119 @@ public static class LocalBackend
         return fixtures;
     }
 
-    // The caller owns a supplied profile. Without one, fixtures use an unsaved default profile.
-    // itemCatalog (development) replaces the embedded catalogue with a JSON file's "items" array;
-    // fixtureOverride (development) is a JSON object mapping endpoint paths to replacement bodies.
-    public static WebApplication Create(int port, string evidenceDirectory, LoginMode mode, bool startupFixtures = false,
-        ProfileStore? profile = null, string? itemCatalog = null, string? fixtureOverride = null, bool captureMissionBodies = false,
-        WarClock? warClock = null, AccountKeys? accountKeys = null, LiveWar? liveWar = null, FriendPresence? presence = null,
-        RegisteredItems? registeredItems = null, bool openWar = false, uint warSeed = 0, bool dealSubfactions = true, bool dealSeaf = true)
+    public static WebApplication Create(BackendSettings settings)
     {
-        if (port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
-        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
-        if (startupFixtures && mode != LoginMode.LocalSession)
-            throw new ArgumentException("Startup fixtures require local-session mode.");
-        if (profile != null && !startupFixtures) throw new ArgumentException("A profile requires startup fixtures.");
-        var fixtures = startupFixtures ? LoadStartupFixtures() : new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (itemCatalog != null)
-        {
-            if (!startupFixtures) throw new ArgumentException("An item catalogue requires startup fixtures.");
-            using var data = JsonDocument.Parse(File.ReadAllText(itemCatalog));
-            fixtures["/Progression/items"] = data.RootElement.GetProperty("items").Clone();
-        }
-        if (fixtureOverride != null)
-        {
-            if (!startupFixtures) throw new ArgumentException("A fixture override requires startup fixtures.");
-            using var data = JsonDocument.Parse(File.ReadAllText(fixtureOverride));
-            foreach (var entry in data.RootElement.EnumerateObject())
-            {
-                if (!fixtures.ContainsKey(entry.Name)) throw new ArgumentException("Override for an unknown fixture: " + entry.Name);
-                fixtures[entry.Name] = entry.Value.Clone();
-            }
-        }
-        // --war open: the all-planets war (OpenWar), made from the frozen war's bodies; it replaces the live war.
-        if (openWar)
-        {
-            if (!startupFixtures) throw new ArgumentException("The all-planets war requires startup fixtures.");
-            fixtures[$"/WarSeason/{LiveWar.WarId}/Status"] = OpenWar.Status(fixtures[$"/WarSeason/{LiveWar.WarId}/warinfo"], fixtures[$"/WarSeason/{LiveWar.WarId}/Status"], seed: warSeed,
-                dealSubfactions: dealSubfactions, dealSeaf: dealSeaf);
-            liveWar = null;
-        }
-        if (startupFixtures) profile ??= ProfileStore.Open(null);
-        // Issued session IDs, used only to classify the Authorization header in the audit.
-        var sessions = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+        CheckSettings(settings);
+        var fixtures = Fixtures(settings);
+        // --war open: the all-planets war (OpenWar) replaces the live war.
+        var liveWar = settings.OpenWar ? null : settings.LiveWar;
+        var profile = settings.Profile;
+        if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
         var missions = profile != null ? new MissionService(profile) : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
-        presence ??= new FriendPresence();
+        var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
-        string? captureBodies = captureMissionBodies ? Path.Combine(evidenceDirectory, "mission-bodies") : null;
+        string? captureBodies = settings.CaptureMissionBodies ? Path.Combine(settings.EvidenceDirectory, "mission-bodies") : null;
         if (captureBodies != null) Directory.CreateDirectory(captureBodies);
-        // Warbond pages (GET /SeasonPass/<id32>, request 0x6a23fbc2, parser 0x1068a80) from the snapshot export.
-        var seasonPassDetails = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (startupFixtures)
-        {
-            using var data = LoadResource("progression-data.json");
-            if (data.RootElement.TryGetProperty("seasonPassDetails", out var details))
-                foreach (var detail in details.EnumerateObject()) seasonPassDetails[detail.Name] = detail.Value.Clone();
-        }
+        var seasonPassDetails = settings.StartupFixtures ? SeasonPassDetails() : new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         // The war clock continues from the imported war's time; the client re-polls it (parser 0x10817b0). A caller's
         // clock is shared with multiplayer, which aligns it with a host's.
-        warClock ??= new WarClock();
+        var warClock = settings.WarClock ?? new WarClock();
         // A live war (LiveWar) has set the clock from its own Status; otherwise it continues from the embedded war.
         // Players' public keys, shared with multiplayer when a caller supplies them.
-        accountKeys ??= new AccountKeys();
-        if (startupFixtures && liveWar?.HasWar != true)
+        var accountKeys = settings.AccountKeys ?? new AccountKeys();
+        if (settings.StartupFixtures && liveWar?.HasWar != true)
         {
             using var war = LoadResource("war-data.json");
             warClock.Set(war.RootElement.GetProperty("status").GetProperty("time").GetInt64());
         }
-        bool TryStartupBody(string path, out JsonElement body, out string source)
+        var startup = new StartupBodies(profile, liveWar, fixtures);
+        if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        Directory.CreateDirectory(settings.EvidenceDirectory);
+        var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
+        // A fresh evidence directory prevents accidental mixing of runs.
+        using (new FileStream(auditPath, FileMode.CreateNew, FileAccess.Write)) { }
+        var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(LocalBackend).Assembly.GetName().Name,
+            EnvironmentName = "Production"
+        });
+        builder.WebHost.UseKestrel(options =>
+        {
+            options.Listen(IPAddress.Loopback, settings.Port);
+            options.Limits.MaxRequestBodySize = MaximumBodyBytes;
+        });
+        var app = builder.Build();
+        var requests = new Requests
+        {
+            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Presence = presence,
+            PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath
+        };
+        app.Run(requests.HandleAsync);
+        return app;
+    }
+
+    static void CheckSettings(BackendSettings settings)
+    {
+        if (settings.Port is < 0 or > 65535) throw new ArgumentOutOfRangeException("port");
+        if (!Enum.IsDefined(settings.Mode)) throw new ArgumentOutOfRangeException("mode");
+        if (settings.StartupFixtures && settings.Mode != LoginMode.LocalSession)
+            throw new ArgumentException("Startup fixtures require local-session mode.");
+        if (settings.Profile != null && !settings.StartupFixtures) throw new ArgumentException("A profile requires startup fixtures.");
+    }
+
+    // The startup bodies: the embedded fixtures, with a development catalogue or override in their place, and the
+    // all-planets war's Status.
+    static Dictionary<string, JsonElement> Fixtures(BackendSettings settings)
+    {
+        var fixtures = settings.StartupFixtures ? LoadStartupFixtures() : new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (settings.ItemCatalog != null)
+        {
+            if (!settings.StartupFixtures) throw new ArgumentException("An item catalogue requires startup fixtures.");
+            using var data = JsonDocument.Parse(File.ReadAllText(settings.ItemCatalog));
+            fixtures["/Progression/items"] = data.RootElement.GetProperty("items").Clone();
+        }
+        if (settings.FixtureOverride != null)
+        {
+            if (!settings.StartupFixtures) throw new ArgumentException("A fixture override requires startup fixtures.");
+            Override(fixtures, settings.FixtureOverride);
+        }
+        // --war open: the all-planets war (OpenWar), made from the frozen war's bodies.
+        if (settings.OpenWar)
+        {
+            if (!settings.StartupFixtures) throw new ArgumentException("The all-planets war requires startup fixtures.");
+            fixtures[$"/WarSeason/{LiveWar.WarId}/Status"] = OpenWar.Status(fixtures[$"/WarSeason/{LiveWar.WarId}/warinfo"], fixtures[$"/WarSeason/{LiveWar.WarId}/Status"], seed: settings.WarSeed,
+                dealSubfactions: settings.DealSubfactions, dealSeaf: settings.DealSeaf);
+        }
+        return fixtures;
+    }
+
+    static void Override(Dictionary<string, JsonElement> fixtures, string fixtureOverride)
+    {
+        using var data = JsonDocument.Parse(File.ReadAllText(fixtureOverride));
+        foreach (var entry in data.RootElement.EnumerateObject())
+        {
+            if (!fixtures.ContainsKey(entry.Name)) throw new ArgumentException("Override for an unknown fixture: " + entry.Name);
+            fixtures[entry.Name] = entry.Value.Clone();
+        }
+    }
+
+    // Warbond pages (GET /SeasonPass/<id32>, request 0x6a23fbc2, parser 0x1068a80) from the snapshot export.
+    static Dictionary<string, JsonElement> SeasonPassDetails()
+    {
+        var seasonPassDetails = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        using var data = LoadResource("progression-data.json");
+        if (data.RootElement.TryGetProperty("seasonPassDetails", out var details))
+            foreach (var detail in details.EnumerateObject()) seasonPassDetails[detail.Name] = detail.Value.Clone();
+        return seasonPassDetails;
+    }
+
+    // A startup path's body: the local profile's, else the live war's (for a path the fixtures serve), else the synthetic
+    // fixture's; source says which, for the audit.
+    sealed class StartupBodies(ProfileStore? profile, LiveWar? liveWar, Dictionary<string, JsonElement> fixtures)
+    {
+        public bool TryGet(string path, out JsonElement body, out string source)
         {
             source = "local_profile";
             if (profile != null && profile.TryGetResponse(path, out body)) return true;
@@ -155,386 +221,5 @@ public static class LocalBackend
             source = "synthetic_startup_fixture";
             return fixtures.TryGetValue(path, out body);
         }
-        if (registeredItems != null) registeredItems.Source = path => TryStartupBody(path, out var body, out _) ? body : null;
-        Directory.CreateDirectory(evidenceDirectory);
-        var auditPath = Path.Combine(evidenceDirectory, "requests.jsonl");
-        // A fresh evidence directory prevents accidental mixing of runs.
-        using (new FileStream(auditPath, FileMode.CreateNew, FileAccess.Write)) { }
-        var auditLock = new object();
-        var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
-        {
-            ApplicationName = typeof(LocalBackend).Assembly.GetName().Name,
-            EnvironmentName = "Production"
-        });
-        builder.WebHost.UseKestrel(options =>
-        {
-            options.Listen(IPAddress.Loopback, port);
-            options.Limits.MaxRequestBodySize = MaximumBodyBytes;
-        });
-        var app = builder.Build();
-        app.Run(async context =>
-        {
-            var request = context.Request;
-            string? gmiState = null;
-            // Assumes the client sends its formatted "session %s" value as Authorization (unverified).
-            var authorization = request.Headers.Authorization.ToString() switch
-            {
-                "" => "missing",
-                var value when value.StartsWith("session ", StringComparison.Ordinal) =>
-                    sessions.ContainsKey(value["session ".Length..]) ? "session_known" : "session_unknown",
-                _ => "other_scheme"
-            };
-            var outcome = "unsupported_request";
-            var status = StatusCodes.Status501NotImplemented;
-            object response = new JsonObject { ["errorCode"] = "HELLFORGE_UNSUPPORTED_REQUEST", ["message"] = "Local contract not implemented." };
-            try
-            {
-                if (!FromLocalProgram(request))
-                {
-                    status = StatusCodes.Status403Forbidden;
-                    outcome = "web_page_rejected";
-                    response = Error("HELLFORGE_NOT_FROM_THIS_PC");
-                }
-                else if (request.Path == "/config/locator.json")
-                {
-                    if (!HttpMethods.IsGet(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "GET";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        status = StatusCodes.Status200OK;
-                        outcome = "local_backend_selected";
-                        // Derive from the bound socket, never the untrusted Host header.
-                        var url = $"http://127.0.0.1:{context.Connection.LocalPort}";
-                        response = new JsonObject { ["backends"] = new JsonArray((JsonNode)new JsonObject { ["url"] = url, ["validBranches"] = new JsonArray((JsonNode)"*") }) };
-                    }
-                }
-                else if (request.Path == "/Account/Login")
-                {
-                    if (!HttpMethods.IsPost(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "POST";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        using var body = await JsonDocument.ParseAsync(request.Body,
-                            cancellationToken: context.RequestAborted);
-                        if (body.RootElement.ValueKind != JsonValueKind.Object)
-                            throw new JsonException("Object required.");
-                        gmiState = !body.RootElement.TryGetProperty("gmiStr", out var gmi) ? "missing"
-                            : gmi.ValueKind == JsonValueKind.Null ? "null"
-                            : gmi.ValueKind != JsonValueKind.String ? "other"
-                            : gmi.GetString()!.Length == 0 ? "empty" : "present";
-                        if (mode == LoginMode.RejectGmi)
-                        {
-                            status = StatusCodes.Status403Forbidden;
-                            outcome = "gmi_rejection_control";
-                            response = new JsonObject { ["errorCode"] = 10002039, ["message"] = "Gmi str verification failed." };
-                        }
-                        else
-                        {
-                            // The game's public key for this run; a host fetches it when this player joins (AccountKeys).
-                            if (body.RootElement.TryGetProperty("publicKey", out var publicKey) && publicKey.ValueKind == JsonValueKind.String &&
-                                AccountKeys.IsKey(publicKey.GetString()))
-                            {
-                                accountKeys.SetLocal(publicKey.GetString()!);
-                                accountKeys.Log?.Invoke($"This player's key was received with the login ({publicKey.GetString()!.Length} characters).");
-                            }
-                            else accountKeys.Log?.Invoke("The login carried no usable player key; friends cannot be admitted to this player's games.");
-                            status = StatusCodes.Status200OK;
-                            outcome = "local_session_created";
-                            // 42 ASCII chars plus the client's "session " prefix fit 64 bytes.
-                            // This identifier has meaning only to this local experiment.
-                            var sessionId = "hellforge-local-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
-                            sessions.TryAdd(sessionId, 0);
-                            response = new JsonObject { ["sessionId"] = sessionId };
-                        }
-                    }
-                }
-                else if (request.Path.StartsWithSegments("/lobby", out var lobbyPath))
-                {
-                    // The game's own lobby for friends' social tabs and the lobby directory, and friends' and the directory's
-                    // lobbies for its own social tab and Galactic Map (FriendPresence, Multiplayer.DirectoryService).
-                    var rest = lobbyPath.Value ?? "";
-                    var segments = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                    (string[] Methods, string Shape)? expected = segments switch
-                    {
-                        [] => (["PUT"], "lobby"),
-                        ["accounts"] => (["POST"], "accounts"),
-                        ["clear"] => (["DELETE"], "clear"),
-                        [_, "member"] => (["POST"], "member"),
-                        [_, "live"] => (["GET", "PUT"], "live"),
-                        [_] => (["GET"], "get"),
-                        _ => null
-                    };
-                    if (expected is not { } route) { }
-                    else if (!route.Methods.Contains(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = string.Join(", ", route.Methods);
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        status = StatusCodes.Status200OK;
-                        // The game ignores the replies to its own lobby uploads (no response handler for their requests).
-                        response = new JsonObject();
-                        switch (route.Shape)
-                        {
-                            case "lobby":
-                            {
-                                using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true }, context.RequestAborted);
-                                presence.SetLocalLobby(body.RootElement);
-                                outcome = "lobby_published";
-                                break;
-                            }
-                            case "member":
-                                presence.SetLocalLobbyId(segments[0]);
-                                outcome = "lobby_member_alive";
-                                break;
-                            case "clear":
-                                presence.ClearLocal();
-                                outcome = "lobby_cleared";
-                                break;
-                            case "live" when request.Method == "PUT":
-                            {
-                                using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true }, context.RequestAborted);
-                                presence.SetLocalLive(segments[0], body.RootElement);
-                                outcome = "lobby_live_published";
-                                break;
-                            }
-                            // Never seen called by the game so far (docs/multiplayer.md step 7); a lobby unknown here is a
-                            // 404, logged with its outcome.
-                            case "live" or "get":
-                            {
-                                var found = route.Shape == "live" ? presence.LiveRecord(segments[0]) : presence.LobbyRecord(segments[0]);
-                                if (found != null) { response = found; outcome = route.Shape == "live" ? "lobby_live" : "lobby_record"; }
-                                else { status = StatusCodes.Status404NotFound; response = Error("HELLFORGE_LOBBY_NOT_FOUND"); outcome = "lobby_unknown"; }
-                                break;
-                            }
-                            default:
-                            {
-                                using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true }, context.RequestAborted);
-                                List<string> ids = [];
-                                if (body.RootElement.ValueKind == JsonValueKind.Object && body.RootElement.TryGetProperty("ids", out var list) && list.ValueKind == JsonValueKind.Array)
-                                    foreach (var id in list.EnumerateArray())
-                                        if (id.ValueKind == JsonValueKind.String) ids.Add(id.GetString()!);
-                                        else if (id.ValueKind == JsonValueKind.Number) ids.Add(id.GetRawText());
-                                response = presence.Lookup(ids);
-                                outcome = "friend_lobbies";
-                                break;
-                            }
-                        }
-                    }
-                }
-                else if (request.Path == "/Account/Keys")
-                {
-                    if (!HttpMethods.IsGet(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "GET";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        // ?id=<platform account id>; an unknown player gets an empty list, which leaves them unadmitted.
-                        var found = new JsonArray();
-                        foreach (var text in request.Query["id"].SelectMany(v => (v ?? "").Split(',')))
-                        {
-                            if (!ulong.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)) continue;
-                            if (await accountKeys.WaitAsync(id, TimeSpan.FromSeconds(3), context.RequestAborted) is { } key)
-                            {
-                                found.Add((JsonNode)new JsonObject { ["platformAccountId"] = text, ["key"] = key });
-                                accountKeys.Log?.Invoke($"Served the player key of account {id:X}.");
-                            }
-                            else accountKeys.Log?.Invoke($"No player key for account {id:X}; that player cannot be admitted.");
-                        }
-                        status = StatusCodes.Status200OK;
-                        outcome = found.Count > 0 ? "account_keys_served" : "account_keys_unknown";
-                        response = new JsonObject { ["accountKeys"] = found };
-                    }
-                }
-                else if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
-                    seasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
-                {
-                    if (!HttpMethods.IsGet(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "GET";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        status = StatusCodes.Status200OK;
-                        outcome = "season_pass_detail";
-                        response = seasonPassDetail;
-                    }
-                }
-                else if (PlayFabService.Handles(request.Path.Value ?? ""))
-                {
-                    if (!HttpMethods.IsPost(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "POST";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        // The login body carries the player's Steam session ticket: parsed in memory, never captured or logged.
-                        // The engine's hand-written bodies have trailing commas (GetFriendsList, GetPlayerCombinedInfo).
-                        using var body = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { AllowTrailingCommas = true },
-                            context.RequestAborted);
-                        if (request.Path.Value!.EndsWith("/Profile/GetProfiles", StringComparison.Ordinal) || request.Path.Value.EndsWith("/Profile/GetProfile", StringComparison.Ordinal))
-                            await presence.WaitForFriendObjectsAsync(TimeSpan.FromSeconds(6), context.RequestAborted);
-                        (status, var reply, outcome) = playFab.Handle(request.Path.Value!, body.RootElement);
-                        response = reply;
-                    }
-                }
-                else if (missions != null && MissionService.Handles(request.Path.Value ?? ""))
-                {
-                    if (!HttpMethods.IsPost(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "POST";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
-                        if (captureBodies != null)
-                            // Development capture of mission reports for decoding; kept under the evidence folder only.
-                            await File.WriteAllTextAsync(Path.Combine(captureBodies, DateTime.UtcNow.ToString("HHmmssfff") + "-" +
-                                request.Path.Value!.Trim('/').Replace('/', '_') + ".json"), body.RootElement.GetRawText(), context.RequestAborted);
-                        (response, outcome) = missions.Handle(request.Path.Value!, body.RootElement);
-                        status = StatusCodes.Status200OK;
-                    }
-                }
-                else if (startupFixtures && request.Path == "/WarSeason/801/timeSinceStart")
-                {
-                    if (!HttpMethods.IsGet(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "GET";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        status = StatusCodes.Status200OK;
-                        outcome = "local_war_clock";
-                        response = new JsonObject { ["secondsSinceStart"] = warClock.Seconds };
-                    }
-                }
-                else if (profile != null && request.Path.Value == "/Progression/Items/Customize/v2" && HttpMethods.IsPut(request.Method))
-                {
-                    using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
-                    // The whole customization state comes back, as GET serves it, in case the client reads the answer.
-                    var saved = profile.TrySetCustomization(body.RootElement);
-                    status = saved != null ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest;
-                    outcome = saved != null ? "local_profile_saved" : "profile_write_rejected";
-                    response = saved != null ? (object)saved.Value : Error("HELLFORGE_INVALID_PROFILE_WRITE");
-                }
-                else if (request.Path == "/Account/ReportPosition")
-                {
-                    if (!HttpMethods.IsPost(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "POST";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        using var body = await JsonDocument.ParseAsync(request.Body,
-                            cancellationToken: context.RequestAborted);
-                        // The ship's position, kept for the next start (GET /Progression "location"). Without a saved
-                        // profile it is accepted and forgotten.
-                        var saved = profile?.TrySetLocation(body.RootElement) ?? true;
-                        status = saved ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest;
-                        outcome = !saved ? "profile_write_rejected" : profile != null ? "local_profile_saved" : "position_not_kept";
-                        response = saved ? new JsonObject() : Error("HELLFORGE_INVALID_PROFILE_WRITE");
-                    }
-                }
-                else if (profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
-                {
-                    if (!HttpMethods.IsPut(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "PUT";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        using var body = await JsonDocument.ParseAsync(request.Body,
-                            cancellationToken: context.RequestAborted);
-                        var saved = request.Path.Value == "/Progression/ShipName"
-                            ? profile.TrySetShipName(body.RootElement) : profile.TrySetOnboarding(body.RootElement);
-                        // Neither success handler reads response fields; an empty object completes the request.
-                        status = saved ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest;
-                        outcome = saved ? "local_profile_saved" : "profile_write_rejected";
-                        response = saved ? new JsonObject() : Error("HELLFORGE_INVALID_PROFILE_WRITE");
-                    }
-                }
-                else if (TryStartupBody(request.Path.Value ?? "", out var startupBody, out var source))
-                {
-                    if (!HttpMethods.IsGet(request.Method))
-                    {
-                        status = StatusCodes.Status405MethodNotAllowed;
-                        context.Response.Headers.Allow = "GET";
-                        outcome = "method_rejected";
-                        response = Error("HELLFORGE_METHOD_NOT_ALLOWED");
-                    }
-                    else
-                    {
-                        status = StatusCodes.Status200OK;
-                        outcome = source;
-                        // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems).
-                        response = registeredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-                status = StatusCodes.Status400BadRequest;
-                outcome = "invalid_json";
-                response = Error("HELLFORGE_INVALID_JSON");
-            }
-            catch (BadHttpRequestException error) when (error.StatusCode == StatusCodes.Status413PayloadTooLarge)
-            {
-                status = StatusCodes.Status413PayloadTooLarge;
-                outcome = "body_too_large";
-                response = Error("HELLFORGE_BODY_TOO_LARGE");
-            }
-
-            // Never persist request bodies, credentials, headers, query strings or session IDs.
-            // Paths are retained to identify the next missing local endpoint.
-            var record = new JsonObject
-            {
-                ["timeUtc"] = DateTimeOffset.UtcNow, ["method"] = request.Method, ["path"] = request.Path.Value,
-                ["status"] = status, ["outcome"] = outcome, ["gmiState"] = gmiState, ["authorization"] = authorization, ["mode"] = mode.ToString(),
-                ["startupFixtures"] = startupFixtures
-            }.ToJsonString();
-            lock (auditLock) File.AppendAllText(auditPath, record + Environment.NewLine);
-            context.Response.StatusCode = status;
-            context.Response.Headers.CacheControl = "no-store";
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var payload = PadForClientDecoder(Utf8(response));
-            context.Response.ContentLength = payload.Length;
-            await context.Response.Body.WriteAsync(payload, context.RequestAborted);
-        });
-        return app;
     }
 }

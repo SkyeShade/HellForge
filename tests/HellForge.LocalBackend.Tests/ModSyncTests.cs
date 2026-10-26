@@ -50,7 +50,7 @@ static partial class ModSyncTests
             SessionFile = ModSyncSession.PathIn(new InstallLayout(folder));
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, Mods, own, Run, evidence, SessionFile, peer => "Player " + LobbyService.EntityId(peer), Note, verified) { Display = Shown };
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified) { Display = Shown };
             Lobby.ModsRefused = Sync.OfferMods;
             Sync.Expected = Lobby.JoinedRecently;
             transport.Received += (peer, bytes) =>
@@ -357,14 +357,15 @@ static partial class ModSyncTests
         JoinAgain(stranger, replies, StrangerId, lobby, "f2-join");
         check(Ask(stranger, replies, Chunk("budget-again", 0), check).Text(1) == "refused", "Joining again does not refill the grant.");
 
-        // The grant's time: from the offer, never extended by downloading.
-        host.Sync.GrantFor = TimeSpan.FromSeconds(1.5);
+        // The grant's time: from the offer, never extended by downloading. (3 s: the second ask, 0.6 s in, must still be
+        // within it on a slow runner.)
+        host.Sync.GrantFor = TimeSpan.FromSeconds(3);
         var (timed, timedReplies) = Refusee(network, 0x110000100000026, lobby, "timed-join");
         var granted = Stopwatch.StartNew();
         check(Ask(timed, timedReplies, Chunk("t1", 0), check).Text(1) == "ok", "A fresh grant serves.");
         await Task.Delay(TimeSpan.FromSeconds(0.6));
         check(Ask(timed, timedReplies, Chunk("t2", 0), check).Text(1) == "ok", "Within its time, it still serves.");
-        while (granted.Elapsed < TimeSpan.FromSeconds(1.7)) await Task.Delay(50);
+        while (granted.Elapsed < TimeSpan.FromSeconds(3.2)) await Task.Delay(50);
         var expired = Ask(timed, timedReplies, Chunk("t3", 0), check);
         check(expired.Text(1) == "refused" && expired.Text(2).Contains("time is up"), "The grant ends at its time, downloads or not: " + expired.Text(2));
         host.Sync.GrantFor = ModSync.GrantTime;

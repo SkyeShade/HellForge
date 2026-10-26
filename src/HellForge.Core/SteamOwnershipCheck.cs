@@ -42,6 +42,28 @@ public static class SteamOwnershipCheck
         }
     }
 
+    // The Steam account a report names, as the probe writes it and SteamOwnershipRecord compares it: the account id (the
+    // low 32 bits of the SteamID64, the number Steam keeps as ActiveProcess\ActiveUser) hashed, so session logs do not
+    // carry the id itself. Not a secret: it tells accounts apart, nothing more.
+    public static string AccountHash(uint account) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("HellForge.SteamAccount:" + account.ToString(CultureInfo.InvariantCulture))))[..32];
+
+    // The account a confirming report names (its "accountHash"), or null when it names none or does not confirm.
+    public static string? ConfirmedAccount(string path)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object && root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String &&
+                   status.GetString() == Confirmed && root.TryGetProperty("accountHash", out var account) && account.ValueKind == JsonValueKind.String &&
+                   account.GetString() is { Length: 32 } hash
+                ? hash
+                : null;
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { return null; }
+    }
+
     // The check without PowerShell (under Wine, where powershell.exe runs nothing): the probe on a fresh copy of the
     // given steam_api64.dll. Windows checks the DLL's Valve signature in the script; Wine cannot, so the DLL must be the
     // supported build's own (its depot SHA-1 from supported-build.json). Returns the probe's exit code (0 confirmed).

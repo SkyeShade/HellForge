@@ -31,15 +31,22 @@ const Value& ShownOf(const std::string& category)
     return ModCategory(category) ? g_hostModSaved : g_hostSaved;
 }
 
+/* A document's numbers as entries (category, target, key, value), in its order. */
+void AddEntries(const Value& document, std::vector<localstats::Entry>& out)
+{
+    for (auto& category : document.members)
+    {
+        if (category.second.kind != Value::Object) continue;
+        for (auto& target : category.second.members)
+            for (auto& field : target.second.members)
+                if (field.second.kind == Value::Number) out.push_back({category.first, target.first, field.first, field.second.AsNumber()});
+    }
+}
+
 std::vector<localstats::Entry> EntriesOf(std::initializer_list<const Value*> documents)
 {
     std::vector<localstats::Entry> out;
-    for (const Value* document : documents)
-        for (auto& category : document->members)
-            if (category.second.kind == Value::Object)
-                for (auto& target : category.second.members)
-                    for (auto& field : target.second.members)
-                        if (field.second.kind == Value::Number) out.push_back({category.first, target.first, field.first, field.second.AsNumber()});
+    for (const Value* document : documents) AddEntries(*document, out);
     return out;
 }
 
@@ -126,6 +133,115 @@ std::string JournalText(const std::map<std::string, Change>& journal)
     }
     root.members.emplace_back("changes", list);
     return hfjson::Write(root);
+}
+
+/* Changes back in the queue, tried again later; newer changes win. g_lock is held. */
+void Requeue(const std::map<std::string, Change>& changes)
+{
+    for (auto& c : changes) g_pending.emplace(c.first, c.second);
+}
+
+/* Sandboxed: what is shown stays as Set and Remove left it (the files in mods/ are not written). */
+bool SaveSandboxed(const std::wstring& sandbox, const std::map<std::string, Change>& changes, const std::map<std::string, Change>& modChanges,
+    std::string* error)
+{
+    std::map<std::string, Change> journal;
+    {
+        std::lock_guard<std::mutex> hold(g_lock);
+        journal = g_journal;
+    }
+    for (auto& c : modChanges) journal[c.first] = c.second;
+    for (auto& c : changes) journal[c.first] = c.second;
+    if (hfjson::WriteAtomically(sandbox + L"\\changes.json", JournalText(journal)))
+    {
+        std::lock_guard<std::mutex> hold(g_lock);
+        g_journal.swap(journal);
+        return true;
+    }
+    std::lock_guard<std::mutex> hold(g_lock);
+    Requeue(modChanges);
+    Requeue(changes);
+    *error = "the session's changes could not be written";
+    return false;
+}
+
+/* The editor's own file: the file as it is, the changes, written whole. */
+bool SaveModFile(const std::map<std::string, Change>& changes, const std::map<std::string, Change>& modChanges, std::string* error)
+{
+    Value document;
+    ReadModDocument(&document);
+    for (auto& entry : modChanges) Apply(document, entry.second);
+    bool written = !g_modPath.empty() && hfjson::WriteAtomically(g_modPath, hfjson::Write(document));
+    std::lock_guard<std::mutex> hold(g_lock);
+    if (!written)
+    {
+        Requeue(modChanges);
+        Requeue(changes);
+        *error = "the editor's mod-stats.json could not be written";
+        return false;
+    }
+    g_modSaved = document;
+    for (auto& entry : g_pending) if (ModCategory(entry.second.category)) Apply(g_modSaved, entry.second);
+    g_version++;
+    return true;
+}
+
+/* The changed document written into the mod's folder, or the mod removed when nothing is left; the reason it failed,
+ * or nullptr. */
+const char* WriteStats(const std::wstring& folder, const std::wstring& path, const std::wstring& manifest, const Value& document, bool existed)
+{
+    if (document.members.size() == 1)
+    {
+        /* Nothing left: the mod goes, as when the launcher's editor undoes every change. A file another program has open
+         * stays (Windows refuses the delete): tried again later, not taken as saved with the change still in it. */
+        if (existed && !DeleteFileW(path.c_str()) && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return "the Local Stats file could not be removed (another program has it open?)";
+        if (existed) { DeleteFileW(manifest.c_str()); RemoveDirectoryW(folder.c_str()); }
+        return nullptr;
+    }
+    CreateDirectoryW(folder.c_str(), nullptr);
+    if (!hfjson::WriteAtomically(path, hfjson::Write(document))) return "the Local Stats file could not be written";
+    if (GetFileAttributesW(manifest.c_str()) == INVALID_FILE_ATTRIBUTES &&
+        !hfjson::WriteAtomically(manifest, "{\n  \"format\": 1,\n  \"id\": \"zz.local.stats\",\n  \"name\": \"Local Stats\",\n  \"version\": \"1.0.0\",\n"
+            "  \"description\": \"Stats saved by the HellForge arsenal editor.\",\n  \"gameplay\": true,\n  \"editor\": \"hellforge-stats-editor-v1\"\n}\n"))
+        return "the Local Stats manifest could not be written";
+    return nullptr;
+}
+
+/* The Local Stats file: the file as it is, the changes, written whole, under the launcher's editor's lock. */
+bool SaveStats(const std::string& modsFolder, const std::map<std::string, Change>& changes, std::string* error)
+{
+    std::wstring mods = hfjson::Wide(modsFolder), folder = mods + L"\\zz.local.stats", path = folder + L"\\hellforge-stats.json",
+        manifest = folder + L"\\hellforge-mod.json";
+    /* The launcher's editor holds this lock while it saves; wait for it. */
+    HANDLE lock = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < 40 && lock == INVALID_HANDLE_VALUE; attempt++)
+    {
+        lock = CreateFileW((mods + L"\\.hellforge-stats-editor.lock").c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (lock == INVALID_HANDLE_VALUE) Sleep(50);
+    }
+    auto fail = [&](const char* why) {
+        if (lock != INVALID_HANDLE_VALUE) CloseHandle(lock);
+        std::lock_guard<std::mutex> hold(g_lock);
+        Requeue(changes); /* tried again later; newer changes win */
+        *error = why;
+        return false;
+    };
+    if (lock == INVALID_HANDLE_VALUE) return fail("the stats file is locked");
+
+    Value document;
+    bool existed;
+    std::string why;
+    if (!ReadDocument(folder, &document, &existed, &why)) { std::string copy = why; return fail(copy.c_str()); }
+    for (auto& entry : changes) Apply(document, entry.second);
+    if (const char* refused = WriteStats(folder, path, manifest, document, existed)) return fail(refused);
+    CloseHandle(lock);
+    /* What the file holds now, with any change queued while it was written. */
+    std::lock_guard<std::mutex> hold(g_lock);
+    g_saved = document;
+    for (auto& entry : g_pending) if (!ModCategory(entry.second.category)) Apply(g_saved, entry.second);
+    g_version++;
+    return true;
 }
 } // namespace
 
@@ -261,95 +377,9 @@ bool Save(const std::string& modsFolder, std::string* error)
         else ++it;
     std::wstring sandbox;
     { std::lock_guard<std::mutex> hold(g_lock); sandbox = g_sandboxFolder; }
-    if (!sandbox.empty())
-    {
-        /* Sandboxed: what is shown stays as Set and Remove left it (the files in mods/ are not written). */
-        std::map<std::string, Change> journal;
-        {
-            std::lock_guard<std::mutex> hold(g_lock);
-            journal = g_journal;
-        }
-        for (auto& c : modChanges) journal[c.first] = c.second;
-        for (auto& c : changes) journal[c.first] = c.second;
-        if (hfjson::WriteAtomically(sandbox + L"\\changes.json", JournalText(journal)))
-        {
-            std::lock_guard<std::mutex> hold(g_lock);
-            g_journal.swap(journal);
-            return true;
-        }
-        std::lock_guard<std::mutex> hold(g_lock);
-        for (auto& c : modChanges) g_pending.emplace(c.first, c.second); /* tried again later; newer changes win */
-        for (auto& c : changes) g_pending.emplace(c.first, c.second);
-        *error = "the session's changes could not be written";
-        return false;
-    }
-    if (!modChanges.empty())
-    {
-        /* the editor's own file: the file as it is, the changes, written whole */
-        Value document;
-        ReadModDocument(&document);
-        for (auto& entry : modChanges) Apply(document, entry.second);
-        bool written = !g_modPath.empty() && hfjson::WriteAtomically(g_modPath, hfjson::Write(document));
-        std::lock_guard<std::mutex> hold(g_lock);
-        if (!written)
-        {
-            for (auto& c : modChanges) g_pending.emplace(c.first, c.second);
-            for (auto& c : changes) g_pending.emplace(c.first, c.second);
-            *error = "the editor's mod-stats.json could not be written";
-            return false;
-        }
-        g_modSaved = document;
-        for (auto& entry : g_pending) if (ModCategory(entry.second.category)) Apply(g_modSaved, entry.second);
-        g_version++;
-    }
+    if (!sandbox.empty()) return SaveSandboxed(sandbox, changes, modChanges, error);
+    if (!modChanges.empty() && !SaveModFile(changes, modChanges, error)) return false;
     if (changes.empty()) return true;
-    std::wstring mods = hfjson::Wide(modsFolder), folder = mods + L"\\zz.local.stats", path = folder + L"\\hellforge-stats.json",
-        manifest = folder + L"\\hellforge-mod.json";
-    /* The launcher's editor holds this lock while it saves; wait for it. */
-    HANDLE lock = INVALID_HANDLE_VALUE;
-    for (int attempt = 0; attempt < 40 && lock == INVALID_HANDLE_VALUE; attempt++)
-    {
-        lock = CreateFileW((mods + L"\\.hellforge-stats-editor.lock").c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (lock == INVALID_HANDLE_VALUE) Sleep(50);
-    }
-    auto fail = [&](const char* why) {
-        if (lock != INVALID_HANDLE_VALUE) CloseHandle(lock);
-        std::lock_guard<std::mutex> hold(g_lock);
-        for (auto& c : changes) g_pending.emplace(c.first, c.second); /* tried again later; newer changes win */
-        *error = why;
-        return false;
-    };
-    if (lock == INVALID_HANDLE_VALUE) return fail("the stats file is locked");
-
-    Value document;
-    bool existed;
-    std::string why;
-    if (!ReadDocument(folder, &document, &existed, &why)) { std::string copy = why; return fail(copy.c_str()); }
-    for (auto& entry : changes) Apply(document, entry.second);
-
-    if (document.members.size() == 1)
-    {
-        /* Nothing left: the mod goes, as when the launcher's editor undoes every change. A file another program has open
-         * stays (Windows refuses the delete): tried again later, not taken as saved with the change still in it. */
-        if (existed && !DeleteFileW(path.c_str()) && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES)
-            return fail("the Local Stats file could not be removed (another program has it open?)");
-        if (existed) { DeleteFileW(manifest.c_str()); RemoveDirectoryW(folder.c_str()); }
-    }
-    else
-    {
-        CreateDirectoryW(folder.c_str(), nullptr);
-        if (!hfjson::WriteAtomically(path, hfjson::Write(document))) return fail("the Local Stats file could not be written");
-        if (GetFileAttributesW(manifest.c_str()) == INVALID_FILE_ATTRIBUTES &&
-            !hfjson::WriteAtomically(manifest, "{\n  \"format\": 1,\n  \"id\": \"zz.local.stats\",\n  \"name\": \"Local Stats\",\n  \"version\": \"1.0.0\",\n"
-                "  \"description\": \"Stats saved by the HellForge arsenal editor.\",\n  \"gameplay\": true,\n  \"editor\": \"hellforge-stats-editor-v1\"\n}\n"))
-            return fail("the Local Stats manifest could not be written");
-    }
-    CloseHandle(lock);
-    /* What the file holds now, with any change queued while it was written. */
-    std::lock_guard<std::mutex> hold(g_lock);
-    g_saved = document;
-    for (auto& entry : g_pending) if (!ModCategory(entry.second.category)) Apply(g_saved, entry.second);
-    g_version++;
-    return true;
+    return SaveStats(modsFolder, changes, error);
 }
 } // namespace localstats

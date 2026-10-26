@@ -73,6 +73,23 @@ static HMODULE ModuleOf(void *address)
     return module;
 }
 
+// Of a stack's frames, the first above address's own frame that lies beyond kernel32 and kernelbase, with its module in
+// *module: its index, or -1 when address is not on the stack or nothing beyond it is.
+static int FrameBeyond(void *const *frames, USHORT count, void *address, HMODULE kernel32, HMODULE kernelBase, HMODULE *module)
+{
+    for (USHORT i = 0; i < count; i++)
+    {
+        if (frames[i] != address) continue;
+        for (USHORT j = i + 1; j < count; j++)
+        {
+            HMODULE beyond = ModuleOf(frames[j]);
+            if (beyond != kernel32 && beyond != kernelBase) { *module = beyond; return j; }
+        }
+        return -1;
+    }
+    return -1;
+}
+
 // The module an address belongs to, as "name+0xrva". kernel32 and kernelbase only pass calls on (kernel32's
 // CreateProcessW calls kernelbase's), so a call from them is named by the first caller beyond them on the stack.
 static void Caller(void *address, char *out, int room)
@@ -83,16 +100,8 @@ static void Caller(void *address, char *out, int room)
     {
         void *frames[24];
         USHORT count = RtlCaptureStackBackTrace(0, 24, frames, NULL);
-        for (USHORT i = 0; i < count; i++)
-            if (frames[i] == address)
-            {
-                for (USHORT j = i + 1; j < count; j++)
-                {
-                    HMODULE beyond = ModuleOf(frames[j]);
-                    if (beyond != kernel32 && beyond != kernelBase) { address = frames[j]; module = beyond; break; }
-                }
-                break;
-            }
+        int beyond = FrameBeyond(frames, count, address, kernel32, kernelBase, &module);
+        if (beyond >= 0) address = frames[beyond];
     }
     wchar_t path[MAX_PATH];
     if (!module || !GetModuleFileNameW(module, path, MAX_PATH))
@@ -112,6 +121,39 @@ static uint64_t Hash(uint64_t h, const char *text)
     return h;
 }
 
+// How many times key has been seen, this time included (g_lock held). Once the table is full a new key counts 1 each time.
+static uint32_t Seen(uint64_t key)
+{
+    for (int i = 0; i < KEYS; i++)
+    {
+        int slot = (int)((key + (uint64_t)i) % KEYS);
+        if (g_seen[slot].key == key) return ++g_seen[slot].count;
+        if (g_seen[slot].key == 0) { g_seen[slot].key = key; g_seen[slot].count = 1; return 1; }
+    }
+    return 1;
+}
+
+// Repeats are written at 1, 2, 3, 10, 100, 1000... times.
+static bool Milestone(uint32_t count)
+{
+    bool write = count <= 3;
+    for (uint32_t power = 10; power && power <= count; power *= 10) if (count == power) write = true;
+    return write;
+}
+
+// The attempt's JSON line (g_lock held).
+static void WriteAttempt(const char *api, const char *target, const char *scope, const char *caller, uint32_t count)
+{
+    SYSTEMTIME now;
+    GetSystemTime(&now);
+    char line[1024], escaped[2 * TARGET_TEXT], who[2 * (MAX_PATH + 32)];
+    EscapeJson(escaped, sizeof escaped, target, TARGET_TEXT);
+    EscapeJson(who, sizeof who, caller, MAX_PATH + 32);
+    int length = snprintf(line, sizeof line, "{\"utc\":\"%02u:%02u:%02u.%03u\",\"api\":\"%s\",\"to\":\"%s\",\"scope\":\"%s\",\"caller\":\"%s\",\"thread\":%lu,\"count\":%u}\n",
+        now.wHour, now.wMinute, now.wSecond, now.wMilliseconds, api, escaped, scope, who, GetCurrentThreadId(), count);
+    if (length > 0) Write(line, length < (int)sizeof line ? length : (int)sizeof line - 1);
+}
+
 // Writes an attempt: api, target, scope ("loopback", "external", "unspecified", "name", "program"), caller.
 static void Note(const char *api, const char *target, const char *scope, void *returnAddress)
 {
@@ -120,26 +162,8 @@ static void Note(const char *api, const char *target, const char *scope, void *r
     Caller(returnAddress, caller, sizeof caller);
     uint64_t key = Hash(Hash(Hash(0xCBF29CE484222325ull, api), target), caller);
     EnterCriticalSection(&g_lock);
-    uint32_t count = 1;
-    for (int i = 0; i < KEYS; i++)
-    {
-        int slot = (int)((key + (uint64_t)i) % KEYS);
-        if (g_seen[slot].key == key) { count = ++g_seen[slot].count; break; }
-        if (g_seen[slot].key == 0) { g_seen[slot].key = key; g_seen[slot].count = 1; break; }
-    }
-    bool write = count <= 3;
-    for (uint32_t power = 10; power && power <= count; power *= 10) if (count == power) write = true;
-    if (write)
-    {
-        SYSTEMTIME now;
-        GetSystemTime(&now);
-        char line[1024], escaped[2 * TARGET_TEXT], who[2 * (MAX_PATH + 32)];
-        EscapeJson(escaped, sizeof escaped, target, TARGET_TEXT);
-        EscapeJson(who, sizeof who, caller, MAX_PATH + 32);
-        int length = snprintf(line, sizeof line, "{\"utc\":\"%02u:%02u:%02u.%03u\",\"api\":\"%s\",\"to\":\"%s\",\"scope\":\"%s\",\"caller\":\"%s\",\"thread\":%lu,\"count\":%u}\n",
-            now.wHour, now.wMinute, now.wSecond, now.wMilliseconds, api, escaped, scope, who, GetCurrentThreadId(), count);
-        if (length > 0) Write(line, length < (int)sizeof line ? length : (int)sizeof line - 1);
-    }
+    uint32_t count = Seen(key);
+    if (Milestone(count)) WriteAttempt(api, target, scope, caller, count);
     LeaveCriticalSection(&g_lock);
 }
 
@@ -159,32 +183,36 @@ static void Leave(void)
 // A port in network byte order (Winsock's own helpers are not imported: the stand-in imports only system DLLs).
 static unsigned Port(u_short port) { const unsigned char *b = (const unsigned char *)&port; return (unsigned)b[0] << 8 | b[1]; }
 
+static const char *ScopeOfV4(const struct sockaddr_in *v4, char *text, int room)
+{
+    const unsigned char *b = (const unsigned char *)&v4->sin_addr;
+    snprintf(text, room, "%u.%u.%u.%u:%u", b[0], b[1], b[2], b[3], Port(v4->sin_port));
+    if (b[0] == 127) return "loopback";
+    if (v4->sin_addr.s_addr == 0) return "unspecified";
+    return "external";
+}
+
+static const char *ScopeOfV6(const struct sockaddr_in6 *v6, char *text, int room)
+{
+    const unsigned char *b = v6->sin6_addr.s6_addr;
+    int n = snprintf(text, room, "[");
+    for (int i = 0; i < 16 && n < room - 12; i += 2) n += snprintf(text + n, room - n, "%s%x", i ? ":" : "", (b[i] << 8) | b[i + 1]);
+    snprintf(text + n, room - n, "]:%u", Port(v6->sin6_port));
+    static const unsigned char loop[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, any[16] = {0};
+    static const unsigned char mapped[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
+    if (!memcmp(b, loop, 16) || (!memcmp(b, mapped, 12) && b[12] == 127)) return "loopback";
+    if (!memcmp(b, any, 16)) return "unspecified";
+    return "external";
+}
+
 static const char *ScopeOf(const struct sockaddr *address, int length, char *text, int room)
 {
     text[0] = 0;
     if (!address || length < (int)sizeof(struct sockaddr)) { snprintf(text, room, "(none)"); return "unspecified"; }
     if (address->sa_family == AF_INET && length >= (int)sizeof(struct sockaddr_in))
-    {
-        const struct sockaddr_in *v4 = (const struct sockaddr_in *)address;
-        const unsigned char *b = (const unsigned char *)&v4->sin_addr;
-        snprintf(text, room, "%u.%u.%u.%u:%u", b[0], b[1], b[2], b[3], Port(v4->sin_port));
-        if (b[0] == 127) return "loopback";
-        if (v4->sin_addr.s_addr == 0) return "unspecified";
-        return "external";
-    }
+        return ScopeOfV4((const struct sockaddr_in *)address, text, room);
     if (address->sa_family == AF_INET6 && length >= (int)sizeof(struct sockaddr_in6))
-    {
-        const struct sockaddr_in6 *v6 = (const struct sockaddr_in6 *)address;
-        const unsigned char *b = v6->sin6_addr.s6_addr;
-        int n = snprintf(text, room, "[");
-        for (int i = 0; i < 16 && n < room - 12; i += 2) n += snprintf(text + n, room - n, "%s%x", i ? ":" : "", (b[i] << 8) | b[i + 1]);
-        snprintf(text + n, room - n, "]:%u", Port(v6->sin6_port));
-        static const unsigned char loop[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, any[16] = {0};
-        static const unsigned char mapped[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF};
-        if (!memcmp(b, loop, 16) || (!memcmp(b, mapped, 12) && b[12] == 127)) return "loopback";
-        if (!memcmp(b, any, 16)) return "unspecified";
-        return "external";
-    }
+        return ScopeOfV6((const struct sockaddr_in6 *)address, text, room);
     snprintf(text, room, "family %u", address->sa_family);
     return "external";
 }
@@ -266,7 +294,7 @@ static int WSAAPI HookWsaConnect(SOCKET s, const struct sockaddr *to, int length
     return result;
 }
 
-static BOOL WSAAPI HookConnectByNameW(SOCKET s, LPWSTR name, LPWSTR service, LPDWORD a, LPSOCKADDR b, LPDWORD c, LPSOCKADDR d, const struct timeval *e, LPWSAOVERLAPPED f)
+static BOOL WSAAPI HookConnectByNameW(SOCKET s, LPWSTR name, LPWSTR service, LPDWORD a, LPSOCKADDR b, LPDWORD c, LPSOCKADDR d, const struct timeval *e, LPWSAOVERLAPPED f) // lint-ok: R12 mirrors WSAConnectByNameW
 {
     if (Enter()) NoteWideName("WSAConnectByNameW", name, service, RETURN_ADDRESS);
     BOOL result = g_connectByNameW(s, name, service, a, b, c, d, e, f);
@@ -274,7 +302,7 @@ static BOOL WSAAPI HookConnectByNameW(SOCKET s, LPWSTR name, LPWSTR service, LPD
     return result;
 }
 
-static BOOL WSAAPI HookConnectByNameA(SOCKET s, LPCSTR name, LPCSTR service, LPDWORD a, LPSOCKADDR b, LPDWORD c, LPSOCKADDR d, const struct timeval *e, LPWSAOVERLAPPED f)
+static BOOL WSAAPI HookConnectByNameA(SOCKET s, LPCSTR name, LPCSTR service, LPDWORD a, LPSOCKADDR b, LPDWORD c, LPSOCKADDR d, const struct timeval *e, LPWSAOVERLAPPED f) // lint-ok: R12 mirrors WSAConnectByNameA
 {
     if (Enter()) NoteName("WSAConnectByNameA", name, service, RETURN_ADDRESS);
     BOOL result = g_connectByNameA(s, name, service, a, b, c, d, e, f);
@@ -290,7 +318,7 @@ static int WSAAPI HookSendTo(SOCKET s, const char *data, int size, int flags, co
     return result;
 }
 
-static int WSAAPI HookWsaSendTo(SOCKET s, LPWSABUF buffers, DWORD count, LPDWORD sent, DWORD flags, const struct sockaddr *to, int length,
+static int WSAAPI HookWsaSendTo(SOCKET s, LPWSABUF buffers, DWORD count, LPDWORD sent, DWORD flags, const struct sockaddr *to, int length, // lint-ok: R12 mirrors WSASendTo
     LPWSAOVERLAPPED overlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE routine)
 {
     if (Enter() && to) NoteAddress("WSASendTo", to, length, RETURN_ADDRESS);
@@ -320,7 +348,7 @@ static BOOL PASCAL HookConnectEx(SOCKET s, const struct sockaddr *to, int length
 // the connectex group usable: the game build checksums ConnectEx's own code, so even an in-place hook trips its fast-fail
 // (confirmed in a session); the group is off by default and getting around that check is not in scope.
 static bool g_connectExHooked;
-static int WSAAPI HookWsaIoctl(SOCKET s, DWORD code, LPVOID in, DWORD inSize, LPVOID out, DWORD outSize, LPDWORD returned,
+static int WSAAPI HookWsaIoctl(SOCKET s, DWORD code, LPVOID in, DWORD inSize, LPVOID out, DWORD outSize, LPDWORD returned, // lint-ok: R12 mirrors WSAIoctl
     LPWSAOVERLAPPED overlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE routine)
 {
     int result = g_wsaIoctl(s, code, in, inSize, out, outSize, returned, overlapped, routine);
@@ -354,7 +382,7 @@ static int WSAAPI HookGetAddrInfoW(PCWSTR name, PCWSTR service, const ADDRINFOW 
     return answer;
 }
 
-static int WSAAPI HookGetAddrInfoExW(PCWSTR name, PCWSTR service, DWORD space, LPGUID provider, const ADDRINFOEXW *hints, PADDRINFOEXW *result,
+static int WSAAPI HookGetAddrInfoExW(PCWSTR name, PCWSTR service, DWORD space, LPGUID provider, const ADDRINFOEXW *hints, PADDRINFOEXW *result, // lint-ok: R12 mirrors GetAddrInfoExW
     struct timeval *timeout, LPOVERLAPPED overlapped, LPLOOKUPSERVICE_COMPLETION_ROUTINE routine, LPHANDLE handle)
 {
     if (Enter()) NoteWideName("GetAddrInfoExW", name, service, RETURN_ADDRESS);
@@ -398,7 +426,7 @@ static void *WINAPI HookWinHttpConnect(void *session, const wchar_t *server, WOR
     return result;
 }
 
-static void *WINAPI HookInternetConnectW(void *internet, const wchar_t *server, WORD port, const wchar_t *user, const wchar_t *password, DWORD service, DWORD flags, DWORD_PTR context)
+static void *WINAPI HookInternetConnectW(void *internet, const wchar_t *server, WORD port, const wchar_t *user, const wchar_t *password, DWORD service, DWORD flags, DWORD_PTR context) // lint-ok: R12 mirrors InternetConnectW
 {
     if (Enter()) { char host[TARGET_TEXT]; Narrow(server, host, sizeof host); NoteServer("InternetConnectW", server ? host : NULL, port, RETURN_ADDRESS); }
     void *result = g_internetConnectW(internet, server, port, user, password, service, flags, context);
@@ -406,7 +434,7 @@ static void *WINAPI HookInternetConnectW(void *internet, const wchar_t *server, 
     return result;
 }
 
-static void *WINAPI HookInternetConnectA(void *internet, const char *server, WORD port, const char *user, const char *password, DWORD service, DWORD flags, DWORD_PTR context)
+static void *WINAPI HookInternetConnectA(void *internet, const char *server, WORD port, const char *user, const char *password, DWORD service, DWORD flags, DWORD_PTR context) // lint-ok: R12 mirrors InternetConnectA
 {
     if (Enter()) NoteServer("InternetConnectA", server, port, RETURN_ADDRESS);
     void *result = g_internetConnectA(internet, server, port, user, password, service, flags, context);
@@ -450,7 +478,7 @@ typedef BOOL (WINAPI *CreateProcessAFn)(LPCSTR, LPSTR, LPSECURITY_ATTRIBUTES, LP
 static CreateProcessWFn g_createProcessW;
 static CreateProcessAFn g_createProcessA;
 
-static BOOL WINAPI HookCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_ATTRIBUTES a, LPSECURITY_ATTRIBUTES b, BOOL inherit, DWORD flags,
+static BOOL WINAPI HookCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_ATTRIBUTES a, LPSECURITY_ATTRIBUTES b, BOOL inherit, DWORD flags, // lint-ok: R12 mirrors CreateProcessW
     LPVOID environment, LPCWSTR directory, LPSTARTUPINFOW startup, LPPROCESS_INFORMATION information)
 {
     if (Enter())
@@ -464,7 +492,7 @@ static BOOL WINAPI HookCreateProcessW(LPCWSTR application, LPWSTR command, LPSEC
     return result;
 }
 
-static BOOL WINAPI HookCreateProcessA(LPCSTR application, LPSTR command, LPSECURITY_ATTRIBUTES a, LPSECURITY_ATTRIBUTES b, BOOL inherit, DWORD flags,
+static BOOL WINAPI HookCreateProcessA(LPCSTR application, LPSTR command, LPSECURITY_ATTRIBUTES a, LPSECURITY_ATTRIBUTES b, BOOL inherit, DWORD flags, // lint-ok: R12 mirrors CreateProcessA
     LPVOID environment, LPCSTR directory, LPSTARTUPINFOA startup, LPPROCESS_INFORMATION information)
 {
     if (Enter()) Note("CreateProcessA", application ? application : command ? command : "(null)", "program", RETURN_ADDRESS);
@@ -560,18 +588,15 @@ static VOID CALLBACK OnDllLoaded(ULONG reason, const DllLoaded *data, PVOID cont
         }
 }
 
-void NetGateStart(void)
+// HELLFORGE_NETGATE_HOOKS: a comma list of the groups to hook (connect, send, dns, http, process), "all" for every
+// group, or unset for the default. The default leaves out connect and connectex: this game build's protection
+// checksums its own connect and ConnectEx, so hooking either trips a fast-fail (connectex) or blocks sign-in
+// (connect) ~24 s in; the other groups are fine. Those two are kept only for a deliberate test (and a later re-test
+// on a new build); getting around the check is not in scope. Kept as ",a,b," so one group is matched whole; empty
+// g_groups means every group (used by "all").
+static void ReadGroups(void)
 {
-    wchar_t mode[32], path[MAX_PATH], hooks[96];
-    DWORD modeLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE", mode, 32);
-    DWORD pathLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE_LOG", path, MAX_PATH);
-    if (modeLength == 0 || modeLength >= 32 || wcscmp(mode, L"census") != 0 || pathLength == 0 || pathLength >= MAX_PATH) return;
-    // HELLFORGE_NETGATE_HOOKS: a comma list of the groups to hook (connect, send, dns, http, process), "all" for every
-    // group, or unset for the default. The default leaves out connect and connectex: this game build's protection
-    // checksums its own connect and ConnectEx, so hooking either trips a fast-fail (connectex) or blocks sign-in
-    // (connect) ~24 s in; the other groups are fine. Those two are kept only for a deliberate test (and a later re-test
-    // on a new build); getting around the check is not in scope. Kept as ",a,b," so one group is matched whole; empty
-    // g_groups means every group (used by "all").
+    wchar_t hooks[96];
     DWORD hooksLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", hooks, 96);
     if (hooksLength == 0 || hooksLength >= 96)
         snprintf(g_groups, sizeof g_groups, ",send,dns,http,process,");
@@ -582,15 +607,11 @@ void NetGateStart(void)
         snprintf(g_groups, sizeof g_groups, ",%s,", narrow);
         for (char *c = g_groups; *c; c++) if (*c == ' ') *c = ',';
     }
-    g_log = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (g_log == INVALID_HANDLE_VALUE) return;
-    InitializeCriticalSection(&g_lock);
-    g_depth = TlsAlloc();
-    bool ready = g_depth != TLS_OUT_OF_INDEXES && MH_Initialize() == MH_OK;
-    int hooked = ready ? HookLoaded() : 0;
-    RegisterDllNotification registerNotification = (RegisterDllNotification)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "LdrRegisterDllNotification");
-    bool watching = ready && registerNotification && registerNotification(0, OnDllLoaded, NULL, &g_cookie) == 0;
-    g_on = ready;
+}
+
+// The census's first line: the groups, how many sites are hooked, and the ones of an enabled group that are not.
+static void WriteStart(int hooked, bool watching)
+{
     char line[1024];
     int length = snprintf(line, sizeof line, "{\"gate\":\"census\",\"process\":%lu,\"groups\":\"%s\",\"hooked\":%d,\"of\":%d,\"watchingLoads\":%s,\"missing\":[",
         GetCurrentProcessId(), g_groups[0] ? g_groups : ",all,", hooked, (int)SITE_COUNT, watching ? "true" : "false");
@@ -603,5 +624,24 @@ void NetGateStart(void)
         }
     length += snprintf(line + length, sizeof line - length, "]}\n");
     Write(line, length);
+}
+
+void NetGateStart(void)
+{
+    wchar_t mode[32], path[MAX_PATH];
+    DWORD modeLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE", mode, 32);
+    DWORD pathLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE_LOG", path, MAX_PATH);
+    if (modeLength == 0 || modeLength >= 32 || wcscmp(mode, L"census") != 0 || pathLength == 0 || pathLength >= MAX_PATH) return;
+    ReadGroups();
+    g_log = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (g_log == INVALID_HANDLE_VALUE) return;
+    InitializeCriticalSection(&g_lock);
+    g_depth = TlsAlloc();
+    bool ready = g_depth != TLS_OUT_OF_INDEXES && MH_Initialize() == MH_OK;
+    int hooked = ready ? HookLoaded() : 0;
+    RegisterDllNotification registerNotification = (RegisterDllNotification)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "LdrRegisterDllNotification");
+    bool watching = ready && registerNotification && registerNotification(0, OnDllLoaded, NULL, &g_cookie) == 0;
+    g_on = ready;
+    WriteStart(hooked, watching);
 }
 

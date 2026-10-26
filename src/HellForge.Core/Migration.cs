@@ -33,25 +33,29 @@ public static class Migration
             else { File.Copy(settings, installSettings); copied.Add(installSettings); }
         }
 
-        // Before game user data was kept per profile, every session used the shared settings and saves.
-        var defaultData = install.GameProfile(DefaultProfile);
-        var sharedSettings = Path.Combine(appDataRoot, "user_settings.config");
-        var sharedSaves = Path.Combine(appDataRoot, "saves");
-        if (File.Exists(sharedSettings) || Directory.Exists(sharedSaves))
-        {
-            if (Directory.Exists(defaultData)) kept.Add(defaultData);
-            else
-            {
-                Directory.CreateDirectory(Path.Combine(defaultData, "saves"));
-                if (File.Exists(sharedSettings)) File.Copy(sharedSettings, Path.Combine(defaultData, "user_settings.config"));
-                if (Directory.Exists(sharedSaves)) CopyTree(sharedSaves, Path.Combine(defaultData, "saves"));
-                copied.Add(defaultData);
-            }
-        }
+        CopySharedData(install, appDataRoot, copied, kept);
         foreach (var profile in Folders(Path.Combine(appDataRoot, "profiles")))
             Tree(Path.Combine(appDataRoot, "profiles", profile), install.GameProfile(profile));
         Tree(Path.Combine(appDataRoot, "shader_cache"), Path.Combine(install.UserData, "shader_cache"));
         return new(copied, kept);
+    }
+
+    // Before game user data was kept per profile, every session used the shared settings and saves: the default
+    // profile's now.
+    static void CopySharedData(InstallLayout install, string appDataRoot, List<string> copied, List<string> kept)
+    {
+        var defaultData = install.GameProfile(DefaultProfile);
+        var sharedSettings = Path.Combine(appDataRoot, "user_settings.config");
+        var sharedSaves = Path.Combine(appDataRoot, "saves");
+        if (!(File.Exists(sharedSettings) || Directory.Exists(sharedSaves))) return;
+        if (Directory.Exists(defaultData)) kept.Add(defaultData);
+        else
+        {
+            Directory.CreateDirectory(Path.Combine(defaultData, "saves"));
+            if (File.Exists(sharedSettings)) File.Copy(sharedSettings, Path.Combine(defaultData, "user_settings.config"));
+            if (Directory.Exists(sharedSaves)) CopyTree(sharedSaves, Path.Combine(defaultData, "saves"));
+            copied.Add(defaultData);
+        }
     }
 
     static IEnumerable<string> Folders(string root) => Directory.Exists(root)

@@ -12,7 +12,9 @@
  * it was before the editor: the editor must put its own hook back.
  * Usage: overlay_test.exe <hellforge_editor.dll> [<screenshot.bmp> [<editor folder: editor-catalog.json, game-icons.bin>]]
  * HELLFORGE_EDITOR_TEST_D3D11=1: the window presents with Direct3D 11 instead, as the game does with --use-d3d11.
- * HELLFORGE_EDITOR_TEST_NO_OVERLAY_QUEUE=1: no overlay queue (a real overlay, RivaTuner say, tried on its own). */
+ * HELLFORGE_EDITOR_TEST_NO_OVERLAY_QUEUE=1: no overlay queue (a real overlay, RivaTuner say, tried on its own).
+ * HELLFORGE_EDITOR_HDR=pq:200: the editor draws in HDR10 at 200 nits (the editor reads it), and its colours on screen must
+ * be PQ-encoded. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
@@ -21,6 +23,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <math.h>
+#include <map>
 #include "MinHook.h"
 #include "hellforge_mod.h"
 
@@ -566,6 +571,36 @@ int main(int argc, char** argv)
             }
             printf("  screen: %d of %d pixels in the editor's area are not the clear colour\n", drawn, 120 * 320);
             if (drawn < 1000) { puts("FAIL the editor's window is not on screen"); failures++; }
+            /* HELLFORGE_EDITOR_HDR=pq:200 (Build-Editor's HDR run): the editor's colours come out PQ-encoded at 200 nits.
+             * On an SDR desktop the 10-bit values show as they are, so the area's most common colour that is not the clear
+             * colour is a panel colour (PANEL, PANEL_ALT, HEADER) in PQ: linear, Rec.2020, 200 / 10000, PQ. */
+            const char* hdr = getenv("HELLFORGE_EDITOR_HDR");
+            if (hdr != NULL && strcmp(hdr, "pq:200") == 0)
+            {
+                std::map<uint32_t, int> counts;
+                for (int y = 80; y < 200; y++) for (int x = 80; x < 400; x++)
+                {
+                    BYTE* p = pixels + y * row + x * 3;
+                    if (!(p[1] > 50 && p[1] < 80 && p[0] < 30 && p[2] < 30)) counts[(uint32_t)p[2] << 16 | (uint32_t)p[1] << 8 | p[0]]++;
+                }
+                uint32_t common = 0; int most = 0;
+                for (auto& c : counts) if (c.second > most) { most = c.second; common = c.first; }
+                int r = (int)(common >> 16), g = (int)(common >> 8 & 0xFF), b = (int)(common & 0xFF);
+                auto linear = [](double c) { c /= 255.0; return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); };
+                auto pq = [](double l) { double p = pow(l > 0 ? l : 0, 0.1593017578125); return pow((0.8359375 + 18.8515625 * p) / (1.0 + 18.6875 * p), 78.84375); };
+                const int panels[3][3] = {{24, 27, 32}, {29, 32, 38}, {17, 19, 23}};
+                bool matched = false;
+                for (auto& c : panels)
+                {
+                    double l[3] = {linear(c[0]), linear(c[1]), linear(c[2])};
+                    double m[3] = {0.6274 * l[0] + 0.3293 * l[1] + 0.0433 * l[2], 0.0691 * l[0] + 0.9195 * l[1] + 0.0114 * l[2],
+                                   0.0164 * l[0] + 0.0880 * l[1] + 0.8956 * l[2]};
+                    int e[3] = {(int)(pq(m[0] * 0.02) * 255 + 0.5), (int)(pq(m[1] * 0.02) * 255 + 0.5), (int)(pq(m[2] * 0.02) * 255 + 0.5)};
+                    if (abs(r - e[0]) <= 6 && abs(g - e[1]) <= 6 && abs(b - e[2]) <= 6) matched = true;
+                }
+                printf("  HDR10 (PQ, 200 nits): the editor's most common colour (%d, %d, %d), %d pixels; SDR's panel is (29, 32, 38)\n", r, g, b, most);
+                if (!matched) { puts("FAIL the editor's colours are not PQ-encoded at 200 nits"); failures++; }
+            }
             free(pixels); DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(NULL, screen);
         }
     }

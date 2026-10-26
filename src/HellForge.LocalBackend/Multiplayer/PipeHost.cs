@@ -73,16 +73,19 @@ public sealed class PipeHost : IAsyncDisposable
         }
         finally
         {
-            if (outbox != null)
-            {
-                outbox.Writer.TryComplete();
-                lock (outboxes) if (outboxes.TryGetValue(component, out var current) && current == outbox) outboxes.Remove(component);
-                if (component == "lobby") Lobby?.LocalDisconnected();
-                else Party?.LocalDisconnected();
-                log($"Stand-in disconnected: {component}.");
-            }
+            if (outbox != null) Disconnected(component, outbox);
             await pipe.DisposeAsync();
         }
+    }
+
+    // A stand-in that said hello went away: its outbox closes, and its service hears that this machine's DLL is gone.
+    void Disconnected(string component, Channel<byte[]> outbox)
+    {
+        outbox.Writer.TryComplete();
+        lock (outboxes) if (outboxes.TryGetValue(component, out var current) && current == outbox) outboxes.Remove(component);
+        if (component == "lobby") Lobby?.LocalDisconnected();
+        else Party?.LocalDisconnected();
+        log($"Stand-in disconnected: {component}.");
     }
 
     // Frames for a local stand-in; dropped when it is not connected.

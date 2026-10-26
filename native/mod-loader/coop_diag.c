@@ -222,86 +222,147 @@ static int DiagBarrageBlock(uint32_t entity, const char* name, int authority)
     return 1;
 }
 
+static void DiagOnStratagem(const HfEventInfo* event)
+{
+    const HfStratagemEvent* e = (const HfStratagemEvent*)event;
+    const Stratagem* s = DiagStratagem(e->type);
+    if (s == NULL) return;
+    uint64_t package = DiagStratagemPackage(s);
+    CoopDiag("stratagem %u %s: beacon active at (%.1f, %.1f, %.1f), thrower %u (%s, update %llu); its package %016llx %s",
+        e->type, s->name, (double)e->position[0], (double)e->position[1], (double)e->position[2], e->thrower, DiagRole(),
+        (unsigned long long)event->update, (unsigned long long)package, DiagPackageState(package));
+    DiagWindow();
+}
+
+static void DiagOnSpawn(const HfEventInfo* event)
+{
+    const HfSpawnEvent* e = (const HfSpawnEvent*)event;
+    const char* name = DiagEntityName(e->resource);
+    if (name == NULL) return;
+    g_diagEntities[g_diagEntityNext].entity = e->entity;
+    g_diagEntities[g_diagEntityNext].name = name;
+    g_diagEntityNext = (g_diagEntityNext + 1) % DIAG_ENTITIES;
+    CoopDiag("spawn %s: entity %u, network %u, %s (%s, update %llu)", name, e->entity, e->network,
+        e->authority ? "authority here" : "NOT authority here", DiagRole(), (unsigned long long)event->update);
+    uintptr_t bombardments;
+    uint32_t queued = DIAG_BARRAGES;
+    if (DiagBombardment(e->entity, &bombardments) >= 0) /* a barrage: its block a frame later, once its state applied */
+        for (queued = 0; queued < DIAG_BARRAGES; queued++)
+            if (g_diagBarrages[queued].entity == 0)
+            {
+                g_diagBarrages[queued].entity = e->entity;
+                g_diagBarrages[queued].name = name;
+                g_diagBarrages[queued].update = g_diagFrame;
+                g_diagBarrages[queued].authority = e->authority != 0;
+                break;
+            }
+    if (queued == DIAG_BARRAGES && bombardments != 0 && DiagMapFind(bombardments, 0x30, e->entity) >= 0)
+        CoopDiag("barrage %s: entity %u: %u barrages wait already, its block is not logged", name, e->entity, DIAG_BARRAGES);
+    DiagWindow();
+}
+
+static void DiagOnExplosion(const HfEventInfo* event)
+{
+    const HfExplosionEvent* e = (const HfExplosionEvent*)event;
+    if (GetTickCount64() > g_diagWindowUntil) return;
+    uint32_t i = 0;
+    while (i < g_diagBurstCount && g_diagBursts[i].type != e->type) i++;
+    if (i == g_diagBurstCount)
+    {
+        if (g_diagBurstCount == DIAG_BURST_TYPES) return;
+        g_diagBursts[i].type = e->type;
+        g_diagBursts[i].count = 0;
+        g_diagBursts[i].source = e->source;
+        g_diagBursts[i].owner = e->owner;
+        memcpy(g_diagBursts[i].first, e->position, 12);
+        g_diagBurstCount++;
+    }
+    g_diagBursts[i].count++;
+}
+
+static void DiagOnMissionStart(void)
+{
+    CoopDiag("mission start (%s)", DiagRole());
+    if (!g_diagListed)
+    {
+        g_diagListed = 1;
+        CoopDiag("added: %u stratagem(s), %d entities and weapons, %u projectile(s)", g_stratagemCount, g_weaponCount, g_projectileCount);
+        for (uint32_t i = 0; i < g_stratagemCount; i++) CoopDiag("  stratagem %u: %s", g_stratagems[i].type, g_stratagems[i].name);
+        for (int i = 0; i < g_weaponCount; i++) CoopDiag("  entity %016llx: %s", (unsigned long long)g_weapons[i].entity, g_weapons[i].name);
+        for (uint32_t i = 0; i < g_projectileCount; i++) CoopDiag("  projectile %u: %s", g_projectiles[i].type, g_projectiles[i].name);
+    }
+    DiagPackages("mission start");
+    g_diagPackagesAt = GetTickCount64() + 20000;
+}
+
 static void DiagListener(HfMod* mod, const HfEventInfo* event, void* user)
 {
     (void)mod;
     (void)user;
     switch (event->kind)
     {
-    case HF_ON_STRATAGEM:
-    {
-        const HfStratagemEvent* e = (const HfStratagemEvent*)event;
-        const Stratagem* s = DiagStratagem(e->type);
-        if (s == NULL) return;
-        uint64_t package = DiagStratagemPackage(s);
-        CoopDiag("stratagem %u %s: beacon active at (%.1f, %.1f, %.1f), thrower %u (%s, update %llu); its package %016llx %s",
-            e->type, s->name, (double)e->position[0], (double)e->position[1], (double)e->position[2], e->thrower, DiagRole(),
-            (unsigned long long)event->update, (unsigned long long)package, DiagPackageState(package));
-        DiagWindow();
-        return;
-    }
-    case HF_ON_SPAWN:
-    {
-        const HfSpawnEvent* e = (const HfSpawnEvent*)event;
-        const char* name = DiagEntityName(e->resource);
-        if (name == NULL) return;
-        g_diagEntities[g_diagEntityNext].entity = e->entity;
-        g_diagEntities[g_diagEntityNext].name = name;
-        g_diagEntityNext = (g_diagEntityNext + 1) % DIAG_ENTITIES;
-        CoopDiag("spawn %s: entity %u, network %u, %s (%s, update %llu)", name, e->entity, e->network,
-            e->authority ? "authority here" : "NOT authority here", DiagRole(), (unsigned long long)event->update);
-        uintptr_t bombardments;
-        uint32_t queued = DIAG_BARRAGES;
-        if (DiagBombardment(e->entity, &bombardments) >= 0) /* a barrage: its block a frame later, once its state applied */
-            for (queued = 0; queued < DIAG_BARRAGES; queued++)
-                if (g_diagBarrages[queued].entity == 0)
-                {
-                    g_diagBarrages[queued].entity = e->entity;
-                    g_diagBarrages[queued].name = name;
-                    g_diagBarrages[queued].update = g_diagFrame;
-                    g_diagBarrages[queued].authority = e->authority != 0;
-                    break;
-                }
-        if (queued == DIAG_BARRAGES && bombardments != 0 && DiagMapFind(bombardments, 0x30, e->entity) >= 0)
-            CoopDiag("barrage %s: entity %u: %u barrages wait already, its block is not logged", name, e->entity, DIAG_BARRAGES);
-        DiagWindow();
-        return;
-    }
-    case HF_ON_EXPLOSION:
-    {
-        const HfExplosionEvent* e = (const HfExplosionEvent*)event;
-        if (GetTickCount64() > g_diagWindowUntil) return;
-        uint32_t i = 0;
-        while (i < g_diagBurstCount && g_diagBursts[i].type != e->type) i++;
-        if (i == g_diagBurstCount)
-        {
-            if (g_diagBurstCount == DIAG_BURST_TYPES) return;
-            g_diagBursts[i].type = e->type;
-            g_diagBursts[i].count = 0;
-            g_diagBursts[i].source = e->source;
-            g_diagBursts[i].owner = e->owner;
-            memcpy(g_diagBursts[i].first, e->position, 12);
-            g_diagBurstCount++;
-        }
-        g_diagBursts[i].count++;
-        return;
-    }
-    case HF_ON_MISSION_START:
-        CoopDiag("mission start (%s)", DiagRole());
-        if (!g_diagListed)
-        {
-            g_diagListed = 1;
-            CoopDiag("added: %u stratagem(s), %d entities and weapons, %u projectile(s)", g_stratagemCount, g_weaponCount, g_projectileCount);
-            for (uint32_t i = 0; i < g_stratagemCount; i++) CoopDiag("  stratagem %u: %s", g_stratagems[i].type, g_stratagems[i].name);
-            for (int i = 0; i < g_weaponCount; i++) CoopDiag("  entity %016llx: %s", (unsigned long long)g_weapons[i].entity, g_weapons[i].name);
-            for (uint32_t i = 0; i < g_projectileCount; i++) CoopDiag("  projectile %u: %s", g_projectiles[i].type, g_projectiles[i].name);
-        }
-        DiagPackages("mission start");
-        g_diagPackagesAt = GetTickCount64() + 20000;
-        return;
+    case HF_ON_STRATAGEM: DiagOnStratagem(event); return;
+    case HF_ON_SPAWN: DiagOnSpawn(event); return;
+    case HF_ON_EXPLOSION: DiagOnExplosion(event); return;
+    case HF_ON_MISSION_START: DiagOnMissionStart(); return;
     case HF_ON_MISSION_END:
         CoopDiag("mission end (%s)", DiagRole());
         return;
+    }
+}
+
+/* The last second's explosions, one line a type. */
+static void DiagBursts(void)
+{
+    for (uint32_t i = 0; i < g_diagBurstCount; i++)
+    {
+        const char* source = DiagSeenEntity(g_diagBursts[i].source);
+        CoopDiag("explosions: type %u x%u, the first at (%.1f, %.1f, %.1f), source %u%s%s%s, owner %u (%s)", g_diagBursts[i].type,
+            g_diagBursts[i].count, (double)g_diagBursts[i].first[0], (double)g_diagBursts[i].first[1], (double)g_diagBursts[i].first[2],
+            g_diagBursts[i].source, source ? " (" : "", source ? source : "", source ? ")" : "", g_diagBursts[i].owner, DiagRole());
+    }
+    g_diagBurstCount = 0;
+}
+
+/* The game's host, when it changed. */
+static void DiagHost(void)
+{
+    uintptr_t peers = 0;
+    uint64_t host = 0, local = 0;
+    if (DiagGame() != 0 && !SafeRead(DiagGame() + DIAG_PEERS, &peers, 8) && peers != 0 && !SafeRead(peers + DIAG_HOST_PEER, &host, 8) &&
+        !SafeRead(peers + DIAG_LOCAL_PEER, &local, 8) && host != g_diagHost)
+    {
+        /* 0 is this machine, as the game reads it (0x108D1CD) */
+        CoopDiag("host: the game's host is now %016llx%s (this machine %016llx, %s)", (unsigned long long)host,
+            host == 0 || host == local ? ": THIS machine" : "", (unsigned long long)local, DiagRole());
+        g_diagHost = host;
+    }
+}
+
+/* The barrages spawned, a frame later (once their state applied). */
+static void DiagBarrages(void)
+{
+    for (uint32_t i = 0; i < DIAG_BARRAGES; i++)
+        if (g_diagBarrages[i].entity != 0 && g_diagFrame > g_diagBarrages[i].update + 1)
+        {
+            DiagBarrageBlock(g_diagBarrages[i].entity, g_diagBarrages[i].name, g_diagBarrages[i].authority);
+            g_diagBarrages[i].entity = 0;
+        }
+}
+
+/* The followed missiles, each 250 ms for 15 s. */
+static void DiagMissiles(ULONGLONG now)
+{
+    for (uint32_t i = 0; i < DIAG_MISSILES; i++)
+    {
+        if (g_diagMissiles[i].missile == 0 || now < g_diagMissiles[i].next) continue;
+        if (now - g_diagMissiles[i].since > 15000) { CoopDiag("silo: missile %u followed for 15 s", g_diagMissiles[i].missile); g_diagMissiles[i].missile = 0; continue; }
+        g_diagMissiles[i].next = now + 250;
+        double seconds = (double)(now - g_diagMissiles[i].since) / 1000.0;
+        int here = DiagMissileSample(g_diagMissiles[i].missile, seconds, g_diagMissiles[i].how);
+        if (!here && g_diagMissiles[i].lastHere != 0)
+            CoopDiag("silo: missile %u (%s) %.2f s: GONE from this machine (%s)", g_diagMissiles[i].missile, g_diagMissiles[i].how, seconds, DiagRole());
+        g_diagMissiles[i].lastHere = here;
     }
 }
 
@@ -315,46 +376,15 @@ static void DiagTick(HfMod* mod, float dt, void* user)
     if (now / 1000 != g_diagBurstSecond)
     {
         g_diagBurstSecond = now / 1000;
-        for (uint32_t i = 0; i < g_diagBurstCount; i++)
-        {
-            const char* source = DiagSeenEntity(g_diagBursts[i].source);
-            CoopDiag("explosions: type %u x%u, the first at (%.1f, %.1f, %.1f), source %u%s%s%s, owner %u (%s)", g_diagBursts[i].type,
-                g_diagBursts[i].count, (double)g_diagBursts[i].first[0], (double)g_diagBursts[i].first[1], (double)g_diagBursts[i].first[2],
-                g_diagBursts[i].source, source ? " (" : "", source ? source : "", source ? ")" : "", g_diagBursts[i].owner, DiagRole());
-        }
-        g_diagBurstCount = 0;
-        uintptr_t peers = 0;
-        uint64_t host = 0, local = 0;
-        if (DiagGame() != 0 && !SafeRead(DiagGame() + DIAG_PEERS, &peers, 8) && peers != 0 && !SafeRead(peers + DIAG_HOST_PEER, &host, 8) &&
-            !SafeRead(peers + DIAG_LOCAL_PEER, &local, 8) && host != g_diagHost)
-        {
-            /* 0 is this machine, as the game reads it (0x108D1CD) */
-            CoopDiag("host: the game's host is now %016llx%s (this machine %016llx, %s)", (unsigned long long)host,
-                host == 0 || host == local ? ": THIS machine" : "", (unsigned long long)local, DiagRole());
-            g_diagHost = host;
-        }
+        DiagBursts();
+        DiagHost();
         ReaperSample(CoopDiag);
     }
     if (g_diagPackagesAt != 0 && now >= g_diagPackagesAt) { g_diagPackagesAt = 0; DiagPackages("20 s into the mission"); }
     g_diagFrame++;
-    for (uint32_t i = 0; i < DIAG_BARRAGES; i++)
-        if (g_diagBarrages[i].entity != 0 && g_diagFrame > g_diagBarrages[i].update + 1)
-        {
-            DiagBarrageBlock(g_diagBarrages[i].entity, g_diagBarrages[i].name, g_diagBarrages[i].authority);
-            g_diagBarrages[i].entity = 0;
-        }
+    DiagBarrages();
     if (!g_launchReady) return;
-    for (uint32_t i = 0; i < DIAG_MISSILES; i++)
-    {
-        if (g_diagMissiles[i].missile == 0 || now < g_diagMissiles[i].next) continue;
-        if (now - g_diagMissiles[i].since > 15000) { CoopDiag("silo: missile %u followed for 15 s", g_diagMissiles[i].missile); g_diagMissiles[i].missile = 0; continue; }
-        g_diagMissiles[i].next = now + 250;
-        double seconds = (double)(now - g_diagMissiles[i].since) / 1000.0;
-        int here = DiagMissileSample(g_diagMissiles[i].missile, seconds, g_diagMissiles[i].how);
-        if (!here && g_diagMissiles[i].lastHere != 0)
-            CoopDiag("silo: missile %u (%s) %.2f s: GONE from this machine (%s)", g_diagMissiles[i].missile, g_diagMissiles[i].how, seconds, DiagRole());
-        g_diagMissiles[i].lastHere = here;
-    }
+    DiagMissiles(now);
 }
 
 /* Once the mods are set up: the log, and the listeners (the event sources hook only kinds someone listens to). */

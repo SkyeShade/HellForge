@@ -79,7 +79,34 @@ public static class StatsCatalog
             items.Add(new("weapons/" + name, name, target.Slot!, target.Class ?? "Other", null, [Part("weapons", name, "Weapon"), .. Mounted(name)]));
         foreach (var (name, target) in Section("throwables"))
             items.Add(new("throwables/" + name, name, "throwables", target.Class ?? "Other", null, [Part("throwables", name, "Throwable")]));
-        foreach (var (name, target) in Section("stratagems"))
+        foreach (var (name, target) in Section("stratagems")) AddStratagem(name, target);
+        foreach (var (name, target) in Section("statuses"))
+            items.Add(new("statuses/" + name, name, "statuses", target.Class, Humanize(target.Family ?? ""), [Part("statuses", name, "Status effect")]));
+        foreach (var (name, target) in Section("explosions"))
+            items.Add(new("explosions/" + name, name, "explosions", Humanize(target.Family ?? "other"), null, [Part("explosions", name, "Explosion")]));
+        foreach (var name in Section("helldiver").Keys)
+            items.Add(new("helldiver/" + name, name, "helldiver", null, "Your Helldiver", [Part("helldiver", name, "Helldiver")]));
+        foreach (var name in Section("perks").Keys)
+            items.Add(new("perks/" + name, name, "perks", null, "Armor perks", [Part("perks", name, "Armor perk")]));
+        foreach (var name in Section("boosters").Keys)
+            items.Add(new("boosters/" + name, name, "boosters", null, null, [Part("boosters", name, "Booster")]));
+        AddUnmatched();
+        foreach (var (name, target) in Section("enemies").Where(e => !used.Contains(("enemies", e.Key)))) AddEnemy(name, target);
+        AddSpawning();
+
+        // Rows reached by type id are named by the items that use them.
+        var users = Users(items, t);
+        foreach (var (category, title) in new[] { ("projectiles", "Projectile"), ("damage", "Damage type") }) AddTypeRows(category, title, users);
+
+        return items.Select(i => i with { Search = $"{i.Name} {i.Group} {NavLabel(i.Nav)} {string.Join(" ", i.Parts.Select(p => p.Target))} {i.Search}".ToLowerInvariant() })
+            .OrderBy(i => Navs.Select(n => n.Id).ToList().IndexOf(i.Nav)).ThenBy(i => GroupRank(i.Group)).ThenBy(i => i.Group, StringComparer.Ordinal)
+            .ThenBy(i => i.Nav is "projectiles" or "damage" ? i.Name.Length : 0)
+            // the mission difficulties by their level (1 to 11), not as text ("Difficulty 10" before "Difficulty 2")
+            .ThenBy(i => i.Nav == "difficulty" && int.TryParse(i.Parts[0].Target, NumberStyles.None, CultureInfo.InvariantCulture, out var level) ? level : 0)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+        // A stratagem's item: its call-in with the support weapon, vehicle, backpack and mounts that are its.
+        void AddStratagem(string name, StatsTarget target)
         {
             var (nav, group) = Families.GetValueOrDefault(target.Family ?? "", ("mission", null));
             List<StatsPart> parts = [];
@@ -94,54 +121,68 @@ public static class StatsCatalog
                 if (Section("enemies").ContainsKey(entity)) parts.Add(Part("enemies", entity, title));
             items.Add(new("stratagems/" + name, name, nav, group, null, parts));
         }
-        foreach (var (name, target) in Section("statuses"))
-            items.Add(new("statuses/" + name, name, "statuses", target.Class, Humanize(target.Family ?? ""), [Part("statuses", name, "Status effect")]));
-        foreach (var (name, target) in Section("explosions"))
-            items.Add(new("explosions/" + name, name, "explosions", Humanize(target.Family ?? "other"), null, [Part("explosions", name, "Explosion")]));
-        foreach (var name in Section("helldiver").Keys)
-            items.Add(new("helldiver/" + name, name, "helldiver", null, "Your Helldiver", [Part("helldiver", name, "Helldiver")]));
-        foreach (var name in Section("perks").Keys)
-            items.Add(new("perks/" + name, name, "perks", null, "Armor perks", [Part("perks", name, "Armor perk")]));
-        foreach (var name in Section("boosters").Keys)
-            items.Add(new("boosters/" + name, name, "boosters", null, null, [Part("boosters", name, "Booster")]));
+
         // Items with no stratagem of their own: mission weapons, unmatched backpacks, scenery vehicles.
-        foreach (var (name, target) in weapons.Where(w => w.Value.Slot == "support" && !used.Contains(("weapons", w.Key))))
-            items.Add(new("weapons/" + name, name, "support", "Other", null, [Part("weapons", name, "Weapon")]));
-        foreach (var name in Section("backpacks").Keys.Where(n => !used.Contains(("backpacks", n))).ToList())
-            items.Add(new("backpacks/" + name, name, "backpacks", "Other", null, [Part("backpacks", name, "Backpack")]));
-        foreach (var name in Section("vehicles").Keys.Where(n => !used.Contains(("vehicles", n))).ToList())
-            items.Add(new("vehicles/" + name, name, "vehicles", "Other", null, [Part("vehicles", name, "Vehicle"), .. Mounted(name)]));
-        foreach (var (name, target) in weapons.Where(w => !used.Contains(("weapons", w.Key))).ToList())
-            items.Add(new("weapons/" + name, name, "support", "Other", null, [Part("weapons", name, "Weapon")]));
+        void AddUnmatched()
+        {
+            foreach (var (name, target) in weapons.Where(w => w.Value.Slot == "support" && !used.Contains(("weapons", w.Key))))
+                items.Add(new("weapons/" + name, name, "support", "Other", null, [Part("weapons", name, "Weapon")]));
+            foreach (var name in Section("backpacks").Keys.Where(n => !used.Contains(("backpacks", n))).ToList())
+                items.Add(new("backpacks/" + name, name, "backpacks", "Other", null, [Part("backpacks", name, "Backpack")]));
+            foreach (var name in Section("vehicles").Keys.Where(n => !used.Contains(("vehicles", n))).ToList())
+                items.Add(new("vehicles/" + name, name, "vehicles", "Other", null, [Part("vehicles", name, "Vehicle"), .. Mounted(name)]));
+            foreach (var (name, target) in weapons.Where(w => !used.Contains(("weapons", w.Key))).ToList())
+                items.Add(new("weapons/" + name, name, "support", "Other", null, [Part("weapons", name, "Weapon")]));
+        }
+
         // The HD2R Editor's Enemies pages: an item per entity, under its faction's (or Structures', or Other entities')
         // nav; the HD2R Editor's unnamed entities last. Search finds an entity by its label or its HD2R name.
-        foreach (var (name, target) in Section("enemies").Where(e => !used.Contains(("enemies", e.Key))))
+        void AddEnemy(string name, StatsTarget target)
         {
             var nav = target.Family is "terminids" or "automatons" or "illuminate" or "structures" ? target.Family : "entities";
             var unnamed = name.StartsWith("unnamed_entity", StringComparison.Ordinal);
             items.Add(new("enemies/" + name, target.Label ?? name, nav, unnamed ? "Unnamed" : null, unnamed ? name : null, [Part("enemies", name, "Entity")])
                 { Search = name, Faction = target.Faction });
         }
+
         // The HD2R Editor's Spawning pages: a difficulty's budgets, an enemy's spawn weights, a squad composition (by faction),
         // a demolition template's force.
-        foreach (var (name, target) in Section("difficulty"))
-            items.Add(new("difficulty/" + name, target.Label ?? name, "difficulty", null, null, [Part("difficulty", name, "Difficulty")]));
-        // a roster row as the HD2R Editor shows it: the enemy's name, its faction's emblem and filter chip, and its roster
-        // and row ("automatons/row_1": "Automatons · Row 1") under the name
-        foreach (var (name, target) in Section("rosters"))
+        void AddSpawning()
         {
-            var (roster, row) = name.Split('/') is [var r, var w] ? (r, w.StartsWith("row_", StringComparison.Ordinal) ? w[4..] : w) : (name, "");
-            items.Add(new("rosters/" + name, target.Label ?? name, "rosters", FactionLabel(target.Family), name, [Part("rosters", name, "Roster row")])
-                { Search = name, Faction = target.Family, Line = Humanize(roster) + (row.Length > 0 ? " · Row " + row : "") });
+            foreach (var (name, target) in Section("difficulty"))
+                items.Add(new("difficulty/" + name, target.Label ?? name, "difficulty", null, null, [Part("difficulty", name, "Difficulty")]));
+            // a roster row as the HD2R Editor shows it: the enemy's name, its faction's emblem and filter chip, and its roster
+            // and row ("automatons/row_1": "Automatons · Row 1") under the name
+            foreach (var (name, target) in Section("rosters"))
+            {
+                var (roster, row) = name.Split('/') is [var r, var w] ? (r, w.StartsWith("row_", StringComparison.Ordinal) ? w[4..] : w) : (name, "");
+                items.Add(new("rosters/" + name, target.Label ?? name, "rosters", FactionLabel(target.Family), name, [Part("rosters", name, "Roster row")])
+                    { Search = name, Faction = target.Family, Line = Humanize(roster) + (row.Length > 0 ? " · Row " + row : "") });
+            }
+            foreach (var (name, target) in Section("compositions"))
+                items.Add(new("compositions/" + name, target.Label ?? name, "compositions", FactionLabel(target.Family), Humanize(target.Class ?? ""),
+                    [Part("compositions", name, "Composition")]) { Search = name + " " + target.Class });
+            foreach (var (name, target) in Section("demolition"))
+                items.Add(new("demolition/" + name, target.Label ?? name, "demolition", null, null, [Part("demolition", name, "Demolition template")])
+                    { Search = name });
         }
-        foreach (var (name, target) in Section("compositions"))
-            items.Add(new("compositions/" + name, target.Label ?? name, "compositions", FactionLabel(target.Family), Humanize(target.Class ?? ""),
-                [Part("compositions", name, "Composition")]) { Search = name + " " + target.Class });
-        foreach (var (name, target) in Section("demolition"))
-            items.Add(new("demolition/" + name, target.Label ?? name, "demolition", null, null, [Part("demolition", name, "Demolition template")])
-                { Search = name });
 
-        // Rows reached by type id are named by the items that use them.
+        // A projectile's or damage type's own item, by its id, subtitled with the items that use it.
+        void AddTypeRows(string category, string title, Dictionary<(string, long), SortedSet<string>> users)
+        {
+            foreach (var id in Section(category).Keys.OrderBy(k => long.Parse(k, CultureInfo.InvariantCulture)))
+            {
+                var names = users.GetValueOrDefault((category, long.Parse(id, CultureInfo.InvariantCulture)));
+                var subtitle = names == null ? "Not used by a listed item" : string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" +{names.Count - 3}" : "");
+                items.Add(new(category + "/" + id, $"{title} {id}", category, names == null ? "Unused" : "Used", subtitle, [Part(category, id, title)])
+                    { Search = string.Join(" ", names ?? []) });
+            }
+        }
+    }
+
+    // The items whose rows reach each projectile and damage type (by kind and id).
+    static Dictionary<(string, long), SortedSet<string>> Users(List<StatsItem> items, Dictionary<string, Dictionary<string, StatsTarget>> t)
+    {
         var users = new Dictionary<(string, long), SortedSet<string>>();
         foreach (var item in items)
             foreach (var part in item.Parts)
@@ -151,21 +192,7 @@ public static class StatsCatalog
                     if (!users.TryGetValue(key, out var names)) users[key] = names = new(StringComparer.OrdinalIgnoreCase);
                     names.Add(item.Name);
                 }
-        foreach (var (category, title) in new[] { ("projectiles", "Projectile"), ("damage", "Damage type") })
-            foreach (var id in Section(category).Keys.OrderBy(k => long.Parse(k, CultureInfo.InvariantCulture)))
-            {
-                var names = users.GetValueOrDefault((category, long.Parse(id, CultureInfo.InvariantCulture)));
-                var subtitle = names == null ? "Not used by a listed item" : string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" +{names.Count - 3}" : "");
-                items.Add(new(category + "/" + id, $"{title} {id}", category, names == null ? "Unused" : "Used", subtitle, [Part(category, id, title)])
-                    { Search = string.Join(" ", names ?? []) });
-            }
-
-        return items.Select(i => i with { Search = $"{i.Name} {i.Group} {NavLabel(i.Nav)} {string.Join(" ", i.Parts.Select(p => p.Target))} {i.Search}".ToLowerInvariant() })
-            .OrderBy(i => Navs.Select(n => n.Id).ToList().IndexOf(i.Nav)).ThenBy(i => GroupRank(i.Group)).ThenBy(i => i.Group, StringComparer.Ordinal)
-            .ThenBy(i => i.Nav is "projectiles" or "damage" ? i.Name.Length : 0)
-            // the mission difficulties by their level (1 to 11), not as text ("Difficulty 10" before "Difficulty 2")
-            .ThenBy(i => i.Nav == "difficulty" && int.TryParse(i.Parts[0].Target, NumberStyles.None, CultureInfo.InvariantCulture, out var level) ? level : 0)
-            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        return users;
     }
 
     // A vehicle's mounts by what they are (HD2R Editor's mount_label): the Maelstrom's and the Bastion's guns, else the
@@ -220,77 +247,101 @@ public static class StatsCatalog
     // (category, group title, rank within the category) for one field.
     static (string Category, string Group, double Rank) Place(string partCategory, string key, ISet<string> roundRoles, string? section = null)
     {
-        // A booster's page, in HD2R Editor's sections: an explosion under Projectile, status damage under Damage, the
-        // granted stratagem under Hellpod / Call-in (first), the others categories of their own.
-        // a weapon's melee attack (HD2R Editor's Melee rows): its tuning, then a group per hit volume
-        if (key.StartsWith("tuning:", StringComparison.Ordinal)) return ("melee", "Melee", -1);
-        if (key.StartsWith("zone_", StringComparison.Ordinal) && key.Contains(':') && partCategory == "weapons")
-            return ("melee", section ?? "Hit volume", int.TryParse(key[5..key.IndexOf(':')], NumberStyles.None, CultureInfo.InvariantCulture, out var volume) ? volume : 0);
-        // a weapon's attachments (HD2R Editor's groups): a category per slot, a part per attachment
-        if (key.StartsWith("attachment.", StringComparison.Ordinal))
-        {
-            var slot = key.Split('.')[1];
-            // the magazines join the weapon's Ammunition (its default one's fields in its first group, the others after)
-            if (slot == "magazine") return ("ammo", section ?? Humanize(key.Split('.')[2]), section == "Ammunition" ? 0 : 10);
-            return ("att:" + slot, section ?? Humanize(key.Split('.')[2]), 0);
-        }
-        if (partCategory == "vehicles")
-        {
-            if (key.StartsWith("zone_", StringComparison.Ordinal))
-                return ("zones", section ?? Humanize(key[..key.IndexOf('.')]),
-                    int.TryParse(key[5..key.IndexOf('.')], NumberStyles.None, CultureInfo.InvariantCulture, out var zone) ? zone : 0);
-            if (key.StartsWith("shield.", StringComparison.Ordinal)) return ("shield", section ?? "Shield", 0);
-            if (key.StartsWith("rotation.", StringComparison.Ordinal) || key.StartsWith("vehicle.", StringComparison.Ordinal)) return ("health", "Health & Armor", 1);
-        }
+        if (PlaceMeleeOrAttachment(partCategory, key, section) is { } weaponPart) return weaponPart;
+        if (partCategory == "vehicles" && PlaceVehicle(key, section) is { } vehicle) return vehicle;
         // The Spawning pages: their sections in the order of their fields (Budgets, Objectives, Patrols; Spawn weights; a
         // composition's groups, Selection, Eligibility).
         if (partCategory is "difficulty" or "rosters" or "compositions" or "demolition") return ("spawn:" + (section ?? "Other"), section ?? "Other", 0);
-        // An entity's page, in the HD2R Editor's sections (its row ids: "<path>:<zone or attack>:<field>"): Health & Armor,
-        // a group per damage zone in slot order, a group per attack, then the rest (Spawning, Shield, Size & Geometry...).
-        if (partCategory == "enemies")
+        if (partCategory == "enemies") return PlaceEntity(key, section);
+        if (partCategory == "helldiver") return PlaceHelldiver(key, section);
+        if (PlaceOwnPage(partCategory, key, section) is { } own) return own;
+        return PlaceByDomain(partCategory, key, roundRoles, section);
+    }
+
+    // A weapon's melee attack (HD2R Editor's Melee rows): its tuning, then a group per hit volume; a weapon's attachments
+    // (HD2R Editor's groups): a category per slot, a part per attachment. Null for any other field.
+    static (string Category, string Group, double Rank)? PlaceMeleeOrAttachment(string partCategory, string key, string? section)
+    {
+        if (key.StartsWith("tuning:", StringComparison.Ordinal)) return ("melee", "Melee", -1);
+        if (key.StartsWith("zone_", StringComparison.Ordinal) && key.Contains(':') && partCategory == "weapons")
+            return ("melee", section ?? "Hit volume", int.TryParse(key[5..key.IndexOf(':')], NumberStyles.None, CultureInfo.InvariantCulture, out var volume) ? volume : 0);
+        if (!key.StartsWith("attachment.", StringComparison.Ordinal)) return null;
+        var slot = key.Split('.')[1];
+        // the magazines join the weapon's Ammunition (its default one's fields in its first group, the others after)
+        if (slot == "magazine") return ("ammo", section ?? Humanize(key.Split('.')[2]), section == "Ammunition" ? 0 : 10);
+        return ("att:" + slot, section ?? Humanize(key.Split('.')[2]), 0);
+    }
+
+    // A vehicle's damage zones, shield, and rotation and vehicle fields; null for the others, placed as any target's.
+    static (string Category, string Group, double Rank)? PlaceVehicle(string key, string? section)
+    {
+        if (key.StartsWith("zone_", StringComparison.Ordinal))
+            return ("zones", section ?? Humanize(key[..key.IndexOf('.')]),
+                int.TryParse(key[5..key.IndexOf('.')], NumberStyles.None, CultureInfo.InvariantCulture, out var zone) ? zone : 0);
+        if (key.StartsWith("shield.", StringComparison.Ordinal)) return ("shield", section ?? "Shield", 0);
+        if (key.StartsWith("rotation.", StringComparison.Ordinal) || key.StartsWith("vehicle.", StringComparison.Ordinal)) return ("health", "Health & Armor", 1);
+        return null;
+    }
+
+    // An entity's page, in the HD2R Editor's sections (its row ids: "<path>:<zone or attack>:<field>"): Health & Armor,
+    // a group per damage zone in slot order, a group per attack, then the rest (Spawning, Shield, Size & Geometry...).
+    static (string Category, string Group, double Rank) PlaceEntity(string key, string? section)
+    {
+        var path = key[..Math.Max(0, key.IndexOf(':'))];
+        var heading = section ?? "Other";
+        if (path == "damage_zone")
         {
-            var path = key[..Math.Max(0, key.IndexOf(':'))];
-            var heading = section ?? "Other";
-            if (path == "damage_zone")
-            {
-                var slot = key.Split(':')[1];
-                return ("zones", heading, int.TryParse(slot.Replace("zone_", ""), NumberStyles.None, CultureInfo.InvariantCulture, out var zone) ? zone : 0);
-            }
-            if (path == "attack") return ("attacks", heading, 0);
-            return heading == "Health & Armor" ? ("health", heading, 0) : ("other:" + heading, heading, 0);
+            var slot = key.Split(':')[1];
+            return ("zones", heading, int.TryParse(slot.Replace("zone_", ""), NumberStyles.None, CultureInfo.InvariantCulture, out var zone) ? zone : 0);
         }
-        // HD2R Editor's Helldiver page: Health, Speed, Stamina, Player refill, Damage, Size & Geometry, then the six body zones
-        if (partCategory == "helldiver")
+        if (path == "attack") return ("attacks", heading, 0);
+        return heading == "Health & Armor" ? ("health", heading, 0) : ("other:" + heading, heading, 0);
+    }
+
+    // HD2R Editor's Helldiver page: Health, Speed, Stamina, Player refill, Damage, Size & Geometry, then the six body zones
+    static (string Category, string Group, double Rank) PlaceHelldiver(string key, string? section)
+    {
+        if (section != null)
+            return ("zones", section, Array.IndexOf(new[] { "Head", "Body", "Left arm", "Right arm", "Left leg", "Right leg" }, section));
+        return key.Split('.') switch
         {
-            if (section != null)
-                return ("zones", section, Array.IndexOf(new[] { "Head", "Body", "Left arm", "Right arm", "Left leg", "Right leg" }, section));
-            return key.Split('.') switch
-            {
-                ["entity", not "explosive_damage_percentage"] => ("identity:health", "Health", -1), // its avatar's main fields
-                [_, "speed", ..] => ("identity:speed", "Speed", 0),
-                [_, "stamina", ..] => ("identity:stamina", "Stamina", 1),
-                [_, "supply", ..] => ("identity:refill", "Player refill", 2),
-                ["unit", ..] => ("identity:size", "Size & Geometry", 4), // its UnitComponent (scale, radius)
-                _ => ("identity:damage", "Damage", 3),
-            };
-        }
-        if (partCategory == "explosions")
-            return key.StartsWith("explosion.damage.", StringComparison.Ordinal) ? ("damage", "Damage", 0) : ("identity:explosion", "Explosion", 0);
-        if (partCategory == "perks")
-            return section == "Stats applied at spawn" ? ("identity:perk_stats", "Stats applied at spawn", 0) : ("identity:perk", "Perk bonuses", 0);
-        if (partCategory == "boosters")
-            return section switch
-            {
-                "Explosion" => ("projectile", "Explosion", 50),
-                "Status Damage" => ("damage", "Status Damage", 0),
-                "Granted Stratagem" => ("call_in", "Granted Stratagem", 0),
-                "Status Effect" => ("identity:status_effect", "Status Effect", 0),
-                "Deployed Entity" => ("identity:deployed_entity", "Deployed Entity", 0),
-                _ => ("identity:booster", "Tuning", 0),
-            };
-        if (partCategory == "projectiles") return ("projectile", "Projectile", 0);
-        if (partCategory == "statuses") return key.StartsWith("damage.", StringComparison.Ordinal) ? ("damage", "Damage while active", 0) : ("identity:status", "Status effect", 0);
-        if (partCategory == "damage") return ("damage", "Damage", 0);
+            ["entity", not "explosive_damage_percentage"] => ("identity:health", "Health", -1), // its avatar's main fields
+            [_, "speed", ..] => ("identity:speed", "Speed", 0),
+            [_, "stamina", ..] => ("identity:stamina", "Stamina", 1),
+            [_, "supply", ..] => ("identity:refill", "Player refill", 2),
+            ["unit", ..] => ("identity:size", "Size & Geometry", 4), // its UnitComponent (scale, radius)
+            _ => ("identity:damage", "Damage", 3),
+        };
+    }
+
+    // The pages with categories of their own: an explosion's, an armor perk's, a booster's, a projectile's, a status
+    // effect's, a damage type's. Null for the others.
+    static (string Category, string Group, double Rank)? PlaceOwnPage(string partCategory, string key, string? section) => partCategory switch
+    {
+        "explosions" => key.StartsWith("explosion.damage.", StringComparison.Ordinal) ? ("damage", "Damage", 0) : ("identity:explosion", "Explosion", 0),
+        "perks" => section == "Stats applied at spawn" ? ("identity:perk_stats", "Stats applied at spawn", 0) : ("identity:perk", "Perk bonuses", 0),
+        "boosters" => PlaceBooster(section),
+        "projectiles" => ("projectile", "Projectile", 0),
+        "statuses" => key.StartsWith("damage.", StringComparison.Ordinal) ? ("damage", "Damage while active", 0) : ("identity:status", "Status effect", 0),
+        "damage" => ("damage", "Damage", 0),
+        _ => null,
+    };
+
+    // A booster's page, in HD2R Editor's sections: an explosion under Projectile, status damage under Damage, the
+    // granted stratagem under Hellpod / Call-in (first), the others categories of their own.
+    static (string Category, string Group, double Rank) PlaceBooster(string? section) => section switch
+    {
+        "Explosion" => ("projectile", "Explosion", 50),
+        "Status Damage" => ("damage", "Status Damage", 0),
+        "Granted Stratagem" => ("call_in", "Granted Stratagem", 0),
+        "Status Effect" => ("identity:status_effect", "Status Effect", 0),
+        "Deployed Entity" => ("identity:deployed_entity", "Deployed Entity", 0),
+        _ => ("identity:booster", "Tuning", 0),
+    };
+
+    // A weapon's, stratagem's, backpack's or vehicle's field, by its key's domain and attack branch.
+    static (string Category, string Group, double Rank) PlaceByDomain(string partCategory, string key, ISet<string> roundRoles, string? section)
+    {
         var segments = key.Split('.');
         var domain = segments[0];
         var middle = segments.Skip(1).Take(segments.Length - 2).Where(s => s != "damage").ToList();
@@ -354,40 +405,7 @@ public static class StatsCatalog
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var placed = new List<(string Category, string Group, double Rank, StatsRow Row)>();
         var shown = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var part in item.Parts)
-        {
-            var target = schema.Targets[part.Category][part.Target];
-            var roles = target.Fields.Keys.Where(k => k.StartsWith("projectile.", StringComparison.Ordinal))
-                .Select(k => Role(k.Split('.').Skip(1).SkipLast(1).ToList())).ToHashSet();
-            // A catalog may name the same bytes twice (a deprecated id); one row each. An entity a stratagem deploys leaves
-            // out the bytes the page shows already (the Solo Silo missile's attack is the weapon's explosion).
-            foreach (var (key, field) in target.Fields.GroupBy(f => LinkKey(f.Value))
-                         .Select(g => g.OrderBy(f => f.Value.Name.Contains("deprecated", StringComparison.OrdinalIgnoreCase)).ThenBy(f => f.Value.Order).First())
-                         .Where(f => shown.Add(LinkKey(f.Value)) || part.Category != "enemies")
-                         // a weapon's input bindings: the in-game editor binds rate of fire itself when a weapon has more
-                         // than one rate (app.cpp BindRateInput), as the HD2R Editor does
-                         .Where(f => !f.Key.StartsWith("weapon_function.", StringComparison.Ordinal)))
-            {
-                var (category, group, rank) = Place(part.Category, key, roles, field.Section);
-                var label = Label(key, field);
-                // A weapon with fire modes: burst rounds under them, its fire rate as the Y slot between X and Z.
-                if (category == "fire" && (key == "fire_mode.burst_rounds" && target.Fields.ContainsKey("fire_mode.modes.1") ||
-                                           key == "weapon.fire_rate" && target.Fields.ContainsKey("fire_rate.modes.x")))
-                {
-                    (group, rank) = ("Fire mode", 1.5);
-                    if (key == "weapon.fire_rate") label = "Rate of fire Y";
-                }
-                if (vehiclePage && part.Category == "weapons")
-                {
-                    // the mount's own category; its sections in the order a weapon page has them
-                    var order = Array.IndexOf(Order, category);
-                    rank += (order < 0 ? Order.Length : order) * 1000;
-                    category = "mount:" + part.Target;
-                    titles[category] = (schema.Targets["weapons"][part.Target].Class == "Shield" ? "Shield · " : "Weapon · ") + part.Title;
-                }
-                placed.Add((category, group, rank, new StatsRow(part, key, field, label)));
-            }
-        }
+        foreach (var part in item.Parts) PlaceRows(part, schema, vehiclePage, shown, titles, placed);
         // A group that several parts fill is split per part, named after it: "Backpack · Ammunition". An entity a stratagem
         // deploys always says which it is ("Rack · Health & Armor"), its groups being the same as the others'.
         var groupParts = placed.GroupBy(p => (p.Category, p.Group)).ToDictionary(g => g.Key, g => g.Select(p => p.Row.Part).Distinct().ToList());
@@ -411,6 +429,47 @@ public static class StatsCatalog
         }
         return sections;
     }
+
+    // A part's rows, each placed in its category and group.
+    static void PlaceRows(StatsPart part, StatsSchema schema, bool vehiclePage, HashSet<string> shown, Dictionary<string, string> titles,
+        List<(string Category, string Group, double Rank, StatsRow Row)> placed)
+    {
+        var target = schema.Targets[part.Category][part.Target];
+        var roles = target.Fields.Keys.Where(k => k.StartsWith("projectile.", StringComparison.Ordinal))
+            .Select(k => Role(k.Split('.').Skip(1).SkipLast(1).ToList())).ToHashSet();
+        // A catalog may name the same bytes twice (a deprecated id); one row each. An entity a stratagem deploys leaves
+        // out the bytes the page shows already (the Solo Silo missile's attack is the weapon's explosion).
+        foreach (var (key, field) in target.Fields.GroupBy(f => LinkKey(f.Value))
+                     .Select(g => g.OrderBy(f => f.Value.Name.Contains("deprecated", StringComparison.OrdinalIgnoreCase)).ThenBy(f => f.Value.Order).First())
+                     .Where(f => shown.Add(LinkKey(f.Value)) || part.Category != "enemies")
+                     // a weapon's input bindings: the in-game editor binds rate of fire itself when a weapon has more
+                     // than one rate (the editor's BindRateInput), as the HD2R Editor does
+                     .Where(f => !f.Key.StartsWith("weapon_function.", StringComparison.Ordinal)))
+        {
+            var (category, group, rank) = Place(part.Category, key, roles, field.Section);
+            var label = Label(key, field);
+            if (category == "fire" && InFireModes(key, target))
+            {
+                (group, rank) = ("Fire mode", 1.5);
+                if (key == "weapon.fire_rate") label = "Rate of fire Y";
+            }
+            if (vehiclePage && part.Category == "weapons")
+            {
+                // the mount's own category; its sections in the order a weapon page has them
+                rank += WeaponSectionOrder(category) * 1000;
+                category = "mount:" + part.Target;
+                titles[category] = (schema.Targets["weapons"][part.Target].Class == "Shield" ? "Shield · " : "Weapon · ") + part.Title;
+            }
+            placed.Add((category, group, rank, new StatsRow(part, key, field, label)));
+        }
+    }
+
+    // A weapon with fire modes: burst rounds under them, its fire rate as the Y slot between X and Z.
+    static bool InFireModes(string key, StatsTarget target) =>
+        key == "fire_mode.burst_rounds" && target.Fields.ContainsKey("fire_mode.modes.1") ||
+        key == "weapon.fire_rate" && target.Fields.ContainsKey("fire_rate.modes.x");
+
+    static int WeaponSectionOrder(string category) => Array.IndexOf(Order, category) is var order && order >= 0 ? order : Order.Length;
 
     // A vehicle's page: the call-in, (the editor's Mounted Weapons, EditorCatalog), each mount's weapon right below them,
     // then its health and armor, its damage zones and its shield.

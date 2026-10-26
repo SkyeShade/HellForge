@@ -115,11 +115,9 @@ static uintptr_t g_nearGame;
 static uint8_t* g_nearArena;
 static size_t g_nearUsed;
 
-/* A region of `bytes` within 2 GB of game.dll (type: MEM_RESERVE alone, or with MEM_COMMIT), or NULL. */
-static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
+/* Above the image (`image` bytes at game): the first free region within 2 GB that takes the block. */
+static uint8_t* FindNearAbove(uintptr_t game, size_t image, size_t bytes, DWORD type)
 {
-    size_t image = 0;
-    ApiModuleBase("game.dll", &image);
     uintptr_t at = (game + image + 0xFFFF) & ~(uintptr_t)0xFFFF;
     for (; at + bytes < game + 0x7FFF0000u; at += 0x10000)
     {
@@ -129,7 +127,13 @@ static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
         void* block = VirtualAlloc((void*)at, bytes, type, PAGE_READWRITE);
         if (block != NULL) return (uint8_t*)block;
     }
-    /* below: within 2 GB of the image's end too, since RIP-relative operands and jumps anywhere in it reach the block */
+    return NULL;
+}
+
+/* below: within 2 GB of the image's end too, since RIP-relative operands and jumps anywhere in it reach the block */
+static uint8_t* FindNearBelow(uintptr_t game, size_t image, size_t bytes, DWORD type)
+{
+    uintptr_t at;
     uintptr_t lowest = game + image > 0x7FFF0000u + 0x10000u ? game + image - 0x7FFF0000u : 0x10000;
     for (at = (game - bytes) & ~(uintptr_t)0xFFFF; at >= lowest && at < game;)
     {
@@ -148,6 +152,15 @@ static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
         at = (base - bytes) & ~(uintptr_t)0xFFFF;
     }
     return NULL;
+}
+
+/* A region of `bytes` within 2 GB of game.dll (type: MEM_RESERVE alone, or with MEM_COMMIT), or NULL. */
+static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
+{
+    size_t image = 0;
+    ApiModuleBase("game.dll", &image);
+    uint8_t* block = FindNearAbove(game, image, bytes, type);
+    return block != NULL ? block : FindNearBelow(game, image, bytes, type);
 }
 
 /* Once game.dll is decoded: the loader's own space near it, and where both are in modloader.log. */
@@ -184,6 +197,29 @@ static uint8_t* AllocateNearGame(uintptr_t game, size_t bytes)
     return block;
 }
 
+/* Each new type's row: its base's, with its id and its standard and durable damage scaled. 0 when a base row does not
+ * name its id. */
+static int DamageRowsBuild(const uint8_t* table, uint8_t* rows)
+{
+    for (uint32_t i = 0; i < g_damageCount; i++)
+    {
+        Damage* d = &g_damages[i];
+        uint64_t base;
+        memcpy(&base, table + d->base * 8, 8);
+        d->row = rows + (size_t)i * DMG_ROW;
+        if (base == 0 || SafeRead(base, d->row, DMG_ROW) || *(uint32_t*)d->row != d->base) return 0;
+        uint32_t standard, durable;
+        memcpy(&standard, d->row + 4, 4);
+        memcpy(&durable, d->row + 8, 4);
+        standard = (uint32_t)(standard * d->scale + 0.5f);
+        durable = (uint32_t)(durable * d->scale + 0.5f);
+        memcpy(d->row, &d->id, 4);
+        memcpy(d->row + 4, &standard, 4);
+        memcpy(d->row + 8, &durable, 4);
+    }
+    return 1;
+}
+
 static int RefuseDamage(const char* why)
 {
     g_damageState = -1;
@@ -207,23 +243,7 @@ static int InstallDamage(uintptr_t game, int pinsReady)
     if (table == NULL) return RefuseDamage("no memory within 2 GB of game.dll for the moved list");
     if (SafeRead(game + DMG_TABLE, table, DMG_VANILLA * 8)) return RefuseDamage("the damage list is unreadable");
     uint8_t* rows = table + (DMG_VANILLA + DMG_MAX_NEW) * 8;
-    for (uint32_t i = 0; i < g_damageCount; i++)
-    {
-        Damage* d = &g_damages[i];
-        uint64_t base;
-        memcpy(&base, table + d->base * 8, 8);
-        d->row = rows + (size_t)i * DMG_ROW;
-        if (base == 0 || SafeRead(base, d->row, DMG_ROW) || *(uint32_t*)d->row != d->base)
-            return RefuseDamage("a base damage row does not name its id");
-        uint32_t standard, durable;
-        memcpy(&standard, d->row + 4, 4);
-        memcpy(&durable, d->row + 8, 4);
-        standard = (uint32_t)(standard * d->scale + 0.5f);
-        durable = (uint32_t)(durable * d->scale + 0.5f);
-        memcpy(d->row, &d->id, 4);
-        memcpy(d->row + 4, &standard, 4);
-        memcpy(d->row + 8, &durable, 4);
-    }
+    if (!DamageRowsBuild(table, rows)) return RefuseDamage("a base damage row does not name its id");
     for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
     {
         int32_t disp = SiteDisplacement((uintptr_t)table, game, &kDamageSites[i]);

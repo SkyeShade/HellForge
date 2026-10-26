@@ -52,14 +52,21 @@ public sealed class StatsSync
             foreach (var (name, entry) in byTarget)
             {
                 if (entry is not JsonObject fields || section.GetValueOrDefault(name) is not { } target) continue;
-                if (fields["own"] is JsonValue own && own.TryGetValue(out bool isOwn) && isOwn) { bootOnly += fields.Count - 1; continue; }
-                foreach (var (key, value) in fields)
-                {
-                    if (value == null || !target.Fields.TryGetValue(target.Aliases.GetValueOrDefault(key, key), out var field)) continue;
-                    if (LiveApplies.Of(field) == null && !PipeOnly(field)) { bootOnly++; continue; }
-                    if (StatsCatalog.TryParse(field, value.ToJsonString(), out _, out var bits, out _)) values[field.AddressKey] = (field, bits);
-                }
+                ReadTarget(fields, target, values, ref bootOnly);
             }
+        }
+    }
+
+    // One target's values. An "own" entry's apply from a session start, as do fields live editing does not reach: counted
+    // in bootOnly.
+    static void ReadTarget(JsonObject fields, StatsTarget target, Dictionary<string, (StatsField Field, uint Bits)> values, ref int bootOnly)
+    {
+        if (fields["own"] is JsonValue own && own.TryGetValue(out bool isOwn) && isOwn) { bootOnly += fields.Count - 1; return; }
+        foreach (var (key, value) in fields)
+        {
+            if (value == null || !target.Fields.TryGetValue(target.Aliases.GetValueOrDefault(key, key), out var field)) continue;
+            if (LiveApplies.Of(field) == null && !PipeOnly(field)) { bootOnly++; continue; }
+            if (StatsCatalog.TryParse(field, value.ToJsonString(), out _, out var bits, out _)) values[field.AddressKey] = (field, bits);
         }
     }
 
@@ -79,22 +86,29 @@ public sealed class StatsSync
             var field = applied.TryGetValue(address, out var now) ? now.Field : theirs?.GetValueOrDefault(address).Field ?? mine[address].Field;
             var tracked = applied.ContainsKey(address);
             var ownBits = mine.TryGetValue(address, out var o) ? o.Bits : (uint?)null;
-            if (theirs != null)
-            {
-                if (theirs.TryGetValue(address, out var h))
-                {
-                    if (!(tracked && now.Bits == h.Bits)) requests.Add(new("set", field, h.Bits, address));
-                }
-                else if (tracked ? now.Bits != null : ownBits != null) requests.Add(new("base", field, 0, address)); // their base
-            }
-            else if (tracked)
-            {
-                if (ownBits is { } back) requests.Add(new("set", field, back, address)); // its own value again
-                else if (now.Bits != null) requests.Add(new("reset", field, 0, address));
-                else applied.Remove(address); // at its base, which is its session-start value
-            }
+            StatsSyncRequest? request = null;
+            if (theirs != null) request = ToHost(address, field, tracked, now.Bits, ownBits, theirs);
+            else if (tracked) request = ToOwn(address, field, now.Bits, ownBits);
+            if (request != null) requests.Add(request);
         }
         return requests;
+    }
+
+    // Joined: the field to the host's value, or to its base where the host has none and the field holds a value. now: what
+    // the game holds over its session start.
+    static StatsSyncRequest? ToHost(string address, StatsField field, bool tracked, uint? now, uint? ownBits, Dictionary<string, (StatsField Field, uint Bits)> theirs)
+    {
+        if (theirs.TryGetValue(address, out var h)) return tracked && now == h.Bits ? null : new("set", field, h.Bits, address);
+        return (tracked ? now != null : ownBits != null) ? new("base", field, 0, address) : null; // their base
+    }
+
+    // Not joined (a tracked field): back to this machine's own value, else to its session-start value.
+    StatsSyncRequest? ToOwn(string address, StatsField field, uint? now, uint? ownBits)
+    {
+        if (ownBits is { } back) return new("set", field, back, address); // its own value again
+        if (now != null) return new("reset", field, 0, address);
+        applied.Remove(address); // at its base, which is its session-start value
+        return null;
     }
 
     // A request the game took. Back at its own values (not joined), a field is no longer tracked.

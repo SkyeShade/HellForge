@@ -33,19 +33,25 @@ HF_LUA_API int hellforge_lua_info(HfLuaInfo* out)
     return 1;
 }
 
+/* The name after id's "lua." (`size` bytes in all), lowercased, anything but a-z 0-9 . _ - made "-". */
+static void LuaModId(const char* name, char* id, size_t size)
+{
+    size_t n = 4;
+    for (const char* c = name; *c && n < size - 1; c++)
+    {
+        char ch = *c >= 'A' && *c <= 'Z' ? (char)(*c - 'A' + 'a') : *c;
+        id[n++] = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' ? ch : '-';
+    }
+    id[n] = 0;
+}
+
 /* A Lua mod by name ("hd2runtime", "mods/someone/fast_guns"): lua.<name>, lowercased, anything but a-z 0-9 . _ - made
  * "-" (a mod id's characters). The same name gives the same mod. NULL when the name is empty or the mods are full. */
 HF_LUA_API HfMod* hellforge_lua_mod(const char* name)
 {
     if (name == NULL || name[0] == 0) return NULL;
     char id[64] = "lua.";
-    size_t n = 4;
-    for (const char* c = name; *c && n < sizeof id - 1; c++)
-    {
-        char ch = *c >= 'A' && *c <= 'Z' ? (char)(*c - 'A' + 'a') : *c;
-        id[n++] = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' ? ch : '-';
-    }
-    id[n] = 0;
+    LuaModId(name, id, sizeof id);
     HfMod* mod = NULL;
     AcquireSRWLockExclusive(&g_luaLock);
     for (int i = 0; i < g_modCount && mod == NULL; i++) if (g_mods[i].lua && !strcmp(g_mods[i].id, id)) mod = &g_mods[i];
@@ -97,7 +103,7 @@ static int LuaField(HfMod* mod, const char* component, uint32_t offset, uint32_t
 
 /* set_live for a Lua mod: the value as a number (every type but u64) or as u64. Returns HF_APPLIES_..., or 0 refused
  * (hellforge_lua_last says why). */
-HF_LUA_API int hellforge_lua_set(HfMod* mod, const char* component, uint64_t target, uint32_t offset, uint32_t type,
+HF_LUA_API int hellforge_lua_set(HfMod* mod, const char* component, uint64_t target, uint32_t offset, uint32_t type, // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
     double number, uint64_t u64, uint32_t flags)
 {
     HfField field;
@@ -163,6 +169,27 @@ HF_LUA_API int hellforge_lua_get(HfMod* mod, const char* component, uint64_t tar
     return result;
 }
 
+/* The resources whose index entry names `record` of the component (its entries after its header in the region): how
+ * many, *first the first. 0 when the header is not the one loaded, or an entry does not read. */
+static uint32_t LuaRecordOwners(const Component* c, uintptr_t region, uint32_t record, uint64_t* first)
+{
+    uint8_t head[32];
+    uint32_t index = 0, count = 0;
+    if (!SafeRead(region + c->offset - 4, head, 32)) memcpy(&index, head, 4);
+    if (index != c->index || memcmp(head + 4, c->header, 28) != 0) return 0;
+    for (uint32_t row = 0; row < c->indices; row++)
+    {
+        uint8_t entry[16];
+        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) { *first = 0; return 0; }
+        uint64_t id;
+        uint32_t at;
+        memcpy(&id, entry, 8);
+        memcpy(&at, entry + 8, 4);
+        if (id != 0 && at == record) { if (*first == 0) *first = id; count++; }
+    }
+    return count;
+}
+
 /* The entity a vanilla record of a component belongs to, by its record index in the game's entity data (HD2Runtime's
  * catalogues name records so): the first resource naming it, with *owners how many do (more than one: a shared record,
  * set with HF_LIVE_SHARED). 0 when the data is not loaded or nothing names it. */
@@ -174,23 +201,7 @@ HF_LUA_API uint64_t hellforge_lua_owner(const char* component, uint32_t record, 
     const Component* c = NULL;
     for (int i = 0; sdk != NULL && i < g_componentCount; i++) if (!strcmp(g_components[i].name, sdk->component)) c = &g_components[i];
     uintptr_t region = g_region;
-    if (c != NULL && region != 0 && c->recordOffset == c->indices * 16)
-    {
-        uint8_t head[32];
-        uint32_t index = 0;
-        if (!SafeRead(region + c->offset - 4, head, 32)) memcpy(&index, head, 4);
-        if (index == c->index && memcmp(head + 4, c->header, 28) == 0)
-            for (uint32_t row = 0; row < c->indices; row++)
-            {
-                uint8_t entry[16];
-                if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) { count = 0; first = 0; break; }
-                uint64_t id;
-                uint32_t at;
-                memcpy(&id, entry, 8);
-                memcpy(&at, entry + 8, 4);
-                if (id != 0 && at == record) { if (first == 0) first = id; count++; }
-            }
-    }
+    if (c != NULL && region != 0 && c->recordOffset == c->indices * 16) count = LuaRecordOwners(c, region, record, &first);
     if (owners != NULL) *owners = count;
     return first;
 }
@@ -269,7 +280,7 @@ HF_LUA_API uint32_t hellforge_lua_game_state(void) { return ApiGameState(NULL); 
  * while the stratagems have not loaded, or for no such stratagem. */
 HF_LUA_API uint32_t hellforge_lua_stratagem_type(uint32_t stable) { return (uint32_t)StratagemTypeOf(stable); }
 /* set_stat's fields for a Lua mod (live.c: its value at the Lua rank, under the editors'). */
-HF_LUA_API int hellforge_lua_set_stat(HfMod* mod, const char* kind, const char* component, uint64_t resource, int64_t record,
+HF_LUA_API int hellforge_lua_set_stat(HfMod* mod, const char* kind, const char* component, uint64_t resource, int64_t record, // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
     uint32_t offset, uint32_t type, double number)
 {
     if (!LuaMod(mod)) return 0;
@@ -308,26 +319,26 @@ HF_LUA_API int hellforge_lua_spawn_explosion(HfMod* mod, uint32_t type, float x,
     float at[3] = {x, y, z};
     return LuaMod(mod) ? ApiSpawnExplosion(mod, type, at) : 0;
 }
-HF_LUA_API int hellforge_lua_spawn_projectile(HfMod* mod, uint32_t type, float x, float y, float z, float dx, float dy, float dz)
+HF_LUA_API int hellforge_lua_spawn_projectile(HfMod* mod, uint32_t type, float x, float y, float z, float dx, float dy, float dz) // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
 {
     float at[3] = {x, y, z}, direction[3] = {dx, dy, dz};
     return LuaMod(mod) ? ApiSpawnProjectile(mod, type, at, direction) : 0;
 }
 HF_LUA_API int hellforge_lua_credit_to_player(HfMod* mod, uint32_t entity) { return LuaMod(mod) ? ApiCreditToPlayer(mod, entity) : 0; }
 HF_LUA_API int hellforge_lua_freeze_mission_timer(HfMod* mod, int frozen) { return LuaMod(mod) ? ApiFreezeTimer(mod, frozen) : 0; }
-HF_LUA_API int hellforge_lua_spawn_pelican(HfMod* mod, float x, float y, float z, float hover, float distance, float height, float fx, float fy,
+HF_LUA_API int hellforge_lua_spawn_pelican(HfMod* mod, float x, float y, float z, float hover, float distance, float height, float fx, float fy, // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
     uint32_t* entity)
 {
     HfPelicanCall call = {sizeof call, {x, y, z}, hover, distance, height, {fx, fy}};
     return LuaMod(mod) ? ApiSpawnPelican(mod, &call, entity) : 0;
 }
-HF_LUA_API uint32_t hellforge_lua_modify_shots(HfMod* mod, uint32_t projectile, const uint64_t* sources, float damage, float armor_penetration,
+HF_LUA_API uint32_t hellforge_lua_modify_shots(HfMod* mod, uint32_t projectile, const uint64_t* sources, float damage, float armor_penetration, // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
     float speed, float gravity, float drag, uint32_t flags)
 {
     HfShotRule rule = {sizeof rule, projectile, sources, damage, armor_penetration, speed, gravity, drag, flags};
     return LuaMod(mod) ? ApiModifyShots(mod, &rule) : 0;
 }
-HF_LUA_API uint32_t hellforge_lua_homing(HfMod* mod, uint32_t projectile, const uint64_t* sources, float turn_rate, float cone, float range,
+HF_LUA_API uint32_t hellforge_lua_homing(HfMod* mod, uint32_t projectile, const uint64_t* sources, float turn_rate, float cone, float range, // lint-ok: R12 mirrors hellforge_lua.h (a Lua bridge export)
     float arm_distance, float aim_height, uint32_t flags)
 {
     HfHoming rule = {sizeof rule, projectile, sources, turn_rate, cone, range, arm_distance, aim_height, flags};
@@ -345,55 +356,78 @@ typedef struct LuaCode { uint32_t type; HfMod* mod; uintptr_t row; uint64_t poin
 static LuaCode g_luaCodes[LUA_CODE_MAX];
 static int g_luaCodeCount;
 
+static int LuaCodeValid(HfMod* mod, uint32_t stable, const uint32_t* code, uint32_t count)
+{
+    if (count < 1 || count > 9) { ApiLog(mod, "set_code %u: %u directions (1 to 9)", stable, count); return 0; }
+    for (uint32_t i = 0; i < count; i++)
+        if (code[i] < 1 || code[i] > 4) { ApiLog(mod, "set_code %u: direction %u is %u (1 up, 2 right, 3 down, 4 left)", stable, i + 1, code[i]); return 0; }
+    return 1;
+}
+
+/* The changed code of a stratagem type: its slot, -1 none. Called with g_luaLock held (as are the next three). */
+static int LuaCodeFind(uint32_t type)
+{
+    int slot = -1;
+    for (int i = 0; i < g_luaCodeCount; i++) if (g_luaCodes[i].type == type) slot = i;
+    return slot;
+}
+
+/* The row's code from before its first change back (slot: its change, -1 none). HF_APPLIES_NOW, or 0. */
+static int LuaCodeRestore(int slot)
+{
+    if (slot < 0) return HF_APPLIES_NOW;
+    LuaCode* c = &g_luaCodes[slot];
+    if (ApiWrite(c->row + 0x48, &c->count, 4) || ApiWrite(c->row + 0x40, &c->pointer, 8)) return 0;
+    g_luaCodes[slot] = g_luaCodes[--g_luaCodeCount]; /* its array stays: the game may still hold it */
+    return HF_APPLIES_NOW;
+}
+
+/* A slot for the row's first change, keeping its code now: the slot; -1 when the slots are full, -2 when the row does
+ * not read. */
+static int LuaCodeAdd(uint32_t type, uintptr_t row)
+{
+    if (g_luaCodeCount == LUA_CODE_MAX) return -1;
+    LuaCode* c = &g_luaCodes[g_luaCodeCount];
+    memset(c, 0, sizeof *c);
+    if (SafeRead(row + 0x40, &c->pointer, 8) || SafeRead(row + 0x48, &c->count, 4)) return -2;
+    c->type = type;
+    c->row = row;
+    return g_luaCodeCount++;
+}
+
+/* The code into its slot's array, and the row pointed at it. HF_APPLIES_NOW, or 0. */
+static int LuaCodeWrite(LuaCode* c, HfMod* mod, uintptr_t row, uint32_t stable, const uint32_t* code, uint32_t count)
+{
+    int result = HF_APPLIES_NOW;
+    c->mod = mod;
+    uint32_t* array = c->code;
+    uint32_t now = 0;
+    SafeRead(row + 0x48, &now, 4);
+    /* a shorter code is written over the array only once the count is down to it */
+    if (count < now && ApiWrite(row + 0x48, &count, 4)) result = 0;
+    for (uint32_t i = 0; i < LUA_CODE_LENGTH && result; i++) array[i] = i < count ? code[i] : 0;
+    if (result && (ApiWrite(row + 0x40, &array, 8) || ApiWrite(row + 0x48, &count, 4))) result = 0;
+    if (result) ApiLog(mod, "set_code %u (stratagem %u): %u directions", stable, c->type, count);
+    return result;
+}
+
 HF_LUA_API int hellforge_lua_set_code(HfMod* mod, uint32_t stable, const uint32_t* code, uint32_t count)
 {
     if (!LuaMod(mod)) return 0;
-    if (code != NULL)
-    {
-        if (count < 1 || count > 9) { ApiLog(mod, "set_code %u: %u directions (1 to 9)", stable, count); return 0; }
-        for (uint32_t i = 0; i < count; i++)
-            if (code[i] < 1 || code[i] > 4) { ApiLog(mod, "set_code %u: direction %u is %u (1 up, 2 right, 3 down, 4 left)", stable, i + 1, code[i]); return 0; }
-    }
+    if (code != NULL && !LuaCodeValid(mod, stable, code, count)) return 0;
     uint32_t type = (uint32_t)StratagemTypeOf(stable);
     int ready = 1;
     uintptr_t row = type != 0 ? g_tableRow("StratagemDefinition", type, &ready) : 0;
     if (row == 0) { ApiLog(mod, "set_code %u: no such stratagem, or the stratagems have not loaded yet", stable); return 0; }
     AcquireSRWLockExclusive(&g_luaLock);
-    int slot = -1;
-    for (int i = 0; i < g_luaCodeCount; i++) if (g_luaCodes[i].type == type) slot = i;
-    int result = HF_APPLIES_NOW;
-    if (code == NULL)
-    {
-        if (slot >= 0)
-        {
-            LuaCode* c = &g_luaCodes[slot];
-            if (ApiWrite(c->row + 0x48, &c->count, 4) || ApiWrite(c->row + 0x40, &c->pointer, 8)) result = 0;
-            else g_luaCodes[slot] = g_luaCodes[--g_luaCodeCount]; /* its array stays: the game may still hold it */
-        }
-    }
+    int slot = LuaCodeFind(type), result;
+    if (code == NULL) result = LuaCodeRestore(slot);
     else
     {
-        if (slot < 0)
-        {
-            if (g_luaCodeCount == LUA_CODE_MAX) { ReleaseSRWLockExclusive(&g_luaLock); ApiLog(mod, "set_code: too many changed codes"); return 0; }
-            LuaCode* c = &g_luaCodes[g_luaCodeCount];
-            memset(c, 0, sizeof *c);
-            if (SafeRead(row + 0x40, &c->pointer, 8) || SafeRead(row + 0x48, &c->count, 4))
-            { ReleaseSRWLockExclusive(&g_luaLock); ApiLog(mod, "set_code %u: its row is unreadable", stable); return 0; }
-            c->type = type;
-            c->row = row;
-            slot = g_luaCodeCount++;
-        }
-        LuaCode* c = &g_luaCodes[slot];
-        c->mod = mod;
-        uint32_t* array = c->code;
-        uint32_t now = 0;
-        SafeRead(row + 0x48, &now, 4);
-        /* a shorter code is written over the array only once the count is down to it */
-        if (count < now && ApiWrite(row + 0x48, &count, 4)) result = 0;
-        for (uint32_t i = 0; i < LUA_CODE_LENGTH && result; i++) array[i] = i < count ? code[i] : 0;
-        if (result && (ApiWrite(row + 0x40, &array, 8) || ApiWrite(row + 0x48, &count, 4))) result = 0;
-        if (result) ApiLog(mod, "set_code %u (stratagem %u): %u directions", stable, type, count);
+        if (slot < 0) slot = LuaCodeAdd(type, row);
+        if (slot == -1) { ReleaseSRWLockExclusive(&g_luaLock); ApiLog(mod, "set_code: too many changed codes"); return 0; }
+        if (slot < 0) { ReleaseSRWLockExclusive(&g_luaLock); ApiLog(mod, "set_code %u: its row is unreadable", stable); return 0; }
+        result = LuaCodeWrite(&g_luaCodes[slot], mod, row, stable, code, count);
     }
     ReleaseSRWLockExclusive(&g_luaLock);
     if (!result) ApiLog(mod, "set_code %u: the write did not hold", stable);

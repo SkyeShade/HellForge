@@ -111,6 +111,141 @@ static void StratagemPayloadsCheck(void)
     }
 }
 
+/* Whether a stratagem of this name can be added now; logged when not. */
+static int StratagemAddable(HfMod* mod, const HfStratagem* def, const char* name)
+{
+    if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_stratagems[0].name) { ApiLog(mod, "add_stratagem: it needs a name (under 192 bytes)"); return 0; }
+    if (g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "add_stratagem(%s): too late; call it from hellforge_mod_init", name); return 0; }
+    if (g_stratagemCount >= STR_MAX_NEW) { ApiLog(mod, "add_stratagem(%s): mods added %u stratagems already", name, STR_MAX_NEW); return 0; }
+    if (def->base == 0 || def->base >= STR_VANILLA) { ApiLog(mod, "add_stratagem(%s): base %u is not a vanilla stratagem type (1 .. 149)", name, def->base); return 0; }
+    return 1;
+}
+
+/* 1 (logged) when a mod added a stratagem of this stable id or name already. */
+static int StratagemTaken(HfMod* mod, const char* name, uint32_t stable)
+{
+    for (uint32_t i = 0; i < g_stratagemCount; i++)
+        if (g_stratagems[i].stable == stable || strcmp(g_stratagems[i].name, name) == 0)
+        {
+            ApiLog(mod, "add_stratagem(%s): already added by %s", name, g_stratagems[i].mod->id);
+            return 1;
+        }
+    return 0;
+}
+
+/* An input code letter's direction (1 up, 2 right, 3 down, 4 left), or 0. */
+static uint32_t CodeDirection(char c)
+{
+    if (c == 'U' || c == 'u') return 1;
+    if (c == 'R' || c == 'r') return 2;
+    if (c == 'D' || c == 'd') return 3;
+    return c == 'L' || c == 'l' ? 4 : 0;
+}
+
+/* The mod's input code (NULL: the base's) into s; 1 if refused (logged). */
+static int StratagemCode(HfMod* mod, const char* name, const char* code, Stratagem* s)
+{
+    if (code == NULL) return 0;
+    for (const char* c = code; *c; c++)
+    {
+        uint32_t d = CodeDirection(*c);
+        if (d == 0 || s->codeLength >= STR_MAX_CODE) { ApiLog(mod, "add_stratagem(%s): code \"%s\" must be 1 to 9 of U, D, L, R", name, code); return 1; }
+        s->code[s->codeLength++] = d;
+    }
+    if (s->codeLength == 0) { ApiLog(mod, "add_stratagem(%s): code is empty", name); return 1; }
+    return 0;
+}
+
+/* Its cooldown and uses; 1 if refused (logged). */
+static int StratagemUse(HfMod* mod, const char* name, const HfStratagem* def, Stratagem* s)
+{
+    if (def->cooldown < 0.0f || def->cooldown > 3600.0f) { ApiLog(mod, "add_stratagem(%s): cooldown must be 0 to 3600 seconds", name); return 1; }
+    if (def->uses < -1) { ApiLog(mod, "add_stratagem(%s): uses must be -1 (unlimited), 0 (the base's) or a count", name); return 1; }
+    s->cooldown = def->cooldown;
+    s->uses = def->uses;
+    return 0;
+}
+
+/* Its payload and package, when the mod's HfStratagem has them; 1 if refused (logged). */
+static int StratagemPayload(HfMod* mod, const char* name, const HfStratagem* def, Stratagem* s)
+{
+    if (def->size < offsetof(HfStratagem, package) + sizeof def->package) return 0;
+    if (def->payload != NULL && (def->payload_count == 0 || def->payload_count > STR_MAX_PAYLOAD))
+    {
+        ApiLog(mod, "add_stratagem(%s): payload_count must be 1 to %u", name, STR_MAX_PAYLOAD);
+        return 1;
+    }
+    if (def->payload != NULL)
+    {
+        int any = 0;
+        for (uint32_t i = 0; i < def->payload_count; i++) any |= def->payload[i] != 0;
+        if (!any) { ApiLog(mod, "add_stratagem(%s): its payload names no entity", name); return 1; }
+        memcpy(s->payload, def->payload, sizeof s->payload[0] * def->payload_count);
+        s->payloadCount = def->payload_count;
+    }
+    s->package = def->package;
+    return 0;
+}
+
+/* Its loadout item, category, beam and flags, when the mod's HfStratagem has them; 1 if refused (logged). */
+static int StratagemLoadout(HfMod* mod, const char* name, const HfStratagem* def, Stratagem* s)
+{
+    if (def->size < offsetof(HfStratagem, flags) + sizeof def->flags) return 0;
+    if (def->category > 5 || def->beam > 3) { ApiLog(mod, "add_stratagem(%s): category is HF_CATEGORY_..., beam HF_BEAM_...", name); return 1; }
+    s->loadsItem = def->loads_item;
+    s->category = def->category;
+    s->beam = def->beam;
+    s->flags = def->flags;
+    return 0;
+}
+
+/* Its icon and title as the mod gave them, and the editor page it takes (its base's, until the mod names one). */
+static void StratagemLooks(const HfStratagem* def, Stratagem* s)
+{
+    s->icon = def->icon != NULL && def->icon[0] ? Murmur64A(def->icon, strlen(def->icon)) : 0;
+    if (def->icon != NULL) snprintf(s->iconName, sizeof s->iconName, "%s", def->icon);
+    if (def->title != NULL) snprintf(s->title, sizeof s->title, "%s", def->title);
+    s->editorLike = s->base;
+}
+
+/* Its selection category and order and its editor page, when the mod's HfStratagem has them; 1 if refused (logged). */
+static int StratagemEditor(HfMod* mod, const char* name, const HfStratagem* def, Stratagem* s)
+{
+    if (def->size >= offsetof(HfStratagem, selection_category) + sizeof def->selection_category)
+    {
+        if (def->selection_category > g_stratagemCategoryCount)
+        {
+            ApiLog(mod, "add_stratagem(%s): selection_category is not a registered category handle", name);
+            return 1;
+        }
+        s->selectionCategory = def->selection_category;
+    }
+    if (def->size >= offsetof(HfStratagem, selection_order) + sizeof def->selection_order)
+        s->selectionOrder = def->selection_order;
+    if (def->size >= offsetof(HfStratagem, editor_entities) + sizeof def->editor_entities)
+    {
+        if (def->editor_like != 0 && def->editor_like < STR_VANILLA) s->editorLike = def->editor_like;
+        int n = 0;
+        for (const HfEditorEntity* e = def->editor_entities; e != NULL && e->entity != 0 && n < (int)STR_MAX_PAYLOAD; e++) s->editorEntities[n++] = *e;
+    }
+    return 0;
+}
+
+/* Its text ids: name, cased name and description (0: the base's). */
+static void StratagemText(const char* name, const HfStratagem* def, Stratagem* s)
+{
+    char key[256];
+    snprintf(key, sizeof key, "%s#text", name);
+    if (def->title != NULL && def->title[0])
+    {
+        char upper[192];
+        UpperCopy(def->title, upper, sizeof upper);
+        s->text[0] = AddText(upper, key, 0x11);
+        s->text[1] = AddText(def->title, key, 0x12);
+    }
+    s->text[2] = AddText(def->description, key, 0x13);
+}
+
 static uint32_t ApiAddStratagem(HfMod* mod, const HfStratagem* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfStratagem, uses) + sizeof def->uses)
@@ -120,10 +255,7 @@ static uint32_t ApiAddStratagem(HfMod* mod, const HfStratagem* def)
     }
     char identity[256];
     const char* name = Identity(mod, def->name, identity, sizeof identity);
-    if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_stratagems[0].name) { ApiLog(mod, "add_stratagem: it needs a name (under 192 bytes)"); return 0; }
-    if (g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "add_stratagem(%s): too late; call it from hellforge_mod_init", name); return 0; }
-    if (g_stratagemCount >= STR_MAX_NEW) { ApiLog(mod, "add_stratagem(%s): mods added %u stratagems already", name, STR_MAX_NEW); return 0; }
-    if (def->base == 0 || def->base >= STR_VANILLA) { ApiLog(mod, "add_stratagem(%s): base %u is not a vanilla stratagem type (1 .. 149)", name, def->base); return 0; }
+    if (!StratagemAddable(mod, def, name)) return 0;
     Stratagem s = {0};
     s.mod = mod;
     snprintf(s.name, sizeof s.name, "%s", name);
@@ -133,83 +265,12 @@ static uint32_t ApiAddStratagem(HfMod* mod, const HfStratagem* def)
     snprintf(key, sizeof key, "%s#item", name);
     s.item = (uint32_t)(Murmur64A(key, strlen(key)) >> 32);
     if (s.stable == 0 || s.item == 0) { ApiLog(mod, "add_stratagem(%s): its name hashes to 0; choose another", name); return 0; }
-    for (uint32_t i = 0; i < g_stratagemCount; i++)
-        if (g_stratagems[i].stable == s.stable || strcmp(g_stratagems[i].name, name) == 0)
-        {
-            ApiLog(mod, "add_stratagem(%s): already added by %s", name, g_stratagems[i].mod->id);
-            return 0;
-        }
-    if (def->code != NULL)
-    {
-        for (const char* c = def->code; *c; c++)
-        {
-            uint32_t d = *c == 'U' || *c == 'u' ? 1 : *c == 'R' || *c == 'r' ? 2 : *c == 'D' || *c == 'd' ? 3 : *c == 'L' || *c == 'l' ? 4 : 0;
-            if (d == 0 || s.codeLength >= STR_MAX_CODE) { ApiLog(mod, "add_stratagem(%s): code \"%s\" must be 1 to 9 of U, D, L, R", name, def->code); return 0; }
-            s.code[s.codeLength++] = d;
-        }
-        if (s.codeLength == 0) { ApiLog(mod, "add_stratagem(%s): code is empty", name); return 0; }
-    }
-    if (def->cooldown < 0.0f || def->cooldown > 3600.0f) { ApiLog(mod, "add_stratagem(%s): cooldown must be 0 to 3600 seconds", name); return 0; }
-    if (def->uses < -1) { ApiLog(mod, "add_stratagem(%s): uses must be -1 (unlimited), 0 (the base's) or a count", name); return 0; }
-    s.cooldown = def->cooldown;
-    s.uses = def->uses;
-    if (def->size >= offsetof(HfStratagem, package) + sizeof def->package)
-    {
-        if (def->payload != NULL && (def->payload_count == 0 || def->payload_count > STR_MAX_PAYLOAD))
-        {
-            ApiLog(mod, "add_stratagem(%s): payload_count must be 1 to %u", name, STR_MAX_PAYLOAD);
-            return 0;
-        }
-        if (def->payload != NULL)
-        {
-            int any = 0;
-            for (uint32_t i = 0; i < def->payload_count; i++) any |= def->payload[i] != 0;
-            if (!any) { ApiLog(mod, "add_stratagem(%s): its payload names no entity", name); return 0; }
-            memcpy(s.payload, def->payload, sizeof s.payload[0] * def->payload_count);
-            s.payloadCount = def->payload_count;
-        }
-        s.package = def->package;
-    }
-    if (def->size >= offsetof(HfStratagem, flags) + sizeof def->flags)
-    {
-        if (def->category > 5 || def->beam > 3) { ApiLog(mod, "add_stratagem(%s): category is HF_CATEGORY_..., beam HF_BEAM_...", name); return 0; }
-        s.loadsItem = def->loads_item;
-        s.category = def->category;
-        s.beam = def->beam;
-        s.flags = def->flags;
-    }
-    s.icon = def->icon != NULL && def->icon[0] ? Murmur64A(def->icon, strlen(def->icon)) : 0;
-    if (def->icon != NULL) snprintf(s.iconName, sizeof s.iconName, "%s", def->icon);
-    if (def->title != NULL) snprintf(s.title, sizeof s.title, "%s", def->title);
-    s.editorLike = s.base;
-    if (def->size >= offsetof(HfStratagem, selection_category) + sizeof def->selection_category)
-    {
-        if (def->selection_category > g_stratagemCategoryCount)
-        {
-            ApiLog(mod, "add_stratagem(%s): selection_category is not a registered category handle", name);
-            return 0;
-        }
-        s.selectionCategory = def->selection_category;
-    }
-    if (def->size >= offsetof(HfStratagem, selection_order) + sizeof def->selection_order)
-        s.selectionOrder = def->selection_order;
-    if (def->size >= offsetof(HfStratagem, editor_entities) + sizeof def->editor_entities)
-    {
-        if (def->editor_like != 0 && def->editor_like < STR_VANILLA) s.editorLike = def->editor_like;
-        int n = 0;
-        for (const HfEditorEntity* e = def->editor_entities; e != NULL && e->entity != 0 && n < (int)STR_MAX_PAYLOAD; e++) s.editorEntities[n++] = *e;
-    }
-    snprintf(key, sizeof key, "%s#text", name);
-    if (def->title != NULL && def->title[0])
-    {
-        char upper[192];
-        size_t n = 0;
-        for (; def->title[n] && n + 1 < sizeof upper; n++) upper[n] = (def->title[n] >= 'a' && def->title[n] <= 'z') ? (char)(def->title[n] - 32) : def->title[n];
-        upper[n] = 0;
-        s.text[0] = AddText(upper, key, 0x11);
-        s.text[1] = AddText(def->title, key, 0x12);
-    }
-    s.text[2] = AddText(def->description, key, 0x13);
+    if (StratagemTaken(mod, name, s.stable) || StratagemCode(mod, name, def->code, &s) || StratagemUse(mod, name, def, &s) ||
+        StratagemPayload(mod, name, def, &s) || StratagemLoadout(mod, name, def, &s))
+        return 0;
+    StratagemLooks(def, &s);
+    if (StratagemEditor(mod, name, def, &s)) return 0;
+    StratagemText(name, def, &s);
     s.type = STR_VANILLA + g_stratagemCount;
     g_stratagems[g_stratagemCount++] = s;
     ApiLog(mod, "adding stratagem %s as type %u (stable id %08x, item %08x): a copy of type %u", s.name, s.type, s.stable, s.item, s.base);
@@ -247,11 +308,9 @@ static int32_t TableDisplacement(uintptr_t table, uintptr_t game, const TableSit
     return s->rip ? (int32_t)(int64_t)(table + s->slot * 8u - (game + s->rva + s->size)) : (int32_t)(int64_t)(table + s->slot * 8u - game);
 }
 
-static const char* StratagemSitesFailed(uintptr_t game)
+/* NULL when every instruction addressing the list and reading the names is the reviewed one. */
+static const char* StratagemReadersFailed(uintptr_t game)
 {
-    uint8_t clear[sizeof kStratagemClearPin];
-    if (SafeRead(game + STR_CLEAR, clear, sizeof clear) || memcmp(clear, kStratagemClearPin, sizeof clear) != 0)
-        return "the stratagem list's loader does not clear the reviewed 150 slots";
     for (size_t i = 0; i < sizeof kStratagemSites / sizeof kStratagemSites[0]; i++)
     {
         int32_t disp;
@@ -265,6 +324,16 @@ static const char* StratagemSitesFailed(uintptr_t game)
         if (SafeRead(game + kStratagemNameSites[i].rva + kStratagemNameSites[i].dispAt, &disp, 4) || disp != (int32_t)STR_NAMES)
             return "an instruction reading the stratagem names is not the reviewed one";
     }
+    return NULL;
+}
+
+static const char* StratagemSitesFailed(uintptr_t game)
+{
+    uint8_t clear[sizeof kStratagemClearPin];
+    if (SafeRead(game + STR_CLEAR, clear, sizeof clear) || memcmp(clear, kStratagemClearPin, sizeof clear) != 0)
+        return "the stratagem list's loader does not clear the reviewed 150 slots";
+    const char* why = StratagemReadersFailed(game);
+    if (why != NULL) return why;
     uint8_t bound[sizeof kPickerBoundPin], pad[sizeof kPickerPadPin];
     if (SafeRead(game + STR_PICKER_BOUND, bound, sizeof bound) || memcmp(bound, kPickerBoundPin, sizeof bound) != 0 ||
         SafeRead(game + STR_PICKER_PAD, pad, sizeof pad) || memcmp(pad, kPickerPadPin, sizeof pad) != 0)
@@ -290,6 +359,119 @@ static int RefuseStratagems(const char* why)
     return 1;
 }
 
+/* A new stratagem's row: a copy of its base's (its type and stable id its own, and the text, input, uses, cooldown and
+ * icon the mod set); NULL, or why it is refused. */
+static const char* FillStratagemRow(Stratagem* s, const uint8_t* table, uint8_t* row)
+{
+    uint64_t base;
+    memcpy(&base, table + s->base * 8, 8);
+    s->row = row;
+    if (base == 0 || SafeRead(base, s->row, STR_ROW) || *(uint32_t*)s->row != s->base)
+        return "a base stratagem row does not name its type";
+    if (!(s->row[0x80] & 2) || !(s->row[0xC0] & 1))
+        return "a base stratagem is not one players can pick";
+    memcpy(s->row, &s->type, 4);
+    memcpy(s->row + 4, &s->stable, 4);
+    for (int t = 0; t < 3; t++) if (s->text[t] != 0) memcpy(s->row + 0x28 + 4 * t, &s->text[t], 4);
+    if (s->codeLength != 0)
+    {
+        uint32_t* code = s->code; /* lives as long as the loader */
+        memcpy(s->row + 0x40, &code, 8);
+        memcpy(s->row + 0x48, &s->codeLength, 4);
+    }
+    if (s->uses != 0) { uint32_t uses = s->uses < 0 ? 0xFFFFFFFFu : (uint32_t)s->uses; memcpy(s->row + 0x50, &uses, 4); }
+    if (s->cooldown > 0.0f) memcpy(s->row + 0x68, &s->cooldown, 4);
+    if (s->icon != 0) memcpy(s->row + 0xB0, &s->icon, 8);
+    return NULL;
+}
+
+/* The row's payload, package, loadout item, category, beam and flags the mod set. */
+static void FillStratagemLoadout(Stratagem* s)
+{
+    if (s->payloadCount != 0)
+    {
+        uint64_t* payload = s->payload; /* lives as long as the loader */
+        memcpy(s->row + 0x98, &payload, 8);
+        memcpy(s->row + 0xA0, &s->payloadCount, 4);
+        memset(s->row + 0xA4, 0, 4);
+    }
+    if (s->package != 0) { uint64_t package = s->package == ~0ull ? 0 : s->package; memcpy(s->row + 0xA8, &package, 8); }
+    if (s->loadsItem != 0) memcpy(s->row + 0xF8, &s->loadsItem, 4);
+    if (s->category != 0) { uint32_t category = s->category - 1; memcpy(s->row + 0xB8, &category, 4); }
+    if (s->beam != 0) memcpy(s->row + 0xD4, &s->beam, 4);
+    if (s->flags != 0) memcpy(s->row + 0x104, &s->flags, 4);
+    memset(s->row + 0x118, 0, 12); /* no level packages: the loadout's per-type choice (+0x78C[150]) is never written */
+}
+
+/* Points every instruction addressing the list and reading the names at the moved ones; NULL, or why it failed. */
+static const char* MoveStratagemReaders(uintptr_t game, const uint8_t* table, const uint8_t* names)
+{
+    for (size_t i = 0; i < sizeof kStratagemSites / sizeof kStratagemSites[0]; i++)
+    {
+        int32_t disp = TableDisplacement((uintptr_t)table, game, &kStratagemSites[i]);
+        if (ApiWrite(game + kStratagemSites[i].rva + kStratagemSites[i].dispAt, &disp, 4))
+        {
+            Note("stratagems: could not rewrite the instruction at 0x%x; %zu of %zu moved", kStratagemSites[i].rva, i, sizeof kStratagemSites / sizeof kStratagemSites[0]);
+            return "an instruction could not be rewritten";
+        }
+    }
+    for (size_t i = 0; i < sizeof kStratagemNameSites / sizeof kStratagemNameSites[0]; i++)
+    {
+        int32_t disp = (int32_t)(int64_t)((uintptr_t)names - game);
+        if (ApiWrite(game + kStratagemNameSites[i].rva + kStratagemNameSites[i].dispAt, &disp, 4))
+            return "an instruction reading the names could not be rewritten";
+    }
+    return NULL;
+}
+
+/* Widens every bound on the stratagem types by the new ones; NULL, or why it failed. */
+static const char* WidenStratagemBounds(uintptr_t game)
+{
+    for (size_t i = 0; i < sizeof kStratagemBounds / sizeof kStratagemBounds[0]; i++)
+    {
+        uint32_t value = kStratagemBounds[i].value + g_stratagemCount; /* 150 -> count, 149 -> count - 1 */
+        if (ApiWrite(game + kStratagemBounds[i].rva + kStratagemBounds[i].immAt, &value, kStratagemBounds[i].width))
+        {
+            Note("stratagems: could not widen the bound at 0x%x", kStratagemBounds[i].rva);
+            return "a bound could not be widened";
+        }
+    }
+    return NULL;
+}
+
+/* Moves the list (into *moved) with the new rows and widens the code that reads it; NULL, or why it is refused. */
+static const char* MoveStratagems(uintptr_t game, uint8_t** moved)
+{
+    /* The list, the names (one more: "Count") and the rows, in one block. */
+    size_t bytes = (size_t)(STR_VANILLA + STR_MAX_NEW) * 8 * 2 + 8 + (size_t)g_stratagemCount * STR_ROW;
+    uint8_t* table = AllocateNearGame(game, bytes);
+    if (table == NULL) return "no memory within 2 GB of game.dll for the moved list";
+    if (SafeRead(game + STR_TABLE, table, STR_VANILLA * 8)) return "the stratagem list is unreadable";
+    uint8_t* names = table + (STR_VANILLA + STR_MAX_NEW) * 8;
+    uint8_t* rows = names + (STR_VANILLA + STR_MAX_NEW) * 8 + 8;
+    if (SafeRead(game + STR_NAMES, names, (STR_VANILLA + 1) * 8)) return "the stratagem names are unreadable";
+    memcpy(names + (STR_VANILLA + g_stratagemCount) * 8, names + STR_VANILLA * 8, 8); /* "Count" after the new ones */
+    for (uint32_t i = 0; i < g_stratagemCount; i++)
+    {
+        Stratagem* s = &g_stratagems[i];
+        const char* why = FillStratagemRow(s, table, rows + (size_t)i * STR_ROW);
+        if (why != NULL) return why;
+        FillStratagemLoadout(s);
+        const char* name = s->name;
+        memcpy(names + s->type * 8, &name, 8);
+    }
+    /* The new rows first (no code reaches them yet), then the instructions, then the bounds that let code reach them. */
+    for (uint32_t i = 0; i < g_stratagemCount; i++) memcpy(table + g_stratagems[i].type * 8, &g_stratagems[i].row, 8);
+    const char* why = MoveStratagemReaders(game, table, names);
+    if (why != NULL) return why;
+    uint32_t count = STR_VANILLA + g_stratagemCount;
+    if (ApiWrite(game + STR_ROWS_LOADED, &count, 4)) return "the row count could not be raised";
+    if (ApiWrite(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad) || ApiWrite(game + STR_PICKER_BOUND + 1, &count, 4))
+        return "the loadout picker could not be widened";
+    *moved = table;
+    return WidenStratagemBounds(game);
+}
+
 /* Polled after GAME_LOADED until it returns 1: moves the list and adds the rows once the game has loaded its stratagem
  * settings. pinsReady: the grace period for code still being decoded is over. */
 static int InstallStratagems(uintptr_t game, int pinsReady)
@@ -300,83 +482,10 @@ static int InstallStratagems(uintptr_t game, int pinsReady)
     if (SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return 0; /* not loaded yet */
     const char* why = StratagemSitesFailed(game);
     if (why != NULL) return pinsReady ? RefuseStratagems(why) : 0;
-    /* The list, the names (one more: "Count") and the rows, in one block. */
-    size_t bytes = (size_t)(STR_VANILLA + STR_MAX_NEW) * 8 * 2 + 8 + (size_t)g_stratagemCount * STR_ROW;
-    uint8_t* table = AllocateNearGame(game, bytes);
-    if (table == NULL) return RefuseStratagems("no memory within 2 GB of game.dll for the moved list");
-    if (SafeRead(game + STR_TABLE, table, STR_VANILLA * 8)) return RefuseStratagems("the stratagem list is unreadable");
-    uint8_t* names = table + (STR_VANILLA + STR_MAX_NEW) * 8;
-    uint8_t* rows = names + (STR_VANILLA + STR_MAX_NEW) * 8 + 8;
-    if (SafeRead(game + STR_NAMES, names, (STR_VANILLA + 1) * 8)) return RefuseStratagems("the stratagem names are unreadable");
-    memcpy(names + (STR_VANILLA + g_stratagemCount) * 8, names + STR_VANILLA * 8, 8); /* "Count" after the new ones */
-    for (uint32_t i = 0; i < g_stratagemCount; i++)
-    {
-        Stratagem* s = &g_stratagems[i];
-        uint64_t base;
-        memcpy(&base, table + s->base * 8, 8);
-        s->row = rows + (size_t)i * STR_ROW;
-        if (base == 0 || SafeRead(base, s->row, STR_ROW) || *(uint32_t*)s->row != s->base)
-            return RefuseStratagems("a base stratagem row does not name its type");
-        if (!(s->row[0x80] & 2) || !(s->row[0xC0] & 1))
-            return RefuseStratagems("a base stratagem is not one players can pick");
-        memcpy(s->row, &s->type, 4);
-        memcpy(s->row + 4, &s->stable, 4);
-        for (int t = 0; t < 3; t++) if (s->text[t] != 0) memcpy(s->row + 0x28 + 4 * t, &s->text[t], 4);
-        if (s->codeLength != 0)
-        {
-            uint32_t* code = s->code; /* lives as long as the loader */
-            memcpy(s->row + 0x40, &code, 8);
-            memcpy(s->row + 0x48, &s->codeLength, 4);
-        }
-        if (s->uses != 0) { uint32_t uses = s->uses < 0 ? 0xFFFFFFFFu : (uint32_t)s->uses; memcpy(s->row + 0x50, &uses, 4); }
-        if (s->cooldown > 0.0f) memcpy(s->row + 0x68, &s->cooldown, 4);
-        if (s->icon != 0) memcpy(s->row + 0xB0, &s->icon, 8);
-        if (s->payloadCount != 0)
-        {
-            uint64_t* payload = s->payload; /* lives as long as the loader */
-            memcpy(s->row + 0x98, &payload, 8);
-            memcpy(s->row + 0xA0, &s->payloadCount, 4);
-            memset(s->row + 0xA4, 0, 4);
-        }
-        if (s->package != 0) { uint64_t package = s->package == ~0ull ? 0 : s->package; memcpy(s->row + 0xA8, &package, 8); }
-        if (s->loadsItem != 0) memcpy(s->row + 0xF8, &s->loadsItem, 4);
-        if (s->category != 0) { uint32_t category = s->category - 1; memcpy(s->row + 0xB8, &category, 4); }
-        if (s->beam != 0) memcpy(s->row + 0xD4, &s->beam, 4);
-        if (s->flags != 0) memcpy(s->row + 0x104, &s->flags, 4);
-        memset(s->row + 0x118, 0, 12); /* no level packages: the loadout's per-type choice (+0x78C[150]) is never written */
-        const char* name = s->name;
-        memcpy(names + s->type * 8, &name, 8);
-    }
-    /* The new rows first (no code reaches them yet), then the instructions, then the bounds that let code reach them. */
-    for (uint32_t i = 0; i < g_stratagemCount; i++) memcpy(table + g_stratagems[i].type * 8, &g_stratagems[i].row, 8);
-    for (size_t i = 0; i < sizeof kStratagemSites / sizeof kStratagemSites[0]; i++)
-    {
-        int32_t disp = TableDisplacement((uintptr_t)table, game, &kStratagemSites[i]);
-        if (ApiWrite(game + kStratagemSites[i].rva + kStratagemSites[i].dispAt, &disp, 4))
-        {
-            Note("stratagems: could not rewrite the instruction at 0x%x; %zu of %zu moved", kStratagemSites[i].rva, i, sizeof kStratagemSites / sizeof kStratagemSites[0]);
-            return RefuseStratagems("an instruction could not be rewritten");
-        }
-    }
-    for (size_t i = 0; i < sizeof kStratagemNameSites / sizeof kStratagemNameSites[0]; i++)
-    {
-        int32_t disp = (int32_t)(int64_t)((uintptr_t)names - game);
-        if (ApiWrite(game + kStratagemNameSites[i].rva + kStratagemNameSites[i].dispAt, &disp, 4))
-            return RefuseStratagems("an instruction reading the names could not be rewritten");
-    }
+    uint8_t* table = NULL;
+    why = MoveStratagems(game, &table);
+    if (why != NULL) return RefuseStratagems(why);
     uint32_t count = STR_VANILLA + g_stratagemCount;
-    if (ApiWrite(game + STR_ROWS_LOADED, &count, 4)) return RefuseStratagems("the row count could not be raised");
-    if (ApiWrite(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad) || ApiWrite(game + STR_PICKER_BOUND + 1, &count, 4))
-        return RefuseStratagems("the loadout picker could not be widened");
-    for (size_t i = 0; i < sizeof kStratagemBounds / sizeof kStratagemBounds[0]; i++)
-    {
-        uint32_t value = kStratagemBounds[i].value + g_stratagemCount; /* 150 -> count, 149 -> count - 1 */
-        if (ApiWrite(game + kStratagemBounds[i].rva + kStratagemBounds[i].immAt, &value, kStratagemBounds[i].width))
-        {
-            Note("stratagems: could not widen the bound at 0x%x", kStratagemBounds[i].rva);
-            return RefuseStratagems("a bound could not be widened");
-        }
-    }
     g_stratagemTable = table;
     g_stratagemState = 1;
     WriteRegisteredItems();

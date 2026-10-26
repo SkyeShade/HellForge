@@ -30,11 +30,12 @@ typedef struct BrokerBridge {
     /* Play with strangers (mods/hellforge-mods.json "playWithStrangers", off without the file): the mods folder, the
      * settings file's time stamp when read, when it was last looked at */
     wchar_t modsFolder[520];
-    /* Steam P2P's co-op peers (BrokerBridgeWatchPeers): the backend's file, its time stamp when read, when last looked at */
+    /* Steam P2P's co-op peers (BrokerBridgeWatchPeers): the backend's file, its time stamp when read, when (system time)
+     * it was read, when last looked at */
     wchar_t peersFile[520];
     uint64_t peers[BROKER_MAX_PEERS];
     int peerCount;
-    FILETIME peersStamp;
+    FILETIME peersStamp, peersRead;
     DWORD peersChecked;
     uint32_t p2pDropped;            /* packets not passed on: from someone else, too large, or the ring full */
 

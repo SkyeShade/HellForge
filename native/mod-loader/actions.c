@@ -200,12 +200,17 @@ static int ActInjureNow(HfMod* mod, uintptr_t game, uint32_t limb, int32_t damag
     return HF_ACT_REQUESTED;
 }
 
+static int ActStatusApplies(uint32_t status)
+{
+    int allowed = 0;
+    for (size_t i = 0; i < sizeof kActStatuses / sizeof kActStatuses[0]; i++) if (kActStatuses[i] == status) allowed = 1;
+    return allowed;
+}
 static int ActStatusNow(HfMod* mod, uintptr_t game, uint32_t target, uint32_t status, float buildup)
 {
     static const ActPin pins[] = {{0, 0x129F218u, "8b8634112000"}, {0, 0x129F21Eu, "3d00100000"}};
-    int allowed = 0, host = 0;
-    for (size_t i = 0; i < sizeof kActStatuses / sizeof kActStatuses[0]; i++) if (kActStatuses[i] == status) allowed = 1;
-    if (!allowed) { ApiLog(mod, "apply_status: %u is not a status HellForge applies (HF_STATUS_...)", status); return 0; }
+    int host = 0;
+    if (!ActStatusApplies(status)) { ApiLog(mod, "apply_status: %u is not a status HellForge applies (HF_STATUS_...)", status); return 0; }
     if (!(buildup > 0.0f) || buildup > 1000.0f) { ApiLog(mod, "apply_status: the buildup must be above 0, at most 1000"); return 0; }
     if (!ActMission(game, &host, NULL) || !host) { ApiLog(mod, "apply_status: only the host, in a mission"); return 0; }
     ActHealth h; const char* why;
@@ -245,6 +250,56 @@ static int ActVelocityNow(HfMod* mod, uintptr_t game, const float* delta)
     return HF_ACT_DONE;
 }
 
+/* The Supply Pack's definition: the pack's own override, else its type's. 0 when neither reads. */
+static uintptr_t ActPackDefinition(uintptr_t game, uintptr_t deposits, uint32_t pack, uint64_t resource)
+{
+    uintptr_t defs, em, table, rec = 0;
+    uint32_t override_;
+    if (EvpHash(deposits + 0x60, pack, 8, 4, &override_) && EvpPtr(deposits + 0xA0, &defs)) return defs + (uintptr_t)override_ * 0x98;
+    if (!EvpPtr(game + EVP_ENTITIES, &em) || !EvpPtr(em + 0xF12A00, &table)) return 0;
+    for (uint32_t i = 0, at = (uint32_t)(resource % 58); i < 58 && !rec; i++, at = (at + 1) % 58)
+    {
+        uint64_t type; uint32_t slot;
+        if (SafeRead(table + (uintptr_t)at * 16, &type, 8) || type == 0) break;
+        if (type == resource && !SafeRead(table + (uintptr_t)at * 16 + 8, &slot, 4)) rec = table + 0x3A0 + (uintptr_t)slot * 0x98;
+    }
+    return rec;
+}
+/* The Helldiver's B-1 Supply Pack, its definition the reviewed one: 1 with *supplies, its supplies; 0 logged. */
+static int ActSupplyPack(HfMod* mod, uintptr_t game, uint32_t avatar, uint32_t* supplies)
+{
+    uintptr_t inventory, records, deposits, amounts;
+    uint32_t index, deposit;
+    if (!EvpPtr(game + EVP_INVENTORY, &inventory) || !EvpHash(inventory + 0x28, avatar, 8, 4, &index) || index >= 0x10000 || !EvpPtr(inventory + 0x50, &records))
+    { ApiLog(mod, "resupply_from_pack: the Helldiver has no inventory"); return 0; }
+    uint32_t pack = EvpU32(records + (uintptr_t)index * 0x30 + 0x0C, 0);
+    if (!pack || !EvpAlive(pack)) { ApiLog(mod, "resupply_from_pack: the Helldiver has no backpack"); return 0; }
+    uint64_t resource = EvpEntityResource(game, pack, NULL);
+    if (resource != ACT_SUPPLY_PACK) { ApiLog(mod, "resupply_from_pack: the backpack is not a B-1 Supply Pack"); return 0; }
+    if (!EvpPtr(game + 0x33265E8u, &deposits) || !EvpHash(deposits + 0x20, pack, 8, 4, &deposit) || !EvpPtr(deposits + 0x50, &amounts))
+    { ApiLog(mod, "resupply_from_pack: the pack's supplies do not read"); return 0; }
+    *supplies = EvpU32(amounts + (uintptr_t)deposit * 8, 0);
+    uintptr_t rec = ActPackDefinition(game, deposits, pack, resource);
+    if (!rec || EvpU32(rec + 0x24, 0) != 2629) { ApiLog(mod, "resupply_from_pack: the Supply Pack's definition is not the reviewed one"); return 0; }
+    return 1;
+}
+/* The Helldiver's action context, free to start an action: its address with *none, the game's no-action id; 0 (logged
+ * when the Helldiver is busy or cannot act). */
+static uintptr_t ActFreeContext(HfMod* mod, uintptr_t game, uint32_t avatar, uint32_t* none)
+{
+    uintptr_t actions, descriptor;
+    uint32_t ai;
+    if (!EvpPtr(game + 0x3326D20u, &actions) || !EvpHash(actions + 0xF8, avatar, 8, 4, &ai) || !EvpPtr(actions + 0x110 + (uintptr_t)ai * 8, &descriptor) ||
+        EvpU32(descriptor + 8, 0) != avatar) { ApiLog(mod, "resupply_from_pack: the Helldiver has no action record"); return 0; }
+    uintptr_t context = actions + 0x53E170 + (uintptr_t)ai * 0x1238;
+    uint64_t f0 = 0, f1 = 0;
+    SafeRead(actions + 0x53E880 + (uintptr_t)ai * 0x1238, &f0, 8); SafeRead(actions + 0x53E888 + (uintptr_t)ai * 0x1238, &f1, 8);
+    *none = EvpU32(game + 0x3483C5Cu, 0);
+    if (EvpU32(context, 0) != avatar) return 0;
+    if (((f1 >> 21) & 1) || EvpU32(context + 8, 0) != *none) { ApiLog(mod, "resupply_from_pack: the Helldiver is busy"); return 0; }
+    if ((f1 & 0x1F9D9AF7875B0200ull) || (f0 & 0x0000000100010000ull) || !(f0 & 2)) { ApiLog(mod, "resupply_from_pack: the Helldiver cannot act now"); return 0; }
+    return context;
+}
 static int ActResupplyNow(HfMod* mod, uintptr_t game)
 {
     static const ActPin pins[] = {{0, 0x9AD94Au, "83f817"}, {0, 0xA4385Au, "8b4824"}, {0, 0xA431B1u, "428b841088e85300"},
@@ -256,38 +311,11 @@ static int ActResupplyNow(HfMod* mod, uintptr_t game)
     uintptr_t needs = ActFunction(mod, game, &g_actNeedsAmmo, "resupply_from_pack"), start = ActFunction(mod, game, &g_actStartAction, "resupply_from_pack");
     if (!needs || !start) return 0;
     if (!ActPins(game, pins, sizeof pins / sizeof pins[0])) { ApiLog(mod, "resupply_from_pack: the Supply Pack's code is not the reviewed one"); return 0; }
-    uintptr_t inventory, records, deposits, amounts, actions, descriptor, rec = 0;
-    uint32_t index, deposit, override_, ai;
-    if (!EvpPtr(game + EVP_INVENTORY, &inventory) || !EvpHash(inventory + 0x28, avatar, 8, 4, &index) || index >= 0x10000 || !EvpPtr(inventory + 0x50, &records))
-    { ApiLog(mod, "resupply_from_pack: the Helldiver has no inventory"); return 0; }
-    uint32_t pack = EvpU32(records + (uintptr_t)index * 0x30 + 0x0C, 0);
-    if (!pack || !EvpAlive(pack)) { ApiLog(mod, "resupply_from_pack: the Helldiver has no backpack"); return 0; }
-    uint64_t resource = EvpEntityResource(game, pack, NULL);
-    if (resource != ACT_SUPPLY_PACK) { ApiLog(mod, "resupply_from_pack: the backpack is not a B-1 Supply Pack"); return 0; }
-    if (!EvpPtr(game + 0x33265E8u, &deposits) || !EvpHash(deposits + 0x20, pack, 8, 4, &deposit) || !EvpPtr(deposits + 0x50, &amounts))
-    { ApiLog(mod, "resupply_from_pack: the pack's supplies do not read"); return 0; }
-    uint32_t supplies = EvpU32(amounts + (uintptr_t)deposit * 8, 0);
-    /* its definition: the pack's own override, else its type's */
-    uintptr_t defs, em, table;
-    if (EvpHash(deposits + 0x60, pack, 8, 4, &override_) && EvpPtr(deposits + 0xA0, &defs)) rec = defs + (uintptr_t)override_ * 0x98;
-    else if (EvpPtr(game + EVP_ENTITIES, &em) && EvpPtr(em + 0xF12A00, &table))
-        for (uint32_t i = 0, at = (uint32_t)(resource % 58); i < 58 && !rec; i++, at = (at + 1) % 58)
-        {
-            uint64_t type; uint32_t slot;
-            if (SafeRead(table + (uintptr_t)at * 16, &type, 8) || type == 0) break;
-            if (type == resource && !SafeRead(table + (uintptr_t)at * 16 + 8, &slot, 4)) rec = table + 0x3A0 + (uintptr_t)slot * 0x98;
-        }
-    if (!rec || EvpU32(rec + 0x24, 0) != 2629) { ApiLog(mod, "resupply_from_pack: the Supply Pack's definition is not the reviewed one"); return 0; }
+    uint32_t supplies, none;
+    if (!ActSupplyPack(mod, game, avatar, &supplies)) return 0;
     if (supplies < 1) { ApiLog(mod, "resupply_from_pack: the Supply Pack is empty"); return 0; }
-    if (!EvpPtr(game + 0x3326D20u, &actions) || !EvpHash(actions + 0xF8, avatar, 8, 4, &ai) || !EvpPtr(actions + 0x110 + (uintptr_t)ai * 8, &descriptor) ||
-        EvpU32(descriptor + 8, 0) != avatar) { ApiLog(mod, "resupply_from_pack: the Helldiver has no action record"); return 0; }
-    uintptr_t context = actions + 0x53E170 + (uintptr_t)ai * 0x1238;
-    uint64_t f0 = 0, f1 = 0;
-    SafeRead(actions + 0x53E880 + (uintptr_t)ai * 0x1238, &f0, 8); SafeRead(actions + 0x53E888 + (uintptr_t)ai * 0x1238, &f1, 8);
-    uint32_t none = EvpU32(game + 0x3483C5Cu, 0);
-    if (EvpU32(context, 0) != avatar) return 0;
-    if (((f1 >> 21) & 1) || EvpU32(context + 8, 0) != none) { ApiLog(mod, "resupply_from_pack: the Helldiver is busy"); return 0; }
-    if ((f1 & 0x1F9D9AF7875B0200ull) || (f0 & 0x0000000100010000ull) || !(f0 & 2)) { ApiLog(mod, "resupply_from_pack: the Helldiver cannot act now"); return 0; }
+    uintptr_t context = ActFreeContext(mod, game, avatar, &none);
+    if (!context) return 0;
     if (!((uint8_t (*)(void*, uint32_t))needs)(NULL, avatar)) { ApiLog(mod, "resupply_from_pack: the Helldiver needs no ammunition"); return 0; }
     uint32_t request[3] = {2629, none, EvpU32(context + 0xC, 0)};
     if (!((uint8_t (*)(void*, const uint32_t*))start)((void*)context, request)) { ApiLog(mod, "resupply_from_pack: the game did not start it"); return 0; }
@@ -303,12 +331,25 @@ static int ActPackages(HfMod* mod, uint32_t ref, uint32_t value, const char* wha
     return state == REF_WAIT ? HF_ACT_WAITING : HF_ACT_DONE;
 }
 
+/* Whether p is a position: finite, each part within 100 km. */
+static int ActIsPosition(const float* p)
+{
+    for (int k = 0; k < 3; k++) if (!isfinite(p[k]) || fabsf(p[k]) > 100000.0f) return 0;
+    return 1;
+}
+/* Whether the HF_ON_EXPLOSION hook is in (its first bytes are its jump then). */
+static int ActExplosionHooked(void)
+{
+    int hooked = 0;
+    for (size_t i = 0; i < sizeof g_eventHooks / sizeof g_eventHooks[0]; i++) if (g_eventHooks[i].kind == HF_ON_EXPLOSION && g_eventHooks[i].state == 1) hooked = 1;
+    return hooked;
+}
 typedef uint64_t (*RequestExplosionFn)(void*, const float*, uint32_t, uint32_t, uint32_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
     uint64_t, uint64_t, uint64_t, uint64_t);
 static int ActExplosionNow(HfMod* mod, uintptr_t game, uint32_t type, const float* position)
 {
     int host = 0;
-    for (int k = 0; k < 3; k++) if (!isfinite(position[k]) || fabsf(position[k]) > 100000.0f) { ApiLog(mod, "spawn_explosion: not a position"); return 0; }
+    if (!ActIsPosition(position)) { ApiLog(mod, "spawn_explosion: not a position"); return 0; }
     if (!ActMission(game, &host, NULL) || !host) { ApiLog(mod, "spawn_explosion: only the host, in a mission"); return 0; }
     int ready = 1;
     uintptr_t row = g_tableRow("ExplosionSettings", type, &ready), queue;
@@ -318,10 +359,8 @@ static int ActExplosionNow(HfMod* mod, uintptr_t game, uint32_t type, const floa
     ActHealth h; const char* why;
     uint32_t avatar = ActLocalAvatar(game, 1, &h, &why);
     if (!avatar) { ApiLog(mod, "spawn_explosion: %s", why); return 0; }
-    /* through the HF_ON_EXPLOSION hook when it is in (its first bytes are its jump then), so listeners hear it too */
-    int hooked = 0;
-    for (size_t i = 0; i < sizeof g_eventHooks / sizeof g_eventHooks[0]; i++) if (g_eventHooks[i].kind == HF_ON_EXPLOSION && g_eventHooks[i].state == 1) hooked = 1;
-    uintptr_t fn = hooked ? game + g_actExplosion.rva : ActFunction(mod, game, &g_actExplosion, "spawn_explosion");
+    /* through the HF_ON_EXPLOSION hook when it is in, so listeners hear it too */
+    uintptr_t fn = ActExplosionHooked() ? game + g_actExplosion.rva : ActFunction(mod, game, &g_actExplosion, "spawn_explosion");
     if (!fn) return 0;
     if (!EvpPtr(game + 0x346D558u, &queue) || EvpU32(queue + 0x20, 256) >= 256) { ApiLog(mod, "spawn_explosion: the explosion queue is full"); return 0; }
     ((RequestExplosionFn)fn)((void*)queue, position, type, avatar, avatar, ActLocalPeer(game), 0, 0, 1, 0, 0, 0, 0, 0, 0);
@@ -380,9 +419,8 @@ static int ActCreditNow(HfMod* mod, uintptr_t game, uint32_t entity)
     uint64_t tag;
     if (SafeRead(at, &tag, 8)) return 0;
     if (!(tag & 0x10000000ull)) return HF_ACT_DONE;
-    MEMORY_BASIC_INFORMATION info;
-    if (!VirtualQuery((void*)at, &info, sizeof info) || info.State != MEM_COMMIT || info.Type != MEM_PRIVATE || info.Protect != PAGE_READWRITE ||
-        at + 8 > (uintptr_t)info.BaseAddress + info.RegionSize) { ApiLog(mod, "credit_to_player: its tags are not private data"); return 0; }
+    /* committed private read-write data, the whole word inside its region (perks.c's check) */
+    if (!PerkWritable(at, 8)) { ApiLog(mod, "credit_to_player: its tags are not private data"); return 0; }
     *(volatile uint64_t*)at = tag & ~0x10000000ull;
     ApiLog(mod, "credit_to_player: entity %u's kills are credited to its owner", entity);
     return HF_ACT_DONE;
@@ -414,24 +452,23 @@ typedef struct ActPelican { _Alignas(16) uint8_t context[0x8A0]; uint32_t entity
 static ActPelican g_actPelicans[ACT_PELICANS];
 static int g_actPelicanNext;
 
-static int ActPelicanNow(HfMod* mod, uintptr_t game, const float* f, uint32_t* entity)
+/* The Pelican's facing on the ground, normalized: the call's, else from this machine's Helldiver to the hover point,
+ * else north. */
+static void ActPelicanFacing(uintptr_t game, const float* f, float* fx, float* fy)
 {
-    int host = 0;
-    if (entity) *entity = 0;
-    for (int k = 0; k < 3; k++) if (!isfinite(f[k]) || fabsf(f[k]) > 100000.0f) { ApiLog(mod, "spawn_pelican: not a position"); return 0; }
-    float hover = f[3], distance = f[4] > 0 ? f[4] : 250.0f, height = f[5] > 0 ? f[5] : 80.0f, fx = f[6], fy = f[7];
-    if (!(hover >= 0.0f) || hover > 120.0f || distance > 1000.0f || height > 500.0f) { ApiLog(mod, "spawn_pelican: hover 0 .. 120 s, approach up to 1000 m back and 500 m up"); return 0; }
-    if (!ActMission(game, &host, NULL) || !host) { ApiLog(mod, "spawn_pelican: only the host, in a mission"); return 0; }
-    if (fx == 0 && fy == 0)
+    if (*fx == 0 && *fy == 0)
     {
         ActHealth h; const char* why; float from[3];
-        if (ActLocalAvatar(game, 1, &h, &why) && EvpUnitPosition(h.unit, from)) { fx = f[0] - from[0]; fy = f[1] - from[1]; }
-        if (fx == 0 && fy == 0) fy = 1;
+        if (ActLocalAvatar(game, 1, &h, &why) && EvpUnitPosition(h.unit, from)) { *fx = f[0] - from[0]; *fy = f[1] - from[1]; }
+        if (*fx == 0 && *fy == 0) *fy = 1;
     }
-    float length = sqrtf(fx * fx + fy * fy);
-    fx /= length; fy /= length;
-    uintptr_t fn = ActFunction(mod, game, &g_actPelican, "spawn_pelican"), world, table;
-    if (!fn) return 0;
+    float length = sqrtf(*fx * *fx + *fy * *fy);
+    *fx /= length; *fy /= length;
+}
+/* The world's spawn context as reviewed, and the transport Pelican registered in this mission. 0 logged. */
+static int ActPelicanLoaded(HfMod* mod, uintptr_t game)
+{
+    uintptr_t world, table;
     static const uint8_t zero[0x8A0];
     uint8_t defaults[0x8A0];
     if (!EvpPtr(game + EVP_ENTITIES, &world) || SafeRead(world + 0xF3EF28, defaults, sizeof defaults) || memcmp(defaults, zero, sizeof zero))
@@ -446,15 +483,38 @@ static int ActPelicanNow(HfMod* mod, uintptr_t game, const float* f, uint32_t* e
             if (r == ACT_PELICAN_RESOURCE) { registered = 1; break; }
         }
     if (!registered) { ApiLog(mod, "spawn_pelican: the transport Pelican is not loaded in this mission"); return 0; }
+    return 1;
+}
+static int ActPelicansOut(void)
+{
     int alive = 0;
     for (int i = 0; i < ACT_PELICANS; i++) if (g_actPelicans[i].entity && EvpAlive(g_actPelicans[i].entity)) alive++;
-    if (alive >= 4) { ApiLog(mod, "spawn_pelican: four Pelicans are out already"); return 0; }
-    ActPelican* p = NULL;
-    for (int n = 0; n < ACT_PELICANS && p == NULL; n++)
+    return alive;
+}
+/* The next free Pelican slot (its entity gone), round from the last one taken; NULL none. */
+static ActPelican* ActPelicanSlot(void)
+{
+    for (int n = 0; n < ACT_PELICANS; n++)
     {
         ActPelican* c = &g_actPelicans[(g_actPelicanNext + n) % ACT_PELICANS];
-        if (!c->entity || !EvpAlive(c->entity)) { p = c; g_actPelicanNext = (g_actPelicanNext + n + 1) % ACT_PELICANS; }
+        if (!c->entity || !EvpAlive(c->entity)) { g_actPelicanNext = (g_actPelicanNext + n + 1) % ACT_PELICANS; return c; }
     }
+    return NULL;
+}
+static int ActPelicanNow(HfMod* mod, uintptr_t game, const float* f, uint32_t* entity)
+{
+    int host = 0;
+    if (entity) *entity = 0;
+    if (!ActIsPosition(f)) { ApiLog(mod, "spawn_pelican: not a position"); return 0; }
+    float hover = f[3], distance = f[4] > 0 ? f[4] : 250.0f, height = f[5] > 0 ? f[5] : 80.0f, fx = f[6], fy = f[7];
+    if (!(hover >= 0.0f) || hover > 120.0f || distance > 1000.0f || height > 500.0f) { ApiLog(mod, "spawn_pelican: hover 0 .. 120 s, approach up to 1000 m back and 500 m up"); return 0; }
+    if (!ActMission(game, &host, NULL) || !host) { ApiLog(mod, "spawn_pelican: only the host, in a mission"); return 0; }
+    ActPelicanFacing(game, f, &fx, &fy);
+    uintptr_t fn = ActFunction(mod, game, &g_actPelican, "spawn_pelican");
+    if (!fn) return 0;
+    if (!ActPelicanLoaded(mod, game)) return 0;
+    if (ActPelicansOut() >= 4) { ApiLog(mod, "spawn_pelican: four Pelicans are out already"); return 0; }
+    ActPelican* p = ActPelicanSlot();
     if (p == NULL) return 0;
     memset(p, 0, sizeof *p);
     memcpy(p->context + 0x610, f, 12); /* the hover point */
@@ -475,32 +535,44 @@ static int ActPelicanNow(HfMod* mod, uintptr_t game, const float* f, uint32_t* e
     return HF_ACT_DONE;
 }
 
+/* A Pelican's behaviour record (*b) and the game's clock now (*now). */
+static int ActPelicanBehaviour(uintptr_t game, uint32_t entity, uintptr_t* b, uint64_t* now)
+{
+    uintptr_t behaviours, records, clock;
+    uint32_t index;
+    if (!EvpPtr(game + 0x3326740u, &behaviours) || !EvpHash(behaviours + 0x40, entity, 8, 4, &index) || !EvpPtr(behaviours + 0x60, &records) ||
+        !EvpPtr(game + 0x3326348u, &clock) || SafeRead(clock + 0x18, now, 8)) return 0;
+    *b = records + (uintptr_t)index * 0x1F8 + 8;
+    return 1;
+}
+/* How long a Pelican's behaviour waits after its release at its stage, in seconds; 0 none. */
+static double ActPelicanWait(uintptr_t b)
+{
+    uint32_t stage = EvpU32(b, 0), flags = EvpU32(b + 0x1E0, 0);
+    return stage == 6 && (flags & 1) ? 0.6 : stage == 7 ? 3.0 : 0;
+}
+static void ActPelicanHold(uintptr_t game, ActPelican* p)
+{
+    if (!p->entity || p->held || p->hover <= 0) return;
+    if (!EvpAlive(p->entity) || GetTickCount64() - p->since > 600000) { p->entity = 0; return; }
+    uintptr_t b;
+    uint64_t now;
+    if (!ActPelicanBehaviour(game, p->entity, &b, &now)) return;
+    double wait = ActPelicanWait(b);
+    if (wait == 0) return;
+    uint64_t release;
+    if (SafeRead(b + 0x178, &release, 8) || !(release <= now && now < release + (uint64_t)(wait * 1e6))) return;
+    p->held = 1;
+    if (ActPlayerCount(game) != 1) { Note("pelican %u: hover not held (solo only)", p->entity); return; }
+    uint64_t departure = release + (uint64_t)(p->hover * 1e6), moved = departure - (uint64_t)(wait * 1e6);
+    if (departure <= release + (uint64_t)(wait * 1e6) || departure - now > 120000000ull) return;
+    *(volatile uint64_t*)(b + 0x178) = moved;
+    Note("pelican %u: holds %.0f s", p->entity, p->hover);
+}
 /* Each update: a released Pelican's departure moved for its hover (once; solo). */
 static void ActPelicansTick(uintptr_t game)
 {
-    for (int i = 0; i < ACT_PELICANS; i++)
-    {
-        ActPelican* p = &g_actPelicans[i];
-        if (!p->entity || p->held || p->hover <= 0) continue;
-        if (!EvpAlive(p->entity) || GetTickCount64() - p->since > 600000) { p->entity = 0; continue; }
-        uintptr_t behaviours, records, clock;
-        uint32_t index;
-        uint64_t now;
-        if (!EvpPtr(game + 0x3326740u, &behaviours) || !EvpHash(behaviours + 0x40, p->entity, 8, 4, &index) || !EvpPtr(behaviours + 0x60, &records) ||
-            !EvpPtr(game + 0x3326348u, &clock) || SafeRead(clock + 0x18, &now, 8)) continue;
-        uintptr_t b = records + (uintptr_t)index * 0x1F8 + 8;
-        uint32_t stage = EvpU32(b, 0), flags = EvpU32(b + 0x1E0, 0);
-        double wait = stage == 6 && (flags & 1) ? 0.6 : stage == 7 ? 3.0 : 0;
-        if (wait == 0) continue;
-        uint64_t release;
-        if (SafeRead(b + 0x178, &release, 8) || !(release <= now && now < release + (uint64_t)(wait * 1e6))) continue;
-        p->held = 1;
-        if (ActPlayerCount(game) != 1) { Note("pelican %u: hover not held (solo only)", p->entity); continue; }
-        uint64_t departure = release + (uint64_t)(p->hover * 1e6), moved = departure - (uint64_t)(wait * 1e6);
-        if (departure <= release + (uint64_t)(wait * 1e6) || departure - now > 120000000ull) continue;
-        *(volatile uint64_t*)(b + 0x178) = moved;
-        Note("pelican %u: holds %.0f s", p->entity, p->hover);
-    }
+    for (int i = 0; i < ACT_PELICANS; i++) ActPelicanHold(game, &g_actPelicans[i]);
 }
 
 /* ---- shots --------------------------------------------------------------------------------------------------------- */
@@ -617,31 +689,40 @@ static ActCandidate g_actCandidates[ACT_CANDIDATES];
 static int g_actCandidateCount;
 static uint32_t g_actScanSlot, g_actRefresh;
 
+/* The health manager's hash buckets, descriptors and records, as one scan reads them. */
+typedef struct ActHealthTable { uintptr_t buckets, descriptors, records; uint32_t empty, live; } ActHealthTable;
+/* One bucket of the health records' hash (g_actScanSlot's): a living enemy joins the candidates, a dead one leaves. */
+static void ActScanSlot(const ActHealthTable* t, ULONGLONG now)
+{
+    uint32_t bucket[2];
+    if (SafeRead(t->buckets + (uintptr_t)g_actScanSlot * 8, bucket, 8) || bucket[0] == t->empty || bucket[1] >= t->live) return;
+    uint32_t life = EvpU32(t->records + (uintptr_t)bucket[1] * 0x1B8 + 0x19C, 2);
+    int at = -1;
+    for (int c = 0; c < g_actCandidateCount; c++) if (g_actCandidates[c].entity == bucket[0]) at = c;
+    if (life >= 2) { if (at >= 0) g_actCandidates[at] = g_actCandidates[--g_actCandidateCount]; return; }
+    if (at >= 0) return;
+    uintptr_t descriptor; uint8_t d[24];
+    if (!EvpPtr(t->descriptors + (uintptr_t)bucket[1] * 8, &descriptor) || SafeRead(descriptor, d, sizeof d)) return;
+    uint64_t resource; uint32_t named, unit;
+    memcpy(&resource, d, 8); memcpy(&named, d + 8, 4); memcpy(&unit, d + 12, 4);
+    if (named != bucket[0] || !ActEnemy(resource) || g_actCandidateCount >= ACT_CANDIDATES) return;
+    ActCandidate* c = &g_actCandidates[g_actCandidateCount];
+    *c = (ActCandidate){bucket[0], unit, {0}, 0};
+    if (EvpUnitPosition(unit, c->position)) { c->at = now; g_actCandidateCount++; }
+}
 static void ActScanEnemies(uintptr_t game)
 {
-    uintptr_t manager, buckets, descriptors, records;
-    if (!EvpPtr(game + EVP_HEALTH, &manager) || !EvpPtr(manager + 0x1030, &buckets) || !EvpPtr(manager + 0x1048, &descriptors) || !EvpPtr(manager + 0x1058, &records)) return;
-    uint32_t capacity = EvpU32(manager + 0x1038, 0), empty = EvpU32(manager + 0x103C, 0), live = EvpU32(manager + 0x1020, 0);
+    uintptr_t manager;
+    ActHealthTable t;
+    if (!EvpPtr(game + EVP_HEALTH, &manager) || !EvpPtr(manager + 0x1030, &t.buckets) || !EvpPtr(manager + 0x1048, &t.descriptors) || !EvpPtr(manager + 0x1058, &t.records)) return;
+    uint32_t capacity = EvpU32(manager + 0x1038, 0);
+    t.empty = EvpU32(manager + 0x103C, 0); t.live = EvpU32(manager + 0x1020, 0);
     if (capacity == 0 || capacity > 65536) return;
     ULONGLONG now = GetTickCount64();
     for (int n = 0; n < 512; n++, g_actScanSlot = (g_actScanSlot + 1) % capacity)
     {
-        uint32_t bucket[2];
         if (g_actScanSlot >= capacity) g_actScanSlot = 0;
-        if (SafeRead(buckets + (uintptr_t)g_actScanSlot * 8, bucket, 8) || bucket[0] == empty || bucket[1] >= live) continue;
-        uint32_t life = EvpU32(records + (uintptr_t)bucket[1] * 0x1B8 + 0x19C, 2);
-        int at = -1;
-        for (int c = 0; c < g_actCandidateCount; c++) if (g_actCandidates[c].entity == bucket[0]) at = c;
-        if (life >= 2) { if (at >= 0) g_actCandidates[at] = g_actCandidates[--g_actCandidateCount]; continue; }
-        if (at >= 0) continue;
-        uintptr_t descriptor; uint8_t d[24];
-        if (!EvpPtr(descriptors + (uintptr_t)bucket[1] * 8, &descriptor) || SafeRead(descriptor, d, sizeof d)) continue;
-        uint64_t resource; uint32_t named, unit;
-        memcpy(&resource, d, 8); memcpy(&named, d + 8, 4); memcpy(&unit, d + 12, 4);
-        if (named != bucket[0] || !ActEnemy(resource) || g_actCandidateCount >= ACT_CANDIDATES) continue;
-        ActCandidate* c = &g_actCandidates[g_actCandidateCount];
-        *c = (ActCandidate){bucket[0], unit, {0}, 0};
-        if (EvpUnitPosition(unit, c->position)) { c->at = now; g_actCandidateCount++; }
+        ActScanSlot(&t, now);
     }
     for (int n = 0; n < 12 && g_actCandidateCount > 0; n++)
     {
@@ -651,6 +732,20 @@ static void ActScanEnemies(uintptr_t game)
     }
 }
 
+/* The other players' living Helldivers, as homing candidates seen now; how many. */
+static int ActFriends(uintptr_t game, ActCandidate* friends, ULONGLONG now)
+{
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    int n = EvpPlayers(game, players), count = 0;
+    for (int i = 0; i < n; i++)
+    {
+        ActHealth h;
+        if (players[i].local || !players[i].avatar || !ActHealthOf(game, players[i].avatar, &h) || h.life != 0) continue;
+        friends[count] = (ActCandidate){players[i].avatar, h.unit, {0}, now};
+        if (EvpUnitPosition(h.unit, friends[count].position)) count++;
+    }
+    return count;
+}
 /* The candidate most in the shot's direction, inside the cone and range; 0 none. */
 static uint32_t ActAcquire(uintptr_t game, const ActRule* r, const float* at, const float* v, float* aim)
 {
@@ -660,19 +755,7 @@ static uint32_t ActAcquire(uintptr_t game, const ActRule* r, const float* at, co
     ActCandidate friends[EVT_MAX_PLAYERS];
     int count = 0;
     const ActCandidate* list = g_actCandidates;
-    if (r->flags & HF_HOMING_FRIENDLY)
-    {
-        EvpPlayer players[EVT_MAX_PLAYERS];
-        int n = EvpPlayers(game, players);
-        for (int i = 0; i < n; i++)
-        {
-            ActHealth h;
-            if (players[i].local || !players[i].avatar || !ActHealthOf(game, players[i].avatar, &h) || h.life != 0) continue;
-            friends[count] = (ActCandidate){players[i].avatar, h.unit, {0}, now};
-            if (EvpUnitPosition(h.unit, friends[count].position)) count++;
-        }
-        list = friends;
-    }
+    if (r->flags & HF_HOMING_FRIENDLY) { count = ActFriends(game, friends, now); list = friends; }
     else count = g_actCandidateCount;
     for (int i = 0; i < count; i++)
     {
@@ -722,6 +805,116 @@ static int ActSourceMatches(uintptr_t game, const ActRule* r, uint32_t source)
     return 0;
 }
 
+/* One update's view of the shots: the projectile pool, a copy of the rules taken under their lock, and who this machine
+ * is. */
+typedef struct ActShots { uintptr_t game, system; const ActRule* rules; int ruleCount, players; uint64_t peer; ULONGLONG now; } ActShots;
+
+/* Whether the shot in `slot` is one this machine's player fired, as a new shot reads (*creditor its hit record's). */
+static int ActShotOurs(const ActShots* s, int slot, uintptr_t flight, uintptr_t hit, uint64_t* creditor)
+{
+    uint16_t flags = 0;
+    uint8_t requested = 1;
+    return !(SafeRead(s->system + 0x203C + (uintptr_t)slot * 2, &flags, 2) || !(flags & 2) || SafeRead(hit, creditor, 8) || *creditor != s->peer ||
+        s->peer == 0 || SafeRead(hit + 0xB9, &requested, 1) || requested || EvpU32(flight + 0x50, 1) != 0);
+}
+/* modify_shots: a new shot's damage and penetration multipliers and its flight values scaled, when they read plausibly. */
+static void ActScaleShot(const ActRule* r, uintptr_t flight, uintptr_t hit)
+{
+    float f[12], m[2];
+    if (SafeRead(flight, f, sizeof f) || SafeRead(hit + 0x34, m, sizeof m)) return;
+    int plausible = m[0] > 0 && m[0] <= 1000 && m[1] > 0 && m[1] <= 1000 && f[11] > 0;
+    for (int q = 0; q < 12; q++) if (!isfinite(f[q])) plausible = 0;
+    if (!plausible) return;
+    m[0] *= r->damage; m[1] *= r->penetration;
+    f[3] *= r->speed; f[4] *= r->speed; f[5] *= r->speed; f[11] *= r->speed; f[7] *= r->gravity; f[10] *= r->drag;
+    memcpy((void*)(hit + 0x34), m, sizeof m);
+    memcpy((void*)(flight + 0x0C), f + 3, 12);
+    memcpy((void*)(flight + 0x1C), f + 7, 4);
+    memcpy((void*)(flight + 0x28), f + 10, 8);
+}
+/* A new shot of type `type` in `slot` against one rule: scaled by a modify_shots rule, tracked for a homing one. */
+static void ActShotRule(const ActShots* s, const ActRule* r, int slot, uint32_t type)
+{
+    if (r->projectile != type) return;
+    uint64_t creditor = 0;
+    uintptr_t flight = s->system + 0x3040 + (uintptr_t)slot * 0x70, hit = s->system + 0x4D040 + (uintptr_t)slot * 0xC8;
+    if (!ActShotOurs(s, slot, flight, hit, &creditor)) return;
+    if (s->players > 1 && !(r->flags & HF_SHOT_MULTIPLAYER)) return;
+    if (!ActSourceMatches(s->game, r, EvpU32(s->system + 0x3B040 + (uintptr_t)slot * 0x24 + 0x0C, 0))) return;
+    if (!r->homing) ActScaleShot(r, flight, hit);
+    else if (g_actTrackedCount < ACT_TRACKED)
+        g_actTracked[g_actTrackedCount++] = (ActTracked){slot, type, 0, r->id, creditor, 0, s->now, 0};
+}
+/* The n shots fired since the last update, from `from` (the last 64 of them at most). */
+static void ActNewShots(const ActShots* s, uint32_t from, uint32_t n)
+{
+    if (n > 64) { from += n - 64; n = 64; }
+    for (uint32_t i = 0; i < n; i++)
+    {
+        int slot = (int)((from + i) & 0x7FF);
+        uint32_t type = EvpU32(s->system + 0xE5040 + (uintptr_t)slot * 4, 0);
+        for (int k = 0; k < s->ruleCount; k++) ActShotRule(s, &s->rules[k], slot, type);
+    }
+}
+
+static const ActRule* ActRuleById(const ActShots* s, uint32_t id)
+{
+    const ActRule* r = NULL;
+    for (int k = 0; k < s->ruleCount; k++) if (s->rules[k].id == id) r = &s->rules[k];
+    return r;
+}
+/* Whether a tracked shot is still the one its rule tracks (f: its flight, read). */
+static int ActTrackedLive(const ActShots* s, const ActTracked* t, const ActRule* r, float f[14])
+{
+    uintptr_t flight = s->system + 0x3040 + (uintptr_t)t->slot * 0x70, hit = s->system + 0x4D040 + (uintptr_t)t->slot * 0xC8;
+    uint16_t flags = 0; uint64_t creditor = 0; uint8_t requested = 1;
+    return r != NULL && s->now - t->since < 10000 && EvpU32(s->system + 0xE5040 + (uintptr_t)t->slot * 4, 0) == t->type &&
+        !SafeRead(s->system + 0x203C + (uintptr_t)t->slot * 2, &flags, 2) && (flags & 2) && !(flags & 1) && !SafeRead(hit, &creditor, 8) &&
+        creditor == t->creditor && !SafeRead(hit + 0xB9, &requested, 1) && !requested && !SafeRead(flight, f, 14 * sizeof f[0]) && f[12] >= t->distance;
+}
+/* A tracked shot past its arming distance turned towards its target (acquired again every 100 ms unless the rule keeps
+ * the first). */
+static void ActSteer(const ActShots* s, ActTracked* t, const ActRule* r, float f[14], float dt)
+{
+    uintptr_t flight = s->system + 0x3040 + (uintptr_t)t->slot * 0x70;
+    float* v = f + 3;
+    float speed = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]), aim[3];
+    if (!(f[12] >= r->arm && speed >= 1.0f)) return;
+    int have = t->target && ActAimOf(s->game, r, t->target, aim);
+    if ((!have || !(r->flags & HF_HOMING_NO_RETARGET)) && s->now - t->retarget >= 100)
+    {
+        t->retarget = s->now;
+        float found[3];
+        uint32_t target = ActAcquire(s->game, r, f, v, found);
+        if (target && (!have || !(r->flags & HF_HOMING_NO_RETARGET))) { t->target = target; memcpy(aim, found, 12); have = 1; }
+    }
+    if (have)
+    {
+        float to[3] = {aim[0] - f[0], aim[1] - f[1], aim[2] - f[2]};
+        ActTurn(v, to, r->turn * (dt > 0 && dt < 0.25f ? dt : 1.0f / 60.0f));
+        memcpy((void*)(flight + 0x0C), v, 12);
+    }
+}
+/* The homing rules' pass: the enemies scanned when a rule homes on them, each tracked shot steered or dropped. */
+static void ActHomingTick(const ActShots* s, float dt)
+{
+    int homing = 0, enemies = 0;
+    for (int i = 0; i < s->ruleCount; i++) if (s->rules[i].homing) homing = 1;
+    if (!homing) { g_actTrackedCount = 0; return; }
+    for (int i = 0; i < s->ruleCount; i++) if (s->rules[i].homing && !(s->rules[i].flags & HF_HOMING_FRIENDLY)) enemies = 1;
+    if (enemies && g_actTrackedCount > 0) ActScanEnemies(s->game);
+    for (int i = 0; i < g_actTrackedCount;)
+    {
+        ActTracked* t = &g_actTracked[i];
+        const ActRule* r = ActRuleById(s, t->rule);
+        float f[14];
+        if (!ActTrackedLive(s, t, r, f)) { *t = g_actTracked[--g_actTrackedCount]; continue; }
+        t->distance = f[12];
+        ActSteer(s, t, r, f, dt);
+        i++;
+    }
+}
+
 static void ActShotsTick(uintptr_t game, float dt)
 {
     if (g_actRuleCount == 0) { g_actPoolHeld = 0; g_actTrackedCount = 0; return; }
@@ -738,86 +931,12 @@ static void ActShotsTick(uintptr_t game, float dt)
     int ruleCount = g_actRuleCount;
     memcpy(rules, g_actRules, sizeof rules[0] * ruleCount);
     ReleaseSRWLockShared(&g_actRulesLock);
-    int homing = 0;
-    for (int i = 0; i < ruleCount; i++) if (rules[i].homing) homing = 1;
     int players = ActPlayerCount(game);
     uint64_t peer = ActLocalPeer(game);
     ULONGLONG now = GetTickCount64();
-    if (n > 0 && n <= 2048)
-    {
-        if (n > 64) { from += n - 64; n = 64; }
-        for (uint32_t i = 0; i < n; i++)
-        {
-            int slot = (int)((from + i) & 0x7FF);
-            uint32_t type = EvpU32(system + 0xE5040 + (uintptr_t)slot * 4, 0);
-            for (int k = 0; k < ruleCount; k++)
-            {
-                const ActRule* r = &rules[k];
-                if (r->projectile != type) continue;
-                uint16_t flags = 0;
-                uint64_t creditor = 0;
-                uint8_t requested = 1;
-                uintptr_t flight = system + 0x3040 + (uintptr_t)slot * 0x70, hit = system + 0x4D040 + (uintptr_t)slot * 0xC8;
-                if (SafeRead(system + 0x203C + (uintptr_t)slot * 2, &flags, 2) || !(flags & 2) || SafeRead(hit, &creditor, 8) || creditor != peer || peer == 0 ||
-                    SafeRead(hit + 0xB9, &requested, 1) || requested || EvpU32(flight + 0x50, 1) != 0) continue;
-                if (players > 1 && !(r->flags & HF_SHOT_MULTIPLAYER)) continue;
-                if (!ActSourceMatches(game, r, EvpU32(system + 0x3B040 + (uintptr_t)slot * 0x24 + 0x0C, 0))) continue;
-                if (!r->homing)
-                {
-                    float f[12], m[2];
-                    if (SafeRead(flight, f, sizeof f) || SafeRead(hit + 0x34, m, sizeof m)) continue;
-                    int plausible = m[0] > 0 && m[0] <= 1000 && m[1] > 0 && m[1] <= 1000 && f[11] > 0;
-                    for (int q = 0; q < 12; q++) if (!isfinite(f[q])) plausible = 0;
-                    if (!plausible) continue;
-                    m[0] *= r->damage; m[1] *= r->penetration;
-                    f[3] *= r->speed; f[4] *= r->speed; f[5] *= r->speed; f[11] *= r->speed; f[7] *= r->gravity; f[10] *= r->drag;
-                    memcpy((void*)(hit + 0x34), m, sizeof m);
-                    memcpy((void*)(flight + 0x0C), f + 3, 12);
-                    memcpy((void*)(flight + 0x1C), f + 7, 4);
-                    memcpy((void*)(flight + 0x28), f + 10, 8);
-                }
-                else if (g_actTrackedCount < ACT_TRACKED)
-                    g_actTracked[g_actTrackedCount++] = (ActTracked){slot, type, 0, r->id, creditor, 0, now, 0};
-            }
-        }
-    }
-    if (!homing) { g_actTrackedCount = 0; return; }
-    int enemies = 0;
-    for (int i = 0; i < ruleCount; i++) if (rules[i].homing && !(rules[i].flags & HF_HOMING_FRIENDLY)) enemies = 1;
-    if (enemies && g_actTrackedCount > 0) ActScanEnemies(game);
-    for (int t = 0; t < g_actTrackedCount;)
-    {
-        ActTracked* s = &g_actTracked[t];
-        const ActRule* r = NULL;
-        for (int k = 0; k < ruleCount; k++) if (rules[k].id == s->rule) r = &rules[k];
-        uintptr_t flight = system + 0x3040 + (uintptr_t)s->slot * 0x70, hit = system + 0x4D040 + (uintptr_t)s->slot * 0xC8;
-        uint16_t flags = 0; uint64_t creditor = 0; uint8_t requested = 1; float f[14];
-        int keep = r != NULL && now - s->since < 10000 && EvpU32(system + 0xE5040 + (uintptr_t)s->slot * 4, 0) == s->type &&
-            !SafeRead(system + 0x203C + (uintptr_t)s->slot * 2, &flags, 2) && (flags & 2) && !(flags & 1) && !SafeRead(hit, &creditor, 8) &&
-            creditor == s->creditor && !SafeRead(hit + 0xB9, &requested, 1) && !requested && !SafeRead(flight, f, sizeof f) && f[12] >= s->distance;
-        if (!keep) { *s = g_actTracked[--g_actTrackedCount]; continue; }
-        s->distance = f[12];
-        float* v = f + 3;
-        float speed = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]), aim[3];
-        if (f[12] >= r->arm && speed >= 1.0f)
-        {
-            int have = s->target && ActAimOf(game, r, s->target, aim);
-            if ((!have || !(r->flags & HF_HOMING_NO_RETARGET)) && now - s->retarget >= 100)
-            {
-                s->retarget = now;
-                float found[3];
-                uint32_t target = ActAcquire(game, r, f, v, found);
-                if (target && (!have || !(r->flags & HF_HOMING_NO_RETARGET))) { s->target = target; memcpy(aim, found, 12); have = 1; }
-            }
-            if (have)
-            {
-                float to[3] = {aim[0] - f[0], aim[1] - f[1], aim[2] - f[2]};
-                ActTurn(v, to, r->turn * (dt > 0 && dt < 0.25f ? dt : 1.0f / 60.0f));
-                memcpy((void*)(flight + 0x0C), v, 12);
-            }
-        }
-        t++;
-    }
+    ActShots s = {game, system, rules, ruleCount, players, peer, now};
+    if (n > 0 && n <= 2048) ActNewShots(&s, from, n);
+    ActHomingTick(&s, dt);
 }
 
 /* ---- the game thread -------------------------------------------------------------------------------------------- */

@@ -8,39 +8,47 @@ typedef struct StatsDeltaLayout { uint32_t size, type, header; uint32_t offsets[
 static uintptr_t g_statsAllocations[STATS_EXTRA_COUNT];
 static int g_statsExtraDone[STATS_EXTRA_COUNT];
 
+/* The entity delta table's header (head: its first 7 words) and its arrays as reviewed. */
+static int StatsDeltaValid(uintptr_t base, const uint32_t* head)
+{
+    const StatsDeltaLayout* d = &kStatsDelta;
+    if (head[0] != d->type || head[1] != 0x444C444Cu || head[2] != 1 || head[3] != d->type ||
+        head[4] != d->size - 28 || head[5] != 1 || head[6]) return 0;
+    uint64_t arrays[10];
+    if (SafeRead(base + d->header, arrays, sizeof arrays)) return 0;
+    /* In place, or moved by the loader with rows appended (difficulty.c's countdown delta). */
+    for (int i = 0; i < 5; i++)
+        if (!(arrays[i * 2] == base + d->header + d->offsets[i] && arrays[i * 2 + 1] == d->counts[i]) &&
+            !(base + d->header == g_deltaTable && g_deltaArrays[i] && arrays[i * 2] == g_deltaArrays[i] &&
+              arrays[i * 2 + 1] == (uint64_t)d->counts[i] + g_deltaAdded[i])) return 0;
+    return 1;
+}
+
+/* A settings allocation's group as the layout has it, from *end (moved to the group's end): its header, and its rows
+ * inside it. */
+static int StatsGroupValid(uintptr_t base, const StatsLayout* d, const StatsGroup* g, uint32_t* end)
+{
+    uint32_t h[6]; uint64_t rows[2];
+    if (g->offset != *end || SafeRead(base + g->offset, h, sizeof h) || h[0] != 0x444C444Cu || h[1] != 1 ||
+        h[2] != g->type || h[3] != g->extent || h[4] != 1 || h[5]) return 0;
+    *end = g->offset + 24 + g->extent;
+    if (*end > d->size) return 0;
+    if (g->root && (SafeRead(base + g->root, rows, sizeof rows) || rows[1] != g->count ||
+        (rows[0] != g->rowOffset && rows[0] != base + g->root + g->rowOffset) ||
+        (uint64_t)g->root + g->rowOffset + (uint64_t)g->count * d->stride > *end)) return 0;
+    return 1;
+}
+
 static int StatsAllocationValid(uintptr_t base, int kind)
 {
     uint32_t head[7];
     if (SafeRead(base, head, sizeof head)) return 0;
-    if (kind == (int)STATS_EXTRA_COUNT - 1)
-    {
-        const StatsDeltaLayout* d = &kStatsDelta;
-        if (head[0] != d->type || head[1] != 0x444C444Cu || head[2] != 1 || head[3] != d->type ||
-            head[4] != d->size - 28 || head[5] != 1 || head[6]) return 0;
-        uint64_t arrays[10];
-        if (SafeRead(base + d->header, arrays, sizeof arrays)) return 0;
-        /* In place, or moved by the loader with rows appended (difficulty.c's countdown delta). */
-        for (int i = 0; i < 5; i++)
-            if (!(arrays[i * 2] == base + d->header + d->offsets[i] && arrays[i * 2 + 1] == d->counts[i]) &&
-                !(base + d->header == g_deltaTable && g_deltaArrays[i] && arrays[i * 2] == g_deltaArrays[i] &&
-                  arrays[i * 2 + 1] == (uint64_t)d->counts[i] + g_deltaAdded[i])) return 0;
-        return 1;
-    }
+    if (kind == (int)STATS_EXTRA_COUNT - 1) return StatsDeltaValid(base, head);
     const StatsLayout* d = &kStatsLayouts[kind];
     if (head[0] != d->count) return 0;
     uint32_t end = 4;
     for (uint32_t i = 0; i < d->count; i++)
-    {
-        const StatsGroup* g = &d->groups[i];
-        uint32_t h[6]; uint64_t rows[2];
-        if (g->offset != end || SafeRead(base + g->offset, h, sizeof h) || h[0] != 0x444C444Cu || h[1] != 1 ||
-            h[2] != g->type || h[3] != g->extent || h[4] != 1 || h[5]) return 0;
-        end = g->offset + 24 + g->extent;
-        if (end > d->size) return 0;
-        if (g->root && (SafeRead(base + g->root, rows, sizeof rows) || rows[1] != g->count ||
-            (rows[0] != g->rowOffset && rows[0] != base + g->root + g->rowOffset) ||
-            (uint64_t)g->root + g->rowOffset + (uint64_t)g->count * d->stride > end)) return 0;
-    }
+        if (!StatsGroupValid(base, d, &d->groups[i], &end)) return 0;
     return end == d->size;
 }
 
@@ -56,6 +64,18 @@ static int StatsExtraKind(const char* name)
     return !strcmp(name, "EntityDelta") ? (int)STATS_EXTRA_COUNT - 1 : -1;
 }
 
+/* A private allocation as each settings allocation still wanted: its size in range and its layout as reviewed. */
+static void StatsAllocationCandidates(const MEMORY_BASIC_INFORMATION* info, int* matches, uintptr_t* candidates)
+{
+    for (int i = 0; i < (int)STATS_EXTRA_COUNT; i++)
+    {
+        uint32_t size = i == (int)STATS_EXTRA_COUNT - 1 ? kStatsDelta.size : kStatsLayouts[i].size;
+        if (!g_statsExtraDone[i] && info->RegionSize >= size && info->RegionSize <= (size_t)size + 65536 &&
+            StatsAllocationValid((uintptr_t)info->BaseAddress, i))
+        { matches[i]++; candidates[i] = (uintptr_t)info->BaseAddress; }
+    }
+}
+
 static void StatsFindAllocations(void)
 {
     int matches[STATS_EXTRA_COUNT] = {0}; uintptr_t candidates[STATS_EXTRA_COUNT] = {0};
@@ -63,15 +83,7 @@ static void StatsFindAllocations(void)
     while (VirtualQuery((void*)at, &info, sizeof info))
     {
         uintptr_t next = (uintptr_t)info.BaseAddress + info.RegionSize;
-        if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && info.BaseAddress == info.AllocationBase &&
-            (info.Protect == PAGE_READONLY || info.Protect == PAGE_READWRITE))
-            for (int i = 0; i < (int)STATS_EXTRA_COUNT; i++)
-            {
-                uint32_t size = i == (int)STATS_EXTRA_COUNT - 1 ? kStatsDelta.size : kStatsLayouts[i].size;
-                if (!g_statsExtraDone[i] && info.RegionSize >= size && info.RegionSize <= (size_t)size + 65536 &&
-                    StatsAllocationValid((uintptr_t)info.BaseAddress, i))
-                { matches[i]++; candidates[i] = (uintptr_t)info.BaseAddress; }
-            }
+        if (PrivateAllocation(&info)) StatsAllocationCandidates(&info, matches, candidates);
         if (next <= at) break;
         at = next;
     }
@@ -79,47 +91,46 @@ static void StatsFindAllocations(void)
         g_statsAllocations[i] = matches[i] == 1 ? candidates[i] : 0;
 }
 
-static uintptr_t StatsExtraRow(StatEdit* e)
+static uintptr_t StatsExtraRow(StatEdit* e);
+
+/* A status multiplier's place: the array its StatusEffectSettings row points to (+104, its count +112), the stat at
+ * the offset's index checked to be the component's. */
+static uintptr_t StatsStatusRow(const StatEdit* e, uintptr_t base, int kind)
 {
-    int kind = StatsExtraKind(e->kind);
-    if (kind < 0 || e->own) return 0;
-    uintptr_t base = g_statsAllocations[kind];
-    if (!base || !StatsAllocationValid(base, kind)) return 0;
-    if (!strcmp(e->kind, STATUS_MULTIPLIER))
+    StatEdit row = *e;
+    snprintf(row.kind, sizeof row.kind, "StatusEffectSettings");
+    row.offset = 104;
+    uintptr_t at = StatsExtraRow(&row);
+    uint64_t array = 0, count = 0; uint32_t stat = 0, index = (e->offset - 4) / 8; char* end;
+    unsigned long expect = strtoul(e->component, &end, 10);
+    if (!at || *end || e->offset < 4 || (e->offset - 4) % 8 || SafeRead(at, &array, 8) || SafeRead(at + 8, &count, 8) ||
+        index >= count || array < base || array + (count * 8) > base + kStatsLayouts[kind].size ||
+        SafeRead((uintptr_t)array + index * 8, &stat, 4) || stat != expect) return 0;
+    return (uintptr_t)array + e->offset;
+}
+
+/* A settings row's field: the one row of the layout's groups whose id is the record. */
+static uintptr_t StatsLayoutRow(const StatEdit* e, uintptr_t base, int kind)
+{
+    const StatsLayout* d = &kStatsLayouts[kind];
+    if (e->offset < 4 || e->offset > d->stride - 4 || e->offset % 4) return 0;
+    uintptr_t found = 0; int matches = 0;
+    for (uint32_t i = 0; i < d->count; i++)
     {
-        StatEdit row = *e;
-        snprintf(row.kind, sizeof row.kind, "StatusEffectSettings");
-        row.offset = 104;
-        uintptr_t at = StatsExtraRow(&row);
-        uint64_t array = 0, count = 0; uint32_t stat = 0, index = (e->offset - 4) / 8; char* end;
-        unsigned long expect = strtoul(e->component, &end, 10);
-        if (!at || *end || e->offset < 4 || (e->offset - 4) % 8 || SafeRead(at, &array, 8) || SafeRead(at + 8, &count, 8) ||
-            index >= count || array < base || array + (count * 8) > base + kStatsLayouts[kind].size ||
-            SafeRead((uintptr_t)array + index * 8, &stat, 4) || stat != expect) return 0;
-        return (uintptr_t)array + e->offset;
-    }
-    if (kind != (int)STATS_EXTRA_COUNT - 1)
-    {
-        const StatsLayout* d = &kStatsLayouts[kind];
-        if (e->offset < 4 || e->offset > d->stride - 4 || e->offset % 4) return 0;
-        uintptr_t found = 0; int matches = 0;
-        for (uint32_t i = 0; i < d->count; i++)
+        const StatsGroup* g = &d->groups[i];
+        for (uint32_t row = 0; row < g->count; row++)
         {
-            const StatsGroup* g = &d->groups[i];
-            for (uint32_t row = 0; row < g->count; row++)
-            {
-                uintptr_t at = base + g->root + g->rowOffset + row * d->stride; uint32_t id;
-                if (SafeRead(at, &id, 4)) return 0;
-                if (id == e->record) { found = at; matches++; }
-            }
+            uintptr_t at = base + g->root + g->rowOffset + row * d->stride; uint32_t id;
+            if (SafeRead(at, &id, 4)) return 0;
+            if (id == e->record) { found = at; matches++; }
         }
-        return matches == 1 ? found + e->offset : 0;
     }
-    const StatsDeltaLayout* d = &kStatsDelta;
-    uint64_t arrays[10]; /* read through the table's own pointers: the loader may have moved arrays 1 to 4 */
-    uint32_t component, member; char trailing;
-    if (SafeRead(base + d->header, arrays, sizeof arrays)) return 0;
-    if (sscanf(e->component, "%u:%u%c", &component, &member, &trailing) != 2 || e->record < 0 || (uint64_t)e->record >= d->counts[1]) return 0;
+    return matches == 1 ? found + e->offset : 0;
+}
+
+/* Whether exactly one of the delta table's index rows names the entity, and names the record. */
+static int StatsDeltaOwned(const uint64_t* arrays, const StatsDeltaLayout* d, const StatEdit* e)
+{
     int owners = 0;
     for (uint32_t i = 0; i < d->counts[0]; i++)
     {
@@ -128,10 +139,13 @@ static uintptr_t StatsExtraRow(StatEdit* e)
         memcpy(&resource, row, 8); memcpy(&index, row + 8, 4);
         if (resource == e->resource) { if (index != e->record) return 0; owners++; }
     }
-    if (owners != 1) return 0;
-    uint32_t settings[2];
-    if (SafeRead(arrays[2] + e->record * 8, settings, sizeof settings) ||
-        !settings[0] || settings[0] > 64 || (uint64_t)settings[1] + settings[0] > d->counts[2]) return 0;
+    return owners == 1;
+}
+
+/* The record's settings (settings: their first and count): the one u32 delta of the component's member at the offset. */
+static uintptr_t StatsDeltaFind(const uint64_t* arrays, const StatsDeltaLayout* d, const uint32_t* settings, uint32_t component,
+    uint32_t member, uint32_t offset)
+{
     int matches = 0; uintptr_t found = 0;
     for (uint32_t i = 0; i < settings[0]; i++)
     {
@@ -143,11 +157,38 @@ static uintptr_t StatsExtraRow(StatEdit* e)
             uint32_t delta[3];
             if (SafeRead(arrays[6] + (c[1] + j) * 12, delta, sizeof delta) ||
                 (uint64_t)delta[2] + delta[1] > d->counts[4]) return 0;
-            if (c[0] == component && delta[0] == member && delta[1] == 4 && d->header + d->offsets[4] + delta[2] == e->offset)
+            if (c[0] == component && delta[0] == member && delta[1] == 4 && d->header + d->offsets[4] + delta[2] == offset)
             { matches++; found = arrays[8] + delta[2]; }
         }
     }
     return matches == 1 ? found : 0;
+}
+
+/* An entity delta's field ("<component>:<member>"), read through the table's own pointers: the loader may have moved
+ * arrays 1 to 4. */
+static uintptr_t StatsDeltaRow(const StatEdit* e, uintptr_t base)
+{
+    const StatsDeltaLayout* d = &kStatsDelta;
+    uint64_t arrays[10];
+    uint32_t component, member; char trailing;
+    if (SafeRead(base + d->header, arrays, sizeof arrays)) return 0;
+    if (sscanf(e->component, "%u:%u%c", &component, &member, &trailing) != 2 || e->record < 0 || (uint64_t)e->record >= d->counts[1]) return 0;
+    if (!StatsDeltaOwned(arrays, d, e)) return 0;
+    uint32_t settings[2];
+    if (SafeRead(arrays[2] + e->record * 8, settings, sizeof settings) ||
+        !settings[0] || settings[0] > 64 || (uint64_t)settings[1] + settings[0] > d->counts[2]) return 0;
+    return StatsDeltaFind(arrays, d, settings, component, member, e->offset);
+}
+
+static uintptr_t StatsExtraRow(StatEdit* e)
+{
+    int kind = StatsExtraKind(e->kind);
+    if (kind < 0 || e->own) return 0;
+    uintptr_t base = g_statsAllocations[kind];
+    if (!base || !StatsAllocationValid(base, kind)) return 0;
+    if (!strcmp(e->kind, STATUS_MULTIPLIER)) return StatsStatusRow(e, base, kind);
+    if (kind != (int)STATS_EXTRA_COUNT - 1) return StatsLayoutRow(e, base, kind);
+    return StatsDeltaRow(e, base);
 }
 
 /* The booster table (HD2Runtime's research, booster-native-F5FEE03DCFDB.json; game.dll SizeOfImage 0x4744000): static in
@@ -228,6 +269,23 @@ static uintptr_t MeleeVolume(uint64_t rva)
 
 static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready); /* fields.c */
 
+/* One difficulty, roster or composition edit, checked as a live edit is. */
+static void StatsDirectorEdit(StatEdit* e)
+{
+    uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
+    if (!stride || !e->mod->loaded) return;
+    int found = 1;
+    uintptr_t row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
+    const char* why = NULL;
+    if (!row) { StatsRefuse(e, "no such row, or its table is not as reviewed"); return; }
+    if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { StatsRefuse(e, "no such field in its row"); return; }
+    if ((why = DirectorRefuses(e->kind, row, e->offset, &e->value, size)) != NULL) { StatsRefuse(e, why); return; }
+    uint32_t before = 0;
+    SafeRead(row + e->offset, &before, size);
+    StatsWrite(e, row + e->offset);
+    if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
+}
+
 /* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
  * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. Each is
  * checked as a live edit is (a squad within the queue's capacity, ranges in order); a difficulty row of the game's own
@@ -244,22 +302,7 @@ static void StatsDirectorReady(void)
         if (DirectorStride(g_stats[i].kind) && g_stats[i].mod->loaded) TableRowOf(g_stats[i].kind, (uint64_t)g_stats[i].record, &ready);
     if (!ready && now - first < 120000) return;
     g_directorDone = 1;
-    for (int i = 0; i < g_statCount; i++)
-    {
-        StatEdit* e = &g_stats[i];
-        uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
-        if (!stride || !e->mod->loaded) continue;
-        int found = 1;
-        uintptr_t row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
-        const char* why = NULL;
-        if (!row) { StatsRefuse(e, "no such row, or its table is not as reviewed"); continue; }
-        if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { StatsRefuse(e, "no such field in its row"); continue; }
-        if ((why = DirectorRefuses(e->kind, row, e->offset, &e->value, size)) != NULL) { StatsRefuse(e, why); continue; }
-        uint32_t before = 0;
-        SafeRead(row + e->offset, &before, size);
-        StatsWrite(e, row + e->offset);
-        if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
-    }
+    for (int i = 0; i < g_statCount; i++) StatsDirectorEdit(&g_stats[i]);
 }
 
 /* Stats edits of the hit volumes, once game.dll's data reads as reviewed (refused if it never does within 60 s). */
@@ -283,6 +326,21 @@ static void StatsMeleeReady(void)
     }
 }
 
+/* One kind's edits, once its allocation is found (or 20 s went by without it). */
+static void StatsExtraKindReady(int kind, ULONGLONG waited)
+{
+    if (g_statsExtraDone[kind] || (!g_statsAllocations[kind] && waited < 20000)) return;
+    g_statsExtraDone[kind] = 1;
+    for (int i = 0; i < g_statCount; i++)
+    {
+        StatEdit* e = &g_stats[i];
+        if (StatsExtraKind(e->kind) != kind || !e->mod->loaded) continue;
+        uintptr_t address = !strcmp(g_build, "25480438") ? StatsExtraRow(e) : 0;
+        if (!address) StatsRefuse(e, "settings allocation or delta ownership/layout is not uniquely as reviewed");
+        else StatsWrite(e, address);
+    }
+}
+
 /* Readiness polling only; a completed allocation is never written again. */
 static void StatsExtraReady(void)
 {
@@ -294,17 +352,5 @@ static void StatsExtraReady(void)
     for (int i = 0; i < (int)STATS_EXTRA_COUNT; i++) if (!g_statsExtraDone[i]) pending++;
     if (!pending) return;
     last = now; StatsFindAllocations();
-    for (int kind = 0; kind < (int)STATS_EXTRA_COUNT; kind++)
-    {
-        if (g_statsExtraDone[kind] || (!g_statsAllocations[kind] && now - first < 20000)) continue;
-        g_statsExtraDone[kind] = 1;
-        for (int i = 0; i < g_statCount; i++)
-        {
-            StatEdit* e = &g_stats[i];
-            if (StatsExtraKind(e->kind) != kind || !e->mod->loaded) continue;
-            uintptr_t address = !strcmp(g_build, "25480438") ? StatsExtraRow(e) : 0;
-            if (!address) StatsRefuse(e, "settings allocation or delta ownership/layout is not uniquely as reviewed");
-            else StatsWrite(e, address);
-        }
-    }
+    for (int kind = 0; kind < (int)STATS_EXTRA_COUNT; kind++) StatsExtraKindReady(kind, now - first);
 }

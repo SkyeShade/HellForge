@@ -40,7 +40,8 @@ try
         File.WriteAllText(reportPath, JsonSerializer.Serialize(new {
             status = confirmed ? "local_steam_client_subscription_confirmed" : "ownership_unverified",
             checkedUtc = DateTime.UtcNow, appId, loggedOn, subscribed, sameOwner, familyShared = shared, freeWeekend, cafe,
-            localClientOwnershipConfirmed = confirmed, serverVerified = false, permanentLicenseProven = false,
+            localClientOwnershipConfirmed = confirmed,
+            accountHash = userId == 0 ? null : SteamOwnershipCheck.AccountHash(unchecked((uint)userId)), serverVerified = false, permanentLicenseProven = false,
             readyToLaunchGame = false, librarySha256 = args[1],
             scope = "Live client API subscription, and owner match or Steam Family Sharing. Not a signed portable receipt or publisher-side verification."
         }, new JsonSerializerOptions { WriteIndented = true }));

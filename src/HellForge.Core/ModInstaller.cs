@@ -23,24 +23,7 @@ public static class ModInstaller
         var problems = new List<string>();
         foreach (var path in chosen.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            try
-            {
-                var isZip = path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
-                var isTar = TarArchives.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
-                var file = Path.GetFileName(path);
-                var source = isZip || isTar ? path : Path.GetDirectoryName(path)!;
-                if (!isZip && !isTar && !file.Equals(ModCatalog.ManifestName, StringComparison.OrdinalIgnoreCase) &&
-                    !file.Equals(CosmeticPacks.ManifestName, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"choose a mod's .zip (or .rar, .7z), its {ModCatalog.ManifestName}, or a cosmetic pack's {CosmeticPacks.ManifestName}.");
-                if (LocalInstall.Within(source, install.Mods))
-                    throw new InvalidDataException("it is in this installation's mods folder already.");
-                if (isTar) source = Unpack(install, path); // a folder from here on, copied like one
-                var mod = isZip ? ReadZip(install, path) : ParseAny(source);
-                if (mods.Any(m => m.Id == mod.Id)) throw new InvalidDataException($"{mod.Id} is chosen twice.");
-                var current = installed.FirstOrDefault(m => m.Id == mod.Id);
-                var replaces = current == null ? null : current.Archive != null ? Path.Combine(install.Mods, current.Archive) : current.Folder;
-                mods.Add(new(source, isZip, mod.Id, mod.Name, mod.Version, replaces));
-            }
+            try { mods.Add(InspectOne(install, path, installed, mods)); }
             catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
                 problems.Add($"{Path.GetFileName(path)}: {error.Message}");
@@ -49,15 +32,32 @@ public static class ModInstaller
         return (mods, problems);
     }
 
+    // One chosen file as a mod to add, with the installed copy it replaces; chosen: the ones read before it.
+    static Candidate InspectOne(InstallLayout install, string path, List<ModManifest> installed, List<Candidate> chosen)
+    {
+        var isZip = path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var isTar = TarArchives.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+        var file = Path.GetFileName(path);
+        var source = isZip || isTar ? path : Path.GetDirectoryName(path)!;
+        if (!isZip && !isTar && !file.Equals(ModCatalog.ManifestName, StringComparison.OrdinalIgnoreCase) &&
+            !file.Equals(CosmeticPacks.ManifestName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"choose a mod's .zip (or .rar, .7z), its {ModCatalog.ManifestName}, or a cosmetic pack's {CosmeticPacks.ManifestName}.");
+        if (LocalInstall.Within(source, install.Mods))
+            throw new InvalidDataException("it is in this installation's mods folder already.");
+        if (isTar) source = Unpack(install, path); // a folder from here on, copied like one
+        var mod = isZip ? ReadZip(install, path) : ParseAny(source);
+        if (chosen.Any(m => m.Id == mod.Id)) throw new InvalidDataException($"{mod.Id} is chosen twice.");
+        var current = installed.FirstOrDefault(m => m.Id == mod.Id);
+        var replaces = current == null ? null : current.Archive != null ? Path.Combine(install.Mods, current.Archive) : current.Folder;
+        return new(source, isZip, mod.Id, mod.Name, mod.Version, replaces);
+    }
+
     // Puts the mod into mods/ (after removing the copy it replaces); returns where it went.
     public static string Add(InstallLayout install, Candidate mod)
     {
         Directory.CreateDirectory(install.Mods);
         if (mod.Replaces != null) Delete(install, mod.Replaces);
-        var name = Path.GetFileName(mod.Source);
-        var target = Path.Combine(install.Mods, name);
-        for (var n = 2; File.Exists(target) || Directory.Exists(target); n++)
-            target = Path.Combine(install.Mods, mod.IsZip ? $"{Path.GetFileNameWithoutExtension(name)}-{n}.zip" : $"{name}-{n}");
+        var target = FreeTarget(install, mod);
         // copied under a name nothing loads (a dot folder, a .partial file), then moved in whole: the Mods page and a
         // starting session never see half a mod
         var staging = Path.Combine(install.Mods, ".adding-" + Guid.NewGuid().ToString("N")[..8] + (mod.IsZip ? ".partial" : ""));
@@ -70,15 +70,36 @@ public static class ModInstaller
         }
         catch
         {
-            try { if (File.Exists(staging)) File.Delete(staging); else if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
-            catch (IOException) { }
+            Discard(staging);
             throw;
         }
-        // a .rar's or .7z's unpacked copy (Unpack) is not needed once the mod is in mods/
-        var extracted = Path.GetFullPath(mod.Source);
+        DeleteUnpacked(install, mod.Source);
+        return target;
+    }
+
+    // The mod's name in mods/, numbered when a file or folder has it already.
+    static string FreeTarget(InstallLayout install, Candidate mod)
+    {
+        var name = Path.GetFileName(mod.Source);
+        var target = Path.Combine(install.Mods, name);
+        for (var n = 2; File.Exists(target) || Directory.Exists(target); n++)
+            target = Path.Combine(install.Mods, mod.IsZip ? $"{Path.GetFileNameWithoutExtension(name)}-{n}.zip" : $"{name}-{n}");
+        return target;
+    }
+
+    // A half-copied mod, removed.
+    static void Discard(string staging)
+    {
+        try { if (File.Exists(staging)) File.Delete(staging); else if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
+        catch (IOException) { }
+    }
+
+    // A .rar's or .7z's unpacked copy (Unpack) is not needed once the mod is in mods/.
+    static void DeleteUnpacked(InstallLayout install, string source)
+    {
+        var extracted = Path.GetFullPath(source);
         if (LocalInstall.Within(extracted, install.Temp) && Path.GetFileName(Path.GetDirectoryName(extracted) ?? "").StartsWith("mod-unpacked-", StringComparison.Ordinal))
             try { Directory.Delete(Path.GetDirectoryName(extracted)!, recursive: true); } catch (IOException) { }
-        return target;
     }
 
     // Deletes the mod's files: its zip (its unpacked copy goes at the next load) or its folder.

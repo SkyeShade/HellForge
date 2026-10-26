@@ -32,6 +32,26 @@ bool Transfer(HANDLE pipe, HANDLE event, void* buffer, DWORD size, bool write)
     return true;
 }
 
+// A frame's body (its length bytes after the length): the field count, then each field, which must fill it exactly.
+// False when it is malformed.
+bool Decode(const std::vector<unsigned char>& buffer, uint32_t length, Frame& frame)
+{
+    uint32_t count = buffer[0] | (buffer[1] << 8);
+    size_t at = 2;
+    if (count == 0) return false;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        if (at + 4 > length) return false;
+        uint32_t size = GetU32(&buffer[at]);
+        if (size > length - at - 4) return false;
+        std::string field((const char*)&buffer[at + 4], size);
+        if (i == 0) frame.type = field;
+        else frame.fields.push_back(field);
+        at += 4 + size;
+    }
+    return at == length;
+}
+
 }
 
 Frame& Frame::AddProperties(const std::map<std::string, std::string>& properties)
@@ -165,21 +185,8 @@ void Link::Read()
         if (length < 2 || length + 4 > MaxFrameBytes) break;
         buffer.resize(length);
         if (!Transfer(pipe_, event, buffer.data(), length, false)) break;
-        uint32_t count = buffer[0] | (buffer[1] << 8);
-        size_t at = 2;
         Frame frame;
-        bool valid = count > 0;
-        for (uint32_t i = 0; i < count && valid; i++)
-        {
-            if (at + 4 > length) { valid = false; break; }
-            uint32_t size = GetU32(&buffer[at]);
-            if (size > length - at - 4) { valid = false; break; }
-            std::string field((const char*)&buffer[at + 4], size);
-            if (i == 0) frame.type = field;
-            else frame.fields.push_back(field);
-            at += 4 + size;
-        }
-        if (!valid || at != length) break;
+        if (!Decode(buffer, length, frame)) break;
         AcquireSRWLockExclusive(&inboxLock_);
         inbox_.push_back(std::move(frame));
         ReleaseSRWLockExclusive(&inboxLock_);

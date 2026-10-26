@@ -136,8 +136,17 @@ int wmain(int argc, wchar_t **argv)
     if (registerCallback) registerCallback(&callback, 1005);
     Check(state->callback == &callback && state->callbackId == 1005, "a callback registration reaches the real DLL");
 
-    Sleep(400);
-    char *log = ReadAll(argv[2]);
+    // The report comes from the census's own thread every period (100 ms here): wait for its counts of the calls above, up
+    // to ten seconds, rather than a fixed time a busy machine can overrun.
+    char *log = NULL;
+    for (int i = 0; i < 200; i++)
+    {
+        free(log);
+        log = ReadAll(argv[2]);
+        if (log && Has(log, "\"kind\":\"calls\"", "\"name\":\"SteamUtils010#2\"", "\"number\":3}") &&
+            Has(log, "\"kind\":\"calls\"", "\"name\":\"SteamGameServer_GetHSteamUser\"", "\"number\":2}")) break;
+        Sleep(50);
+    }
     Check(log != NULL && Has(log, "\"kind\":\"census\"", "census build", NULL), "the census log says it is the census build");
     Check(log && Has(log, "\"kind\":\"interface\"", "\"name\":\"SteamUtils010\"", "\"number\":1}"), "the interface request is logged");
     Check(log && Has(log, "\"kind\":\"slot\"", "\"name\":\"SteamUtils010\"", "\"number\":2}"), "a slot's first call is logged");

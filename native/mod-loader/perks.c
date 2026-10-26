@@ -39,30 +39,34 @@ static int PerkWritable(uintptr_t at, size_t size)
         at + size <= (uintptr_t)info.BaseAddress + info.RegionSize;
 }
 
-/* A perk value's entry (its modifier or stat), or 0 with *ready 0 while the manager is not there yet. */
-static uintptr_t PerkRow(const char* kind, uint64_t id, int* ready)
+/* A passive's row through the manager (its 32 row pointers, the passive's slot); 0 with *ready 0 while it is not there. */
+static uintptr_t PerkPassiveRow(uintptr_t game, uint32_t passive, int* ready)
 {
-    *ready = 1;
-    int modifier = !strcmp(kind, "PassiveModifier");
-    uint32_t passive = (uint32_t)(id / 16), index = (uint32_t)(id % 16);
-    const PerkEntry* e = PerkEntryOf(passive);
-    if (e == NULL || index >= (modifier ? e->modifiers : e->stats)) return 0;
-    uintptr_t game = g_perksGame ? g_perksGame : ApiModuleBase("game.dll", NULL), manager = 0, pointers = 0, row = 0, items = 0;
-    if (!game || strcmp(g_build, "25480438")) return 0;
-    if (!PerksProve(game)) { *ready = 0; return 0; }
+    uintptr_t manager = 0, pointers = 0, row = 0;
     uint32_t head[2], slot = 0;
     if (SafeRead(game + PERK_MANAGER, &manager, 8) || !manager) { *ready = 0; return 0; }
     if (SafeRead(manager + PERK_PASSIVES, &pointers, 8) || SafeRead(manager + PERK_PASSIVES + 8, head, 8) || head[0] != PERK_COUNT || head[1] ||
         passive >= PERK_IDS || SafeRead(manager + PERK_INDEX + passive * 4, &slot, 4) || slot >= PERK_COUNT ||
         SafeRead(pointers + slot * 8, &row, 8) || !row) { *ready = 0; return 0; }
-    uint8_t r[PERK_ROW];
-    if (SafeRead(row, r, sizeof r)) return 0;
+    return row;
+}
+
+/* Whether a passive row (its PERK_ROW bytes) is the entry's: id, name id, icon, package and both arrays' counts. */
+static int PerkRowReviewed(const uint8_t* r, const PerkEntry* e)
+{
     uint32_t rid, name, package, mcount, mzero, scount, szero;
     uint64_t icon;
     memcpy(&rid, r, 4); memcpy(&name, r + 4, 4); memcpy(&icon, r + 8, 8); memcpy(&package, r + 0x30, 4);
     memcpy(&mcount, r + 0x18, 4); memcpy(&mzero, r + 0x1C, 4); memcpy(&scount, r + 0x28, 4); memcpy(&szero, r + 0x2C, 4);
-    if (rid != e->id || name != e->nameId || icon != e->icon || package != e->package || mcount != e->modifiers || mzero ||
-        scount != e->stats || szero) return 0;
+    return !(rid != e->id || name != e->nameId || icon != e->icon || package != e->package || mcount != e->modifiers || mzero ||
+        scount != e->stats || szero);
+}
+
+/* The row's modifier or stat at index: its key and type (or stat id) as reviewed, its values private read-write data;
+ * else 0. */
+static uintptr_t PerkItem(const uint8_t* r, const PerkEntry* e, int modifier, uint32_t index)
+{
+    uintptr_t items = 0;
     memcpy(&items, r + (modifier ? 0x10 : 0x20), 8);
     uint32_t stride = modifier ? 16 : 12;
     uintptr_t at = items + index * stride;
@@ -73,29 +77,54 @@ static uintptr_t PerkRow(const char* kind, uint64_t id, int* ready)
     return at;
 }
 
+/* A perk value's entry (its modifier or stat), or 0 with *ready 0 while the manager is not there yet. */
+static uintptr_t PerkRow(const char* kind, uint64_t id, int* ready)
+{
+    *ready = 1;
+    int modifier = !strcmp(kind, "PassiveModifier");
+    uint32_t passive = (uint32_t)(id / 16), index = (uint32_t)(id % 16);
+    const PerkEntry* e = PerkEntryOf(passive);
+    if (e == NULL || index >= (modifier ? e->modifiers : e->stats)) return 0;
+    uintptr_t game = g_perksGame ? g_perksGame : ApiModuleBase("game.dll", NULL);
+    if (!game || strcmp(g_build, "25480438")) return 0;
+    if (!PerksProve(game)) { *ready = 0; return 0; }
+    uintptr_t row = PerkPassiveRow(game, passive, ready);
+    if (!row) return 0;
+    uint8_t r[PERK_ROW];
+    if (SafeRead(row, r, sizeof r) || !PerkRowReviewed(r, e)) return 0;
+    return PerkItem(r, e, modifier, index);
+}
+
+/* Whether a stats edit or an observation names an armor perk value. */
+static int StatsPerksNamed(void)
+{
+    int any = 0;
+    for (int i = 0; i < g_statCount; i++) if (!strncmp(g_stats[i].kind, "Passive", 7)) any = 1;
+    for (int i = 0; i < g_statsProbeCount && !any; i++) if (!strncmp(g_statsProbes[i].kind, "Passive", 7)) any = 1;
+    return any;
+}
+
+static void StatsPerkEdit(StatEdit* e, int* ready)
+{
+    if (strncmp(e->kind, "Passive", 7) || !e->mod->loaded) return;
+    uint32_t stride = !strcmp(e->kind, "PassiveModifier") ? 16 : 12;
+    uintptr_t at = e->offset >= 4 && e->offset <= stride - 4 && !e->own && e->record >= 0 ? PerkRow(e->kind, (uint64_t)e->record, ready) : 0;
+    if (!at) StatsRefuse(e, "the armor perk's entry is not as reviewed");
+    else StatsWrite(e, at + e->offset);
+}
+
 /* The stats pass's perk edits, once the passive rows are readable (refused if they never are within 120 s of the
  * entity data). The rows are the game's own data, so they stay edited for the session. */
 static void StatsPerksReady(void)
 {
     static ULONGLONG first;
     if (g_perksDone) return;
-    int any = 0;
-    for (int i = 0; i < g_statCount; i++) if (!strncmp(g_stats[i].kind, "Passive", 7)) any = 1;
-    for (int i = 0; i < g_statsProbeCount && !any; i++) if (!strncmp(g_statsProbes[i].kind, "Passive", 7)) any = 1;
-    if (!any) return;
+    if (!StatsPerksNamed()) return;
     ULONGLONG now = GetTickCount64();
     if (!first) first = now;
     int ready = 0;
     PerkRow("PassiveModifier", 1 * 16, &ready); /* Extra Padding's armor rating: is the manager there? */
     if (!ready && now - first < 120000) return;
     g_perksDone = 1;
-    for (int i = 0; i < g_statCount; i++)
-    {
-        StatEdit* e = &g_stats[i];
-        if (strncmp(e->kind, "Passive", 7) || !e->mod->loaded) continue;
-        uint32_t stride = !strcmp(e->kind, "PassiveModifier") ? 16 : 12;
-        uintptr_t at = e->offset >= 4 && e->offset <= stride - 4 && !e->own && e->record >= 0 ? PerkRow(e->kind, (uint64_t)e->record, &ready) : 0;
-        if (!at) StatsRefuse(e, "the armor perk's entry is not as reviewed");
-        else StatsWrite(e, at + e->offset);
-    }
+    for (int i = 0; i < g_statCount; i++) StatsPerkEdit(&g_stats[i], &ready);
 }

@@ -186,20 +186,10 @@ static uint32_t ApiAddAbility(HfMod* mod, const HfAbility* def)
     return a->id;
 }
 
-/* A sound in the world at the entity, as the game posts a weapon's (0x614A16): the source on the entity's unit's root
- * node (the Wwise plugin's API +0x590: (world, unit, node)) and its game object (+0x5A0: (world, source), -1 when the
- * source is gone), posted with +0x338. Asked for at every post, as the game asks before it posts: nothing is kept
- * across posts, so a source never outlives its unit here. With no unit, on the world's default source (+0x4148: heard
- * everywhere, as the in-game editor's menu sounds are). The unit: the scene graph's ([[game + 0x3326308] + 0x18] +0x748)
- * for the entity descriptor's +0xC. (The helldivers2.exe+0x626296 fault once laid at a unit source's door is the
- * game's own, on quitting.) */
-static void AbilitySound(uint32_t entity, uint32_t event)
+/* The game object of the source on the entity's unit's root node; NULL when it has no unit or its source is gone. */
+static void* AbilityUnitObject(uintptr_t game, uintptr_t api, uintptr_t world, uint32_t entity)
 {
-    if (event == 0) return;
-    uintptr_t game = g_ablGame, api = 0, context = 0, world = 0, postFn = 0, sourceFn = 0, objectFn = 0, engine = 0, graph = 0, unitOf = 0;
-    if (SafeRead(game + ABL_SOUND_API, &api, 8) || api == 0 || SafeRead(game + ABL_GAME, &context, 8) || context == 0 ||
-        SafeRead(context + ABL_WWISE_WORLD, &world, 8) || world == 0 || SafeRead(api + ABL_API_POST, &postFn, 8) || postFn == 0)
-        return;
+    uintptr_t sourceFn = 0, objectFn = 0, engine = 0, graph = 0, unitOf = 0;
     void* object = NULL;
     const uint8_t* descriptor = entity != 0 ? ((const uint8_t* (*)(uint32_t))BhvFn(F_DESCRIPTOR))(entity) : NULL;
     uint32_t index = 0, flags = 0;
@@ -213,6 +203,24 @@ static void AbilitySound(uint32_t entity, uint32_t event)
         if (source != 0xFFFFFFFFu) object = ((SourceObjectFn)objectFn)((void*)world, source);
         if (object == (void*)(intptr_t)-1) object = NULL;
     }
+    return object;
+}
+
+/* A sound in the world at the entity, as the game posts a weapon's (0x614A16): the source on the entity's unit's root
+ * node (the Wwise plugin's API +0x590: (world, unit, node)) and its game object (+0x5A0: (world, source), -1 when the
+ * source is gone), posted with +0x338. Asked for at every post, as the game asks before it posts: nothing is kept
+ * across posts, so a source never outlives its unit here. With no unit, on the world's default source (+0x4148: heard
+ * everywhere, as the in-game editor's menu sounds are). The unit: the scene graph's ([[game + 0x3326308] + 0x18] +0x748)
+ * for the entity descriptor's +0xC. (The helldivers2.exe+0x626296 fault once laid at a unit source's door is the
+ * game's own, on quitting.) */
+static void AbilitySound(uint32_t entity, uint32_t event)
+{
+    if (event == 0) return;
+    uintptr_t game = g_ablGame, api = 0, context = 0, world = 0, postFn = 0;
+    if (SafeRead(game + ABL_SOUND_API, &api, 8) || api == 0 || SafeRead(game + ABL_GAME, &context, 8) || context == 0 ||
+        SafeRead(context + ABL_WWISE_WORLD, &world, 8) || world == 0 || SafeRead(api + ABL_API_POST, &postFn, 8) || postFn == 0)
+        return;
+    void* object = AbilityUnitObject(game, api, world, entity);
     if (object == NULL)
     {
         uint32_t source = 0;
@@ -269,6 +277,25 @@ static uint8_t* LinkRecord(uint32_t remote, int* shared)
     return record;
 }
 
+/* The table's record counted among the shared marks for this countdown: one more on its mark, else a spare mark when it
+ * is a silo's link. 0 when it is neither, or no mark is spare. */
+static int MarkShared(HeldLaunch* h, uint8_t* record, uint32_t magic)
+{
+    uint32_t at = ABL_MAX_HELD, spare = ABL_MAX_HELD;
+    for (uint32_t i = 0; i < ABL_MAX_HELD; i++)
+        if (g_sharedMarks[i].count > 0 && g_sharedMarks[i].record == record) at = i;
+        else if (g_sharedMarks[i].count == 0 && spare == ABL_MAX_HELD) spare = i;
+    if (at == ABL_MAX_HELD)
+    {
+        if (magic != ABL_SILO_LINK || spare == ABL_MAX_HELD) return 0;
+        at = spare;
+        g_sharedMarks[at].record = record;
+    }
+    g_sharedMarks[at].count++;
+    h->sharedRecord = record;
+    return 1;
+}
+
 /* The remote's link marked "no link" for the countdown (its laser launches nothing meanwhile, here: once the laser-on byte
  * replicates, a machine without the mark would launch its copy at once, setting the explosive off a second time). 1 when
  * marked: a silo's link, or the table's record already marked by another countdown here. */
@@ -280,18 +307,7 @@ static int MarkLink(HeldLaunch* h)
     if (record == NULL || SafeRead((uintptr_t)record + 4, &magic, 4)) return 0;
     if (shared)
     {
-        uint32_t at = ABL_MAX_HELD, spare = ABL_MAX_HELD;
-        for (uint32_t i = 0; i < ABL_MAX_HELD; i++)
-            if (g_sharedMarks[i].count > 0 && g_sharedMarks[i].record == record) at = i;
-            else if (g_sharedMarks[i].count == 0 && spare == ABL_MAX_HELD) spare = i;
-        if (at == ABL_MAX_HELD)
-        {
-            if (magic != ABL_SILO_LINK || spare == ABL_MAX_HELD) return 0;
-            at = spare;
-            g_sharedMarks[at].record = record;
-        }
-        g_sharedMarks[at].count++;
-        h->sharedRecord = record;
+        if (!MarkShared(h, record, magic)) return 0;
     }
     else if (magic != ABL_SILO_LINK) return 0;
     *(uint32_t*)(record + 4) = 0;
@@ -363,6 +379,12 @@ static HeldLaunch* FreeHeld(void)
     return NULL;
 }
 
+/* Why a fired remote has no missile to hold. */
+static const char* NoMissileWhy(int64_t link, uint32_t missile, uint32_t none, int64_t seeking)
+{
+    return link < 0 ? "no link of its own" : missile == none ? "its link names no missile" : seeking < 0 ? "the missile is not a seeking missile" : "the missile runs no abilities";
+}
+
 /* The copy of a silo's remote fired: hold its missile's launch, counting down on the missile. */
 static uint8_t RemoteFired(const Ability* a, uint32_t remote)
 {
@@ -373,7 +395,7 @@ static uint8_t RemoteFired(const Ability* a, uint32_t remote)
     int64_t seeking = missile != none ? AblFind(missiles, 0x20, missile) : -1;
     if (link < 0 || seeking < 0 || AblFind(abilities, 0x18, missile) < 0)
     {
-        const char* why = link < 0 ? "no link of its own" : missile == none ? "its link names no missile" : seeking < 0 ? "the missile is not a seeking missile" : "the missile runs no abilities";
+        const char* why = NoMissileWhy(link, missile, none, seeking);
         Note("abilities: %u: remote %u fired with no missile linked to it (%s)", a->id, remote, why);
         CoopDiag("silo: remote %u fired here with no missile linked to it (%s, link names %u): another machine's silo; its missile counts down from its own start", remote, why, missile);
         return 1;
@@ -463,6 +485,26 @@ static int PlausiblePoint(const float p[3])
     return fabsf(p[0]) < 20000.0f && fabsf(p[1]) < 20000.0f && p[2] > -500.0f && p[2] < 3000.0f;
 }
 
+/* A countdown's end that launches nothing here: its missile gone (seeking < 0) or flying already. */
+static void NoteNotLaunched(const Ability* a, uint32_t missile, int64_t seeking)
+{
+    Note("abilities: %u: missile %u %s: not launched here", a->id, missile, seeking < 0 ? "is gone" : "flies already");
+    CoopDiag("silo: missile %u's countdown is over here, but it %s: not launched here", missile, seeking < 0 ? "is GONE" : "flies already");
+    CoopDiagMissile(missile, "countdown over, not launched here");
+}
+/* A countdown's launch here, where it went (plausible: to the laser's point). */
+static void NoteLaunched(const Ability* a, const HeldLaunch* h, uint32_t missile, int plausible)
+{
+    Note("abilities: %u: missile %u launched%s at (%.0f, %.0f, %.0f)%s", a->id, missile, h->shadow ? " (its countdown set off elsewhere)" : "",
+        (double)h->point[0], (double)h->point[1], (double)h->point[2],
+        !plausible ? ", which is no place on a map: it keeps its own guidance" :
+        h->marked ? "" : h->shadow ? ", with its own guidance (no laser point reached this machine)" : ", where the remote pointed (its laser marked no point)");
+    CoopDiag("silo: missile %u launched here%s toward (%.1f, %.1f, %.1f)%s (laser %s, owner %u)", missile, h->shadow ? " (its countdown set off elsewhere)" : "",
+        (double)h->point[0], (double)h->point[1], (double)h->point[2], plausible ? "" : ": NO PLACE ON A MAP, its own guidance kept",
+        h->marked ? "marked it" : "marked nothing", h->owner);
+    CoopDiagMissile(missile, h->shadow ? "launched here, set off elsewhere" : "launched here");
+}
+
 /* The countdown's end: what the remote's link does at a launch, in its order (0x76B580). A missile flying already (its
  * launch reached this machine some other way) is left as it is. */
 static void LaunchHeld(const Ability* a, HeldLaunch* h)
@@ -472,13 +514,7 @@ static void LaunchHeld(const Ability* a, HeldLaunch* h)
     h->missile = 0; /* first: launching starts 2088 on the missile, in this ability's place */
     GiveLinkBack(h);
     int64_t seeking = AblFind(missiles, 0x20, missile);
-    if (seeking < 0 || MissileFlies(missiles, seeking))
-    {
-        Note("abilities: %u: missile %u %s: not launched here", a->id, missile, seeking < 0 ? "is gone" : "flies already");
-        CoopDiag("silo: missile %u's countdown is over here, but it %s: not launched here", missile, seeking < 0 ? "is GONE" : "flies already");
-        CoopDiagMissile(missile, "countdown over, not launched here");
-        return;
-    }
+    if (seeking < 0 || MissileFlies(missiles, seeking)) { NoteNotLaunched(a, missile, seeking); return; }
     ((EngineFn)LaunchFn(L_ENGINE))((void*)missiles, missile, 1);
     ((MissileFn)LaunchFn(L_LAUNCH))((void*)missiles, missile);
     if (AblFind(explosives, 0x38, missile) >= 0) ((OwnerFn)LaunchFn(L_OWNER))((void*)explosives, missile, h->owner);
@@ -487,14 +523,42 @@ static void LaunchHeld(const Ability* a, HeldLaunch* h)
     int plausible = PlausiblePoint(h->point);
     if ((h->marked || !h->shadow) && plausible && AblFind(AblManager(ABL_GUIDANCE), 0x840, missile) >= 0) ((GuideFn)LaunchFn(L_GUIDE))(NULL, missile, h->point);
     if (h->rack != none && AblFind(racks, 0x28, h->rack) >= 0) ((ReleaseFn)LaunchFn(L_RELEASE))((void*)racks, h->rack, missile);
-    Note("abilities: %u: missile %u launched%s at (%.0f, %.0f, %.0f)%s", a->id, missile, h->shadow ? " (its countdown set off elsewhere)" : "",
-        (double)h->point[0], (double)h->point[1], (double)h->point[2],
-        !plausible ? ", which is no place on a map: it keeps its own guidance" :
-        h->marked ? "" : h->shadow ? ", with its own guidance (no laser point reached this machine)" : ", where the remote pointed (its laser marked no point)");
-    CoopDiag("silo: missile %u launched here%s toward (%.1f, %.1f, %.1f)%s (laser %s, owner %u)", missile, h->shadow ? " (its countdown set off elsewhere)" : "",
-        (double)h->point[0], (double)h->point[1], (double)h->point[2], plausible ? "" : ": NO PLACE ON A MAP, its own guidance kept",
-        h->marked ? "marked it" : "marked nothing", h->owner);
-    CoopDiagMissile(missile, h->shadow ? "launched here, set off elsewhere" : "launched here");
+    NoteLaunched(a, h, missile, plausible);
+}
+
+/* A silo countdown's tick on the remote: its fire (tick 0) starts the countdown where this machine has authority over it. */
+static uint8_t RemoteTick(const Ability* a, uint32_t remote, uint32_t tick, int authority)
+{
+    if (tick != 0) return 1;
+    if (authority) return RemoteFired(a, remote);
+    CoopDiag("silo: remote %u fired on another machine (NOT authority here over the remote): that machine starts the countdown", remote);
+    return 1;
+}
+static void DiagCountdownStart(uint32_t missile, int authority, const HeldLaunch* h)
+{
+    CoopDiag("silo: missile %u's countdown starts here (%s, %s)", missile, authority ? "authority here" : "NOT authority here",
+        h == NULL ? "no countdown slot" : h->shadow ? "set off elsewhere" : "fired here");
+}
+/* Where a countdown's sounds play: the silo, else the missile. */
+static uint32_t CountdownSoundAt(const HeldLaunch* h, uint32_t missile)
+{
+    uint32_t none = *(uint32_t*)(g_ablGame + ABL_NO_ENTITY);
+    return h != NULL && h->rack != none && h->rack != 0 ? h->rack : missile;
+}
+/* A hold's sound at its tick: the start's at tick 0, then one each second. */
+static void HoldSound(uint32_t at, const Ability* a, uint32_t tick)
+{
+    if (tick == 0) AbilitySound(at, a->startEvent);
+    else if (tick % ABL_TICKS == 0) AbilitySound(at, a->secondEvent);
+}
+/* The countdown's last tick here without authority over the missile: the machine with it launches. */
+static void CountdownOverElsewhere(const Ability* a, HeldLaunch* h, uint32_t missile)
+{
+    if (h != NULL) h->ended = 1; /* the link stays marked until the launch arrives (SiloFrame) */
+    Note("abilities: %u: missile %u's countdown is over here; the machine with authority over it launches it", a->id, missile);
+    CoopDiag("silo: missile %u's countdown is over here, NOT authority here: the launch comes with the missile's state (%s)", missile,
+        h != NULL ? "link kept marked until then" : "no countdown slot here");
+    CoopDiagMissile(missile, "countdown over without authority");
 }
 
 /* A silo countdown's tick: on the remote, it fired; on its missile, the hold, then the launch.
@@ -509,44 +573,52 @@ static void LaunchHeld(const Ability* a, HeldLaunch* h)
 static uint8_t LinkedLaunchTick(const Ability* a, uint32_t entity, uint32_t tick, int authority)
 {
     if (!g_launchReady) return 1;
-    if (AblFind(AblManager(ABL_LINKERS), 0x20, entity) >= 0)
-    {
-        if (tick != 0) return 1;
-        if (authority) return RemoteFired(a, entity);
-        CoopDiag("silo: remote %u fired on another machine (NOT authority here over the remote): that machine starts the countdown", entity);
-        return 1;
-    }
+    if (AblFind(AblManager(ABL_LINKERS), 0x20, entity) >= 0) return RemoteTick(a, entity, tick, authority);
     HeldLaunch* h = HeldFor(entity);
     if (h == NULL && tick == 0) h = ShadowFor(a, entity);
-    if (tick == 0) CoopDiag("silo: missile %u's countdown starts here (%s, %s)", entity, authority ? "authority here" : "NOT authority here",
-        h == NULL ? "no countdown slot" : h->shadow ? "set off elsewhere" : "fired here");
-    uint32_t none = *(uint32_t*)(g_ablGame + ABL_NO_ENTITY);
-    uint32_t at = h != NULL && h->rack != none && h->rack != 0 ? h->rack : entity; /* the silo, else the missile */
+    if (tick == 0) DiagCountdownStart(entity, authority, h);
+    uint32_t at = CountdownSoundAt(h, entity);
     if (h != NULL)
     {
         if (tick == 0) { h->started = 1; h->ended = 0; h->since = GetTickCount64(); } /* a start again: the countdown again */
         KeepMarkedPoint(h);
     }
-    if (tick < a->holdTicks)
-    {
-        if (tick == 0) AbilitySound(at, a->startEvent);
-        else if (tick % ABL_TICKS == 0) AbilitySound(at, a->secondEvent);
-        return 0;
-    }
+    if (tick < a->holdTicks) { HoldSound(at, a, tick); return 0; }
     AbilitySound(at, a->finalEvent);
-    if (!authority)
-    {
-        if (h != NULL) h->ended = 1; /* the link stays marked until the launch arrives (SiloFrame) */
-        Note("abilities: %u: missile %u's countdown is over here; the machine with authority over it launches it", a->id, entity);
-        CoopDiag("silo: missile %u's countdown is over here, NOT authority here: the launch comes with the missile's state (%s)", entity,
-            h != NULL ? "link kept marked until then" : "no countdown slot here");
-        CoopDiagMissile(entity, "countdown over without authority");
-        return 1;
-    }
+    if (!authority) { CountdownOverElsewhere(a, h, entity); return 1; }
     if (h == NULL) h = ShadowFor(a, entity); /* the countdown migrated here, or this machine joined during it */
     if (h != NULL) LaunchHeld(a, h);
     else CoopDiag("silo: missile %u's countdown is over here with no countdown slot: not launched", entity);
     return 1;
+}
+
+/* A countdown slot freed (why: what became of its missile), its remote given its link back. */
+static void FreeSiloSlot(HeldLaunch* h, const char* why, int64_t seeking, int authority)
+{
+    Note("abilities: missile %u %s: its countdown slot is freed (remote %u)", h->missile, why, h->remote);
+    CoopDiag("silo: missile %u %s %s (%s); its slot is freed", h->missile, why,
+        h->ended ? "after this machine's countdown ended" : "before this machine's countdown ended", authority ? "authority here" : "NOT authority here");
+    if (seeking >= 0) CoopDiagMissile(h->missile, h->ended ? "launch arrived" : "launched elsewhere or overdue");
+    GiveLinkBack(h);
+    h->missile = 0;
+}
+/* One countdown slot's frame (SiloFrame). */
+static void SiloSlotFrame(HeldLaunch* h, uintptr_t missiles, ULONGLONG now)
+{
+    if (h->missile == 0 || !h->started) return;
+    int64_t seeking = AblFind(missiles, 0x20, h->missile);
+    int authority = AblAuthority(h->missile);
+    int launched = seeking >= 0 && (*(uint8_t**)(missiles + 0x50))[(size_t)seeking * 0x38 + 0x36] != 0;
+    if (h->ended && authority && seeking >= 0 && !launched && h->ability != NULL)
+    {
+        CoopDiag("silo: missile %u's countdown ended here without authority, and the missile has since moved here unlaunched: launched here", h->missile);
+        LaunchHeld(h->ability, h);
+        return;
+    }
+    ULONGLONG late = (ULONGLONG)h->holdMs + (authority ? 2ull * h->holdMs + 10000 : 5000);
+    const char* why = seeking < 0 ? "is gone" : launched ? "was launched" : now - h->since > late ? "is long past its countdown's end" : NULL;
+    if (why == NULL) return;
+    FreeSiloSlot(h, why, seeking, authority);
 }
 
 /* Every frame on the game thread: frees the countdown slots whose last tick will not come here, or came without authority
@@ -563,29 +635,7 @@ static void SiloFrame(HfMod* mod, float dt, void* user)
     if (!g_launchReady) return;
     ULONGLONG now = GetTickCount64();
     uintptr_t missiles = AblManager(ABL_MISSILES);
-    for (uint32_t i = 0; i < ABL_MAX_HELD; i++)
-    {
-        HeldLaunch* h = &g_heldLaunches[i];
-        if (h->missile == 0 || !h->started) continue;
-        int64_t seeking = AblFind(missiles, 0x20, h->missile);
-        int authority = AblAuthority(h->missile);
-        int launched = seeking >= 0 && (*(uint8_t**)(missiles + 0x50))[(size_t)seeking * 0x38 + 0x36] != 0;
-        if (h->ended && authority && seeking >= 0 && !launched && h->ability != NULL)
-        {
-            CoopDiag("silo: missile %u's countdown ended here without authority, and the missile has since moved here unlaunched: launched here", h->missile);
-            LaunchHeld(h->ability, h);
-            continue;
-        }
-        ULONGLONG late = (ULONGLONG)h->holdMs + (authority ? 2ull * h->holdMs + 10000 : 5000);
-        const char* why = seeking < 0 ? "is gone" : launched ? "was launched" : now - h->since > late ? "is long past its countdown's end" : NULL;
-        if (why == NULL) continue;
-        Note("abilities: missile %u %s: its countdown slot is freed (remote %u)", h->missile, why, h->remote);
-        CoopDiag("silo: missile %u %s %s (%s); its slot is freed", h->missile, why,
-            h->ended ? "after this machine's countdown ended" : "before this machine's countdown ended", authority ? "authority here" : "NOT authority here");
-        if (seeking >= 0) CoopDiagMissile(h->missile, h->ended ? "launch arrived" : "launched elsewhere or overdue");
-        GiveLinkBack(h);
-        h->missile = 0;
-    }
+    for (uint32_t i = 0; i < ABL_MAX_HELD; i++) SiloSlotFrame(&g_heldLaunches[i], missiles, now);
 }
 
 /* A mission's end: every countdown is over (its missile goes with the mission); the remotes' links back, now, while the
@@ -682,12 +732,7 @@ static uint8_t AbilityTick(void* ctx, uint32_t id, uint32_t tick)
     SafeRead((uintptr_t)ctx + 0x14, &flags, 4);
     if (a->holdsLaunch) return LinkedLaunchTick(a, entity, tick, (flags & 1) != 0);
     if (tick == 0) Note("abilities: %u set off on entity %u (its base %u runs in %u ticks)", id, entity, a->base, a->holdTicks);
-    if (tick < a->holdTicks)
-    {
-        if (tick == 0) AbilitySound(entity, a->startEvent);
-        else if (tick % ABL_TICKS == 0) AbilitySound(entity, a->secondEvent);
-        return 0;
-    }
+    if (tick < a->holdTicks) { HoldSound(entity, a, tick); return 0; }
     if (tick == a->holdTicks) { AbilitySound(entity, a->finalEvent); Note("abilities: %u on entity %u: its base %u runs", id, entity, a->base); }
     return a->baseFn != NULL ? a->baseFn(ctx, tick - a->holdTicks) : 1;
 }
@@ -700,40 +745,49 @@ static int RefuseAbilities(const char* why, uint32_t at)
     return 1;
 }
 
-/* The watch loop, after HF_EVENT_GAME_LOADED until it returns 1 (60 s for the copy protection to decode the code). */
-static int InstallAbilities(uintptr_t game)
+/* Code that is not the reviewed one yet: waited for until the grace is over, then refused (1). */
+static int AbilityNotReviewed(int graceOver, const char* why, uint32_t at) { return graceOver ? RefuseAbilities(why, at) : 0; }
+
+/* The ability dispatcher (its start and its default) and the entity descriptor lookup as reviewed: NULL, else why not
+ * (*at: where). */
+static const char* AbilityCodeRefused(uintptr_t game, uint32_t* at)
 {
-    if (g_abilityState != 0) return 1;
-    if (g_abilityCount == 0) { g_abilityState = 1; return 1; }
-    if (!g_abilityFirstTry) g_abilityFirstTry = GetTickCount64();
-    int graceOver = GetTickCount64() - g_abilityFirstTry >= 60000;
-    g_ablGame = game;
     uint8_t pin[sizeof kAbilityDispatchPin], tail[sizeof kAbilityDefaultPin];
     if (SafeRead(game + ABL_DISPATCH, pin, sizeof pin) || memcmp(pin, kAbilityDispatchPin, sizeof pin) ||
         SafeRead(game + ABL_DEFAULT, tail, sizeof tail) || memcmp(tail, kAbilityDefaultPin, sizeof tail))
-        return graceOver ? RefuseAbilities("the ability dispatcher is not the reviewed one", ABL_DISPATCH) : 0;
+    { *at = ABL_DISPATCH; return "the ability dispatcher is not the reviewed one"; }
     uint8_t descriptor[32];
     if (SafeRead(game + kBhvFunctions[F_DESCRIPTOR].rva, descriptor, 32) || memcmp(descriptor, kBhvFunctions[F_DESCRIPTOR].pin, 32))
-        return graceOver ? RefuseAbilities("the entity descriptor lookup is not the reviewed one", kBhvFunctions[F_DESCRIPTOR].rva) : 0;
-    g_bhvGame = game; /* BhvFn: the descriptor lookup */
+    { *at = kBhvFunctions[F_DESCRIPTOR].rva; return "the entity descriptor lookup is not the reviewed one"; }
+    return NULL;
+}
+
+/* The silo countdowns' game functions, when an ability holds a launch: g_launchReady when they are the reviewed ones.
+ * 0 while one is not and the grace is not over. */
+static int CheckLaunchFunctions(uintptr_t game, int graceOver)
+{
     int launches = 0;
     for (uint32_t i = 0; i < g_abilityCount; i++) launches |= g_abilities[i].holdsLaunch;
     g_launchReady = 0;
-    if (launches)
-    {
-        int f = 0;
-        uint8_t code[32];
-        for (; f < L_COUNT; f++)
-            if (SafeRead(game + kLaunchFunctions[f].rva, code, 32) || memcmp(code, kLaunchFunctions[f].pin, 32)) break;
-        if (f < L_COUNT && !graceOver) return 0;
-        g_launchReady = f == L_COUNT;
-        if (!g_launchReady)
-            for (uint32_t i = 0; i < g_abilityCount; i++)
-                if (g_abilities[i].holdsLaunch)
-                    ApiLog(g_abilities[i].mod, "ability %u: game.dll 0x%x is not the reviewed function; its remote launches at once, as the silo's",
-                        g_abilities[i].id, kLaunchFunctions[f].rva);
-    }
-    /* each base: its case, `mov edx, r8d; call <ability>; movzx r9d, al` */
+    if (!launches) return 1;
+    int f = 0;
+    uint8_t code[32];
+    for (; f < L_COUNT; f++)
+        if (SafeRead(game + kLaunchFunctions[f].rva, code, 32) || memcmp(code, kLaunchFunctions[f].pin, 32)) break;
+    if (f < L_COUNT && !graceOver) return 0;
+    g_launchReady = f == L_COUNT;
+    if (!g_launchReady)
+        for (uint32_t i = 0; i < g_abilityCount; i++)
+            if (g_abilities[i].holdsLaunch)
+                ApiLog(g_abilities[i].mod, "ability %u: game.dll 0x%x is not the reviewed function; its remote launches at once, as the silo's",
+                    g_abilities[i].id, kLaunchFunctions[f].rva);
+    return 1;
+}
+
+/* Each base's function, from its case: `mov edx, r8d; call <ability>; movzx r9d, al`. 0 with *base the first whose case
+ * is not that shape. */
+static int FindBaseFunctions(uintptr_t game, uint32_t* base)
+{
     for (uint32_t i = 0; i < g_abilityCount; i++)
     {
         Ability* a = &g_abilities[i];
@@ -742,15 +796,21 @@ static int InstallAbilities(uintptr_t game)
         uint8_t code[12];
         if (SafeRead(game + ABL_TABLE + (uintptr_t)(a->base - 1) * 4, &rva, 4) || SafeRead(game + (uintptr_t)rva, code, sizeof code) ||
             (memcmp(code, "\x41\x8B\xD0\xE8", 4) != 0 && memcmp(code, "\x44\x89\xC2\xE8", 4) != 0) || memcmp(code + 8, "\x44\x0F\xB6\xC8", 4) != 0)
-            return graceOver ? RefuseAbilities("a base ability's case is not the reviewed shape", a->base) : 0;
+        { *base = a->base; return 0; }
         int32_t rel;
         memcpy(&rel, code + 4, 4);
         a->baseFn = (AbilityFn)(game + (uintptr_t)rva + 8 + rel);
     }
-    int guard = g_launchReady && GuardPins(game);
-    if (g_launchReady && !guard) Note("abilities: the missile pre-destroy is not the reviewed code: its remote lookup is not guarded");
+    return 1;
+}
+
+/* The dispatcher's stub in a block near game.dll (*block; the guard's stub too, with `guard`), executable, with its
+ * unwind data: the stub, or NULL with *why. */
+static uint8_t* BuildAbilityStub(uintptr_t game, int guard, uint8_t** blockOut, const char** why)
+{
     uint8_t* block = AllocateNearGame(game, 0x1000);
-    if (block == NULL) return RefuseAbilities("no memory near game.dll", 0);
+    *blockOut = block;
+    if (block == NULL) { *why = "no memory near game.dll"; return NULL; }
     Emit e = {block};
     uint8_t* slots = block + 0x600;
     /* edx = id - 1, rcx = ctx, r8d = tick, r9b = 0 (the default returns it) */
@@ -774,33 +834,44 @@ static int InstallAbilities(uintptr_t game)
     function->EndAddress = (DWORD)(end - block);
     function->UnwindData = (DWORD)((uint8_t*)unwind - block);
     DWORD old;
-    if (!VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &old)) return RefuseAbilities("the stub could not be made executable", 0);
+    if (!VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &old)) { *why = "the stub could not be made executable"; return NULL; }
     FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
     if (!RtlAddFunctionTable(function, 1, (DWORD64)(uintptr_t)block)) Note("abilities: the stub's unwind data was not registered");
+    return stub;
+}
 
-    /* the branch last, atomic (its rel32 sits inside one aligned qword) */
+/* The dispatcher's `ja` pointed at the stub, last, atomic (its rel32 sits inside one aligned qword): NULL, else why not. */
+static const char* WriteAbilityBranch(uintptr_t game, uint8_t* stub)
+{
     uintptr_t at = game + ABL_JA + 2;
     int32_t rel = (int32_t)(int64_t)((uintptr_t)stub - (game + ABL_JA + 6));
     uintptr_t qword = at & ~(uintptr_t)7;
-    if (at + 4 > qword + 8) return RefuseAbilities("the branch straddles a qword", ABL_JA);
+    if (at + 4 > qword + 8) return "the branch straddles a qword";
     DWORD protect;
-    if (!VirtualProtect((void*)qword, 8, PAGE_EXECUTE_READWRITE, &protect)) return RefuseAbilities("the branch could not be written", ABL_JA);
+    if (!VirtualProtect((void*)qword, 8, PAGE_EXECUTE_READWRITE, &protect)) return "the branch could not be written";
     LONG64 before = *(volatile LONG64*)qword, after = before;
     memcpy((uint8_t*)&after + (at - qword), &rel, 4);
     InterlockedCompareExchange64((volatile LONG64*)qword, after, before);
     VirtualProtect((void*)qword, 8, protect, &protect);
     FlushInstructionCache(GetCurrentProcess(), (void*)qword, 8);
-    g_abilityState = 1;
-    if (guard) InstallLooseGuard(game, block + 0x400);
-    if (g_launchReady)
-        for (uint32_t i = 0; i < g_abilityCount; i++)
-            if (g_abilities[i].holdsLaunch)
-            {
-                if (!ApiOnGameThread(g_abilities[i].mod, SiloFrame, NULL))
-                    Note("abilities: the silo countdowns' per-frame pass is not running: a countdown whose missile goes early keeps its remote's link marked until the mission ends");
-                ApiSubscribe(g_abilities[i].mod, HF_ON_MISSION_END, SiloMissionEnd, NULL, 0);
-                break;
-            }
+    return NULL;
+}
+
+/* The silo countdowns' per-frame pass and mission end, under the first mod with a silo countdown. */
+static void StartSiloPasses(void)
+{
+    for (uint32_t i = 0; i < g_abilityCount; i++)
+        if (g_abilities[i].holdsLaunch)
+        {
+            if (!ApiOnGameThread(g_abilities[i].mod, SiloFrame, NULL))
+                Note("abilities: the silo countdowns' per-frame pass is not running: a countdown whose missile goes early keeps its remote's link marked until the mission ends");
+            ApiSubscribe(g_abilities[i].mod, HF_ON_MISSION_END, SiloMissionEnd, NULL, 0);
+            break;
+        }
+}
+
+static void WantAbilityPackages(void)
+{
     for (uint32_t i = 0; i < g_abilityCount; i++)
     {
         const char* name;
@@ -809,6 +880,33 @@ static int InstallAbilities(uintptr_t game)
             ApiLog(g_abilities[i].mod, "ability %u: its sounds' package %016llx is not loaded: %s", g_abilities[i].id,
                 (unsigned long long)g_abilities[i].package, why);
     }
+}
+
+/* The watch loop, after HF_EVENT_GAME_LOADED until it returns 1 (60 s for the copy protection to decode the code). */
+static int InstallAbilities(uintptr_t game)
+{
+    if (g_abilityState != 0) return 1;
+    if (g_abilityCount == 0) { g_abilityState = 1; return 1; }
+    if (!g_abilityFirstTry) g_abilityFirstTry = GetTickCount64();
+    int graceOver = GetTickCount64() - g_abilityFirstTry >= 60000;
+    g_ablGame = game;
+    uint32_t at = 0;
+    const char* why = AbilityCodeRefused(game, &at);
+    if (why != NULL) return AbilityNotReviewed(graceOver, why, at);
+    g_bhvGame = game; /* BhvFn: the descriptor lookup */
+    if (!CheckLaunchFunctions(game, graceOver)) return 0;
+    if (!FindBaseFunctions(game, &at)) return AbilityNotReviewed(graceOver, "a base ability's case is not the reviewed shape", at);
+    int guard = g_launchReady && GuardPins(game);
+    if (g_launchReady && !guard) Note("abilities: the missile pre-destroy is not the reviewed code: its remote lookup is not guarded");
+    uint8_t* block = NULL;
+    uint8_t* stub = BuildAbilityStub(game, guard, &block, &why);
+    if (stub == NULL) return RefuseAbilities(why, 0);
+    why = WriteAbilityBranch(game, stub);
+    if (why != NULL) return RefuseAbilities(why, ABL_JA);
+    g_abilityState = 1;
+    if (guard) InstallLooseGuard(game, block + 0x400);
+    if (g_launchReady) StartSiloPasses();
+    WantAbilityPackages();
     Note("abilities: %u ability(s) added (ids %u..%u), stub at 0x%llx", g_abilityCount, ABL_FIRST, ABL_FIRST + g_abilityCount - 1,
         (unsigned long long)(uintptr_t)block);
     return 1;

@@ -60,26 +60,24 @@ public sealed partial class DirectoryService : IAsyncDisposable
     readonly Dictionary<string, (FriendPresence.DirectoryLobby Lobby, DateTime At)> foundByLobby = new(StringComparer.Ordinal);
     (DirectoryQuery Query, DateTime At, Task<IReadOnlyList<DirectoryListing>> Results)? lastSearch;
 
-    // autoPublish: the listing follows the lobby by itself (every second, and soon after a change); tests call Publish.
     public DirectoryService(ILobbyDirectory directory, LobbyService lobby, FriendPresence presence, ulong localId, Action<Frame> toLocal, Action<string> log,
-        ModSync? sync, Func<bool> editedStats, bool autoPublish = true, Func<bool>? listPublic = null,
-        Func<bool>? strangersAllowed = null)
+        DirectorySettings settings)
     {
-        this.listPublic = listPublic;
-        this.strangersAllowed = strangersAllowed;
+        listPublic = settings.ListPublic;
+        strangersAllowed = settings.StrangersAllowed;
         this.directory = directory;
         this.lobby = lobby;
         this.presence = presence;
         this.localId = localId;
         this.toLocal = toLocal;
         this.log = log;
-        this.sync = sync;
-        this.editedStats = editedStats;
-        if (autoPublish) lobby.HostedChanged += () => timer?.Change(TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(1));
+        sync = settings.Sync;
+        editedStats = settings.EditedStats;
+        if (settings.AutoPublish) lobby.HostedChanged += () => timer?.Change(TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(1));
         lobby.Find = Find;
         presence.DirectoryByAccount = id => Found(foundByAccount, id);
         presence.DirectoryByLobby = id => Found(foundByLobby, id);
-        timer = autoPublish ? new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)) : new Timer(_ => { });
+        timer = settings.AutoPublish ? new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)) : new Timer(_ => { });
     }
 
     // Whether this machine lists a lobby now, and the directory holds it (a stranger's join may then come in:
@@ -206,14 +204,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
         foreach (var (listing, vouched) in Unambiguous(listings, refused))
         {
-            // (Steam's search finds this machine's own listing too: counted, so "1 listed, 0 shown" never hides why)
-            if (listing.Host == localId) { Count(refused, "this machine's own lobby"); continue; }
-            if (!Valid(listing, out var props, out var members, out var max, out var locked, out var malformed)) { Count(refused, "malformed (" + malformed + ")"); continue; }
-            if (!strangers && !friends.Contains(listing.Host)) { Count(refused, "a stranger's (Play with strangers is off)"); continue; }
-            // a friend's id on a listing their backend did not publish: a stranger's (Unambiguous)
-            if (!strangers && !vouched) { Count(refused, "under a friend's id, not published by them (Play with strangers is off)"); continue; }
-            if (!filter.Matches(props, members, max, locked)) { Count(refused, "the game's filter"); continue; }
-            if (sync != null && !sync.Joinable(listing, out var why)) { Count(refused, why); continue; }
+            if (LeftOut(listing, vouched, filter, strangers, friends) is { } why) { Count(refused, why); continue; }
             kept.Add(listing);
             if (kept.Count == count) break;
         }
@@ -229,6 +220,20 @@ public sealed partial class DirectoryService : IAsyncDisposable
             (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value} left out: {r.Key}")) + ")" : "") +
             (filter.Ignored.Count > 0 ? $"; {filter.Ignored.Count} clause(s) not applied (random window, continent)" : "") + ".");
         return answer;
+    }
+
+    // Why a search leaves out a listing that is not ambiguous (vouched: its host vouches for it), or null when it is shown.
+    string? LeftOut(DirectoryListing listing, bool vouched, LobbyFilter filter, bool strangers, HashSet<ulong> friends)
+    {
+        // (Steam's search finds this machine's own listing too: counted, so "1 listed, 0 shown" never hides why)
+        if (listing.Host == localId) return "this machine's own lobby";
+        if (!Valid(listing, out var props, out var members, out var max, out var locked, out var malformed)) return "malformed (" + malformed + ")";
+        if (!strangers && !friends.Contains(listing.Host)) return "a stranger's (Play with strangers is off)";
+        // a friend's id on a listing their backend did not publish: a stranger's (Unambiguous)
+        if (!strangers && !vouched) return "under a friend's id, not published by them (Play with strangers is off)";
+        if (!filter.Matches(props, members, max, locked)) return "the game's filter";
+        if (sync != null && !sync.Joinable(listing, out var why)) return why;
+        return null;
     }
 
     static void Count(Dictionary<string, int> reasons, string why) => reasons[why] = reasons.GetValueOrDefault(why) + 1;
@@ -279,18 +284,28 @@ public sealed partial class DirectoryService : IAsyncDisposable
 
     // A listing a search can show (see the top of this file): its HellForge keys, its search properties and its records,
     // all checked; why: what was wrong, for the log.
-    public static bool Valid(DirectoryListing listing, out Dictionary<string, string> props, out int members, out int max, out bool locked, out string why) =>
-        Valid(listing, out props, out members, out max, out locked, out why, out _, out _);
+    public static bool Valid(DirectoryListing listing, out Dictionary<string, string> props, out int members, out int max, out bool locked, out string why)
+    {
+        var check = Check(listing);
+        (props, members, max, locked, why) = (check.Props, check.Members, check.Max, check.Locked, check.Why);
+        return check.Valid;
+    }
 
-    static bool Valid(DirectoryListing listing, out Dictionary<string, string> props, out int members, out int max, out bool locked, out string why,
-        out JsonObject? record, out JsonObject? live)
+    // A listing as Check read it: its search properties, member counts and lock, what was wrong ("" nothing), and its
+    // records as the schema rebuilt them (null when it has none or they are wrong).
+    readonly record struct ListingCheck(Dictionary<string, string> Props, int Members, int Max, bool Locked, string Why, JsonObject? Record, JsonObject? Live)
+    {
+        public bool Valid => Why.Length == 0;
+    }
+
+    static ListingCheck Check(DirectoryListing listing)
     {
         var data = listing.Data;
-        props = data.Where(d => SearchKey().IsMatch(d.Key)).ToDictionary(d => d.Key, d => d.Value, StringComparer.Ordinal);
-        locked = data.GetValueOrDefault(DirectoryKeys.Lock) == "1";
-        max = members = 0;
-        record = live = null;
-        why = "";
+        var props = data.Where(d => SearchKey().IsMatch(d.Key)).ToDictionary(d => d.Key, d => d.Value, StringComparer.Ordinal);
+        var locked = data.GetValueOrDefault(DirectoryKeys.Lock) == "1";
+        int max = 0, members = 0;
+        JsonObject? record = null, live = null;
+        var why = "";
         var (recordJson, recordOk) = Json(data, DirectoryKeys.Record);
         if (!data.TryGetValue(DirectoryKeys.LobbyId, out var id) || !Guid.TryParseExact(id, "D", out _)) why = "lobby id";
         else if (data.GetValueOrDefault(DirectoryKeys.Host) != listing.Host.ToString(CultureInfo.InvariantCulture) ||
@@ -306,7 +321,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
             why = "lobby record";
         }
         else if (Json(data, DirectoryKeys.Live).Value is { } liveJson) live = LobbyRecords.CleanLive(liveJson);
-        return why.Length == 0;
+        return new ListingCheck(props, members, max, locked, why, record, live);
     }
 
     // A record is a few KB: a stranger's is not unpacked or parsed past RecordUnpackBytes.
@@ -331,8 +346,9 @@ public sealed partial class DirectoryService : IAsyncDisposable
     void Remember(DirectoryListing listing)
     {
         // Without the host's record (its game has not uploaded one yet) the map gets none: no marker for it.
-        if (!Valid(listing, out _, out _, out _, out _, out _, out var record, out var live) || record == null) return;
-        var found = new FriendPresence.DirectoryLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], record, live);
+        var check = Check(listing);
+        if (!check.Valid || check.Record is not { } record) return;
+        var found = new FriendPresence.DirectoryLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], record, check.Live);
         lock (gate)
         {
             var now = DateTime.UtcNow;
@@ -365,3 +381,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
         stop.Dispose();
     }
 }
+
+// How a DirectoryService serves this machine: mod sync's rules for what a search shows (null: none), whether this
+// machine's game plays with edited stats, whether the listing follows the lobby by itself (every second, and soon after a
+// change; tests call Publish), and the player's switches, read as a listing is looked at: "List my Public lobbies"
+// (ListPublic) and Play with strangers (StrangersAllowed), each on when null.
+public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bool AutoPublish = true, Func<bool>? ListPublic = null,
+    Func<bool>? StrangersAllowed = null);

@@ -14,6 +14,8 @@ try
             prepare --manifest <appmanifest_553850.acf> --destination <new folder>
                     --build <build ID> --exe-sha256 <SHA256> --game-sha256 <SHA256>
             supported-build --manifest <appmanifest_553850.acf> --depotcache <Steam/depotcache> --out <file>
+            supported-language --name <german, japanese, ...> --dlc <app ID> --manifest <manifest ID>
+                    --depot-folder <download_depot's depot_<id> folder> [--depotcache <Steam/depotcache>] --out <file>
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             create-install --root <folder>
@@ -32,12 +34,14 @@ try
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                 [--game-options <options>] [--wait yes] [--dry-run yes]
+                 [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
             fetch-war [--install <folder>]
             mods [--install <folder>]
+            languages [--install <folder>] [--steam-root <Steam folder>]
+            language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json>
             mod-remove [--install <folder>] --id <mod id>
             mod-switch [--install <folder>] --id <mod id> --on yes | no
@@ -50,6 +54,9 @@ try
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
+            supported-language adds a language pack, downloaded by Steam at the build's manifest, to a language list
+            (src/HellForge.Core/supported-languages.json). languages lists the pinned packs (in the copy, installed in
+            Steam, the download_depot command for each); language-add copies one from Steam's download into the copy.
             build-data builds a mod's hellforge-data.json from the game data: into the installation's cache (as a
             session does), or into --out; with neither it only checks the spec.
             sdk-headers generates the mod SDK's typed headers and the loader's field table from mappings/; check
@@ -80,6 +87,9 @@ try
         "inspect" => ["--manifest"],
         "prepare" => ["--manifest", "--destination", "--build", "--exe-sha256", "--game-sha256"],
         "supported-build" => ["--manifest", "--depotcache", "--out"],
+        "supported-language" => ["--name", "--dlc", "--manifest", "--depot-folder", "--depotcache", "--out"],
+        "languages" => ["--install", "--steam-root"],
+        "language-add" => ["--install", "--name", "--steam-root", "--keep"],
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
@@ -96,7 +106,7 @@ try
         "package-mod" => ["--mod", "--out"],
         "mod-hash" => ["--mod"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
@@ -145,6 +155,12 @@ try
         case "mod-add":
             result = Launch.ModAdd(options, Required("--file"));
             break;
+        case "languages":
+            result = Launch.Languages(options);
+            break;
+        case "language-add":
+            result = Launch.LanguageAdd(options, Required("--name"));
+            break;
         case "mod-remove":
             result = Launch.ModRemove(options, Required("--id"));
             break;
@@ -175,6 +191,13 @@ try
             var build = SupportedBuild.FromSteam(Required("--manifest"), Required("--depotcache"));
             build.Save(Required("--out"));
             result = new { build.BuildId, depots = build.Depots.Count, files = build.Files.Count, bytes = build.TotalBytes };
+            break;
+        case "supported-language":
+            var language = SupportedLanguages.FromDownload(Required("--name"),
+                uint.TryParse(Required("--dlc"), out var dlc) ? dlc : throw new ArgumentException("--dlc is the language DLC's app ID."),
+                Required("--manifest"), Required("--depot-folder"), options.GetValueOrDefault("--depotcache"));
+            SupportedLanguages.With(Required("--out"), language).Save(Required("--out"));
+            result = new { language.Name, language.DlcAppId, language.ManifestId, files = language.Files.Count, bytes = language.TotalBytes };
             break;
         case "install-game":
             var target = SupportedBuild.Current;

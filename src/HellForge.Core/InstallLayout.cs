@@ -30,6 +30,8 @@ public sealed class InstallLayout(string root)
     public string Sessions => Path.Combine(Logs, "sessions");
     public string Temp => Path.Combine(Root, "temp");
     public string VerifyCache => Path.Combine(Temp, "verified-game.json");
+    // The last passed Steam ownership check, which sessions reuse for a while (SteamOwnershipRecord).
+    public string OwnershipRecord => Path.Combine(Temp, "steam-ownership.json");
     // The build's settings.ini, kept unchanged: each session writes data/settings.ini from it.
     public string OriginalSettings => Path.Combine(Game, "data", "settings.ini" + GameSettings.OriginalSuffix);
 

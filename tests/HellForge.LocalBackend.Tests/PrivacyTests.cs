@@ -165,7 +165,8 @@ static class PrivacyTests
             stranger.Drain();
             stranger.Lobby.FromLocal(new Frame("lobby.leave").Add("l1").Add(lobbyId).Add(""));
             stranger.Next("lobby.result", check);
-            Thread.Sleep(100);
+            // (the host hears of the leave over the network, after the stranger's own result)
+            Poll.Until(() => !host.Lobby.InHostedLobby(StrangerId));
             check(host.Lobby.Welcome(StrangerId) && Joined(stranger, "s2", connection, check) == "0", "A member who left (a crash) may come back whatever the privacy.");
         }
     }
@@ -202,7 +203,7 @@ static class PrivacyTests
         check(gone.Text(1) == LobbyService.EntityId(FriendId) && gone.Text(2) == "1", "The kicked game hears it was removed by the owner.");
         check(friend.Next("lobby.disconnected", check, "kicked").Text(1) == "0", "...and that the lobby is gone for it (no local members).");
         check(third.Next("lobby.memberRemoved", check, "third").Text(2) == "2", "The other member sees the kicked one leave.");
-        Thread.Sleep(100);
+        Poll.Until(() => !host.Kicked.IsEmpty && !friend.KickedByHost.IsEmpty);
         check(host.Kicked.TryDequeue(out var kicked) && kicked == FriendId && friend.KickedByHost.TryDequeue(out var by) && by == HostId,
             "Both backends know of the kick (the game's notice).");
         check(friend.NextParty("party.networkGone", check).Text(0) == "net1", "The kicked machine is out of the Party network.");

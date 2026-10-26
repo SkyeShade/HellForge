@@ -108,32 +108,31 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
         if (digest != "none" && !ModSets.Hex(digest, 32)) throw new InvalidDataException("The mod set's digest is malformed.");
         if (set["mods"] is not JsonArray list || list.Count > MaxMods) throw new InvalidDataException("The mod set's mods are missing or too many.");
         var mods = new List<ModSetEntry>();
-        foreach (var node in list)
-        {
-            if (node is not JsonObject item) throw new InvalidDataException("A mod set entry is not an object.");
-            string Text(string name, int max) => item[name] is JsonValue v && v.TryGetValue<string>(out var s) && s.Length > 0 && s.Length <= max && !s.Any(char.IsControl)
-                ? s : throw new InvalidDataException($"A mod set entry's {name} is missing or malformed.");
-            long Number(string name, long max) => item[name] is JsonValue v && v.TryGetValue<long>(out var n) && n >= 0 && n <= max
-                ? n : throw new InvalidDataException($"A mod set entry's {name} is missing or malformed.");
-            var id = Text("id", 64);
-            if (!ModCatalog.IsModId(id)) throw new InvalidDataException("A mod set entry's id is malformed.");
-            var hash = Text("hash", 64);
-            if (!ModSets.Hex(hash, 64)) throw new InvalidDataException($"{id}: its content hash is malformed.");
-            var kind = ModSets.ClassNamed(Text("class", 16));
-            // a url that is not a web address HellForge would open (or a bundled mod's) is left out, not the set
-            var url = kind == ModClass.Bundled || item["url"] is not JsonValue address || !address.TryGetValue<string>(out var given) ? null : ModCatalog.WebAddress(given);
-            var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods)) { Url = url };
-            if (local)
-            {
-                var files = new List<ModFile>();
-                foreach (var file in item["files"] as JsonArray ?? [])
-                    files.Add(new ModFile((string?)file?["path"] ?? "", (long?)file?["size"] ?? -1, (string?)file?["sha256"] ?? ""));
-                entry = entry with { Folder = (string?)item["folder"], Files = files };
-            }
-            mods.Add(entry);
-        }
+        foreach (var node in list) mods.Add(ParseEntry(node, local));
         if (mods.Select(m => m.Id).Distinct(StringComparer.Ordinal).Count() != mods.Count) throw new InvalidDataException("The mod set names a mod twice.");
         return new ModSet(digest, mods);
+    }
+
+    static ModSetEntry ParseEntry(JsonNode? node, bool local)
+    {
+        if (node is not JsonObject item) throw new InvalidDataException("A mod set entry is not an object.");
+        string Text(string name, int max) => item[name] is JsonValue v && v.TryGetValue<string>(out var s) && s.Length > 0 && s.Length <= max && !s.Any(char.IsControl)
+            ? s : throw new InvalidDataException($"A mod set entry's {name} is missing or malformed.");
+        long Number(string name, long max) => item[name] is JsonValue v && v.TryGetValue<long>(out var n) && n >= 0 && n <= max
+            ? n : throw new InvalidDataException($"A mod set entry's {name} is missing or malformed.");
+        var id = Text("id", 64);
+        if (!ModCatalog.IsModId(id)) throw new InvalidDataException("A mod set entry's id is malformed.");
+        var hash = Text("hash", 64);
+        if (!ModSets.Hex(hash, 64)) throw new InvalidDataException($"{id}: its content hash is malformed.");
+        var kind = ModSets.ClassNamed(Text("class", 16));
+        // a url that is not a web address HellForge would open (or a bundled mod's) is left out, not the set
+        var url = kind == ModClass.Bundled || item["url"] is not JsonValue address || !address.TryGetValue<string>(out var given) ? null : ModCatalog.WebAddress(given);
+        var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods)) { Url = url };
+        if (!local) return entry;
+        var files = new List<ModFile>();
+        foreach (var file in item["files"] as JsonArray ?? [])
+            files.Add(new ModFile((string?)file?["path"] ?? "", (long?)file?["size"] ?? -1, (string?)file?["sha256"] ?? ""));
+        return entry with { Folder = (string?)item["folder"], Files = files };
     }
 }
 
@@ -344,6 +343,10 @@ public enum SyncAction { Have, Download, Manual, Blocked, Update, Off, Trust }
 // Trust: nothing else stands in the way, but mods wait for the player's trust.
 public enum SyncVerdict { Ready, Download, Unjoinable, Blocked, Trust }
 public sealed record SyncItem(ModSetEntry Mod, SyncAction Action, string? Folder);
+// What lets a code or raw mod download: HellForge's verified list (VerifiedMods.Contains when null) and the player's
+// trusted mods (ModSettings' Trusted; none when null), both by id and exact content hash, and whether the host is a Steam
+// friend (only friends serve code and raw mods, so only a friend's can be trusted).
+public sealed record SyncTrust(Func<string, string, bool>? Verified = null, bool HostIsFriend = true, Func<string, string, bool>? Trusted = null);
 
 public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
 {
@@ -356,14 +359,13 @@ public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
     public long DownloadBytes => Items.Where(i => i.Action == SyncAction.Download).Sum(i => i.Mod.Bytes);
 
     // own: this session's mod set (the joiner's); find: an installed or synced mod by id and hash (ModLocator.Find);
-    // verified: HellForge's verified list (VerifiedMods.Contains); trusted: the player's trusted mods (ModSettings' Trusted),
-    // both by id and exact content hash; hostIsFriend: the host is a Steam friend (only friends serve code and raw mods,
-    // so only a friend's can be trusted).
+    // trust: what lets a code or raw mod download (SyncTrust; its defaults when null).
     public static ModSyncPlan Make(ModSet host, bool hostShares, ModSet own, Func<string, string, string?> find, IReadOnlySet<string> blocked,
-        Func<string, string, bool>? verified = null, bool hostIsFriend = true, Func<string, string, bool>? trusted = null)
+        SyncTrust? trust = null)
     {
-        verified ??= VerifiedMods.Contains;
-        trusted ??= (_, _) => false;
+        var verified = trust?.Verified ?? VerifiedMods.Contains;
+        var hostIsFriend = trust?.HostIsFriend ?? true;
+        var trusted = trust?.Trusted ?? ((_, _) => false);
         var items = new List<SyncItem>();
         foreach (var mod in host.Mods.OrderBy(m => m.Id, StringComparer.Ordinal))
         {

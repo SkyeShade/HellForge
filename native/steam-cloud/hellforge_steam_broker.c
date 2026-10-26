@@ -111,7 +111,9 @@ static void MultiInstance(BrokerBridge* bridge)
     if (!BrokerBridgeMultiInstance(bridge, folder, id, name)) fprintf(stderr, "broker: several installations: not set up (identity or folder)\n");
 }
 
-int wmain(int argc, wchar_t* argv[])
+/* The pipe suffix and the game's pid: 0 when the arguments are good, else the exit code once the usage or the
+ * complaint is written. */
+static int CheckArguments(int argc, wchar_t* argv[], DWORD* gamePid)
 {
     if (argc < 3 || wcslen(argv[1]) == 0 || wcslen(argv[1]) > 64)
     {
@@ -119,8 +121,60 @@ int wmain(int argc, wchar_t* argv[])
         return 2;
     }
     wchar_t* end = NULL;
-    DWORD gamePid = (DWORD)wcstoul(argv[2], &end, 10);
-    if (gamePid == 0 || end == argv[2] || *end != L'\0') { fprintf(stderr, "broker: bad game pid\n"); return 2; }
+    *gamePid = (DWORD)wcstoul(argv[2], &end, 10);
+    if (*gamePid == 0 || end == argv[2] || *end != L'\0') { fprintf(stderr, "broker: bad game pid\n"); return 2; }
+    return 0;
+}
+
+/* Valve's DLL, when the arguments name one, loaded and started. Returns 0 when it was named and did not start. */
+static int StartSteam(int argc, wchar_t* argv[])
+{
+    if (argc < 4 || argv[3][0] == L'\0') return 1;
+    if (!LoadValveDll(argv[3])) { fprintf(stderr, "broker: cannot load Valve's steam_api64.dll (%lu)\n", GetLastError()); return 0; }
+    if (!InitSteam()) { fprintf(stderr, "broker: Steam did not start\n"); return 0; }
+    fprintf(stderr, "broker: Steam ready (pipe %d)\n", g_steam.hPipe);
+    return 1;
+}
+
+/* The bridge on Valve's DLL, with the settings and peers it watches, and its snapshot in the ring. Returns 0 when the
+ * DLL lacks manual dispatch. */
+static int OpenBridge(BrokerBridge* bridge, BrokerChannel* ch, int argc, wchar_t* argv[])
+{
+    if (!BrokerBridgeOpen(bridge, g_steam.module, g_steam.hPipe)) { fprintf(stderr, "broker: Valve's DLL lacks manual dispatch\n"); return 0; }
+    BrokerBridgeSnapshot(bridge, ch); /* ready before the game's first frame */
+    BrokerBridgeWatchStrangers(bridge, argc >= 5 && argv[4][0] != L'\0' ? argv[4] : NULL);
+    BrokerBridgeWatchPeers(bridge, argc >= 6 && argv[5][0] != L'\0' ? argv[5] : NULL);
+    MultiInstance(bridge);
+    BrokerBridgeSnapshot(bridge, ch); /* with this instance's identity, when it has one */
+    return 1;
+}
+
+/* Waits for the game on the channel. Returns 0 when it exited first or the wait failed. */
+static int AcceptGame(BrokerChannel* ch, DWORD gamePid, HANDLE game)
+{
+    fprintf(stderr, "broker: waiting for the game (%lu)\n", gamePid);
+    int accepted = BrokerChannelAccept(ch, gamePid, game, 5000);
+    if (ch->refused) fprintf(stderr, "broker: refused %u other client(s)\n", ch->refused);
+    if (accepted != BROKER_ACCEPTED)
+    {
+        fprintf(stderr, accepted == BROKER_GAME_GONE ? "broker: the game exited before connecting\n" : "broker: accept failed (%lu)\n", GetLastError());
+        return 0;
+    }
+    fprintf(stderr, "broker: game connected\n");
+    return 1;
+}
+
+static const char* EndReason(int why)
+{
+    if (why == BROKER_END_SHUTDOWN) return "shutdown";
+    return why == BROKER_END_GAME_GONE ? "the game exited" : "the pipe closed";
+}
+
+int wmain(int argc, wchar_t* argv[])
+{
+    DWORD gamePid = 0;
+    int bad = CheckArguments(argc, argv, &gamePid);
+    if (bad) return bad;
 
     /* the broker lives only as long as the game: watched while it waits and while it serves */
     HANDLE game = OpenProcess(SYNCHRONIZE, FALSE, gamePid);
@@ -135,38 +189,18 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    if (argc >= 4 && argv[3][0] != L'\0')
-    {
-        if (!LoadValveDll(argv[3])) { fprintf(stderr, "broker: cannot load Valve's steam_api64.dll (%lu)\n", GetLastError()); goto fail; }
-        if (!InitSteam()) { fprintf(stderr, "broker: Steam did not start\n"); goto fail; }
-        fprintf(stderr, "broker: Steam ready (pipe %d)\n", g_steam.hPipe);
-    }
     static BrokerBridge bridge;
     BrokerSteam steam = { 0 };
+    if (!StartSteam(argc, argv)) goto fail;
     if (g_steam.module)
     {
-        if (!BrokerBridgeOpen(&bridge, g_steam.module, g_steam.hPipe)) { fprintf(stderr, "broker: Valve's DLL lacks manual dispatch\n"); goto fail; }
-        BrokerBridgeSnapshot(&bridge, ch); /* ready before the game's first frame */
-        BrokerBridgeWatchStrangers(&bridge, argc >= 5 && argv[4][0] != L'\0' ? argv[4] : NULL);
-        BrokerBridgeWatchPeers(&bridge, argc >= 6 && argv[5][0] != L'\0' ? argv[5] : NULL);
-        MultiInstance(&bridge);
-        BrokerBridgeSnapshot(&bridge, ch); /* with this instance's identity, when it has one */
+        if (!OpenBridge(&bridge, ch, argc, argv)) goto fail;
         steam = bridge.steam;
     }
-
-    fprintf(stderr, "broker: waiting for the game (%lu)\n", gamePid);
-    int accepted = BrokerChannelAccept(ch, gamePid, game, 5000);
-    if (ch->refused) fprintf(stderr, "broker: refused %u other client(s)\n", ch->refused);
-    if (accepted != BROKER_ACCEPTED)
-    {
-        fprintf(stderr, accepted == BROKER_GAME_GONE ? "broker: the game exited before connecting\n" : "broker: accept failed (%lu)\n", GetLastError());
-        goto fail;
-    }
-    fprintf(stderr, "broker: game connected\n");
+    if (!AcceptGame(ch, gamePid, game)) goto fail;
 
     int why = BrokerServe(ch, &steam, game);
-    fprintf(stderr, "broker: %s; %u callback(s) dropped, %u call(s) refused\n",
-        why == BROKER_END_SHUTDOWN ? "shutdown" : why == BROKER_END_GAME_GONE ? "the game exited" : "the pipe closed", ch->dropped, bridge.refusals);
+    fprintf(stderr, "broker: %s; %u callback(s) dropped, %u call(s) refused\n", EndReason(why), ch->dropped, bridge.refusals);
     BrokerLobbiesClose(bridge.localLobbies); /* the game is gone: it leaves the local lobbies it was in */
 
     BrokerChannelClose(ch);

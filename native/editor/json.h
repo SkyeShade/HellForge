@@ -17,6 +17,7 @@ struct Value
 
     const Value* Find(const std::string& name) const;
     Value* Find(const std::string& name);
+    const Value* Find(const std::string& name, Kind kind) const; /* the member when it is of that kind, else nullptr */
     Value& At(const std::string& name); /* the member, made (an empty object) when missing */
     void Erase(const std::string& name);
 

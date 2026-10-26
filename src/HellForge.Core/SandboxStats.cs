@@ -78,20 +78,7 @@ public static partial class SandboxStats
             var all = (JsonObject)document.DeepClone();
             foreach (var change in changes) Put(all, change);
             var applied = changes.Count;
-            if (!Valid(all, profile))
-            {
-                // one by one, leaving out what the stats pass would refuse
-                applied = 0;
-                foreach (var change in changes)
-                {
-                    var trial = (JsonObject)document.DeepClone();
-                    Put(trial, change);
-                    if (!Valid(trial, profile)) continue;
-                    document = trial;
-                    applied++;
-                }
-                all = document;
-            }
+            if (!Valid(all, profile)) (all, applied) = ApplyEach(document, changes, profile);
             try
             {
                 StatsEditorData.Save(modsFolder, all, revision);
@@ -100,6 +87,22 @@ public static partial class SandboxStats
             catch (InvalidDataException) when (attempt < 3 && StatsEditorData.Load(modsFolder).Revision != revision) { } // saved meanwhile
             catch (IOException) when (attempt < 20) { Thread.Sleep(250); } // the launcher saving: its lock is held
         }
+    }
+
+    // The changes one by one onto the document, leaving out what the stats pass would refuse: the document, and how many
+    // went in.
+    static (JsonObject Document, int Applied) ApplyEach(JsonObject document, List<Change> changes, EntityProfile profile)
+    {
+        var applied = 0;
+        foreach (var change in changes)
+        {
+            var trial = (JsonObject)document.DeepClone();
+            Put(trial, change);
+            if (!Valid(trial, profile)) continue;
+            document = trial;
+            applied++;
+        }
+        return (document, applied);
     }
 
     static bool Valid(JsonObject document, EntityProfile profile)

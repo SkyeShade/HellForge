@@ -174,6 +174,26 @@ static const SdkField* RawFieldOf(const SdkComponent* c, uint16_t offset, uint16
     return found;
 }
 
+/* The reviewed field of c a mod's field names (component, layout, offset, size and type), or one element of an array
+ * field (HF_FIELD_AT), or NULL. */
+static const SdkField* ReviewedField(const SdkComponent* c, const HfField* f)
+{
+    for (int i = 0; i < c->count; i++)
+        if (c->fields[i].offset == f->offset && c->fields[i].size == f->size && c->fields[i].type == f->type) return &c->fields[i];
+    for (int i = 0; i < c->count; i++)
+    {
+        const SdkField* a = &c->fields[i];
+        uint32_t element = TypeSize(a->type);
+        if (a->type == f->type && a->type != HF_TYPE_BYTES && f->size == element && a->size > element && f->offset >= a->offset &&
+            f->offset + f->size <= a->offset + a->size && (f->offset - a->offset) % element == 0)
+        {
+            const SdkField* one = ElementOf(a, f->offset, f->size);
+            if (one != NULL) return one;
+        }
+    }
+    return NULL;
+}
+
 /* A mod's field, if it is one of the loader's: component, layout, offset, size and type all as reviewed. One element of
  * an array field is a field too (HF_FIELD_AT; the live editor's stats fields). A Lua mod's may be any value in the
  * record (RawFieldOf). */
@@ -188,31 +208,46 @@ static const SdkField* ResolveField(HfMod* mod, const char* what, const HfField*
             what, f->line, f->layout, c->name, c->layout);
         return NULL;
     }
-    for (int i = 0; i < c->count; i++)
-        if (c->fields[i].offset == f->offset && c->fields[i].size == f->size && c->fields[i].type == f->type)
-        {
-            *component = c;
-            return &c->fields[i];
-        }
-    for (int i = 0; i < c->count; i++)
+    const SdkField* found = ReviewedField(c, f);
+    if (found == NULL && mod != NULL && mod->lua) found = RawFieldOf(c, f->offset, f->size, f->type);
+    if (found != NULL)
     {
-        const SdkField* a = &c->fields[i];
-        uint32_t element = TypeSize(a->type);
-        if (a->type == f->type && a->type != HF_TYPE_BYTES && f->size == element && a->size > element && f->offset >= a->offset &&
-            f->offset + f->size <= a->offset + a->size && (f->offset - a->offset) % element == 0)
-        {
-            const SdkField* one = ElementOf(a, f->offset, f->size);
-            if (one != NULL) { *component = c; return one; }
-        }
-    }
-    if (mod != NULL && mod->lua)
-    {
-        const SdkField* raw = RawFieldOf(c, f->offset, f->size, f->type);
-        if (raw != NULL) { *component = c; return raw; }
+        *component = c;
+        return found;
     }
     ApiLog(mod, "%s: line %u: %s +0x%X (%u bytes, %s) is not a reviewed field of layout %u", what, f->line, c->name, f->offset,
         f->size, TypeName(f->type), c->layout);
     return NULL;
+}
+
+/* The largest value of an integer field type (u8, u16, u32; else i32's). */
+static double TypeMax(uint32_t type)
+{
+    switch (type)
+    {
+    case HF_TYPE_U8: return 255.0;
+    case HF_TYPE_U16: return 65535.0;
+    case HF_TYPE_U32: return 4294967295.0;
+    default: return 2147483647.0;
+    }
+}
+
+/* A number's bytes for a single-value field of f's type (but u64), or 1 when the type cannot hold it. */
+static int NumberBytes(const SdkField* f, double n, uint8_t* out)
+{
+    double max = TypeMax(f->type);
+    double min = f->type == HF_TYPE_I32 ? -2147483648.0 : 0.0;
+    if (f->type == HF_TYPE_F32)
+    {
+        float value = (float)n;
+        if (!isfinite(n) || !isfinite(value)) return 1;
+        memcpy(out, &value, 4);
+        return 0;
+    }
+    if (!(n >= min && n <= max) || n != floor(n)) return 1;
+    if (f->type == HF_TYPE_I32) { int32_t value = (int32_t)n; memcpy(out, &value, 4); }
+    else { uint32_t value = (uint32_t)n; memcpy(out, &value, f->size); }
+    return 0;
 }
 
 /* The value's bytes for a single-value field, or 1 (logged): its type must be the field's, and fit it. */
@@ -230,26 +265,9 @@ static int ValueBytes(HfMod* mod, const char* what, uint32_t line, const SdkComp
         ApiLog(mod, "%s: line %u: %s.%s is %s; the value is %s", what, line, c->name, f->name, TypeName(f->type), TypeName(v->type));
         return 1;
     }
-    double n = v->number;
-    double max = f->type == HF_TYPE_U8 ? 255.0 : f->type == HF_TYPE_U16 ? 65535.0 : f->type == HF_TYPE_U32 ? 4294967295.0 : 2147483647.0;
-    double min = f->type == HF_TYPE_I32 ? -2147483648.0 : 0.0;
-    switch (f->type)
-    {
-    case HF_TYPE_U64: memcpy(out, &v->u64, 8); return 0;
-    case HF_TYPE_F32:
-    {
-        float value = (float)n;
-        if (!isfinite(n) || !isfinite(value)) break;
-        memcpy(out, &value, 4);
-        return 0;
-    }
-    default:
-        if (!(n >= min && n <= max) || n != floor(n)) break;
-        if (f->type == HF_TYPE_I32) { int32_t value = (int32_t)n; memcpy(out, &value, 4); }
-        else { uint32_t value = (uint32_t)n; memcpy(out, &value, f->size); }
-        return 0;
-    }
-    ApiLog(mod, "%s: line %u: %s.%s (%s) cannot hold %g", what, line, c->name, f->name, TypeName(f->type), n);
+    if (f->type == HF_TYPE_U64) { memcpy(out, &v->u64, 8); return 0; }
+    if (!NumberBytes(f, v->number, out)) return 0;
+    ApiLog(mod, "%s: line %u: %s.%s (%s) cannot hold %g", what, line, c->name, f->name, TypeName(f->type), v->number);
     return 1;
 }
 
@@ -259,46 +277,63 @@ static int TableKnown(const char* component)
     return StatsTableKind(component) || (extra >= 0 && extra < (int)STATS_EXTRA_COUNT - 1);
 }
 
-/* A settings table's row by its id, through the table the game reads now (HellForge's moved copy, else the game's): the
- * row, or 0 with *ready 0 while the table is not loaded yet, or 0 with *ready 1 when there is no such row. */
-static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
+/* The projectile, damage or stratagem table the game reads now and its row count. */
+static uintptr_t TypedTable(uintptr_t game, int projectile, int damage, uint64_t* count)
 {
-    *ready = 1;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    int projectile = !strcmp(component, "ProjectileSettings"), damage = !strcmp(component, "DamageInfo");
-    if (projectile || damage || !strcmp(component, "StratagemDefinition"))
+    if (projectile)
     {
-        if (game == 0 || ((projectile || damage) ? !g_fired[HF_EVENT_PROJECTILES_READY] : g_stratagemState == 0)) { *ready = 0; return 0; }
-        uintptr_t table = projectile ? ProjectileTable(game) : damage ? (g_damageTable ? (uintptr_t)g_damageTable : game + DMG_TABLE) :
-            (g_stratagemState == 1 && g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE);
-        uint64_t count = projectile ? (g_projectileTable ? PRJ_VANILLA + PRJ_MAX_NEW : PRJ_VANILLA) : damage ? (g_damageTable ? DMG_VANILLA + DMG_MAX_NEW : DMG_VANILLA) :
-            (g_stratagemState == 1 ? STR_VANILLA + g_stratagemCount : STR_VANILLA);
-        uintptr_t row = 0;
-        uint32_t type = 0;
-        if (id == 0 || id >= count || SafeRead(table + id * 8, &row, 8) || row == 0 || SafeRead(row, &type, 4) || type != id) return 0;
-        return row;
+        uintptr_t table = ProjectileTable(game);
+        *count = g_projectileTable ? PRJ_VANILLA + PRJ_MAX_NEW : PRJ_VANILLA;
+        return table;
     }
-    if (!strcmp(component, "BoosterSettings"))
+    if (damage)
     {
-        uintptr_t table = BoosterTable();
-        *ready = table != 0 || g_boostersDone;
-        return table && id >= 1 && id < BOOSTER_ROWS ? table + (uintptr_t)id * BOOSTER_ROW : 0;
+        uintptr_t table = g_damageTable ? (uintptr_t)g_damageTable : game + DMG_TABLE;
+        *count = g_damageTable ? DMG_VANILLA + DMG_MAX_NEW : DMG_VANILLA;
+        return table;
     }
-    if (!strncmp(component, "Passive", 7)) return PerkRow(component, id, ready);
-    if (!strcmp(component, "MeleeHitVolume"))
-    {
-        uintptr_t row = MeleeVolume(id);
-        *ready = row != 0 || g_meleeDone;
-        return row;
-    }
-    if (!strcmp(component, "DifficultySettings"))
-    {
-        /* level 11's moved table, else (none added, or its move refused) the game's own: director.c */
-        if (g_difficultyState == 0) { *ready = 0; return 0; }
-        if (g_difficultyState == 1 && g_difficultyTable != NULL) return id <= 11 ? ApiDifficultyRow((uint32_t)id) : 0;
-        return DifficultyVanillaRow(id, ready);
-    }
-    if (DirectorKind(component)) return DirectorRow(component, id, ready);
+    uintptr_t table = g_stratagemState == 1 && g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE;
+    *count = g_stratagemState == 1 ? STR_VANILLA + g_stratagemCount : STR_VANILLA;
+    return table;
+}
+
+/* A projectile, damage or stratagem row by its type (the row's first u32). */
+static uintptr_t TypedRowOf(uintptr_t game, int projectile, int damage, uint64_t id, int* ready)
+{
+    if (game == 0 || ((projectile || damage) ? !g_fired[HF_EVENT_PROJECTILES_READY] : g_stratagemState == 0)) { *ready = 0; return 0; }
+    uint64_t count = 0;
+    uintptr_t table = TypedTable(game, projectile, damage, &count);
+    uintptr_t row = 0;
+    uint32_t type = 0;
+    if (id == 0 || id >= count || SafeRead(table + id * 8, &row, 8) || row == 0 || SafeRead(row, &type, 4) || type != id) return 0;
+    return row;
+}
+
+static uintptr_t BoosterRowOf(uint64_t id, int* ready)
+{
+    uintptr_t table = BoosterTable();
+    *ready = table != 0 || g_boostersDone;
+    return table && id >= 1 && id < BOOSTER_ROWS ? table + (uintptr_t)id * BOOSTER_ROW : 0;
+}
+
+static uintptr_t MeleeRowOf(uint64_t id, int* ready)
+{
+    uintptr_t row = MeleeVolume(id);
+    *ready = row != 0 || g_meleeDone;
+    return row;
+}
+
+/* level 11's moved table, else (none added, or its move refused) the game's own: director.c */
+static uintptr_t DifficultyRowOf(uint64_t id, int* ready)
+{
+    if (g_difficultyState == 0) { *ready = 0; return 0; }
+    if (g_difficultyState == 1 && g_difficultyTable != NULL) return id <= 11 ? ApiDifficultyRow((uint32_t)id) : 0;
+    return DifficultyVanillaRow(id, ready);
+}
+
+/* A row of the stats mods' other tables (stats-tables.c). */
+static uintptr_t ExtraRowOf(const char* component, uint64_t id, int* ready)
+{
     int kind = StatsExtraKind(component);
     if (kind < 0 || kind >= (int)STATS_EXTRA_COUNT - 1) return 0;
     if (!g_statsAllocations[kind]) { *ready = g_statsExtraDone[kind]; return 0; }
@@ -308,6 +343,22 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     probe.offset = 4;
     uintptr_t at = StatsExtraRow(&probe);
     return at ? at - 4 : 0;
+}
+
+/* A settings table's row by its id, through the table the game reads now (HellForge's moved copy, else the game's): the
+ * row, or 0 with *ready 0 while the table is not loaded yet, or 0 with *ready 1 when there is no such row. */
+static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
+{
+    *ready = 1;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    int projectile = !strcmp(component, "ProjectileSettings"), damage = !strcmp(component, "DamageInfo");
+    if (projectile || damage || !strcmp(component, "StratagemDefinition")) return TypedRowOf(game, projectile, damage, id, ready);
+    if (!strcmp(component, "BoosterSettings")) return BoosterRowOf(id, ready);
+    if (!strncmp(component, "Passive", 7)) return PerkRow(component, id, ready);
+    if (!strcmp(component, "MeleeHitVolume")) return MeleeRowOf(id, ready);
+    if (!strcmp(component, "DifficultySettings")) return DifficultyRowOf(id, ready);
+    if (DirectorKind(component)) return DirectorRow(component, id, ready);
+    return ExtraRowOf(component, id, ready);
 }
 /* The table row lookup edits use; the native fixture replaces it. */
 static uintptr_t (*g_tableRow)(const char* component, uint64_t id, int* ready) = TableRowOf;
@@ -321,22 +372,32 @@ static uintptr_t StatsOwnRecordOf(const char* component, uint64_t resource)
     return 0;
 }
 
+/* An entity a mod added (not refused), or NULL. */
+static Weapon* ModEntity(uint64_t entity)
+{
+    Weapon* w = NULL;
+    for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].entity == entity && g_weapons[i].state != -1) w = &g_weapons[i];
+    return w;
+}
+
+/* EditTarget for a settings table: 2 when HellForge reaches its rows, else -1 (logged). */
+static int TableTarget(HfMod* mod, const char* what, const SdkComponent* c)
+{
+    if (TableKnown(c->component)) return 2;
+    ApiLog(mod, "%s: HellForge cannot reach %s rows yet", what, c->component);
+    return -1;
+}
+
 /* Whether the target's record can be edited: 0 a mod's entity (from hellforge_mod_init it gets a record of its own in
  * the component; later it must have one), 1 a vanilla entity (checked when the data loads), 2 a table row (by its id),
  * -1 no (logged). */
 static int EditTarget(HfMod* mod, const char* what, uint64_t entity, const SdkComponent* c)
 {
-    if (c->table)
-    {
-        if (TableKnown(c->component)) return 2;
-        ApiLog(mod, "%s: HellForge cannot reach %s rows yet", what, c->component);
-        return -1;
-    }
+    if (c->table) return TableTarget(mod, what, c);
     const Component* component = ComponentNamed(c->component);
     if (component == NULL) { ApiLog(mod, "%s: this session has no %s table", what, c->component); return -1; }
     if (entity == 0) { ApiLog(mod, "%s: no entity", what); return -1; }
-    Weapon* w = NULL;
-    for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].entity == entity && g_weapons[i].state != -1) w = &g_weapons[i];
+    Weapon* w = ModEntity(entity);
     if (w == NULL) return 1;
     for (int i = 0; i < w->ownCount; i++) if (w->own[i] == component->index) return 0;
     if (component->index == REG_BEHAVIOUR && w->behaviour != 0) return 0;
@@ -351,11 +412,9 @@ static int EditTarget(HfMod* mod, const char* what, uint64_t entity, const SdkCo
     return 0;
 }
 
-/* Reports an edit that writes bytes another mod's edit (or a stats mod's) writes too: the later one stays. */
-static void ReportConflicts(const FieldEdit* e, int before)
+/* The edits queued before it (the first `before`) that write bytes [start, end) of the same record: another mod's. */
+static void ReportEditConflicts(const FieldEdit* e, int before, uint32_t start, uint32_t end)
 {
-    if (e->kind == EDIT_TAG) return; /* tag lists compose: each edit adds or removes one tag */
-    uint32_t start = e->field->offset, end = start + e->field->size;
     for (int i = 0; i < before; i++)
     {
         const FieldEdit* o = &g_edits[i];
@@ -369,14 +428,29 @@ static void ReportConflicts(const FieldEdit* e, int before)
         Note("conflict: %s and %s both change %016llx %s.%s; %s's applies (load order)", o->mod->id, e->mod->id,
             (unsigned long long)e->entity, e->component->name, e->field->name, e->mod->id);
     }
+}
+
+/* Whether stats edit st writes bytes [start, end) of the record or row e edits (but the mod's own stats file, and the
+ * editors' save file under a live edit). */
+static int StatOverlaps(const StatEdit* st, const FieldEdit* e, uint32_t start, uint32_t end)
+{
+    if (st->mod != NULL && !strcmp(st->mod->id, e->mod->id)) return 0; /* the live editor and its own stats file */
+    if (e->live && st->mod != NULL && !strcmp(st->mod->id, "zz.local.stats")) return 0; /* the editors' save file */
+    if (e->table ? (strcmp(st->kind, e->component->component) || st->record != (int64_t)e->entity) :
+        (strcmp(st->kind, "component") || strcmp(st->component, e->component->component) || st->resource != e->entity)) return 0;
+    return !(st->offset >= end || st->offset + 4 <= start);
+}
+
+/* Reports an edit that writes bytes another mod's edit (or a stats mod's) writes too: the later one stays. */
+static void ReportConflicts(const FieldEdit* e, int before)
+{
+    if (e->kind == EDIT_TAG) return; /* tag lists compose: each edit adds or removes one tag */
+    uint32_t start = e->field->offset, end = start + e->field->size;
+    ReportEditConflicts(e, before, start, end);
     for (int i = 0; i < g_statCount; i++)
     {
         const StatEdit* st = &g_stats[i];
-        if (st->mod != NULL && !strcmp(st->mod->id, e->mod->id)) continue; /* the live editor and its own stats file */
-        if (e->live && st->mod != NULL && !strcmp(st->mod->id, "zz.local.stats")) continue; /* the editors' save file */
-        if (e->table ? (strcmp(st->kind, e->component->component) || st->record != (int64_t)e->entity) :
-            (strcmp(st->kind, "component") || strcmp(st->component, e->component->component) || st->resource != e->entity)) continue;
-        if (st->offset >= end || st->offset + 4 <= start) continue;
+        if (!StatOverlaps(st, e, start, end)) continue;
         g_fieldConflicts++;
         ApiLog(e->mod, "conflict: stats mod %s also sets %016llx %s.%s; this mod's edit applies after the stats", st->mod ? st->mod->id : "?",
             (unsigned long long)e->entity, e->component->name, e->field->name);
@@ -544,76 +618,79 @@ static int SavedEditorValue(uintptr_t at, uint32_t size)
     return 0;
 }
 
-static void ApplyEdit(FieldEdit* e)
+/* Why an edit has no record to change (EditRecord gave none). */
+static const char* NoRecordReason(const FieldEdit* e)
+{
+    if (e->table) return "its table has no such row";
+    return e->vanilla ? "it has no such record, or shares it with other entities (stats mods change shared records)" : "the entity has no record of its own";
+}
+
+/* EDIT_COPY's bytes: the entity's it copies from; 1 if refused (logged). */
+static int CopiedBytes(FieldEdit* e, uint8_t* bytes)
 {
     int waiting = 0;
-    uint8_t* record = EditRecord(e, e->entity, 0, &waiting);
-    if (waiting) { e->waiting = 1; g_editsWaiting = 1; return; }
-    e->waiting = 0;
-    if (record == NULL)
+    const uint8_t* source = EditRecord(e, e->from, 1, &waiting);
+    if (source == NULL) { EditFailed(e, "the entity it copies from has no such record"); return 1; }
+    memcpy(bytes, source + e->field->offset, e->field->size);
+    return 0;
+}
+
+/* EDIT_SET's bytes: its value, when what it names may be named; 1 if not applied (logged, or waiting for packages). */
+static int SetBytes(FieldEdit* e, const uint8_t* at, uint8_t* bytes)
+{
+    /* a reference is checked on the game's own rows and records (a mod mounting its own entities on its own
+     * vehicle names what it registered) */
+    if (e->field->ref != REF_NONE && !((e->field->ref == REF_MOUNT || e->field->ref == REF_PICKUP) && !e->vanilla) && RefEdit(e, at) != REF_OK) return 1;
+    uint64_t named = 0;
+    if (e->field->size == 8) memcpy(&named, e->value, 8);
+    if (named != 0 && RefusedEntity(named))
     {
-        EditFailed(e, e->table ? "its table has no such row" : e->vanilla ?
-            "it has no such record, or shares it with other entities (stats mods change shared records)" : "the entity has no record of its own");
-        return;
+        EditFailed(e, "it names an entity a mod added that was not registered (see the mod's log); the field keeps its value");
+        return 1;
     }
-    uint8_t* at = record + e->field->offset;
-    e->address = (uintptr_t)at;
-    uint8_t bytes[1024], was[8];
-    if (e->field->size > sizeof bytes) { EditFailed(e, "the field is larger than HellForge edits"); return; }
-    memcpy(bytes, at, e->field->size);
-    memcpy(was, at, e->field->size < sizeof was ? e->field->size : sizeof was);
-    /* under a value Local Stats saved (not written; its original is taken when it does apply) */
-    if (e->live && ModRank(e->mod) < RANK_EDITOR && SavedEditorValue((uintptr_t)at, e->field->size)) { e->failed = 0; return; }
-    if (e->live && !e->hasOriginal && e->field->size <= sizeof e->original) { memcpy(e->original, at, e->field->size); e->hasOriginal = 1; }
-    if (e->kind == EDIT_COPY)
+    memcpy(bytes, e->value, e->field->size);
+    return 0;
+}
+
+/* EDIT_TAG's bytes: the tag list (ending in 0) with the tag added or removed; 1 if refused (logged). */
+static int TaggedBytes(FieldEdit* e, uint8_t* bytes)
+{
+    uint32_t count = e->field->size / 8;
+    uint64_t tag, current;
+    memcpy(&tag, e->value, 8);
+    uint32_t n = 0, found = count;
+    for (; n < count; n++)
     {
-        const uint8_t* source = EditRecord(e, e->from, 1, &waiting);
-        if (source == NULL) { EditFailed(e, "the entity it copies from has no such record"); return; }
-        memcpy(bytes, source + e->field->offset, e->field->size);
+        memcpy(&current, bytes + n * 8, 8);
+        if (current == 0) break;
+        if (current == tag) found = n;
     }
-    else if (e->kind == EDIT_SET)
+    if (e->present && found == count)
     {
-        /* a reference is checked on the game's own rows and records (a mod mounting its own entities on its own
-         * vehicle names what it registered) */
-        if (e->field->ref != REF_NONE && !((e->field->ref == REF_MOUNT || e->field->ref == REF_PICKUP) && !e->vanilla) && RefEdit(e, at) != REF_OK) return;
-        uint64_t named = 0;
-        if (e->field->size == 8) memcpy(&named, e->value, 8);
-        if (named != 0 && RefusedEntity(named))
-        {
-            EditFailed(e, "it names an entity a mod added that was not registered (see the mod's log); the field keeps its value");
-            return;
-        }
-        memcpy(bytes, e->value, e->field->size);
+        if (n == count) { EditFailed(e, "the tag list is full"); return 1; }
+        memcpy(bytes + n * 8, &tag, 8);
     }
-    else
+    else if (!e->present && found != count)
     {
-        uint32_t count = e->field->size / 8;
-        uint64_t tag, current;
-        memcpy(&tag, e->value, 8);
-        uint32_t n = 0, found = count;
-        for (; n < count; n++)
-        {
-            memcpy(&current, bytes + n * 8, 8);
-            if (current == 0) break;
-            if (current == tag) found = n;
-        }
-        if (e->present && found == count)
-        {
-            if (n == count) { EditFailed(e, "the tag list is full"); return; }
-            memcpy(bytes + n * 8, &tag, 8);
-        }
-        else if (!e->present && found != count)
-        {
-            memmove(bytes + found * 8, bytes + (found + 1) * 8, (size_t)(count - found - 1) * 8);
-            memset(bytes + (count - 1) * 8, 0, 8);
-        }
+        memmove(bytes + found * 8, bytes + (found + 1) * 8, (size_t)(count - found - 1) * 8);
+        memset(bytes + (count - 1) * 8, 0, 8);
     }
-    /* the spawn director's rows: a composition's squad within the queue's capacity, its ranges in order (director.c) */
-    const char* refused = e->table ? DirectorRefuses(e->component->component, (uintptr_t)record, e->field->offset, bytes, e->field->size) : NULL;
-    if (refused != NULL) { EditFailed(e, refused); return; }
-    if (memcmp(bytes, at, e->field->size) != 0 && ApiWrite((uintptr_t)at, bytes, e->field->size)) { EditFailed(e, "its record could not be written"); return; }
+    return 0;
+}
+
+/* The field's new bytes, worked out in `bytes` (its bytes now); 1 if not applied. */
+static int EditBytes(FieldEdit* e, const uint8_t* at, uint8_t* bytes)
+{
+    if (e->kind == EDIT_COPY) return CopiedBytes(e, bytes);
+    if (e->kind == EDIT_SET) return SetBytes(e, at, bytes);
+    return TaggedBytes(e, bytes);
+}
+
+/* After a write, what follows the record's change elsewhere: was holds the field's first wasSize bytes from before. */
+static void EditWritten(const FieldEdit* e, const uint8_t* record, const uint8_t* was, size_t wasSize, const uint8_t* bytes)
+{
     /* the game's own difficulty table (no level 11): every copy that held the same bytes */
-    if (e->table && !strcmp(e->component->component, "DifficultySettings") && e->field->size <= sizeof was)
+    if (e->table && !strcmp(e->component->component, "DifficultySettings") && e->field->size <= wasSize)
         DifficultyMirror((uintptr_t)record, e->field->offset, was, bytes, e->field->size);
     /* a weapon's projectile changed live (the editor's swap): this machine's own, for co-op's shots (shots.c) */
     if (!e->table && e->field->size == 4 && ShotsSlotOf(e->component->component, e->field->offset) >= 0)
@@ -624,6 +701,30 @@ static void ApplyEdit(FieldEdit* e)
         memcpy(&before, was, 4);
         ShotsNoteLocal(e->entity, ShotsSlotOf(e->component->component, e->field->offset), before, now);
     }
+}
+
+static void ApplyEdit(FieldEdit* e)
+{
+    int waiting = 0;
+    uint8_t* record = EditRecord(e, e->entity, 0, &waiting);
+    if (waiting) { e->waiting = 1; g_editsWaiting = 1; return; }
+    e->waiting = 0;
+    if (record == NULL) { EditFailed(e, NoRecordReason(e)); return; }
+    uint8_t* at = record + e->field->offset;
+    e->address = (uintptr_t)at;
+    uint8_t bytes[1024], was[8];
+    if (e->field->size > sizeof bytes) { EditFailed(e, "the field is larger than HellForge edits"); return; }
+    memcpy(bytes, at, e->field->size);
+    memcpy(was, at, e->field->size < sizeof was ? e->field->size : sizeof was);
+    /* under a value Local Stats saved (not written; its original is taken when it does apply) */
+    if (e->live && ModRank(e->mod) < RANK_EDITOR && SavedEditorValue((uintptr_t)at, e->field->size)) { e->failed = 0; return; }
+    if (e->live && !e->hasOriginal && e->field->size <= sizeof e->original) { memcpy(e->original, at, e->field->size); e->hasOriginal = 1; }
+    if (EditBytes(e, at, bytes)) return;
+    /* the spawn director's rows: a composition's squad within the queue's capacity, its ranges in order (director.c) */
+    const char* refused = e->table ? DirectorRefuses(e->component->component, (uintptr_t)record, e->field->offset, bytes, e->field->size) : NULL;
+    if (refused != NULL) { EditFailed(e, refused); return; }
+    if (memcmp(bytes, at, e->field->size) != 0 && ApiWrite((uintptr_t)at, bytes, e->field->size)) { EditFailed(e, "its record could not be written"); return; }
+    EditWritten(e, record, was, sizeof was, bytes);
     e->failed = 0;
 }
 
@@ -631,6 +732,34 @@ static void ApplyEdit(FieldEdit* e)
  * the payload's LoadoutPackage record (a mod entity's own, else its model's or base's), last payload entity first (a
  * Pelican drop's vehicle). Done once the entity data and the stratagem rows both exist, again after a reload. */
 static int g_packagesInferred;
+
+/* For an entity a mod added: the entity whose model it takes, else its base (0 for any other). */
+static uint64_t ModelOrBase(uint64_t entity)
+{
+    uint64_t source = 0;
+    for (int w = 0; w < g_weaponCount; w++)
+        if (g_weapons[w].entity == entity) source = g_weapons[w].modelFrom ? g_weapons[w].modelFrom : g_weapons[w].baseEntity;
+    return source;
+}
+
+/* The package of a stratagem's payload (its last payload entity first), or 0; *from: the entity whose record names it. */
+static uint64_t PayloadPackage(const Stratagem* st, const SdkComponent* c, const SdkField* f, uint64_t* from)
+{
+    uint64_t package = 0;
+    for (uint32_t k = st->payloadCount; k-- > 0 && package == 0;)
+    {
+        uint64_t entity = st->payload[k];
+        if (entity == 0) continue;
+        uint64_t source[2] = {entity, ModelOrBase(entity)};
+        for (int n = 0; n < 2 && package == 0 && source[n] != 0; n++)
+        {
+            uint32_t stride = 0;
+            const uint8_t* record = (const uint8_t*)g_fieldRecord(c->component, source[n], &stride, 1);
+            if (record != NULL && stride == c->stride) { memcpy(&package, record + f->offset, 8); *from = source[n]; }
+        }
+    }
+    return package;
+}
 
 static void InferStratagemPackages(void)
 {
@@ -642,21 +771,8 @@ static void InferStratagemPackages(void)
     {
         Stratagem* st = &g_stratagems[i];
         if (st->row == NULL || st->package != 0 || st->payloadCount == 0) continue;
-        uint64_t package = 0, from = 0;
-        for (uint32_t k = st->payloadCount; k-- > 0 && package == 0;)
-        {
-            uint64_t entity = st->payload[k];
-            if (entity == 0) continue;
-            uint64_t source[2] = {entity, 0};
-            for (int w = 0; w < g_weaponCount; w++)
-                if (g_weapons[w].entity == entity) source[1] = g_weapons[w].modelFrom ? g_weapons[w].modelFrom : g_weapons[w].baseEntity;
-            for (int n = 0; n < 2 && package == 0 && source[n] != 0; n++)
-            {
-                uint32_t stride = 0;
-                const uint8_t* record = (const uint8_t*)g_fieldRecord(c->component, source[n], &stride, 1);
-                if (record != NULL && stride == c->stride) { memcpy(&package, record + f->offset, 8); from = source[n]; }
-            }
-        }
+        uint64_t from = 0;
+        uint64_t package = PayloadPackage(st, c, f, &from);
         if (package == 0)
         {
             ApiLog(st->mod, "%s: no package found for its payload; it keeps its base's", st->name);
@@ -693,246 +809,6 @@ static void ApplyWaitingEdits(void)
     ReleaseSRWLockExclusive(&g_fieldsLock);
 }
 
-static void RemoveEdit(int index)
-{
-    memmove(&g_edits[index], &g_edits[index + 1], (size_t)(g_editCount - index - 1) * sizeof g_edits[0]);
-    g_editCount--;
-}
-
-/* A live edit's value goes back to what it was before it (when it was applied in this load and nothing changed it since). */
-static void RestoreLive(FieldEdit* e)
-{
-    int waiting = 0;
-    uint8_t* record = e->hasOriginal ? EditRecord(e, e->entity, 0, &waiting) : NULL;
-    if (record == NULL) return;
-    uint8_t* at = record + e->field->offset;
-    if (memcmp(at, e->value, e->field->size) == 0) ApiWrite((uintptr_t)at, e->original, e->field->size);
-}
-
-/* The field's bytes as set_live finds them (a shared record too), or NULL. */
-static uint8_t* LiveAddress(HfMod* mod, uint64_t target, const SdkComponent* c, const SdkField* f)
-{
-    FieldEdit probe = {mod, EDIT_SET, target, 0, c, f};
-    probe.table = c->table;
-    probe.shared = 1;
-    int waiting = 0;
-    uint8_t* record = EditRecord(&probe, target, 0, &waiting);
-    return record != NULL ? record + f->offset : NULL;
-}
-
-/* A field's base (get_live, HF_LIVE_BASE): without the Local Stats mod's stats edit and without live edits, so another
- * mod's value, else the game's. *holder: the other mod whose value it is, or NULL. */
-static uint32_t FieldBase(uint64_t target, const SdkComponent* c, const SdkField* f, uintptr_t at, uint32_t now, const char** holder)
-{
-    uint32_t base = now;
-    *holder = NULL;
-    for (int i = 0; i < g_editCount; i++) /* the first live edit's original: the value from before every live edit */
-    {
-        const FieldEdit* e = &g_edits[i];
-        if (e->live && e->hasOriginal && e->entity == target && e->component == c && e->field->offset == f->offset && e->field->size == f->size)
-        { base = 0; memcpy(&base, e->original, f->size); break; }
-    }
-    for (int i = 0; i < g_statCount; i++)
-        if (g_stats[i].applied && g_stats[i].address == at && IsLocalStats(g_stats[i].mod)) { base = g_stats[i].original; break; }
-    for (int i = g_statCount - 1; i >= 0 && *holder == NULL; i--)
-        if (g_stats[i].applied && g_stats[i].address == at && g_stats[i].mod != NULL && !IsLocalStats(g_stats[i].mod)) *holder = g_stats[i].mod->id;
-    for (int i = g_editCount - 1; i >= 0 && *holder == NULL; i--)
-    {
-        const FieldEdit* e = &g_edits[i];
-        /* its bytes, or an edit of the whole array it is an element of (a copied fire_rate) */
-        if (!e->live && !e->failed && !e->waiting && e->entity == target && e->component == c && e->field->offset <= f->offset &&
-            f->offset + f->size <= e->field->offset + e->field->size) *holder = e->mod->id;
-    }
-    /* a Lua or code mod's live edit is another mod's value as well (the top one; the editors' own are not) */
-    for (int i = g_editCount - 1; i >= 0; i--)
-    {
-        const FieldEdit* e = &g_edits[i];
-        if (e->live && !e->failed && !e->waiting && ModRank(e->mod) < RANK_EDITOR && e->entity == target && e->component == c &&
-            e->field->offset == f->offset && e->field->size == f->size)
-        {
-            base = 0;
-            memcpy(&base, e->value, f->size);
-            *holder = e->mod->id;
-            break;
-        }
-    }
-    return base;
-}
-
-/* The Lua or code mod whose live edit is the value at `at` (get_stat's holder), its value in *value; NULL none. */
-static const char* LiveHolderAt(uintptr_t at, uint32_t size, uint32_t* value)
-{
-    const char* holder = NULL;
-    AcquireSRWLockShared(&g_fieldsLock);
-    for (int i = g_editCount - 1; i >= 0 && holder == NULL; i--)
-    {
-        const FieldEdit* e = &g_edits[i];
-        if (e->live && !e->failed && !e->waiting && e->address == at && e->field->size == size && ModRank(e->mod) < RANK_EDITOR)
-        {
-            *value = 0;
-            memcpy(value, e->value, size);
-            holder = e->mod->id;
-        }
-    }
-    ReleaseSRWLockShared(&g_fieldsLock);
-    return holder;
-}
-
-/* HF_LIVE_BASE: the field back to its base, so a change saved into Local Stats and applied at load can be undone in the
- * running game too (another mod's value stays). */
-static void RestoreBase(HfMod* mod, uint64_t target, const SdkComponent* c, const SdkField* f)
-{
-    uint8_t* at = f->size == 4 || f->size == 1 ? LiveAddress(mod, target, c, f) : NULL;
-    uint32_t now = 0;
-    if (at == NULL || SafeRead((uintptr_t)at, &now, f->size)) return;
-    const char* holder;
-    uint32_t base = FieldBase(target, c, f, (uintptr_t)at, now, &holder);
-    if (base == now) return;
-    ApiWrite((uintptr_t)at, &base, f->size);
-    ApiLog(mod, "set_live: %s.%s of %016llx back to its base %08x (%s)", c->name, f->name, (unsigned long long)target, base,
-        holder != NULL ? holder : "the game's own");
-}
-
-static void ValueOf(uint32_t type, uint32_t bits, HfValue* out)
-{
-    out->type = type;
-    out->u64 = 0;
-    if (type == HF_TYPE_F32) { float v; memcpy(&v, &bits, 4); out->number = v; }
-    else if (type == HF_TYPE_I32) out->number = (int32_t)bits;
-    else out->number = bits;
-}
-
-/* SDK 6, get_live: a field's value now and its base. */
-static int ApiGetLive(HfMod* mod, HfRef target, const HfField* field, HfLiveValue* out)
-{
-    if (out == NULL) return 0;
-    memset(out, 0, sizeof *out);
-    const SdkComponent* c = NULL;
-    const SdkField* f = mod != NULL ? ResolveField(mod, "get_live", field, &c) : NULL;
-    if (f == NULL || (f->size != 4 && f->size != 1)) return 0; /* a single value: four bytes, or a one-byte flag */
-    AcquireSRWLockExclusive(&g_fieldsLock);
-    uint8_t* at = LiveAddress(mod, target, c, f);
-    uint32_t now = 0;
-    int result = 0;
-    if (at != NULL && !SafeRead((uintptr_t)at, &now, f->size))
-    {
-        uint32_t base = FieldBase(target, c, f, (uintptr_t)at, now, &out->mod);
-        ValueOf(f->type, now, &out->now);
-        ValueOf(f->type, base, &out->base);
-        result = (int)f->applies;
-    }
-    ReleaseSRWLockExclusive(&g_fieldsLock);
-    return result;
-}
-
-static int SameField(const FieldEdit* a, const FieldEdit* b)
-{
-    return a->entity == b->entity && a->component == b->component && a->field->offset == b->field->offset && a->field->size == b->field->size;
-}
-
-/* The live edit of the same field right above edit `index` (the next one in the list: the list keeps a field's live
- * edits in rank order), or -1 when it is the top one. */
-static int LiveAbove(int index)
-{
-    for (int i = index + 1; i < g_editCount; i++) if (g_edits[i].live && SameField(&g_edits[i], &g_edits[index])) return i;
-    return -1;
-}
-
-/* Where a new live edit goes: under the first live edit of the field with a higher rank, else last. */
-static int LiveInsertAt(const FieldEdit* e)
-{
-    int rank = ModRank(e->mod);
-    for (int i = 0; i < g_editCount; i++) if (g_edits[i].live && SameField(&g_edits[i], e) && ModRank(g_edits[i].mod) > rank) return i;
-    return g_editCount;
-}
-
-/* Edit `index` (applied, or kept under another) leaves the field: the one above it takes its original, else the record
- * gets it back. */
-static void LiveLeave(int index)
-{
-    int above = LiveAbove(index);
-    if (above < 0) { RestoreLive(&g_edits[index]); return; }
-    if (g_edits[index].hasOriginal && g_edits[above].hasOriginal) memcpy(g_edits[above].original, g_edits[index].original, sizeof g_edits[above].original);
-}
-
-/* Changes a field now (SDK 6, set_live): the same deferred edit as set_field, applied at once and kept for later loads.
- * value NULL undoes the mod's live edit of the field. Returns when the change applies (HF_APPLIES_...), or 0 refused.
- * An edit under a higher-ranked one (an editor's over a Lua mod's) is kept, not written: it becomes the value the one
- * above it goes back to. */
-static int ApiSetLive(HfMod* mod, HfRef target, const HfField* field, const HfValue* value, uint32_t flags)
-{
-    const SdkComponent* c = NULL;
-    const SdkField* f = mod != NULL ? ResolveField(mod, "set_live", field, &c) : NULL;
-    if (f == NULL) return 0;
-    AcquireSRWLockExclusive(&g_fieldsLock);
-    int index = -1, result = 0;
-    for (int i = 0; i < g_editCount; i++)
-        if (g_edits[i].live && g_edits[i].mod == mod && g_edits[i].entity == target && g_edits[i].component == c &&
-            g_edits[i].field->offset == f->offset && g_edits[i].field->size == f->size) index = i;
-    if (value == NULL)
-    {
-        if (index >= 0) { LiveLeave(index); RemoveEdit(index); }
-        if (flags & HF_LIVE_BASE) RestoreBase(mod, target, c, f);
-        result = (int)f->applies;
-    }
-    else
-    {
-        FieldEdit e = {mod, EDIT_SET, target, 0, c, f};
-        int kind = -1;
-        if (!ValueBytes(mod, "set_live", field->line, c, f, value, e.value) && (kind = EditTarget(mod, "set_live", target, c)) >= 0)
-        {
-            e.line = field->line;
-            e.vanilla = kind == 1;
-            e.table = kind == 2;
-            e.live = 1;
-            e.shared = (flags & HF_LIVE_SHARED) != 0;
-            int replaced = index >= 0;
-            FieldEdit previous = replaced ? g_edits[index] : e;
-            if (replaced)
-            {
-                e.hasOriginal = g_edits[index].hasOriginal;
-                memcpy(e.original, g_edits[index].original, sizeof e.original);
-                g_edits[index] = e;
-            }
-            else if (EditRoom())
-            {
-                ReportConflicts(&e, g_editCount);
-                index = LiveInsertAt(&e);
-                memmove(&g_edits[index + 1], &g_edits[index], (size_t)(g_editCount - index) * sizeof g_edits[0]);
-                g_edits[index] = e;
-                g_editCount++;
-            }
-            else ApiLog(mod, "set_live: mods queued %d edits already", FIELD_MAX_EDITS);
-            int above = index >= 0 ? LiveAbove(index) : -1;
-            if (above >= 0)
-            {
-                /* under a higher-ranked edit: kept, its value what the one above goes back to */
-                FieldEdit* q = &g_edits[index];
-                FieldEdit* top = &g_edits[above];
-                if (top->hasOriginal)
-                {
-                    if (!q->hasOriginal) { memcpy(q->original, top->original, sizeof q->original); q->hasOriginal = 1; }
-                    memcpy(top->original, q->value, sizeof top->original);
-                }
-                q->failed = 0;
-                result = (int)f->applies;
-            }
-            else if (index >= 0)
-            {
-                FieldEdit* q = &g_edits[index];
-                if (q->table || g_fired[HF_EVENT_ENTITIES_READY]) ApplyEdit(q);
-                /* refused: the mod's earlier live edit of the field stays (its value is still the game's, its original
-                 * still what a reset puts back) */
-                if (q->failed && replaced) *q = previous;
-                else if (q->failed) RemoveEdit(index);
-                else result = (int)f->applies;
-            }
-        }
-    }
-    ReleaseSRWLockExclusive(&g_fieldsLock);
-    return result;
-}
-
 static uint32_t DefinedBehaviour(HfMod* mod, const HfBehaviour* def)
 {
     for (int i = 0; i < g_behaviourDefCount; i++) if (g_behaviourDefs[i].def == def) return g_behaviourDefs[i].id;
@@ -954,46 +830,86 @@ typedef struct Changes
 
 static HfRef ApiRegisterEntity(HfMod* mod, const HfEntityDef* def);
 
+/* A component the block changes, into its own list once: 0 when the list is full. */
+static int OwnComponent(const char** own, int* ownCount, const char* name)
+{
+    int seen = 0;
+    for (int k = 0; k < *ownCount; k++) seen |= !strcmp(own[k], name);
+    if (!seen && *ownCount < REG_MAX_OWN) own[(*ownCount)++] = name;
+    else if (!seen) return 0;
+    return 1;
+}
+
+/* The block's copies: 1 if all are accepted. */
+static int CheckCopies(HfMod* mod, const char* what, const HfCopy* copy, const char** own, int* ownCount)
+{
+    int ok = 1;
+    const SdkComponent* c = NULL;
+    for (; copy != NULL && copy->from != 0; copy++)
+    {
+        if (ResolveField(mod, what, &copy->field, &c) == NULL) ok = 0;
+        else if (!OwnComponent(own, ownCount, c->component)) ok = 0;
+    }
+    return ok;
+}
+
+/* The block's values: 1 if all are accepted. */
+static int CheckSets(HfMod* mod, const char* what, const HfSet* set, const char** own, int* ownCount)
+{
+    int ok = 1;
+    const SdkComponent* c = NULL;
+    for (; set != NULL && set->field.component != NULL; set++)
+    {
+        uint8_t bytes[8];
+        const SdkField* f = ResolveField(mod, what, &set->field, &c);
+        if (f == NULL || ValueBytes(mod, what, set->field.line, c, f, &set->value, bytes)) ok = 0;
+        else if (!OwnComponent(own, ownCount, c->component)) ok = 0;
+    }
+    return ok;
+}
+
+/* The block's tags: 1 if it has none, or they are accepted. */
+static int CheckTags(HfMod* mod, const char* what, const Changes* ch, const char** own, int* ownCount)
+{
+    if (!((ch->addTags != NULL && ch->addTags[0] != 0) || (ch->removeTags != NULL && ch->removeTags[0] != 0))) return 1;
+    const SdkComponent* tag = SdkComponentNamed("Tag");
+    if (SdkFieldNamed(tag, "tags") == NULL) { ApiLog(mod, "%s: HellForge has no mappings for tags", what); return 0; }
+    return OwnComponent(own, ownCount, tag->component);
+}
+
+/* What mount m carries: the entity of its definition block, registered, or its resource; 0 if refused. */
+static HfRef MountCarried(HfMod* mod, const HfMountDef* m)
+{
+    return m->entity != NULL ? ApiRegisterEntity(mod, m->entity) : m->resource;
+}
+
+/* The block's mounts (at most 8), registering what they carry while all is accepted (*ok): how many it lists. */
+static int CheckMounts(HfMod* mod, const char* what, const HfMountDef* m, const char** own, int* ownCount, HfRef* carried, int* ok)
+{
+    int mounts = 0;
+    for (; m != NULL && (m->entity != NULL || m->resource != 0); m++, mounts++)
+    {
+        if (mounts >= 8) { ApiLog(mod, "%s: at most 8 mounts", what); *ok = 0; break; }
+        const SdkComponent* mount = SdkComponentNamed("Mount");
+        char slot[32];
+        snprintf(slot, sizeof slot, "slot%u_entity", m->slot);
+        if (SdkFieldNamed(mount, slot) == NULL) { ApiLog(mod, "%s: HellForge has no mappings for mount slot %u", what, m->slot); *ok = 0; continue; }
+        if (!OwnComponent(own, ownCount, mount->component)) *ok = 0;
+        carried[mounts] = *ok ? MountCarried(mod, m) : 0;
+        if (carried[mounts] == 0) *ok = 0;
+    }
+    return mounts;
+}
+
 /* Checks every field, value and mount of a block, registering the entities its mounts carry; fills the components the
  * block changes (for an entity's own records) and what each mount carries. 1 if all of it is accepted (each problem is
  * logged with the mod's source line). */
 static int CheckChanges(HfMod* mod, const char* what, const Changes* ch, const char** own, int* ownCount, HfRef* carried, int* mounts)
 {
-    int ok = 1;
-    const SdkComponent* c = NULL;
-    #define OWN(name) do { int seen_ = 0; for (int k_ = 0; k_ < *ownCount; k_++) seen_ |= !strcmp(own[k_], (name)); \
-        if (!seen_ && *ownCount < REG_MAX_OWN) own[(*ownCount)++] = (name); else if (!seen_) ok = 0; } while (0)
-    for (const HfCopy* copy = ch->copy; copy != NULL && copy->from != 0; copy++)
-    {
-        if (ResolveField(mod, what, &copy->field, &c) == NULL) ok = 0;
-        else OWN(c->component);
-    }
-    for (const HfSet* set = ch->set; set != NULL && set->field.component != NULL; set++)
-    {
-        uint8_t bytes[8];
-        const SdkField* f = ResolveField(mod, what, &set->field, &c);
-        if (f == NULL || ValueBytes(mod, what, set->field.line, c, f, &set->value, bytes)) ok = 0;
-        else OWN(c->component);
-    }
-    if ((ch->addTags != NULL && ch->addTags[0] != 0) || (ch->removeTags != NULL && ch->removeTags[0] != 0))
-    {
-        const SdkComponent* tag = SdkComponentNamed("Tag");
-        if (SdkFieldNamed(tag, "tags") == NULL) { ApiLog(mod, "%s: HellForge has no mappings for tags", what); ok = 0; }
-        else OWN(tag->component);
-    }
-    *mounts = 0;
-    for (const HfMountDef* m = ch->mount; m != NULL && (m->entity != NULL || m->resource != 0); m++, (*mounts)++)
-    {
-        if (*mounts >= 8) { ApiLog(mod, "%s: at most 8 mounts", what); ok = 0; break; }
-        const SdkComponent* mount = SdkComponentNamed("Mount");
-        char slot[32];
-        snprintf(slot, sizeof slot, "slot%u_entity", m->slot);
-        if (SdkFieldNamed(mount, slot) == NULL) { ApiLog(mod, "%s: HellForge has no mappings for mount slot %u", what, m->slot); ok = 0; continue; }
-        OWN(mount->component);
-        carried[*mounts] = ok ? (m->entity != NULL ? ApiRegisterEntity(mod, m->entity) : m->resource) : 0;
-        if (carried[*mounts] == 0) ok = 0;
-    }
-    #undef OWN
+    int ok = CheckCopies(mod, what, ch->copy, own, ownCount);
+    ok &= CheckSets(mod, what, ch->set, own, ownCount);
+    ok &= CheckTags(mod, what, ch, own, ownCount);
+    *mounts = CheckMounts(mod, what, ch->mount, own, ownCount, carried, &ok);
     if (*ownCount >= REG_MAX_OWN && !ok) ApiLog(mod, "%s: it may change at most %d components", what, REG_MAX_OWN);
     return ok;
 }
@@ -1010,17 +926,48 @@ static int QueueChanges(HfMod* mod, HfRef entity, const Changes* ch, const HfRef
     return refused;
 }
 
+/* A block registered already (*found 1): its entity, or 0 while the entities its mounts carry are registered (logged). */
+static HfRef KnownDefinition(HfMod* mod, const HfEntityDef* def, int* found)
+{
+    *found = 0;
+    for (int i = 0; i < g_entityDefCount; i++)
+        if (g_entityDefs[i].def == def)
+        {
+            *found = 1;
+            if (g_entityDefs[i].busy) { ApiLog(mod, "register_entity(%s): its mounts carry it", def->name ? def->name : "?"); return 0; }
+            return g_entityDefs[i].entity;
+        }
+    return 0;
+}
+
+/* The add_entity a definition block makes: its base, name, unit, own components, behaviour, model and text. */
+static HfEntity EntityOfDefinition(const HfEntityDef* def, const char** own, uint32_t behaviour)
+{
+    HfEntity entity = {sizeof entity};
+    entity.base = def->base;
+    entity.name = def->name;
+    entity.unit = def->unit;
+    entity.own_components = own;
+    entity.behaviour = behaviour;
+    entity.model_from = def->model_from;
+    entity.own_all = def->size >= offsetof(HfEntityDef, own_all) + sizeof def->own_all ? def->own_all : 0;
+    if (def->size >= offsetof(HfEntityDef, description) + sizeof def->description)
+    {
+        entity.title = def->title;
+        entity.designation = def->designation;
+        entity.description = def->description;
+    }
+    return entity;
+}
+
 /* Registers a definition block: the entities its mount carries first, then the entity with a record of its own in every
  * component the block changes, then its edits. Nothing is added if any field or value is refused. */
 static HfRef ApiRegisterEntity(HfMod* mod, const HfEntityDef* def)
 {
     if (mod == NULL || def == NULL) return 0;
-    for (int i = 0; i < g_entityDefCount; i++)
-        if (g_entityDefs[i].def == def)
-        {
-            if (g_entityDefs[i].busy) { ApiLog(mod, "register_entity(%s): its mounts carry it", def->name ? def->name : "?"); return 0; }
-            return g_entityDefs[i].entity;
-        }
+    int found;
+    HfRef known = KnownDefinition(mod, def, &found);
+    if (found) return known;
     if (def->size != 0 && def->size < offsetof(HfEntityDef, mount) + sizeof def->mount)
     {
         ApiLog(mod, "register_entity: its size is not an HfEntityDef's");
@@ -1046,20 +993,7 @@ static HfRef ApiRegisterEntity(HfMod* mod, const HfEntityDef* def)
 
     uint32_t behaviour = def->behaviour != NULL ? DefinedBehaviour(mod, def->behaviour) : def->behaviour_id;
     if (def->behaviour != NULL && behaviour == 0) { d->busy = 0; return 0; }
-    HfEntity entity = {sizeof entity};
-    entity.base = def->base;
-    entity.name = def->name;
-    entity.unit = def->unit;
-    entity.own_components = own;
-    entity.behaviour = behaviour;
-    entity.model_from = def->model_from;
-    entity.own_all = def->size >= offsetof(HfEntityDef, own_all) + sizeof def->own_all ? def->own_all : 0;
-    if (def->size >= offsetof(HfEntityDef, description) + sizeof def->description)
-    {
-        entity.title = def->title;
-        entity.designation = def->designation;
-        entity.description = def->description;
-    }
+    HfEntity entity = EntityOfDefinition(def, own, behaviour);
     d->entity = ApiAddEntity(mod, &entity);
     d->busy = 0;
     if (d->entity == 0) return 0;
@@ -1083,6 +1017,28 @@ static int ApiEditEntity(HfMod* mod, const HfEditDef* def)
     return QueueChanges(mod, def->entity, &ch, carried, mounts) ? 1 : 0;
 }
 
+/* A stratagem without editor entities of its own lists each payload entity a mod added, for the entity it copies. */
+static void FillEditorEntities(Stratagem* s)
+{
+    if (s->editorEntities[0].entity != 0) return;
+    for (uint32_t p = 0, n = 0; p < s->payloadCount && n < STR_MAX_PAYLOAD; p++)
+        for (int i = 0; i < g_weaponCount; i++)
+            if (g_weapons[i].plain && g_weapons[i].entity == s->payload[p] && g_weapons[i].baseEntity != 0)
+                s->editorEntities[n++] = (HfEditorEntity){g_weapons[i].entity, g_weapons[i].baseEntity};
+}
+
+static HfContent StratagemContent(const Stratagem* s, uint32_t size)
+{
+    return (HfContent){size, HF_KIND_STRATAGEM, s->type, s->base, 0, s->mod->id, s->mod->folder, s->name,
+        s->title[0] ? s->title : NULL, s->iconName[0] ? s->iconName : NULL, s->editorLike, s->editorEntities, NULL, s->category};
+}
+
+static HfContent EntityContent(const Weapon* w, uint32_t size)
+{
+    return (HfContent){size, HF_KIND_ENTITY, w->entity, w->baseEntity, 0, w->mod->id, w->mod->folder, w->name,
+        w->title[0] ? w->title : NULL, NULL, 0, NULL, w->designation[0] ? w->designation : NULL};
+}
+
 /* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles and damage, in the order added. A
  * stratagem without editor entities of its own lists each payload entity a mod added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
@@ -1094,22 +1050,15 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
     if (index < g_stratagemCount)
     {
         Stratagem* s = &g_stratagems[index];
-        if (s->editorEntities[0].entity == 0)
-            for (uint32_t p = 0, n = 0; p < s->payloadCount && n < STR_MAX_PAYLOAD; p++)
-                for (int i = 0; i < g_weaponCount; i++)
-                    if (g_weapons[i].plain && g_weapons[i].entity == s->payload[p] && g_weapons[i].baseEntity != 0)
-                        s->editorEntities[n++] = (HfEditorEntity){g_weapons[i].entity, g_weapons[i].baseEntity};
-        c = (HfContent){size, HF_KIND_STRATAGEM, s->type, s->base, 0, s->mod->id, s->mod->folder, s->name,
-            s->title[0] ? s->title : NULL, s->iconName[0] ? s->iconName : NULL, s->editorLike, s->editorEntities, NULL, s->category};
+        FillEditorEntities(s);
+        c = StratagemContent(s, size);
         return GIVE();
     }
     index -= g_stratagemCount;
     for (int i = 0; i < g_weaponCount; i++)
         if (g_weapons[i].plain && g_weapons[i].state != -1 && index-- == 0)
         {
-            Weapon* w = &g_weapons[i];
-            c = (HfContent){size, HF_KIND_ENTITY, w->entity, w->baseEntity, 0, w->mod->id, w->mod->folder, w->name,
-                w->title[0] ? w->title : NULL, NULL, 0, NULL, w->designation[0] ? w->designation : NULL};
+            c = EntityContent(&g_weapons[i], size);
             return GIVE();
         }
     if (index < g_projectileCount)
@@ -1129,30 +1078,55 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
     #undef GIVE
 }
 
+/* Vanilla content of a kind by its catalog name (mappings/catalog.json): 1, with its id. */
+static int CatalogContent(uint32_t kind, const char* name, uint64_t* id)
+{
+    for (size_t i = 0; i < sizeof kSdkContent / sizeof kSdkContent[0]; i++)
+        if (kSdkContent[i].kind == kind && !strcmp(kSdkContent[i].name, name)) { *id = kSdkContent[i].id; return 1; }
+    return 0;
+}
+
+/* An entity (or, items, a weapon's loadout id) a mod added under this name, not refused; 0 if none. */
+static uint64_t ModEntityNamed(const char* name, int item)
+{
+    for (int i = 0; i < g_weaponCount; i++)
+        if ((!item || !g_weapons[i].plain) && g_weapons[i].state != -1 && !strcmp(g_weapons[i].name, name)) return item ? g_weapons[i].id : g_weapons[i].entity;
+    return 0;
+}
+
+/* The stratagem type, projectile type or damage id a mod added under this name; 0 if none. */
+static uint64_t StratagemNamed(const char* name)
+{
+    for (uint32_t i = 0; i < g_stratagemCount; i++) if (!strcmp(g_stratagems[i].name, name)) return g_stratagems[i].type;
+    return 0;
+}
+
+static uint64_t ProjectileTypeNamed(const char* name)
+{
+    const Projectile* added = ProjectileNamed(name); /* projectiles.c */
+    return added != NULL ? added->type : 0;
+}
+
+static uint64_t DamageNamed(const char* name)
+{
+    for (uint32_t i = 0; i < g_damageCount; i++) if (!strcmp(g_damages[i].name, name)) return g_damages[i].id;
+    return 0;
+}
+
 /* Content by name: vanilla content by its catalog name (mappings/catalog.json), or mod content by its identity
  * ("skyeshade.pelican-support:pelican_gatling", or the full name it was added under). 0 if none. */
 static uint64_t ApiFind(uint32_t kind, const char* name)
 {
     if (name == NULL || name[0] == 0) return 0;
-    for (size_t i = 0; i < sizeof kSdkContent / sizeof kSdkContent[0]; i++)
-        if (kSdkContent[i].kind == kind && !strcmp(kSdkContent[i].name, name)) return kSdkContent[i].id;
+    uint64_t id = 0;
+    if (CatalogContent(kind, name, &id)) return id;
     switch (kind)
     {
-    case HF_KIND_ENTITY:
-        for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].state != -1 && !strcmp(g_weapons[i].name, name)) return g_weapons[i].entity;
-        break;
-    case HF_KIND_ITEM:
-        for (int i = 0; i < g_weaponCount; i++) if (!g_weapons[i].plain && g_weapons[i].state != -1 && !strcmp(g_weapons[i].name, name)) return g_weapons[i].id;
-        break;
-    case HF_KIND_STRATAGEM:
-        for (uint32_t i = 0; i < g_stratagemCount; i++) if (!strcmp(g_stratagems[i].name, name)) return g_stratagems[i].type;
-        break;
-    case HF_KIND_PROJECTILE:
-        for (uint32_t i = 0; i < g_projectileCount; i++) if (!strcmp(g_projectiles[i].name, name)) return g_projectiles[i].type;
-        break;
-    case HF_KIND_DAMAGE:
-        for (uint32_t i = 0; i < g_damageCount; i++) if (!strcmp(g_damages[i].name, name)) return g_damages[i].id;
-        break;
+    case HF_KIND_ENTITY: return ModEntityNamed(name, 0);
+    case HF_KIND_ITEM: return ModEntityNamed(name, 1);
+    case HF_KIND_STRATAGEM: return StratagemNamed(name);
+    case HF_KIND_PROJECTILE: return ProjectileTypeNamed(name);
+    case HF_KIND_DAMAGE: return DamageNamed(name);
     }
     return 0;
 }

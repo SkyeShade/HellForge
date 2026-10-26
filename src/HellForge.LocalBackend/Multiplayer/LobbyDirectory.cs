@@ -213,16 +213,7 @@ public sealed class LobbyFilter
             if (char.IsWhiteSpace(filter[i])) { i++; continue; }
             if (filter[i] == '\'')
             {
-                var text = new StringBuilder();
-                for (i++; ; i++)
-                {
-                    if (i >= filter.Length) throw new InvalidDataException("The search filter has an open quote: " + filter);
-                    if (filter[i] != '\'') { text.Append(filter[i]); continue; }
-                    if (i + 1 < filter.Length && filter[i + 1] == '\'') { text.Append('\''); i++; continue; }
-                    i++;
-                    break;
-                }
-                tokens.Add((text.ToString(), true));
+                tokens.Add((Quoted(filter, ref i), true));
                 continue;
             }
             var start = i;
@@ -230,6 +221,21 @@ public sealed class LobbyFilter
             tokens.Add((filter[start..i], false));
         }
         return tokens;
+    }
+
+    // The quoted text that starts at i ('' a quote inside it); i moves past its closing quote.
+    static string Quoted(string filter, ref int i)
+    {
+        var text = new StringBuilder();
+        for (i++; ; i++)
+        {
+            if (i >= filter.Length) throw new InvalidDataException("The search filter has an open quote: " + filter);
+            if (filter[i] != '\'') { text.Append(filter[i]); continue; }
+            if (i + 1 < filter.Length && filter[i + 1] == '\'') { text.Append('\''); i++; continue; }
+            i++;
+            break;
+        }
+        return text.ToString();
     }
 
     // The values of every clause that compares a key with eq: what a directory can filter on itself.

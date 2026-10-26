@@ -243,14 +243,14 @@ static class EditorTests
         {
             /* BC1: colour 0 white, colour 1 black, every texel index 0 except the last (1) */
             var bc1 = new byte[] { 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40 };
-            var rgba = EditorIcons.Decode(bc1, 4, 4, 71, 0, 0, 4, 4)!;
+            var rgba = EditorIcons.Decode(new(bc1, 4, 4, 71), 0, 0, 4, 4)!;
             check(rgba[0] == 255 && rgba[3] == 255 && rgba[15 * 4] == 0 && rgba[15 * 4 + 3] == 255, "BC1 texels.");
             /* BC4: values 200 and 100, eight-step palette; texel 1 takes index 1 */
             var bc4 = new byte[] { 200, 100, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00 };
-            var gray = EditorIcons.Decode(bc4, 4, 4, 80, 0, 0, 2, 1)!;
+            var gray = EditorIcons.Decode(new(bc4, 4, 4, 80), 0, 0, 2, 1)!;
             check(gray[0] == 200 && gray[4] == 100, "BC4 values.");
-            check(EditorIcons.Decode(bc1, 4, 4, 71, 2, 2, 4, 4) == null, "A rectangle outside its page is refused.");
-            check(EditorIcons.Decode(bc1, 4, 4, 99, 0, 0, 4, 4) == null, "An unknown format is refused.");
+            check(EditorIcons.Decode(new(bc1, 4, 4, 71), 2, 2, 4, 4) == null, "A rectangle outside its page is refused.");
+            check(EditorIcons.Decode(new(bc1, 4, 4, 99), 0, 0, 4, 4) == null, "An unknown format is refused.");
             var file = EditorIcons.Serialize([new EditorIcons.Icon(0, "AR-23 Liberator", 2, 1, 1, [0, 255]), new EditorIcons.Icon(4, "Vitality Enhancement", 1, 1, 4, [1, 2, 3, 4])]);
             check(file.AsSpan(0, 4).SequenceEqual("HFIC"u8) && BitConverter.ToUInt32(file, 4) == 2 && BitConverter.ToUInt32(file, 8) == 2, "Header.");
             check(file[12] == 0 && file[13] == 15 && System.Text.Encoding.UTF8.GetString(file, 14, 15) == "AR-23 Liberator" &&

@@ -388,61 +388,73 @@ public sealed class LobbyService
     void Route(Frame frame)
     {
         var op = frame.Text(0);
-        ulong owner;
-        string lobbyId;
+        (ulong Owner, string LobbyId)? to;
         switch (frame.Type)
         {
             case "lobby.create":
                 Handle(LocalNode, frame);
                 return;
             case "lobby.join":
-            {
-                var connection = frame.Text(3);
-                var parts = connection.StartsWith(ConnectionPrefix, StringComparison.Ordinal) ? connection.Split(';') : [];
-                if (parts.Length != 3 || !TryNode(parts[2], out owner) || transport == null && owner != LocalId)
-                {
-                    Answer(LocalNode, op, "join", LobbyNotFound);
-                    return;
-                }
-                if (owner == LocalId) { Handle(LocalNode, frame); return; }
-                if (JoinRefusal?.Invoke(owner) is { } why)
-                {
-                    log($"Did not join {parts[1]} of {EntityId(owner)}: " + string.Join(" ", why));
-                    Answer(LocalNode, op, "join", LobbyNotJoinable, parts[1]);
-                    Refused?.Invoke(owner, why);
-                    return;
-                }
-                lobbyId = parts[1];
-                remote[lobbyId] = owner;
-                joining[owner] = DateTime.UtcNow;
-                foreach (var old in joins.Where(j => DateTime.UtcNow - j.Value.At > JoinMemory).Select(j => j.Key).ToList()) joins.Remove(old);
-                joins[lobbyId] = (owner, DateTime.UtcNow);
-                var (joinOwner, joinLobby) = (owner, lobbyId);
-                afterLock.Add(() => LocalJoinStarted?.Invoke(joinOwner, joinLobby));
-                frame.Add(modDigest);
-                frame.Add(Protocol);
-                if (modList != null) frame.Add(modList);
+                to = RouteJoin(frame, op);
                 break;
-            }
             default:
-            {
-                lobbyId = frame.Text(1);
-                if (hosted.ContainsKey(lobbyId)) { Handle(LocalNode, frame); return; }
-                // only the owner kicks, and only from its own machine
-                if (frame.Type == "lobby.kick" || !remote.TryGetValue(lobbyId, out owner))
-                {
-                    Answer(LocalNode, op, Kind(frame.Type), frame.Type == "lobby.kick" && remote.ContainsKey(lobbyId) ? AccessDenied : LobbyNotFound);
-                    return;
-                }
-                if (frame.Type == "lobby.leave") remote.Remove(lobbyId);
-                // an invitation to a friend's lobby: its owner records it, then this machine passes it on (RelayEvent)
-                if (frame.Type == "lobby.invite" && TryNode(frame.Text(3), out var invitee))
-                    invitesSent[op] = (invitee, lobbyId, frame.Text(2));
+                to = RouteToLobby(frame, op);
                 break;
-            }
         }
-        forwarded[op] = (owner, lobbyId);
-        Send(owner, frame);
+        if (to is not { } target) return;
+        forwarded[op] = target;
+        Send(target.Owner, frame);
+    }
+
+    // A join from the local DLL: one of this machine's lobbies is joined here, a friend's lobby through its owner (its owner
+    // and the lobby; null when answered here).
+    (ulong Owner, string LobbyId)? RouteJoin(Frame frame, string op)
+    {
+        var connection = frame.Text(3);
+        var parts = connection.StartsWith(ConnectionPrefix, StringComparison.Ordinal) ? connection.Split(';') : [];
+        if (parts.Length != 3 || !TryNode(parts[2], out var owner) || transport == null && owner != LocalId)
+        {
+            Answer(LocalNode, op, "join", LobbyNotFound);
+            return null;
+        }
+        if (owner == LocalId) { Handle(LocalNode, frame); return null; }
+        if (JoinRefusal?.Invoke(owner) is { } why)
+        {
+            log($"Did not join {parts[1]} of {EntityId(owner)}: " + string.Join(" ", why));
+            Answer(LocalNode, op, "join", LobbyNotJoinable, parts[1]);
+            Refused?.Invoke(owner, why);
+            return null;
+        }
+        var lobbyId = parts[1];
+        remote[lobbyId] = owner;
+        joining[owner] = DateTime.UtcNow;
+        foreach (var old in joins.Where(j => DateTime.UtcNow - j.Value.At > JoinMemory).Select(j => j.Key).ToList()) joins.Remove(old);
+        joins[lobbyId] = (owner, DateTime.UtcNow);
+        var (joinOwner, joinLobby) = (owner, lobbyId);
+        afterLock.Add(() => LocalJoinStarted?.Invoke(joinOwner, joinLobby));
+        frame.Add(modDigest);
+        frame.Add(Protocol);
+        if (modList != null) frame.Add(modList);
+        return (owner, lobbyId);
+    }
+
+    // Any other request from the local DLL: handled here for a lobby hosted here, else sent to the friend who owns it
+    // (its owner and the lobby; null when answered here).
+    (ulong Owner, string LobbyId)? RouteToLobby(Frame frame, string op)
+    {
+        var lobbyId = frame.Text(1);
+        if (hosted.ContainsKey(lobbyId)) { Handle(LocalNode, frame); return null; }
+        // only the owner kicks, and only from its own machine
+        if (frame.Type == "lobby.kick" || !remote.TryGetValue(lobbyId, out var owner))
+        {
+            Answer(LocalNode, op, Kind(frame.Type), frame.Type == "lobby.kick" && remote.ContainsKey(lobbyId) ? AccessDenied : LobbyNotFound);
+            return null;
+        }
+        if (frame.Type == "lobby.leave") remote.Remove(lobbyId);
+        // an invitation to a friend's lobby: its owner records it, then this machine passes it on (RelayEvent)
+        if (frame.Type == "lobby.invite" && TryNode(frame.Text(3), out var invitee))
+            invitesSent[op] = (invitee, lobbyId, frame.Text(2));
+        return (owner, lobbyId);
     }
 
     // Whether this machine asked owner to join lobbyId in the last minute (a mod offer from them counts only then).
@@ -459,29 +471,36 @@ public sealed class LobbyService
     // An event from a friend's backend reaches this machine's DLL only if that friend owns the lobby it is about.
     void RelayEvent(ulong peer, Frame frame)
     {
-        if (frame.Type == "lobby.result")
+        var relayed = frame.Type == "lobby.result" ? ForwardedResult(peer, frame) : OwnersEvent(peer, frame);
+        if (relayed) toLocal(frame);
+    }
+
+    // The answer to a request forwarded to that friend (false: not one).
+    bool ForwardedResult(ulong peer, Frame frame)
+    {
+        var op = frame.Text(0);
+        if (!forwarded.Remove(op, out var request) || request.Owner != peer) return false;
+        if (frame.Text(1) == "join" && frame.Text(2) != "0") remote.Remove(request.LobbyId);
+        if (frame.Text(1) == "join" && frame.Text(2) == "0") joining.Remove(peer); /* in: no refusal to wait for */
+        if (frame.Text(1) == "join" && uint.TryParse(frame.Text(2), NumberStyles.None, CultureInfo.InvariantCulture, out var joinResult))
+            afterLock.Add(() => LocalJoinFinished?.Invoke(peer, request.LobbyId, joinResult));
+        if (invitesSent.Remove(op, out var invite) && frame.Text(1) == "invite" && frame.Text(2) == "0" && ConnectionStringFor(invite.LobbyId) is { } connection)
+            Deliver(invite.Invitee, invite.LobbyId, connection, invite.Inviter);
+        return true;
+    }
+
+    // An event about a lobby that friend owns (false: not one).
+    bool OwnersEvent(ulong peer, Frame frame)
+    {
+        if (!remote.TryGetValue(frame.Text(0), out var owner) || owner != peer) return false;
+        if (frame.Type == "lobby.disconnected") remote.Remove(frame.Text(0));
+        // the owner removed this machine's player (its own copy goes to this machine only with this reason)
+        if (frame.Type == "lobby.memberRemoved" && frame.Text(2) == MemberRemovedForcibly.ToString(CultureInfo.InvariantCulture))
         {
-            var op = frame.Text(0);
-            if (!forwarded.Remove(op, out var request) || request.Owner != peer) return;
-            if (frame.Text(1) == "join" && frame.Text(2) != "0") remote.Remove(request.LobbyId);
-            if (frame.Text(1) == "join" && frame.Text(2) == "0") joining.Remove(peer); /* in: no refusal to wait for */
-            if (frame.Text(1) == "join" && uint.TryParse(frame.Text(2), NumberStyles.None, CultureInfo.InvariantCulture, out var joinResult))
-                afterLock.Add(() => LocalJoinFinished?.Invoke(peer, request.LobbyId, joinResult));
-            if (invitesSent.Remove(op, out var invite) && frame.Text(1) == "invite" && frame.Text(2) == "0" && ConnectionStringFor(invite.LobbyId) is { } connection)
-                Deliver(invite.Invitee, invite.LobbyId, connection, invite.Inviter);
+            log($"The host {EntityId(peer)} removed this player from lobby {frame.Text(0)}.");
+            afterLock.Add(() => KickedByHost?.Invoke(peer));
         }
-        else
-        {
-            if (!remote.TryGetValue(frame.Text(0), out var owner) || owner != peer) return;
-            if (frame.Type == "lobby.disconnected") remote.Remove(frame.Text(0));
-            // the owner removed this machine's player (its own copy goes to this machine only with this reason)
-            if (frame.Type == "lobby.memberRemoved" && frame.Text(2) == MemberRemovedForcibly.ToString(CultureInfo.InvariantCulture))
-            {
-                log($"The host {EntityId(peer)} removed this player from lobby {frame.Text(0)}.");
-                afterLock.Add(() => KickedByHost?.Invoke(peer));
-            }
-        }
-        toLocal(frame);
+        return true;
     }
 
     // An invitation goes from the inviting player's backend to the invitee's (lobby.invited); its game shows it.
@@ -498,175 +517,226 @@ public sealed class LobbyService
         var op = frame.Text(0);
         switch (frame.Type)
         {
-            case "lobby.create":
-            {
-                if (node != LocalNode) { Answer(node, op, "create", AccessDenied); return; }
-                var index = 7;
-                var lobby = new HostedLobby
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    MaxMembers = frame.UInt(3), Access = frame.Int(4), Migration = frame.Int(5), Lock = frame.Int(6)
-                };
-                lobby.LobbyProperties = frame.Properties(ref index);
-                lobby.SearchProperties = frame.Properties(ref index);
-                var memberProperties = frame.Properties(ref index);
-                lobby.ConnectionString = ConnectionPrefix + lobby.Id + ";" + EntityId(LocalId != 0 ? LocalId : NodeOf(frame.Text(1)));
-                var creator = new LobbyMember(frame.Text(1), frame.Text(2), LocalNode) { Properties = memberProperties };
-                lobby.Members.Add(creator);
-                lobby.OwnerId = creator.Id;
-                hosted[lobby.Id] = lobby;
-                log($"Lobby {lobby.Id} created, at most {lobby.MaxMembers} members.");
-                HostedChanged?.Invoke();
-                Send(LocalNode, Snapshot(new Frame("lobby.result").Add(op).Add("create").Add(0), lobby));
-                afterLock.Add(() => LocalLobbyCreated?.Invoke());
-                return;
-            }
-            case "lobby.join":
-            {
-                var memberId = frame.Text(1);
-                var connection = frame.Text(3).Split(';');
-                var index = 4;
-                var memberProperties = frame.Properties(ref index);
-                var digest = node == LocalNode ? modDigest : frame.Count > index ? frame.Text(index) : "";
-                var protocol = node == LocalNode ? Protocol : frame.Count > index + 1 ? frame.Text(index + 1) : "an older HellForge";
-                if (connection.Length != 3 || !hosted.TryGetValue(connection[1], out var lobby)) { Answer(node, op, "join", LobbyNotFound, connection.ElementAtOrDefault(1)); return; }
-                // A friend joins as themselves: the member id must be the requesting machine's own SteamID.
-                if (node != LocalNode && (!TryNode(memberId, out var claimed) || claimed != node)) { Answer(node, op, "join", AccessDenied, lobby.Id); return; }
-                if (node != LocalNode && (!WithinLimits(memberProperties) || frame.Text(2).Length > MaxKeyLength)) { Answer(node, op, "join", InvalidArgument, lobby.Id); return; }
-                // The lobby's privacy and kicked players first: someone refused here is never offered this host's mods.
-                if (node != LocalNode && Admission(lobby, node) is { } refusal)
-                {
-                    Refuse(node, op, lobby.Id, refusal.Reason, refusal.JoinerLines, refusal.HostLines);
-                    return;
-                }
-                if (protocol != Protocol)
-                {
-                    Refuse(node, op, lobby.Id, $"different HellForge versions ({protocol} joining, {Protocol} hosting); both players need the same installer.",
-                        ["Your HellForge version is not the host's.", "Both players need the same HellForge installer (its version is in the launcher's corner)."],
-                        ["Their HellForge version is not yours: both players need the same HellForge installer."]);
-                    return;
-                }
-                if (digest != modDigest)
-                {
-                    // the joiner's mods one by one (after its digest and protocol; a joiner from before sends none)
-                    var theirs = node != LocalNode && frame.Count > index + 2 ? ModlistDiff.Decode(frame.Text(index + 2)) : null;
-                    var mine = modList != null ? ModlistDiff.Decode(modList) : null;
-                    // mod sync: the joiner's backend gets this host's mod set first; when it may download it, its game is told so
-                    var offered = node != LocalNode && ModsRefused?.Invoke(node, lobby.Id) == true;
-                    // it passed the privacy check, so it may come back with this host's mods (AutoRejoin), invited or not
-                    if (node != LocalNode) Expect(lobby, node, ExpectedBack);
-                    Refuse(node, op, lobby.Id, "different gameplay mods; enable the same gameplay mods (see the launcher's MODS page) and start a new session.",
-                        ["Your gameplay mods don't match the host's.", .. Differences(theirs, mine, asHost: false),
-                            offered ? "HellForge's MOD SYNC prompt shows which of the host's mods it can download for you."
-                                : "Turn on the same gameplay mods on the launcher's MODS page, then start a new session."],
-                        ["Their gameplay mods don't match yours.", .. Differences(mine, theirs, asHost: true)]);
-                    return;
-                }
-                // A friend joining again while still listed (their game crashed, or they came back before this host noticed
-                // they were gone): the earlier membership leaves first, so the others see them leave and join again.
-                if (node != LocalNode && lobby.Members.Where(m => m.Node == node && SameEntity(m.Id, memberId)).ToList() is { Count: > 0 } stale)
-                {
-                    log($"A friend joined lobby {lobby.Id} again; their earlier membership was removed first.");
-                    Leave(lobby, stale);
-                }
-                if (lobby.Lock == 1 || lobby.Members.Count >= lobby.MaxMembers)
-                {
-                    Refuse(node, op, lobby.Id, lobby.Lock == 1 ? "the lobby is locked." : "the lobby is full.", [lobby.Lock == 1 ? "The host's lobby is locked." : "The host's lobby is full."]);
-                    return;
-                }
-                if (lobby.Members.Any(m => SameEntity(m.Id, memberId))) { Answer(node, op, "join", InvalidArgument, lobby.Id); return; }
-                var member = new LobbyMember(memberId, frame.Text(2), node) { Properties = memberProperties };
-                lobby.Members.Add(member);
-                if (node != LocalNode) lobby.Admitted.Add(node);
-                if (node != LocalNode) PeerAdmitted?.Invoke(node);
-                log($"{(node == LocalNode ? "A local player" : "A friend")} joined lobby {lobby.Id} ({lobby.Members.Count} members).");
-                Send(node, Snapshot(new Frame("lobby.result").Add(op).Add("join").Add(0), lobby));
-                // A friend's backend adopts this war time, so both games see the same war.
-                if (node != LocalNode && warClock != null) Send(node, new Frame("war.clock").Add(warClock.Seconds));
-                var added = new Frame("lobby.memberAdded").Add(lobby.Id).Add(member.Id).Add(member.Type).Add(member.Properties);
-                foreach (var other in lobby.Nodes().Where(n => n != node)) Send(other, added);
-                HostedChanged?.Invoke();
-                return;
-            }
-            case "lobby.update":
-            {
-                if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "update", LobbyNotFound); return; }
-                var member = lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(2)) && m.Node == node);
-                var index = 11;
-                var lobbyChanges = frame.Changes(ref index);
-                var searchChanges = frame.Changes(ref index);
-                var memberUpdate = frame.Text(index++) == "1";
-                var memberChanges = frame.Changes(ref index);
-                var newOwner = frame.Text(3) == "1" ? lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(4))) : null;
-                var changesLobby = frame.Text(3) == "1" || frame.Text(5) == "1" || frame.Text(7) == "1" || frame.Text(9) == "1" ||
-                    lobbyChanges.Count > 0 || searchChanges.Count > 0;
-                uint result = member == null ? LobbyNotFound
-                    : changesLobby && !SameEntity(lobby.OwnerId, member.Id) ? AccessDenied
-                    : frame.Text(3) == "1" && newOwner == null ? InvalidArgument
-                    // another machine's update keeps to PlayFab's limits (the SDK fails a whole update that breaks them)
-                    : node != LocalNode && (!Fits(lobby.LobbyProperties, lobbyChanges) || !Fits(lobby.SearchProperties, searchChanges, search: true) ||
-                        !Fits(member.Properties, memberChanges) || frame.Text(5) == "1" && frame.UInt(6) is < 2 or > 128) ? InvalidArgument : 0;
-                Answer(node, op, "update", result);
-                if (result != 0) return;
-                var updated = new Frame("lobby.updated").Add(lobby.Id);
-                if (newOwner != null) lobby.OwnerId = newOwner.Id;
-                updated.Add(newOwner?.Id ?? "");
-                if (frame.Text(5) == "1") lobby.MaxMembers = frame.UInt(6);
-                updated.Add(frame.Text(5) == "1" ? lobby.MaxMembers.ToString(CultureInfo.InvariantCulture) : "");
-                if (frame.Text(7) == "1") lobby.Access = frame.Int(8);
-                updated.Add(frame.Text(7) == "1" ? lobby.Access.ToString(CultureInfo.InvariantCulture) : "");
-                if (frame.Text(9) == "1") lobby.Lock = frame.Int(10);
-                updated.Add(frame.Text(9) == "1" ? lobby.Lock.ToString(CultureInfo.InvariantCulture) : "");
-                Apply(lobby.LobbyProperties, lobbyChanges);
-                Apply(lobby.SearchProperties, searchChanges);
-                updated.Add(lobbyChanges).Add(searchChanges);
-                if (memberUpdate)
-                {
-                    Apply(member!.Properties, memberChanges);
-                    updated.Add(1).Add(member.Id).Add(memberChanges);
-                }
-                else updated.Add(0);
-                foreach (var target in lobby.Nodes()) Send(target, updated);
-                HostedChanged?.Invoke();
-                return;
-            }
-            case "lobby.leave":
-            {
-                if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "leave", LobbyNotFound); return; }
-                var memberId = frame.Text(2);
-                var leaving = lobby.Members.Where(m => m.Node == node && (memberId.Length == 0 || SameEntity(m.Id, memberId))).ToList();
-                Answer(node, op, "leave", 0);
-                if (leaving.Count > 0) Leave(lobby, leaving);
-                return;
-            }
-            case "lobby.kick":
-            {
-                // The owner's game removes a member (PFLobbyForceRemoveMember): only from this machine, as the owner, never
-                // itself. The kicked machine leaves, its Party traffic with it, and never rejoins this lobby.
-                if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "kick", LobbyNotFound); return; }
-                if (node != LocalNode || !lobby.Members.Any(m => m.Node == LocalNode && SameEntity(m.Id, lobby.OwnerId))) { Answer(node, op, "kick", AccessDenied); return; }
-                var target = lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(2)));
-                if (target == null || target.Node == LocalNode) { Answer(node, op, "kick", InvalidArgument); return; }
-                Kick(lobby, target.Node, frame.Count > 3 && frame.Text(3) == "1");
-                Answer(node, op, "kick", 0);
-                return;
-            }
-            case "lobby.invite":
-            {
-                // A member invites someone (PFLobbySendInvite): the lobby admits them whatever its privacy (Admission), and the
-                // inviting machine passes the invitation on (Deliver; RelayEvent for a friend's lobby).
-                if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "invite", LobbyNotFound); return; }
-                if (!lobby.Members.Any(m => m.Node == node && SameEntity(m.Id, frame.Text(2)))) { Answer(node, op, "invite", AccessDenied); return; }
-                if (!TryNode(frame.Text(3), out var invitee) || invitee == (node == LocalNode ? LocalId : node)) { Answer(node, op, "invite", InvalidArgument); return; }
-                if (lobby.Kicked.Contains(invitee)) { Answer(node, op, "invite", AccessDenied); return; }
-                if (lobby.Invited.Count >= MaxInvited && !lobby.Invited.Contains(invitee)) lobby.Invited.Remove(lobby.Invited.First());
-                lobby.Invited.Add(invitee);
-                log($"{(node == LocalNode ? "This player" : EntityId(node))} invited {EntityId(invitee)} to lobby {lobby.Id}.");
-                Answer(node, op, "invite", 0);
-                if (node == LocalNode) Deliver(invitee, lobby.Id, lobby.ConnectionString, frame.Text(2));
-                return;
-            }
+            case "lobby.create": HandleCreate(node, frame, op); return;
+            case "lobby.join": HandleJoin(node, frame, op); return;
+            case "lobby.update": HandleUpdate(node, frame, op); return;
+            case "lobby.leave": HandleLeave(node, frame, op); return;
+            case "lobby.kick": HandleKick(node, frame, op); return;
+            case "lobby.invite": HandleInvite(node, frame, op); return;
         }
+    }
+
+    void HandleCreate(ulong node, Frame frame, string op)
+    {
+        if (node != LocalNode) { Answer(node, op, "create", AccessDenied); return; }
+        var index = 7;
+        var lobby = new HostedLobby
+        {
+            Id = Guid.NewGuid().ToString(),
+            MaxMembers = frame.UInt(3), Access = frame.Int(4), Migration = frame.Int(5), Lock = frame.Int(6)
+        };
+        lobby.LobbyProperties = frame.Properties(ref index);
+        lobby.SearchProperties = frame.Properties(ref index);
+        var memberProperties = frame.Properties(ref index);
+        lobby.ConnectionString = ConnectionPrefix + lobby.Id + ";" + EntityId(LocalId != 0 ? LocalId : NodeOf(frame.Text(1)));
+        var creator = new LobbyMember(frame.Text(1), frame.Text(2), LocalNode) { Properties = memberProperties };
+        lobby.Members.Add(creator);
+        lobby.OwnerId = creator.Id;
+        hosted[lobby.Id] = lobby;
+        log($"Lobby {lobby.Id} created, at most {lobby.MaxMembers} members.");
+        HostedChanged?.Invoke();
+        Send(LocalNode, Snapshot(new Frame("lobby.result").Add(op).Add("create").Add(0), lobby));
+        afterLock.Add(() => LocalLobbyCreated?.Invoke());
+    }
+
+    void HandleJoin(ulong node, Frame frame, string op)
+    {
+        var memberId = frame.Text(1);
+        var connection = frame.Text(3).Split(';');
+        var index = 4;
+        var memberProperties = frame.Properties(ref index);
+        var digest = node == LocalNode ? modDigest : frame.Count > index ? frame.Text(index) : "";
+        var protocol = node == LocalNode ? Protocol : frame.Count > index + 1 ? frame.Text(index + 1) : "an older HellForge";
+        if (connection.Length != 3 || !hosted.TryGetValue(connection[1], out var lobby)) { Answer(node, op, "join", LobbyNotFound, connection.ElementAtOrDefault(1)); return; }
+        if (!Admits(node, frame, op, lobby, memberId, memberProperties)) return;
+        if (protocol != Protocol)
+        {
+            Refuse(node, op, lobby.Id, $"different HellForge versions ({protocol} joining, {Protocol} hosting); both players need the same installer.",
+                ["Your HellForge version is not the host's.", "Both players need the same HellForge installer (its version is in the launcher's corner)."],
+                ["Their HellForge version is not yours: both players need the same HellForge installer."]);
+            return;
+        }
+        if (digest != modDigest)
+        {
+            RefuseForMods(node, frame, op, lobby, index);
+            return;
+        }
+        AddMember(node, frame, op, lobby, memberId, memberProperties);
+    }
+
+    // A friend's join, before the version and mod checks: as themselves, within PlayFab's limits, and admitted (false:
+    // answered, refused).
+    bool Admits(ulong node, Frame frame, string op, HostedLobby lobby, string memberId, Dictionary<string, string> memberProperties)
+    {
+        if (node == LocalNode) return true;
+        // A friend joins as themselves: the member id must be the requesting machine's own SteamID.
+        if (!TryNode(memberId, out var claimed) || claimed != node) { Answer(node, op, "join", AccessDenied, lobby.Id); return false; }
+        if (!WithinLimits(memberProperties) || frame.Text(2).Length > MaxKeyLength) { Answer(node, op, "join", InvalidArgument, lobby.Id); return false; }
+        // The lobby's privacy and kicked players first: someone refused here is never offered this host's mods.
+        if (Admission(lobby, node) is { } refusal)
+        {
+            Refuse(node, op, lobby.Id, refusal.Reason, refusal.JoinerLines, refusal.HostLines);
+            return false;
+        }
+        return true;
+    }
+
+    // A join with other gameplay mods than this host's (index: the frame's field after the member properties).
+    void RefuseForMods(ulong node, Frame frame, string op, HostedLobby lobby, int index)
+    {
+        // the joiner's mods one by one (after its digest and protocol; a joiner from before sends none)
+        var theirs = node != LocalNode && frame.Count > index + 2 ? ModlistDiff.Decode(frame.Text(index + 2)) : null;
+        var mine = modList != null ? ModlistDiff.Decode(modList) : null;
+        // mod sync: the joiner's backend gets this host's mod set first; when it may download it, its game is told so
+        var offered = node != LocalNode && ModsRefused?.Invoke(node, lobby.Id) == true;
+        // it passed the privacy check, so it may come back with this host's mods (AutoRejoin), invited or not
+        if (node != LocalNode) Expect(lobby, node, ExpectedBack);
+        Refuse(node, op, lobby.Id, "different gameplay mods; enable the same gameplay mods (see the launcher's MODS page) and start a new session.",
+            ["Your gameplay mods don't match the host's.", .. Differences(theirs, mine, asHost: false),
+                offered ? "HellForge's MOD SYNC prompt shows which of the host's mods it can download for you."
+                    : "Turn on the same gameplay mods on the launcher's MODS page, then start a new session."],
+            ["Their gameplay mods don't match yours.", .. Differences(mine, theirs, asHost: true)]);
+    }
+
+    // A join that passed the checks: the member joins unless the lobby is locked, full, or has them already.
+    void AddMember(ulong node, Frame frame, string op, HostedLobby lobby, string memberId, Dictionary<string, string> memberProperties)
+    {
+        // A friend joining again while still listed (their game crashed, or they came back before this host noticed
+        // they were gone): the earlier membership leaves first, so the others see them leave and join again.
+        if (node != LocalNode && lobby.Members.Where(m => m.Node == node && SameEntity(m.Id, memberId)).ToList() is { Count: > 0 } stale)
+        {
+            log($"A friend joined lobby {lobby.Id} again; their earlier membership was removed first.");
+            Leave(lobby, stale);
+        }
+        if (lobby.Lock == 1 || lobby.Members.Count >= lobby.MaxMembers)
+        {
+            Refuse(node, op, lobby.Id, lobby.Lock == 1 ? "the lobby is locked." : "the lobby is full.", [lobby.Lock == 1 ? "The host's lobby is locked." : "The host's lobby is full."]);
+            return;
+        }
+        if (lobby.Members.Any(m => SameEntity(m.Id, memberId))) { Answer(node, op, "join", InvalidArgument, lobby.Id); return; }
+        var member = new LobbyMember(memberId, frame.Text(2), node) { Properties = memberProperties };
+        lobby.Members.Add(member);
+        if (node != LocalNode) lobby.Admitted.Add(node);
+        if (node != LocalNode) PeerAdmitted?.Invoke(node);
+        log($"{(node == LocalNode ? "A local player" : "A friend")} joined lobby {lobby.Id} ({lobby.Members.Count} members).");
+        Send(node, Snapshot(new Frame("lobby.result").Add(op).Add("join").Add(0), lobby));
+        // A friend's backend adopts this war time, so both games see the same war.
+        if (node != LocalNode && warClock != null) Send(node, new Frame("war.clock").Add(warClock.Seconds));
+        var added = new Frame("lobby.memberAdded").Add(lobby.Id).Add(member.Id).Add(member.Type).Add(member.Properties);
+        foreach (var other in lobby.Nodes().Where(n => n != node)) Send(other, added);
+        HostedChanged?.Invoke();
+    }
+
+    // A lobby.update's changes: the lobby's properties, its search properties, and the member's (when MemberUpdate).
+    sealed record LobbyChanges(List<PropertyChange> Lobby, List<PropertyChange> Search, bool MemberUpdate, List<PropertyChange> Member)
+    {
+        public static LobbyChanges Read(Frame frame)
+        {
+            var index = 11;
+            var lobbyChanges = frame.Changes(ref index);
+            var searchChanges = frame.Changes(ref index);
+            var memberUpdate = frame.Text(index++) == "1";
+            var memberChanges = frame.Changes(ref index);
+            return new LobbyChanges(lobbyChanges, searchChanges, memberUpdate, memberChanges);
+        }
+    }
+
+    void HandleUpdate(ulong node, Frame frame, string op)
+    {
+        if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "update", LobbyNotFound); return; }
+        var member = lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(2)) && m.Node == node);
+        var changes = LobbyChanges.Read(frame);
+        var newOwner = frame.Text(3) == "1" ? lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(4))) : null;
+        var result = UpdateResult(node, frame, lobby, member, newOwner, changes);
+        Answer(node, op, "update", result);
+        if (result != 0) return;
+        var updated = Updated(lobby, frame, newOwner, member, changes);
+        foreach (var target in lobby.Nodes()) Send(target, updated);
+        HostedChanged?.Invoke();
+    }
+
+    // Whether an update is taken (0): only the owner changes the lobby, and a new owner is one of its members.
+    static uint UpdateResult(ulong node, Frame frame, HostedLobby lobby, LobbyMember? member, LobbyMember? newOwner, LobbyChanges changes)
+    {
+        var changesLobby = frame.Text(3) == "1" || frame.Text(5) == "1" || frame.Text(7) == "1" || frame.Text(9) == "1" ||
+            changes.Lobby.Count > 0 || changes.Search.Count > 0;
+        if (member == null) return LobbyNotFound;
+        if (changesLobby && !SameEntity(lobby.OwnerId, member.Id)) return AccessDenied;
+        if (frame.Text(3) == "1" && newOwner == null) return InvalidArgument;
+        // another machine's update keeps to PlayFab's limits (the SDK fails a whole update that breaks them)
+        if (node != LocalNode && (!Fits(lobby.LobbyProperties, changes.Lobby) || !Fits(lobby.SearchProperties, changes.Search, search: true) ||
+            !Fits(member.Properties, changes.Member) || frame.Text(5) == "1" && frame.UInt(6) is < 2 or > 128)) return InvalidArgument;
+        return 0;
+    }
+
+    // A taken update made to the lobby, and the lobby.updated its members are sent.
+    static Frame Updated(HostedLobby lobby, Frame frame, LobbyMember? newOwner, LobbyMember? member, LobbyChanges changes)
+    {
+        var updated = new Frame("lobby.updated").Add(lobby.Id);
+        if (newOwner != null) lobby.OwnerId = newOwner.Id;
+        updated.Add(newOwner?.Id ?? "");
+        if (frame.Text(5) == "1") lobby.MaxMembers = frame.UInt(6);
+        updated.Add(frame.Text(5) == "1" ? lobby.MaxMembers.ToString(CultureInfo.InvariantCulture) : "");
+        if (frame.Text(7) == "1") lobby.Access = frame.Int(8);
+        updated.Add(frame.Text(7) == "1" ? lobby.Access.ToString(CultureInfo.InvariantCulture) : "");
+        if (frame.Text(9) == "1") lobby.Lock = frame.Int(10);
+        updated.Add(frame.Text(9) == "1" ? lobby.Lock.ToString(CultureInfo.InvariantCulture) : "");
+        Apply(lobby.LobbyProperties, changes.Lobby);
+        Apply(lobby.SearchProperties, changes.Search);
+        updated.Add(changes.Lobby).Add(changes.Search);
+        if (changes.MemberUpdate)
+        {
+            Apply(member!.Properties, changes.Member);
+            updated.Add(1).Add(member.Id).Add(changes.Member);
+        }
+        else updated.Add(0);
+        return updated;
+    }
+
+    void HandleLeave(ulong node, Frame frame, string op)
+    {
+        if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "leave", LobbyNotFound); return; }
+        var memberId = frame.Text(2);
+        var leaving = lobby.Members.Where(m => m.Node == node && (memberId.Length == 0 || SameEntity(m.Id, memberId))).ToList();
+        Answer(node, op, "leave", 0);
+        if (leaving.Count > 0) Leave(lobby, leaving);
+    }
+
+    void HandleKick(ulong node, Frame frame, string op)
+    {
+        // The owner's game removes a member (PFLobbyForceRemoveMember): only from this machine, as the owner, never
+        // itself. The kicked machine leaves, its Party traffic with it, and never rejoins this lobby.
+        if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "kick", LobbyNotFound); return; }
+        if (node != LocalNode || !lobby.Members.Any(m => m.Node == LocalNode && SameEntity(m.Id, lobby.OwnerId))) { Answer(node, op, "kick", AccessDenied); return; }
+        var target = lobby.Members.FirstOrDefault(m => SameEntity(m.Id, frame.Text(2)));
+        if (target == null || target.Node == LocalNode) { Answer(node, op, "kick", InvalidArgument); return; }
+        Kick(lobby, target.Node, frame.Count > 3 && frame.Text(3) == "1");
+        Answer(node, op, "kick", 0);
+    }
+
+    void HandleInvite(ulong node, Frame frame, string op)
+    {
+        // A member invites someone (PFLobbySendInvite): the lobby admits them whatever its privacy (Admission), and the
+        // inviting machine passes the invitation on (Deliver; RelayEvent for a friend's lobby).
+        if (!hosted.TryGetValue(frame.Text(1), out var lobby)) { Answer(node, op, "invite", LobbyNotFound); return; }
+        if (!lobby.Members.Any(m => m.Node == node && SameEntity(m.Id, frame.Text(2)))) { Answer(node, op, "invite", AccessDenied); return; }
+        if (!TryNode(frame.Text(3), out var invitee) || invitee == (node == LocalNode ? LocalId : node)) { Answer(node, op, "invite", InvalidArgument); return; }
+        if (lobby.Kicked.Contains(invitee)) { Answer(node, op, "invite", AccessDenied); return; }
+        if (lobby.Invited.Count >= MaxInvited && !lobby.Invited.Contains(invitee)) lobby.Invited.Remove(lobby.Invited.First());
+        lobby.Invited.Add(invitee);
+        log($"{(node == LocalNode ? "This player" : EntityId(node))} invited {EntityId(invitee)} to lobby {lobby.Id}.");
+        Answer(node, op, "invite", 0);
+        if (node == LocalNode) Deliver(invitee, lobby.Id, lobby.ConnectionString, frame.Text(2));
     }
 
     // Whether a machine may join (null) or why not: kicked, then the lobby's privacy (see the top of this file).

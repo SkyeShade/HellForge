@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup><EmbeddedResource Include="supported-build.json" />
+    <EmbeddedResource Include="supported-languages.json" />
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />
     <EmbeddedResource Include="stats-schema.json" LogicalName="HellForge.Core.stats-schema.json" />
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />

@@ -81,10 +81,12 @@ public static class OpenWar
         return data.RootElement.GetProperty("sectors").EnumerateObject().ToDictionary(s => int.Parse(s.Name, System.Globalization.CultureInfo.InvariantCulture), s => s.Value.GetString()!);
     }
 
-    public static JsonElement Status(JsonElement warInfo, JsonElement status, IReadOnlyDictionary<int, string>? sectors = null, uint seed = 0,
-        bool dealSubfactions = true, bool dealSeaf = true)
+    // The frozen war's planets: where each lies, its full health, which are disabled, and Super Earth's home world(s),
+    // never an enemy's.
+    sealed record Planets(Dictionary<int, (double X, double Y)> Position, Dictionary<int, long> MaxHealth, HashSet<int> Disabled, HashSet<int> Home);
+
+    static Planets ReadPlanets(JsonElement warInfo)
     {
-        sectors ??= Sectors();
         var planets = warInfo.GetProperty("planetInfos");
         var position = new Dictionary<int, (double X, double Y)>();
         var maxHealth = new Dictionary<int, long>();
@@ -97,11 +99,26 @@ public static class OpenWar
             maxHealth[index] = p.GetProperty("maxHealth").GetInt64();
             if (p.TryGetProperty("disabled", out var off) && off.ValueKind == JsonValueKind.True) disabled.Add(index);
         }
-        var home = new HashSet<int>(); // Super Earth's home world(s): never an enemy's
+        return new Planets(position, maxHealth, disabled, HomeWorlds(warInfo, superEarth: true));
+    }
+
+    // The planets of Super Earth's home worlds (superEarth), or of the enemies'.
+    static HashSet<int> HomeWorlds(JsonElement warInfo, bool superEarth)
+    {
+        var home = new HashSet<int>();
         if (warInfo.TryGetProperty("homeWorlds", out var homeWorlds))
             foreach (var h in homeWorlds.EnumerateArray())
-                if (h.GetProperty("race").GetInt32() == SuperEarth)
+                if ((h.GetProperty("race").GetInt32() == SuperEarth) == superEarth)
                     foreach (var i in h.GetProperty("planetIndices").EnumerateArray()) home.Add(i.GetInt32());
+        return home;
+    }
+
+    public static JsonElement Status(JsonElement warInfo, JsonElement status, IReadOnlyDictionary<int, string>? sectors = null, uint seed = 0,
+        bool dealSubfactions = true, bool dealSeaf = true)
+    {
+        sectors ??= Sectors();
+        var planets = ReadPlanets(warInfo);
+        var position = planets.Position;
 
         var node = JsonNode.Parse(status.GetRawText())!.AsObject();
         var planetStatus = node["planetStatus"]!.AsArray();
@@ -126,7 +143,7 @@ public static class OpenWar
         }
         static int Most(IEnumerable<int> factions) => factions.GroupBy(f => f).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).First().Key;
         // one enemy per sector: the frozen war's there, else the fronts' (Super Earth's home world votes for none)
-        var open = owner.Keys.Where(i => !home.Contains(i) && !disabled.Contains(i)).ToList();
+        var open = owner.Keys.Where(i => !planets.Home.Contains(i) && !planets.Disabled.Contains(i)).ToList();
         var sectorEnemy = open.Where(sectors.ContainsKey).GroupBy(i => sectors[i]).ToDictionary(g => g.Key, g =>
         {
             var held = g.Where(i => owner[i] != SuperEarth).Select(i => owner[i]).ToList();
@@ -134,18 +151,41 @@ public static class OpenWar
         });
         int EnemyOf(int index) => sectors.TryGetValue(index, out var sector) && sectorEnemy.TryGetValue(sector, out var enemy) ? enemy : owner[index] != SuperEarth ? owner[index] : Front(index);
 
+        var changed = Liberate(node, planetStatus, planets, owner, EnemyOf);
+        if (node["planetRegions"] is JsonArray regions)
+            foreach (var r in regions)
+                if (r?["planetIndex"] is { } at && changed.TryGetValue((int)at, out var enemy)) r["owner"] = enemy;
+        // subfactions and SEAF allies: dealt planet by planet from the seed, or the frozen war's (its enemy's) kept; an
+        // Illuminate planet always has one; each with its flag (the frozen war's flags go, and come back with them)
+        var now = planetStatus.ToDictionary(p => (int)p!["index"]!, p => (int)p!["owner"]!);
+        var deal = new Dealing(Subfactions(), now, planets, HomeWorlds(warInfo, superEarth: false), seed, dealSubfactions, dealSeaf);
+        var flags = Flags();
+        var effects = new JsonArray();
+        var has = KeepEffects(node, deal, flags.Values.ToHashSet(), effects);
+        DealEffects(effects, deal, has);
+        AddFlags(effects, flags);
+        node["planetActiveEffects"] = effects;
+        EnemyHomeRegions(node, warInfo, now);
+        using var document = JsonDocument.Parse(node.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
+    // Every open planet goes to its enemy and gets one liberation campaign; the frozen war's defenses, attacks and joint
+    // operations go. Returns the planets given to another enemy, with it.
+    static Dictionary<int, int> Liberate(JsonObject node, JsonArray planetStatus, Planets planets, Dictionary<int, int> owner, Func<int, int> enemyOf)
+    {
         var changed = new Dictionary<int, int>();
         var campaigns = new JsonArray();
         foreach (var p in planetStatus.OrderBy(p => (int)p!["index"]!))
         {
             var index = (int)p!["index"]!;
-            if (home.Contains(index) || disabled.Contains(index)) continue;
-            var enemy = EnemyOf(index);
+            if (planets.Home.Contains(index) || planets.Disabled.Contains(index)) continue;
+            var enemy = enemyOf(index);
             if (enemy != owner[index])
             {
                 p["owner"] = enemy;
                 // a planet Super Earth held starts unliberated; one another enemy held keeps its progress
-                if (owner[index] == SuperEarth && maxHealth.TryGetValue(index, out var full)) p["health"] = full;
+                if (owner[index] == SuperEarth && planets.MaxHealth.TryGetValue(index, out var full)) p["health"] = full;
                 changed[index] = enemy;
             }
             campaigns.Add((JsonNode)new JsonObject { ["id"] = CampaignIdBase + index, ["planetIndex"] = index, ["type"] = 0, ["count"] = 1, ["race"] = SuperEarth });
@@ -154,79 +194,99 @@ public static class OpenWar
         node["planetEvents"] = new JsonArray();
         node["planetAttacks"] = new JsonArray();
         node["jointOperations"] = new JsonArray();
-        if (node["planetRegions"] is JsonArray regions)
-            foreach (var r in regions)
-                if (r?["planetIndex"] is { } at && changed.TryGetValue((int)at, out var enemy)) r["owner"] = enemy;
-        // subfactions and SEAF allies: dealt planet by planet from the seed, or the frozen war's (its enemy's) kept; an
-        // Illuminate planet always has one; each with its flag (the frozen war's flags go, and come back with them)
-        var subfactions = Subfactions();
-        var flags = Flags();
-        var flagIds = flags.Values.ToHashSet();
-        var now = planetStatus.ToDictionary(p => (int)p!["index"]!, p => (int)p!["owner"]!);
-        var enemyHomes = new HashSet<int>();
-        if (warInfo.TryGetProperty("homeWorlds", out var worlds))
-            foreach (var h in worlds.EnumerateArray())
-                if (h.GetProperty("race").GetInt32() != SuperEarth)
-                    foreach (var i in h.GetProperty("planetIndices").EnumerateArray()) enemyHomes.Add(i.GetInt32());
+        return changed;
+    }
+
+    // What the subfactions and SEAF allies are dealt from: the subfaction effects (by id, with their enemy; 0 any), each
+    // planet's enemy now, the frozen war's planets, the enemy home worlds, the seed, and whether each kind is dealt.
+    sealed record Dealing(IReadOnlyDictionary<int, int> Subfactions, Dictionary<int, int> Now, Planets Planets, HashSet<int> EnemyHomes, uint Seed,
+        bool DealSubfactions, bool DealSeaf)
+    {
         // key planets keep the frozen war's subfactions of their enemy, dealt or not: the enemy home worlds and KeyPlanets
-        bool Key(int index) => enemyHomes.Contains(index) || KeyPlanets.Contains(index);
-        var effects = new JsonArray();
+        public bool Key(int index) => EnemyHomes.Contains(index) || KeyPlanets.Contains(index);
+        public uint Roll(int index, string what) => StableHash(index.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/" + what + "/" +
+            Seed.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    static void Add(JsonArray effects, int index, int id) => effects.Add((JsonNode)new JsonObject { ["index"] = index, ["galacticEffectId"] = id });
+
+    // The frozen war's effects that stay, added to effects: all but the flags (they come back with their subfactions), the
+    // effects that keep a campaign from offering missions, Super Earth's home world's, another enemy's subfactions and
+    // those dealt anew. Returns the planets that keep a subfaction of their enemy's.
+    static HashSet<int> KeepEffects(JsonObject node, Dealing deal, HashSet<int> flagIds, JsonArray effects)
+    {
         var has = new HashSet<int>();
-        var text = seed.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        uint Roll(int index, string what) => StableHash(index.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/" + what + "/" + text);
-        void Add(int index, int id) => effects.Add((JsonNode)new JsonObject { ["index"] = index, ["galacticEffectId"] = id });
         foreach (var e in node["planetActiveEffects"] as JsonArray ?? [])
         {
             int index = (int)e!["index"]!, id = (int)e["galacticEffectId"]!;
-            if (flagIds.Contains(id) || NoMissions.Contains(id) || home.Contains(index)) continue;
-            if (subfactions.TryGetValue(id, out var of))
-            {
-                if (!now.TryGetValue(index, out var holder) || of != 0 && holder != of) continue; /* another enemy's */
-                if (of == 0 ? dealSeaf : dealSubfactions && !Key(index)) continue; /* dealt anew */
-                if (of != 0) has.Add(index);
-            }
-            Add(index, id);
+            if (!Stays(deal, flagIds, index, id, out var subfaction)) continue;
+            if (subfaction) has.Add(index);
+            Add(effects, index, id);
         }
-        var held = now.Where(o => o.Value != SuperEarth && !home.Contains(o.Key) && !disabled.Contains(o.Key)).Select(o => o.Key).OrderBy(i => i).ToList();
+        return has;
+    }
+
+    // Whether a frozen-war effect on a planet stays (KeepEffects); subfaction: it is a subfaction of the planet's enemy.
+    static bool Stays(Dealing deal, HashSet<int> flagIds, int index, int id, out bool subfaction)
+    {
+        subfaction = false;
+        if (flagIds.Contains(id) || NoMissions.Contains(id) || deal.Planets.Home.Contains(index)) return false;
+        if (!deal.Subfactions.TryGetValue(id, out var of)) return true;
+        if (!deal.Now.TryGetValue(index, out var holder) || of != 0 && holder != of) return false; /* another enemy's */
+        if (of == 0 ? deal.DealSeaf : deal.DealSubfactions && !deal.Key(index)) return false; /* dealt anew */
+        subfaction = of != 0;
+        return true;
+    }
+
+    // Each enemy's planets without one of its subfactions: dealt, half of them (by the seed's order) go without and the
+    // others get one; not dealt, only an Illuminate planet without one gets one. Then the SEAF allies, when dealt: about
+    // one enemy planet in eight.
+    static void DealEffects(JsonArray effects, Dealing deal, HashSet<int> has)
+    {
+        var now = deal.Now;
+        var held = now.Where(o => o.Value != SuperEarth && !deal.Planets.Home.Contains(o.Key) && !deal.Planets.Disabled.Contains(o.Key))
+            .Select(o => o.Key).OrderBy(i => i).ToList();
         foreach (var enemy in held.Select(i => now[i]).Distinct().Order())
         {
-            var choices = subfactions.Where(s => s.Value == enemy).Select(s => s.Key).OrderBy(id => id).ToList();
+            var choices = deal.Subfactions.Where(s => s.Value == enemy).Select(s => s.Key).OrderBy(id => id).ToList();
             if (choices.Count == 0) continue;
-            // dealt: half of the enemy's planets (by the seed's order) go without; not dealt, only an Illuminate planet
-            // without one gets one
-            var theirs = held.Where(i => now[i] == enemy && !has.Contains(i)).OrderBy(i => Roll(i, "order")).ThenBy(i => i).ToList();
-            var without = enemy == Illuminate ? 0 : !dealSubfactions ? theirs.Count : theirs.Count / 2;
-            foreach (var index in theirs.Skip(without)) Add(index, choices[(int)(Roll(index, "subfaction") % (uint)choices.Count)]);
+            var theirs = held.Where(i => now[i] == enemy && !has.Contains(i)).OrderBy(i => deal.Roll(i, "order")).ThenBy(i => i).ToList();
+            var without = enemy == Illuminate ? 0 : !deal.DealSubfactions ? theirs.Count : theirs.Count / 2;
+            foreach (var index in theirs.Skip(without)) Add(effects, index, choices[(int)(deal.Roll(index, "subfaction") % (uint)choices.Count)]);
         }
-        if (dealSeaf)
-            foreach (var seaf in subfactions.Where(s => s.Value == 0).Select(s => s.Key).Order())
-                foreach (var index in held.Where(i => Roll(i, "seaf/" + seaf.ToString(System.Globalization.CultureInfo.InvariantCulture)) % 8 == 0)) Add(index, seaf);
+        if (!deal.DealSeaf) return;
+        foreach (var seaf in deal.Subfactions.Where(s => s.Value == 0).Select(s => s.Key).Order())
+            foreach (var index in held.Where(i => deal.Roll(i, "seaf/" + seaf.ToString(System.Globalization.CultureInfo.InvariantCulture)) % 8 == 0)) Add(effects, index, seaf);
+    }
+
+    // Each subfaction's flag (type 71) beside it.
+    static void AddFlags(JsonArray effects, IReadOnlyDictionary<int, int> flags)
+    {
         foreach (var e in effects.ToList())
-            if (flags.TryGetValue((int)e!["galacticEffectId"]!, out var flag))
-                effects.Add((JsonNode)new JsonObject { ["index"] = (int)e["index"]!, ["galacticEffectId"] = flag });
-        node["planetActiveEffects"] = effects;
-        // an enemy home world's regions: its operations (Cyberstan's Megafactories)
-        if (enemyHomes.Count > 0 && warInfo.TryGetProperty("planetRegions", out var regionInfos))
+            if (flags.TryGetValue((int)e!["galacticEffectId"]!, out var flag)) Add(effects, (int)e["index"]!, flag);
+    }
+
+    // an enemy home world's regions: its operations (Cyberstan's Megafactories)
+    static void EnemyHomeRegions(JsonObject node, JsonElement warInfo, Dictionary<int, int> now)
+    {
+        var enemyHomes = HomeWorlds(warInfo, superEarth: false);
+        if (enemyHomes.Count == 0 || !warInfo.TryGetProperty("planetRegions", out var regionInfos)) return;
+        var rows = node["planetRegions"] as JsonArray ?? [];
+        var kept = new JsonArray();
+        foreach (var r in rows.ToList())
+            if (r?["planetIndex"] is not { } at || !enemyHomes.Contains((int)at)) { rows.Remove(r); kept.Add(r); }
+        foreach (var region in regionInfos.EnumerateArray())
         {
-            var rows = node["planetRegions"] as JsonArray ?? [];
-            var kept = new JsonArray();
-            foreach (var r in rows.ToList())
-                if (r?["planetIndex"] is not { } at || !enemyHomes.Contains((int)at)) { rows.Remove(r); kept.Add(r); }
-            foreach (var region in regionInfos.EnumerateArray())
+            var index = region.GetProperty("planetIndex").GetInt32();
+            if (!enemyHomes.Contains(index) || !now.TryGetValue(index, out var holder) || holder == SuperEarth) continue;
+            var health = region.GetProperty("maxHealth").GetInt64();
+            kept.Add((JsonNode)new JsonObject
             {
-                var index = region.GetProperty("planetIndex").GetInt32();
-                if (!enemyHomes.Contains(index) || !now.TryGetValue(index, out var holder) || holder == SuperEarth) continue;
-                var health = region.GetProperty("maxHealth").GetInt64();
-                kept.Add((JsonNode)new JsonObject
-                {
-                    ["planetIndex"] = index, ["regionIndex"] = region.GetProperty("regionIndex").GetInt32(), ["owner"] = holder,
-                    ["health"] = health, ["regerPerSecond"] = (float)(health / 360000.0), ["availabilityFactor"] = 1,
-                    ["isAvailable"] = true, ["players"] = 0,
-                });
-            }
-            node["planetRegions"] = kept;
+                ["planetIndex"] = index, ["regionIndex"] = region.GetProperty("regionIndex").GetInt32(), ["owner"] = holder,
+                ["health"] = health, ["regerPerSecond"] = (float)(health / 360000.0), ["availabilityFactor"] = 1,
+                ["isAvailable"] = true, ["players"] = 0,
+            });
         }
-        using var document = JsonDocument.Parse(node.ToJsonString());
-        return document.RootElement.Clone();
+        node["planetRegions"] = kept;
     }
 }

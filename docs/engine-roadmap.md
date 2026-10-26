@@ -4,7 +4,7 @@ This page is for contributors. It lists what is done and what is planned in the 
 backend, the mod loader and the stand-ins); [engine.md](engine.md) describes the engine as it is, and
 [sdk-roadmap.md](sdk-roadmap.md) is the mod SDK's side.
 
-Current versions: HellForge 0.3.0-dev.11, engine 0.1.39, mod SDK 15 (`Directory.Build.props`,
+Current versions: HellForge 0.3.0-beta, engine 0.1.40, mod SDK 15 (`Directory.Build.props`,
 `native/mod-sdk/hellforge_mod.h`).
 
 ## Network isolation
@@ -36,6 +36,10 @@ Seen in the beta (2026-10-18):
 - Security suites and VPNs whose own network filters let traffic past the rules (Kaspersky; a VPN kill switch). The
   probe's outside connection times out (-1) instead of being refused, and the session stops with "Required
   loopback/egress controls failed".
+- (0.2.0 tickets, 2026-10-24 to 26) The same timeout with no VPN or security suite, on installs on D: and E:: the WFP
+  block proved at install and gone days later, a fresh install the only fix. Its filters name programs by the volume's
+  device path, which can change between boots for a non-system drive, and a moved folder leaves them behind. Since
+  0.3.0 a session whose WFP block does not hold places it again once (one prompt) and says which part failed.
 
 ### Step 1: census
 

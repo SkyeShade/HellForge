@@ -73,43 +73,52 @@ public static class LobbyRecords
     {
         switch (kind)
         {
-            case Kind.Integer or Kind.Long:
-                return value is JsonValue number && number.GetValueKind() == JsonValueKind.Number && number.TryGetValue<long>(out var whole) && whole >= min && whole <= max
-                    ? JsonValue.Create(whole) : null;
-            case Kind.Bool:
-                return value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False ? JsonValue.Create(value.GetValue<bool>()) : null;
+            case Kind.Integer or Kind.Long: return Whole(value, min, max);
+            case Kind.Bool: return value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False ? JsonValue.Create(value.GetValue<bool>()) : null;
             case Kind.Text:
-            case Kind.Hash:
-            {
-                if (value?.GetValueKind() != JsonValueKind.String) return null;
-                var text = value.GetValue<string>();
-                if (text.Length > max || text.Any(char.IsControl) || kind == Kind.Hash && !text.All(char.IsAsciiLetterOrDigit)) return null;
-                return JsonValue.Create(text);
-            }
+            case Kind.Hash: return Text(value, kind, max);
             case Kind.Seed:
                 return value?.GetValueKind() == JsonValueKind.String && value.GetValue<string>() is var seed && MissionSeed.Valid(seed) ? JsonValue.Create(seed) : null;
-            case Kind.AccountIds when max == 0:
-                return Account(value, host);
-            case Kind.AccountIds:
-            {
-                if (value is not JsonArray ids || ids.Count > max) return null;
-                var clean = new JsonArray();
-                foreach (var id in ids)
-                    if (Account(id, host) is { } kept) clean.Add((JsonNode?)kept);
-                    else if (strict) return null;
-                return clean;
-            }
-            case Kind.Players or Kind.Missions:
-            {
-                if (value is not JsonArray list || list.Count > max) return null;
-                var clean = new JsonArray();
-                foreach (var item in list)
-                    if (item is JsonObject entry && Object(entry, kind == Kind.Players ? PlayerFields : MissionFields, strict, host) is { } kept) clean.Add((JsonNode?)kept);
-                    else if (strict) return null;
-                return clean;
-            }
+            case Kind.AccountIds when max == 0: return Account(value, host);
+            case Kind.AccountIds: return Accounts(value, max, strict, host);
+            case Kind.Players or Kind.Missions: return Objects(value, kind == Kind.Players ? PlayerFields : MissionFields, max, strict, host);
         }
         return null;
+    }
+
+    static JsonNode? Whole(JsonNode? value, long min, long max) =>
+        value is JsonValue number && number.GetValueKind() == JsonValueKind.Number && number.TryGetValue<long>(out var whole) && whole >= min && whole <= max
+            ? JsonValue.Create(whole) : null;
+
+    // A text of at most max characters, no control characters; a hash only letters and digits.
+    static JsonNode? Text(JsonNode? value, Kind kind, long max)
+    {
+        if (value?.GetValueKind() != JsonValueKind.String) return null;
+        var text = value.GetValue<string>();
+        if (text.Length > max || text.Any(char.IsControl) || kind == Kind.Hash && !text.All(char.IsAsciiLetterOrDigit)) return null;
+        return JsonValue.Create(text);
+    }
+
+    // A list of at most max account ids (Account); strict: null when one is not one, else it is left out.
+    static JsonNode? Accounts(JsonNode? value, long max, bool strict, ulong host)
+    {
+        if (value is not JsonArray ids || ids.Count > max) return null;
+        var clean = new JsonArray();
+        foreach (var id in ids)
+            if (Account(id, host) is { } kept) clean.Add((JsonNode?)kept);
+            else if (strict) return null;
+        return clean;
+    }
+
+    // A list of at most max objects of these fields (players, missions); strict: null when one is wrong, else it is left out.
+    static JsonNode? Objects(JsonNode? value, Dictionary<string, (Kind Kind, long Min, long Max)> fields, long max, bool strict, ulong host)
+    {
+        if (value is not JsonArray list || list.Count > max) return null;
+        var clean = new JsonArray();
+        foreach (var item in list)
+            if (item is JsonObject entry && Object(entry, fields, strict, host) is { } kept) clean.Add((JsonNode?)kept);
+            else if (strict) return null;
+        return clean;
     }
 
     // An account id: the SteamID64 in decimal, as text ("%llu") or a number; others than host become 0 of the same kind.

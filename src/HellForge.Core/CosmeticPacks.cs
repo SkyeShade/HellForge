@@ -45,34 +45,40 @@ public static partial class CosmeticPacks
     // The pack as a mod: id pack.<guid> (or pack.<folder name>), cosmetic, with the folders the choice stages.
     public static ModManifest Parse(string folder, Choice choice)
     {
-        string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)), description = "", id;
-        string? icon = null, guid = null;
-        var options = new List<Option>();
-        var manifest = Path.Combine(folder, ManifestName);
-        if (File.Exists(manifest))
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(manifest), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{ManifestName} is not an object.");
-            name = Text(root, "Name") is { Length: > 0 } n ? n : name;
-            description = Text(root, "Description") ?? "";
-            guid = Text(root, "Guid");
-            icon = Inside(folder, Text(root, "IconPath"));
-            if (root.TryGetProperty("Options", out var list) && list.ValueKind == JsonValueKind.Array)
-                foreach (var option in list.EnumerateArray()) options.Add(ReadOption(folder, option));
-        }
-        id = guid != null && Guid.TryParse(guid, out var g) ? "pack." + g.ToString("D") : "pack." + Slug(name);
+        var (name, description, guid, icon, options) = ReadManifest(folder, Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)));
+        var id = guid != null && Guid.TryParse(guid, out var g) ? "pack." + g.ToString("D") : "pack." + Slug(name);
         var rootPatches = Directory.EnumerateFiles(folder).Any(f => ModCatalog.PatchFile().IsMatch(Path.GetFileName(f)));
         if (options.Count == 0 && !rootPatches) throw new InvalidDataException("the pack has no options and no patches at its root.");
-        // any patch in it, whichever options are on: a Lua mod (ModManifest.Lua)
-        var lua = Directory.EnumerateFiles(folder, "*.patch_*", SearchOption.AllDirectories)
-            .Any(f => ModCatalog.PatchFile().Match(Path.GetFileName(f)) is { Success: true } m && m.Groups[2].Length == 0 && ModCatalog.HoldsLua(f));
+        var lua = HoldsLua(folder);
         var pack = new Pack(icon, options, rootPatches);
         var folders = Folders(folder, pack, choice);
         foreach (var f in folders.Where(f => !Directory.Exists(f)))
             throw new InvalidDataException($"an option includes {Path.GetRelativePath(folder, f)}, which the pack does not have.");
         return new ModManifest(id, name, "", description, false, folder, [], [], []) { Pack = pack, PackChoice = choice, PackFolders = folders, Icon = icon != null && File.Exists(icon) ? icon : null, Lua = lua };
     }
+
+    // What the pack's manifest.json says, when it has one: its name (else the folder's), description, guid, icon and options.
+    static (string Name, string Description, string? Guid, string? Icon, List<Option> Options) ReadManifest(string folder, string name)
+    {
+        var options = new List<Option>();
+        var manifest = Path.Combine(folder, ManifestName);
+        if (!File.Exists(manifest)) return (name, "", null, null, options);
+        using var document = JsonDocument.Parse(File.ReadAllText(manifest), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{ManifestName} is not an object.");
+        name = Text(root, "Name") is { Length: > 0 } n ? n : name;
+        var description = Text(root, "Description") ?? "";
+        var guid = Text(root, "Guid");
+        var icon = Inside(folder, Text(root, "IconPath"));
+        if (root.TryGetProperty("Options", out var list) && list.ValueKind == JsonValueKind.Array)
+            foreach (var option in list.EnumerateArray()) options.Add(ReadOption(folder, option));
+        return (name, description, guid, icon, options);
+    }
+
+    // Any patch in it, whichever options are on: a Lua mod (ModManifest.Lua).
+    static bool HoldsLua(string folder) =>
+        Directory.EnumerateFiles(folder, "*.patch_*", SearchOption.AllDirectories)
+            .Any(f => ModCatalog.PatchFile().Match(Path.GetFileName(f)) is { Success: true } m && m.Groups[2].Length == 0 && ModCatalog.HoldsLua(f));
 
     // The folders a choice stages, in the manifest's order: the root (if it has patches), then each option switched on with
     // its chosen sub-option (the first unless chosen).

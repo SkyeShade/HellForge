@@ -716,6 +716,15 @@ its text is in the game's own FS Sinclair, both extracted from the installation'
 (`game-icons.bin`, `fs-sinclair*.ttf`; never published). Its buttons play the game's menu sounds through the game's own
 UI sound path (checked byte for byte; silent on another build).
 
+With the game's HDR on, it draws in HDR too. The game then renders into a 10-bit back buffer in HDR10 (8-bit without),
+and the editor's colours written as they are came out washed out. When the back buffer is 10-bit and the display the
+game is on is in HDR (its DXGI colour space ST.2084), the editor's pixel shader makes its sRGB colours linear, sets them
+at the brightness Windows gives SDR content on that display ("SDR content brightness"; 200 nits when Windows cannot
+say), moves them to Rec.2020 and PQ-encodes them; with a 16-bit float back buffer it writes scRGB. ImGui's DX11 and DX12
+renderers take that shader through a one-line change `Build-Editor.ps1` makes in a copy of each. The editor's log
+(`mod-hellforge.editor.log`) says which it chose; `HELLFORGE_EDITOR_HDR=off|pq|scrgb[:nits]` decides instead (the tests use it). A
+10-bit back buffer on an SDR display stays SDR.
+
 The ENEMIES group is the HD2R Editor's Enemies pages: Terminids, Automatons, Illuminate, Structures and Other Entities.
 These are the 1,170-odd entities HD2Runtime's enemy catalogue lists, from `mappings/entities.json`
 (`scripts/ExportEntities.py`, which reads HD2Runtime's `domains/enemy_authoring.lua` and `enemy_controls.lua` as

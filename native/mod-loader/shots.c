@@ -104,6 +104,76 @@ static int ShotsSlotOf(const char* component, uint32_t offset)
     return !strcmp(component, "WeaponRoundsComponentData") && offset == 64 ? SHOT_NORMAL : -1;
 }
 
+/* The shooter among the players (the weapon's wielder), and *me this machine's player's peer. g_shotsLock held. */
+static const ShotPlayer* ShotShooter(uint32_t wielder, uint64_t* me)
+{
+    const ShotPlayer* shooter = NULL;
+    for (int i = 0; i < g_shotPlayerCount; i++)
+    {
+        if (wielder != 0 && g_shotPlayers[i].avatar == wielder) shooter = &g_shotPlayers[i];
+        if (g_shotPlayers[i].local) *me = g_shotPlayers[i].peer;
+    }
+    return shooter;
+}
+
+/* the round's stock type: what this machine fires is its own, swapped or not; a type this machine's swap made
+ * (noted where it wrote it, or for a stock member, its own rule) stands for the stock round it replaced (*swapped).
+ * g_shotsLock held. */
+static uint32_t ShotStock(uint64_t resource, int slot, uint32_t selected, uint64_t me, int* swapped)
+{
+    uint32_t stock = selected;
+    for (int i = 0; i < g_shotLocalCount; i++)
+    {
+        const ShotLocal* l = &g_shotLocal[i];
+        if (l->resource == resource && l->slot == slot && l->now == selected && l->base != l->now) { stock = l->base; *swapped = 1; }
+    }
+    for (int i = 0; me != 0 && i < g_shotRuleCount; i++)
+    {
+        const ShotRule* r = &g_shotRules[i];
+        if (r->peer == me && r->resource == resource && r->slot == slot && r->stock && r->type == selected && r->stock != r->type)
+        { stock = r->stock; *swapped = 1; }
+    }
+    return stock;
+}
+
+/* the shooter's swap of that round: a weapon may carry one per round (an ammunition option, a charge or heat level,
+ * a magazine's tracer). g_shotsLock held. */
+static const ShotRule* ShotRuleOf(uint64_t peer, uint64_t resource, int slot, uint32_t stock)
+{
+    const ShotRule* rule = NULL;
+    for (int i = 0; i < g_shotRuleCount; i++)
+    {
+        const ShotRule* r = &g_shotRules[i];
+        if (r->peer == peer && r->resource == resource && r->slot == slot && r->ready && r->native == stock) rule = r;
+    }
+    return rule;
+}
+
+/* A weapon with a lobby swap fired with no player found as its wielder: noted for the log (ShotsTick). g_shotsLock held. */
+static void ShotNoteUnowned(uint64_t resource, uint32_t wielder)
+{
+    for (int i = 0; i < g_shotRuleCount; i++)
+        if (g_shotRules[i].resource == resource && g_shotUnowned != (LONG64)resource)
+        {
+            InterlockedExchange(&g_shotUnownedWielder, (LONG)wielder);
+            InterlockedExchange64(&g_shotUnowned, (LONG64)resource);
+            break;
+        }
+}
+
+/* The round a player's shot fires: their swap of it, else (another player's gun) the stock round this machine's swap
+ * replaced, else what the game chose. g_shotsLock held. */
+static uint32_t ShotChoice(const ShotPlayer* shooter, uint64_t me, uint64_t resource, int slot, uint32_t selected)
+{
+    int swapped = 0;
+    uint32_t stock = ShotStock(resource, slot, selected, me, &swapped);
+    const ShotRule* rule = ShotRuleOf(shooter->peer, resource, slot, stock);
+    /* a round no rule names (a mode's, another ammunition's) stays */
+    if (rule != NULL) return rule->type;
+    if (!shooter->local && swapped) return stock; /* another player's gun: not this machine's swap */
+    return selected;
+}
+
 /* The round a shot fires in a slot (see the top): from a stub, on the thread that fires. */
 static uint32_t ShotPick(int slot, uint32_t selected, const uint8_t* source)
 {
@@ -114,49 +184,10 @@ static uint32_t ShotPick(int slot, uint32_t selected, const uint8_t* source)
     uint32_t wielder = weapon ? g_shotWielder(weapon) : 0;
     uint32_t chosen = selected;
     AcquireSRWLockShared(&g_shotsLock);
-    const ShotPlayer* shooter = NULL;
     uint64_t me = 0;
-    for (int i = 0; i < g_shotPlayerCount; i++)
-    {
-        if (wielder != 0 && g_shotPlayers[i].avatar == wielder) shooter = &g_shotPlayers[i];
-        if (g_shotPlayers[i].local) me = g_shotPlayers[i].peer;
-    }
-    /* the round's stock type: what this machine fires is its own, swapped or not; a type this machine's swap made
-     * (noted where it wrote it, or for a stock member, its own rule) stands for the stock round it replaced */
-    uint32_t stock = selected;
-    int swapped = 0;
-    for (int i = 0; shooter != NULL && i < g_shotLocalCount; i++)
-    {
-        const ShotLocal* l = &g_shotLocal[i];
-        if (l->resource == resource && l->slot == slot && l->now == selected && l->base != l->now) { stock = l->base; swapped = 1; }
-    }
-    for (int i = 0; shooter != NULL && me != 0 && i < g_shotRuleCount; i++)
-    {
-        const ShotRule* r = &g_shotRules[i];
-        if (r->peer == me && r->resource == resource && r->slot == slot && r->stock && r->type == selected && r->stock != r->type)
-        { stock = r->stock; swapped = 1; }
-    }
-    /* the shooter's swap of that round: a weapon may carry one per round (an ammunition option, a charge or heat level,
-     * a magazine's tracer) */
-    const ShotRule* rule = NULL;
-    for (int i = 0; shooter != NULL && i < g_shotRuleCount; i++)
-    {
-        const ShotRule* r = &g_shotRules[i];
-        if (r->peer == shooter->peer && r->resource == resource && r->slot == slot && r->ready && r->native == stock) rule = r;
-    }
-    for (int i = 0; shooter == NULL && i < g_shotRuleCount; i++)
-        if (g_shotRules[i].resource == resource && g_shotUnowned != (LONG64)resource)
-        {
-            InterlockedExchange(&g_shotUnownedWielder, (LONG)wielder);
-            InterlockedExchange64(&g_shotUnowned, (LONG64)resource);
-            break;
-        }
-    /* a round no rule names (a mode's, another ammunition's) stays */
-    if (shooter != NULL)
-    {
-        if (rule != NULL) chosen = rule->type;
-        else if (!shooter->local && swapped) chosen = stock; /* another player's gun: not this machine's swap */
-    }
+    const ShotPlayer* shooter = ShotShooter(wielder, &me);
+    if (shooter == NULL) ShotNoteUnowned(resource, wielder);
+    else chosen = ShotChoice(shooter, me, resource, slot, selected);
     ReleaseSRWLockShared(&g_shotsLock);
     if (chosen != selected) InterlockedIncrement(&g_shotChanged);
     return chosen;
@@ -167,6 +198,49 @@ static uint32_t ShotType(uint32_t selected, const uint8_t* source) { return Shot
 
 /* The programmable round while the weapon's function is on (the stub at 0x615B23): 0 keeps the shot's type. */
 static uint32_t ShotFunctionType(uint32_t round, const uint8_t* source) { return round == 0 ? 0 : ShotPick(SHOT_FUNCTION, round, source); }
+
+/* A rule's suffix at end: "/r" (a rounds feed's), "/f" (the programmable round's), "/<stock type>", or none. Past it,
+ * or NULL when malformed. */
+static const char* ShotSuffix(const char* end, int* rounds, int* slot, unsigned long* stock)
+{
+    if (*end == '/' && end[1] == 'r') { *rounds = 1; return end + 2; }
+    if (*end == '/' && end[1] == 'f') { *slot = SHOT_FUNCTION; return end + 2; }
+    if (*end != '/') return end;
+    const char* s = end + 1;
+    char* after;
+    *stock = strtoul(s, &after, 10);
+    if (after == s || *stock == 0 || *stock > 0xFFFF) return NULL;
+    return after;
+}
+
+/* One rule of the list, at `at`, into *rule: where the next one starts (past its comma), or NULL when malformed. */
+static const char* ShotParseRule(const char* at, ShotRule* rule)
+{
+    char* end;
+    uint64_t peer = strtoull(at, &end, 16);
+    if (end == at || *end != ':') return NULL;
+    const char* r = end + 1;
+    uint64_t resource = strtoull(r, &end, 16);
+    if (end == r || *end != '=') return NULL;
+    const char* t = end + 1;
+    unsigned long type = strtoul(t, &end, 10), stock = 0;
+    int rounds = 0, slot = SHOT_NORMAL;
+    if (end == t || type == 0 || type > 0xFFFF) return NULL;
+    const char* next = ShotSuffix(end, &rounds, &slot, &stock);
+    if (next == NULL || (*next != ',' && *next != 0)) return NULL;
+    *rule = (ShotRule){peer, resource, (uint32_t)type, (uint32_t)stock, (uint32_t)stock, slot, rounds, 0};
+    return *next == ',' ? next + 1 : next;
+}
+
+/* a rule that was ready stays so (its round here kept). g_shotsLock held. */
+static void ShotKeepReady(ShotRule* rules, int count)
+{
+    for (int i = 0; i < count; i++)
+        for (int j = 0; j < g_shotRuleCount; j++)
+            if (g_shotRules[j].peer == rules[i].peer && g_shotRules[j].resource == rules[i].resource && g_shotRules[j].type == rules[i].type &&
+                g_shotRules[j].stock == rules[i].stock && g_shotRules[j].slot == rules[i].slot && g_shotRules[j].rounds == rules[i].rounds)
+                { rules[i].ready = g_shotRules[j].ready; rules[i].native = g_shotRules[j].native; }
+}
 
 /* live.c "shots": the lobby's rules, "<peer hex>:<resource hex>=<type>[/r|/f|/<stock type>]" comma separated (the
  * weapon's resource; "/r" a rounds feed's swap, "/f" a programmable round's, "/<stock type>" the swap of the round with
@@ -179,35 +253,13 @@ static int ShotsSetRules(const char* list, const char** why)
     int count = 0;
     for (const char* at = list; strcmp(list, "-") && *at;)
     {
-        char* end;
         if (count == SHOT_RULES) { *why = "more rules than HellForge keeps"; return 0; }
-        uint64_t peer = strtoull(at, &end, 16);
-        if (end == at || *end != ':') { *why = "malformed rule"; return 0; }
-        const char* r = end + 1;
-        uint64_t resource = strtoull(r, &end, 16);
-        if (end == r || *end != '=') { *why = "malformed rule"; return 0; }
-        const char* t = end + 1;
-        unsigned long type = strtoul(t, &end, 10), stock = 0;
-        int rounds = 0, slot = SHOT_NORMAL;
-        if (end == t || type == 0 || type > 0xFFFF) { *why = "malformed rule"; return 0; }
-        if (*end == '/' && end[1] == 'r') { rounds = 1; end += 2; }
-        else if (*end == '/' && end[1] == 'f') { slot = SHOT_FUNCTION; end += 2; }
-        else if (*end == '/')
-        {
-            const char* s = end + 1;
-            stock = strtoul(s, &end, 10);
-            if (end == s || stock == 0 || stock > 0xFFFF) { *why = "malformed rule"; return 0; }
-        }
-        if (*end != ',' && *end != 0) { *why = "malformed rule"; return 0; }
-        rules[count++] = (ShotRule){peer, resource, (uint32_t)type, (uint32_t)stock, (uint32_t)stock, slot, rounds, 0};
-        at = *end == ',' ? end + 1 : end;
+        at = ShotParseRule(at, &rules[count]);
+        if (at == NULL) { *why = "malformed rule"; return 0; }
+        count++;
     }
     AcquireSRWLockExclusive(&g_shotsLock);
-    for (int i = 0; i < count; i++) /* a rule that was ready stays so */
-        for (int j = 0; j < g_shotRuleCount; j++)
-            if (g_shotRules[j].peer == rules[i].peer && g_shotRules[j].resource == rules[i].resource && g_shotRules[j].type == rules[i].type &&
-                g_shotRules[j].stock == rules[i].stock && g_shotRules[j].slot == rules[i].slot && g_shotRules[j].rounds == rules[i].rounds)
-                { rules[i].ready = g_shotRules[j].ready; rules[i].native = g_shotRules[j].native; }
+    ShotKeepReady(rules, count);
     memcpy(g_shotRules, rules, sizeof rules[0] * (size_t)count);
     g_shotRuleCount = count;
     InterlockedExchange(&g_shotsActive, count > 0);
@@ -216,17 +268,46 @@ static int ShotsSetRules(const char* list, const char** why)
     return 1;
 }
 
-/* The watch loop, after the game loads: the players (peer and Helldiver), each rule's readiness (its row and
- * packages), and the hook once its bytes read as reviewed (60 s for code still being decoded). */
-static void ShotsTick(void)
+/* The rule's readiness: its projectile's row and packages (refs.c RefCheck). *native: the slot's round here, its
+ * ammunition's stock type, else its WeaponRounds +64 or ProjectileWeapon +0 / +0x240 record's (a shared record: read
+ * only); 0 ready when that does not read. */
+static int ShotRuleReady(const ShotRule* r, uint32_t* native)
 {
-    static ULONGLONG next;
-    ULONGLONG now = GetTickCount64();
-    if (now < next) return;
-    next = now + 250;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    if (game == 0) return;
-    g_shotGame = game;
+    char why[200];
+    int ready = r->ready || RefCheck(REF_PROJECTILE, r->type, 0xFFFFFFFFu, 0, why, sizeof why) == REF_OK;
+    *native = r->stock;
+    if (*native != 0) return ready;
+    uint32_t stride = 0;
+    uintptr_t record = g_fieldRecord(r->rounds ? "WeaponRoundsComponentData" : "ProjectileWeaponComponentData", r->resource, &stride, 1);
+    uint32_t at = r->rounds ? 64 : r->slot == SHOT_FUNCTION ? SHOT_FUNCTION_ROUND : 0;
+    if (record == 0 || SafeRead(record + at, native, 4)) ready = 0;
+    return ready;
+}
+
+/* a record this machine swapped holds its swap: the round it stands for is the stock one. g_shotsLock held. */
+static uint32_t ShotLocalBase(const ShotRule* r, uint32_t native)
+{
+    for (int j = 0; j < g_shotLocalCount; j++)
+        if (g_shotLocal[j].resource == r->resource && g_shotLocal[j].slot == r->slot && g_shotLocal[j].now == native)
+            native = g_shotLocal[j].base;
+    return native;
+}
+
+/* The lobby's rule i, still the one copied: its round here, and ready once it is (logged). g_shotsLock held. */
+static void ShotRuleUpdate(int i, const ShotRule* copy, uint32_t native, int ready)
+{
+    ShotRule* r = &g_shotRules[i];
+    if (r->peer != copy->peer || r->resource != copy->resource || r->slot != copy->slot) return;
+    r->native = native;
+    if (!ready || r->ready) return;
+    r->ready = 1;
+    Note("shots: player %016llx's %016llx fires projectile %u%s", (unsigned long long)copy->peer, (unsigned long long)copy->resource, copy->type,
+        copy->slot == SHOT_FUNCTION ? " (its programmable round)" : "");
+}
+
+/* The players (peer and Helldiver), and each rule's readiness and round here. */
+static void ShotsUpdate(uintptr_t game)
+{
     EvpPlayer players[EVT_MAX_PLAYERS];
     int count = EvpPlayers(game, players);
     int ready[SHOT_RULES], rules;
@@ -236,37 +317,18 @@ static void ShotsTick(void)
     memcpy(copy, g_shotRules, sizeof copy[0] * (size_t)rules);
     ReleaseSRWLockShared(&g_shotsLock);
     uint32_t native[SHOT_RULES];
-    for (int i = 0; i < rules; i++)
-    {
-        char why[200];
-        ready[i] = copy[i].ready || RefCheck(REF_PROJECTILE, copy[i].type, 0xFFFFFFFFu, 0, why, sizeof why) == REF_OK;
-        /* the slot's round here: its ammunition's stock type, else its WeaponRounds +64 or ProjectileWeapon +0 / +0x240
-         * record's (a shared record: read only) */
-        native[i] = copy[i].stock;
-        if (native[i] != 0) continue;
-        uint32_t stride = 0;
-        uintptr_t record = g_fieldRecord(copy[i].rounds ? "WeaponRoundsComponentData" : "ProjectileWeaponComponentData", copy[i].resource, &stride, 1);
-        uint32_t at = copy[i].rounds ? 64 : copy[i].slot == SHOT_FUNCTION ? SHOT_FUNCTION_ROUND : 0;
-        if (record == 0 || SafeRead(record + at, &native[i], 4)) ready[i] = 0;
-    }
+    for (int i = 0; i < rules; i++) ready[i] = ShotRuleReady(&copy[i], &native[i]);
     AcquireSRWLockExclusive(&g_shotsLock);
-    for (int i = 0; i < rules; i++) /* a record this machine swapped holds its swap: the round it stands for is the stock one */
-        for (int j = 0; !copy[i].stock && j < g_shotLocalCount; j++)
-            if (g_shotLocal[j].resource == copy[i].resource && g_shotLocal[j].slot == copy[i].slot && g_shotLocal[j].now == native[i])
-                native[i] = g_shotLocal[j].base;
+    for (int i = 0; i < rules; i++) if (!copy[i].stock) native[i] = ShotLocalBase(&copy[i], native[i]);
     g_shotPlayerCount = 0;
     for (int i = 0; i < count && i < 4; i++)
         if (players[i].peer != 0) g_shotPlayers[g_shotPlayerCount++] = (ShotPlayer){players[i].peer, players[i].avatar, players[i].local};
-    for (int i = 0; i < rules && i < g_shotRuleCount; i++)
-        if (g_shotRules[i].peer == copy[i].peer && g_shotRules[i].resource == copy[i].resource && g_shotRules[i].slot == copy[i].slot)
-        {
-            g_shotRules[i].native = native[i];
-            if (!ready[i] || g_shotRules[i].ready) continue;
-            g_shotRules[i].ready = 1;
-            Note("shots: player %016llx's %016llx fires projectile %u%s", (unsigned long long)copy[i].peer, (unsigned long long)copy[i].resource, copy[i].type,
-                copy[i].slot == SHOT_FUNCTION ? " (its programmable round)" : "");
-        }
+    for (int i = 0; i < rules && i < g_shotRuleCount; i++) ShotRuleUpdate(i, &copy[i], native[i], ready[i]);
     ReleaseSRWLockExclusive(&g_shotsLock);
+}
+
+static void ShotsNoteUnowned(void)
+{
     static LONG64 unownedNoted;
     LONG64 unowned = g_shotUnowned;
     if (unowned != 0 && unowned != unownedNoted)
@@ -275,16 +337,11 @@ static void ShotsTick(void)
         Note("shots: %016llx fired with a swap in the lobby but no player found as its wielder (%u): left as the game chose",
             (unsigned long long)unowned, (unsigned)g_shotUnownedWielder);
     }
-    if (g_shotState != 0) return;
-    if (!g_shotFirstTry) g_shotFirstTry = now;
-    if (strcmp(g_build, "25480438")) { g_shotState = -1; Note("shots: not hooked (unsupported build)"); return; }
-    if (!PinMatches(game + SHOT_FIRE, kShotFirePin, sizeof kShotFirePin) || !PinMatches(game + SHOT_SITE, kShotSitePin, sizeof kShotSitePin))
-    {
-        if (now - g_shotFirstTry < 60000) return;
-        g_shotState = -1;
-        Note("shots: the projectile fire site is not the reviewed one; per-player projectile swaps are off");
-        return;
-    }
+}
+
+/* The stubs, in a block near game.dll: ShotType's at the block, ShotFunctionType's at +0x200. */
+static void ShotsEmit(uint8_t* stub, uintptr_t game)
+{
     /* the stubs: save what the game holds in volatile registers, ShotType(type, source), the type written back, the two
      * displaced instructions, and back; ShotFunctionType(round, source) at +0x200, its three displaced instructions run on
      * what it returns. Both are written before either site jumps to them. */
@@ -323,10 +380,6 @@ static void ShotsTick(void)
         0x85, 0xC0,                                                             /* test eax, eax (displaced, on the returned round) */
         0x44, 0x0F, 0x45, 0xE0,                                                 /* cmovne r12d, eax (displaced) */
         0xFF, 0x25, 0x00, 0x00, 0x00, 0x00};                                    /* jmp [rip] -> back */
-    int function = PinMatches(game + SHOT_PELLET, kShotPelletPin, sizeof kShotPelletPin) &&
-        PinMatches(game + SHOT_FUNCTION_SITE, kShotFunctionPin, sizeof kShotFunctionPin);
-    uint8_t* stub = AllocateNearGame(game, 0x1000);
-    if (stub == NULL) { g_shotState = -1; Note("shots: no room near game.dll for the stub"); return; }
     uintptr_t fn = (uintptr_t)ShotType, back = game + SHOT_SITE_BACK, ffn = (uintptr_t)ShotFunctionType, fback = game + SHOT_FUNCTION_BACK;
     uint8_t* second = stub + 0x200;
     size_t n = 0;
@@ -339,6 +392,27 @@ static void ShotsTick(void)
     memcpy(second + n, &ffn, 8); n += 8;
     memcpy(second + n, ftail, sizeof ftail); n += sizeof ftail;
     memcpy(second + n, &fback, 8);
+}
+
+/* The fire site's hook (and the programmable round's), once their bytes read as reviewed (60 s for code still being
+ * decoded). */
+static void ShotsInstall(uintptr_t game, ULONGLONG now)
+{
+    if (!g_shotFirstTry) g_shotFirstTry = now;
+    if (strcmp(g_build, "25480438")) { g_shotState = -1; Note("shots: not hooked (unsupported build)"); return; }
+    if (!PinMatches(game + SHOT_FIRE, kShotFirePin, sizeof kShotFirePin) || !PinMatches(game + SHOT_SITE, kShotSitePin, sizeof kShotSitePin))
+    {
+        if (now - g_shotFirstTry < 60000) return;
+        g_shotState = -1;
+        Note("shots: the projectile fire site is not the reviewed one; per-player projectile swaps are off");
+        return;
+    }
+    int function = PinMatches(game + SHOT_PELLET, kShotPelletPin, sizeof kShotPelletPin) &&
+        PinMatches(game + SHOT_FUNCTION_SITE, kShotFunctionPin, sizeof kShotFunctionPin);
+    uint8_t* stub = AllocateNearGame(game, 0x1000);
+    if (stub == NULL) { g_shotState = -1; Note("shots: no room near game.dll for the stub"); return; }
+    ShotsEmit(stub, game);
+    uint8_t* second = stub + 0x200;
     DWORD protect;
     if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) { g_shotState = -1; Note("shots: the stub could not be made executable"); return; }
     uint8_t jump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
@@ -354,4 +428,21 @@ static void ShotsTick(void)
     if (ApiWrite(game + SHOT_FUNCTION_SITE, fjump, sizeof fjump)) { Note("shots: the programmable round's site could not be changed"); return; }
     g_shotFunctionHooked = 1;
     Note("shots: hooked the programmable round's site too");
+}
+
+/* The watch loop, after the game loads: the players (peer and Helldiver), each rule's readiness (its row and
+ * packages), and the hook once its bytes read as reviewed (60 s for code still being decoded). */
+static void ShotsTick(void)
+{
+    static ULONGLONG next;
+    ULONGLONG now = GetTickCount64();
+    if (now < next) return;
+    next = now + 250;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    if (game == 0) return;
+    g_shotGame = game;
+    ShotsUpdate(game);
+    ShotsNoteUnowned();
+    if (g_shotState != 0) return;
+    ShotsInstall(game, now);
 }

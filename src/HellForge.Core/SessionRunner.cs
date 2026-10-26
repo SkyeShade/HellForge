@@ -6,9 +6,10 @@ namespace HellForge.Core;
 // A session's choices, as the launcher's Settings page keeps them (launcher-settings.json, ProfileStore) or as another
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse). ModSync:
 // the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: the game at low
-// integrity (ProfileStore.LoadSandbox).
+// integrity (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
+// (SteamOwnershipRecord), for that one session.
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    string? ModSync = null, bool Sandbox = false);
+    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false);
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -36,21 +37,26 @@ public sealed class SessionRunner
             "--profile", Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder)), "--template", profile.Template };
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
-        // the galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing
-        if (options.War == ProfileStore.WarLive) arguments.AddRange(["--live-war", Path.Combine(paths.HostRoot, "live-war.json")]);
-        else if (options.War == ProfileStore.WarOpen)
-        {
-            arguments.Add("--open-war");
-            // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
-            if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
-            if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);
-            if (!ProfileStore.LoadDealSeaf(paths)) arguments.AddRange(["--war-seaf", "no"]);
-        }
+        arguments.AddRange(WarArguments(paths, options.War));
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)
         if (options.GameOptions.Count > 0) arguments.AddRange(["--game-options", GameLaunchOptions.CommandLine(options.GameOptions)]);
         if (options.ModSync != null) arguments.AddRange(["--mod-sync", options.ModSync]);
         if (options.Sandbox) arguments.Add("--sandbox");
+        if (options.FullOwnershipCheck) arguments.Add("--full-ownership-check");
+        return arguments;
+    }
+
+    // The galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing.
+    static List<string> WarArguments(ISessionPaths paths, string war)
+    {
+        if (war == ProfileStore.WarLive) return ["--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
+        if (war != ProfileStore.WarOpen) return [];
+        var arguments = new List<string> { "--open-war" };
+        // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
+        if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
+        if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);
+        if (!ProfileStore.LoadDealSeaf(paths)) arguments.AddRange(["--war-seaf", "no"]);
         return arguments;
     }
 

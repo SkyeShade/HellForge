@@ -267,6 +267,18 @@ static size_t ParsePattern(const char* pattern, uint8_t bytes[256], uint8_t mask
     return count;
 }
 
+/* The pattern's first match in [from, to); 0 none. */
+static uintptr_t FindPatternIn(uintptr_t from, uintptr_t to, const uint8_t* bytes, const uint8_t* mask, size_t count)
+{
+    for (uintptr_t p = from; p + count <= to; p++)
+    {
+        size_t i = 0;
+        while (i < count && (!mask[i] || ((uint8_t*)p)[i] == bytes[i])) i++;
+        if (i == count) return p;
+    }
+    return 0;
+}
+
 static uintptr_t ApiFindPattern(const char* module, const char* pattern)
 {
     uint8_t bytes[256], mask[256];
@@ -282,13 +294,9 @@ static uintptr_t ApiFindPattern(const char* module, const char* pattern)
         uintptr_t regionEnd = (uintptr_t)info.BaseAddress + info.RegionSize;
         if (regionEnd > end) regionEnd = end;
         DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY;
-        if (info.State == MEM_COMMIT && (info.Protect & readable) && !(info.Protect & PAGE_GUARD))
-            for (uintptr_t p = at; p + count <= regionEnd; p++)
-            {
-                size_t i = 0;
-                while (i < count && (!mask[i] || ((uint8_t*)p)[i] == bytes[i])) i++;
-                if (i == count) return p;
-            }
+        uintptr_t found = info.State == MEM_COMMIT && (info.Protect & readable) && !(info.Protect & PAGE_GUARD) ?
+            FindPatternIn(at, regionEnd, bytes, mask, count) : 0;
+        if (found != 0) return found;
         at = regionEnd;
     }
     return 0;
@@ -318,130 +326,6 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
     FlushInstructionCache(GetCurrentProcess(), (void*)at, 16);
     NoteRewrite(at, 8);
     return 0;
-}
-
-/* Every other thread of the process suspended (0 none could be), to patch code they may run; FarResume undoes it. */
-#define FAR_THREADS 1024
-static HANDLE g_farThreads[FAR_THREADS];
-static int g_farThreadCount;
-static void FarSuspend(void)
-{
-    g_farThreadCount = 0;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return;
-    THREADENTRY32 entry = {sizeof entry};
-    DWORD self = GetCurrentThreadId(), process = GetCurrentProcessId();
-    for (BOOL more = Thread32First(snapshot, &entry); more && g_farThreadCount < FAR_THREADS; more = Thread32Next(snapshot, &entry))
-    {
-        if (entry.th32OwnerProcessID != process || entry.th32ThreadID == self) continue;
-        HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, entry.th32ThreadID);
-        if (thread == NULL) continue;
-        if (SuspendThread(thread) == (DWORD)-1) { CloseHandle(thread); continue; }
-        g_farThreads[g_farThreadCount++] = thread;
-    }
-    CloseHandle(snapshot);
-}
-static int FarAnyIn(uintptr_t from, size_t size)
-{
-    for (int i = 0; i < g_farThreadCount; i++)
-    {
-        CONTEXT context = {0};
-        context.ContextFlags = CONTEXT_CONTROL;
-        if (GetThreadContext(g_farThreads[i], &context) && context.Rip >= from && context.Rip < from + size) return 1;
-    }
-    return 0;
-}
-static void FarResume(void)
-{
-    for (int i = 0; i < g_farThreadCount; i++) { ResumeThread(g_farThreads[i]); CloseHandle(g_farThreads[i]); }
-    g_farThreadCount = 0;
-}
-
-/* Appends an absolute jump (jmp [rip+0]; target), 14 bytes. */
-static size_t FarJump(uint8_t* at, uint64_t target)
-{
-    static const uint8_t jump[6] = {0xFF, 0x25, 0, 0, 0, 0};
-    memcpy(at, jump, 6);
-    memcpy(at + 6, &target, 8);
-    return 14;
-}
-
-/* A hook where MinHook finds no memory within 2 GB of the target for its trampoline: code in allocated memory amid
- * the GPU driver's reservations, which is where overlays (RivaTuner, Discord, Overwolf...) put the stubs they send a
- * swap chain's methods through. A stub is taken over in place, as overlays chain: an absolute jump through a pointer
- * (jmp [rip+disp]; the common "FF 25 00000000 <address>") or mov rax, imm64; jmp rax gets the detour as its address,
- * the old address becoming the original (the call runs through the detour, then the overlay). A relative jump first
- * is followed and its destination hooked. Other code gets a 14-byte absolute jump and a trampoline anywhere, when the
- * instructions it moves can be moved (a relative jump or call is rewritten absolute; a conditional branch or another
- * RIP-relative operand refuses it); every other thread is suspended meanwhile and none may be in those bytes.
- * 0 when hooked, *how saying which. */
-static int FarHook(uintptr_t target, void* detour, void** original, const char** how)
-{
-    uint8_t code[32];
-    if (SafeRead(target, code, sizeof code)) { *how = "unreadable"; return 1; }
-    if (code[0] == 0xFF && code[1] == 0x25) /* jmp [rip+disp32] */
-    {
-        int32_t disp; memcpy(&disp, code + 2, 4);
-        *how = disp == 0 ? "an overlay's jump stub, its address swapped" : "a jump through a pointer, the pointer swapped";
-        return SwapPointer(target + 6 + (intptr_t)disp, detour, original);
-    }
-    if (code[0] == 0x48 && code[1] == 0xB8 && code[10] == 0xFF && code[11] == 0xE0) /* mov rax, imm64; jmp rax */
-    {
-        *how = "an overlay's jump stub (mov rax), its address swapped";
-        return SwapPointer(target + 2, detour, original);
-    }
-    if (code[0] == 0xE9 || code[0] == 0xEB) /* a relative jump: hook where it goes */
-    {
-        int32_t rel = code[0] == 0xE9 ? 0 : (int8_t)code[1];
-        if (code[0] == 0xE9) memcpy(&rel, code + 1, 4);
-        uintptr_t next = target + (code[0] == 0xE9 ? 5 : 2) + (intptr_t)rel;
-        MakeExecutable(next);
-        MH_STATUS status = MH_CreateHook((void*)next, detour, original);
-        if (status == MH_OK) status = MH_EnableHook((void*)next);
-        *how = status == MH_OK ? "a jump followed, its destination hooked" : "a jump followed, its destination not hookable either";
-        return status == MH_OK ? 0 : 1;
-    }
-    uint8_t* trampoline = (uint8_t*)VirtualAlloc(NULL, 256, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (trampoline == NULL) { *how = "no memory for a trampoline"; return 1; }
-    size_t moved = 0, out = 0;
-    while (moved < 14)
-    {
-        hde64s hs;
-        unsigned length = hde64_disasm(code + moved, &hs);
-        if ((hs.flags & F_ERROR) || length == 0 || moved + length > sizeof code - 8) { *how = "code it cannot read"; goto refuse; }
-        uintptr_t at = target + moved, next = at + length;
-        if (hs.opcode == 0xE8) /* call rel32: call [rip+2]; jmp +8; address */
-        {
-            static const uint8_t call[8] = {0xFF, 0x15, 0x02, 0, 0, 0, 0xEB, 0x08};
-            uint64_t dest = next + (int64_t)(int32_t)hs.imm.imm32;
-            memcpy(trampoline + out, call, 8); memcpy(trampoline + out + 8, &dest, 8); out += 16;
-        }
-        else if (hs.opcode == 0xE9 || hs.opcode == 0xEB) { *how = "code that jumps away in its first bytes"; goto refuse; }
-        else if ((hs.opcode >= 0x70 && hs.opcode <= 0x7F) || (hs.opcode >= 0xE0 && hs.opcode <= 0xE3) ||
-                 (hs.opcode == 0x0F && hs.opcode2 >= 0x80 && hs.opcode2 <= 0x8F)) { *how = "a conditional branch in its first bytes"; goto refuse; }
-        else if ((hs.flags & F_MODRM) && hs.modrm_mod == 0 && hs.modrm_rm == 5) { *how = "a RIP-relative operand in its first bytes"; goto refuse; }
-        else { memcpy(trampoline + out, code + moved, length); out += length; }
-        moved += length;
-    }
-    out += FarJump(trampoline + out, target + moved);
-    uint8_t patch[32];
-    size_t used = FarJump(patch, (uint64_t)(uintptr_t)detour);
-    memset(patch + used, 0x90, moved - used); /* the rest of the moved instructions: nops */
-    *original = trampoline; /* before the jump is written: a call may come through it at once */
-    FarSuspend();
-    if (FarAnyIn(target, moved)) { FarResume(); *how = "a thread is running the code it would move"; goto refuse; }
-    DWORD protect;
-    if (!VirtualProtect((void*)target, moved, PAGE_EXECUTE_READWRITE, &protect)) { FarResume(); *how = "the code cannot be made writable"; goto refuse; }
-    memcpy((void*)target, patch, moved);
-    VirtualProtect((void*)target, moved, protect, &protect);
-    FlushInstructionCache(GetCurrentProcess(), (void*)target, moved);
-    NoteRewrite(target, moved);
-    FarResume();
-    *how = "a far jump and a trampoline";
-    return 0;
-refuse:
-    VirtualFree(trampoline, 0, MEM_RELEASE);
-    return 1;
 }
 
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
@@ -524,6 +408,21 @@ static int ApiSetNetworkFieldBits(HfMod* mod, const char* name, HfFieldType expe
 
 /* ---- entity component records ----------------------------------------------------------------------------------- */
 
+/* Whether a region VirtualQuery describes is a whole private allocation, committed, read-only or read-write. */
+static int PrivateAllocation(const MEMORY_BASIC_INFORMATION* info)
+{
+    return info->State == MEM_COMMIT && info->Type == MEM_PRIVATE && info->BaseAddress == info->AllocationBase &&
+        (info->Protect == PAGE_READONLY || info->Protect == PAGE_READWRITE);
+}
+
+/* Whether the region is such an allocation of exactly the profile's size, starting with its map header. */
+static int EntityRegionIs(const MEMORY_BASIC_INFORMATION* info)
+{
+    uint8_t header[28];
+    return PrivateAllocation(info) && info->RegionSize == g_regionSize && !SafeRead((uintptr_t)info->BaseAddress, header, 28) &&
+        memcmp(header, g_mapHeader, 28) == 0;
+}
+
 /* One private, committed allocation of exactly the profile's size starting with its map header; 0 if absent or not unique. */
 static uintptr_t FindEntityRegion(void)
 {
@@ -533,15 +432,10 @@ static uintptr_t FindEntityRegion(void)
     while (VirtualQuery((void*)at, &info, sizeof info))
     {
         uintptr_t next = (uintptr_t)info.BaseAddress + info.RegionSize;
-        if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && info.BaseAddress == info.AllocationBase &&
-            (info.Protect == PAGE_READONLY || info.Protect == PAGE_READWRITE) && info.RegionSize == g_regionSize)
+        if (EntityRegionIs(&info))
         {
-            uint8_t header[28];
-            if (!SafeRead((uintptr_t)info.BaseAddress, header, 28) && memcmp(header, g_mapHeader, 28) == 0)
-            {
-                if (found) return 0;
-                found = (uintptr_t)info.BaseAddress;
-            }
+            if (found) return 0;
+            found = (uintptr_t)info.BaseAddress;
         }
         if (next <= at) break;
         at = next;
@@ -553,15 +447,59 @@ static uintptr_t RegisteredRecord(const Component* c, uint64_t resource, uint32_
 static uintptr_t CurrentTableRecord(const Component* c, uint64_t resource, uint32_t* stride, int shared, int* used); /* registry.c */
 static int CopiesBase(uint64_t entity); /* registry.c */
 
+/* The plan's component of that name, the last one (registry.c's ComponentNamed takes the first). */
+static const Component* LastComponentNamed(const char* name)
+{
+    const Component* c = NULL;
+    for (int i = 0; i < g_componentCount && name != NULL; i++)
+        if (strcmp(g_components[i].name, name) == 0) c = &g_components[i];
+    return c;
+}
+
+/* The one vanilla record of the component the resource's index rows name: its index; -1 when none or several do, or a
+ * row does not read as an index row. */
+static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t resource)
+{
+    int64_t selected = -1;
+    int owners = 0;
+    for (uint32_t row = 0; row < c->indices; row++)
+    {
+        uint8_t entry[16];
+        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) return -1;
+        uint64_t id;
+        uint32_t record, flags;
+        memcpy(&id, entry, 8);
+        memcpy(&record, entry + 8, 4);
+        memcpy(&flags, entry + 12, 4);
+        if (record >= c->records || flags != 0) return -1;
+        if (id == resource) { owners++; selected = record; }
+    }
+    return owners == 1 ? selected : -1;
+}
+
+/* Whether another entity (not a copy of a base) names the selected record too: refused (1) unless `shared`. */
+static int SharedRecordRefused(const Component* c, uintptr_t region, uint64_t resource, uint32_t selected, int shared)
+{
+    for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
+    {
+        uint8_t entry[16];
+        SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16);
+        uint64_t id;
+        uint32_t record;
+        memcpy(&id, entry, 8);
+        memcpy(&record, entry + 8, 4);
+        if (id != 0 && id != resource && record == selected && !CopiesBase(id) && ++sharers > 0 && !shared) return 1;
+    }
+    return 0;
+}
+
 /* An entity's record of a component: its own (a mod's entity), or the one vanilla record naming it; a record other
  * entities share too only with `shared` (for reading). */
 static uintptr_t ComponentRecordOf(const char* name, uint64_t resource, uint32_t* stride, int shared)
 {
     if (stride != NULL) *stride = 0;
     uintptr_t region = g_region;
-    const Component* c = NULL;
-    for (int i = 0; i < g_componentCount && name != NULL; i++)
-        if (strcmp(g_components[i].name, name) == 0) c = &g_components[i];
+    const Component* c = LastComponentNamed(name);
     if (region == 0 || c == NULL) return 0;
     uintptr_t own = RegisteredRecord(c, resource, stride); /* a weapon a mod added: its own record, in HellForge's table */
     if (own != 0) return own;
@@ -576,31 +514,8 @@ static uintptr_t ComponentRecordOf(const char* name, uint64_t resource, uint32_t
     memcpy(&index, head, 4);
     memcpy(&extent, head + 20, 4);
     if (index != c->index || memcmp(head + 4, c->header, 28) != 0 || (uint64_t)c->recordOffset + (uint64_t)c->records * c->stride > extent) return 0;
-    int64_t selected = -1;
-    int owners = 0;
-    for (uint32_t row = 0; row < c->indices; row++)
-    {
-        uint8_t entry[16];
-        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) return 0;
-        uint64_t id;
-        uint32_t record, flags;
-        memcpy(&id, entry, 8);
-        memcpy(&record, entry + 8, 4);
-        memcpy(&flags, entry + 12, 4);
-        if (record >= c->records || flags != 0) return 0;
-        if (id == resource) { owners++; selected = record; }
-    }
-    if (owners != 1) return 0;
-    for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
-    {
-        uint8_t entry[16];
-        SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16);
-        uint64_t id;
-        uint32_t record;
-        memcpy(&id, entry, 8);
-        memcpy(&record, entry + 8, 4);
-        if (id != 0 && id != resource && record == (uint32_t)selected && !CopiesBase(id) && ++sharers > 0 && !shared) return 0;
-    }
+    int64_t selected = VanillaRecordOf(c, region, resource);
+    if (selected < 0 || SharedRecordRefused(c, region, resource, (uint32_t)selected, shared)) return 0;
     if (stride != NULL) *stride = c->stride;
     return region + c->offset + 28 + c->recordOffset + (uintptr_t)selected * c->stride;
 }
@@ -638,18 +553,30 @@ static int InstallReaper(int pinsReady);
 /* SDK 7 events (events.c, after abilities.c: the silo countdowns listen for a mission's end). */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
 #include "registry.c"
+#include "registry_load.c" /* right after registry.c: the registry at work when the entity data loads */
 #include "damage.c"
 #include "projectiles.c"
 #include "stratagems.c"
 #include "difficulty.c"
+#include "difficulty_ui.c" /* the level on the war table and in the HUD */
+#include "difficulty_missions.c" /* its missions and objectives */
+#include "difficulty_countdown.c" /* its mission countdown */
+#include "difficulty_cities.c" /* its larger structured maps and cities */
+#include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
+#include "difficulty_block.c" /* the generation block's moved arrays */
+#include "difficulty_diag.c" /* its diagnostics and their watch */
+#include "difficulty_install.c" /* after every difficulty file: the checks and the install, in their order */
 #include "director.c" /* after difficulty.c: its rosters and the difficulty copies */
 #include "behaviours.c"
+#include "behaviour_turret.c" /* right after behaviours.c: the turret behaviour (TurretUpdate) */
+#include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
 #include "abilities.c"
 #include "events.c"
 #include "stats.c"
 #include "fields.c" /* after stats.c: it reports conflicts with stats edits */
+#include "fields_live.c" /* right after fields.c: its live edits */
 #include "refs.c"
 #include "passives.c"
 #include "perks.c"
@@ -698,10 +625,35 @@ static const char* ApiLogsFolder(HfMod* mod)
     return folder;
 }
 
-/* SDK 6, get_stat: a stats field the snapshot found, read now; its base is the value without the Local Stats mod's edit
- * (another mod's, else the game's), as get_live's: a live write's (set_stat, the pipe) value from before it, live.c. */
 static int LiveExtraBefore(uintptr_t address, uint32_t* before);
 static const char* LiveExtraHolder(uintptr_t address, uint32_t* value);
+
+/* get_stat's values of the field a probe found, now and its base, into out (with the mod holding it). 0 when it does not
+ * read. Called with g_statsLock held. */
+static int StatValuesAt(const StatEdit* e, uint32_t type, HfLiveValue* out)
+{
+    uint32_t now = 0, base;
+    if (SafeRead(e->address, &now, StatSize(e))) return 0;
+    base = now;
+    LiveExtraBefore(e->address, &base);
+    for (int j = 0; j < g_statCount; j++)
+    {
+        const StatEdit* s = &g_stats[j];
+        if (!s->applied || s->address != e->address || s->mod == NULL) continue;
+        if (IsLocalStats(s->mod)) base = s->original;
+        else out->mod = s->mod->id;
+    }
+    /* a Lua or code mod's live value of an entity delta or status multiplier is another mod's value too */
+    uint32_t held;
+    const char* holder = LiveExtraHolder(e->address, &held);
+    if (holder != NULL) { out->mod = holder; base = held; }
+    ValueOf(type, now, &out->now);
+    ValueOf(type, base, &out->base);
+    return 1;
+}
+
+/* SDK 6, get_stat: a stats field the snapshot found, read now; its base is the value without the Local Stats mod's edit
+ * (another mod's, else the game's), as get_live's: a live write's (set_stat, the pipe) value from before it, live.c. */
 static int ApiGetStat(HfMod* mod, const HfStat* stat, HfLiveValue* out)
 {
     if (out == NULL) return 0;
@@ -718,23 +670,7 @@ static int ApiGetStat(HfMod* mod, const HfStat* stat, HfLiveValue* out)
         const StatEdit* e = &g_statsProbes[i];
         if (e->offset != stat->offset || e->resource != stat->resource || e->record != stat->record || !e->address ||
             strcmp(e->kind, stat->kind) || strcmp(e->component, component)) continue;
-        uint32_t now = 0, base;
-        if (SafeRead(e->address, &now, StatSize(e))) break;
-        base = now;
-        LiveExtraBefore(e->address, &base);
-        for (int j = 0; j < g_statCount; j++)
-        {
-            const StatEdit* s = &g_stats[j];
-            if (!s->applied || s->address != e->address || s->mod == NULL) continue;
-            if (IsLocalStats(s->mod)) base = s->original;
-            else out->mod = s->mod->id;
-        }
-        /* a Lua or code mod's live value of an entity delta or status multiplier is another mod's value too */
-        uint32_t held;
-        const char* holder = LiveExtraHolder(e->address, &held);
-        if (holder != NULL) { out->mod = holder; base = held; }
-        ValueOf(type, now, &out->now);
-        ValueOf(type, base, &out->base);
+        if (!StatValuesAt(e, type, out)) break;
         address = e->address;
         size = StatSize(e);
         result = 1;
@@ -760,130 +696,188 @@ static int GameLoaded(void)
     return 0;
 }
 
+/* game.dll loaded and decoded: what must come before the game's own set-up, then HF_EVENT_GAME_LOADED. */
+static void WatchLoaded(void)
+{
+    if (g_fired[HF_EVENT_GAME_LOADED] || !GameLoaded()) return;
+    Note("game.dll loaded and decoded");
+    ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
+    PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
+    InstallFailFastNote();
+    InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
+    StartRegistry();
+    StartProjectiles();
+    Fire(HF_EVENT_GAME_LOADED);
+}
+
+static void WatchProjectiles(void)
+{
+    if (g_fired[HF_EVENT_GAME_LOADED] && !g_fired[HF_EVENT_PROJECTILES_READY] && g_projectileState >= 0 && InstallProjectiles() &&
+        g_projectileState == 1)
+    {
+        Note("projectile list ready");
+        StatsTablesReady(ApiModuleBase("game.dll", NULL));
+        Fire(HF_EVENT_PROJECTILES_READY);
+    }
+}
+
+/* Once the game has loaded its stratagems; code still being decoded gets 20 s. */
+static void WatchStratagems(void)
+{
+    if (!g_fired[HF_EVENT_GAME_LOADED] || g_stratagemState != 0) return;
+    static ULONGLONG stratagemsSeen;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    uint64_t first = 0;
+    if (game == 0 || SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return;
+    if (stratagemsSeen == 0) stratagemsSeen = GetTickCount64();
+    if (g_game == 0) g_game = game;
+    InstallStratagems(game, GetTickCount64() - stratagemsSeen >= 20000);
+}
+
+/* game.dll fills its difficulty tables when it loads; code still being decoded gets 20 s. */
+static void WatchDifficulty(void)
+{
+    if (!g_fired[HF_EVENT_GAME_LOADED] || g_difficultyState != 0) return;
+    static ULONGLONG difficultySeen;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    if (game == 0) return;
+    if (difficultySeen == 0) difficultySeen = GetTickCount64();
+    if (g_game == 0) g_game = game;
+    InstallDifficulty(game, GetTickCount64() - difficultySeen >= 20000);
+}
+
+/* The stats passes over the game's tables, and the per-player shots. */
+static void WatchStats(void)
+{
+    if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
+        StatsTablesReady(ApiModuleBase("game.dll", NULL));
+    if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); StatsDirectorReady(); ShotsTick(); RoundsTick(); }
+}
+
+static void WatchInstalls(void)
+{
+    if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
+    if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
+}
+
+/* Once the added network types exist; code still being decoded gets 20 s. */
+static void WatchNetSwitch(void)
+{
+    if (!g_fired[HF_EVENT_GAME_LOADED] || g_netSwitchState != 0 || g_networkTypesAdded != 2) return;
+    static ULONGLONG netSeen;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    if (game == 0) return;
+    if (netSeen == 0) netSeen = GetTickCount64();
+    InstallNetSwitch(game, GetTickCount64() - netSeen >= 20000);
+}
+
+/* the transport's code is the exe's; it gets the same 20 s as game.dll's */
+static void WatchReaper(void)
+{
+    if (!g_fired[HF_EVENT_GAME_LOADED] || g_reapState != 0 || strcmp(g_build, "25480438")) return;
+    static ULONGLONG reapSeen;
+    if (reapSeen == 0) reapSeen = GetTickCount64();
+    InstallReaper(GetTickCount64() - reapSeen >= 20000);
+}
+
+static void WatchNetwork(void)
+{
+    uintptr_t rows;
+    uint32_t count;
+    if (!g_fired[HF_EVENT_NETWORK_READY] && !FieldTypes(&rows, &count)) { Note("network configuration ready (%u field types)", count); RegisterNetworkTypes(); Fire(HF_EVENT_NETWORK_READY); }
+}
+
+/* The entity data's region now: the one known while it still holds the map header, else found again. */
+static uintptr_t CurrentRegion(void)
+{
+    uintptr_t region = g_region;
+    uint8_t header[28];
+    if (region != 0 && (SafeRead(region, header, 28) || memcmp(header, g_mapHeader, 28) != 0)) region = 0;
+    if (region == 0) region = FindEntityRegion();
+    return region;
+}
+
+/* The entity data (re)loaded at `region`: HF_EVENT_ENTITIES_READY, the component stats edits refused first when their
+ * load-time pass did not run. */
+static void EntitiesReady(uintptr_t region)
+{
+    Note("entity data ready at 0x%llx%s", (unsigned long long)region, g_region ? " (reloaded)" : "");
+    g_region = region;
+    if (StatsHasComponents() && !g_statsComponentsReady)
+    {
+        for (int i = 0; i < g_statCount; i++) if (!strcmp(g_stats[i].kind, "component"))
+            StatsRefuse(&g_stats[i], "entity load-time pass was unavailable");
+        InterlockedExchange(&g_statsComponentsReady, 1);
+    }
+    Fire(HF_EVENT_ENTITIES_READY);
+}
+
+/* The entity data's region, each second (each pass while there is none). */
+static void WatchRegion(ULONGLONG elapsed)
+{
+    static ULONGLONG lastRegionCheck;
+    if (g_regionSize == 0 || (g_region != 0 && elapsed - lastRegionCheck <= 1000)) return;
+    lastRegionCheck = elapsed;
+    uintptr_t region = CurrentRegion();
+    /* Mods' weapons first: they are added right after the game's loader, and ENTITIES_READY promises them. */
+    static ULONGLONG waitStarted;
+    if (region != 0 && region != g_region && (RegistryPending() || StatsComponentsPending()))
+    {
+        if (waitStarted == 0) waitStarted = elapsed;
+        if (elapsed - waitStarted < 20000) region = g_region;
+        else Note("registry: the weapons were not added 20 s after the entity data loaded");
+    }
+    if (region != 0 && region != g_region) EntitiesReady(region);
+}
+
+/* The edits, row copies and references waiting for the entity data or a table. */
+static void WatchWaiting(void)
+{
+    if (g_fired[HF_EVENT_ENTITIES_READY] && g_stratagemState == 1 && !g_packagesInferred) InferStratagemPackages();
+    if (g_editsWaiting) ApplyWaitingEdits();
+    if (g_rowCopiesWaiting) RowCopiesTick();
+    if (StatsRefsWaiting()) StatsRefsTick();
+}
+
+/* The passes that follow the game while it runs. */
+static void WatchRunning(void)
+{
+    if (g_behaviourState == 1) BehaviourWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED]) UnitCopiesTick(ApiModuleBase("game.dll", NULL));
+    if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
+    if (g_difficultyState == 1) DifficultyWatch();
+    if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
+    if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
+    if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
+}
+
 static DWORD WINAPI Watch(void* parameter)
 {
     ULONGLONG started = GetTickCount64();
     Note("watch thread %lu", GetCurrentThreadId()); /* the crash notes name their thread: is it this one? */
     for (;;)
     {
-        if (!g_fired[HF_EVENT_GAME_LOADED] && GameLoaded())
-        {
-            Note("game.dll loaded and decoded");
-            ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
-            PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
-            AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
-            InstallFailFastNote();
-            InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
-            StartRegistry();
-            StartProjectiles();
-            Fire(HF_EVENT_GAME_LOADED);
-        }
-        if (g_fired[HF_EVENT_GAME_LOADED] && !g_fired[HF_EVENT_PROJECTILES_READY] && g_projectileState >= 0 && InstallProjectiles() &&
-            g_projectileState == 1)
-        {
-            Note("projectile list ready");
-            StatsTablesReady(ApiModuleBase("game.dll", NULL));
-            Fire(HF_EVENT_PROJECTILES_READY);
-        }
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_stratagemState == 0)
-        {
-            /* Once the game has loaded its stratagems; code still being decoded gets 20 s. */
-            static ULONGLONG stratagemsSeen;
-            uintptr_t game = ApiModuleBase("game.dll", NULL);
-            uint64_t first = 0;
-            if (game != 0 && !SafeRead(game + STR_TABLE + 8, &first, 8) && first != 0)
-            {
-                if (stratagemsSeen == 0) stratagemsSeen = GetTickCount64();
-                if (g_game == 0) g_game = game;
-                InstallStratagems(game, GetTickCount64() - stratagemsSeen >= 20000);
-            }
-        }
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_difficultyState == 0)
-        {
-            /* game.dll fills its difficulty tables when it loads; code still being decoded gets 20 s. */
-            static ULONGLONG difficultySeen;
-            uintptr_t game = ApiModuleBase("game.dll", NULL);
-            if (game != 0)
-            {
-                if (difficultySeen == 0) difficultySeen = GetTickCount64();
-                if (g_game == 0) g_game = game;
-                InstallDifficulty(game, GetTickCount64() - difficultySeen >= 20000);
-            }
-        }
-        if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
-            StatsTablesReady(ApiModuleBase("game.dll", NULL));
-        if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-        if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); StatsDirectorReady(); ShotsTick(); RoundsTick(); }
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
-        if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
-        if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_netSwitchState == 0 && g_networkTypesAdded == 2)
-        {
-            /* Once the added network types exist; code still being decoded gets 20 s. */
-            static ULONGLONG netSeen;
-            uintptr_t game = ApiModuleBase("game.dll", NULL);
-            if (game != 0)
-            {
-                if (netSeen == 0) netSeen = GetTickCount64();
-                InstallNetSwitch(game, GetTickCount64() - netSeen >= 20000);
-            }
-        }
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_reapState == 0 && !strcmp(g_build, "25480438"))
-        {
-            /* the transport's code is the exe's; it gets the same 20 s as game.dll's */
-            static ULONGLONG reapSeen;
-            if (reapSeen == 0) reapSeen = GetTickCount64();
-            InstallReaper(GetTickCount64() - reapSeen >= 20000);
-        }
+        WatchLoaded();
+        WatchProjectiles();
+        WatchStratagems();
+        WatchDifficulty();
+        WatchStats();
+        WatchInstalls();
+        WatchNetSwitch();
+        WatchReaper();
         if (g_fired[HF_EVENT_ENTITIES_READY]) PassivesTick(ApiModuleBase("game.dll", NULL));
         BehaviourSeenTick(); /* co-op diagnostics (behaviours.c) */
         if (g_fired[HF_EVENT_ENTITIES_READY]) StatsPerksReady();
-        uintptr_t rows;
-        uint32_t count;
-        if (!g_fired[HF_EVENT_NETWORK_READY] && !FieldTypes(&rows, &count)) { Note("network configuration ready (%u field types)", count); RegisterNetworkTypes(); Fire(HF_EVENT_NETWORK_READY); }
+        WatchNetwork();
         ULONGLONG elapsed = GetTickCount64() - started;
-        static ULONGLONG lastRegionCheck;
-        if (g_regionSize != 0 && (g_region == 0 || elapsed - lastRegionCheck > 1000))
-        {
-            lastRegionCheck = elapsed;
-            uintptr_t region = g_region;
-            uint8_t header[28];
-            if (region != 0 && (SafeRead(region, header, 28) || memcmp(header, g_mapHeader, 28) != 0)) region = 0;
-            if (region == 0) region = FindEntityRegion();
-            /* Mods' weapons first: they are added right after the game's loader, and ENTITIES_READY promises them. */
-            static ULONGLONG waitStarted;
-            if (region != 0 && region != g_region && (RegistryPending() || StatsComponentsPending()))
-            {
-                if (waitStarted == 0) waitStarted = elapsed;
-                if (elapsed - waitStarted < 20000) region = g_region;
-                else Note("registry: the weapons were not added 20 s after the entity data loaded");
-            }
-            if (region != 0 && region != g_region)
-            {
-                Note("entity data ready at 0x%llx%s", (unsigned long long)region, g_region ? " (reloaded)" : "");
-                g_region = region;
-                if (StatsHasComponents() && !g_statsComponentsReady)
-                {
-                    for (int i = 0; i < g_statCount; i++) if (!strcmp(g_stats[i].kind, "component"))
-                        StatsRefuse(&g_stats[i], "entity load-time pass was unavailable");
-                    InterlockedExchange(&g_statsComponentsReady, 1);
-                }
-                Fire(HF_EVENT_ENTITIES_READY);
-            }
-        }
-        if (g_fired[HF_EVENT_ENTITIES_READY] && g_stratagemState == 1 && !g_packagesInferred) InferStratagemPackages();
-        if (g_editsWaiting) ApplyWaitingEdits();
-        if (g_rowCopiesWaiting) RowCopiesTick();
-        if (StatsRefsWaiting()) StatsRefsTick();
-        if (g_behaviourState == 1) BehaviourWatch();
-        if (g_fired[HF_EVENT_GAME_LOADED]) UnitCopiesTick(ApiModuleBase("game.dll", NULL));
-        if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
-        if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
-        if (g_difficultyState == 1) DifficultyWatch();
-        if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
-        if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
-        if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
+        WatchRegion(elapsed);
+        WatchWaiting();
+        WatchRunning();
         Sleep(elapsed < 180000 ? 5 : 250);
     }
     return 0;
@@ -921,69 +915,103 @@ static void Utf8ToWide(const char* text, wchar_t* out, int capacity)
 static int g_planLine;
 static char g_planBad[160];
 
-static int ReadPlan(const wchar_t* path)
+/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 4 MB or more, or unreadable. */
+static char* ReadPlanText(const wchar_t* path)
 {
     HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (file == INVALID_HANDLE_VALUE) return 1;
+    if (file == INVALID_HANDLE_VALUE) return NULL;
     DWORD size = GetFileSize(file, NULL), read = 0;
     char* text = size > 0 && size < (4u << 20) ? (char*)malloc(size + 1) : NULL;
     int ok = text != NULL && ReadFile(file, text, size, &read, NULL) && read == size;
     CloseHandle(file);
-    if (!ok) { free(text); return 1; }
+    if (!ok) { free(text); return NULL; }
     text[size] = 0;
+    return text;
+}
+
+/* stats_schema: 64 hex digits. 1 when it is not (the plan is refused). */
+static int PlanSchema(const char* hex)
+{
+    if (strlen(hex) != 64) return 1;
+    for (int i = 0; i < 64; i++) if (Hex(hex[i]) < 0) return 1;
+    memcpy(g_statsSchema, hex, 64);
+    return 0;
+}
+
+/* The game's lines: its build, the logs folder, game.dll's pins and the network configuration. 0 when the line is
+ * none of them. */
+static int PlanGame(char** f, int n)
+{
+    if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
+    if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
+    if (n >= 4 && strcmp(f[0], "game_pin") == 0)
+    {
+        snprintf(g_pinModule, sizeof g_pinModule, "%s", f[1]);
+        g_pinRva = (uint32_t)strtoul(f[2], NULL, 16);
+        for (int i = 3; i < n && g_pinCount < MAX_PINS; i++, g_pinCount++) g_pinLength[g_pinCount] = ParseHex(f[i], g_pins[g_pinCount], 32);
+        return 1;
+    }
+    if (n == 3 && strcmp(f[0], "network_config") == 0)
+    {
+        snprintf(g_networkModule, sizeof g_networkModule, "%s", f[1]);
+        g_networkRva = (uint32_t)strtoul(f[2], NULL, 16);
+        return 1;
+    }
+    return 0;
+}
+
+/* The entity data's lines (its region, its components) and the mods. */
+static void PlanData(char** f, int n)
+{
+    if (n == 3 && strcmp(f[0], "entity_region") == 0)
+    {
+        g_regionSize = strtoull(f[1], NULL, 10);
+        if (ParseHex(f[2], g_mapHeader, 28) != 28) g_regionSize = 0;
+    }
+    else if (n == 9 && strcmp(f[0], "component") == 0 && g_componentCount < MAX_COMPONENTS)
+    {
+        Component* c = &g_components[g_componentCount];
+        snprintf(c->name, sizeof c->name, "%s", f[1]);
+        c->offset = strtoull(f[2], NULL, 10);
+        c->index = (uint32_t)strtoul(f[4], NULL, 10);
+        c->indices = (uint32_t)strtoul(f[5], NULL, 10);
+        c->records = (uint32_t)strtoul(f[6], NULL, 10);
+        c->recordOffset = (uint32_t)strtoul(f[7], NULL, 10);
+        c->stride = (uint32_t)strtoul(f[8], NULL, 10);
+        if (ParseHex(f[3], c->header, 28) == 28 && c->offset >= 4) g_componentCount++;
+    }
+    else if (n == 4 && strcmp(f[0], "mod") == 0 && g_modCount < MAX_MODS)
+    {
+        HfMod* mod = &g_mods[g_modCount++];
+        snprintf(mod->id, sizeof mod->id, "%s", f[1]);
+        snprintf(mod->folder, sizeof mod->folder, "%s", f[2]);
+        Utf8ToWide(f[3], mod->dll, MAX_PATH);
+    }
+}
+
+/* One line of the plan. 1 when it refuses the plan. */
+static int PlanLine(char* line)
+{
+    char* f[16];
+    int n = Split(line, f, 16);
+    if (n > 0 && !strcmp(f[0], "stat")) return StatsParse(f, n) != 0;
+    /* an observation only feeds the editors' values: one that cannot be read is skipped, not the session's mods */
+    if (n > 0 && !strcmp(f[0], "observe")) { if (StatsParseProbe(f, n)) g_statsProbesSkipped++; return 0; }
+    if (n == 2 && !strcmp(f[0], "stats_schema")) return PlanSchema(f[1]);
+    if (!PlanGame(f, n)) PlanData(f, n);
+    return 0;
+}
+
+static int ReadPlan(const wchar_t* path)
+{
+    char* text = ReadPlanText(path);
+    if (text == NULL) return 1;
     char* context = NULL;
     for (char* line = strtok_s(text, "\r\n", &context); line != NULL; line = strtok_s(NULL, "\r\n", &context))
     {
         g_planLine++;
         snprintf(g_planBad, sizeof g_planBad, "%s", line);
-        char* f[16];
-        int n = Split(line, f, 16);
-        if (n > 0 && !strcmp(f[0], "stat")) { if (StatsParse(f, n)) { free(text); return 1; } continue; }
-        /* an observation only feeds the editors' values: one that cannot be read is skipped, not the session's mods */
-        if (n > 0 && !strcmp(f[0], "observe")) { if (StatsParseProbe(f, n)) g_statsProbesSkipped++; continue; }
-        if (n == 2 && !strcmp(f[0], "stats_schema"))
-        {
-            if (strlen(f[1]) != 64) { free(text); return 1; }
-            for (int i = 0; i < 64; i++) if (Hex(f[1][i]) < 0) { free(text); return 1; }
-            memcpy(g_statsSchema, f[1], 64); continue;
-        }
-        if (n == 2 && strcmp(f[0], "build") == 0) snprintf(g_build, sizeof g_build, "%s", f[1]);
-        else if (n == 2 && strcmp(f[0], "logs") == 0) Utf8ToWide(f[1], g_logs, MAX_PATH);
-        else if (n >= 4 && strcmp(f[0], "game_pin") == 0)
-        {
-            snprintf(g_pinModule, sizeof g_pinModule, "%s", f[1]);
-            g_pinRva = (uint32_t)strtoul(f[2], NULL, 16);
-            for (int i = 3; i < n && g_pinCount < MAX_PINS; i++, g_pinCount++) g_pinLength[g_pinCount] = ParseHex(f[i], g_pins[g_pinCount], 32);
-        }
-        else if (n == 3 && strcmp(f[0], "network_config") == 0)
-        {
-            snprintf(g_networkModule, sizeof g_networkModule, "%s", f[1]);
-            g_networkRva = (uint32_t)strtoul(f[2], NULL, 16);
-        }
-        else if (n == 3 && strcmp(f[0], "entity_region") == 0)
-        {
-            g_regionSize = strtoull(f[1], NULL, 10);
-            if (ParseHex(f[2], g_mapHeader, 28) != 28) g_regionSize = 0;
-        }
-        else if (n == 9 && strcmp(f[0], "component") == 0 && g_componentCount < MAX_COMPONENTS)
-        {
-            Component* c = &g_components[g_componentCount];
-            snprintf(c->name, sizeof c->name, "%s", f[1]);
-            c->offset = strtoull(f[2], NULL, 10);
-            c->index = (uint32_t)strtoul(f[4], NULL, 10);
-            c->indices = (uint32_t)strtoul(f[5], NULL, 10);
-            c->records = (uint32_t)strtoul(f[6], NULL, 10);
-            c->recordOffset = (uint32_t)strtoul(f[7], NULL, 10);
-            c->stride = (uint32_t)strtoul(f[8], NULL, 10);
-            if (ParseHex(f[3], c->header, 28) == 28 && c->offset >= 4) g_componentCount++;
-        }
-        else if (n == 4 && strcmp(f[0], "mod") == 0 && g_modCount < MAX_MODS)
-        {
-            HfMod* mod = &g_mods[g_modCount++];
-            snprintf(mod->id, sizeof mod->id, "%s", f[1]);
-            snprintf(mod->folder, sizeof mod->folder, "%s", f[2]);
-            Utf8ToWide(f[3], mod->dll, MAX_PATH);
-        }
+        if (PlanLine(line)) { free(text); return 1; }
     }
     free(text);
     /* game.dll is decoded once the routing site reads as the original or the session's routing patch: the reviewed pin
@@ -1005,6 +1033,36 @@ static int ReadPlan(const wchar_t* path)
 #include "coop_diag.c" /* after live.c: the co-op role */
 
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
+
+/* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
+static void SetupMod(HfMod* mod)
+{
+    mod->api = &g_api;
+    wchar_t logName[128];
+    swprintf(logName, 128, L"mod-%hs.log", mod->id);
+    mod->log = OpenLog(logName);
+    if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
+    mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
+    /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
+    if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
+    if (init == NULL)
+    {
+        Note("%s: not loaded (%s)", mod->id, mod->module == NULL ? "the DLL could not be loaded" : "it exports no hellforge_mod_init");
+        if (mod->module != NULL) FreeLibrary(mod->module);
+        return;
+    }
+    Note("%s: initializing", mod->id);
+    mod->loaded = 1;
+    int result = init(&g_api, mod);
+    if (result != 0)
+    {
+        mod->loaded = 0;
+        Note("%s: declined to load (hellforge_mod_init returned %d)", mod->id, result);
+        return;
+    }
+    Note("%s: loaded", mod->id);
+}
 
 __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
 {
@@ -1031,35 +1089,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");
     g_modsSettingUp = 1;
-    for (int k = 0; k < g_modCount; k++)
-    {
-        HfMod* mod = &g_mods[setupOrder[k]];
-        mod->api = &g_api;
-        wchar_t logName[128];
-        swprintf(logName, 128, L"mod-%hs.log", mod->id);
-        mod->log = OpenLog(logName);
-        if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); continue; }
-        mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
-        InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
-        /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
-        if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
-        if (init == NULL)
-        {
-            Note("%s: not loaded (%s)", mod->id, mod->module == NULL ? "the DLL could not be loaded" : "it exports no hellforge_mod_init");
-            if (mod->module != NULL) FreeLibrary(mod->module);
-            continue;
-        }
-        Note("%s: initializing", mod->id);
-        mod->loaded = 1;
-        int result = init(&g_api, mod);
-        if (result != 0)
-        {
-            mod->loaded = 0;
-            Note("%s: declined to load (hellforge_mod_init returned %d)", mod->id, result);
-            continue;
-        }
-        Note("%s: loaded", mod->id);
-    }
+    for (int k = 0; k < g_modCount; k++) SetupMod(&g_mods[setupOrder[k]]);
     g_modsSettingUp = 0;
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */

@@ -89,12 +89,9 @@ static int RefuseReaper(const char* why)
     return 1;
 }
 
-/* Polled from the watch loop until it returns 1. pinsReady: the grace period for code still being decoded is over. */
-static int InstallReaper(int pinsReady)
+/* Whether the transport's code reads as reviewed. */
+static int ReapPinsMatch(uintptr_t exe)
 {
-    if (g_reapState != 0) return 1;
-    uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
-    if (exe == 0) return pinsReady ? RefuseReaper("helldivers2.exe is not loaded") : 0;
     static const struct { uint32_t rva; const uint8_t* pin; size_t size; } pins[] = {
         {REAP_CLEANUP, kReapCleanupPin, sizeof kReapCleanupPin}, {REAP_DESTROY, kReapDestroyPin, sizeof kReapDestroyPin},
         {REAP_MEMBER, kReapMemberPin, sizeof kReapMemberPin}, {REAP_REMOVED, kReapRemovedPin, sizeof kReapRemovedPin},
@@ -102,8 +99,17 @@ static int InstallReaper(int pinsReady)
         {0x2ABF59u, kReapDeadPin, sizeof kReapDeadPin}, {0x2AB2F0u, kReapDropPin, sizeof kReapDropPin}, {0x172466u, kReapCallPin, sizeof kReapCallPin}};
     uint8_t code[16];
     for (size_t i = 0; i < sizeof pins / sizeof pins[0]; i++)
-        if (SafeRead(exe + pins[i].rva, code, pins[i].size) || memcmp(code, pins[i].pin, pins[i].size))
-            return pinsReady ? RefuseReaper("the transport is not the reviewed code") : 0;
+        if (SafeRead(exe + pins[i].rva, code, pins[i].size) || memcmp(code, pins[i].pin, pins[i].size)) return 0;
+    return 1;
+}
+
+/* Polled from the watch loop until it returns 1. pinsReady: the grace period for code still being decoded is over. */
+static int InstallReaper(int pinsReady)
+{
+    if (g_reapState != 0) return 1;
+    uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
+    if (exe == 0) return pinsReady ? RefuseReaper("helldivers2.exe is not loaded") : 0;
+    if (!ReapPinsMatch(exe)) return pinsReady ? RefuseReaper("the transport is not the reviewed code") : 0;
     uintptr_t cleanup = 0;
     if (SafeRead(exe + REAP_TRANSPORT_VT + 0xA0, &cleanup, 8) || cleanup != exe + REAP_CLEANUP)
         return pinsReady ? RefuseReaper("the transport's vtable is not the reviewed one") : 0;

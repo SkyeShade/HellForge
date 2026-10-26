@@ -132,6 +132,16 @@ static void PickerCategoryCounts(uint32_t section, void* account, uint32_t* avai
     }
 }
 
+/* A new section at candidate i: the list's group-th section starts there and is the candidate's. */
+static int PickerSectionAt(const uint8_t* list, uint32_t i, uint32_t group, uint32_t sections)
+{
+    uint32_t first, section;
+    if (group >= sections) return 0;
+    memcpy(&first, list + 0x927D0 + group * 4, 4);
+    memcpy(&section, list + 0x92854 + group * 4, 4);
+    return first == i && section == g_pickerCandidates[i].section;
+}
+
 /* This renderer is shared by other screens. Only override a list whose keys AND section boundaries match the
  * selection builder's latest output, so opening another native mode-3 list cannot inherit its cached headings. */
 static int PickerCategoryListMatches(const uint8_t* list)
@@ -149,11 +159,7 @@ static int PickerCategoryListMatches(const uint8_t* list)
         if (key != g_pickerCandidates[i].key) return 0;
         if (i == 0 || g_pickerCandidates[i].section != g_pickerCandidates[i - 1].section)
         {
-            uint32_t first, section;
-            if (group >= sections) return 0;
-            memcpy(&first, list + 0x927D0 + group * 4, 4);
-            memcpy(&section, list + 0x92854 + group * 4, 4);
-            if (first != i || section != g_pickerCandidates[i].section) return 0;
+            if (!PickerSectionAt(list, i, group, sections)) return 0;
             group++;
         }
     }
@@ -219,6 +225,19 @@ static void CategoryCallBytes(uint8_t out[5], uintptr_t call, uintptr_t target)
     memcpy(out + 1, &displacement, 4);
 }
 
+/* jmp qword ptr [rip+0], absolute destination; leaves every argument register intact. */
+static void CategoryThunks(uint8_t* thunks)
+{
+    for (int i = 0; i < 2; i++)
+    {
+        uint8_t* thunk = thunks + i * 16;
+        if (i) { thunk[0] = 0x4C; thunk[1] = 0x8B; thunk[2] = 0xC6; thunk += 3; } /* mov r8,rsi: list */
+        thunk[0] = 0xFF; thunk[1] = 0x25;
+        uintptr_t target = i ? (uintptr_t)PickerHeaderCategory : (uintptr_t)PickerSortCategories;
+        memcpy(thunk + 6, &target, 8);
+    }
+}
+
 static void InstallStratagemCategories(uintptr_t game)
 {
     int used = 0;
@@ -230,15 +249,7 @@ static void InstallStratagemCategories(uintptr_t game)
     uint8_t* thunks = AllocateNearGame(game, 48);
     why = "could not allocate executable picker call targets";
     if (!thunks) goto refused;
-    /* jmp qword ptr [rip+0], absolute destination; leaves every argument register intact. */
-    for (int i = 0; i < 2; i++)
-    {
-        uint8_t* thunk = thunks + i * 16;
-        if (i) { thunk[0] = 0x4C; thunk[1] = 0x8B; thunk[2] = 0xC6; thunk += 3; } /* mov r8,rsi: list */
-        thunk[0] = 0xFF; thunk[1] = 0x25;
-        uintptr_t target = i ? (uintptr_t)PickerHeaderCategory : (uintptr_t)PickerSortCategories;
-        memcpy(thunk + 6, &target, 8);
-    }
+    CategoryThunks(thunks);
     DWORD old;
     if (!VirtualProtect(thunks, 48, PAGE_EXECUTE_READ, &old)) { VirtualFree(thunks, 0, MEM_RELEASE); goto refused; }
     FlushInstructionCache(GetCurrentProcess(), thunks, 48);

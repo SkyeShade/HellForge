@@ -220,25 +220,7 @@ public partial class MainWindow : Window
         runDirectory = null;  // Forget the previous run so its final state does not overwrite this one.
         launchedUtc = default;
         NoteSessionEditor();
-        if (!SessionRunner.IsSupported)
-        {
-            SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle);
-            return;
-        }
-        foreach (var (part, file) in new[] { ("Local backend", paths.Backend), ("Session runner", paths.Session) })
-            if (!File.Exists(file))
-            {
-                SetStatus(part + " is missing.", Phase.Failed,
-                    failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
-                return;
-            }
-        // Without Local PlayFab the game's own lobby search would list vanilla players' Steam lobbies: the session runner
-        // refuses multiplayer then, and so does the launcher, with the switch to change.
-        if (SdkShimsBox.IsChecked == true && LocalPlayFabBox.IsChecked != true)
-        {
-            SetStatus("Multiplayer needs Local PlayFab.", Phase.Failed, failure: "Turn on Experiments > Local PlayFab (or turn off the PlayFab SDK stand-ins) and press PLAY again.");
-            return;
-        }
+        if (!StartPreflight()) return;
         // A name typed into the open new-profile form is created and used rather than dropped.
         if (NewProfileForm.IsVisible && !string.IsNullOrWhiteSpace(NewProfileName.Text) && !CreateProfile()) return;
         var profile = Selected;
@@ -281,6 +263,32 @@ public partial class MainWindow : Window
         UpdateButton();
     }
 
+    // The checks a session needs before it is built: the platform is supported, the engine's programs are present, and
+    // multiplayer is not asked for without Local PlayFab. False (with the status set) when one fails.
+    bool StartPreflight()
+    {
+        if (!SessionRunner.IsSupported)
+        {
+            SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle);
+            return false;
+        }
+        foreach (var (part, file) in new[] { ("Local backend", paths.Backend), ("Session runner", paths.Session) })
+            if (!File.Exists(file))
+            {
+                SetStatus(part + " is missing.", Phase.Failed,
+                    failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
+                return false;
+            }
+        // Without Local PlayFab the game's own lobby search would list vanilla players' Steam lobbies: the session runner
+        // refuses multiplayer then, and so does the launcher, with the switch to change.
+        if (SdkShimsBox.IsChecked == true && LocalPlayFabBox.IsChecked != true)
+        {
+            SetStatus("Multiplayer needs Local PlayFab.", Phase.Failed, failure: "Turn on Experiments > Local PlayFab (or turn off the PlayFab SDK stand-ins) and press PLAY again.");
+            return false;
+        }
+        return true;
+    }
+
     void RequestStop()
     {
         if (!runner.IsRunning || stopRequested) return;
@@ -319,39 +327,50 @@ public partial class MainWindow : Window
     {
         ShowProfile();
         if (runDirectory == null && launchedUtc != default) FindRun();
-        if (runDirectory != null)
-        {
-            foreach (var line in requests.ReadNewLines(Path.Combine(runDirectory, "backend", "requests.jsonl"))) AppendRequest(line);
-            if (SessionFiles.ReadJson(Path.Combine(runDirectory, "result.json")) is { } state) ShowState(state);
-            // Mods are built before the script writes its first result.json: their progress shows from the start.
-            else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
-            if (runner.IsRunning) ShowModSync(runDirectory);
-            else ModSyncCard.IsVisible = false;
-        }
+        if (runDirectory != null) RefreshRun();
         var runnerExited = runner.CollectExited();
         if (runnerExited) PruneSessionLogs();
         // Mod sync: the backend stopped the session so that it starts again with the host's mods it downloaded.
-        if (runnerExited && runDirectory != null && !stopRequested && paths.InstallRoot != null &&
-            SessionFiles.ReadJson(Path.Combine(runDirectory, "result.json")) is { } final && SessionFiles.Text(final, "restart") == "mod-sync")
+        if (runnerExited && TryModSyncRestart()) return;
+        if (runnerExited && runDirectory == null) HandleEarlyExit();
+    }
+
+    // While a run folder exists: new backend requests, the latest result.json (or mod-build progress before it), the mod-sync card.
+    void RefreshRun()
+    {
+        foreach (var line in requests.ReadNewLines(Path.Combine(runDirectory!, "backend", "requests.jsonl"))) AppendRequest(line);
+        if (SessionFiles.ReadJson(Path.Combine(runDirectory!, "result.json")) is { } state) ShowState(state);
+        // Mods are built before the script writes its first result.json: their progress shows from the start.
+        else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
+        if (runner.IsRunning) ShowModSync(runDirectory!);
+        else ModSyncCard.IsVisible = false;
+    }
+
+    // The backend stopped the session so the launcher starts again with the host's mods it downloaded; true when it restarted.
+    bool TryModSyncRestart()
+    {
+        if (runDirectory == null || stopRequested || paths.InstallRoot == null ||
+            SessionFiles.ReadJson(Path.Combine(runDirectory, "result.json")) is not { } final || SessionFiles.Text(final, "restart") != "mod-sync")
+            return false;
+        Append("Restarting with the host's mods (mod sync). Once the game is on the ship, the host's invitation to their lobby waits in game.", LauncherLine);
+        Start(HellForge.Core.ModSyncSession.PathIn(new HellForge.Core.InstallLayout(paths.InstallRoot)));
+        return true;
+    }
+
+    // The session runner exited before a run folder appeared: cancelled before launch, or an early failure.
+    void HandleEarlyExit()
+    {
+        if (stopRequested)
         {
-            Append("Restarting with the host's mods (mod sync). Once the game is on the ship, the host's invitation to their lobby waits in game.", LauncherLine);
-            Start(HellForge.Core.ModSyncSession.PathIn(new HellForge.Core.InstallLayout(paths.InstallRoot)));
-            return;
+            RenderSteps(-1, false);
+            SetStatus("Cancelled before launch.", Phase.Idle);
         }
-        if (runnerExited && runDirectory == null)
+        else
         {
-            if (stopRequested)
-            {
-                RenderSteps(-1, false);
-                SetStatus("Cancelled before launch.", Phase.Idle);
-            }
-            else
-            {
-                FailCurrentStep();
-                SetStatus("The session runner exited before starting.", Phase.Failed, paths.InstallRoot != null ? "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why." : "Sessions run in installations made with HellForge-Setup.");
-            }
-            launchedUtc = default;
+            FailCurrentStep();
+            SetStatus("The session runner exited before starting.", Phase.Failed, paths.InstallRoot != null ? "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why." : "Sessions run in installations made with HellForge-Setup.");
         }
+        launchedUtc = default;
     }
 
     void FindRun()
@@ -378,11 +397,7 @@ public partial class MainWindow : Window
         ShowModProblems(state);
         switch (SessionFiles.Text(state, "status"))
         {
-            case "preparing":
-                if (!stopRequested && ShowModBuilds(out var built)) { RenderSteps(BuildStep, false, built); break; }
-                RenderSteps(VerifyStep, false);
-                if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
-                break;
+            case "preparing": ShowPreparing(); break;
             case "awaiting_network_block_install":
                 RenderSteps(NetworkStep, false);
                 if (!stopRequested) SetStatus("Approve the Windows prompt to install the network block.", Phase.Attention,
@@ -397,30 +412,46 @@ public partial class MainWindow : Window
                 RenderSteps(LaunchStep, false);
                 if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");
                 break;
-            case "observing":
-                RenderSteps(RunStep, false);
-                if (stopRequested) break;
-                if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
-                    SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
-                        "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
-                else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
-                break;
-            case "observed":
-                RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-                if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
-                else SetStatus("Ending the session...", Phase.Busy);
-                break;
-            case "failed":
-                FailCurrentStep();
-                var failure = SessionFiles.Text(state, "failure");
-                SetStatus(stopped ? "Session failed." : "Session failed. Cleaning up...", Phase.Failed,
-                    stopped ? "Open the session logs for details." : "", failure.Length > 0 ? failure : "unknown");
-                break;
+            case "observing": ShowObserving(); break;
+            case "observed": ShowObserved(state, stopped); break;
+            case "failed": ShowFailed(state, stopped); break;
             case "cleanup_failed":
                 FailCurrentStep();
                 SetStatus("Cleanup failed.", Phase.Failed, "", "Cleanup failed. Check the session logs before playing again.");
                 break;
         }
+    }
+
+    void ShowPreparing()
+    {
+        if (!stopRequested && ShowModBuilds(out var built)) { RenderSteps(BuildStep, false, built); return; }
+        RenderSteps(VerifyStep, false);
+        if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
+    }
+
+    void ShowObserving()
+    {
+        RenderSteps(RunStep, false);
+        if (stopRequested) return;
+        if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
+            SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
+                "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
+        else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
+    }
+
+    void ShowObserved(JsonElement state, bool stopped)
+    {
+        RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
+        if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
+        else SetStatus("Ending the session...", Phase.Busy);
+    }
+
+    void ShowFailed(JsonElement state, bool stopped)
+    {
+        FailCurrentStep();
+        var failure = SessionFiles.Text(state, "failure");
+        SetStatus(stopped ? "Session failed." : "Session failed. Cleaning up...", Phase.Failed,
+            stopped ? "Open the session logs for details." : "", failure.Length > 0 ? failure : "unknown");
     }
 
     // The network block an installation keeps (WFP, the Linux namespace, persistent rules) stays; only a session that placed
@@ -685,16 +716,21 @@ public partial class MainWindow : Window
             var (circle, number, glyph, label) = steps[i];
             var done = i < current;
             var active = i == current;
-            circle.Background = done ? Accent : active && failed ? Red : active ? ActiveFill : Brushes.Transparent;
-            circle.BorderBrush = done ? Accent : active && failed ? Red : active ? Accent : Pending;
+            circle.Background = StepFill(done, active, failed);
+            circle.BorderBrush = StepBorder(done, active, failed);
             number.IsVisible = !done && !(active && failed);
             number.Foreground = active ? Accent : Grey;
             glyph.IsVisible = done || (active && failed);
             glyph.Data = Geometry.Parse(done ? "M 0,6 L 5,11 L 14,1" : "M 0,0 L 11,11 M 11,0 L 0,11");
             glyph.Stroke = done ? White : Text;
-            label.Foreground = active && failed ? Red : done || active ? Text : Grey;
+            label.Foreground = LabelColor(done, active, failed);
         }
     }
+
+    // A step circle's fill and border, and its label colour: done (accent), active (gold fill, or red when failed), pending.
+    static IBrush StepFill(bool done, bool active, bool failed) => done ? Accent : active && failed ? Red : active ? ActiveFill : Brushes.Transparent;
+    static IBrush StepBorder(bool done, bool active, bool failed) => done ? Accent : active && failed ? Red : active ? Accent : Pending;
+    static IBrush LabelColor(bool done, bool active, bool failed) => active && failed ? Red : done || active ? Text : Grey;
 
     void UpdateTracks(int current, bool failed, double? progress)
     {

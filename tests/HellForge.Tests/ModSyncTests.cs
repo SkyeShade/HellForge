@@ -206,19 +206,19 @@ static class ModSyncTests
             var own = ModSet.Of(ModCatalog.LoadOrder(ModCatalog.Active(joinerMods)));
             var locator = new ModLocator(joinerFolder);
             var none = new HashSet<string>();
-            var plan = ModSyncPlan.Make(host, hostShares: true, own, locator.Find, none, verified: (_, _) => false);
+            var plan = ModSyncPlan.Make(host, hostShares: true, own, locator.Find, none, new SyncTrust(Verified: (_, _) => false));
             SyncAction A(ModSyncPlan p, string id) => p.Items.Single(i => i.Mod.Id == id).Action;
             check(A(plan, "test.ammo") == SyncAction.Have && A(plan, "test.texture") == SyncAction.Have && A(plan, "test.prebuilt") == SyncAction.Trust &&
                 A(plan, "test.source") == SyncAction.Trust && A(plan, "test.scripted") == SyncAction.Trust && A(plan, "test.mine") == SyncAction.Off,
                 "Actions: " + string.Join(", ", plan.Items.Select(i => $"{i.Mod.Id}={i.Action}")));
             check(plan.Items.Single(i => i.Mod.Id == "test.texture").Folder == Path.Combine(joinerFolder, "texture") && plan.Verdict == SyncVerdict.Trust,
                 "A switched-off copy counts, and a friend's unverified code waits for the player's trust.");
-            var verified = ModSyncPlan.Make(host, true, own, locator.Find, none, verified: (id, hash) => host.Find(id, hash)?.Class == ModClass.Code);
+            var verified = ModSyncPlan.Make(host, true, own, locator.Find, none, new SyncTrust(Verified: (id, hash) => host.Find(id, hash)?.Class == ModClass.Code));
             check(A(verified, "test.prebuilt") == SyncAction.Download && verified.Verdict == SyncVerdict.Download &&
                 verified.DownloadBytes == host.Mods.Where(m => m.Class == ModClass.Code).Sum(m => m.Bytes), "Verified code downloads.");
-            var notShared = ModSyncPlan.Make(host, false, own, locator.Find, none, verified: (_, _) => true);
+            var notShared = ModSyncPlan.Make(host, false, own, locator.Find, none, new SyncTrust(Verified: (_, _) => true));
             check(A(notShared, "test.prebuilt") == SyncAction.Manual && A(notShared, "test.ammo") == SyncAction.Have, "A host that does not share: nothing downloads.");
-            var blocked = ModSyncPlan.Make(host, true, own, locator.Find, new HashSet<string> { "test.ammo" }, verified: (_, _) => true);
+            var blocked = ModSyncPlan.Make(host, true, own, locator.Find, new HashSet<string> { "test.ammo" }, new SyncTrust(Verified: (_, _) => true));
             check(A(blocked, "test.ammo") == SyncAction.Blocked && blocked.Verdict == SyncVerdict.Blocked, "Blocked wins, even over a mod the joiner has.");
             var ready = ModSyncPlan.Make(own, true, own, locator.Find, none);
             check(ready.Verdict == SyncVerdict.Ready && ready.Items.All(i => i.Action == SyncAction.Have), "The same set: nothing to do.");
@@ -258,13 +258,13 @@ static class ModSyncTests
             // The plan: unverified, content downloads and the rest waits for the player's trust (a Steam friend's) or is theirs to
             // install (a stranger's); verified, all of it downloads from a friend. The class is the same for every host.
             var none = new ModSet("none", []);
-            var plan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), verified: (_, _) => false);
+            var plan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false));
             foreach (var (id, kind) in expected)
                 check(plan.Items.Single(i => i.Mod.Id == id).Action == (kind == ModClass.Content ? SyncAction.Download : SyncAction.Trust), $"{id}: unverified plan.");
-            var strangerPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), verified: (_, _) => true, hostIsFriend: false);
+            var strangerPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => true, HostIsFriend: false));
             foreach (var (id, kind) in expected)
                 check(strangerPlan.Items.Single(i => i.Mod.Id == id).Action == (kind == ModClass.Content ? SyncAction.Download : SyncAction.Manual), $"{id}: a stranger's plan, verified or not.");
-            var verifiedPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), verified: (id, hash) => set.Find(id, hash) != null);
+            var verifiedPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (id, hash) => set.Find(id, hash) != null));
             check(verifiedPlan.Items.All(i => i.Action == SyncAction.Download), "Verified raw data and code download.");
 
             // Before the bytes: the file list, the manifest and the stats file show code and raw data.
@@ -302,7 +302,7 @@ static class ModSyncTests
             var nothing = new HashSet<string>();
             SyncAction A(ModSyncPlan p, string id) => p.Items.Single(i => i.Mod.Id == id).Action;
             ModSyncPlan Plan(Func<string, string, bool> trusted, bool friend = true, bool shares = true) =>
-                ModSyncPlan.Make(host, shares, none, (_, _) => null, nothing, verified: (_, _) => false, hostIsFriend: friend, trusted: trusted);
+                ModSyncPlan.Make(host, shares, none, (_, _) => null, nothing, new SyncTrust(Verified: (_, _) => false, HostIsFriend: friend, Trusted: trusted));
 
             var untrusted = Plan((_, _) => false);
             check(A(untrusted, "test.prebuilt") == SyncAction.Trust && A(untrusted, "test.texture") == SyncAction.Trust && A(untrusted, "test.ammo") == SyncAction.Download &&
@@ -452,7 +452,7 @@ static class ModSyncTests
                     File.ReadAllText(Path.Combine(mod.Folder!, DataSpecs.FileName)));
                 check(declared == (mod.Class == ModClass.Raw ? ModClass.Raw : null), $"{mod.Id}: its spec declares {declared?.ToString() ?? "nothing"} before its other files.");
             }
-            var plan = ModSyncPlan.Make(set, true, new ModSet("none", []), (_, _) => null, new HashSet<string>(), verified: (_, _) => false);
+            var plan = ModSyncPlan.Make(set, true, new ModSet("none", []), (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false));
             check(plan.Items.All(i => i.Action == (specs[i.Mod.Id].Class == ModClass.Content ? SyncAction.Download : SyncAction.Trust)), "Unverified, only checked specs download.");
 
             // A hostile host calls its specs content: the joiner's store reads them from their own bytes and refuses them.

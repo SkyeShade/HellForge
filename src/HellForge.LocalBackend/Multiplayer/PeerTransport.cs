@@ -38,7 +38,10 @@ public sealed class InMemoryNetwork
     {
         public IReadOnlyList<FriendPresence.Friend> HellForgeFriends =>
             [.. network.endpoints.Keys.Where(k => k != id).Order().Select(k => new FriendPresence.Friend(k, $"Friend {k:X}"))];
-        readonly SemaphoreSlim order = new(1, 1);
+        // Deliveries to this endpoint, one after another in the order they were sent: each continues the last. (A task
+        // each, waiting on a semaphore, could take it in any order.)
+        readonly object order = new();
+        Task delivered = Task.CompletedTask;
         public ulong LocalId => id;
         public bool IsFriend(ulong peer) { lock (network.Strangers) return !network.Strangers.Contains(peer) && !network.Strangers.Contains(id); }
         public event Action<ulong, byte[]>? Received;
@@ -47,12 +50,9 @@ public sealed class InMemoryNetwork
         {
             if (!network.endpoints.TryGetValue(peer, out var target)) return; // An unknown peer is silently unreachable, like the network.
             var copy = frame.ToArray();
-            _ = Task.Run(async () =>
-            {
-                await target.order.WaitAsync();
-                try { target.Received?.Invoke(id, copy); }
-                finally { target.order.Release(); }
-            });
+            lock (target.order)
+                target.delivered = target.delivered.ContinueWith(_ => target.Received?.Invoke(id, copy), CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default);
         }
         public void Dispose() => network.endpoints.TryRemove(id, out _);
     }

@@ -58,16 +58,16 @@ public sealed class ModSync : IAsyncDisposable
     readonly CancellationTokenSource stop = new();
     readonly object gate = new();
 
-    public ModSync(IPeerTransport transport, string modsFolder, ModSet? own, string runDirectory, string evidenceDirectory, string sessionFile,
-        Func<ulong, string> nameOf, Action<string> log, Func<string, string, bool>? verified = null)
+    public ModSync(IPeerTransport transport, ModSyncPaths paths, ModSet? own, Func<ulong, string> nameOf, Action<string> log,
+        Func<string, string, bool>? verified = null)
     {
         this.transport = transport;
-        this.modsFolder = modsFolder;
+        modsFolder = paths.ModsFolder;
         this.own = own;
         ownWire = own?.ToJson(local: false).ToJsonString();
-        this.runDirectory = runDirectory;
-        this.evidenceDirectory = evidenceDirectory;
-        this.sessionFile = sessionFile;
+        runDirectory = paths.RunDirectory;
+        evidenceDirectory = paths.EvidenceDirectory;
+        sessionFile = paths.SessionFile;
         this.nameOf = nameOf;
         this.log = log;
         this.verified = verified ?? VerifiedMods.Contains;
@@ -206,8 +206,8 @@ public sealed class ModSync : IAsyncDisposable
         ModSet set;
         try { set = ModSet.Parse(wire, local: false); }
         catch (InvalidDataException) { why = "its mod list is malformed"; return false; }
-        var plan = ModSyncPlan.Make(set, listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1", own ?? new ModSet("none", []), Locator.Find, settings.Blocked, verified,
-            hostIsFriend: transport.IsFriend(listing.Host), trusted: settings.Trusts);
+        var plan = ModSyncPlan.Make(set, listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1", own ?? new ModSet("none", []), Locator.Find, settings.Blocked,
+            new SyncTrust(verified, transport.IsFriend(listing.Host), settings.Trusts));
         why = plan.Verdict switch
         {
             SyncVerdict.Blocked => "it runs a blocked mod",
@@ -292,15 +292,23 @@ public sealed class ModSync : IAsyncDisposable
         if (ModSets.NeedsVerified(mod.Class) && !transport.IsFriend(peer))
             return Refused(frame, "the host shares mods that run code or carry unchecked data only with Steam friends");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
-        if (frame.Type == "mods.files")
-        {
-            if (!int.TryParse(frame.Text(3), NumberStyles.None, CultureInfo.InvariantCulture, out var start) || start >= mod.Files.Count)
-                return Refused(frame, "not a page of the mod's file list");
-            var page = mod.Files.Skip(start).Take(PageFiles).ToList();
-            var list = new Frame("mods.filelist").Add(frame.Text(0)).Add("ok").Add(mod.Files.Count).Add(start);
-            foreach (var file in page) list.Add(file.Path).Add(file.Size).Add(file.Sha256);
-            return list;
-        }
+        return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
+    }
+
+    // mods.files: a page of the mod's file list.
+    static Frame FilePage(Frame frame, ModSetEntry mod)
+    {
+        if (!int.TryParse(frame.Text(3), NumberStyles.None, CultureInfo.InvariantCulture, out var start) || start >= mod.Files.Count)
+            return Refused(frame, "not a page of the mod's file list");
+        var page = mod.Files.Skip(start).Take(PageFiles).ToList();
+        var list = new Frame("mods.filelist").Add(frame.Text(0)).Add("ok").Add(mod.Files.Count).Add(start);
+        foreach (var file in page) list.Add(file.Path).Add(file.Size).Add(file.Sha256);
+        return list;
+    }
+
+    // mods.get: a part of one of the mod's files (in its folder), within the grant's bytes.
+    Frame Chunk(Frame frame, ModSetEntry mod, string folder, Grant grant)
+    {
         var path = frame.Text(3);
         var listed = mod.Files.FirstOrDefault(f => f.Path == path);
         if (listed == null || !long.TryParse(frame.Text(4), NumberStyles.None, CultureInfo.InvariantCulture, out var offset) ||
@@ -312,8 +320,8 @@ public sealed class ModSync : IAsyncDisposable
             if (grant.Left < length) return Refused(frame, "this player has downloaded all this offer allows");
             grant.Left -= length;
         }
-        var full = Path.GetFullPath(Path.Combine(mod.Folder, path));
-        if (!full.StartsWith(Path.GetFullPath(mod.Folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        var full = Path.GetFullPath(Path.Combine(folder, path));
+        if (!full.StartsWith(Path.GetFullPath(folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             return Refused(frame, "not a part of the mod's files");
         using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         if (stream.Length != listed.Size) return Refused(frame, "the host's copy of the mod changed since the session started");
@@ -394,8 +402,8 @@ public sealed class ModSync : IAsyncDisposable
     ModSyncPlan Plan(ModSet set, bool shares, ulong host)
     {
         var settings = ModSettings.Read(modsFolder);
-        return ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), new ModLocator(modsFolder).Find, settings.Blocked, verified,
-            hostIsFriend: transport.IsFriend(host), trusted: settings.Trusts);
+        return ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), new ModLocator(modsFolder).Find, settings.Blocked,
+            new SyncTrust(verified, transport.IsFriend(host), settings.Trusts));
     }
 
     // What lets a code or raw mod's exact content through on this machine: HellForge's verified list, or the player's trust
@@ -579,21 +587,13 @@ public sealed class ModSync : IAsyncDisposable
         while (total == null || files.Count < total)
         {
             var reply = await RequestAsync(host, new Frame("mods.files").Add(mod.Id).Add(mod.Hash).Add(files.Count), token);
-            if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
-            var count = (reply.Count - 4) / 3;
-            if (reply.Count < 7 || (reply.Count - 4) % 3 != 0 || count > PageFiles || reply.Int(3) != files.Count)
-                throw new InvalidDataException($"{mod.Name}: the host's file list is malformed.");
+            var count = PageCount(reply, mod, files.Count);
             total ??= reply.Int(2);
             if (total is < 1 or > SyncedStore.MaxFiles || reply.Int(2) != total || files.Count + count > total)
                 throw new InvalidDataException($"{mod.Name}: the host's file list is malformed or too long (at most {SyncedStore.MaxFiles} files).");
             for (var i = 0; i < count; i++)
             {
-                var at = 4 + 3 * i;
-                var file = new ModFile(reply.Text(at), long.TryParse(reply.Text(at + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var size) ? size : -1,
-                    reply.Text(at + 2));
-                if (!SyncedStore.SafePath(file.Path) || !paths.Add(file.Path) || file.Size < 0 || file.Size > mod.Bytes || file.Sha256.Length != 64 ||
-                    !file.Sha256.All(char.IsAsciiHexDigitUpper))
-                    throw new InvalidDataException($"{mod.Name}: the host listed a file that cannot be taken.");
+                var file = ListedFile(reply, 4 + 3 * i, mod, paths);
                 bytes += file.Size;
                 files.Add(file);
             }
@@ -601,6 +601,27 @@ public sealed class ModSync : IAsyncDisposable
         if (bytes != mod.Bytes) throw new InvalidDataException($"{mod.Name}: the host's files are not the size its mod list says.");
         if (!files.Any(f => f.Path is ModCatalog.ManifestName or ModCatalog.LegacyManifestName)) throw new InvalidDataException($"{mod.Name}: the host listed no manifest.");
         return files;
+    }
+
+    // The number of files a page of the host's file list holds (it starts at file listed), or why it cannot be read.
+    static int PageCount(Frame reply, ModSetEntry mod, int listed)
+    {
+        if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
+        var count = (reply.Count - 4) / 3;
+        if (reply.Count < 7 || (reply.Count - 4) % 3 != 0 || count > PageFiles || reply.Int(3) != listed)
+            throw new InvalidDataException($"{mod.Name}: the host's file list is malformed.");
+        return count;
+    }
+
+    // The file a page lists at field at: a safe path not listed before, a size within the mod's, a SHA-256.
+    static ModFile ListedFile(Frame reply, int at, ModSetEntry mod, HashSet<string> paths)
+    {
+        var file = new ModFile(reply.Text(at), long.TryParse(reply.Text(at + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var size) ? size : -1,
+            reply.Text(at + 2));
+        if (!SyncedStore.SafePath(file.Path) || !paths.Add(file.Path) || file.Size < 0 || file.Size > mod.Bytes || file.Sha256.Length != 64 ||
+            !file.Sha256.All(char.IsAsciiHexDigitUpper))
+            throw new InvalidDataException($"{mod.Name}: the host listed a file that cannot be taken.");
+        return file;
     }
 
     // Files in order, each written and hashed in order: their chunks are asked for on across the files (a mod of many small
@@ -634,31 +655,42 @@ public sealed class ModSync : IAsyncDisposable
                 output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             }
         }
+        // The window's chunks asked for, across the files.
+        void AskMore()
+        {
+            while (asked.Count < window.Ceiling && asking < files.Count)
+                if (next >= files[asking].Size) (asking, next) = (asking + 1, 0);
+                else
+                {
+                    var length = (int)Math.Min(ChunkBytes, files[asking].Size - next);
+                    if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) return;
+                    asked.Enqueue((asking, next, length, Stopwatch.GetTimestamp(), Get(asking, next, length)));
+                    (next, askedBytes) = (next + length, askedBytes + length);
+                }
+        }
+        // A chunk's answer. A host that queues fewer requests than this window (an older one queued 8): fewer, and this
+        // one again (crowded).
+        async Task<(Frame Reply, bool Crowded)> AnswerOf(Task<Frame> pending, int file, long offset, int length)
+        {
+            var reply = await pending;
+            var crowded = false;
+            for (var tries = 0; tries < 3 && reply.Count > 2 && reply.Text(1) == "refused" && reply.Text(2) == TooMany; tries++)
+            {
+                crowded = true;
+                window.Crowded();
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * (tries + 1)), token);
+                reply = await Get(file, offset, length);
+            }
+            return (reply, crowded);
+        }
         try
         {
             while (true)
             {
-                while (asked.Count < window.Ceiling && asking < files.Count)
-                    if (next >= files[asking].Size) (asking, next) = (asking + 1, 0);
-                    else
-                    {
-                        var length = (int)Math.Min(ChunkBytes, files[asking].Size - next);
-                        if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) break;
-                        asked.Enqueue((asking, next, length, Stopwatch.GetTimestamp(), Get(asking, next, length)));
-                        (next, askedBytes) = (next + length, askedBytes + length);
-                    }
+                AskMore();
                 if (!asked.TryDequeue(out var chunk)) break;
                 askedBytes -= chunk.Length;
-                var reply = await chunk.Reply;
-                var crowded = false;
-                // A host that queues fewer requests than this window (an older one queued 8): fewer, and this one again.
-                for (var tries = 0; tries < 3 && reply.Count > 2 && reply.Text(1) == "refused" && reply.Text(2) == TooMany; tries++)
-                {
-                    crowded = true;
-                    window.Crowded();
-                    await Task.Delay(TimeSpan.FromMilliseconds(250 * (tries + 1)), token);
-                    reply = await Get(chunk.File, chunk.Offset, chunk.Length);
-                }
+                var (reply, crowded) = await AnswerOf(chunk.Reply, chunk.File, chunk.Offset, chunk.Length);
                 if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
                 var bytes = reply.Bytes(3);
                 if (reply.Text(2) != chunk.Offset.ToString(CultureInfo.InvariantCulture) || bytes.Length != chunk.Length)
@@ -865,11 +897,14 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
                 for (var i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
-                    if (!(await live.SyncModAsync(view.Version, i, ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class), item.Mod.Bytes, item.Mod.Id,
-                            item.Mod.Name, item.Mod.Version, item.Mod.Url)).Ok) return false;
+                    if (!(await live.SyncModAsync(view.Version, i, item)).Ok) return false;
                 }
             return (await live.SyncStateAsync(view.Version, view.State, view.Host, view.Bytes, view.Done, items.Count, message)).Ok;
         }
         finally { order.Release(); }
     }
 }
+
+// Where a session's mod sync works: the session's mods folder, its run folder (the evidence folder's parent) and evidence
+// folder, and the file the next session's mods are written to (ModSyncSession).
+public sealed record ModSyncPaths(string ModsFolder, string RunDirectory, string EvidenceDirectory, string SessionFile);

@@ -64,7 +64,7 @@ public static unsafe class LobbyLinkSmoke
         }
     }
 
-    public static int Run(string standIns, string backend)
+    public static int Run(string standIns, string backend) // lint-ok: R10 a flat two-backend integration script whose ~30 ordered native calls share stackalloc'd fixed pointers (&hostKey, &friendKey, &hostLobby); splitting would only scatter tightly-coupled pointer code (its phases PartyFlow/KeyFlow/PresenceFlow are already helpers)
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "hellforge-lobby-link-" + Guid.NewGuid().ToString("N"))).FullName;
         var problems = new List<string>();
@@ -316,12 +316,10 @@ public static unsafe class LobbyLinkSmoke
         {
             expect(createUser(host.Handle, hostId, token, &hostUser) == 0 && friendCreateUser(friend.Handle, friendId, token, &friendUser) == 0, "Party local users are created");
             expect(createNetwork(host.Handle, hostUser, configuration, 0, 0, 0, 0x101, descriptor, invitation) == 0, "The host creates a Party network");
-            Join(host, E(host, "PartyConnectToNetwork"), E(host, "PartyNetworkAuthenticateLocalUser"), E(host, "PartyNetworkCreateEndpoint"), descriptor, hostUser, invitation,
-                &hostNetwork, &hostEndpoint);
+            Join(host, descriptor, hostUser, invitation, &hostNetwork, &hostEndpoint);
             expect(host.WaitFor("10:0"), "The host's network connects and its endpoint is created");
             expect(serialize(descriptor, serialized) == 0 && deserialize(serialized, parsed) == 0, "The descriptor travels as text");
-            Join(friend, E(friend, "PartyConnectToNetwork"), E(friend, "PartyNetworkAuthenticateLocalUser"), E(friend, "PartyNetworkCreateEndpoint"), parsed, friendUser, invitation,
-                &friendNetwork, &friendEndpoint);
+            Join(friend, parsed, friendUser, invitation, &friendNetwork, &friendEndpoint);
             expect(friend.WaitFor("3:0"), "The friend connects to the host's network through both backends");
             expect(friend.WaitFor("16") && friend.WaitFor("12"), "The friend sees the host's machine and endpoint");
             expect(friend.WaitFor("10:0"), "The friend's endpoint is created with an id from the host");
@@ -364,8 +362,7 @@ public static unsafe class LobbyLinkSmoke
             // it comes back: HD2 drops a join whose host machine reappears without REMOTE_DEVICE_CREATED.
             expect(host.WaitFor("15"), "The host destroys the friend's machine once no network is shared");
             nint rejoinNetwork = 0, rejoinEndpoint = 0;
-            Join(friend, E(friend, "PartyConnectToNetwork"), E(friend, "PartyNetworkAuthenticateLocalUser"), E(friend, "PartyNetworkCreateEndpoint"), parsed, friendUser, invitation,
-                &rejoinNetwork, &rejoinEndpoint);
+            Join(friend, parsed, friendUser, invitation, &rejoinNetwork, &rejoinEndpoint);
             expect(friend.WaitFor("3:0") && friend.WaitFor("14") && friend.WaitFor("16"), "A returning friend sees the host's machine created again");
             expect(host.WaitFor("14") && host.WaitFor("16"), "The host sees the returning friend's machine created again");
             expect(leave(rejoinNetwork, 0x203) == 0 && friend.WaitFor("19:0"), "The returning friend leaves again");
@@ -448,12 +445,13 @@ public static unsafe class LobbyLinkSmoke
         expect(cleared, "A cleared lobby disappears from the friend's social tab");
     }
 
-    static void Join(PartyPlayer player, nint connectExport, nint authenticateExport, nint endpointExport, byte* descriptor, nint user, byte* invitation,
-        nint* network, nint* endpoint)
+    // The host/connect sequence a game runs in one frame: connect, authenticate with the invitation, create an endpoint.
+    // The three exports come from the player's own stand-in.
+    static void Join(PartyPlayer player, byte* descriptor, nint user, byte* invitation, nint* network, nint* endpoint)
     {
-        var connect = (delegate* unmanaged<nint, byte*, nint, nint*, uint>)connectExport;
-        var authenticate = (delegate* unmanaged<nint, nint, byte*, nint, uint>)authenticateExport;
-        var createEndpoint = (delegate* unmanaged<nint, nint, uint, nint, nint, nint, nint*, uint>)endpointExport;
+        var connect = (delegate* unmanaged<nint, byte*, nint, nint*, uint>)NativeLibrary.GetExport(player.Library, "PartyConnectToNetwork");
+        var authenticate = (delegate* unmanaged<nint, nint, byte*, nint, uint>)NativeLibrary.GetExport(player.Library, "PartyNetworkAuthenticateLocalUser");
+        var createEndpoint = (delegate* unmanaged<nint, nint, uint, nint, nint, nint, nint*, uint>)NativeLibrary.GetExport(player.Library, "PartyNetworkCreateEndpoint");
         connect(player.Handle, descriptor, 0x301, network);
         authenticate(*network, user, invitation, 0x302);
         createEndpoint(*network, user, 0, 0, 0, 0x303, endpoint);

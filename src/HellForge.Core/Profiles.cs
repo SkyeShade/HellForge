@@ -146,7 +146,7 @@ public static partial class ProfileStore
         SessionFiles.ReadJson(paths.SettingsFile) is { } settings && uint.TryParse(SessionFiles.Text(settings, "subfactionSeed"), NumberStyles.None,
             CultureInfo.InvariantCulture, out var seed) ? seed : 0;
     public static void SaveSubfactionSeed(ISessionPaths paths, uint seed) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths), seed);
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths), seed));
 
     // The engine's own log (--log-to-file), copied into the session's logs. On unless switched off (multiplayer testing).
     public static bool LoadEngineLog(ISessionPaths paths) => LoadFlag(paths, "engineLog");
@@ -159,11 +159,11 @@ public static partial class ProfileStore
     public static bool LoadDealSubfactions(ISessionPaths paths) => LoadFlag(paths, "dealSubfactions");
     public static bool LoadDealSeaf(ISessionPaths paths) => LoadFlag(paths, "dealSeaf");
     public static void SaveDealSubfactions(ISessionPaths paths, bool deal) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
-            LoadLaunchOptions(paths), dealSubfactions: deal);
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), DealSubfactions: deal));
     public static void SaveDealSeaf(ISessionPaths paths, bool deal) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
-            LoadLaunchOptions(paths), dealSeaf: deal);
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), DealSeaf: deal));
 
     // On unless turned off (since the 0.3.0 beta): the game at low integrity, with Steam through the session's Steam
     // broker (HellForge.Session play --sandbox, docs/steam-bridge.md); a session is sandboxed by default only with an engine
@@ -171,8 +171,8 @@ public static partial class ProfileStore
     // false for everyone who never chose, so that key is not read and every installation starts sandboxed once.
     public static bool LoadSandbox(ISessionPaths paths) => LoadFlag(paths, "sandboxed");
     public static void SaveSandbox(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
-            LoadLaunchOptions(paths), sandbox: enabled);
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), Sandbox: enabled));
 
     // The game's launch options, as typed (GameLaunchOptions); empty unless set.
     public static string LoadLaunchOptions(ISessionPaths paths) =>
@@ -182,37 +182,45 @@ public static partial class ProfileStore
         SessionFiles.ReadJson(paths.SettingsFile) is not { } settings || SessionFiles.Text(settings, name) != "false";
 
     public static void SaveSelected(ISessionPaths paths, string name) =>
-        Save(paths, name, LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, new(name, LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths)));
 
     public static void SaveLocalPlayFab(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), enabled, LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, new(LoadSelected(paths), enabled, LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths)));
 
     public static void SaveSdkShims(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), enabled, LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths)));
 
     public static void SaveWar(ISessionPaths paths, string war) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), war, LoadEngineLog(paths), LoadCrashDump(paths), LoadLaunchOptions(paths)));
 
     public static void SaveCrashDump(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths));
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), enabled, LoadLaunchOptions(paths)));
 
     public static void SaveEngineLog(ISessionPaths paths, bool enabled) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), enabled, LoadCrashDump(paths), LoadLaunchOptions(paths));
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), enabled, LoadCrashDump(paths), LoadLaunchOptions(paths)));
 
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
-        Save(paths, LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text);
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
-    static void Save(ISessionPaths paths, string name, bool localPlayFab, bool sdkShims, string war, bool engineLog, bool crashDump, string launchOptions,
-        uint? seed = null, bool? sandbox = null, bool? dealSubfactions = null, bool? dealSeaf = null)
+    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions or DealSeaf keeps the saved one.
+    sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null);
+
+    static void Save(ISessionPaths paths, SavedSettings saved)
     {
         try
         {
-            var subfactionSeed = (seed ?? LoadSubfactionSeed(paths)).ToString(CultureInfo.InvariantCulture);
-            var sandboxed = sandbox ?? LoadSandbox(paths);
-            var subfactions = dealSubfactions ?? LoadDealSubfactions(paths);
-            var seaf = dealSeaf ?? LoadDealSeaf(paths);
+            var subfactionSeed = (saved.Seed ?? LoadSubfactionSeed(paths)).ToString(CultureInfo.InvariantCulture);
+            var sandboxed = saved.Sandbox ?? LoadSandbox(paths);
+            var subfactions = saved.DealSubfactions ?? LoadDealSubfactions(paths);
+            var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
             Directory.CreateDirectory(paths.HostRoot);
-            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new { selectedProfile = name, localPlayFab, sdkShims, war, liveWar = war == WarLive, engineLog, crashDump, launchOptions, subfactionSeed, dealSubfactions = subfactions, dealSeaf = seaf, sandboxed }, WriteOptions) + "\n");
+            File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
+            {
+                selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
+                engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed
+            }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.
     }

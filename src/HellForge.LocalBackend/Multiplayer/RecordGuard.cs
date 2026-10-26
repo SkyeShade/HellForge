@@ -99,32 +99,38 @@ public static class RecordGuard
         switch (value)
         {
             case null: return (true, null);
-            case JsonValue scalar:
-                return scalar.GetValueKind() switch
-                {
-                    JsonValueKind.String => scalar.GetValue<string>() is var text && text.Length <= limits.Text
-                        ? (true, JsonValue.Create(new string([.. text.Where(c => !char.IsControl(c))]))) : (false, null),
-                    JsonValueKind.Number => double.TryParse(scalar.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) &&
-                        double.IsFinite(number) ? (true, scalar.DeepClone()) : (false, null),
-                    JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null => (true, scalar.DeepClone()),
-                    _ => (false, null)
-                };
-            case JsonArray list when depth < limits.Depth && list.Count <= limits.Items:
-            {
-                var copy = new JsonArray();
-                foreach (var item in list)
-                    if (Value(item, limits, depth + 1, count) is { Ok: true } cleaned) copy.Add(cleaned.Node);
-                return (true, copy);
-            }
-            case JsonObject node when depth < limits.Depth && node.Count <= limits.Items:
-            {
-                var copy = new JsonObject();
-                foreach (var (key, item) in node)
-                    if (Key(key, limits, count) && Value(item, limits, depth + 1, count) is { Ok: true } cleaned) copy[key] = cleaned.Node;
-                return (true, copy);
-            }
+            case JsonValue scalar: return Scalar(scalar, limits);
+            case JsonArray list when depth < limits.Depth && list.Count <= limits.Items: return (true, List(list, limits, depth, count));
+            case JsonObject node when depth < limits.Depth && node.Count <= limits.Items: return (true, Object(node, limits, depth, count));
             default: return (false, null);
         }
+    }
+
+    // A text within limits.Text (its control characters dropped), a finite number, a boolean or null.
+    static (bool Ok, JsonNode? Node) Scalar(JsonValue scalar, Limits limits) => scalar.GetValueKind() switch
+    {
+        JsonValueKind.String => scalar.GetValue<string>() is var text && text.Length <= limits.Text
+            ? (true, JsonValue.Create(new string([.. text.Where(c => !char.IsControl(c))]))) : (false, null),
+        JsonValueKind.Number => double.TryParse(scalar.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) &&
+            double.IsFinite(number) ? (true, scalar.DeepClone()) : (false, null),
+        JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null => (true, scalar.DeepClone()),
+        _ => (false, null)
+    };
+
+    static JsonArray List(JsonArray list, Limits limits, int depth, Count count)
+    {
+        var copy = new JsonArray();
+        foreach (var item in list)
+            if (Value(item, limits, depth + 1, count) is { Ok: true } cleaned) copy.Add(cleaned.Node);
+        return copy;
+    }
+
+    static JsonObject Object(JsonObject node, Limits limits, int depth, Count count)
+    {
+        var copy = new JsonObject();
+        foreach (var (key, item) in node)
+            if (Key(key, limits, count) && Value(item, limits, depth + 1, count) is { Ok: true } cleaned) copy[key] = cleaned.Node;
+        return copy;
     }
 
     static bool Key(string key, Limits limits, Count count)

@@ -69,6 +69,32 @@ void Layout()
         else g_icons[Key(s.kind, s.name)] = icon;
     }
 }
+
+/* An image of game-icons.bin at `at` (moved past it) into the sources; false where the file is cut short or holds what
+ * this version does not read. */
+bool ReadIcon(const std::string& data, uint32_t version, size_t& at)
+{
+    const uint8_t* p = (const uint8_t*)data.data();
+    uint8_t kind = p[at], length = p[at + 1];
+    at += 2;
+    if (at + length + 4 > data.size()) return false;
+    std::string name((const char*)p + at, length);
+    at += length;
+    uint16_t w, h;
+    memcpy(&w, p + at, 2);
+    memcpy(&h, p + at + 2, 2);
+    at += 4;
+    uint8_t channels = 1;
+    if (version >= 2) { if (at >= data.size()) return false; channels = p[at++]; }
+    size_t bytes = (size_t)w * h * channels;
+    if (w == 0 || h == 0 || w > 1024 || h > 1024 || (channels != 1 && channels != 4) || at + bytes > data.size() || (kind > PASSIVE && kind != FACTION && kind != DIFFICULTY)) return false;
+    std::vector<uint32_t> pixels;
+    if (channels == 1) pixels = White(p + at, (size_t)w * h);
+    else { pixels.resize((size_t)w * h); memcpy(pixels.data(), p + at, bytes); }
+    g_sources.push_back({(Kind)kind, name, w, h, pixels});
+    at += bytes;
+    return true;
+}
 } // namespace
 
 int Load(const std::wstring& gameIcons)
@@ -91,29 +117,33 @@ int Load(const std::wstring& gameIcons)
         size_t at = 12;
         for (uint32_t i = 0; (version == 1 || version == 2) && i < n && at + 2 <= data.size(); i++)
         {
-            uint8_t kind = p[at], length = p[at + 1];
-            at += 2;
-            if (at + length + 4 > data.size()) break;
-            std::string name((const char*)p + at, length);
-            at += length;
-            uint16_t w, h;
-            memcpy(&w, p + at, 2);
-            memcpy(&h, p + at + 2, 2);
-            at += 4;
-            uint8_t channels = 1;
-            if (version >= 2) { if (at >= data.size()) break; channels = p[at++]; }
-            size_t bytes = (size_t)w * h * channels;
-            if (w == 0 || h == 0 || w > 1024 || h > 1024 || (channels != 1 && channels != 4) || at + bytes > data.size() || (kind > PASSIVE && kind != FACTION && kind != DIFFICULTY)) break;
-            std::vector<uint32_t> pixels;
-            if (channels == 1) pixels = White(p + at, (size_t)w * h);
-            else { pixels.resize((size_t)w * h); memcpy(pixels.data(), p + at, bytes); }
-            g_sources.push_back({(Kind)kind, name, w, h, pixels});
-            at += bytes;
+            if (!ReadIcon(data, version, at)) break;
             count++;
         }
     }
     Layout();
     return count;
+}
+
+/* The image halved (each pixel the average of the four it covers; an odd last row or column taken twice). */
+static void Halve(std::vector<uint32_t>& pixels, UINT& w, UINT& h)
+{
+    UINT nw = std::max(1u, w / 2), nh = std::max(1u, h / 2);
+    std::vector<uint32_t> next((size_t)nw * nh);
+    for (UINT y = 0; y < nh; y++)
+        for (UINT x = 0; x < nw; x++)
+        {
+            uint32_t sum[4] = {0, 0, 0, 0};
+            for (int k = 0; k < 4; k++)
+            {
+                uint32_t c = pixels[(size_t)std::min(h - 1, 2 * y + k / 2) * w + std::min(w - 1, 2 * x + k % 2)];
+                for (int b = 0; b < 4; b++) sum[b] += (c >> (8 * b)) & 0xFF;
+            }
+            next[(size_t)y * nw + x] = (sum[0] / 4) | ((sum[1] / 4) << 8) | ((sum[2] / 4) << 16) | ((sum[3] / 4) << 24);
+        }
+    pixels.swap(next);
+    w = nw;
+    h = nh;
 }
 
 /* An image file in RGBA words, at most 128 pixels (halved, box filtered), read with Windows' image decoder. */
@@ -145,25 +175,7 @@ static bool Decode(const std::wstring& path, std::vector<uint32_t>& pixels, UINT
     if (SUCCEEDED(com)) CoUninitialize();
     if (!ok) return false;
     /* halved (box filter) while over 128 pixels */
-    while (w > 128 || h > 128)
-    {
-        UINT nw = std::max(1u, w / 2), nh = std::max(1u, h / 2);
-        std::vector<uint32_t> next((size_t)nw * nh);
-        for (UINT y = 0; y < nh; y++)
-            for (UINT x = 0; x < nw; x++)
-            {
-                uint32_t sum[4] = {0, 0, 0, 0};
-                for (int k = 0; k < 4; k++)
-                {
-                    uint32_t c = pixels[(size_t)std::min(h - 1, 2 * y + k / 2) * w + std::min(w - 1, 2 * x + k % 2)];
-                    for (int b = 0; b < 4; b++) sum[b] += (c >> (8 * b)) & 0xFF;
-                }
-                next[(size_t)y * nw + x] = (sum[0] / 4) | ((sum[1] / 4) << 8) | ((sum[2] / 4) << 16) | ((sum[3] / 4) << 24);
-            }
-        pixels.swap(next);
-        w = nw;
-        h = nh;
-    }
+    while (w > 128 || h > 128) Halve(pixels, w, h);
     return true;
 }
 
@@ -237,6 +249,49 @@ std::vector<std::vector<uint32_t>> MipLevels()
     return levels;
 }
 
+/* The upload buffer's levels copied into the texture on the game's queue, and waited for (5 s at most). */
+static bool CopyLevels(ID3D12Device* device, ID3D12CommandQueue* queue, ExecuteFn execute, ID3D12Resource* texture, ID3D12Resource* upload,
+    const D3D12_PLACED_SUBRESOURCE_FOOTPRINT* footprints)
+{
+    ID3D12CommandAllocator* allocator = nullptr;
+    ID3D12GraphicsCommandList* list = nullptr;
+    ID3D12Fence* fence = nullptr;
+    bool ok = SUCCEEDED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator))) &&
+        SUCCEEDED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator, nullptr, IID_PPV_ARGS(&list))) &&
+        SUCCEEDED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
+    if (ok)
+    {
+        for (int level = 0; level < LEVELS; level++)
+        {
+            D3D12_TEXTURE_COPY_LOCATION to = {}, from = {};
+            to.pResource = texture;
+            to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            to.SubresourceIndex = (UINT)level;
+            from.pResource = upload;
+            from.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            from.PlacedFootprint = footprints[level];
+            list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+        }
+        D3D12_RESOURCE_BARRIER barrier = {};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = texture;
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        list->ResourceBarrier(1, &barrier);
+        list->Close();
+        ID3D12CommandList* lists[] = {list};
+        execute(queue, 1, lists);
+        HANDLE done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        ok = SUCCEEDED(queue->Signal(fence, 1)) && SUCCEEDED(fence->SetEventOnCompletion(1, done)) && WaitForSingleObject(done, 5000) == WAIT_OBJECT_0;
+        CloseHandle(done);
+    }
+    if (fence) fence->Release();
+    if (list) list->Release();
+    if (allocator) allocator->Release();
+    return ok;
+}
+
 bool Upload(ID3D12Device* device, ID3D12CommandQueue* queue, ExecuteFn execute, D3D12_CPU_DESCRIPTOR_HANDLE cpu, D3D12_GPU_DESCRIPTOR_HANDLE gpu)
 {
     if (Uploaded()) return true;
@@ -282,42 +337,7 @@ bool Upload(ID3D12Device* device, ID3D12CommandQueue* queue, ExecuteFn execute, 
                 &levels[level][(size_t)row * footprints[level].Footprint.Width], (size_t)rowBytes[level]);
     upload->Unmap(0, nullptr);
 
-    ID3D12CommandAllocator* allocator = nullptr;
-    ID3D12GraphicsCommandList* list = nullptr;
-    ID3D12Fence* fence = nullptr;
-    bool ok = SUCCEEDED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator))) &&
-        SUCCEEDED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator, nullptr, IID_PPV_ARGS(&list))) &&
-        SUCCEEDED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
-    if (ok)
-    {
-        for (int level = 0; level < LEVELS; level++)
-        {
-            D3D12_TEXTURE_COPY_LOCATION to = {}, from = {};
-            to.pResource = texture;
-            to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            to.SubresourceIndex = (UINT)level;
-            from.pResource = upload;
-            from.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            from.PlacedFootprint = footprints[level];
-            list->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
-        }
-        D3D12_RESOURCE_BARRIER barrier = {};
-        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource = texture;
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        list->ResourceBarrier(1, &barrier);
-        list->Close();
-        ID3D12CommandList* lists[] = {list};
-        execute(queue, 1, lists);
-        HANDLE done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        ok = SUCCEEDED(queue->Signal(fence, 1)) && SUCCEEDED(fence->SetEventOnCompletion(1, done)) && WaitForSingleObject(done, 5000) == WAIT_OBJECT_0;
-        CloseHandle(done);
-    }
-    if (fence) fence->Release();
-    if (list) list->Release();
-    if (allocator) allocator->Release();
+    bool ok = CopyLevels(device, queue, execute, texture, upload, footprints);
     upload->Release();
     if (!ok) { texture->Release(); return false; }
     D3D12_SHADER_RESOURCE_VIEW_DESC view = {};
