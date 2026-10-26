@@ -23,7 +23,7 @@
                 <TextBlock FontSize="21" FontWeight="Black" LetterSpacing="1.5">
                   <Run Text="HELL" /><Run Text="FORGE" Foreground="{StaticResource AccentBrush}" />
                 </TextBlock>
-                <TextBlock Text="Offline HELLDIVERS 2" Classes="muted" FontSize="11" Margin="0,2,0,0" />
+                <TextBlock Text="离线 HELLDIVERS 2" Classes="muted" FontSize="11" Margin="0,2,0,0" />
               </StackPanel>
             </StackPanel>
             <Border Height="2" Background="{StaticResource AccentBrush}" Margin="0,20,0,0" Opacity="0.85" />
@@ -38,20 +38,20 @@
                 <TextBlock Text="Discord" FontSize="13" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <TextBlock Text="SESSION" Classes="h2" Margin="0" />
+            <TextBlock Text="会话" Classes="h2" Margin="0" />
             <StackPanel Orientation="Horizontal" Spacing="10">
               <Border x:Name="SidebarDot" Classes="dot" Background="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-              <TextBlock x:Name="SidebarState" Text="Idle" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <TextBlock x:Name="SidebarState" Text="空闲" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock x:Name="VersionText" Classes="muted" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
           </StackPanel>
 
           <ListBox x:Name="Nav" Classes="nav" SelectedIndex="0">
-            <ListBoxItem Content="01   PLAY" />
-            <ListBoxItem Content="02   PROFILE" />
-            <ListBoxItem Content="03   MODS" />
-            <ListBoxItem Content="04   CONSOLE" />
-            <ListBoxItem Content="05   SETTINGS" />
+            <ListBoxItem Content="01   开始" />
+            <ListBoxItem Content="02   档案" />
+            <ListBoxItem Content="03   模组" />
+            <ListBoxItem Content="04   控制台" />
+            <ListBoxItem Content="05   设置" />
           </ListBox>
         </DockPanel>
       </Border>
@@ -61,8 +61,8 @@
         <!-- PLAY -->
         <Grid x:Name="PlayPage" RowDefinitions="Auto,Auto,Auto,*,Auto">
           <StackPanel>
-            <TextBlock Text="DEPLOYMENT" Classes="eyebrow" />
-            <TextBlock Text="Local session" Classes="h1" />
+            <TextBlock Text="部署" Classes="eyebrow" />
+            <TextBlock Text="本地会话" Classes="h1" />
           </StackPanel>
 
           <Border Grid.Row="1" Classes="card" Margin="0,24,0,0">
@@ -85,9 +85,9 @@
           <!-- Inline "new profile" form; takes the place of the steps while open -->
           <Border x:Name="NewProfileForm" Grid.Row="2" Classes="card" Margin="0,16,0,0" Padding="24,18" IsVisible="False">
             <StackPanel Spacing="10">
-              <TextBlock Text="NEW PROFILE" Classes="h2" Margin="0" />
+              <TextBlock Text="新建档案" Classes="h2" Margin="0" />
               <Grid ColumnDefinitions="*,12,*,12,Auto,8,Auto">
-                <TextBox x:Name="NewProfileName" Watermark="Name, e.g. my-run" MaxLength="32" VerticalContentAlignment="Center" />
+                <TextBox x:Name="NewProfileName" Watermark="名称，例如 my-run" MaxLength="32" VerticalContentAlignment="Center" />
                 <ComboBox x:Name="TemplateCombo" Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                   <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="core:ProfileTemplate">
@@ -100,8 +100,8 @@
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
-                <Button x:Name="CancelProfileButton" Grid.Column="4" Classes="ghost" Content="Cancel" />
-                <Button x:Name="CreateProfileButton" Grid.Column="6" Classes="primary" Content="Create" />
+                <Button x:Name="CancelProfileButton" Grid.Column="4" Classes="ghost" Content="取消" />
+                <Button x:Name="CreateProfileButton" Grid.Column="6" Classes="primary" Content="创建" />
               </Grid>
               <TextBlock x:Name="TemplateDescription" Classes="muted" FontSize="12" TextWrapping="Wrap" />
               <TextBlock x:Name="NewProfileError" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
@@ -113,7 +113,7 @@
               <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" IsVisible="False" />
             </StackPanel>
             <StackPanel Grid.Column="1" Width="340" Spacing="10">
-              <TextBlock Text="PROFILE" Classes="h2" Margin="0" />
+              <TextBlock Text="档案" Classes="h2" Margin="0" />
               <Grid ColumnDefinitions="*,8,Auto">
                 <ComboBox x:Name="ProfileCombo" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                   <ComboBox.ItemTemplate>
@@ -128,10 +128,10 @@
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
-                <Button x:Name="NewProfileButton" Grid.Column="2" Classes="ghost" Content="New profile" />
+                <Button x:Name="NewProfileButton" Grid.Column="2" Classes="ghost" Content="新建档案" />
               </Grid>
               <Button x:Name="PlayButton" Classes="play" Width="340" Margin="0,6,0,0">
-                <TextBlock x:Name="PlayLabel" Text="PLAY" LetterSpacing="6" />
+                <TextBlock x:Name="PlayLabel" Text="开始" LetterSpacing="6" />
               </Button>
             </StackPanel>
           </Grid>
@@ -140,12 +140,12 @@
         <!-- PROFILE -->
         <DockPanel x:Name="ProfilePage" IsVisible="False">
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,24">
-            <TextBlock Text="HELLDIVER" Classes="eyebrow" />
+            <TextBlock Text="绝地潜兵" Classes="eyebrow" />
             <TextBlock x:Name="ProfileTitle" Text="default" Classes="h1" />
             <TextBlock x:Name="ProfileNote" Classes="muted" Margin="0,8,0,0" TextWrapping="Wrap" />
           </StackPanel>
           <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*">
-            <Button x:Name="OpenProfileButton" Classes="ghost" Content="Open profile folder" />
+            <Button x:Name="OpenProfileButton" Classes="ghost" Content="打开档案文件夹" />
             <SelectableTextBlock x:Name="ProfilePathText" Grid.Column="1" Classes="muted" VerticalAlignment="Center"
                                  FontSize="12" TextWrapping="Wrap" Margin="16,0,0,0" />
           </Grid>
@@ -159,42 +159,42 @@
             </UniformGrid.Styles>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="EXPERIENCE" Classes="h2" Margin="0" />
+                <TextBlock Text="经验值" Classes="h2" Margin="0" />
                 <TextBlock x:Name="XpText" Classes="stat" Text="-" />
-                <TextBlock Text="Total XP" Classes="muted" FontSize="12" />
+                <TextBlock Text="总经验值" Classes="muted" FontSize="12" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="SHIP NAME" Classes="h2" Margin="0" />
+                <TextBlock Text="舰船名称" Classes="h2" Margin="0" />
                 <TextBlock x:Name="ShipText" Classes="stat" Text="-" />
-                <TextBlock Text="Ship name word indices" Classes="muted" FontSize="12" />
+                <TextBlock Text="舰船名称的词序号" Classes="muted" FontSize="12" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="INVENTORY" Classes="h2" Margin="0" />
+                <TextBlock Text="物品栏" Classes="h2" Margin="0" />
                 <TextBlock x:Name="InventoryText" Classes="stat" Text="-" />
-                <TextBlock Text="Items in the profile" Classes="muted" FontSize="12" />
+                <TextBlock Text="存档中的物品" Classes="muted" FontSize="12" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="ONBOARDING STATE" Classes="h2" Margin="0" />
+                <TextBlock Text="新手引导状态" Classes="h2" Margin="0" />
                 <TextBlock x:Name="OnboardingStateText" Classes="stat" Text="-" />
-                <TextBlock Text="New-player intro progress" Classes="muted" FontSize="12" />
+                <TextBlock Text="新兵引导进度" Classes="muted" FontSize="12" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="ONBOARDING FLAGS" Classes="h2" Margin="0" />
+                <TextBlock Text="新手引导标记" Classes="h2" Margin="0" />
                 <TextBlock x:Name="OnboardingFlagsText" Classes="stat" Text="-" />
                 <TextBlock x:Name="OnboardingFlagsHex" Classes="muted" FontSize="12" FontFamily="{StaticResource MonoFont}" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="TEMPLATE" Classes="h2" Margin="0" />
+                <TextBlock Text="模板" Classes="h2" Margin="0" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                   <TextBlock x:Name="TemplateText" Classes="stat" FontSize="24" Text="-" />
                   <Border x:Name="TemplateBadge" Classes="badge" VerticalAlignment="Center" IsVisible="False">
@@ -207,27 +207,27 @@
           </UniformGrid>
           <Border Classes="card" Margin="0,0,0,16">
             <StackPanel Spacing="10">
-              <TextBlock Text="GAME SETTINGS" Classes="h2" Margin="0" />
+              <TextBlock Text="游戏设置" Classes="h2" Margin="0" />
               <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="Copies the options you set in the normal HELLDIVERS 2 (graphics, audio, display, gameplay) into this profile, and your key bindings from Steam if you like. A new profile gets them once, when it is first played; import again after changing them in the normal game. The profile's own settings are kept, so Undo import takes them back. Progress, saves and loadouts are not touched." />
+                         Text="把你在正式 HELLDIVERS 2 里设置好的选项（画面、音频、显示、玩法）复制到这个档案，也可以顺便从 Steam 导入按键绑定。新档案会在第一次游玩时获得一次；在正式游戏里改过设置后可以再次导入。档案自身的设置会保留，所以「撤销导入」能把它们恢复回去。进度、存档和配装都不受影响。" />
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <CheckBox x:Name="ImportControlsBox" Content="Key bindings too" IsChecked="True" VerticalAlignment="Center" />
-                <Button x:Name="ImportSettingsButton" Classes="primary" Content="Import from HELLDIVERS 2" />
-                <Button x:Name="UndoImportButton" Classes="ghost" Content="Undo import" />
+                <CheckBox x:Name="ImportControlsBox" Content="同时导入按键绑定" IsChecked="True" VerticalAlignment="Center" />
+                <Button x:Name="ImportSettingsButton" Classes="primary" Content="从 HELLDIVERS 2 导入" />
+                <Button x:Name="UndoImportButton" Classes="ghost" Content="撤销导入" />
               </StackPanel>
               <TextBlock x:Name="ImportSettingsStatus" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
           </Border>
           <Border x:Name="WeaponLevelsCard" Classes="card" IsVisible="False">
             <StackPanel Spacing="10">
-              <TextBlock Text="WEAPON LEVELS" Classes="h2" Margin="0" />
+              <TextBlock Text="武器等级" Classes="h2" Margin="0" />
               <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
-                         Text="Each weapon's mastery level (0 = never used). Level 1 gives its default attachments and every level up to the one set gives what it unlocks. Weapons added by mods follow the weapon they copy. Saved into the profile for the next session." />
+                         Text="每把武器的精通等级（0 = 从未使用）。等级 1 给予它的默认配件，此后每升一级就解锁对应的内容。模组新增的武器沿用它们所复制的武器。保存进档案，供下次会话使用。" />
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Every weapon to level" VerticalAlignment="Center" />
+                <TextBlock Text="所有武器都设为等级" VerticalAlignment="Center" />
                 <NumericUpDown x:Name="AllLevelsInput" Minimum="0" Maximum="25" Increment="1" FormatString="0" Value="25" Width="120" />
-                <Button x:Name="SetAllLevelsButton" Classes="ghost" Content="Set all" />
-                <Button x:Name="SaveLevelsButton" Classes="primary" Content="Save levels" />
+                <Button x:Name="SetAllLevelsButton" Classes="ghost" Content="全部设置" />
+                <Button x:Name="SaveLevelsButton" Classes="primary" Content="保存等级" />
               </StackPanel>
               <TextBlock x:Name="WeaponLevelsStatus" FontSize="12" TextWrapping="Wrap" />
               <UniformGrid x:Name="WeaponLevelsList" Columns="3" />
@@ -240,14 +240,14 @@
         <!-- MODS -->
         <DockPanel x:Name="ModsPage" IsVisible="False">
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
-            <TextBlock Text="ARMORY" Classes="eyebrow" />
-            <TextBlock Text="Mods" Classes="h1" />
+            <TextBlock Text="军械库" Classes="eyebrow" />
+            <TextBlock Text="模组" Classes="h1" />
             <TextBlock x:Name="ModsSummary" Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0" />
           </StackPanel>
           <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,Auto,*" Margin="0,16,0,0">
-            <Button x:Name="OpenModsButton" Classes="ghost" Content="Open mods folder" />
-            <Button x:Name="RefreshModsButton" Grid.Column="1" Classes="ghost" Content="Refresh" Margin="10,0,0,0" />
-            <Button x:Name="AddModsButton" Grid.Column="2" Classes="ghost" Content="Add mods..." Margin="10,0,0,0" />
+            <Button x:Name="OpenModsButton" Classes="ghost" Content="打开模组文件夹" />
+            <Button x:Name="RefreshModsButton" Grid.Column="1" Classes="ghost" Content="刷新" Margin="10,0,0,0" />
+            <Button x:Name="AddModsButton" Grid.Column="2" Classes="ghost" Content="添加模组…" Margin="10,0,0,0" />
             <SelectableTextBlock x:Name="ModsDigestText" Grid.Column="3" Classes="muted" FontSize="12" TextWrapping="Wrap"
                                  VerticalAlignment="Center" HorizontalAlignment="Right" Margin="16,0,0,0" />
           </Grid>
@@ -260,18 +260,18 @@
         <DockPanel x:Name="ConsolePage" IsVisible="False">
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,20">
             <StackPanel>
-              <TextBlock Text="BACKEND" Classes="eyebrow" />
-              <TextBlock Text="Console" Classes="h1" />
+              <TextBlock Text="本地后端" Classes="eyebrow" />
+              <TextBlock Text="控制台" Classes="h1" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Bottom">
-              <CheckBox x:Name="AutoScroll" Content="Auto-scroll" IsChecked="True" />
-              <Button x:Name="ClearButton" Classes="ghost" Content="Clear" />
-              <Button x:Name="ConsoleLogsButton" Classes="ghost" Content="Open session logs" />
-              <Button x:Name="ShareLogsButton" Classes="ghost" Content="Save logs to Desktop" Margin="10,0,0,0" />
+              <CheckBox x:Name="AutoScroll" Content="自动滚动" IsChecked="True" />
+              <Button x:Name="ClearButton" Classes="ghost" Content="清空" />
+              <Button x:Name="ConsoleLogsButton" Classes="ghost" Content="打开会话日志" />
+              <Button x:Name="ShareLogsButton" Classes="ghost" Content="把日志保存到桌面" Margin="10,0,0,0" />
             </StackPanel>
           </Grid>
           <TextBlock DockPanel.Dock="Bottom" Classes="muted" FontSize="12" Margin="0,10,0,0"
-                     Text="Live backend requests for the current session. 2xx in green, 501 (not implemented yet) in red." />
+                     Text="当前会话的实时后端请求。2xx 为绿色，501（尚未实现）为红色。" />
           <Border Background="#0A0B0D" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="0,8">
             <ListBox x:Name="ConsoleList" Classes="console" FontFamily="{StaticResource MonoFont}" FontSize="12.5">
               <ListBox.ItemTemplate>
@@ -287,29 +287,29 @@
         <ScrollViewer x:Name="SettingsPage" IsVisible="False">
           <StackPanel Spacing="16" Margin="0,0,18,0">
             <StackPanel Margin="0,0,0,8">
-              <TextBlock Text="SYSTEM" Classes="eyebrow" />
-              <TextBlock Text="Settings and about" Classes="h1" />
+              <TextBlock Text="系统" Classes="eyebrow" />
+              <TextBlock Text="设置与关于" Classes="h1" />
             </StackPanel>
 
             <Border x:Name="InstallCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
-                <TextBlock Text="INSTALLATION" Classes="h2" Margin="0" />
+                <TextBlock Text="安装" Classes="h2" Margin="0" />
                 <TextBlock x:Name="InstallText" TextWrapping="Wrap" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Check and repair compares the game files with the supported build, copies any that are missing or damaged from Steam, and places the network block and shortcuts again." />
-                <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                           Text="「检查并修复」会把游戏文件与受支持的版本比对，把缺失或损坏的文件从 Steam 复制过来，并重新放置网络封锁和快捷方式。" />
+                <Button x:Name="RepairButton" Classes="ghost" Content="检查并修复" HorizontalAlignment="Left" Margin="0,6,0,0" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
-                           Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
+                           Text="「卸载」会移除 HellForge 的网络封锁（Windows 会请求权限）和快捷方式，然后在启动器关闭后删除这个安装文件夹。你原本的 HELLDIVERS 2 和 Steam 不会被改动。" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Button x:Name="UninstallButton" Classes="ghost" Content="Uninstall HellForge..." />
+                  <Button x:Name="UninstallButton" Classes="ghost" Content="卸载 HellForge…" />
                   <TextBlock x:Name="UninstallText" Classes="muted" VerticalAlignment="Center" TextWrapping="Wrap" />
                 </StackPanel>
                 <Border x:Name="UninstallConfirm" IsVisible="False" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                   <StackPanel Spacing="10">
                     <TextBlock x:Name="UninstallWarning" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                      <Button x:Name="UninstallConfirmButton" Classes="danger" Content="Uninstall and delete everything" />
-                      <Button x:Name="UninstallCancelButton" Classes="ghost" Content="Cancel" />
+                      <Button x:Name="UninstallConfirmButton" Classes="danger" Content="卸载并删除全部内容" />
+                      <Button x:Name="UninstallCancelButton" Classes="ghost" Content="取消" />
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -318,77 +318,77 @@
 
             <Border Classes="card">
               <StackPanel Spacing="8">
-                <TextBlock Text="MULTIPLAYER" Classes="h2" />
+                <TextBlock Text="多人联机" Classes="h2" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Play with Steam friends who also run HellForge: your backend hosts your game's lobby and session and talks to theirs through Steam (friends only). Friends need the same gameplay mods (see Mods). Both switches are needed and apply to the next session." />
-                <CheckBox x:Name="LocalPlayFabBox" Content="Local PlayFab" />
+                           Text="和同样运行 HellForge 的 Steam 好友一起玩：你的后端起你游戏的大厅和会话，并通过 Steam 与他们的后端通信（仅限好友）。好友需要安装相同的玩法模组（见「模组」）。两个开关都需要打开，且对下次会话生效。" />
+                <CheckBox x:Name="LocalPlayFabBox" Content="本地 PlayFab" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Points the game's PlayFab login and profile calls at the local backend instead of playfabapi.com. The copied game stays blocked from the internet either way." />
-                <CheckBox x:Name="SdkShimsBox" Content="Lobby and session through Steam friends" />
+                           Text="把游戏的 PlayFab 登录和档案请求指向本地后端，而不是 playfabapi.com。无论哪种方式，复制出的游戏都保持无法联网。" />
+                <CheckBox x:Name="SdkShimsBox" Content="大厅和会话经由 Steam 好友" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
+                           Text="在会话期间用 HellForge 的替身 DLL 替换复制出的 PlayFab Party 和 Lobby DLL；它们永远不会连接到 PlayFab，而是通过 Steam 网络与好友的后端通信。每次调用都会记入会话文件夹的日志。" />
               </StackPanel>
             </Border>
 
             <Border Classes="card">
               <StackPanel Spacing="8">
-                <TextBlock Text="GALACTIC WAR" Classes="h2" />
-                <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="Follow the live galactic war" />
+                <TextBlock Text="银河战争" Classes="h2" />
+                <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="跟随实时银河战争" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Before the game starts and every 5 minutes while you play, the backend reads the current war (planets, campaigns, liberation) from the community API mirror api.helldivers2.dev, read-only. Neither HellForge nor the game ever contacts Arrowhead's servers. Without a connection the last fetched war is used." />
-                <RadioButton x:Name="WarFrozenRadio" GroupName="war" Content="HellForge's frozen war" />
+                           Text="在游戏开始前以及游玩时每 5 分钟，本地后端会从社区 API 镜像 api.helldivers2.dev 只读地读取当前战争状态（行星、战役、解放度）。HellForge 和游戏本身都不会连接 Arrowhead 的服务器。没有网络时使用上次获取的数据。" />
+                <RadioButton x:Name="WarFrozenRadio" GroupName="war" Content="HellForge 的冻结战争" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="A snapshot of the real war from 14 October 2026, built into HellForge: the same planets and campaigns every session, offline." />
-                <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="All planets open" />
+                           Text="2026 年 10 月 14 日真实战争的快照，内置于 HellForge：每次会话都是相同的行星和战役，完全离线。" />
+                <RadioButton x:Name="WarOpenRadio" GroupName="war" Content="所有行星开放" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
-                           Text="Every planet but Super Earth is a liberation campaign you can drop on. Planets Super Earth holds in the frozen war go to the enemy whose front lies that way from Super Earth, so each faction holds about a third of the galaxy. Built from the frozen war, so it is the same on every PC and offline. Applies to the next session." />
+                           Text="除了超级地球以外的每颗行星都是可以降落的解放战役。冻结战争中归超级地球所有的行星会划归前线朝向它们的敌方阵营，因此每个阵营大约占据三分之一的银河。基于冻结战争构建，所以在每台 PC 上、离线时都完全一致。对下次会话生效。" />
               </StackPanel>
             </Border>
 
             <Border Classes="card">
               <StackPanel Spacing="8">
-                <TextBlock Text="LAUNCH OPTIONS" Classes="h2" />
-                <TextBox x:Name="LaunchOptionsBox" Watermark="e.g. --use-d3d11" MaxLength="1024" VerticalContentAlignment="Center" />
+                <TextBlock Text="启动选项" Classes="h2" />
+                <TextBox x:Name="LaunchOptionsBox" Watermark="例如 --use-d3d11" MaxLength="1024" VerticalContentAlignment="Center" />
                 <TextBlock x:Name="LaunchOptionsProblem" Classes="muted" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Options for the game's command line, as in Steam's Launch Options: --use-d3d11 starts it with DirectX 11, for one. Steam's &quot;%command% --use-d3d11&quot; works too. HellForge's own options come first. Applies to the next session." />
+                           Text="游戏命令行选项，与 Steam 的启动选项相同：例如 --use-d3d11 会让游戏以 DirectX 11 启动。Steam 的 &quot;%command% --use-d3d11&quot; 写法也可以。HellForge 自己的选项会排在前面。对下次会话生效。" />
               </StackPanel>
             </Border>
 
             <Border Classes="card">
               <StackPanel Spacing="8">
-                <TextBlock Text="TROUBLESHOOTING" Classes="h2" />
-                <CheckBox x:Name="EngineLogBox" Content="Engine log" />
+                <TextBlock Text="疑难解答" Classes="h2" />
+                <CheckBox x:Name="EngineLogBox" Content="引擎日志" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Starts the game with its own log switched on (--log-to-file) and copies that log into the session's logs, so &quot;Save logs to Desktop&quot; includes it. Helps find why a join or connection fails. Applies to the next session." />
-                <CheckBox x:Name="CrashDumpBox" Content="Crash dump" Margin="0,6,0,0" />
+                           Text="以开启自身日志的方式启动游戏（--log-to-file），并把该日志复制到会话日志里，这样「把日志保存到桌面」也会包含它。有助于排查加入或连接失败的原因。对下次会话生效。" />
+                <CheckBox x:Name="CrashDumpBox" Content="崩溃转储" Margin="0,6,0,0" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="If the game crashes, writes a full memory dump of it (about 1 GB) into the session's logs, for a bug report about crashes. It holds what the game had in memory (your Steam account name, for one): only send it to someone you trust. Off unless you need it. Applies to the next session." />
+                           Text="如果游戏崩溃，就把完整的内存转储（约 1 GB）写入会话日志，用于反馈崩溃问题。转储包含游戏当时内存里的内容（例如你的 Steam 账号名）：只发送给你信任的人。除非需要，否则保持关闭。对下次会话生效。" />
               </StackPanel>
             </Border>
 
             <Border Classes="card">
               <StackPanel>
-                <TextBlock Text="PATHS" Classes="h2" />
+                <TextBlock Text="路径" Classes="h2" />
                 <Grid x:Name="PathsGrid" ColumnDefinitions="150,*" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,18,0,0">
-                  <Button x:Name="SettingsLogsButton" Classes="ghost" Content="Open session logs" />
-                  <Button x:Name="OpenRootButton" Classes="ghost" Content="Open project folder" />
+                  <Button x:Name="SettingsLogsButton" Classes="ghost" Content="打开会话日志" />
+                  <Button x:Name="OpenRootButton" Classes="ghost" Content="打开项目文件夹" />
                 </StackPanel>
               </StackPanel>
             </Border>
 
             <Border Classes="card">
               <StackPanel Spacing="10">
-                <TextBlock Text="ABOUT" Classes="h2" Margin="0" />
+                <TextBlock Text="关于" Classes="h2" Margin="0" />
                 <TextBlock TextWrapping="Wrap"
-                           Text="HellForge runs HELLDIVERS 2 against a local backend on this computer instead of the official servers." />
+                           Text="HellForge 让 HELLDIVERS 2 连接本机的本地后端运行，而不是官方服务器。" />
                 <TextBlock TextWrapping="Wrap" Classes="muted"
-                           Text="A network block keeps the copied game off the internet. It covers only the copy's own programs, so the normal game and Steam are not affected. Settings > Installation > Uninstall HellForge removes it with the rest." />
+                           Text="网络封锁让复制出的游戏无法联网。它只覆盖复制出的游戏自己的程序，所以不影响正式游戏和 Steam。「设置 > 安装 > 卸载 HellForge」会把它一起移除。" />
                 <TextBlock TextWrapping="Wrap" Classes="muted"
-                           Text="A Steam ownership check runs before every launch, so Steam must be running and signed in to an account that owns the game or has it through Steam Family Sharing." />
+                           Text="每次启动前都会进行 Steam 所有权检查，所以 Steam 必须正在运行，并登录到拥有该游戏（或通过 Steam 家庭共享获得）的账号。" />
                 <TextBlock TextWrapping="Wrap" Classes="muted"
-                           Text="A personal, offline research project. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment." />
+                           Text="个人性质、离线的研究项目。与 Arrowhead Game Studios 或 Sony Interactive Entertainment 没有关联，也未获其认可。" />
                 <TextBlock x:Name="PlatformText" Classes="muted" FontSize="12" Margin="0,6,0,0" />
               </StackPanel>
             </Border>
@@ -398,16 +398,16 @@
         <!-- SETUP: replaces the other pages until the installation's game is copied; Settings opens it to repair -->
         <DockPanel x:Name="SetupPage" IsVisible="False">
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
-            <TextBlock Text="INSTALLATION" Classes="eyebrow" />
-            <TextBlock x:Name="SetupTitle" Text="Set up HellForge" Classes="h1" />
+            <TextBlock Text="安装" Classes="eyebrow" />
+            <TextBlock x:Name="SetupTitle" Text="设置 HellForge" Classes="h1" />
             <TextBlock x:Name="SetupIntro" Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0"
-                       Text="Setup copies HELLDIVERS 2 from your own Steam library into this folder (about 24 GB) and blocks that copy from the internet. Your normal game and Steam stay as they are. Keep Steam running and signed in." />
+                       Text="安装程序会把你 Steam 库中的 HELLDIVERS 2 复制到这个文件夹（约 24 GB），并封锁这个副本的联网。你原本的游戏和 Steam 保持原样。请保持 Steam 运行并已登录。" />
           </StackPanel>
           <!-- The buttons stay in view; only the steps and options scroll. -->
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="SetupPauseButton" Classes="ghost" Content="Pause copying" IsVisible="False" />
-            <Button x:Name="SetupBackButton" Classes="ghost" Content="Back" IsVisible="False" />
-            <Button x:Name="SetupStartButton" Classes="primary" Content="Start setup" />
+            <Button x:Name="SetupPauseButton" Classes="ghost" Content="暂停复制" IsVisible="False" />
+            <Button x:Name="SetupBackButton" Classes="ghost" Content="返回" IsVisible="False" />
+            <Button x:Name="SetupStartButton" Classes="primary" Content="开始安装" />
           </StackPanel>
           <ScrollViewer>
           <StackPanel Spacing="16" Margin="0,0,18,0">
@@ -416,9 +416,9 @@
             </Border>
             <Border x:Name="DownloadCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
-                <TextBlock Text="DOWNLOAD THE SUPPORTED BUILD THROUGH STEAM" Classes="h2" Margin="0" />
+                <TextBlock Text="通过 Steam 下载受支持的版本" Classes="h2" Margin="0" />
                 <TextBlock x:Name="DownloadIntro" Classes="muted" TextWrapping="Wrap" />
-                <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
+                <Button x:Name="OpenConsoleButton" Content="打开 Steam 控制台" Classes="primary" HorizontalAlignment="Left" />
                 <StackPanel x:Name="DownloadCommands" Spacing="6" />
                 <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1000" Height="8" />
                 <TextBlock x:Name="DownloadText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
@@ -427,17 +427,17 @@
             </Border>
             <Border x:Name="CopyCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
-                <TextBlock Text="GAME FILES" Classes="h2" Margin="0" />
+                <TextBlock Text="游戏文件" Classes="h2" Margin="0" />
                 <ProgressBar x:Name="CopyProgress" Minimum="0" Maximum="1000" Height="8" />
                 <TextBlock x:Name="CopyText" Classes="muted" FontSize="12" />
               </StackPanel>
             </Border>
             <Border Classes="card">
               <StackPanel Spacing="8">
-                <TextBlock Text="OPTIONS" Classes="h2" Margin="0" />
-                <CheckBox x:Name="DesktopShortcutBox" Content="Shortcut on the desktop" IsChecked="True" />
-                <CheckBox x:Name="StartMenuShortcutBox" Content="Shortcut in the Start menu" IsChecked="True" />
-                <CheckBox x:Name="ImportBox" Content="Import game settings and saves from an earlier HellForge setup on this PC" IsChecked="True" IsVisible="False" />
+                <TextBlock Text="选项" Classes="h2" Margin="0" />
+                <CheckBox x:Name="DesktopShortcutBox" Content="桌面快捷方式" IsChecked="True" />
+                <CheckBox x:Name="StartMenuShortcutBox" Content="开始菜单快捷方式" IsChecked="True" />
+                <CheckBox x:Name="ImportBox" Content="从本机早先的 HellForge 安装导入游戏设置和存档" IsChecked="True" IsVisible="False" />
               </StackPanel>
             </Border>
           </StackPanel>
@@ -450,12 +450,12 @@
     <Grid x:Name="ConfirmOverlay" Background="#B0000000" IsVisible="False">
       <Border Classes="card" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
         <StackPanel Spacing="12">
-          <TextBlock x:Name="ConfirmTitle" Text="Session running" FontSize="19" FontWeight="Bold" />
+          <TextBlock x:Name="ConfirmTitle" Text="会话正在运行" FontSize="19" FontWeight="Bold" />
           <TextBlock x:Name="ConfirmText" TextWrapping="Wrap" Classes="muted"
-                     Text="A play session is running. Stop it and close the game?" />
+                     Text="游戏会话正在运行。要停止它并关闭游戏吗？" />
           <StackPanel x:Name="ConfirmButtons" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button x:Name="ConfirmCancel" Classes="ghost" Content="Keep playing" />
-            <Button x:Name="ConfirmStop" Classes="danger" Content="Stop and close" />
+            <Button x:Name="ConfirmCancel" Classes="ghost" Content="继续游玩" />
+            <Button x:Name="ConfirmStop" Classes="danger" Content="停止并关闭" />
           </StackPanel>
         </StackPanel>
       </Border>

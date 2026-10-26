@@ -18,13 +18,13 @@ public partial class App : Application
             var paths = LauncherPaths.Find();
             desktop.MainWindow = paths != null ? new MainWindow(paths) : new Window
             {
-                Title = "HellForge Launcher",
+                Title = "HellForge 启动器",
                 Width = 480,
                 Height = 150,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 Content = new TextBlock
                 {
-                    Text = "Run the launcher from a HellForge installation or the HellForge repository.",
+                    Text = "请从 HellForge 安装目录或 HellForge 仓库中运行启动器。",
                     Margin = new Thickness(24),
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center

@@ -19,15 +19,15 @@ public partial class MainWindow
             {
                 var result = GameSettings.ImportFromGame(install, Selected.Name, GameSettings.VanillaUserData(), GameSettings.SteamControls(), withControls);
                 var text = result.Copied.Count == 0
-                    ? "Nothing to import: the normal HELLDIVERS 2 has no settings on this PC yet (play it once, or check that it is the same Windows user)."
-                    : "Imported into " + Selected.Name + ": " + string.Join(", ", result.Copied) + ". The next session uses them." +
-                      (result.Missing.Count > 0 ? " Not found: " + string.Join(", ", result.Missing) + "." : "");
+                    ? "没有可导入的内容：这台电脑上还没有正常版 HELLDIVERS 2 的设置（先玩一次，或确认使用的是同一个 Windows 用户）。"
+                    : "已导入到 " + Selected.Name + "：" + string.Join("、", result.Copied) + "。下次会话会使用它们。" +
+                      (result.Missing.Count > 0 ? " 未找到：" + string.Join("、", result.Missing) + "。" : "");
                 ShowImportStatus(text, result.Copied.Count == 0);
                 Append($"Profile {Selected.Name}: game settings imported from HELLDIVERS 2 ({string.Join(", ", result.Copied)}).", LauncherLine);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                ShowImportStatus("The settings could not be imported: " + error.Message, true);
+                ShowImportStatus("设置无法导入：" + error.Message, true);
             }
             UpdateSettingsImport();
         };
@@ -37,11 +37,11 @@ public partial class MainWindow
             try
             {
                 var count = GameSettings.UndoImport(new InstallLayout(paths.InstallRoot), Selected.Name);
-                ShowImportStatus(count > 0 ? "The profile's own settings are back." : "There was no import to take back.", false);
+                ShowImportStatus(count > 0 ? "该档案自己的设置已恢复。" : "没有可撤回的导入。", false);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                ShowImportStatus("The import could not be taken back: " + error.Message, true);
+                ShowImportStatus("无法撤回导入：" + error.Message, true);
             }
             UpdateSettingsImport();
         };
@@ -61,6 +61,6 @@ public partial class MainWindow
         ImportSettingsButton.IsEnabled = install != null && !running;
         UndoImportButton.IsEnabled = install != null && !running && GameSettings.CanUndoImport(install, Selected.Name);
         ImportControlsBox.IsEnabled = !running;
-        ToolTip.SetTip(ImportSettingsButton, running ? "Stop the session first: the game writes its settings when it closes." : null);
+        ToolTip.SetTip(ImportSettingsButton, running ? "请先停止会话：游戏会在关闭时写入设置。" : null);
     }
 }
