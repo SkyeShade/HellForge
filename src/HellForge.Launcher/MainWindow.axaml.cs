@@ -28,7 +28,7 @@ enum Phase { Idle, Busy, Attention, Running, Ended, Failed }
 public partial class MainWindow : Window
 {
     const int MaxLogLines = 2000;
-    static readonly string[] StepNames = ["Build mods", "Verify files", "Network block", "Launching", "Running"];
+    static readonly string[] StepNames = ["构建模组", "校验文件", "网络封锁", "启动", "运行"];
     const int BuildStep = 0, VerifyStep = 1, NetworkStep = 2, LaunchStep = 3, RunStep = 4;
 
     // HellForge's colours (App.axaml): its icon's red for steps done and actions, the editor's gold for work under way.
@@ -80,7 +80,7 @@ public partial class MainWindow : Window
         InitializeSettingsImport();
         Nav.SelectionChanged += (_, _) => ShowPage(Nav.SelectedIndex);
         DiscordButton.Click += (_, _) => OpenLink(DiscordInvite);
-        ToolTip.SetTip(DiscordButton, "Support, news and mods: the HellForge Discord (" + DiscordInvite + ")");
+        ToolTip.SetTip(DiscordButton, "支持、新闻和模组：HellForge 的 Discord（" + DiscordInvite + ")");
         PlayButton.Click += (_, _) => { if (runner.IsRunning) RequestStop(); else Start(); };
         ProfileCombo.SelectionChanged += (_, _) => OnProfileSelected();
         TemplateCombo.SelectionChanged += (_, _) => ShowTemplateDescription();
@@ -131,7 +131,7 @@ public partial class MainWindow : Window
             Opened += async (_, _) =>
             {
                 RenderSteps(BuildStep, false, 0.4);
-                SetStatus("Compiling mods (3 of 5)...", Phase.Busy, "Building Stratagem Compendium from its sources.");
+                SetStatus("正在编译模组（5 个中的第 3 个）…", Phase.Busy, "正在从源码构建战略配备汇编。");
                 BootProgress.IsVisible = true;
                 BootProgress.Value = 400;
                 await Task.Delay(1500);
@@ -143,15 +143,15 @@ public partial class MainWindow : Window
             };
 
         PlatformText.Text = $"{RuntimeInformation.OSDescription} · .NET {Environment.Version}";
-        VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 build {HellForge.Core.SupportedBuild.Current.BuildId}";
+        VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 版本 {HellForge.Core.SupportedBuild.Current.BuildId}";
         if (SessionRunner.IsSupported)
-            SetStatus("Ready. Steam must be running and signed in.", Phase.Idle,
-                "Press PLAY to verify the game files and launch the game.");
+            SetStatus("就绪。Steam 必须正在运行并已登录。", Phase.Idle,
+                "按「开始」来校验游戏文件并启动游戏。");
         else
         {
             PlatformNote.Text = SessionRunner.UnsupportedMessage;
             PlatformNote.IsVisible = true;
-            SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle, "Profile, console and settings still work on this system.");
+            SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle, "在这套系统上，档案、控制台和设置仍然可用。");
         }
         RenderSteps(-1, false);
         UpdateButton();
@@ -174,7 +174,7 @@ public partial class MainWindow : Window
         }).ContinueWith(done =>
         {
             if (done.Result is { Removed: > 0 } pruned)
-                Dispatcher.UIThread.Post(() => Append($"Removed the logs of {pruned.Removed} older session(s) ({pruned.Bytes / 1e6:0} MB); the newest {HellForge.Core.SessionLogs.Keep} stay.", LauncherLine));
+                Dispatcher.UIThread.Post(() => Append($"已清理 {pruned.Removed} 个较早会话的日志（{pruned.Bytes / 1e6:0} MB）；最新的 {HellForge.Core.SessionLogs.Keep} 个会保留。", LauncherLine));
         }, TaskScheduler.Default);
     }
 
@@ -188,11 +188,11 @@ public partial class MainWindow : Window
             SetStatus(SessionRunner.UnsupportedMessage, Phase.Idle);
             return;
         }
-        foreach (var (part, file) in new[] { ("Local backend", paths.Backend), ("Session runner", paths.Session) })
+        foreach (var (part, file) in new[] { ("本地后端", paths.Backend), ("会话运行器", paths.Session) })
             if (!File.Exists(file))
             {
-                SetStatus(part + " is missing.", Phase.Failed,
-                    failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
+                SetStatus(part + " 缺失。", Phase.Failed,
+                    failure: paths.InstallRoot != null ? "请重新安装 HellForge：" + file + " 缺失。" : "会话只能在用 HellForge-Setup 创建的安装中运行。");
                 return;
             }
         // A name typed into the open new-profile form is created and used rather than dropped.
@@ -206,20 +206,20 @@ public partial class MainWindow : Window
         launchedUtc = DateTime.UtcNow;
         lines.Clear();
         modProblemsShown = false;
-        Append("Starting play session.", LauncherLine);
-        Append($"Profile: {profile.Name} (template {profile.Template}) in {profile.Folder}", LauncherLine);
+        Append("正在启动游戏会话。", LauncherLine);
+        Append($"档案：{profile.Name}（模板 {profile.Template}），位置 {profile.Folder}", LauncherLine);
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
-        if (LocalPlayFabBox.IsChecked != true) Append("Local PlayFab is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
-        if (SdkShimsBox.IsChecked != true) Append("Lobby and session through Steam friends is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
+        if (LocalPlayFabBox.IsChecked != true) Append("本地 PlayFab 已关闭（设置 → 多人联机）：与好友联机需要它。", Orange);
+        if (SdkShimsBox.IsChecked != true) Append("「通过 Steam 好友的会话大厅」已关闭（设置 → 多人联机）：与好友联机需要它。", Orange);
         List<string> gameOptions;
         try { gameOptions = HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
         catch (InvalidDataException error)
         {
             launchedUtc = default;
-            SetStatus("The launch options cannot be used.", Phase.Failed, failure: error.Message + " (Settings, Launch options)");
+            SetStatus("无法使用这些启动选项。", Phase.Failed, failure: error.Message + "（设置 → 启动选项）");
             return;
         }
-        if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        if (gameOptions.Count > 0) Append("启动选项：" + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
@@ -228,11 +228,11 @@ public partial class MainWindow : Window
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
             launchedUtc = default;
-            SetStatus("Could not start the session runner.", Phase.Failed, failure: error.Message);
+            SetStatus("无法启动会话运行器。", Phase.Failed, failure: error.Message);
             return;
         }
         RenderSteps(BuildStep, false);
-        SetStatus("Preparing the session...", Phase.Busy, "Building mods that ship their sources, then checking the copied game.");
+        SetStatus("正在准备会话…", Phase.Busy, "构建自带源码的模组，然后校验复制出的游戏。");
         UpdateButton();
     }
 
@@ -249,16 +249,16 @@ public partial class MainWindow : Window
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 stopRequested = false;
-                Append("Could not write the stop signal: " + error.Message, Red);
+                Append("无法写入停止信号：" + error.Message, Red);
                 return;
             }
-            SetStatus("Stopping: closing the game...", Phase.Busy);
+            SetStatus("正在停止：关闭游戏…", Phase.Busy);
         }
         else
         {
             runner.Kill();
             RenderSteps(-1, false);
-            SetStatus("Cancelled before launch.", Phase.Idle, "Nothing was started.");
+            SetStatus("已在启动前取消。", Phase.Idle, "没有启动任何内容。");
         }
         UpdateButton();
     }
@@ -266,7 +266,7 @@ public partial class MainWindow : Window
     void Refresh()
     {
         try { RefreshState(); }
-        catch (Exception error) { Append("Launcher status error: " + error.Message, Red); }  // Keep the window usable.
+        catch (Exception error) { Append("启动器状态错误：" + error.Message, Red); }  // Keep the window usable.
         UpdateButton();
     }
 
@@ -288,12 +288,12 @@ public partial class MainWindow : Window
             if (stopRequested)
             {
                 RenderSteps(-1, false);
-                SetStatus("Cancelled before launch.", Phase.Idle);
+                SetStatus("已在启动前取消。", Phase.Idle);
             }
             else
             {
                 FailCurrentStep();
-                SetStatus("The session runner exited before starting.", Phase.Failed, paths.InstallRoot != null ? "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why." : "Sessions run in installations made with HellForge-Setup.");
+                SetStatus("会话运行器在开始前退出了。", Phase.Failed, paths.InstallRoot != null ? "请查看 " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " 了解原因。" : "会话只能在用 HellForge-Setup 创建的安装中运行。");
             }
             launchedUtc = default;
         }
@@ -314,7 +314,7 @@ public partial class MainWindow : Window
             !mods.TryGetProperty("problems", out var problems) || problems.ValueKind != JsonValueKind.Array) return;
         modProblemsShown = true;
         foreach (var problem in problems.EnumerateArray())
-            if (problem.ValueKind == JsonValueKind.String) Append("Mod left out of this session: " + problem.GetString(), Orange);
+            if (problem.ValueKind == JsonValueKind.String) Append("本次会话未加载的模组：" + problem.GetString(), Orange);
     }
 
     void ShowState(JsonElement state)
@@ -326,44 +326,44 @@ public partial class MainWindow : Window
             case "preparing":
                 if (!stopRequested && ShowModBuilds(out var built)) { RenderSteps(BuildStep, false, built); break; }
                 RenderSteps(VerifyStep, false);
-                if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
+                if (!stopRequested) SetStatus("正在校验游戏文件…", Phase.Busy, "按固定的哈希校验复制出的游戏。");
                 break;
             case "awaiting_network_block_install":
                 RenderSteps(NetworkStep, false);
-                if (!stopRequested) SetStatus("Approve the Windows prompt to install the network block.", Phase.Attention,
-                    "Asked once: the network block keeps the copied game off the internet. Later sessions need no prompt.");
+                if (!stopRequested) SetStatus("请批准 Windows 的提示，以安装网络封锁。", Phase.Attention,
+                    "只会询问一次：网络封锁让复制出的游戏无法联网。之后的会话不再提示。");
                 break;
             case "awaiting_windows_firewall_consent":
                 RenderSteps(NetworkStep, false);
-                if (!stopRequested) SetStatus("Approve the Windows prompt to place a network block for this session.", Phase.Attention,
-                    "It keeps the copied game off the internet until the session ends.");
+                if (!stopRequested) SetStatus("请批准 Windows 的提示，为本次会话放置网络封锁。", Phase.Attention,
+                    "它会在会话结束前让复制出的游戏无法联网。");
                 break;
             case "patching":
                 RenderSteps(LaunchStep, false);
-                if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");
+                if (!stopRequested) SetStatus("正在启动游戏…", Phase.Busy, "用本地后端启动复制出的游戏。");
                 break;
             case "observing":
                 RenderSteps(RunStep, false);
                 if (stopRequested) break;
                 if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
-                    SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
-                        "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
-                else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
+                    SetStatus("游戏似乎卡在冷冻舱里。", Phase.Attention,
+                        "新安装第一次启动时可能出现这种情况。先按「停止」，再按「开始」：下一次启动就能通过。");
+                else SetStatus("运行中", Phase.Running, "按「停止」或关闭游戏来结束会话。");
                 break;
             case "observed":
                 RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-                if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
-                else SetStatus("Ending the session...", Phase.Busy);
+                if (stopped) SetStatus("会话已结束。", Phase.Ended, Cleanup(state) + "按「开始」再启动一次会话。");
+                else SetStatus("正在结束会话…", Phase.Busy);
                 break;
             case "failed":
                 FailCurrentStep();
                 var failure = SessionFiles.Text(state, "failure");
-                SetStatus(stopped ? "Session failed." : "Session failed. Cleaning up...", Phase.Failed,
-                    stopped ? "Open the session logs for details." : "", failure.Length > 0 ? failure : "unknown");
+                SetStatus(stopped ? "会话失败。" : "会话失败，正在清理…", Phase.Failed,
+                    stopped ? "打开会话日志查看详情。" : "", failure.Length > 0 ? failure : "unknown");
                 break;
             case "cleanup_failed":
                 FailCurrentStep();
-                SetStatus("Cleanup failed.", Phase.Failed, "", "Cleanup failed. Check the session logs before playing again.");
+                SetStatus("清理失败。", Phase.Failed, "", "清理失败。再次游玩前请先查看会话日志。");
                 break;
         }
     }
@@ -371,7 +371,7 @@ public partial class MainWindow : Window
     // The network block an installation keeps (WFP, the Linux namespace, persistent rules) stays; only a session that placed
     // rules of its own for itself (older runners: firewallCleanup) reports taking them down.
     static string Cleanup(JsonElement state) => !state.TryGetProperty("firewallCleanup", out _) ? ""
-        : "The session's network block removed: " + (state.TryGetProperty("firewallCleanup", out var cleanup) && SessionFiles.Text(cleanup, "rulesRemoved") == "true" ? "yes" : "unconfirmed") + ". ";
+        : "本次会话的网络封锁已移除：" + (state.TryGetProperty("firewallCleanup", out var cleanup) && SessionFiles.Text(cleanup, "rulesRemoved") == "true" ? "是" : "未确认") + ". ";
 
     LocalProfile Selected => ProfileCombo.SelectedItem as LocalProfile ?? profiles[0];
 
@@ -401,7 +401,7 @@ public partial class MainWindow : Window
         if (profilePathText != null) profilePathText.Text = profile.Folder;
         TemplateText.Text = profile.Template;
         TemplateBadge.IsVisible = profile.IsDev;
-        TemplateCaption.Text = "Applied when the profile is first created";
+        TemplateCaption.Text = "在档案首次创建时应用";
         ImportSettingsStatus.Text = "";
         ShowProfile();
         UpdateSettingsImport();
@@ -410,7 +410,7 @@ public partial class MainWindow : Window
     void ShowTemplateDescription()
     {
         var template = TemplateCombo.SelectedItem as ProfileTemplate;
-        TemplateDescription.Text = template?.Summary ?? "No templates found in " + paths.TemplatesFile + ".";
+        TemplateDescription.Text = template?.Summary ?? "未找到模板：" + paths.TemplatesFile + "。";
         CreateProfileButton.IsEnabled = template != null && !runner.IsRunning;
     }
 
@@ -430,14 +430,14 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) return false;
         var name = (NewProfileName.Text ?? "").Trim();
-        var error = TemplateCombo.SelectedItem is ProfileTemplate template ? ProfileStore.Create(paths, name, template.Name) : "Pick a template.";
+        var error = TemplateCombo.SelectedItem is ProfileTemplate template ? ProfileStore.Create(paths, name, template.Name) : "请选择一个模板。";
         if (error != null)
         {
             NewProfileError.Text = error;
             NewProfileError.IsVisible = true;
             return false;
         }
-        Append($"Created profile {name} (template {((ProfileTemplate)TemplateCombo.SelectedItem!).Name}). The backend fills it on the first session.", LauncherLine);
+        Append($"已创建档案 {name}（模板 {((ProfileTemplate)TemplateCombo.SelectedItem!).Name}）。本地后端会在首次会话时填充它。", LauncherLine);
         LoadProfiles(name);
         ProfileStore.SaveSelected(paths, name);
         ShowNewProfileForm(false);
@@ -450,21 +450,21 @@ public partial class MainWindow : Window
         if (SessionFiles.ReadJson(profile.ProfileFile) is not { ValueKind: JsonValueKind.Object } data ||
             !data.TryGetProperty("progression", out var progression) || progression.ValueKind != JsonValueKind.Object)
         {
-            ProfileNote.Text = $"Not used yet. The backend creates it from the \"{profile.Template}\" template on the first session.";
+            ProfileNote.Text = $"尚未使用。本地后端会在首次会话时按「{profile.Template}」模板创建它。";
             XpText.Text = ShipText.Text = InventoryText.Text = OnboardingStateText.Text = OnboardingFlagsText.Text = "-";
             OnboardingFlagsHex.Text = "";
             ShowWeaponLevels(null);
             return;
         }
         ShowWeaponLevels(data);
-        ProfileNote.Text = "Stored on this computer and served by the local backend.";
+        ProfileNote.Text = "存储在这台电脑上，由本地后端提供。";
         InventoryText.Text = data.TryGetProperty("inventory", out var inventory) && inventory.ValueKind == JsonValueKind.Object &&
             inventory.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
             ? items.GetArrayLength().ToString("N0", CultureInfo.CurrentCulture) : "0";
         XpText.Text = Number(progression, "experience", out var xp) ? xp.ToString("N0", CultureInfo.CurrentCulture) : "-";
         ShipText.Text = progression.TryGetProperty("shipName", out var name) && name.ValueKind == JsonValueKind.Array &&
             name.GetArrayLength() >= 2 && name[0].ValueKind == JsonValueKind.Number && name[1].ValueKind == JsonValueKind.Number
-            ? $"#{name[0].GetRawText()} + #{name[1].GetRawText()}" : "Not named yet";
+            ? $"#{name[0].GetRawText()} + #{name[1].GetRawText()}" : "尚未命名";
         OnboardingStateText.Text = Number(progression, "onboardingState", out var onboarding) ? onboarding.ToString(CultureInfo.InvariantCulture) : "-";
         var hasFlags = Number(progression, "onboardingFlags", out var flags);
         OnboardingFlagsText.Text = hasFlags ? flags.ToString(CultureInfo.InvariantCulture) : "-";
@@ -524,9 +524,9 @@ public partial class MainWindow : Window
         int Count(string name) => builds.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : 0;
         int done = Count("done"), total = Math.Max(1, Count("total"));
         var mod = SessionFiles.Text(builds, "mod");
-        SetStatus(stage == "tools" ? "Fetching the mod compiler..." : $"Compiling mods ({done + 1} of {total})...", Phase.Busy,
-            stage == "tools" ? "Once per installation: HellForge's pinned Zig, to build mods that ship their sources."
-                : $"Building {mod} from its sources.");
+        SetStatus(stage == "tools" ? "正在获取模组编译器…" : $"正在编译模组（{done + 1}/{total}）…", Phase.Busy,
+            stage == "tools" ? "每个安装只做一次：使用 HellForge 固定版本的 Zig 来构建自带源码的模组。"
+                : $"正在从源码构建 {mod}。");
         BootProgress.IsVisible = true;
         BootProgress.IsIndeterminate = stage == "tools";
         BootProgress.Value = 1000.0 * done / total;
@@ -536,7 +536,7 @@ public partial class MainWindow : Window
 
     void SetStatus(string text, Phase phase, string hint = "", string? failure = null)
     {
-        if (BootProgress.IsVisible && !text.StartsWith("Compiling mods", StringComparison.Ordinal) && !text.StartsWith("Fetching the mod compiler", StringComparison.Ordinal))
+        if (BootProgress.IsVisible && !text.StartsWith("正在编译模组", StringComparison.Ordinal) && !text.StartsWith("正在获取模组编译器", StringComparison.Ordinal))
             BootProgress.IsVisible = false;
         // Shown text is screenshotted for help: it does not name the PC (Privacy).
         StatusText.Text = Privacy.Scrub(text);
@@ -546,12 +546,12 @@ public partial class MainWindow : Window
         FailureText.IsVisible = failure != null;
         var (brush, label, pulse) = phase switch
         {
-            Phase.Busy => (Gold, "Working", true),
-            Phase.Attention => (Orange, "Action needed", true),
-            Phase.Running => (Green, "Running", true),
-            Phase.Ended => (Light, "Ended", false),
-            Phase.Failed => (Red, "Failed", false),
-            _ => (Grey, "Idle", false)
+            Phase.Busy => (Gold, "工作中", true),
+            Phase.Attention => (Orange, "需要操作", true),
+            Phase.Running => (Green, "运行中", true),
+            Phase.Ended => (Light, "已结束", false),
+            Phase.Failed => (Red, "失败", false),
+            _ => (Grey, "空闲", false)
         };
         var color = ((ISolidColorBrush)brush).Color;
         foreach (var dot in new[] { StatusDot, SidebarDot })
@@ -568,7 +568,7 @@ public partial class MainWindow : Window
     void UpdateButton()
     {
         var running = runner.IsRunning;
-        PlayLabel.Text = !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
+        PlayLabel.Text = !running ? "开始" : stopRequested ? "正在停止" : "停止";
         PlayButton.Classes.Set("stop", running);
         PlayButton.IsEnabled = SessionRunner.IsSupported && !(running && stopRequested) && !(bundledSyncing && !running);
         // The session keeps the profile it started with.
@@ -662,9 +662,9 @@ public partial class MainWindow : Window
     {
         var rows = new (string Label, string Value)[]
         {
-            (paths.InstallRoot != null ? "Installation" : "Project", paths.Root), ("Session runner", paths.Session), ("Data folder", paths.HostRoot),
-            ("Profiles", paths.ProfilesRoot), ("Templates", paths.TemplatesFile), ("Selected profile", ""),
-            ("Current run", "No session started yet")
+            (paths.InstallRoot != null ? "安装位置" : "项目文件夹", paths.Root), ("会话运行器", paths.Session), ("数据文件夹", paths.HostRoot),
+            ("档案", paths.ProfilesRoot), ("模板", paths.TemplatesFile), ("当前档案", ""),
+            ("当前运行", "尚未启动会话")
         };
         for (var i = 0; i < rows.Length; i++)
         {
@@ -676,7 +676,7 @@ public partial class MainWindow : Window
             Grid.SetColumn(value, 1);
             PathsGrid.Children.Add(label);
             PathsGrid.Children.Add(value);
-            if (rows[i].Label == "Selected profile") profilePathText = value;
+            if (rows[i].Label == "当前档案") profilePathText = value;
             runPathText = value;  // The last row is updated when a run starts.
         }
     }
@@ -697,17 +697,17 @@ public partial class MainWindow : Window
         {
             var run = runDirectory ?? (Directory.Exists(paths.RunsFolder)
                 ? new DirectoryInfo(paths.RunsFolder).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.FullName : null);
-            if (run == null) { Append("No session logs yet: play a session first.", Orange); return; }
+            if (run == null) { Append("还没有会话日志：请先运行一次会话。", Orange); return; }
             var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                 $"HellForge-logs-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
             // the same zip as HellForge.Cli logs --export: scrubbed of the PC's names (SessionLogs.Export)
             var gameLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "userdata", "logs") : null;
             var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target).Skipped;
-            Append("Saved the latest session's logs to " + target + (skipped > 0 ? $" ({skipped} files in use were left out)" : ""), Green);
+            Append("已保存最近一次会话的日志到 " + target + (skipped > 0 ? $"（{skipped} 个正在使用的文件已跳过）" : ""), Green);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Append("Could not save the logs: " + error.Message, Red);
+            Append("无法保存日志：" + error.Message, Red);
         }
     }
 
@@ -717,8 +717,8 @@ public partial class MainWindow : Window
     // A web page in the player's browser.
     async void OpenLink(string url)
     {
-        try { if (!await this.Launcher.LaunchUriAsync(new Uri(url))) Append("Could not open " + url, Red); }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { Append("Could not open " + url + ": " + error.Message, Red); }
+        try { if (!await this.Launcher.LaunchUriAsync(new Uri(url))) Append("无法打开 " + url, Red); }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { Append("无法打开 " + url + ": " + error.Message, Red); }
     }
 
     async void OpenFolder(string path)
@@ -726,9 +726,9 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(path);
-            if (!await this.Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path))) Append("Could not open " + path, Red);
+            if (!await this.Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path))) Append("无法打开 " + path, Red);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not open " + path + ": " + error.Message, Red); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("无法打开 " + path + ": " + error.Message, Red); }
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -745,8 +745,8 @@ public partial class MainWindow : Window
     async Task ConfirmCloseAsync()
     {
         if (ConfirmOverlay.IsVisible) return;
-        ConfirmTitle.Text = "Session running";
-        ConfirmText.Text = "A play session is running. Stop it and close the game?";
+        ConfirmTitle.Text = "会话正在运行";
+        ConfirmText.Text = "游戏会话正在运行。要停止它并关闭游戏吗？";
         ConfirmButtons.IsVisible = true;
         ConfirmOverlay.IsVisible = true;
         confirm = new TaskCompletionSource<bool>();
@@ -755,8 +755,8 @@ public partial class MainWindow : Window
             ConfirmOverlay.IsVisible = false;
             return;
         }
-        ConfirmTitle.Text = "Stopping session";
-        ConfirmText.Text = "Closing the game and the local backend...";
+        ConfirmTitle.Text = "正在停止会话";
+        ConfirmText.Text = "正在关闭游戏和本地后端…";
         ConfirmButtons.IsVisible = false;
         RequestStop();
         // Give the script time to stop the game and restore its logs; the game's job ends with the script anyway.

@@ -30,12 +30,12 @@ public partial class MainWindow
         if (sdk == null) return;
         if (SourceMods().Any() && !ModKit.ToolsReady(sdk))
         {
-            var install = new Button { Content = modKitBusy ? "Installing..." : "Install mod tools", Classes = { "primary" }, IsEnabled = !modKitBusy, Margin = new(0, 8, 0, 0) };
+            var install = new Button { Content = modKitBusy ? "正在安装…" : "安装模组工具", Classes = { "primary" }, IsEnabled = !modKitBusy, Margin = new(0, 8, 0, 0) };
             install.Click += (_, _) => InstallModTools(sdk);
             var panel = new StackPanel { Spacing = 4 };
-            panel.Children.Add(new TextBlock { Text = "MOD TOOLS", Classes = { "h2" }, Margin = new(0) });
+            panel.Children.Add(new TextBlock { Text = "模组工具", Classes = { "h2" }, Margin = new(0) });
             panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" },
-                Text = "Code mods are compiled by Zig, which HellForge fetches once into the installation's tools folder (about 90 MB from ziglang.org, pinned and checksummed; nothing is installed system-wide). CMake and Ninja come too, for IDEs." });
+                Text = "代码模组由 Zig 编译。HellForge 会把它一次下载到安装目录的 tools 文件夹（约 90 MB，来自 ziglang.org，固定版本并校验和；不会在系统范围内安装任何东西）。还会一并下载 CMake 和 Ninja，供 IDE 使用。" });
             if (modKitStatus.Length > 0) panel.Children.Add(new TextBlock { Text = modKitStatus, FontSize = 12, Foreground = Light });
             panel.Children.Add(install);
             ModsList.Children.Add(new Border { Classes = { "card" }, Child = panel });
@@ -44,10 +44,10 @@ public partial class MainWindow
 
     MenuItem BuildItem(ModManifest mod)
     {
-        var build = new MenuItem { Header = "Build now", IsEnabled = !modsLocked && !modKitBusy && Sdk is { } s && ModKit.ToolsReady(s) };
+        var build = new MenuItem { Header = "立即构建", IsEnabled = !modsLocked && !modKitBusy && Sdk is { } s && ModKit.ToolsReady(s) };
         ToolTip.SetShowOnDisabled(build, true);
-        ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
-            : "Compiles src/ with HellForge's pinned Zig now, as a session would (sessions build it anyway; this shows errors early).");
+        ToolTip.SetTip(build, modsLocked ? "构建会等到会话结束后进行：游戏已加载该模组。"
+            : "像会话那样，立即用 HellForge 固定版本的 Zig 编译 src/（会话本来也会构建；这样可以提前看到错误）。");
         build.Click += (_, _) => BuildMod(mod);
         return build;
     }
@@ -58,7 +58,7 @@ public partial class MainWindow
         var sdk = Sdk;
         if (sdk == null || modsLocked || modKitBusy || paths.InstallRoot == null) return;
         modKitBusy = true;
-        Append($"Building {mod.Id}...", LauncherLine);
+        Append($"正在构建 {mod.Id}…", LauncherLine);
         RefreshMods();
         var install = new InstallLayout(paths.InstallRoot);
         Task.Run(() =>
@@ -66,7 +66,7 @@ public partial class MainWindow
             try
             {
                 var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId, line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
-                Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
+                Dispatcher.UIThread.Post(() => Append($"{mod.Id} 已构建（{new FileInfo(dll).Length / 1024} KB）；下次会话会加载它。", Green));
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
             { Dispatcher.UIThread.Post(() => Append($"{mod.Id} {failure.Message}", Red)); }
@@ -77,11 +77,11 @@ public partial class MainWindow
     MenuItem ZipItem(ModManifest mod)
     {
         var needsBuild = mod.HasSource;
-        var zip = new MenuItem { Header = "Zip to share", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ModKit.ToolsReady(s))) };
+        var zip = new MenuItem { Header = "打包分享", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ModKit.ToolsReady(s))) };
         ToolTip.SetShowOnDisabled(zip, true);
-        ToolTip.SetTip(zip, needsBuild && modsLocked ? "Zipping builds the mod first, which waits until the session ends."
-            : "Packs the mod to share, into the installation's exports folder: drop the zip into a mods folder as it is. " +
-              (needsBuild ? "It is built first, so a mod that does not compile is not packed; the zip holds its sources, not a DLL." : ""));
+        ToolTip.SetTip(zip, needsBuild && modsLocked ? "打包前会先构建模组，因此会等到会话结束。"
+            : "把模组打包到安装目录的 exports 文件夹以便分享：直接把 zip 放进 mods 文件夹即可。" +
+              (needsBuild ? "会先构建，所以编译失败的模组不会被打包；zip 里放的是源码，不是 DLL。" : ""));
         zip.Click += (_, _) => ZipMod(mod);
         return zip;
     }
@@ -94,7 +94,7 @@ public partial class MainWindow
         var sdk = Sdk;
         if (mod.HasSource && (sdk == null || modsLocked)) return;
         modKitBusy = true;
-        Append($"Packing {mod.Id}...", LauncherLine);
+        Append($"正在打包 {mod.Id}…", LauncherLine);
         RefreshMods();
         var install = new InstallLayout(paths.InstallRoot);
         Task.Run(() =>
@@ -105,14 +105,14 @@ public partial class MainWindow
                 var zip = ModPackage.Create(mod, install.Exports);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    Append($"{mod.Id} packed: {zip} ({new FileInfo(zip).Length / 1024} KB). Share that file; players drop it into their mods folder.", Green);
+                    Append($"{mod.Id} 已打包：{zip}（{new FileInfo(zip).Length / 1024} KB）。分享这个文件；其他玩家直接把它放进 mods 文件夹。", Green);
                     if (OperatingSystem.IsWindows())
                         try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{zip}\"") { UseShellExecute = false }); }
                         catch (System.ComponentModel.Win32Exception) { }
                 });
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
-            { Dispatcher.UIThread.Post(() => Append($"{mod.Id} was not packed: {failure.Message}", Red)); }
+            { Dispatcher.UIThread.Post(() => Append($"{mod.Id} 未能打包：{failure.Message}", Red)); }
             finally { Dispatcher.UIThread.Post(() => { modKitBusy = false; RefreshMods(); }); }
         });
     }
@@ -121,17 +121,17 @@ public partial class MainWindow
     {
         if (modKitBusy) return;
         modKitBusy = true;
-        modKitStatus = "Starting...";
+        modKitStatus = "正在启动…";
         RefreshMods();
         Task.Run(async () =>
         {
             try
             {
                 await ModKit.InstallToolsAsync(sdk, ide: true, line => Dispatcher.UIThread.Post(() => { modKitStatus = line; Append(line, LauncherLine); RefreshMods(); }));
-                Dispatcher.UIThread.Post(() => Append("Mod tools installed in " + sdk.Tools, Green));
+                Dispatcher.UIThread.Post(() => Append("模组工具已安装到 " + sdk.Tools, Green));
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException)
-            { Dispatcher.UIThread.Post(() => { modKitStatus = "Not installed: " + failure.Message; Append("Mod tools not installed: " + failure.Message, Red); }); }
+            { Dispatcher.UIThread.Post(() => { modKitStatus = "未安装：" + failure.Message; Append("模组工具未安装：" + failure.Message, Red); }); }
             finally { Dispatcher.UIThread.Post(() => { modKitBusy = false; RefreshMods(); }); }
         });
     }

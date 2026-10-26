@@ -90,7 +90,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            Append("The Mods page will not follow the mods folder (use Refresh): " + error.Message, Orange);
+            Append("模组页面不会跟随模组文件夹（请用「刷新」）：" + error.Message, Orange);
         }
     }
 
@@ -109,7 +109,7 @@ public partial class MainWindow
         modNumbers.Clear();
         if (paths.ModsFolder == null)
         {
-            ModsSummary.Text = "Mods load in installations made with HellForge-Setup, from the installation's mods folder.";
+            ModsSummary.Text = "只有在用 HellForge-Setup 创建的安装中才能加载模组，来源是安装目录的 mods 文件夹。";
             ModsDigestText.Text = "";
             return;
         }
@@ -118,26 +118,26 @@ public partial class MainWindow
         try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            ModsSummary.Text = "Could not read the mods folder: " + Privacy.Scrub(error.Message);
+            ModsSummary.Text = "无法读取模组文件夹：" + Privacy.Scrub(error.Message);
             return;
         }
         var active = ModCatalog.Active(mods);
         ModsSummary.Text = mods.Count == 0 && problems.Count == 0
-            ? "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder."
-            : $"{active.Count} of {mods.Count} mod{(mods.Count == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " +
-              "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
+            ? "还没有模组。「添加模组…」可以导入 HellForge 模组（.zip、.rar、.7z，或文件夹模组里的 hellforge-mod.json）和外观包（.zip、.rar、.7z 或包里的 manifest.json），并把它们复制到 mods 文件夹。"
+            : $"{active.Count} / {mods.Count} 个模组{(mods.Count == 1 ? "" : "s")}已启用。拖动模组可调整顺序：最下面的先加载，最上面的生效。" +
+              "改动会在下次会话生效" + (modsLocked ? "；正在运行的会话仍使用启动时的模组。" : ".");
         // what friends compare (ModCatalog.Digest): not Local Stats, since in co-op everyone plays with the host's
         var gameplay = active.Count(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId);
-        var ownStats = active.Any(m => m.Id == ModCatalog.LocalStatsId) ? " Your Local Stats is not compared: in co-op everyone plays with the host's." : "";
-        ModsDigestText.Text = (gameplay == 0 ? "No gameplay mods to compare: you can play with friends who have none."
-            : $"Modlist code {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}: friends need the same {gameplay} gameplay mod{(gameplay == 1 ? "" : "s")}; the order is up to you.") + ownStats;
+        var ownStats = active.Any(m => m.Id == ModCatalog.LocalStatsId) ? " 你的本地数据不参与比较：联机时大家都使用主机的数据。" : "";
+        ModsDigestText.Text = (gameplay == 0 ? "没有可比较的玩法模组：你可以和没有玩法模组的好友一起玩。"
+            : $"模组清单代码 {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}：好友需要相同的 {gameplay} 个玩法模组{(gameplay == 1 ? "" : "s")}；顺序随意。") + ownStats;
 
         // the folder's problems, and what the last Add mods refused (until the next one)
-        var notices = problems.Concat(modsRefused.Select(p => "Not added: " + p)).ToList();
+        var notices = problems.Concat(modsRefused.Select(p => "未添加：" + p)).ToList();
         if (notices.Count > 0)
         {
             var list = new StackPanel { Spacing = 4 };
-            list.Children.Add(new TextBlock { Text = "MOD NOTICES", Classes = { "h2" }, Margin = new(0), Foreground = Red });
+            list.Children.Add(new TextBlock { Text = "模组提示", Classes = { "h2" }, Margin = new(0), Foreground = Red });
             foreach (var notice in notices) list.Children.Add(new TextBlock { Text = notice, TextWrapping = TextWrapping.Wrap, Foreground = Red });
             ModsList.Children.Add(new Border { Classes = { "card" }, Child = list });
         }
@@ -146,10 +146,10 @@ public partial class MainWindow
         if (mods.Count > 0)
         {
             var number = 0;
-            AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "GAMEPLAY", "Friends need the same ones; keeping the same order avoids surprises.",
-                "No gameplay mods.", ref number);
-            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "COSMETIC", "Only on your PC: friends need not have the same ones.",
-                "No cosmetic mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) with Add mods...", ref number);
+            AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "玩法", "好友需要相同的模组；保持相同顺序可以避免意外。",
+                "没有玩法模组。", ref number);
+            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "外观", "只在你这台电脑上生效：好友无需拥有相同的外观模组。",
+                "没有外观模组。用「添加模组…」导入外观包（.zip、.rar、.7z 或 manifest.json）。", ref number);
         }
         SetModsLocked(modsLocked);
     }
@@ -197,7 +197,7 @@ public partial class MainWindow
             VerticalAlignment = VerticalAlignment.Center, Cursor = pinned ? Cursor.Default : new Cursor(StandardCursorType.SizeNorthSouth),
             Background = Brushes.Transparent
         };
-        ToolTip.SetTip(handle, pinned ? "Your editor changes stay on top: they apply last." : "Drag the mod to change the load order: higher wins.");
+        ToolTip.SetTip(handle, pinned ? "你的编辑器改动始终在最上层：最后应用。" : "拖动模组可调整加载顺序：越靠上越优先。");
         if (!pinned) Draggable(row, mod, panel, rows, all);
         grid.Children.Add(handle);
 
@@ -212,7 +212,7 @@ public partial class MainWindow
         {
             if (paths.ModsFolder == null || modsLocked) return;
             try { ModSettings.SetEnabled(paths.ModsFolder, mod.Id, toggle.IsChecked == true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod switch: " + error.Message, Red); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("无法保存模组开关：" + error.Message, Red); }
             RefreshMods();
         };
         modSwitches.Add(toggle);
@@ -231,7 +231,7 @@ public partial class MainWindow
         title.Children.Add(new TextBlock { Text = mod.Name, FontWeight = FontWeight.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
         if (mod.Version.Length > 0) title.Children.Add(new TextBlock { Text = mod.Version, FontSize = 12, Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center });
         text.Children.Add(title);
-        var summary = mod.Pack is { } p && p.Options.Count > 0 ? $"{p.Options.Count(o => !mod.PackChoice.Off.Contains(o.Name))} of {p.Options.Count} options on" + (mod.Description.Length > 0 ? " · " + mod.Description : "")
+        var summary = mod.Pack is { } p && p.Options.Count > 0 ? $"{p.Options.Count(o => !mod.PackChoice.Off.Contains(o.Name))} / {p.Options.Count} 项已开启" + (mod.Description.Length > 0 ? " · " + mod.Description : "")
             : mod.Description;
         if (summary.Length > 0)
             text.Children.Add(new TextBlock { Text = summary, FontSize = 12, Classes = { "muted" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, IsVisible = !expanded });
@@ -241,7 +241,7 @@ public partial class MainWindow
             if (!modsExpanded.Remove(mod.Id)) modsExpanded.Add(mod.Id);
             RefreshMods();
         };
-        ToolTip.SetTip(text, expanded ? "Click to hide the details." : "Click for the details.");
+        ToolTip.SetTip(text, expanded ? "点击收起详情。" : "点击查看详情。");
         Grid.SetColumn(text, 4);
         grid.Children.Add(text);
 
@@ -252,7 +252,7 @@ public partial class MainWindow
 
         var menu = new Button { Content = "⋮", Classes = { "flat" }, FontSize = 18, Padding = new(10, 0), Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
             Flyout = ModMenu(mod, pinned, rows, all) };
-        ToolTip.SetTip(menu, "More: build, zip, open its folder, remove.");
+        ToolTip.SetTip(menu, "更多：构建、打包、打开文件夹、移除。");
         row.ContextFlyout = ModMenu(mod, pinned, rows, all);
         Grid.SetColumn(menu, 6);
         grid.Children.Add(menu);
@@ -272,16 +272,16 @@ public partial class MainWindow
     List<(string Label, string Colour)> Tags(ModManifest mod, (string Text, IBrush Colour)? build)
     {
         var tags = new List<(string, string)>();
-        if (build?.Colour == Red) tags.Add(("DID NOT COMPILE", "#FF6054"));
-        if (mod.Id == ModCatalog.LocalStatsId) tags.Add(("YOUR EDITS", "#FFC72C"));
-        else if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("BUNDLED", "#9AA0A8"));
-        if (mod.Pack != null) tags.Add(("PACK", "#4FA3FF"));
-        if (mod.Lua) tags.Add(("LUA", "#F2A541"));
-        if (mod.HasCode) tags.Add(("CODE", "#E05591"));
-        if (mod.HasNative) tags.Add(("NATIVE", "#9B85FF"));
-        if (mod.Stats.Count > 0) tags.Add(("STATS", "#9B85FF"));
-        if (mod.HasDataSpec || mod.DataFiles.Count > 0) tags.Add(("DATA", "#5FD08A"));
-        if (mod.Archive != null) tags.Add(("ZIP", "#9AA0A8"));
+        if (build?.Colour == Red) tags.Add(("编译失败", "#FF6054"));
+        if (mod.Id == ModCatalog.LocalStatsId) tags.Add(("你的修改", "#FFC72C"));
+        else if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("内置", "#9AA0A8"));
+        if (mod.Pack != null) tags.Add(("包", "#4FA3FF"));
+        if (mod.Lua) tags.Add(("Lua", "#F2A541"));
+        if (mod.HasCode) tags.Add(("代码", "#E05591"));
+        if (mod.HasNative) tags.Add(("原生", "#9B85FF"));
+        if (mod.Stats.Count > 0) tags.Add(("数值", "#9B85FF"));
+        if (mod.HasDataSpec || mod.DataFiles.Count > 0) tags.Add(("数据", "#5FD08A"));
+        if (mod.Archive != null) tags.Add(("压缩包", "#9AA0A8"));
         return tags;
     }
 
@@ -336,11 +336,11 @@ public partial class MainWindow
         if (!mod.HasSource || paths.InstallRoot == null) return null;
         var record = ModBuilds.Record(new InstallLayout(paths.InstallRoot), mod.Id);
         var current = record != null && Sdk is { } sdk && ModKit.ToolsReady(sdk) && record.Key == ModBuilds.Key(mod.Folder, sdk, SupportedBuild.Current.BuildId);
-        return record == null ? ("Built from its sources when a session starts.", Light)
-            : record.Error != null && current ? ("Did not compile; it stays off until fixed:\n" + record.Error, Red)
-            : record.Error != null ? ("Its last build did not compile; the sources changed since, so the next session builds it again.", Orange)
-            : current ? ($"Built {record.Built.ToLocalTime():g}; sessions reuse this build until its sources change.", Light)
-            : ("Its sources, the SDK or the game build changed: the next session builds it again.", Orange);
+        return record == null ? ("会话启动时会从源码构建。", Light)
+            : record.Error != null && current ? ("编译失败；修复前不会启用：\n" + record.Error, Red)
+            : record.Error != null ? ("上次构建失败；源码在那之后有改动，下次会话会重新构建。", Orange)
+            : current ? ($"构建于 {record.Built.ToLocalTime():g}；在源码变动前，后续会话会复用这个构建。", Light)
+            : ("源码、SDK 或游戏版本有变动：下次会话会重新构建。", Orange);
     }
 
     Control Details(ModManifest mod, (string Text, IBrush Colour)? build)
@@ -348,13 +348,13 @@ public partial class MainWindow
         var details = new StackPanel { Spacing = 8, Margin = new(12, 10, 0, 2) };
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
         var changes = new List<string>();
-        foreach (var type in mod.NetworkFieldTypes) changes.Add($"network field {type.Name}: {type.ExpectBits} -> {type.Bits} bits");
+        foreach (var type in mod.NetworkFieldTypes) changes.Add($"网络字段 {type.Name}：{type.ExpectBits} -> {type.Bits} 位");
         foreach (var write in mod.ComponentWrites)
             foreach (var field in write.Fields) changes.Add($"{write.Component} {field.Name}: {field.Expect} -> {field.Value}");
-        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} stats change{(mod.Stats.Count == 1 ? "" : "s")}");
-        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} game data file{(mod.DataFiles.Count == 1 ? "" : "s")}");
-        if (mod.HasDataSpec) changes.Add("game data built from your game copy (a data spec)");
-        if (mod.HasCode) changes.Add($"runs code inside the game: {mod.CodeDll} (only enable mods from people you trust)");
+        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} 处数值改动{(mod.Stats.Count == 1 ? "" : "s")}");
+        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} 个游戏数据文件{(mod.DataFiles.Count == 1 ? "" : "s")}");
+        if (mod.HasDataSpec) changes.Add("由你的游戏副本构建的游戏数据（数据规格）");
+        if (mod.HasCode) changes.Add($"在游戏内运行代码：{mod.CodeDll}（只启用你信任的人做的模组）");
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
         if (build is { } b)
             details.Children.Add(new TextBlock { Text = b.Text, FontSize = 12, Foreground = b.Colour, TextWrapping = TextWrapping.Wrap,
@@ -372,16 +372,16 @@ public partial class MainWindow
         {
             if (paths.ModsFolder == null || modsLocked) return;
             try { ModSettings.SetChoice(paths.ModsFolder, mod.Id, choice); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the pack's options: " + error.Message, Red); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("无法保存包的选项：" + error.Message, Red); }
             RefreshMods();
         }
         var off = mod.PackChoice.Off.ToHashSet(StringComparer.Ordinal);
         var sub = new Dictionary<string, string>(mod.PackChoice.Sub, StringComparer.Ordinal);
         var panel = new StackPanel { Spacing = 6 };
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        header.Children.Add(new TextBlock { Text = "OPTIONS", Classes = { "h2" }, Margin = new(0), VerticalAlignment = VerticalAlignment.Center });
-        var allOn = new Button { Content = "All on", Classes = { "flat" }, IsEnabled = !modsLocked && off.Count > 0 };
-        var allOff = new Button { Content = "All off", Classes = { "flat" }, IsEnabled = !modsLocked && off.Count < pack.Options.Count };
+        header.Children.Add(new TextBlock { Text = "选项", Classes = { "h2" }, Margin = new(0), VerticalAlignment = VerticalAlignment.Center });
+        var allOn = new Button { Content = "全部开启", Classes = { "flat" }, IsEnabled = !modsLocked && off.Count > 0 };
+        var allOff = new Button { Content = "全部关闭", Classes = { "flat" }, IsEnabled = !modsLocked && off.Count < pack.Options.Count };
         allOn.Click += (_, _) => Save(new([], sub));
         allOff.Click += (_, _) => Save(new(pack.Options.Select(o => o.Name).ToHashSet(StringComparer.Ordinal), sub));
         header.Children.Add(allOn);
@@ -434,15 +434,15 @@ public partial class MainWindow
     MenuFlyout ModMenu(ModManifest mod, bool pinned, List<(ModManifest Mod, Border Row)> rows, List<ModManifest> all)
     {
         var menu = new MenuFlyout();
-        var details = new MenuItem { Header = modsExpanded.Contains(mod.Id) ? "Hide details" : "Details" };
+        var details = new MenuItem { Header = modsExpanded.Contains(mod.Id) ? "收起详情" : "详情" };
         details.Click += (_, _) => { if (!modsExpanded.Remove(mod.Id)) modsExpanded.Add(mod.Id); RefreshMods(); };
         menu.Items.Add(details);
         if (!pinned)
         {
             // the group's rows are all there once the menu opens (this row is made before it joins them)
             int At() => rows.FindIndex(r => r.Mod.Id == mod.Id);
-            var up = new MenuItem { Header = "Move up" };
-            var down = new MenuItem { Header = "Move down" };
+            var up = new MenuItem { Header = "上移" };
+            var down = new MenuItem { Header = "下移" };
             menu.Opening += (_, _) =>
             {
                 up.IsEnabled = !modsLocked && At() > rows.Count(r => r.Mod.Id == ModCatalog.LocalStatsId);
@@ -460,7 +460,7 @@ public partial class MainWindow
         var own = paths.InstallRoot != null && mod.Id != ModCatalog.LocalStatsId && BundledMods.ShippedFiles(mod.Folder) == null;
         if (Sdk != null && mod.HasSource) menu.Items.Add(BuildItem(mod));
         if (own && mod.Archive == null && mod.Pack == null) menu.Items.Add(ZipItem(mod));
-        var folder = new MenuItem { Header = "Open folder" };
+        var folder = new MenuItem { Header = "打开文件夹" };
         folder.Click += (_, _) => OpenFolder(mod.Archive != null && paths.ModsFolder != null ? paths.ModsFolder : mod.Folder);
         menu.Items.Add(folder);
         if (own) menu.Items.Add(RemoveItem(mod));
@@ -487,7 +487,7 @@ public partial class MainWindow
         var ids = rows.Select(r => r.Mod.Id);
         var order = cosmetic ? all.Where(m => m.Gameplay).Select(m => m.Id).Concat(ids) : ids.Concat(all.Where(m => m.Cosmetic).Select(m => m.Id));
         try { ModSettings.SetOrder(paths.ModsFolder, order.ToList()); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod order: " + error.Message, Red); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("无法保存模组顺序：" + error.Message, Red); }
         Dispatcher.UIThread.Post(RefreshMods, DispatcherPriority.Background);
     }
 

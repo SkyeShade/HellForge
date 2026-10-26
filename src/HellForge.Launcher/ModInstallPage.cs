@@ -23,15 +23,15 @@ public partial class MainWindow
         var install = new InstallLayout(paths.InstallRoot);
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Add mods: their .zip (or .rar, .7z), or a folder mod's hellforge-mod.json or a pack's manifest.json",
+            Title = "添加模组：.zip（或 .rar、.7z），或者文件夹模组的 hellforge-mod.json、包的 manifest.json",
             AllowMultiple = true,
-            FileTypeFilter = [new FilePickerFileType("Mods and cosmetic packs (.zip, .rar, .7z, hellforge-mod.json, manifest.json)")
+            FileTypeFilter = [new FilePickerFileType("模组与外观包（.zip、.rar、.7z、hellforge-mod.json、manifest.json）")
                 { Patterns = ["*.zip", "*.rar", "*.7z", ModCatalog.ManifestName, CosmeticPacks.ManifestName] }]
         });
         var chosen = files.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
         if (chosen.Count == 0) return;
         modsRefused = [];
-        SetModsBusy(chosen.Count == 1 ? $"Reading {Path.GetFileName(chosen[0])}..." : $"Reading {chosen.Count} files...");
+        SetModsBusy(chosen.Count == 1 ? $"正在读取 {Path.GetFileName(chosen[0])}…" : $"正在读取 {chosen.Count} 个文件…");
         var (mods, problems) = await Task.Run(() => ModInstaller.Inspect(install, chosen));
         if (mods.Any(m => m.Replaces != null))
         {
@@ -48,18 +48,18 @@ public partial class MainWindow
     {
         pendingAdd = null;
         pendingAddProblems = [];
-        foreach (var problem in problems) Append("Not added: " + problem, Red);
+        foreach (var problem in problems) Append("未添加：" + problem, Red);
         modsRefused = problems;
         foreach (var mod in mods)
         {
-            SetModsBusy($"Adding {mod.Name}...");
+            SetModsBusy($"正在添加 {mod.Name}…");
             try
             {
                 await Task.Run(() => ModInstaller.Add(install, mod));
-                Append($"Added {mod.Name} {mod.Version} ({mod.Id}){(mod.Replaces != null ? ", replacing the one installed" : "")}.", Green);
+                Append($"已添加 {mod.Name} {mod.Version}（{mod.Id}）{(mod.Replaces != null ? ", replacing the one installed" : "")}.", Green);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            { Append($"{mod.Name} was not added: {error.Message}", Red); }
+            { Append($"{mod.Name} 未能添加：{error.Message}", Red); }
         }
         SetModsBusy(null);
     }
@@ -86,17 +86,17 @@ public partial class MainWindow
         if (pendingAdd == null || paths.InstallRoot == null) return;
         var install = new InstallLayout(paths.InstallRoot);
         var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(new TextBlock { Text = "ADD MODS", Classes = { "h2" }, Margin = new(0) });
+        panel.Children.Add(new TextBlock { Text = "添加模组", Classes = { "h2" }, Margin = new(0) });
         foreach (var mod in pendingAdd)
             panel.Children.Add(new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap, Foreground = mod.Replaces != null ? Orange : Light,
-                Text = $"{mod.Name} {mod.Version} ({mod.Id})" + (mod.Replaces != null ? $": replaces the installed one, whose files are deleted ({mod.Replaces})" : "")
+                Text = $"{mod.Name} {mod.Version} ({mod.Id})" + (mod.Replaces != null ? $"：会替换已安装的那个，其文件将被删除（{mod.Replaces}）" : "")
             });
         foreach (var problem in pendingAddProblems)
-            panel.Children.Add(new TextBlock { Text = "Not a mod: " + problem, TextWrapping = TextWrapping.Wrap, Foreground = Red });
-        var add = new Button { Content = "Add", Classes = { "primary" }, IsEnabled = !modsLocked };
-        var cancel = new Button { Content = "Cancel", Classes = { "ghost" } };
+            panel.Children.Add(new TextBlock { Text = "不是模组：" + problem, TextWrapping = TextWrapping.Wrap, Foreground = Red });
+        var add = new Button { Content = "添加", Classes = { "primary" }, IsEnabled = !modsLocked };
+        var cancel = new Button { Content = "取消", Classes = { "ghost" } };
         add.Click += async (_, _) => await AddMods(install, pendingAdd!, pendingAddProblems);
         cancel.Click += (_, _) => { pendingAdd = null; pendingAddProblems = []; RefreshMods(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
@@ -108,9 +108,9 @@ public partial class MainWindow
 
     MenuItem RemoveItem(ModManifest mod)
     {
-        var remove = new MenuItem { Header = "Remove...", IsEnabled = !modsLocked && !modKitBusy };
+        var remove = new MenuItem { Header = "移除…", IsEnabled = !modsLocked && !modKitBusy };
         ToolTip.SetShowOnDisabled(remove, true);
-        ToolTip.SetTip(remove, modsLocked ? "Removing waits until the session ends: the game has the mods loaded." : "Deletes the mod's files from the mods folder (asks first).");
+        ToolTip.SetTip(remove, modsLocked ? "移除会等到会话结束后进行：游戏已经加载了这些模组。" : "从 mods 文件夹删除该模组的文件（会先确认）。");
         remove.Click += (_, _) => { removeAsked = mod.Id; RefreshMods(); };
         return remove;
     }
@@ -125,20 +125,20 @@ public partial class MainWindow
         panel.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Text = $"This deletes {what} permanently: the mod's files{(mod.HasSource ? ", its sources included" : "")}. Keep a copy if you may want it back."
+            Text = $"这会永久删除 {what}：该模组的文件{(mod.HasSource ? ", its sources included" : "")}。如果以后可能还要用，请先备份。"
         });
-        var delete = new Button { Content = "Delete mod", Classes = { "danger" }, IsEnabled = !modsLocked };
-        var cancel = new Button { Content = "Cancel", Classes = { "ghost" } };
+        var delete = new Button { Content = "删除模组", Classes = { "danger" }, IsEnabled = !modsLocked };
+        var cancel = new Button { Content = "取消", Classes = { "ghost" } };
         delete.Click += (_, _) =>
         {
             removeAsked = null;
             try
             {
                 ModInstaller.Remove(install, mod);
-                Append($"Removed {mod.Name} ({mod.Id}): {what} is deleted.", Green);
+                Append($"已移除 {mod.Name}（{mod.Id}）：{what} 已删除。", Green);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            { Append($"{mod.Name} was not removed: {error.Message}", Red); }
+            { Append($"{mod.Name} 未能移除：{error.Message}", Red); }
             RefreshMods();
         };
         cancel.Click += (_, _) => { removeAsked = null; RefreshMods(); };

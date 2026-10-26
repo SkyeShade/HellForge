@@ -17,8 +17,8 @@ public sealed class SessionRunner
     public static bool IsSupported => OperatingSystem.IsWindows();
 
     public static string UnsupportedMessage => OperatingSystem.IsLinux()
-        ? "Linux sessions are not supported yet."
-        : "Sessions are only supported on Windows for now.";
+        ? "暂不支持 Linux 会话。"
+        : "目前只支持 Windows 上的会话。";
 
     public bool IsRunning => controller is { HasExited: false };
     public int? ProcessId => controller?.Id;
@@ -28,7 +28,7 @@ public sealed class SessionRunner
     // creates the profile on first use.
     public static List<string> Arguments(ISessionPaths paths, LocalProfile profile, SessionOptions options)
     {
-        if (paths.InstallRoot == null) throw new InvalidOperationException("Sessions run in installations made with HellForge-Setup.");
+        if (paths.InstallRoot == null) throw new InvalidOperationException("会话只能在用 HellForge-Setup 创建的安装中运行。");
         var arguments = new List<string> { "play", "--install", Path.TrimEndingDirectorySeparator(paths.InstallRoot),
             "--profile", Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder)), "--template", profile.Template };
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
@@ -62,7 +62,7 @@ public sealed class SessionRunner
         // An installation keeps even temporary files inside its folder.
         var temp = Directory.CreateDirectory(Path.Combine(paths.InstallRoot!, "temp")).FullName;
         start.Environment["TEMP"] = start.Environment["TMP"] = temp;
-        controller = Process.Start(start) ?? throw new InvalidOperationException("The session runner did not start.");
+        controller = Process.Start(start) ?? throw new InvalidOperationException("会话运行器未能启动。");
     }
 
     // The run folder the session runner made for a session started at `startedUtc` (it names its newest run in

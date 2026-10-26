@@ -30,7 +30,7 @@ static class WeaponLevelData
                 !package.TryGetProperty("requiredItems", out var required) || required.GetArrayLength() == 0 ||
                 !package.TryGetProperty("levels", out var levels)) continue;
             var weapon = required[0].GetUInt32();
-            var (name, armoryType) = names.TryGetValue(weapon, out var known) ? known : ($"Weapon {weapon:X8}", 99);
+            var (name, armoryType) = names.TryGetValue(weapon, out var known) ? known : ($"武器 {weapon:X8}", 99);
             weapons.Add(new(package.GetProperty("id32").GetUInt32(), weapon, levels.GetArrayLength(), name, armoryType));
         }
         return weapons.OrderBy(w => w.ArmoryType).ThenBy(w => w.Name, StringComparer.OrdinalIgnoreCase).ToList();
@@ -124,7 +124,7 @@ static class WeaponLevelData
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or
             NullReferenceException or KeyNotFoundException or FormatException)
         {
-            return "Could not save the weapon levels: " + error.Message;
+            return "无法保存武器等级：" + error.Message;
         }
     }
 }
@@ -152,7 +152,7 @@ public partial class MainWindow
             if (runner.IsRunning) return;
             var levels = weaponLevelInputs.ToDictionary(p => p.Key, p => (int)(p.Value.Value ?? 0));
             var error = WeaponLevelData.Save(paths, Selected.ProfileFile, levels);
-            WeaponLevelsStatus.Text = error ?? "Saved. The next session uses these levels.";
+            WeaponLevelsStatus.Text = error ?? "已保存。下次会话会使用这些等级。";
             WeaponLevelsStatus.Foreground = error != null ? Red : Light;
             if (error == null) weaponLevelsShown = levels;
             ShowProfile();

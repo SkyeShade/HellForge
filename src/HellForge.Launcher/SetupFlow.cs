@@ -20,8 +20,8 @@ public partial class MainWindow
 {
     enum SetupStep { Find, Ownership, Copy, NetworkBlock, Import, Shortcuts }
     static readonly string[] SetupStepNames =
-        ["Find HELLDIVERS 2 in Steam", "Confirm you own the game", "Copy the game into this folder", "Block the copy from the internet",
-            "Import earlier game data", "Create shortcuts"];
+        ["在 Steam 中查找 HELLDIVERS 2", "确认你拥有这款游戏", "把游戏复制到这个文件夹", "阻断这份副本的网络",
+            "导入旧版游戏数据", "创建快捷方式"];
 
     readonly List<(Border Dot, TextBlock Detail)> setupRows = [];
     CancellationTokenSource? setupCancel;
@@ -55,12 +55,12 @@ public partial class MainWindow
         }
         ImportBox.IsVisible = Directory.Exists(Path.Combine(EarlierGameData, "profiles")) || File.Exists(Path.Combine(EarlierGameData, "user_settings.config"));
         InstallCard.IsVisible = true;
-        InstallText.Text = $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}";
+        InstallText.Text = $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 版本 {SupportedBuild.Current.BuildId}";
         SetupStartButton.Click += async (_, _) => await RunSetup();
         SetupPauseButton.Click += (_, _) => setupCancel?.Cancel();
         SetupBackButton.Click += (_, _) => LeaveSetup();
         OpenConsoleButton.Click += (_, _) => OpenSteamConsole();
-        DeleteDownloadBox.Content = $"Delete Steam's download after copying (frees about {SupportedBuild.Current.TotalBytes / 1e9:0} GB)";
+        DeleteDownloadBox.Content = $"复制完成后删除 Steam 的下载（可释放约 {SupportedBuild.Current.TotalBytes / 1e9:0} GB）";
         RepairButton.Click += (_, _) => EnterSetup(repair: true);
         UninstallButton.Click += (_, _) => AskUninstall(install);
         UninstallConfirmButton.Click += async (_, _) => await Uninstall(install);
@@ -76,11 +76,11 @@ public partial class MainWindow
         // A first setup has nowhere to go back to; a repair can be left.
         Nav.IsVisible = repair;
         SetupBackButton.IsVisible = repair;
-        SetupBackButton.Content = "Back";
+        SetupBackButton.Content = "返回";
         SetBackButtonPrimary(false);
         SetupStartButton.IsVisible = true;
-        SetupTitle.Text = repair ? "Check and repair" : "Set up HellForge";
-        SetupStartButton.Content = repair ? "Check and repair" : "Start setup";
+        SetupTitle.Text = repair ? "检查并修复" : "安装 HellForge";
+        SetupStartButton.Content = repair ? "检查并修复" : "开始安装";
         for (var i = 0; i < setupRows.Count; i++) SetRow((SetupStep)i, null, "");
     }
 
@@ -115,15 +115,15 @@ public partial class MainWindow
         var step = SetupStep.Find;
         try
         {
-            SetRow(step, null, "Looking in your Steam libraries...", running: true);
+            SetRow(step, null, "正在 Steam 库中查找…", running: true);
             // Linux (Wine/Proton) outside the namespace, such as the launcher HellForge-Setup.exe opens: the network block
             // step could only fail there (Wine has no Windows Filtering Platform), after the whole copy.
             if (LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested)
-                throw new SetupStopped("On Linux, setup runs inside HellForge's network namespace. Close HellForge and start it with " +
-                    "app/linux/hellforge-linux.sh (docs/linux.md), then start setup there.");
+                throw new SetupStopped("在 Linux 上，安装程序需运行在 HellForge 的网络命名空间里。请关闭 HellForge，改用 " +
+                    "app/linux/hellforge-linux.sh 启动（见 docs/linux.md），然后在其中运行安装程序。");
             if (!LinuxNetworkBlock.Requested) await CheckFilteringEngine(install);
             var build = SupportedBuild.Current;
-            var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
+            var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("这台电脑上没有安装 Steam。请安装 Steam 和 HELLDIVERS 2，然后重新开始安装。");
             // The build patches published since this release (a game update gets one there, not a new HellForge).
             using (var http = new HttpClient()) await Downpatcher.RefreshAsync(http, Path.Combine(install.Temp, "downpatch-index.json"));
             SteamGame? game;
@@ -133,33 +133,33 @@ public partial class MainWindow
             var fromDepots = false;
             DownpatchPack? downpatchPack = null;
             string? downpatchSource = null;
-            if (game is { SupportedBuild: true }) SetRow(step, true, $"Build {game.Report.Pin.BuildId} in {game.Report.Source}");
+            if (game is { SupportedBuild: true }) SetRow(step, true, $"Steam 中的版本 {game.Report.Pin.BuildId}（位置 {game.Report.Source}）");
             else if (await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build)))
             {
                 fromDepots = true;
-                SetRow(step, true, $"Build {build.BuildId}, downloaded by Steam into {Path.GetDirectoryName(SteamDepotDownload.DepotFolder(steamRoot, build, build.Depots[0].Id))}");
+                SetRow(step, true, $"版本 {build.BuildId}，由 Steam 下载到 {Path.GetDirectoryName(SteamDepotDownload.DepotFolder(steamRoot, build, build.Depots[0].Id))}");
             }
             else if (game != null && Downpatcher.FindPack(game.Report.Pin) is { } downpatch && !failedPatches.Contains(downpatch.Sha256))
             {
                 downpatchPack = downpatch;
                 downpatchSource = game.Report.Source;
-                SetRow(step, true, $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. A {downpatch.Size / 1e9:0.0} GB patch converts it to build {build.BuildId}.");
+                SetRow(step, true, $"Steam 中的版本为 {game.Report.Pin.BuildId}（位置 {game.Report.Source}）。一个 {downpatch.Size / 1e9:0.0} GB 的补丁会把它转换为版本 {build.BuildId}。");
             }
             // the game is there but busy (Steam updating it, the game running): that passes, so no download is offered.
             // Under Wine it does not pass: Steam's Linux libraries are on the Z: drive, which counts as a linked path
             // ("Linked/reparse paths are not supported: Z:\", GitHub issue 1), so the download is the way there.
             else if (game == null && unusable != null && !LinuxNetworkBlock.UnderWine)
-                throw new SetupStopped($"HELLDIVERS 2 is in Steam, but setup cannot use it right now: {unusable}");
+                throw new SetupStopped($"Steam 里有 HELLDIVERS 2，但安装程序现在无法使用它：{unusable}");
             else
             {
-                var have = game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
-                    : unusable != null ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2";
+                var have = game != null ? $"HELLDIVERS 2 版本 {game.Report.Pin.BuildId}"
+                    : unusable != null ? "Wine 环境中的安装程序无法读取 HELLDIVERS 2" : "没有 HELLDIVERS 2";
                 ShowDownload(steamRoot, have);
                 var noPatch = game == null ? ""
-                    : Downpatcher.FindPack(game.Report.Pin) != null ? $" The build patch for build {game.Report.Pin.BuildId} did not work earlier."
-                    : $" HellForge has no patch for build {game.Report.Pin.BuildId} yet; once one is published, Check again uses it.";
-                throw new SetupWaiting($"Steam has {have}, but this version of HellForge needs build {build.BuildId}.{noPatch} Steam can download that exact " +
-                    "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
+                    : Downpatcher.FindPack(game.Report.Pin) != null ? $" 版本 {game.Report.Pin.BuildId} 的构建补丁此前未能生效。"
+                    : $" HellForge 尚无版本 {game.Report.Pin.BuildId} 的补丁；补丁发布后，点「重新检查」就会使用它。";
+                throw new SetupWaiting($"Steam 中为 {have}，但这个版本的 HellForge 需要版本 {build.BuildId}。{noPatch} Steam 可以为你的账号下载这个精确版本：" +
+                    "请按下面的步骤操作。下载完成后，安装会自动继续。");
             }
             // When downpatching, copy first so the supported build's steam_api64.dll is available for the ownership check
             // (the newer build's DLL may not work with the probe).
@@ -176,7 +176,7 @@ public partial class MainWindow
                     SetupSteps.Children.Insert(SetupSteps.Children.IndexOf(ownershipRow), copyRow);
                 }
                 step = SetupStep.Copy;
-                SetRow(step, null, "Downloading and applying the build patch...", running: true);
+                SetRow(step, null, "正在下载并应用构建补丁…", running: true);
                 try { await DownpatchGame(downpatchSource!, install, downpatchPack); }
                 // the patch failed (its download, Steam's copy, the pack itself): Steam's own download of the build still
                 // works, and the files already patched are kept (each one has the build's hash), so it copies only the rest
@@ -184,11 +184,11 @@ public partial class MainWindow
                     or InvalidOperationException or Win32Exception)
                 {
                     failedPatches.Add(downpatchPack.Sha256);
-                    ShowDownload(steamRoot, $"HELLDIVERS 2 build {game!.Report.Pin.BuildId}");
-                    throw new SetupWaiting($"The build patch did not work: {Describe(error)} Steam can download build {build.BuildId} for your " +
-                        "account instead: follow the steps below. Setup continues by itself when the download is complete.");
+                    ShowDownload(steamRoot, $"HELLDIVERS 2 版本 {game!.Report.Pin.BuildId}");
+                    throw new SetupWaiting($"构建补丁未能生效：{Describe(error)} 你可以改为让 Steam 为你的账号下载版本 {build.BuildId}：" +
+                        "请按下面的步骤操作。下载完成后，安装会自动继续。");
                 }
-                SetRow(step, true, $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), patched from build {downpatchPack.SourceBuild}.");
+                SetRow(step, true, $"{build.Files.Count} 个文件（{build.TotalBytes / 1e9:0.0} GB），由版本 {downpatchPack.SourceBuild} 打补丁得到。");
             }
 
             var steamApi = downpatchPack != null
@@ -198,7 +198,7 @@ public partial class MainWindow
                     : Path.Combine(game!.Report.Source, "bin", "steam_api64.dll");
 
             step = SetupStep.Ownership;
-            SetRow(step, null, "Asking Steam...", running: true);
+            SetRow(step, null, "正在询问 Steam…", running: true);
             // the evidence decides (SteamOwnershipCheck.Problem); under Wine, whose powershell.exe runs nothing, the probe
             // runs directly
             var evidence = Path.Combine(install.Logs, "setup-ownership.json");
@@ -226,42 +226,42 @@ public partial class MainWindow
             }
             if (ownershipExit == 0 && SteamOwnershipCheck.Problem(evidence, checkStarted) is { } problem) (ownershipExit, ownershipError) = (1, problem + ".");
             if (ownershipExit != 0)
-                throw new SetupStopped("The ownership check did not pass: " + (ownershipError.Length > 0 ? ownershipError : $"exit code {ownershipExit}.") +
-                    " Make sure Steam is running and signed in, then start setup again.");
-            SetRow(step, true, "Steam confirmed the game on this account.");
+                throw new SetupStopped("拥有权检查未通过：" + (ownershipError.Length > 0 ? ownershipError : $"退出码 {ownershipExit}。") +
+                    " 请确认 Steam 正在运行且已登录，然后重新开始安装。");
+            SetRow(step, true, "Steam 已确认此账号拥有该游戏。");
 
             if (downpatchPack == null)
             {
                 step = SetupStep.Copy;
-                SetRow(step, null, "Copying and verifying the game files...", running: true);
+                SetRow(step, null, "正在复制并校验游戏文件…", running: true);
                 await CopyGame(fromDepots ? null : game!.Report.Source, steamRoot, install);
-                var copied = $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), each verified against Steam's hashes.";
+                var copied = $"{build.Files.Count} 个文件（{build.TotalBytes / 1e9:0.0} GB），每个都按 Steam 的哈希校验过。";
                 if (fromDepots && DeleteDownloadBox.IsChecked == true)
                 {
-                    SetRow(step, null, copied + " Deleting Steam's download...", running: true);
+                    SetRow(step, null, copied + " 正在删除 Steam 的下载…", running: true);
                     await Task.Run(() => SteamDepotDownload.Delete(steamRoot, build));
-                    copied += " Steam's download was deleted.";
+                    copied += " Steam 的下载已删除。";
                 }
                 DownloadCard.IsVisible = false;
                 SetRow(step, true, copied);
             }
 
             step = SetupStep.NetworkBlock;
-            SetRow(step, null, "Checking the network block...", running: true);
-            if (await NetworkBlockInPlace(install)) SetRow(step, true, "Already in place.");
+            SetRow(step, null, "正在检查网络封锁…", running: true);
+            if (await NetworkBlockInPlace(install)) SetRow(step, true, "已经就位。");
             else
             {
                 if (LinuxNetworkBlock.Requested)
                 {
-                    SetRow(step, null, "Checking that this session has no route to the internet...", running: true);
+                    SetRow(step, null, "正在检查当前会话是否无法访问互联网…", running: true);
                     await LinuxNetworkBlock.Install(install);
                 }
                 else
                 {
-                    SetRow(step, null, "Windows asks for permission once to place the network block...", running: true);
+                    SetRow(step, null, "Windows 会请求一次权限来放置网络封锁…", running: true);
                     await InstallNetworkBlock(install);
                 }
-                SetRow(step, true, "The copied game can only reach this PC (its local backend). Your normal game is not affected.");
+                SetRow(step, true, "复制出的游戏只能访问这台电脑（它的本地后端）。你原本的游戏不受影响。");
             }
 
             step = SetupStep.Import;
@@ -269,43 +269,43 @@ public partial class MainWindow
             {
                 var imported = await Task.Run(() => Migration.Run(install, Path.Combine(install.Temp, "no-repository"), EarlierGameData));
                 // The folder keeps the project's old name; the message doesn't show it.
-                SetRow(step, true, imported.Copied.Count > 0 ? $"Imported {imported.Copied.Count} item(s) from the earlier HellForge setup's game data; the originals stay where they were."
-                    : "Nothing new to import.");
+                SetRow(step, true, imported.Copied.Count > 0 ? $"已从较早的 HellForge 安装导入 {imported.Copied.Count} 项游戏数据；原始文件仍保留在原处。"
+                    : "没有可导入的新内容。");
             }
-            else SetRow(step, true, "Skipped.");
+            else SetRow(step, true, "已跳过。");
 
             step = SetupStep.Shortcuts;
             var made = CreateShortcuts(install);
-            SetRow(step, true, made.Count > 0 ? string.Join(", ", made) : "Skipped.");
+            SetRow(step, true, made.Count > 0 ? string.Join(", ", made) : "已跳过。");
             await SyncBundledMods(install); // with the game copied: the editor's icons and fonts, Hell Forge's icon
 
             // The highlighted button on the right always moves forward: here that is Continue. Checking again stays
             // available under Settings > Installation.
-            SetupTitle.Text = "Ready to play";
+            SetupTitle.Text = "可以开始游戏了";
             SetupStartButton.IsVisible = false;
-            SetupBackButton.Content = "Continue";
+            SetupBackButton.Content = "继续";
             SetBackButtonPrimary(true);
             SetupBackButton.IsVisible = true;
             Nav.IsVisible = true;
         }
         catch (OperationCanceledException)
         {
-            SetRow(step, null, "Paused. Start setup again to continue where it stopped.");
-            SetupStartButton.Content = "Continue setup";
+            SetRow(step, null, "已暂停。再次开始安装即可从停止处继续。");
+            SetupStartButton.Content = "继续安装";
         }
         catch (SetupWaiting waiting)
         {
             SetRow(step, null, waiting.Message);
-            SetupStartButton.Content = "Check again";
+            SetupStartButton.Content = "重新检查";
             SetupBackButton.IsVisible = Nav.IsVisible;
         }
         catch (Exception error) when (error is SetupStopped or IOException or InvalidDataException or UnauthorizedAccessException or Win32Exception
             or JsonException or InvalidOperationException or HttpRequestException)
         {
             SetRow(step, false, error is Win32Exception { NativeErrorCode: 1223 }
-                ? "Windows permission was declined. The network block is required; start setup again and allow it."
+                ? "Windows 权限被拒绝。网络封锁是必需的；请重新开始安装并允许它。"
                 : Describe(error));
-            SetupStartButton.Content = "Try again";
+            SetupStartButton.Content = "重试";
             SetupBackButton.IsVisible = Nav.IsVisible;
         }
         finally
@@ -347,7 +347,7 @@ public partial class MainWindow
             else GameCopier.CopyFromDepots(steamRoot, install.Game, SupportedBuild.Current, Progress, token);
         }, token);
         CopyProgress.Value = 1000;
-        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+        CopyText.Text = $"用时 {clock.Elapsed.TotalMinutes:0.0} 分钟。";
     }
 
     async Task DownpatchGame(string source, InstallLayout install, DownpatchPack pack)
@@ -380,17 +380,17 @@ public partial class MainWindow
                     if (downloadStart == TimeSpan.Zero) downloadStart = clock.Elapsed;
                     var elapsed = clock.Elapsed - downloadStart;
                     var rate = elapsed.TotalSeconds > 1 ? done / elapsed.TotalSeconds / 1e6 : 0;
-                    Update($"Downloading build patch: {done / 1e9:0.00} of {total / 1e9:0.0} GB  ·  {rate:0} MB/s",
+                    Update($"正在下载构建补丁：{done / 1e9:0.00} / {total / 1e9:0.0} GB  ·  {rate:0} MB/s",
                         total > 0 ? (double)done / total * 0.5 : 0);
                 },
                 applyProgress: (done, total, file) =>
-                    Update($"Applying: {done / 1e9:0.0} of {total / 1e9:0.0} GB  ·  {file}",
+                    Update($"正在应用：{done / 1e9:0.0} / {total / 1e9:0.0} GB  ·  {file}",
                         0.5 + (total > 0 ? (double)done / total * 0.5 : 0)),
                 cancellation: token);
         }, token);
 
         CopyProgress.Value = 1000;
-        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+        CopyText.Text = $"用时 {clock.Elapsed.TotalMinutes:0.0} 分钟。";
     }
 
     // The download card: the console commands for the pinned depot manifests, and the download's progress, checked every
@@ -399,25 +399,25 @@ public partial class MainWindow
     {
         var build = SupportedBuild.Current;
         downloadSteamRoot = steamRoot;
-        DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
-            "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +
-            $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.ContentFolder(steamRoot, build)} (your normal game is not touched). " +
-            "Steam shows no progress in its library for this; the bar below does.";
+        DownloadIntro.Text = $"Steam 中为 {have}；这个版本的 HellForge 运行版本 {build.BuildId}。Steam 仍可为你的账号下载这个精确版本。" +
+            "打开 Steam 控制台，把下面的每条命令依次粘贴并回车。然后 Steam 会把约 " +
+            $"{build.TotalBytes / 1e9:0} GB 下载到 {SteamDepotDownload.ContentFolder(steamRoot, build)}（不会动你原本的游戏）。" +
+            "Steam 库中不会显示这项下载的进度；下面的进度条会显示。";
         // Linux: Steam for Linux downloads into its own folder, which setup cannot read under Wine (Z: counts as a linked
         // path); linux/hellforge-linux.sh moves the download into this prefix's Steam folder.
         if (LinuxNetworkBlock.UnderWine)
-            DownloadIntro.Text += " On Linux, Steam puts the download in its own folder instead, and the bar stays empty: once the console " +
-                "says \"Depot download complete\" for every command, close HellForge and start it again with app/linux/hellforge-linux.sh, " +
-                "which moves the download into this prefix. Then press Check again.";
+            DownloadIntro.Text += " 在 Linux 上，Steam 会把下载放进它自己的文件夹，进度条会一直为空：当控制台对每条命令都显示 " +
+                "\"Depot download complete\" 后，关闭 HellForge，并用 app/linux/hellforge-linux.sh 重新启动，" +
+                "它会把下载移动到当前 wine prefix。然后点「重新检查」。";
         DownloadCommands.Children.Clear();
         foreach (var command in SteamDepotDownload.Commands(build))
         {
-            var copy = new Button { Content = "Copy", Classes = { "ghost" }, Margin = new(8, 0, 0, 0) };
+            var copy = new Button { Content = "复制", Classes = { "ghost" }, Margin = new(8, 0, 0, 0) };
             var text = new TextBox { Text = command, IsReadOnly = true, FontFamily = new FontFamily("Consolas, monospace") };
             copy.Click += async (_, _) =>
             {
                 if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await clipboard.SetTextAsync(command);
-                copy.Content = "Copied";
+                copy.Content = "已复制";
             };
             var row = new DockPanel();
             DockPanel.SetDock(copy, Dock.Right);
@@ -443,22 +443,22 @@ public partial class MainWindow
             var states = await Task.Run(() => SteamDepotDownload.Status(root, SupportedBuild.Current));
             long done = states.Sum(s => s.Done), total = states.Sum(s => s.Total);
             DownloadProgress.Value = total > 0 ? done * 1000.0 / total : 0;
-            DownloadText.Text = string.Join("   ", states.Select(s => $"depot {s.Depot.Id}: {(s.Complete ? "done" : $"{s.Done / 1e9:0.0} of {s.Total / 1e9:0.0} GB")}"));
+            DownloadText.Text = string.Join("   ", states.Select(s => $"depot {s.Depot.Id}：{(s.Complete ? "已完成" : $"{s.Done / 1e9:0.0} / {s.Total / 1e9:0.0} GB")}"));
             // Near the end (a few files left, which the rounded GB cannot show), the files it still waits for, by name: a file
             // Steam did not write, or wrote at another size (another build's), would otherwise hold the setup with no word.
             var left = states.Where(s => !s.Complete).SelectMany(s => s.Waiting).ToList();
             if (left.Count is > 0 and <= 5)
-                DownloadText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
-                    : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
-                    : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
+                DownloadText.Text += "\n正在等待 " + string.Join("、", left.Select(f => f.Path + (f.Have < 0 ? "（尚未出现）"
+                    : f.Have > f.Size ? $"（{f.Have:N0} 字节，大于本版本应有的 {f.Size:N0}：来自其他版本的文件；请删除它并重新运行 download_depot 命令）"
+                    : $"（{f.Have:N0} / {f.Size:N0} 字节）")));
             if (states.All(s => s.Complete))
             {
                 downloadTimer?.Stop();
-                DownloadText.Text = "Download complete. Copying it into this installation...";
+                DownloadText.Text = "下载完成。正在复制到本安装中…";
                 if (!setupRunning) await RunSetup();
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { DownloadText.Text = "Could not check the download: " + Privacy.Scrub(error.Message); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { DownloadText.Text = "无法检查下载：" + Privacy.Scrub(error.Message); }
         finally { checkingDownload = false; }
     }
 
@@ -476,8 +476,8 @@ public partial class MainWindow
     {
         var check = await RunPowerShell("-Command \"if((Get-Service BFE).Status -ne 'Running'){exit 3}; exit 0\"", install);
         if (check.ExitCode == 3)
-            throw new SetupStopped("The Windows Base Filtering Engine (BFE) service is off. HellForge needs it to keep its copy of the game offline. " +
-                "Turn it back on (Services > Base Filtering Engine, or run 'net start BFE' as administrator), then start setup again.");
+            throw new SetupStopped("Windows 的基筛选引擎（BFE）服务已关闭。HellForge 需要它来让复制出的游戏保持离线。" +
+                "请重新开启它（服务 → Base Filtering Engine，或以管理员身份运行 net start BFE），然后重新开始安装。");
     }
 
     // The block leaves a marker when it was placed; reading WFP filters back needs administrator rights, so setup
@@ -512,9 +512,9 @@ public partial class MainWindow
     // is deleted when Windows' permission is declined, or while anything from the installation still runs.
     void AskUninstall(InstallLayout install)
     {
-        UninstallWarning.Text = $"This deletes {install.Root} and everything in it: the game copy (about 24 GB), your HellForge " +
-            "profiles and progress, every mod in its mods folder (your own too), saves and logs. Copy anything you want to keep first. " +
-            "HellForge closes when it is done.";
+        UninstallWarning.Text = $"这会删除 {install.Root} 及其中所有内容：游戏副本（约 24 GB）、你的 HellForge " +
+            "档案与进度、模组文件夹里的所有模组（包括你自己的）、存档和日志。请先把想保留的内容复制出去。" +
+            "完成后 HellForge 会关闭。";
         UninstallConfirm.IsVisible = true;
         UninstallText.Text = "";
     }
@@ -522,19 +522,19 @@ public partial class MainWindow
     async Task Uninstall(InstallLayout install)
     {
         UninstallConfirm.IsVisible = false;
-        if (runner.IsRunning || setupRunning) { UninstallText.Text = "Stop the session (or setup) first."; return; }
+        if (runner.IsRunning || setupRunning) { UninstallText.Text = "请先停止会话（或安装）。"; return; }
         // Linux (Wine/Proton): the removal runs Windows PowerShell, which a Wine prefix has only as a stub that does nothing.
-        if (LinuxNetworkBlock.UnderWine) { UninstallText.Text = "On Linux, remove HellForge by hand: see \"Removing HellForge\" in docs/linux.md."; return; }
+        if (LinuxNetworkBlock.UnderWine) { UninstallText.Text = "在 Linux 上，请手动移除 HellForge：见 docs/linux.md 中的「移除 HellForge」。"; return; }
         var running = Process.GetProcesses().Where(p => p.Id != Environment.ProcessId && IsFrom(p, install.Root)).Select(p => p.ProcessName).Distinct().ToList();
-        if (running.Count > 0) { UninstallText.Text = "Close these first: " + string.Join(", ", running) + "."; return; }
+        if (running.Count > 0) { UninstallText.Text = "请先关闭这些进程：" + string.Join("、", running) + "。"; return; }
         try { UninstallSafety(install.Root); }
         catch (InvalidDataException refused) { UninstallText.Text = Privacy.Scrub(refused.Message); return; }
         UninstallButton.IsEnabled = false;
-        UninstallText.Text = "Removing the network block: Windows asks for permission...";
+        UninstallText.Text = "正在移除网络封锁：Windows 会请求权限…";
         try { await InstallNetworkBlock(install, uninstall: true); }
         catch (Exception error) when (error is SetupStopped or IOException or Win32Exception or InvalidOperationException or JsonException)
         {
-            UninstallText.Text = (error is Win32Exception ? "Windows did not give permission" : Privacy.Scrub(error.Message)) + ": nothing was removed.";
+            UninstallText.Text = (error is Win32Exception ? "Windows 未授予权限" : Privacy.Scrub(error.Message)) + "：没有移除任何内容。";
             UninstallButton.IsEnabled = true;
             return;
         }
@@ -556,13 +556,13 @@ public partial class MainWindow
     static void UninstallSafety(string root)
     {
         root = LocalInstall.FullPath(root);
-        if (!new InstallLayout(root).Exists) throw new InvalidDataException("This folder is not a HellForge installation; nothing was removed.");
+        if (!new InstallLayout(root).Exists) throw new InvalidDataException("这个文件夹不是 HellForge 安装；没有移除任何内容。");
         LocalInstall.NoLinks(root);
         var keep = new[] { Path.GetPathRoot(root), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.Windows) };
         if (keep.Any(folder => !string.IsNullOrEmpty(folder) && string.Equals(LocalInstall.FullPath(folder), root, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException($"HellForge is installed directly in {root}; delete its files by hand instead.");
+            throw new InvalidDataException($"HellForge 直接安装在 {root}；请手动删除它的文件。");
     }
 
     // The Desktop and Start menu shortcuts that start this installation.
@@ -601,13 +601,13 @@ public partial class MainWindow
         { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = install.Root };
         await Task.Run(() =>
         {
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("Windows PowerShell did not start.");
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Windows PowerShell 未能启动。");
             process.WaitForExit();
         });
         var state = File.Exists(report) ? JsonDocument.Parse(File.ReadAllText(report)).RootElement : default;
         if (state.ValueKind != JsonValueKind.Object || SessionFiles.Text(state, "status") != (uninstall ? "uninstalled" : "installed"))
-            throw new SetupStopped((uninstall ? "The network block was not removed: " : "The network block was not installed: ") +
-                (state.ValueKind == JsonValueKind.Object ? SessionFiles.Text(state, "failure") : "no report was written."));
+            throw new SetupStopped((uninstall ? "网络封锁未能移除：" : "网络封锁未能安装：") +
+                (state.ValueKind == JsonValueKind.Object ? SessionFiles.Text(state, "failure") : "没有写出报告。"));
     }
 
     // Shortcuts from before the rename ("HD2 Beyond The Stars.lnk") into this installation become HellForge ones.
@@ -645,11 +645,11 @@ public partial class MainWindow
         var target = Path.Combine(install.Root, "HellForge.exe");
         if (!File.Exists(target)) return made;
         foreach (var (box, folder, name) in new[] {
-            (DesktopShortcutBox, Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Desktop"),
-            (StartMenuShortcutBox, Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Start menu") })
+            (DesktopShortcutBox, Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "桌面"),
+            (StartMenuShortcutBox, Environment.GetFolderPath(Environment.SpecialFolder.Programs), "开始菜单") })
         {
             if (box.IsChecked != true || string.IsNullOrEmpty(folder)) continue;
-            var type = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Windows Script Host is unavailable.");
+            var type = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Windows 脚本宿主不可用。");
             dynamic shell = Activator.CreateInstance(type)!;
             dynamic shortcut = shell.CreateShortcut(Path.Combine(folder, "HellForge.lnk"));
             shortcut.TargetPath = target;
@@ -681,7 +681,7 @@ public partial class MainWindow
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true, WorkingDirectory = install.Root
         };
         start.Environment["TEMP"] = start.Environment["TMP"] = Directory.CreateDirectory(install.Temp).FullName;
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("Windows PowerShell did not start.");
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Windows PowerShell 未能启动。");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
@@ -698,7 +698,7 @@ public partial class MainWindow
     // An error as setup shows it. The build patch's download (the only download setup makes): the cause, not "see inner
     // exception".
     static string Describe(Exception error) => error is HttpRequestException download
-        ? $"Could not download the build patch: {download.InnerException?.GetBaseException().Message ?? download.Message} " +
-          "Something on this PC may be blocking or inspecting HTTPS (an antivirus web shield, a VPN or a proxy); allow it, then try again."
+        ? $"无法下载构建补丁：{download.InnerException?.GetBaseException().Message ?? download.Message} " +
+          "这台电脑上可能有程序在拦截或检查 HTTPS（杀毒软件网页防护、VPN 或代理）；请放行后重试。"
         : error.Message;
 }
