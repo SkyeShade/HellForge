@@ -16,13 +16,16 @@ namespace HellForge.Core;
 //            copies and includes of the reviewed types with only HellForge's own edits; DataSpecs.Unchecked), schema
 //            stats (named fields within their reviewed ranges) and network field types (integer widenings): from any host;
 //   code     a DLL, sources HellForge compiles, or a patch holding Lua: only when VerifiedMods lists its exact content, or
-//            the player trusted that exact content (ModSettings' Trusted: TRUST on the prompt, for a Steam friend's mod);
+//            the player trusted that exact content (ModSettings' Trusted: TRUST on the prompt, for a Steam friend's mod,
+//            or a stranger's in a sandboxed session);
 //   raw      bytes HellForge cannot check, which reach the game's own parsers or any field: binary data patches (data/),
 //            data specs with "replace" or other resource types, raw stats lines and componentWrites: as code;
 //   bundled  a mod HellForge ships (the in-game editor): never downloaded; a different one is another HellForge version.
-// Every host gets the same rule, a Steam friend too; and code and raw mods come only from Steam friends (a host serves them
-// only to its friends: a stranger could not take them unverified anyway, and they may be a modder's unreleased sources).
-// Trust changes only which list lets a hash through: every byte is checked against it as before.
+// Every host gets the same rule, a Steam friend too. A stranger's unverified code and raw mods are the player's to install
+// unless the session is sandboxed (the game at low integrity: docs/steam-bridge.md), and one trusted there loads only in a
+// sandboxed session (ModSyncSession.Resolve): the sandbox stops their writes and network, not their reads, and the stranger
+// who sent them is on the other end of the game's traffic. Trust changes only which list lets a hash through: every byte is
+// checked against it as before.
 public enum ModClass { Content, Code, Bundled, Raw }
 
 // A file of a mod as the digest counts it: its path in the mod folder ('/'), size and SHA-256 (upper-case hex).
@@ -331,22 +334,24 @@ public sealed class ModLocator(string modsFolder, EntityProfile? profile = null)
 
 // What joining a host's lobby takes, mod by mod (each host mod in id order, then this machine's mods the host lacks).
 //   have      this machine has it (installed, on or off, or synced before): Folder;
-//   download  a content mod, or a verified or trusted code or raw mod from a Steam friend, the host shares;
-//   manual    the host does not share, or a code or raw mod whose host is not a Steam friend: the player installs it
-//             themselves (its Url, when it has one, says where);
+//   download  a content mod, or a verified code or raw mod, or one the player trusted from a Steam friend (or a stranger,
+//             sandboxed), the host shares;
+//   manual    the host does not share, or an unverified code or raw mod whose host is not a Steam friend while the session
+//             is not sandboxed: the player installs it themselves (its Url, when it has one, says where);
 //   blocked   on the player's blocklist;
 //   update    a mod HellForge ships differs: one of the two players runs another HellForge version;
 //   off       this machine's own gameplay mod the host does not run: left out of the synced session;
-//   trust     a code or raw mod HellForge has not verified, from a Steam friend who shares: it downloads once the player
-//             trusts that exact content (TRUST on the prompt), or the player installs it themselves.
+//   trust     a code or raw mod HellForge has not verified, from a Steam friend who shares (or a stranger, sandboxed): it
+//             downloads once the player trusts that exact content (TRUST on the prompt), or the player installs it themselves.
 public enum SyncAction { Have, Download, Manual, Blocked, Update, Off, Trust }
 // Trust: nothing else stands in the way, but mods wait for the player's trust.
 public enum SyncVerdict { Ready, Download, Unjoinable, Blocked, Trust }
 public sealed record SyncItem(ModSetEntry Mod, SyncAction Action, string? Folder);
 // What lets a code or raw mod download: HellForge's verified list (VerifiedMods.Contains when null) and the player's
-// trusted mods (ModSettings' Trusted; none when null), both by id and exact content hash, and whether the host is a Steam
-// friend (only friends serve code and raw mods, so only a friend's can be trusted).
-public sealed record SyncTrust(Func<string, string, bool>? Verified = null, bool HostIsFriend = true, Func<string, string, bool>? Trusted = null);
+// trusted mods (ModSettings' Trusts for this session; none when null), both by id and exact content hash; whether the host
+// is a Steam friend, and whether this session's game is sandboxed (only then can a stranger's unverified ones be trusted).
+public sealed record SyncTrust(Func<string, string, bool>? Verified = null, bool HostIsFriend = true, Func<string, string, bool>? Trusted = null,
+    bool Sandboxed = false);
 
 public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
 {
@@ -363,25 +368,28 @@ public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
     public static ModSyncPlan Make(ModSet host, bool hostShares, ModSet own, Func<string, string, string?> find, IReadOnlySet<string> blocked,
         SyncTrust? trust = null)
     {
-        var verified = trust?.Verified ?? VerifiedMods.Contains;
-        var hostIsFriend = trust?.HostIsFriend ?? true;
-        var trusted = trust?.Trusted ?? ((_, _) => false);
+        trust ??= new SyncTrust();
         var items = new List<SyncItem>();
         foreach (var mod in host.Mods.OrderBy(m => m.Id, StringComparer.Ordinal))
         {
             if (blocked.Contains(mod.Id)) { items.Add(new(mod, SyncAction.Blocked, null)); continue; }
             var folder = own.Find(mod.Id, mod.Hash)?.Folder ?? find(mod.Id, mod.Hash);
-            var action = folder != null ? SyncAction.Have
-                : mod.Class == ModClass.Bundled ? SyncAction.Update
-                : !hostShares || ModSets.NeedsVerified(mod.Class) && !hostIsFriend ? SyncAction.Manual
-                : ModSets.NeedsVerified(mod.Class) && !verified(mod.Id, mod.Hash) && !trusted(mod.Id, mod.Hash) ? SyncAction.Trust
-                : SyncAction.Download;
-            items.Add(new(mod, action, folder));
+            items.Add(new(mod, folder != null ? SyncAction.Have : Missing(mod, hostShares, trust), folder));
         }
         foreach (var mod in own.Mods.Where(m => host.Mods.All(h => h.Id != m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
             items.Add(new(mod, SyncAction.Off, mod.Folder));
         return new ModSyncPlan(items);
     }
+
+    // A host's mod this machine lacks: a Steam friend's unverified code and raw mods can be trusted, a stranger's only in a
+    // sandboxed session.
+    static SyncAction Missing(ModSetEntry mod, bool hostShares, SyncTrust trust) =>
+        mod.Class == ModClass.Bundled ? SyncAction.Update
+        : !hostShares ? SyncAction.Manual
+        : !ModSets.NeedsVerified(mod.Class) || (trust.Verified ?? VerifiedMods.Contains)(mod.Id, mod.Hash) ? SyncAction.Download
+        : !trust.HostIsFriend && !trust.Sandboxed ? SyncAction.Manual
+        : trust.Trusted?.Invoke(mod.Id, mod.Hash) == true ? SyncAction.Download
+        : SyncAction.Trust;
 
     public static string ActionName(SyncAction action) => action.ToString().ToLowerInvariant();
 }
@@ -589,8 +597,10 @@ public static class SyncedStore
 
 // The offer as a session's backend writes it for launchers (<run>/backend/mod-sync.json), and the player's answer a
 // launcher writes back (<run>/backend/mod-sync-answer.json), which the backend takes once a second. For sessions whose
-// game has no in-game editor to show the MOD SYNC prompt; the answer is the one the prompt sends (sync_answer).
-public sealed record ModSyncOffer(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<ModSyncOffer.Mod> Mods)
+// game has no in-game editor to show the MOD SYNC prompt; the answer is the one the prompt sends (sync_answer). Stranger:
+// the host is not a Steam friend ("stranger": true), so TRUST warns harder.
+public sealed record ModSyncOffer(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<ModSyncOffer.Mod> Mods,
+    bool Stranger = false)
 {
     public sealed record Mod(string Id, string Name, string Version, string Class, string Action, long Bytes, string? Url = null);
 
@@ -611,7 +621,8 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
                 ? list.OfType<JsonObject>().Select(m => new Mod(Text(m["id"]), Text(m["name"]), Text(m["version"]), Text(m["class"]), Text(m["action"]), Number(m["bytes"]),
                     ModCatalog.WebAddress(Text(m["url"]) is { Length: > 0 } url ? url : null))).ToList()
                 : [];
-            return new ModSyncOffer((int)Number(root["version"]), Text(root["state"]), Text(root["host"]), Number(root["bytes"]), Number(root["done"]), Text(root["message"]), mods);
+            return new ModSyncOffer((int)Number(root["version"]), Text(root["state"]), Text(root["host"]), Number(root["bytes"]), Number(root["done"]), Text(root["message"]), mods,
+                root["stranger"] is JsonValue stranger && stranger.TryGetValue<bool>(out var notFriend) && notFriend);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
@@ -685,16 +696,23 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
     }
 
     // The session's mods in load order (bottom of the Mods page first), from the player's catalogue (ModCatalog.Load) and
-    // the store; null with the reason when a mod is missing or the result's digest is not the host's.
-    public (List<ModManifest>? LoadOrder, string? Problem) Resolve(string modsFolder, IReadOnlyList<ModManifest> catalog, EntityProfile? profile = null)
+    // the store; null with the reason when a mod is missing or the result's digest is not the host's. sandboxed: whether this
+    // session's game is; a synced mod the player trusted from a stranger (and neither verified nor trusted from a friend)
+    // needs it, as the trust was given for a sandboxed game.
+    public (List<ModManifest>? LoadOrder, string? Problem) Resolve(string modsFolder, IReadOnlyList<ModManifest> catalog, EntityProfile? profile = null,
+        bool sandboxed = false)
     {
         var locator = new ModLocator(modsFolder, profile);
+        var settings = ModSettings.Read(modsFolder);
         var host = new List<ModManifest>();
         foreach (var mod in Mods.OrderBy(m => m.Order))
         {
             var listed = catalog.FirstOrDefault(m => m.Id == mod.Id);
             var folder = locator.Find(mod.Id, mod.Hash);
             if (folder == null) return (null, $"{mod.Id} is no longer here.");
+            if (!sandboxed && Same(System.IO.Path.GetDirectoryName(folder.TrimEnd('\\', '/'))!, SyncedStore.Root(modsFolder)) &&
+                settings.Trusted.Any(t => t.Id == mod.Id && t.Hash == mod.Hash && t.Stranger) && !settings.Trusts(mod.Id, mod.Hash) && !VerifiedMods.Contains(mod.Id, mod.Hash))
+                return (null, $"{mod.Id} came from a player who is not your Steam friend, so it runs only in a sandboxed game (Settings > Sandbox).");
             ModManifest found;
             try
             {

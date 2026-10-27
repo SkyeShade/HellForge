@@ -198,7 +198,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Mods that run code or carry unchecked data go to Steam friends only.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get mods that run code or carry unchecked data only if their game is sandboxed and they trust them.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
@@ -217,13 +217,13 @@ public partial class MainWindow
         // copy too, so no synced session runs it again unless it is trusted (or verified) again.
         panel.Children.Add(Section(settings.Trusted.Count == 0 ? "Trusted mods" : $"Trusted mods ({settings.Trusted.Count})"));
         panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text = settings.Trusted.Count == 0
-            ? "None. TRUST on the in-game MOD SYNC prompt lets a Steam friend's mod download that HellForge has not verified."
-            : "These exact versions download from Steam friends without HellForge's check. They run their own code on your PC." });
+            ? "None. TRUST on the in-game MOD SYNC prompt lets a mod download that HellForge has not verified: a Steam friend's, or with the sandbox on, anyone's."
+            : "These exact versions download without HellForge's check. They run their own code on your PC; those from players who are not your Steam friends run only while the sandbox is on." });
         foreach (var trusted in settings.Trusted)
         {
             var row = new DockPanel();
             var untrust = new Button { Content = "Untrust", Classes = { "flat" }, IsEnabled = !modsLocked, VerticalAlignment = VerticalAlignment.Center };
-            ToolTip.SetTip(untrust, "Take the trust back and delete the copy downloaded from your friend.");
+            ToolTip.SetTip(untrust, "Take the trust back and delete the downloaded copy.");
             untrust.Click += (_, _) =>
             {
                 try
@@ -242,7 +242,7 @@ public partial class MainWindow
             var from = System.Text.RegularExpressions.Regex.Replace(trusted.From, @"\s*\([0-9A-Fa-f]{6,}\)$", "");
             var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = $"{trusted.Name} {trusted.Version}", TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(new TextBlock { Text = $"from {from}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            text.Children.Add(new TextBlock { Text = $"from {from}{(trusted.Stranger ? " (not a Steam friend; sandbox only)" : "")}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
             ToolTip.SetTip(text, $"{trusted.Id}, from {trusted.From}. Content hash {trusted.Hash}");
             row.Children.Add(text);
             panel.Children.Add(row);
