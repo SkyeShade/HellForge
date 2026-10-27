@@ -281,19 +281,22 @@ static uint32_t ApiAddStratagem(HfMod* mod, const HfStratagem* def)
 /* Each stratagem's entry in registered-items.json: its catalogue item (mixId), its stable id (the kind-10 child's
  * itemId) and the stable id of the base it copies (RegisteredItems.cs copies the base's items). The base's stable id is
  * known once the game has loaded its stratagems, so the file is written again then; until then it is 0. */
-static int StratagemItems(char* text, int n, int size, int first)
+static void StratagemItems(ItemText* t, int* first)
 {
-    for (uint32_t i = 0; i < g_stratagemCount && n < size - 512; i++, first = 0)
+    for (uint32_t i = 0; i < g_stratagemCount; i++, *first = 0)
     {
         Stratagem* s = &g_stratagems[i];
         uint32_t baseStable = 0;
         uint64_t base = 0;
         if (g_stratagemTable != NULL) memcpy(&base, g_stratagemTable + s->base * 8, 8);
         if (base != 0) SafeRead(base + 4, &baseStable, 4);
-        n += snprintf(text + n, size - n, "%s{\"kind\":\"stratagem\",\"mixId\":%u,\"stable\":%u,\"copyOfType\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"name\":\"%s\"}",
-            first ? "" : ",", s->item, s->stable, s->base, baseStable, s->mod->id, s->name);
+        ItemTextAdd(t, "%s{\"kind\":\"stratagem\",\"mixId\":%u,\"stable\":%u,\"copyOfType\":%u,\"copyOf\":%u,\"mod\":\"",
+            *first ? "" : ",", s->item, s->stable, s->base, baseStable);
+        ItemTextString(t, s->mod->id);
+        ItemTextAdd(t, "\",\"name\":\"");
+        ItemTextString(t, s->name);
+        ItemTextAdd(t, "\"}");
     }
-    return n;
 }
 
 static uintptr_t ApiStratagemRow(uint32_t type)

@@ -289,8 +289,53 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
     return owner;
 }
 
-static int StratagemItems(char* text, int n, int size, int first);
-static int DifficultyItems(char* text, int n, int size, int first);
+/* A text that grows as it is written (registered-items.json): failed once an allocation fails, so nothing incomplete
+ * is published. */
+typedef struct ItemText
+{
+    char* data;
+    size_t length, capacity;
+    int failed;
+} ItemText;
+
+static void ItemTextAdd(ItemText* t, const char* format, ...)
+{
+    while (!t->failed)
+    {
+        va_list arguments;
+        va_start(arguments, format);
+        size_t room = t->capacity - t->length;
+        int n = vsnprintf(t->data != NULL ? t->data + t->length : NULL, room, format, arguments);
+        va_end(arguments);
+        if (n < 0) { t->failed = 1; return; }
+        if ((size_t)n < room) { t->length += (size_t)n; return; }
+        size_t capacity = t->capacity != 0 ? t->capacity : 4096;
+        while (capacity - t->length <= (size_t)n) capacity *= 2;
+        char* grown = (char*)realloc(t->data, capacity);
+        if (grown == NULL) { t->failed = 1; return; }
+        t->data = grown;
+        t->capacity = capacity;
+    }
+}
+
+/* s inside a JSON string: quotes, backslashes and control characters escaped. A mod names its items freely, and one
+ * stray quote made the whole file unreadable, so the backend added no mod's items at all. */
+static void ItemTextString(ItemText* t, const char* s)
+{
+    for (const char* run = s; s != NULL; s++)
+    {
+        unsigned char c = (unsigned char)*s;
+        if (c != 0 && c != '"' && c != '\\' && c >= 0x20) continue;
+        if (s > run) ItemTextAdd(t, "%.*s", (int)(s - run), run);
+        if (c == 0) return;
+        if (c == '"' || c == '\\') ItemTextAdd(t, "\\%c", c);
+        else ItemTextAdd(t, "\\u%04x", c);
+        run = s + 1;
+    }
+}
+
+static void StratagemItems(ItemText* t, int* first);
+static void DifficultyItems(ItemText* t, int* first);
 
 /* <session>/<name>, created anew for writing. */
 static HANDLE CreateSessionFile(const wchar_t* name)
@@ -300,25 +345,47 @@ static HANDLE CreateSessionFile(const wchar_t* name)
     return CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
+/* <session>/<name> replaced whole: written beside it, then moved over it, so a reader (the backend opens it with
+ * FILE_SHARE_DELETE) sees the old file or the new one, never half of one. 0 if it could not be. */
+static int PublishSessionFile(const wchar_t* name, const char* text, size_t length)
+{
+    wchar_t path[MAX_PATH], temporary[MAX_PATH];
+    if (swprintf(path, MAX_PATH, L"%ls\\%ls", g_logs, name) < 0 || swprintf(temporary, MAX_PATH, L"%ls.tmp", path) < 0) return 0;
+    HANDLE file = CreateFileW(temporary, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return 0;
+    DWORD written = 0;
+    BOOL wrote = WriteFile(file, text, (DWORD)length, &written, NULL) && written == length;
+    CloseHandle(file);
+    if (wrote && MoveFileExW(temporary, path, MOVEFILE_REPLACE_EXISTING)) return 1;
+    DeleteFileW(temporary);
+    return 0;
+}
+
+/* The weapons, stratagems and difficulty mods registered, for the local backend (RegisteredItems.cs): rewritten as each
+ * is added, and once more when the game has loaded its stratagems (their bases' stable ids). Any size: a 16 KB buffer
+ * here once left whatever came past it (about 130 weapons) out without a word. */
 static void WriteRegisteredItems(void)
 {
     if (g_logs[0] == 0) return;
-    char text[16384];
-    int n = snprintf(text, sizeof text, "{\"format\":1,\"items\":[");
-    int listed = 0;
-    for (int i = 0; i < g_weaponCount && n < (int)sizeof text - 512; i++)
-        if (!g_weapons[i].plain)
-            n += snprintf(text + n, sizeof text - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
-                g_weapons[i].id, g_weapons[i].base, g_weapons[i].mod->id, g_weapons[i].name);
-    int before = n;
-    n = StratagemItems(text, n, (int)sizeof text, listed == 0);
-    n = DifficultyItems(text, n, (int)sizeof text, listed == 0 && n == before);
-    n += snprintf(text + n, sizeof text - n, "]}\n");
-    HANDLE file = CreateSessionFile(L"registered-items.json");
-    if (file == INVALID_HANDLE_VALUE) return;
-    DWORD written;
-    WriteFile(file, text, (DWORD)n, &written, NULL);
-    CloseHandle(file);
+    ItemText t = {0};
+    ItemTextAdd(&t, "{\"format\":1,\"items\":[");
+    int first = 1;
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        if (g_weapons[i].plain) continue;
+        ItemTextAdd(&t, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"", first ? "" : ",", g_weapons[i].id, g_weapons[i].base);
+        ItemTextString(&t, g_weapons[i].mod->id);
+        ItemTextAdd(&t, "\",\"unit\":\"");
+        ItemTextString(&t, g_weapons[i].name);
+        ItemTextAdd(&t, "\"}");
+        first = 0;
+    }
+    StratagemItems(&t, &first);
+    DifficultyItems(&t, &first);
+    ItemTextAdd(&t, "]}\n");
+    if (t.failed || !PublishSessionFile(L"registered-items.json", t.data, t.length))
+        Note("registered-items.json was not written (%s); the backend keeps the last one", t.failed ? "out of memory" : "it could not be replaced");
+    free(t.data);
 }
 
 /* The client's id of a weapon's child item (an attachment for that weapon), and its inverse (RegisteredItems.cs). */

@@ -1176,9 +1176,38 @@ static void DifficultyFixture(void)
     uint8_t* last = NULL;
     for (uintptr_t bar = 3; bar <= DIF_BARS + 4; bar++) last = widgetOf((void*)(bar << 12));
     assert(last == first + (DIF_BARS - 1) * DIF_WIDGET && widgetOf((void*)0x2000) == second);
-    char text[1024]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0;
-    assert(strstr(text, "\"kind\":\"difficulty\"") && strstr(text, "\"copyOf\":2695783738"));
+    ItemText text = {0};
+    int none = 1;
+    DifficultyItems(&text, &none);
+    ItemTextAdd(&text, "%c", 0);
+    assert(!text.failed && !none && strstr(text.data, "\"kind\":\"difficulty\"") && strstr(text.data, "\"copyOf\":2695783738"));
+    free(text.data);
     VirtualFree(game, 0, MEM_RELEASE);
+}
+
+/* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
+static void RegisteredItemsTextFixture(void)
+{
+    ItemText t = {0};
+    ItemTextAdd(&t, "[");
+    for (int i = 0; i < 2000; i++)
+    {
+        ItemTextAdd(&t, "%s{\"mixId\":%d,\"name\":\"", i ? "," : "", i);
+        ItemTextString(&t, "a fairly long weapon name");
+        ItemTextAdd(&t, "\"}");
+    }
+    ItemTextAdd(&t, "]");
+    assert(!t.failed && t.length > 16384 && t.length < t.capacity && memcmp(t.data, "[{\"mixId\":0,", 12) == 0 &&
+        memcmp(t.data + t.length - 28, "a fairly long weapon name\"}]", 28) == 0);
+    free(t.data);
+    ItemText e = {0};
+    ItemTextString(&e, "say \"hi\"\\ok\n\x01");
+    ItemTextAdd(&e, "%s", "|");
+    ItemTextString(&e, NULL);
+    ItemTextString(&e, "");
+    assert(!e.failed && e.length == strlen("say \\\"hi\\\"\\\\ok\\u000a\\u0001|") &&
+        memcmp(e.data, "say \\\"hi\\\"\\\\ok\\u000a\\u0001|", e.length) == 0);
+    free(e.data);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -3347,6 +3376,7 @@ int main(int argc, char** argv)
         free(heap);
     }
     DifficultyFixture();
+    RegisteredItemsTextFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {

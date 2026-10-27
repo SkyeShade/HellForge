@@ -337,11 +337,16 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
 
 /* The difficulty's entry in registered-items.json: its unlock item, a copy of level 10's (RegisteredItems.cs adds it to
  * the catalogue, and to the inventory of a player who has unlocked level 10). */
-static int DifficultyItems(char* text, int n, int size, int first)
+static void DifficultyItems(ItemText* t, int* first)
 {
-    if (!g_difficultyAdded || n >= size - 512) return n;
-    return n + snprintf(text + n, size - n, "%s{\"kind\":\"difficulty\",\"mixId\":%u,\"copyOf\":%u,\"level\":%u,\"mod\":\"%s\",\"name\":\"%s\"}",
-        first ? "" : ",", g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1, g_difficulty.mod->id, g_difficulty.name);
+    if (!g_difficultyAdded) return;
+    ItemTextAdd(t, "%s{\"kind\":\"difficulty\",\"mixId\":%u,\"copyOf\":%u,\"level\":%u,\"mod\":\"", *first ? "" : ",",
+        g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1);
+    ItemTextString(t, g_difficulty.mod->id);
+    ItemTextAdd(t, "\",\"name\":\"");
+    ItemTextString(t, g_difficulty.name);
+    ItemTextAdd(t, "\"}");
+    *first = 0;
 }
 
 static uintptr_t ApiDifficultyRow(uint32_t level)
