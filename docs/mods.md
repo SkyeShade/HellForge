@@ -23,12 +23,16 @@ marks them CODE.
 3. When a mod has the same id as one already installed (an update, or going back to an older version), the page lists it
    and waits: press Add to replace the installed one, whose files are deleted, or Cancel.
 
-Copying a mod into the mods folder yourself works too (Open mods folder opens it), and the page shows it at once.
+Copying a mod into the mods folder yourself works too (Open mods folder opens it), and the page shows it at once. A
+`.zip` loads as it is. A `.rar` or `.7z` is unpacked into a folder of its own and the archive is removed, the next time
+the Mods page loads or a session starts. When a dropped archive holds a mod that is installed already, it stays as it is
+and Mod notices says so: use Add mods... to replace the installed one.
 
 Some things to know:
 
-- `.rar` and `.7z` files are unpacked with Windows' own `tar` (Windows 11). If Windows cannot unpack one, unpack it
-  yourself and add its folder.
+- `.rar` (RAR 4 and 5) and `.7z` files are unpacked by HellForge itself, on Windows 10 and 11 and under Wine. Only plain
+  files and folders come out. A password-protected archive, one split into parts, or one with links or paths outside
+  itself is refused: unpack it yourself and add its folder.
 - Keep a mod as its zip: HellForge unpacks it by itself. Two copies of one mod (a zip and a folder with the same id) load
   neither, and the page says so.
 - Files that are not mods are listed under Mod notices with the reason, until the next Add mods.

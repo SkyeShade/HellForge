@@ -117,7 +117,9 @@ public partial class MainWindow
         }
         List<ModManifest> mods;
         List<string> problems;
-        try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); }
+        // a .rar or .7z dropped into the mods folder is added as a folder first, as Add mods... adds one
+        var dropped = paths.InstallRoot != null ? ModInstaller.TakeDropped(new InstallLayout(paths.InstallRoot)) : [];
+        try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); problems.InsertRange(0, dropped); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             ModsSummary.Text = "Could not read the mods folder: " + Privacy.Scrub(error.Message);

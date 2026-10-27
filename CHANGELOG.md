@@ -8,6 +8,18 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Changed
+
+- `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
+  on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
+  ignored.
+
+### For launcher developers
+
+- `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
+  folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
+  `tar` for them.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.
