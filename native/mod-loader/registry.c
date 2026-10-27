@@ -93,7 +93,10 @@ static const uint8_t kBuilderPin[16] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89
  * and 91 divide by multiply-shift, 0x4F7C70 and 0x4FA390, which the scan missed). The rest
  * (from {10, 6} on) from a scan of every table's lookup loop bound (`cmp reg, slots; jb` after the table's load; 2026-10-18),
  * which agrees with every count above and finds each one among the component catalogue's table sizes: the barrage's
- * bombardment (95) and the silo missile (219) were refused for want of theirs. */
+ * bombardment (95) and the silo missile (219) were refused for want of theirs. SlotsOf asks component_sizes.h first
+ * (generated from the build's catalogue; it agrees with both mission snapshots' 270 tables): this list once had 140,
+ * 201 and 215 at 4, 20 and 4 where the game has 2, and lacked 47 tables. The last line is the nine tables the catalogue
+ * names by hash only (2026-10-27, research content-limits\component-tables meta.json). */
 typedef struct SlotCount { uint16_t component, slots; } SlotCount;
 static const SlotCount kSlots[] = {
     {0, 152}, {1, 114}, {3, 1122}, {5, 540}, {8, 38}, {12, 598}, {15, 58}, {22, 30}, {23, 154}, {25, 14}, {28, 1080},
@@ -114,11 +117,12 @@ static const SlotCount kSlots[] = {
     {322, 454},
     {10, 6}, {11, 10}, {18, 8}, {24, 16}, {31, 8}, {36, 4}, {45, 4}, {60, 12}, {68, 12}, {73, 6}, {74, 6}, {75, 18},
     {80, 18}, {85, 24}, {89, 96}, {95, 32}, {97, 12}, {98, 6}, {99, 6}, {108, 72}, {109, 4}, {114, 6}, {123, 16},
-    {127, 4}, {130, 16}, {131, 32}, {135, 10}, {139, 4}, {140, 4}, {143, 4}, {144, 4}, {145, 12}, {153, 6}, {154, 4},
+    {127, 4}, {130, 16}, {131, 32}, {135, 10}, {139, 4}, {143, 4}, {144, 4}, {145, 12}, {153, 6}, {154, 4},
     {166, 8}, {168, 8}, {169, 10}, {173, 10}, {176, 16}, {179, 8}, {186, 6}, {187, 4}, {190, 80}, {195, 8}, {199, 16},
-    {201, 20}, {202, 6}, {204, 20}, {205, 16}, {215, 4}, {216, 4}, {219, 18}, {221, 12}, {222, 4}, {228, 4}, {229, 12},
+    {202, 6}, {204, 20}, {205, 16}, {216, 4}, {219, 18}, {221, 12}, {222, 4}, {228, 4}, {229, 12},
     {242, 64}, {245, 18}, {246, 12}, {251, 6}, {252, 6}, {258, 10}, {264, 6}, {265, 20}, {267, 18}, {272, 6}, {281, 4},
-    {291, 8}, {293, 4}, {300, 36}, {301, 16}, {308, 4}, {313, 10}, {314, 12}, {317, 6}, {320, 20}, {323, 20}};
+    {291, 8}, {293, 4}, {300, 36}, {301, 16}, {308, 4}, {313, 10}, {314, 12}, {317, 6}, {320, 20}, {323, 20},
+    {6, 2}, {14, 2}, {21, 2}, {78, 2}, {171, 2}, {180, 2}, {217, 2}};
 
 #include "component_sizes.h" /* kComponentShapes: every table's slots, records and record size (ComponentStride) */
 
@@ -197,6 +201,8 @@ static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64
 
 static uint32_t SlotsOf(uint32_t component)
 {
+    for (size_t i = 0; i < sizeof kComponentSizes / sizeof kComponentSizes[0]; i++)
+        if (kComponentSizes[i].component == component) return kComponentSizes[i].slots;
     for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
         if (kSlots[i].component == component) return kSlots[i].slots;
     for (int i = 0; i < g_componentCount; i++)

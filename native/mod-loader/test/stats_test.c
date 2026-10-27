@@ -1185,6 +1185,23 @@ static void DifficultyFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+/* Component tables' slot counts (SlotsOf): the generated catalogue's, which the game's lookups use (140, 201 and 215
+ * have 2; kSlots had 4, 20 and 4), kSlots agreeing wherever both name a table, and all 270 loaded tables known. */
+static void SlotCountsFixture(void)
+{
+    assert(SlotsOf(140) == 2 && SlotsOf(201) == 2 && SlotsOf(215) == 2 && SlotsOf(281) == 4 && SlotsOf(62) == 42 && SlotsOf(29) == 386);
+    assert(SlotsOf(98) == 6 && SlotsOf(144) == 4 && SlotsOf(217) == 2);
+    int known = 0;
+    for (uint32_t c = 0; c < 330; c++)
+    {
+        for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
+            for (size_t j = 0; j < sizeof kComponentSizes / sizeof kComponentSizes[0]; j++)
+                if (kSlots[i].component == c && kComponentSizes[j].component == c) assert(kSlots[i].slots == kComponentSizes[j].slots);
+        known += SlotsOf(c) != 0;
+    }
+    assert(known == 270);
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3377,6 +3394,7 @@ int main(int argc, char** argv)
     }
     DifficultyFixture();
     RegisteredItemsTextFixture();
+    SlotCountsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
