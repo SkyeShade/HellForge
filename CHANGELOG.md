@@ -8,6 +8,13 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Added
+
+- **Experimental native Linux launcher and setup.** The launcher runs natively while the game stays under Proton in
+  HellForge's offline network namespace. Setup confirms Steam ownership before copying the game and fetching the
+  mod tools; Settings can remove the HellForge installation and its desktop shortcut without deleting the
+  Proton prefix (#90).
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.

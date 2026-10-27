@@ -67,7 +67,7 @@ build through Steam, with one `download_depot 553850 <depot> <manifest>` command
    command, one at a time.
 3. Watch the wizard's progress bar: Steam shows no progress in its library for this download. Steam puts it in
    `<Steam>/steamapps/content/app_553850/` (about 24 GB). On Linux the bar stays empty, and setup reads the download
-   only once `hellforge-linux.sh` has moved it into the prefix: see
+   directly from Steam's content folder; do not move it into the prefix: see
    [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.
@@ -160,7 +160,7 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
-| "The session runner exited before starting." | The launcher points to `logs\session-runner.log`, which says why. |
+| "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
 | "Mod left out of this session: ..." (in the Console) | The session still runs without that mod. The Mods page shows why on the mod's row ([using mods](mods.md)). |
 | "HellForge's file ... could not be held read-only for the session ..." | Another program has that file of the installation's `app` folder open for writing. Close it (or restart the PC), then press PLAY. |
 | "Mod file ... could not be held read-only for the session ..." | Another program (an editor, an archive tool) has that file in `mods` open for writing. Close it, then press PLAY. |

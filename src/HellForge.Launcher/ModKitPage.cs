@@ -44,9 +44,18 @@ public partial class MainWindow
 
     MenuItem BuildItem(ModManifest mod)
     {
-        var build = new MenuItem { Header = "Build now", IsEnabled = !modsLocked && !modKitBusy && Sdk is { } s && ModKit.ToolsReady(s) };
+        var sdk = Sdk;
+        var linux = OperatingSystem.IsLinux();
+        var linuxBuilder = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "linux", "hellforge-linux-install.sh");
+        var build = new MenuItem
+        {
+            Header = "Build now",
+            IsEnabled = !modsLocked && !modKitBusy && sdk != null &&
+                (linux ? linuxBuilder != null && File.Exists(linuxBuilder) : ModKit.ToolsReady(sdk))
+        };
         ToolTip.SetShowOnDisabled(build, true);
         ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
+            : linux ? "Compiles src/ with native Linux Zig via app/linux/hellforge-linux-install.sh."
             : "Compiles src/ with HellForge's pinned Zig now, as a session would (sessions build it anyway; this shows errors early).");
         build.Click += (_, _) => BuildMod(mod);
         return build;
@@ -65,8 +74,41 @@ public partial class MainWindow
         {
             try
             {
-                var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId, line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
-                Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
+                if (OperatingSystem.IsLinux())
+                {
+                    var helper = Path.Combine(install.App, "linux", "hellforge-linux-install.sh");
+                    if (!File.Exists(helper)) throw new InvalidDataException("the Linux mod-build helper is missing; reinstall HellForge.");
+                    var start = new ProcessStartInfo("bash")
+                    {
+                        WorkingDirectory = install.Root,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    start.ArgumentList.Add(helper);
+                    start.ArgumentList.Add("build");
+                    start.ArgumentList.Add(mod.Folder);
+                    start.Environment["PFX"] = WinePath.PrefixFromInstallRoot(install.Root);
+                    using var process = Process.Start(start) ?? throw new InvalidDataException("the Linux mod-build helper did not start.");
+                    void ReportLine(object? _, DataReceivedEventArgs e)
+                    {
+                        if (e.Data is { Length: > 0 } line) Dispatcher.UIThread.Post(() => Append(line, LauncherLine));
+                    }
+                    process.OutputDataReceived += ReportLine;
+                    process.ErrorDataReceived += ReportLine;
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    process.WaitForExit();
+                    process.WaitForExit();
+                    if (process.ExitCode != 0) throw new InvalidDataException($"the Linux mod-build helper exited with code {process.ExitCode}.");
+                    Dispatcher.UIThread.Post(() => Append($"{mod.Id} built with native Linux Zig.", Green));
+                }
+                else
+                {
+                    var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId,
+                        line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
+                    Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
+                }
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
             { Dispatcher.UIThread.Post(() => Append($"{mod.Id} {failure.Message}", Red)); }

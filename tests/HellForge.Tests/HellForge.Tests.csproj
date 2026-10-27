@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" />
+    <ProjectReference Include="../../src/HellForge.SdkShimGen/HellForge.SdkShimGen.csproj" />
+  </ItemGroup>
   <!-- the session runner's game job, which stands alone (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/HostBoundedProcess.cs" Link="Session/HostBoundedProcess.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>

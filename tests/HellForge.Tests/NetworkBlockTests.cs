@@ -13,6 +13,13 @@ static class NetworkBlockTests
         return null;
     }
 
+    static string? RepositoryRoot()
+    {
+        for (var folder = Directory.GetCurrentDirectory(); folder != null; folder = Path.GetDirectoryName(folder))
+            if (File.Exists(Path.Combine(folder, "linux", "hellforge-linux.sh"))) return folder;
+        return null;
+    }
+
     static void Marker(InstallLayout install, string json)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(install.NetworkBlockMarker)!);
@@ -50,6 +57,7 @@ static class NetworkBlockTests
 
         test("Network block: setup places it again unless its marker names this installation's port", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: Windows WFP marker)"); return; }
             var install = new InstallLayout(Path.Combine(root, "port-inplace"));
             check(!LinuxNetworkBlock.InPlace(install.Root), "No marker: not in place.");
             Marker(install, """{"block":"wfp","provider":"{x}","filters":8,"programs":1}""");
@@ -100,6 +108,38 @@ static class NetworkBlockTests
             var refused = NoLinks(Path.Combine(linked, "game", "bin", "helldivers2.exe"));
             check(refused.StartsWith("Linked target path: " + linked + " is a link", StringComparison.Ordinal), "A path through a junction is refused, naming the junction: " + refused);
             Directory.Delete(linked);
+        });
+
+        test("Linux Steam ownership confirmation does not trigger the optional Zig download", () =>
+        {
+            if (RepositoryRoot() is not { } repository) { Console.WriteLine("  (skipped: no repository root above the test)"); return; }
+            var wrapper = File.ReadAllText(Path.Combine(repository, "linux", "hellforge-linux.sh"));
+            var ownershipCheck = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Core", "SteamOwnershipCheck.cs"));
+            var setup = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "SetupFlow.cs"));
+            var skip = wrapper.IndexOf("if [ \"${HELLFORGE_SKIP_MOD_TOOLS:-}\" = 1 ]; then", StringComparison.Ordinal);
+            var alternative = skip < 0 ? -1 : wrapper.IndexOf("else", skip, StringComparison.Ordinal);
+            var download = wrapper.IndexOf("HellForge.Cli.exe\" mod-tools", StringComparison.Ordinal);
+            var end = skip < 0 ? -1 : wrapper.IndexOf("\n  fi", skip, StringComparison.Ordinal);
+            check(skip >= 0 && alternative > skip && download > alternative && end > download &&
+                wrapper.Contains("Skipping the mod-tools download for the Steam ownership check.", StringComparison.Ordinal),
+                "The wrapper does not guard the mod-tools download during ownership checks.");
+            check(ownershipCheck.Contains("start.Environment[\"HELLFORGE_SKIP_MOD_TOOLS\"] = \"1\";", StringComparison.Ordinal),
+                "The ownership probe does not set the wrapper's mod-tools skip flag.");
+            var probeExecutable = ownershipCheck.IndexOf(
+                "start.ArgumentList.Add(WinePath.ToWinePath(request.Probe, request.Prefix));", StringComparison.Ordinal);
+            var probeArguments = ownershipCheck.IndexOf(
+                "AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix);", StringComparison.Ordinal);
+            check(probeExecutable >= 0 && probeArguments > probeExecutable,
+                "The Linux wrapper receives the mapped Steam probe executable before its DLL, hash, and result arguments.");
+            var prepareOnly = wrapper.IndexOf("HELLFORGE_PREPARE_MOD_TOOLS_ONLY", StringComparison.Ordinal);
+            var namespaceLaunch = wrapper.IndexOf("Entering the offline network namespace.", StringComparison.Ordinal);
+            var ownershipFailure = setup.IndexOf("if (exit != 0)", StringComparison.Ordinal);
+            var prepareCall = setup.IndexOf("PrepareLinuxModTools(wrapper, proton, install, steamRoot, token)", StringComparison.Ordinal);
+            check(prepareOnly >= 0 && namespaceLaunch > prepareOnly &&
+                setup.Contains("start.Environment[\"HELLFORGE_PREPARE_MOD_TOOLS_ONLY\"] = \"1\";", StringComparison.Ordinal) &&
+                ownershipFailure >= 0 && prepareCall > ownershipFailure &&
+                setup.IndexOf("SetStep(SetupStep.Copy);", prepareCall, StringComparison.Ordinal) > prepareCall,
+                "Setup does not request the mod-tools download after ownership confirmation and before game copying.");
         });
 
         test("Network block probe: with a second loopback port it reports how both connects end", () =>

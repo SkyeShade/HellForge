@@ -6,7 +6,7 @@ players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK 
 
 > [!WARNING]
 > **This is the `dev` branch: work in progress for the next release (0.3.0), experimental and possibly broken.** Players:
-> install the latest release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead. A build of
+> install the latest release from the [Actions page](https://github.com/DreamyBranch/HellForge/actions/runs/40452744155) instead. A build of
 > this branch shows `-dev.<n>` in its version.
 
 Status: beta (0.3.0-beta), made for modders first, so expect rough edges. The launcher shows its version

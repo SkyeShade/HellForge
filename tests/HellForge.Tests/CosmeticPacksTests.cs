@@ -199,6 +199,7 @@ static class CosmeticPacksTests
 
         test("A .7z (as a .rar) is unpacked by Windows' tar and added as a folder: a pack with its files at the root, a mod in a folder", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: uses Windows tar.exe)"); return; }
             var install = new InstallLayout(Path.Combine(root, "pack-7z-install"));
             install.Create("25480438");
             Directory.CreateDirectory(install.Mods);

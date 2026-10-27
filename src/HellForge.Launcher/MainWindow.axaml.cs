@@ -49,7 +49,8 @@ public partial class MainWindow : Window
     SelectableTextBlock? runPathText, profilePathText;
     TaskCompletionSource<bool>? confirm;
     string? runDirectory;
-    DateTime launchedUtc;
+    string? previousRunId;
+    bool runLookupPending;
     // The first launch of a new installation can stop in the cryo pod: the client asks for /SeasonPass and then never
     // reaches its Pes requests (HellForge's startup research notes). The next launch goes through.
     static readonly TimeSpan IntroStallAfter = TimeSpan.FromSeconds(45);
@@ -228,7 +229,8 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) return;
         runDirectory = null;  // Forget the previous run so its final state does not overwrite this one.
-        launchedUtc = default;
+        previousRunId = null;
+        runLookupPending = false;
         crashRun = null;
         CrashReportPanel.IsVisible = false;
         NoteSessionEditor();
@@ -241,7 +243,6 @@ public partial class MainWindow : Window
         seasonPassUtc = null;
         reachedShip = false;
         stopRequested = false;
-        launchedUtc = DateTime.UtcNow;
         lines.Clear();
         modProblemsShown = false;
         Append("Starting play session.", LauncherLine);
@@ -253,7 +254,6 @@ public partial class MainWindow : Window
         try { gameOptions = HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
         catch (InvalidDataException error)
         {
-            launchedUtc = default;
             SetStatus("The launch options cannot be used.", Phase.Failed, failure: error.Message + " (Settings, Launch options)");
             return;
         }
@@ -261,12 +261,14 @@ public partial class MainWindow : Window
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
+            previousRunId = SessionRunner.LatestRunId(paths);
+            runLookupPending = true;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
-            launchedUtc = default;
+            runLookupPending = false;
             SetStatus("Could not start the session runner.", Phase.Failed, failure: error.Message);
             return;
         }
@@ -339,17 +341,21 @@ public partial class MainWindow : Window
     {
         ShowProfile();
         RefreshSync();
-        if (runDirectory == null && launchedUtc != default) FindRun();
+        if (runDirectory == null && runLookupPending) FindRun();
         if (runDirectory != null) RefreshRun();
         var runnerExited = runner.CollectExited();
+        var runnerExitCode = runner.ExitCode;
         if (runnerExited)
         {
+            // The run record can be published between this tick's first lookup and the process-exit check.
+            if (runDirectory == null && runLookupPending) FindRun();
+            runLookupPending = false;
             PruneSessionLogs();
             OfferCrashReport(runDirectory);
         }
         // Mod sync: the backend stopped the session so that it starts again with the host's mods it downloaded.
         if (runnerExited && TryModSyncRestart()) return;
-        if (runnerExited && runDirectory == null) HandleEarlyExit();
+        if (runnerExited && runDirectory == null) HandleEarlyExit(runnerExitCode);
     }
 
     // While a run folder exists: new backend requests, the latest result.json (or mod-build progress before it), the mod-sync card.
@@ -375,7 +381,7 @@ public partial class MainWindow : Window
     }
 
     // The session runner exited before a run folder appeared: cancelled before launch, or an early failure.
-    void HandleEarlyExit()
+    void HandleEarlyExit(int? exitCode)
     {
         if (stopRequested)
         {
@@ -385,15 +391,23 @@ public partial class MainWindow : Window
         else
         {
             FailCurrentStep();
-            SetStatus("The session runner exited before starting.", Phase.Failed, paths.InstallRoot != null ? "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why." : "Sessions run in installations made with HellForge-Setup.");
+            var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
+                : OperatingSystem.IsLinux()
+                    ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
+                        " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
+                        " for errors after the Windows session runner starts."
+                    : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
+            SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
+                exitCode is { } code ? $"The launch process exited with code {code}." : null);
         }
-        launchedUtc = default;
+        runLookupPending = false;
     }
 
     void FindRun()
     {
-        if (SessionRunner.RunSince(paths, launchedUtc) is not { } run) return;
+        if (SessionRunner.RunSince(paths, previousRunId) is not { } run) return;
         runDirectory = run;
+        runLookupPending = false;
         if (runPathText != null) runPathText.Text = run;
     }
 

@@ -12,6 +12,11 @@ namespace HellForge.Core;
 // sessions through with no check at all.
 public static class SteamOwnershipCheck
 {
+    public sealed record LinuxProbeRequest(string Wrapper, string Proton, string InstallRoot, string Prefix, string SteamRoot,
+        string Probe, string SteamApi, string WorkRoot, string EvidencePath, TimeSpan Timeout);
+
+    sealed record PreparedProbe(string Run, string Library, string Hash, string Report);
+
     public const uint AppId = 553850;
     public const string Confirmed = "local_steam_client_subscription_confirmed";
 
@@ -69,6 +74,44 @@ public static class SteamOwnershipCheck
     // supported build's own (its depot SHA-1 from supported-build.json). Returns the probe's exit code (0 confirmed).
     public static int RunProbe(string probe, string steamApi, string workRoot, string evidencePath, TimeSpan timeout)
     {
+        var prepared = PrepareProbe(probe, steamApi, workRoot);
+        var start = new ProcessStartInfo(probe) { WorkingDirectory = prepared.Run, UseShellExecute = false, CreateNoWindow = true };
+        AddProbeArguments(start, prepared, useWinePaths: false, prefix: "");
+        using var process = Process.Start(start) ?? throw new InvalidDataException("The Steam ownership probe did not start.");
+        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
+        {
+            try { process.Kill(); } catch (InvalidOperationException) { }
+            throw new InvalidDataException("The Steam ownership check timed out.");
+        }
+        if (File.Exists(prepared.Report)) File.Copy(prepared.Report, evidencePath, overwrite: true);
+        return process.ExitCode;
+    }
+
+    // Linux setup runs the same probe through the installation's wrapper and Proton. The wrapper keeps Steam bridged
+    // and performs its namespace self-test. Some Proton versions keep the probe process alive after it has written its
+    // final report, so the report is authoritative and avoids waiting for unrelated shutdown work.
+    public static int RunProbeThroughLinuxWrapper(LinuxProbeRequest request)
+    {
+        if (!File.Exists(request.Proton)) throw new InvalidDataException("Proton was not found in Steam; install a Proton version or set PROTON.");
+        var prepared = PrepareProbe(request.Probe, request.SteamApi, request.WorkRoot);
+        var start = new ProcessStartInfo("bash") { WorkingDirectory = request.InstallRoot, UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add(request.Wrapper);
+        start.ArgumentList.Add(WinePath.ToWinePath(request.Probe, request.Prefix));
+        AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix);
+        start.Environment["INSTALL"] = request.InstallRoot;
+        start.Environment["PROTON"] = request.Proton;
+        start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = request.SteamRoot;
+        start.Environment["STEAM_COMPAT_DATA_PATH"] = request.Prefix;
+        start.Environment["HELLFORGE_WORKING_DIRECTORY"] = prepared.Run;
+        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
+        start.Environment["HELLFORGE_SKIP_MOD_TOOLS"] = "1";
+        start.Environment["HELLFORGE_WAIT_FOR_PROCESSES"] = "0";
+        using var process = Process.Start(start) ?? throw new InvalidDataException("The Linux Steam ownership check did not start.");
+        return WaitForLinuxProbe(process, prepared.Report, request.EvidencePath, request.Timeout);
+    }
+
+    static PreparedProbe PrepareProbe(string probe, string steamApi, string workRoot)
+    {
         var expected = SupportedBuild.Current.Files.Single(f => f.Path == "bin/steam_api64.dll");
         if (!File.Exists(steamApi) || new FileInfo(steamApi).Length != expected.Size ||
             !SupportedBuild.Sha1(steamApi).Equals(expected.Sha1, StringComparison.OrdinalIgnoreCase))
@@ -78,18 +121,64 @@ public static class SteamOwnershipCheck
         var library = Path.Combine(run, "steam_api64.dll");
         File.Copy(steamApi, library);
         File.WriteAllText(Path.Combine(run, "steam_appid.txt"), AppId.ToString(CultureInfo.InvariantCulture) + "\n");
-        string hash;
-        using (var stream = File.OpenRead(library)) hash = Convert.ToHexString(SHA256.HashData(stream));
-        var report = Path.Combine(run, "result.json");
-        var start = new ProcessStartInfo(probe) { WorkingDirectory = run, UseShellExecute = false, CreateNoWindow = true };
-        foreach (var argument in new[] { library, hash, report }) start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new InvalidDataException("The Steam ownership probe did not start.");
-        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
+        using var stream = File.OpenRead(library);
+        var hash = Convert.ToHexString(SHA256.HashData(stream));
+        return new(run, library, hash, Path.Combine(run, "result.json"));
+    }
+
+    static void AddProbeArguments(ProcessStartInfo start, PreparedProbe probe, bool useWinePaths, string prefix)
+    {
+        start.ArgumentList.Add(useWinePaths ? WinePathMap(probe.Library, prefix) : probe.Library);
+        start.ArgumentList.Add(probe.Hash);
+        start.ArgumentList.Add(useWinePaths ? WinePathMap(probe.Report, prefix) : probe.Report);
+    }
+
+    static string WinePathMap(string path, string prefix) => HellForge.Core.WinePath.ToWinePath(path, prefix);
+
+    static int WaitForLinuxProbe(Process process, string report, string evidencePath, TimeSpan timeout)
+    {
+        var timer = Stopwatch.StartNew();
+        while (timer.Elapsed < timeout)
         {
-            try { process.Kill(); } catch (InvalidOperationException) { }
-            throw new InvalidDataException("The Steam ownership check timed out.");
+            if (process.WaitForExit(200)) return ExitFromFinishedProbe(process, report, evidencePath);
+            if (TryReadCompletedProbe(report, evidencePath, out var exit)) { StopProbe(process); return exit; }
         }
-        if (File.Exists(report)) File.Copy(report, evidencePath, overwrite: true);
-        return process.ExitCode;
+        StopProbe(process);
+        throw new InvalidDataException("The Steam ownership check timed out before writing a complete result.");
+    }
+
+    static int ExitFromFinishedProbe(Process process, string report, string evidencePath)
+    {
+        if (!File.Exists(report)) return process.ExitCode;
+        File.Copy(report, evidencePath, overwrite: true);
+        return RunProbeReportExit(report);
+    }
+
+    static bool TryReadCompletedProbe(string report, string evidencePath, out int exit)
+    {
+        try
+        {
+            exit = RunProbeReportExit(report);
+            File.Copy(report, evidencePath, overwrite: true);
+            return true;
+        }
+        catch (FileNotFoundException) { }
+        catch (JsonException) { }
+        exit = 1;
+        return false;
+    }
+
+    static void StopProbe(Process process)
+    {
+        if (process.WaitForExit(1000)) return;
+        try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+    }
+
+    static int RunProbeReportExit(string report)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(report));
+        return document.RootElement.ValueKind == JsonValueKind.Object &&
+            document.RootElement.TryGetProperty("localClientOwnershipConfirmed", out var confirmed) &&
+            confirmed.ValueKind == JsonValueKind.True ? 0 : 1;
     }
 }

@@ -339,7 +339,7 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Check and repair compares the game files with the supported build, copies any that are missing or damaged from Steam, and places the network block and shortcuts again." />
                 <Button x:Name="RepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" Margin="0,6,0,0" />
-                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
+                <TextBlock x:Name="UninstallDescription" Classes="muted" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="Uninstall removes HellForge's network block (Windows asks for permission) and its shortcuts, then deletes this installation's folder once the launcher has closed. Your normal HELLDIVERS 2 and Steam are not touched." />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                   <Button x:Name="UninstallButton" Classes="ghost" Content="Uninstall HellForge..." />
@@ -481,6 +481,19 @@
           </StackPanel>
           <ScrollViewer>
           <StackPanel Spacing="16" Margin="0,0,18,0">
+            <Border x:Name="ProtonChoiceCard" Classes="card" IsVisible="False">
+              <StackPanel Spacing="8">
+                <TextBlock Text="PROTON VERSION" Classes="h2" Margin="0" />
+                <TextBlock x:Name="ProtonChoiceHint" Classes="muted" TextWrapping="Wrap" />
+                <ComboBox x:Name="ProtonCombo" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="core:ProtonVersion">
+                      <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Border>
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>

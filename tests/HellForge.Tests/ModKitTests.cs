@@ -21,6 +21,21 @@ static class ModKitTests
                 installed.Template == Path.Combine(sdk, "templates", "c-mod"), "Installation SDK: app/sdk, tools beside app.");
         });
 
+        test("Linux Build now uses the native helper while Windows keeps the pinned build", () =>
+        {
+            var page = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "HellForge.Launcher", "ModKitPage.cs"));
+            var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hellforge-linux-install.sh"));
+            var linuxBuild = page.IndexOf("if (OperatingSystem.IsLinux())", StringComparison.Ordinal);
+            var scriptArg = linuxBuild < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(helper);", linuxBuild, StringComparison.Ordinal);
+            var buildArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(\"build\");", scriptArg, StringComparison.Ordinal);
+            var modArg = buildArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", buildArg, StringComparison.Ordinal);
+            var windowsBuild = modArg < 0 ? -1 : page.IndexOf("ModBuilds.Ensure(install, sdk, mod", modArg, StringComparison.Ordinal);
+            check(linuxBuild >= 0 && scriptArg > linuxBuild && buildArg > scriptArg && modArg > buildArg &&
+                windowsBuild > modArg && page.Contains("start.Environment[\"PFX\"] = WinePath.PrefixFromInstallRoot(install.Root);", StringComparison.Ordinal) &&
+                helper.Contains("build <mod-folder>", StringComparison.Ordinal),
+                "Linux invokes the bundled helper with this installation's prefix and mod folder; Windows retains ModBuilds.");
+        });
+
         test("New mods are made from the template with every placeholder filled, and bad ids or existing folders are refused", () =>
         {
             var repository = ModSdk.Find(Directory.GetCurrentDirectory())!;
@@ -94,6 +109,7 @@ static class ModKitTests
 
         test("Unpacked tools are moved into place even while an antivirus still holds a file open", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: Windows file-sharing semantics)"); return; }
             var staging = Directory.CreateDirectory(Path.Combine(root, "held-tools", "zig-staging")).FullName;
             var target = Path.Combine(root, "held-tools", "zig");
             var exe = Path.Combine(staging, "zig.exe");
