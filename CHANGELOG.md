@@ -8,6 +8,11 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Fixed
+
+- Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
+  wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.
