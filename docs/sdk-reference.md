@@ -67,7 +67,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `add_stratagem`: `uint32_t (HfMod* mod, const HfStratagem* stratagem)`. Adds a new stratagem (see HfStratagem). Call it from hellforge_mod_init. Returns its StratagemType (150 and up), or 0 (the mod's log says why). There is room for 1,024 new stratagems in all mods together.
 - `stratagem_row`: `uintptr_t (uint32_t type)`. The 400-byte settings row of a stratagem a mod added, once the game has loaded its stratagems, or 0. +0 type and +4 stable id must stay; HD2Runtime's research names the rest (docs/internals.md "Stratagems").
-- `add_entity`: `uint64_t (HfMod* mod, const HfEntity* entity)`. Adds a new entity (see HfEntity). Call it from hellforge_mod_init. Returns its resource id, or 0 (the mod's log says why). Entities and weapons share room for 64.
+- `add_entity`: `uint64_t (HfMod* mod, const HfEntity* entity)`. Adds a new entity (see HfEntity). Call it from hellforge_mod_init. Returns its resource id, or 0 (the mod's log says why). Entities and weapons share room for 2,048; a copy is refused when one of its base's component tables is full (the log says which).
 - `add_behaviour`: `uint32_t (HfMod* mod, const HfBehaviour* behaviour)`. Adds a new behaviour (see HfBehaviour). Call it from hellforge_mod_init. Returns its id (694 and up), or 0 (the mod's log says why). An entity given it runs its base instead if HellForge could not install it.
 
 ### SDK 5

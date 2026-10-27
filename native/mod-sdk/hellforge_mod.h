@@ -1003,7 +1003,8 @@ typedef struct HfApi
      * +4 stable id must stay; HD2Runtime's research names the rest (docs/internals.md "Stratagems"). */
     uintptr_t (*stratagem_row)(uint32_t type);
     /* Adds a new entity (see HfEntity). Call it from hellforge_mod_init. Returns its resource id, or 0 (the mod's log
-     * says why). Entities and weapons share room for 64. */
+     * says why). Entities and weapons share room for 2,048; a copy is refused when one of its base's component tables
+     * is full (the log says which). */
     uint64_t (*add_entity)(HfMod* mod, const HfEntity* entity);
     /* Adds a new behaviour (see HfBehaviour). Call it from hellforge_mod_init. Returns its id (694 and up), or 0 (the
      * mod's log says why). An entity given it runs its base instead if HellForge could not install it. */
