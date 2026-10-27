@@ -1430,7 +1430,7 @@ static void OverflowFixture(void)
     g_game = (uintptr_t)game;
     /* table 32 (MeleeAttack: 324 slots, 16-byte records), full */
     uint32_t slots = SlotsOf(32);
-    assert(slots == 324 && OverflowStrideOf(32) == 16 && OverflowCapable(32) && !OverflowCapable(107));
+    assert(slots == 324 && OverflowStrideOf(32) == 16 && OverflowCapable(32) && OverflowCapable(107) && !OverflowCapable(281));
     uint8_t* table = calloc((size_t)slots * 16 + 400 * 16, 1);
     for (uint32_t i = 0; i < slots; i++) { uint64_t key = 0x1000 + i; memcpy(table + 16 * i, &key, 8); }
     memcpy(state + REG_TABLES + 8 * 32, &table, 8);
@@ -1508,6 +1508,62 @@ static void OverflowFixture(void)
     free(loadout); free(copy); free(table); free(other);
     VirtualFree(state, 0, MEM_RELEASE);
     VirtualFree(game, 0, MEM_RELEASE);
+    g_game = savedGame;
+}
+
+/* The four inlined lookups' stubs (OverflowLoops), run as machine code: each loop's own bytes at its RVA in a fake
+ * game.dll, a harness before it (state, key, a sentinel in r11), checkers at its hit and miss. A vanilla row and an
+ * overflow row reach the hit with rax the row, a missing key the miss, and r11 comes through either way. */
+typedef uintptr_t (*LoopHarness)(uint8_t* state, uint64_t key);
+
+static void OverflowLoopsFixture(void)
+{
+    uintptr_t savedGame = g_game;
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1900000, MEM_RESERVE, PAGE_NOACCESS);
+    uint8_t* state = VirtualAlloc(NULL, REG_TABLES + 8 * OVF_COMPONENTS + 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(game != 0 && state != NULL);
+    g_game = game;
+    for (size_t i = 0; i < sizeof kOverflowLoops / sizeof kOverflowLoops[0]; i++)
+    {
+        const OverflowLoop* l = &kOverflowLoops[i];
+        uint32_t c = l->component, slots = SlotsOf(c), stride = OverflowStrideOf(c);
+        assert(VirtualAlloc((void*)(game + (l->rva & ~0xFFFu) - 0x1000), 0x3000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+        /* the harness: push rbx, rbp, rsi; rbp = rax = state; rbx = rcx = key; r11 = sentinel; then the loop */
+        static const uint8_t harness[] = {0x53, 0x55, 0x56, 0x48, 0x89, 0xCD, 0x48, 0x89, 0xC8, 0x48, 0x89, 0xD3, 0x48, 0x89, 0xD1,
+            0x49, 0xC7, 0xC3, 0x5A, 0x5A, 0x00, 0x00};
+        /* at the hit and the miss: r11 kept? (else -1); the hit returns rax, the miss 1 */
+        static const uint8_t hit[] = {0x49, 0x81, 0xFB, 0x5A, 0x5A, 0x00, 0x00, 0x75, 0x04, 0x5E, 0x5D, 0x5B, 0xC3,
+            0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x5E, 0x5D, 0x5B, 0xC3};
+        static const uint8_t miss[] = {0x49, 0x81, 0xFB, 0x5A, 0x5A, 0x00, 0x00, 0x75, 0x09, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x5E, 0x5D, 0x5B, 0xC3,
+            0x48, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF, 0x5E, 0x5D, 0x5B, 0xC3};
+        memcpy((void*)(game + l->rva - sizeof harness), harness, sizeof harness);
+        memcpy((void*)(game + l->rva), l->pin, l->length);
+        memcpy((void*)(game + l->hit), hit, sizeof hit);
+        memcpy((void*)(game + l->miss), miss, sizeof miss);
+        /* the table, full, and an overflow row */
+        uint8_t* table = calloc((size_t)slots * 16 + (size_t)(slots + 8) * stride, 1);
+        for (uint32_t k = 0; k < slots; k++) { uint64_t key = 0x100000 + k; memcpy(table + 16 * k, &key, 8); }
+        memcpy(state + REG_TABLES + 8 * c, &table, 8);
+        g_overflowHooked[c] = 1;
+        uint8_t* row = OverflowAdd(table, c, 0xC0FFEE);
+        assert(row != NULL);
+        assert(OverflowLoops(c));
+        uint8_t jump = *(uint8_t*)(game + l->rva);
+        assert(jump == 0xE9);
+        LoopHarness run = (LoopHarness)(void*)(game + l->rva - sizeof harness);
+        uint8_t* vanilla = FindRow(table, slots, 16, 0x100007);
+        assert(vanilla != NULL && vanilla < table + (size_t)slots * 16);
+        assert(run(state, 0x100007) == (uintptr_t)vanilla);
+        assert(run(state, 0xC0FFEE) == (uintptr_t)row);
+        assert(run(state, 0xBAD) == 1);
+        g_overflowHooked[c] = 0;
+        g_overflowTable[c] = NULL;
+        free(table);
+    }
+    memset((void*)g_overflowIndex, 0, (size_t)OVF_SLOTS * sizeof(LONG));
+    g_overflowCount = 0;
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
     g_game = savedGame;
 }
 
@@ -3709,6 +3765,7 @@ int main(int argc, char** argv)
     StratagemFieldFixture();
     NetworkWidthFixture();
     OverflowFixture();
+    OverflowLoopsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
