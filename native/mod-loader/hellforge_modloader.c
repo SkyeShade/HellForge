@@ -561,6 +561,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "registry.c"
 #include "component_overflow.c" /* right after registry.c: rows past a full component table's index */
 #include "registry_load.c" /* right after registry.c: the registry at work when the entity data loads */
+#include "shared_attachments.c" /* after registry_load.c: weapon copies that use their bases' attachments */
 #include "damage.c"
 #include "projectiles.c"
 #include "stratagems.c"

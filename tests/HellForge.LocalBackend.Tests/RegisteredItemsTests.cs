@@ -135,5 +135,21 @@ static class RegisteredItemsTests
         check(weapons.Take(room).All(w => owned.Contains(w) && owned.Contains(RegisteredItems.Rehome((uint)baseChild["mixId"]!, Liberator, w))) &&
             !weapons.Skip(room).Any(owned.Contains) && !owned.Contains(FirstWeapon + 63), "Weapons were owned in part, past the limit, or without going in.");
         check(logged.Count == 2 && logged[1].Contains("owned items", StringComparison.Ordinal), "The inventory's limit was not said.");
+
+        // The loader's copies sharing their bases' attachments (sharedChildren): each copy is its own item only, so all 64
+        // fit beside the stratagems, with no children, mastery packages or progress of their own.
+        File.WriteAllText(file, """{"format":1,"sharedChildren":true,"items":[""" + string.Join(",", entries) + "]}");
+        catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        ids = catalogue.Select(i => (uint)i!["mixId"]!).ToHashSet();
+        check(items.SharedChildren && Enumerable.Range(0, 64).All(i => ids.Contains(FirstWeapon + (uint)i) && ids.Contains(FirstStratagem + (uint)i)),
+            "Shared, not every weapon copy and stratagem went in.");
+        check(catalogue.Count == vanilla + 64 + 64 * 2 && !catalogue.Any(i => i!["parentId"] is { } p && (uint)p >= FirstWeapon && (uint)p < FirstWeapon + 64),
+            "Shared, a weapon copy brought children.");
+        packages = (JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!;
+        check(packages.Count == fixtures["/Progression/ProgressionPackages"].GetArrayLength(), "Shared, a weapon copy got a mastery package of its own.");
+        held = JsonNode.Parse(items.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = filler })).GetRawText())!["items"]!.AsArray();
+        owned = held.Select(i => (uint)i!["mixId"]!).ToHashSet();
+        check(owned.Contains(FirstWeapon) && !owned.Contains(RegisteredItems.Rehome((uint)baseChild["mixId"]!, Liberator, FirstWeapon)),
+            "Shared, the inventory holds a copy of a child, or not the copy.");
     }
 }

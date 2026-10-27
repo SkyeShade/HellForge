@@ -2,6 +2,9 @@
  * it, their network types, the armory's list, the hooks that run these, and the unit copies' destructible entries.
  * Included by hellforge_modloader.c right after registry.c. */
 
+static void SharedChoose(uintptr_t game);  /* shared_attachments.c */
+static void SharedInstall(uintptr_t game);
+
 /* One load of the entity data as RegisterWeapons fills it: HellForge's copies of the loadout table and of the short ids,
  * and how far they are filled. */
 typedef struct WeaponLoad
@@ -165,7 +168,9 @@ static uint8_t* OwnCustomization(uint8_t* state, const Weapon* w, uint64_t baseE
     uint8_t* customization = OwnRecord(state, REG_CUSTOMIZATION, REG_CUSTOMIZATION_STRIDE, baseEntity, w->entity);
     uint32_t package = 0;
     if (customization != NULL) memcpy(&package, customization + REG_MASTERY_PACKAGE_AT, 4);
-    if (customization != NULL && package != 0)
+    if (customization != NULL && package != 0 && g_sharedChildren)
+        ApiLog(w->mod, "%s: its own customization record (its base's mastery package %u: it shares its base's attachments)", w->name, package);
+    else if (customization != NULL && package != 0)
     {
         uint32_t own = Rehome(package, w->base, w->id);
         memcpy(customization + REG_MASTERY_PACKAGE_AT, &own, 4);
@@ -435,6 +440,7 @@ static void RegisterWeapons(void)
     if (pending == 0) return;
     WeaponLoad L = {state, map};
     if (!CopyLoadoutAndList(&L, loadout, list)) return;
+    SharedChoose(g_game); /* before any copy's records: whether copies use their bases' attachments */
     int order[REG_MAX_WEAPONS];
     WeaponOrder(order);
     for (int k = 0; k < g_weaponCount; k++)
@@ -446,6 +452,8 @@ static void RegisterWeapons(void)
     g_loadoutRecords = L.recordCount;
     SetStatePointer(state, REG_TABLES + 8 * REG_LOADOUT, L.index);
     SetStatePointer(state, REG_LIST, L.newList + 32);
+    SharedInstall(g_game);
+    WriteRegisteredItems(); /* with sharedChildren when the copies use their bases' attachments */
     Note("registry: %u weapon(s) added (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
 }
 

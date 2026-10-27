@@ -76,13 +76,20 @@ public sealed class RegisteredItems(string path)
     // Mods whose items stay out of the player's inventory (mods-stage's --premium-locked).
     public IReadOnlySet<string> LockedMods { get; set; } = new HashSet<string>();
 
+    // The loader's copies use their bases' attachments (native/mod-loader/shared_attachments.c: the game reads a copy's id as
+    // its base's where it finds a weapon's attachments): a weapon copy is then its own item only, with no children, mastery
+    // package or progress of its own, so it costs one catalogue item instead of one per attachment (57 for a Liberator).
+    public bool SharedChildren { get; private set; }
+
     public IReadOnlyList<Item> Load()
     {
+        SharedChildren = false;
         try
         {
             if (!File.Exists(path)) return [];
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var document = JsonDocument.Parse(stream);
+            SharedChildren = document.RootElement.TryGetProperty("sharedChildren", out var shared) && shared.ValueKind == JsonValueKind.True;
             List<Item> items = [];
             foreach (var item in document.RootElement.GetProperty("items").EnumerateArray())
                 if (Read(item) is { } registered) items.Add(registered);
@@ -140,21 +147,21 @@ public sealed class RegisteredItems(string path)
         // The vanilla lists every response is planned from, so all four agree on what goes in.
         var vanilla = new Catalogue(Vanilla("/Progression/items", path, node));
         var vanillaPackages = Vanilla("/Progression/ProgressionPackages", path, node);
-        var plan = Admit(items, vanilla, vanillaPackages);
+        var plan = Admit(items, vanilla, vanillaPackages, SharedChildren);
         List<string> leftOut = [.. plan.LeftOut];
         switch (path)
         {
             case "/Progression/items" when node is JsonArray catalogue:
-                AddCatalogue(catalogue, plan.Admitted, vanilla);
+                AddCatalogue(catalogue, plan.Admitted, vanilla, SharedChildren);
                 break;
-            case "/Progression/ProgressionPackages" when node is JsonArray packages:
+            case "/Progression/ProgressionPackages" when node is JsonArray packages && !SharedChildren:
                 AddPackages(packages, plan.Admitted, vanilla);
                 break;
-            case "/Progression" when node is JsonObject progression:
+            case "/Progression" when node is JsonObject progression && !SharedChildren:
                 AddProgress(progression, plan.Admitted, vanillaPackages, leftOut);
                 break;
             case "/Progression/inventory" when node is JsonObject inventory && inventory["items"] is JsonArray held:
-                AddInventory(held, plan.Admitted, vanilla, leftOut);
+                AddInventory(held, plan.Admitted, vanilla, leftOut, SharedChildren);
                 break;
             case "/Configuration/GameClient" when node is JsonObject client && items.Any(i => i.IsDifficulty):
                 RaiseDifficultyCap(client, items.Where(i => i.IsDifficulty).Max(i => i.Level));
@@ -225,7 +232,7 @@ public sealed class RegisteredItems(string path)
 
     // What goes in while it fits: each item's catalogue items (a stratagem's two, a weapon's copy and its children's
     // copies) within CatalogueLimit, and a weapon's mastery package within PackageLimit positions.
-    static Plan Admit(IReadOnlyList<Item> items, Catalogue vanilla, JsonArray packages)
+    static Plan Admit(IReadOnlyList<Item> items, Catalogue vanilla, JsonArray packages, bool shared)
     {
         var known = new HashSet<uint>(vanilla.Known);
         var mastery = MasteryPackages(packages);
@@ -244,12 +251,12 @@ public sealed class RegisteredItems(string path)
                 else if (vanilla.Items.ContainsKey(item.CopyOf))
                 {
                     ids.Add(item.MixId);
-                    foreach (var child in vanilla.Children.GetValueOrDefault(item.CopyOf) ?? [])
+                    foreach (var child in shared ? [] : vanilla.Children.GetValueOrDefault(item.CopyOf) ?? [])
                         ids.Add(Rehome(Id(child, "mixId")!.Value, item.CopyOf, item.MixId));
                 }
             }
             var fresh = ids.Where(id => !known.Contains(id)).Distinct().ToList();
-            var package = item.IsWeapon && mastery.ContainsKey(item.CopyOf) && !mastery.ContainsKey(item.MixId) ? 1 : 0;
+            var package = !shared && item.IsWeapon && mastery.ContainsKey(item.CopyOf) && !mastery.ContainsKey(item.MixId) ? 1 : 0;
             if (used + fresh.Count > CatalogueLimit)
                 leftOut.Add($"{Describe(item)} (its {fresh.Count} catalogue items: the game keeps {CatalogueLimit})");
             else if (positions + package > PackageLimit)
@@ -273,7 +280,7 @@ public sealed class RegisteredItems(string path)
         node is JsonObject o && o[name] is JsonValue v && v.GetValueKind() == JsonValueKind.Number &&
         uint.TryParse(v.ToJsonString(), out var id) ? id : null;
 
-    static void AddCatalogue(JsonArray catalogue, List<Item> items, Catalogue vanilla)
+    static void AddCatalogue(JsonArray catalogue, List<Item> items, Catalogue vanilla, bool shared)
     {
         var known = new HashSet<uint>(vanilla.Known);
         foreach (var item in items)
@@ -289,8 +296,8 @@ public sealed class RegisteredItems(string path)
             copy["itemId"] = item.MixId;
             copy["mixId"] = item.MixId;
             catalogue.Add((JsonNode?)copy);
-            // Its children right after it: the client links a child to the preceding parent run.
-            foreach (var child in vanilla.Children.GetValueOrDefault(item.CopyOf) ?? [])
+            // Its children right after it: the client links a child to the preceding parent run. Shared, it has none.
+            foreach (var child in shared ? [] : vanilla.Children.GetValueOrDefault(item.CopyOf) ?? [])
             {
                 var mixId = Rehome(Id(child, "mixId")!.Value, item.CopyOf, item.MixId);
                 if (!known.Add(mixId)) continue;
@@ -381,7 +388,7 @@ public sealed class RegisteredItems(string path)
     }
 
     // Each item with the copies of its base's children the player holds, whole, while the game keeps them (InventoryLimit).
-    void AddInventory(JsonArray held, List<Item> items, Catalogue vanilla, List<string> leftOut)
+    void AddInventory(JsonArray held, List<Item> items, Catalogue vanilla, List<string> leftOut, bool shared)
     {
         var have = held.Select(i => Id(i, "mixId")).OfType<uint>().ToHashSet();
         // The base children the player holds, by base.
@@ -397,7 +404,7 @@ public sealed class RegisteredItems(string path)
             if (item.IsDifficulty && !have.Contains(item.CopyOf)) continue; /* not before level 10 is unlocked */
             List<JsonObject> adds = [];
             if (!have.Contains(item.MixId)) adds.Add(new JsonObject { ["mixId"] = item.MixId, ["amount"] = 1, ["isDiscovered"] = true });
-            if (item.IsWeapon)
+            if (item.IsWeapon && !shared)
                 foreach (var entry in heldChildren.GetValueOrDefault(item.CopyOf) ?? [])
                 {
                     var mixId = Rehome(Id(entry, "mixId")!.Value, item.CopyOf, item.MixId);

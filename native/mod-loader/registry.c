@@ -226,6 +226,7 @@ static uint32_t SlotsOf(uint32_t component)
 static uint8_t* OverflowFind(const uint8_t* rows, uint64_t entity); /* component_overflow.c */
 static void OverflowMoved(uint32_t c, const uint8_t* from, const uint8_t* to);
 static uint64_t OverflowOwner(uint32_t c, const uint8_t* table, uint32_t record);
+static int g_sharedChildren; /* shared_attachments.c: this load's weapon copies use their bases' attachments */
 
 /* Open-addressing tables keyed by a u64 at the start of each row. A component table's (16-byte rows) that has run out
  * may hold more rows past its index (component_overflow.c), found on a miss. */
@@ -392,7 +393,7 @@ static void WriteRegisteredItems(void)
 {
     if (g_logs[0] == 0) return;
     ItemText t = {0};
-    ItemTextAdd(&t, "{\"format\":1,\"items\":[");
+    ItemTextAdd(&t, "{\"format\":1,%s\"items\":[", g_sharedChildren ? "\"sharedChildren\":true," : "");
     int first = 1;
     for (int i = 0; i < g_weaponCount; i++)
     {

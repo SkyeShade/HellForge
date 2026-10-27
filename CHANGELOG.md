@@ -25,6 +25,10 @@ On `dev`, since 0.3.0-beta.
   12 bits instead of 11, and full component tables (a Liberator copy filled one after 162 copies) take rows past their
   index for 143 of the game's 270 tables, so copies of most bases no longer run out early. A copy whose base fills one
   of the others is refused with a log line naming it, as before.
+- Experimental, with `HELLFORGE_SHARED_ATTACHMENTS=1`: a weapon copy uses its base's attachments instead of copies of
+  its own, so it takes one of the game's 4,096 catalogue items instead of one per attachment (57 for a Liberator):
+  about 1,100 copies fit instead of about 20. Copies share their base's weapon level. Not on by default until it is
+  tested in game.
 - Room for 1,024 new stratagems across all mods (was 48). Past 106 of them, the stratagem type travels in co-op in 16
   bits instead of 8, so every player needs the same mods, as before. In practice the game's item catalogue takes about
   580, and the loadout picker shows 256 cards, about 160 of them new ones

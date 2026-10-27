@@ -153,7 +153,12 @@ Mods can add 2,048 weapons and entities together. Three things in the game would
   lookups inlined elsewhere (tables 107, 188, 233 and 271, all a weapon's). That covers 143 of the 270 tables; a copy
   whose base has a full table among the others is refused, and its log says which.
 - **The item catalogue.** The game keeps 4,096 catalogue items, and a weapon copy brings its base's attachments
-  (57 items for a Liberator), so the backend leaves out what does not fit, stratagems first.
+  (57 items for a Liberator), so the backend leaves out what does not fit, stratagems first. With
+  `HELLFORGE_SHARED_ATTACHMENTS=1` (experimental, until it is tested in game) a copy uses its base's attachments
+  instead and is one item: the loader translates a copy's id to its base's at the 15 places the game goes from a weapon
+  to its attachments (`native/mod-loader/shared_attachments.c`), the copy shares its base's mastery package and level,
+  and `registered-items.json` says `"sharedChildren": true` so the backend serves no children for copies. About 1,100
+  copies then fit. Saved customizations stay per copy (they hold attachment ids, not items).
 
 In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
 

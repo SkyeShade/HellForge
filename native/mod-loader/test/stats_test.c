@@ -1567,6 +1567,95 @@ static void OverflowLoopsFixture(void)
     g_game = savedGame;
 }
 
+/* Shared attachments (shared_attachments.c), run as machine code: every site's own bytes at its RVA in a fake game.dll,
+ * inside a harness that loads its registers and returns what the game would go on with. Installed, a copy's id comes
+ * out as its vanilla base's (through a copy of a copy too), any other id as it went in, and what each site did besides
+ * (a store, a counter) still happens; the two in-place rewrites read [rsp+0x48]. */
+typedef uint32_t (*SharedHarness)(uintptr_t a, uint32_t id, uint32_t c);
+typedef uint32_t (*SharedEntryFn)(uint64_t a, uint32_t b, uint32_t c, uint32_t d);
+
+static uintptr_t SharedPlace(uintptr_t game, uint32_t rva, const uint8_t* prefix, size_t prefixLength, const uint8_t* pin, size_t length,
+    const uint8_t* suffix, size_t suffixLength)
+{
+    uint8_t* at = (uint8_t*)(game + rva - prefixLength);
+    assert(VirtualAlloc((void*)((uintptr_t)at & ~(uintptr_t)0xFFF), 0x2000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    memcpy(at, prefix, prefixLength);
+    memcpy(at + prefixLength, pin, length);
+    memcpy(at + prefixLength + length, suffix, suffixLength);
+    return (uintptr_t)at;
+}
+
+static void SharedAttachmentsFixture(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1500000, MEM_RESERVE, PAGE_NOACCESS);
+    assert(game != 0);
+    const uint32_t M = 0x5BD1E995u, Base = 0xB0B0u, Copy = 0xC0C0u, CopyOfCopy = 0xD0D0u, Vanilla = 0x1234u;
+    /* the function entries: their own first bytes, then the id register returned */
+    static const uint8_t retR9[] = {0x44, 0x89, 0xC8, 0xC3}, retEdx[] = {0x89, 0xD0, 0xC3}, retR8[] = {0x44, 0x89, 0xC0, 0xC3};
+    SharedEntryFn entry[4];
+    entry[0] = (SharedEntryFn)SharedPlace(game, kSharedEntries[0].rva, NULL, 0, kSharedEntries[0].pin, 10, retR9, sizeof retR9);
+    entry[1] = (SharedEntryFn)SharedPlace(game, kSharedEntries[1].rva, NULL, 0, kSharedEntries[1].pin, 10, retEdx, sizeof retEdx);
+    entry[2] = (SharedEntryFn)SharedPlace(game, kSharedEntries[2].rva, NULL, 0, kSharedEntries[2].pin, 10, retEdx, sizeof retEdx);
+    entry[3] = (SharedEntryFn)SharedPlace(game, kSharedEntries[3].rva, NULL, 0, kSharedEntries[3].pin, 9, retR8, sizeof retR8);
+    /* the mid-function sites (rcx a buffer or pointer, edx the id) */
+    static const uint8_t p2In[] = {0x41, 0x57, 0x41, 0x55, 0x49, 0x89, 0xCF}, p2Out[] = {0x41, 0x5D, 0x41, 0x5F, 0xC3};       /* r15 = rcx */
+    static const uint8_t p5In[] = {0x53, 0x89, 0xD3}, p5Out[] = {0x89, 0xD0, 0x5B, 0xC3};                                      /* ebx = id */
+    static const uint8_t p8In[] = {0x53, 0x41, 0x89, 0xD3, 0x31, 0xDB}, p8Out[] = {0x44, 0x89, 0xD8, 0x5B, 0xC3};             /* r11d = id */
+    static const uint8_t p9In[] = {0x41, 0x54, 0x56, 0x49, 0x89, 0xCC, 0x89, 0xD0}, p9Out[] = {0x5E, 0x41, 0x5C, 0xC3};        /* r12 = buffer */
+    static const uint8_t p10In[] = {0x41, 0x54, 0x49, 0x89, 0xCC, 0x31, 0xC9, 0x89, 0xD0}, p10Out[] = {0x41, 0x5C, 0xC3};
+    static const uint8_t p11In[] = {0x41, 0x54, 0x56, 0x49, 0x89, 0xCC, 0x31, 0xF6, 0x89, 0xD0}, p11Out[] = {0x89, 0xF2, 0x5E, 0x41, 0x5C, 0xC3};
+    static const uint8_t p12In[] = {0x48, 0x89, 0xC8}, p12Out[] = {0x44, 0x89, 0xD8, 0xC3};                                   /* rax = &id */
+    static const uint8_t p13In[] = {0x55, 0x48, 0x89, 0xCD}, p13Out[] = {0x5D, 0xC3};                                          /* rbp = rcx */
+    static const uint8_t p14In[] = {0x48, 0x89, 0xC8}, p14Out[] = {0x89, 0xD0, 0xC3};
+    struct { const uint8_t *in, *out; size_t inLength, outLength; } harness[9] = {
+        {p2In, p2Out, sizeof p2In, sizeof p2Out}, {p5In, p5Out, sizeof p5In, sizeof p5Out}, {p8In, p8Out, sizeof p8In, sizeof p8Out},
+        {p9In, p9Out, sizeof p9In, sizeof p9Out}, {p10In, p10Out, sizeof p10In, sizeof p10Out}, {p11In, p11Out, sizeof p11In, sizeof p11Out},
+        {p12In, p12Out, sizeof p12In, sizeof p12Out}, {p13In, p13Out, sizeof p13In, sizeof p13Out}, {p14In, p14Out, sizeof p14In, sizeof p14Out}};
+    SharedHarness site[9];
+    for (int i = 0; i < 9; i++)
+        site[i] = (SharedHarness)SharedPlace(game, kSharedSites[i].rva, harness[i].in, harness[i].inLength, kSharedSites[i].pin,
+            kSharedSites[i].length, harness[i].out, harness[i].outLength);
+    for (int i = 0; i < 2; i++) SharedPlace(game, kSharedInPlace[i].rva, NULL, 0, kSharedInPlace[i].pin, 8, NULL, 0);
+    assert(SharedSitesFailed(game) == NULL);
+
+    /* two registered copies: Copy of the vanilla Base, CopyOfCopy of Copy */
+    int savedCount = g_weaponCount;
+    Weapon saved[2];
+    memcpy(saved, g_weapons, sizeof saved);
+    g_weaponCount = 2;
+    g_weapons[0] = (Weapon){.id = Copy, .base = Base, .state = 1, .name = "fixture/copy"};
+    g_weapons[1] = (Weapon){.id = CopyOfCopy, .base = Copy, .state = 1, .name = "fixture/copy-of-copy"};
+    g_sharedChildren = 1;
+    SharedInstall(game);
+    assert(g_copyBases.count == 2 && SharedRoot(CopyOfCopy) == Base);
+
+    uint32_t buffer[4] = {0}, record[8] = {0};
+    for (int k = 0; k < 3; k++)
+    {
+        uint32_t id = k == 0 ? Vanilla : k == 1 ? Copy : CopyOfCopy, want = k == 0 ? Vanilla : Base;
+        for (int i = 0; i < 4; i++) assert(entry[i](id, id, id, id) == want); /* the id in every argument register */
+        record[4] = id; /* +0x10 */
+        assert(site[0]((uintptr_t)record, 0, 0) == want);                 /* the screen's weapon */
+        assert(site[1](0, id, 0) == want * M);                             /* the saved customization's check */
+        assert(site[2](0, id, 0) == want);                                 /* the loadout item list */
+        memset(buffer, 0, sizeof buffer);
+        assert(site[3]((uintptr_t)buffer, id, 0) == want && buffer[0] == id); /* its own id stored, then translated */
+        memset(buffer, 0, sizeof buffer);
+        assert(site[4]((uintptr_t)buffer, id, 0) == want && buffer[0] == id);
+        memset(buffer, 0, sizeof buffer);
+        assert(site[5]((uintptr_t)buffer, id, 0) == want && buffer[0] == id); /* (returns eax; esi went on too) */
+        assert(site[6]((uintptr_t)&id, 0, 0) == want * M);                 /* the lambdas */
+        assert(site[7]((uintptr_t)record, 0, 0) == want * M);
+        assert(site[8]((uintptr_t)&id, 0, 0) == want * M);
+    }
+    for (int i = 0; i < 2; i++) assert(memcmp((void*)(game + kSharedInPlace[i].rva), kSharedRewrite, 8) == 0);
+
+    g_sharedChildren = 0;
+    g_copyBases.count = 0;
+    g_weaponCount = savedCount;
+    memcpy(g_weapons, saved, sizeof saved);
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3766,6 +3855,7 @@ int main(int argc, char** argv)
     NetworkWidthFixture();
     OverflowFixture();
     OverflowLoopsFixture();
+    SharedAttachmentsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
