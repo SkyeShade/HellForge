@@ -121,7 +121,7 @@ elseif(-not $SteamApi -and -not $SteamExports){
     }
     if(-not $SteamApi){throw 'HELLDIVERS 2 was not found in Steam; pass -SteamApi with the game''s bin/steam_api64.dll.'}
 }
-if($SteamApi){Assert-Hash $SteamApi $steamApiPin 'steam_api64.dll'}
+if($SteamApi -and -not $NoSteamApi){Assert-Hash $SteamApi $steamApiPin 'steam_api64.dll'}
 if($SteamExports -and -not(Test-Path -LiteralPath $SteamExports)){throw ('Steam export manifest not found: '+$SteamExports)}
 # SDK 1.55's steam_api.json: the version whose steam_api64.dll is the pinned one (docs/steam-bridge.md). Without it the
 # package has no bridge build and no broker, and a sandboxed session refuses to start. The pin is of the file with LF
