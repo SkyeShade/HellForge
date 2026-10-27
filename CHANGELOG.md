@@ -21,6 +21,10 @@ On `dev`, since 0.3.0-beta.
 
 ### For mod makers
 
+- Room for 2,048 weapons and entities across all mods (was 192). Past 193 of them the network entity type travels in
+  12 bits instead of 11, and full component tables (a Liberator copy filled one after 162 copies) take rows past their
+  index for 143 of the game's 270 tables, so copies of most bases no longer run out early. A copy whose base fills one
+  of the others is refused with a log line naming it, as before.
 - Room for 1,024 new stratagems across all mods (was 48). Past 106 of them, the stratagem type travels in co-op in 16
   bits instead of 8, so every player needs the same mods, as before. In practice the game's item catalogue takes about
   580, and the loadout picker shows 256 cards, about 160 of them new ones

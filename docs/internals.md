@@ -140,6 +140,21 @@ network types (so it can be equipped and synced), to the armory, and to the back
 inventory (`registered-items.json` in the session folder, or its `game` folder when sandboxed). The loader's
 `modloader.log` and the mod's log record each step, and `native/mod-loader/registry.c` explains how.
 
+Mods can add 2,048 weapons and entities together. Three things in the game would hold fewer:
+- **Network types.** Each is a network entity type, and a type travels in 11 bits (2,048 types; the game has 1,855).
+  Past that the loader widens the network configuration's type width and the corpse type field (row 431) to 12 bits at
+  the title screen, before the session co-op runs in is created. Every machine with the same mods picks the same
+  width, and the configuration's hash covers row 431, so different widths fail the game's own check.
+- **Component tables.** Each copy takes a row in every component table its base has data in, and the game compiles
+  each table's slot count into its lookups, so a table holds only as many added entities as the game has with that
+  component (a Liberator copy ran out after 162). A full table gets rows past its index
+  (`native/mod-loader/component_overflow.c`): HellForge's own lookups find them, and the game finds them through the
+  table's lookup helpers, which are hooked (the helper first, the overflow only on its miss), and through stubs for four
+  lookups inlined elsewhere (tables 107, 188, 233 and 271, all a weapon's). That covers 143 of the 270 tables; a copy
+  whose base has a full table among the others is refused, and its log says which.
+- **The item catalogue.** The game keeps 4,096 catalogue items, and a weapon copy brings its base's attachments
+  (57 items for a Liberator), so the backend leaves out what does not fit, stratagems first.
+
 In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
 
 ### Projectiles and damage
