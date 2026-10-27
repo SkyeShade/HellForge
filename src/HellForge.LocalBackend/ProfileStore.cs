@@ -32,6 +32,9 @@ public sealed class ProfileStore : IDisposable
     public string? FilePath { get; }
     public bool Created { get; }
 
+    // When set, inventory responses follow its premium rules; Super Credits are never served either way.
+    public OwnershipFilter? Ownership { get; set; }
+
     ProfileStore(JsonObject profile, string? filePath, FileStream? lease, bool created)
     {
         this.profile = profile;
@@ -56,7 +59,7 @@ public sealed class ProfileStore : IDisposable
         if (!document.RootElement.GetProperty("templates").TryGetProperty(template, out var found))
             throw new ArgumentException($"Unknown profile template '{template}'. Known: {string.Join(", ", TemplateNames)}.");
         var items = new JsonArray();
-        foreach (var item in found.GetProperty("items").EnumerateArray())
+        foreach (var item in found.GetProperty("items").EnumerateArray().Where(i => !PaidContentSet.IsSuperCredits(i.GetProperty("mixId").GetUInt32())))
             items.Add((JsonNode?)new JsonObject { ["mixId"] = item.GetProperty("mixId").GetUInt32(), ["amount"] = item.GetProperty("amount").GetInt32(),
                 ["isDiscovered"] = item.GetProperty("isDiscovered").GetBoolean() });
         return items;
@@ -109,7 +112,12 @@ public sealed class ProfileStore : IDisposable
         foreach (var (section, sectionPath) in Sections)
         {
             if (sectionPath != path) continue;
-            lock (gate) body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
+            lock (gate)
+            {
+                body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
+                if (section == "inventory")
+                    body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
+            }
             return true;
         }
         body = default;
@@ -266,8 +274,43 @@ public sealed class ProfileStore : IDisposable
         return true;
     }
 
+    // An account import (AccountImport, the launcher's Profile > Account sync): the saved profile is backed up first.
+    public void Import(AccountSnapshot snapshot, HellForge.Core.AccountImportSettings settings, PaidContentSet paid)
+    {
+        lock (gate)
+        {
+            var updated = AccountImport.Merge(profile, snapshot, settings, paid);
+            Validate(updated);
+            Commit(updated, "import");
+        }
+    }
+
+    // Puts a backup (HellForge.Core ProfileBackups) back; the profile it replaces is backed up first.
+    public void Restore(string backupPath)
+    {
+        var restored = Load(backupPath);
+        lock (gate) Commit(restored, "restore");
+    }
+
+    // A copy of the profile as it is now.
+    public JsonObject Current()
+    {
+        lock (gate) return (JsonObject)profile.DeepClone();
+    }
+
+    void Commit(JsonObject updated, string reason)
+    {
+        if (FilePath != null)
+        {
+            HellForge.Core.ProfileBackups.Save(Path.GetDirectoryName(FilePath)!, reason, DateTime.UtcNow);
+            Save(FilePath, updated);
+        }
+        foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
+    }
+
     // Mission end: adds experience and item amounts (samples, requisition). Amounts are clamped to the catalogue
-    // maxCap when one exists; unknown items are added as discovered inventory entries.
+    // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
+    // whatever the mission report claims was found.
     public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items)
     {
         var caps = new Dictionary<uint, long>();
@@ -280,7 +323,7 @@ public sealed class ProfileStore : IDisposable
             progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             var inventory = (JsonObject)updated["inventory"]!;
             if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
-            foreach (var (mix, amount) in items)
+            foreach (var (mix, amount) in items.Where(item => !PaidContentSet.IsSuperCredits(item.Key)))
             {
                 var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
                 if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));

@@ -32,6 +32,9 @@ public sealed class StatsShare : IAsyncDisposable
     readonly IPeerTransport transport;
     readonly LobbyService lobby;
     readonly string statsFile, modValuesFile, hostModValuesFile, hostStatsFile, editorSettingsFile, hostMountsFile;
+    // A sandboxed game's editor saves into the run's sandbox-stats folder (changes.json, editor-settings.json) until the
+    // session ends (SandboxStats.Apply): null when the game is not sandboxed.
+    readonly string? sandboxChangesFile, sandboxSettingsFile;
     readonly Func<ulong, string> nameOf;
     readonly Action<string> log;
     readonly LiveEditServer live;
@@ -75,6 +78,10 @@ public sealed class StatsShare : IAsyncDisposable
     string? mine, mineMods, mineSettings, mineMounts;
     DateTime mineStamp, modsStamp, settingsStamp;
     long length = -1, modsLength = -1, settingsLength = -1;
+    // sandboxed: the files as they are, and the editor's saves of this session that go over them
+    string? realStats, realMods, realSettings, sandboxChanges, sandboxSettings;
+    DateTime changesStamp, sandboxSettingsStamp;
+    long changesLength = -1, sandboxSettingsLength = -1;
     long version;
     bool sharing;
     readonly Func<bool> hostShares;
@@ -89,16 +96,21 @@ public sealed class StatsShare : IAsyncDisposable
     string role = "solo", roleHost = "";
     bool sessionSent;
 
-    // hostShares: whether friends play with this machine's stats when it hosts (ModSettings.HostStats; read each second).
     public StatsShare(IPeerTransport transport, LobbyService lobby, string runId, string modsFolder, Func<ulong, string> nameOf, Action<string> log,
-        Func<bool>? hostShares = null)
+        StatsShareOptions? options = null)
     {
+        var (hostShares, sandboxStats) = options ?? new StatsShareOptions();
         this.transport = transport;
         this.lobby = lobby;
         this.nameOf = nameOf;
         this.log = log;
         this.hostShares = hostShares ?? (() => false);
         statsFile = Path.Combine(modsFolder, "zz.local.stats", FileName);
+        if (sandboxStats != null)
+        {
+            sandboxChangesFile = Path.Combine(sandboxStats, SandboxStats.ChangesName);
+            sandboxSettingsFile = Path.Combine(sandboxStats, SandboxStats.SettingsName);
+        }
         var editor = Path.Combine(modsFolder, BundledMods.EditorFolder);
         modValuesFile = Path.Combine(editor, ModValuesName);
         hostModValuesFile = Path.Combine(editor, HostModValuesName);
@@ -183,6 +195,7 @@ public sealed class StatsShare : IAsyncDisposable
     // for friends; the editor's settings change for its own reasons too, so only a change of its mounts counts).
     void ReadMine()
     {
+        if (sandboxChangesFile != null) { ReadMineSandboxed(); return; }
         var changed = ReadChanged(statsFile, ref mineStamp, ref length, ref mine) | ReadChanged(modValuesFile, ref modsStamp, ref modsLength, ref mineMods);
         if (ReadChanged(editorSettingsFile, ref settingsStamp, ref settingsLength, ref mineSettings))
         {
@@ -195,6 +208,30 @@ public sealed class StatsShare : IAsyncDisposable
                 version++;
                 sentTo.Clear();
             }
+    }
+
+    // Sandboxed, the game's editor cannot write the mods folder: its saves wait in the run's sandbox-stats folder until the
+    // session ends. What this host plays with meanwhile is its files with those saves over them (SandboxStats.Overlay,
+    // nothing written), and that is what friends get, live, as they would from an unsandboxed host. The same text is
+    // LocalStats, whose projectile swaps AssetShare sends.
+    void ReadMineSandboxed()
+    {
+        var changed = ReadChanged(statsFile, ref mineStamp, ref length, ref realStats) | ReadChanged(modValuesFile, ref modsStamp, ref modsLength, ref realMods) |
+            ReadChanged(sandboxChangesFile!, ref changesStamp, ref changesLength, ref sandboxChanges) |
+            ReadChanged(editorSettingsFile, ref settingsStamp, ref settingsLength, ref realSettings) |
+            ReadChanged(sandboxSettingsFile!, ref sandboxSettingsStamp, ref sandboxSettingsLength, ref sandboxSettings);
+        if (!changed) return;
+        string? real, mods, changes, settings;
+        lock (gate) (real, mods, changes, settings) = (realStats, realMods, sandboxChanges, sandboxSettings ?? realSettings);
+        var (stats, values) = SandboxStats.Overlay(real, mods, changes, EntityProfile.Current);
+        var mounts = MountsOf(settings);
+        lock (gate)
+        {
+            if (stats == mine && values == mineMods && mounts == mineMounts) return;
+            (mine, mineMods, mineSettings, mineMounts) = (stats, values, settings, mounts);
+            version++;
+            sentTo.Clear();
+        }
     }
 
     // The arm swaps of the editor's settings: its "mounts" object as JSON ("" none or unreadable).
@@ -400,3 +437,7 @@ public sealed class StatsShare : IAsyncDisposable
         applying.Dispose();
     }
 }
+
+// HostShares: whether friends play with this machine's stats when it hosts (ModSettings.HostStats; read each second).
+// SandboxStats: the run's sandbox-stats folder when the game is sandboxed, else null.
+public sealed record StatsShareOptions(Func<bool>? HostShares = null, string? SandboxStats = null);

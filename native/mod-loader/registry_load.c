@@ -76,6 +76,13 @@ static int ComponentsUnderstood(uint8_t* state, const Weapon* w, uint64_t baseEn
             ApiLog(w->mod, "%s: component %u of the base is not understood (slots %u); not registered", w->name, c, slots);
             return 0;
         }
+        /* The game compiles each table's slot count into its lookups, so a full table cannot grow: refused here, before
+         * anything is written, rather than left without that component (ShareComponentRows' write would go nowhere). */
+        if (FreeRow(t, slots, 16, w->entity) == NULL)
+        {
+            ApiLog(w->mod, "%s: component %u's table is full (%u slots); not registered", w->name, c, slots);
+            return 0;
+        }
     }
     return 1;
 }
@@ -516,18 +523,21 @@ static int NetworkEntryOf(const uint8_t* entries, uint32_t count, uint32_t short
  * allocator), in short id order. */
 static void AddNetworkTypes(const NetworkConfig* n)
 {
-    uint32_t count = n->count;
-    /* A type index travels in 11 bits (the configuration's +0xC, and field type 431): 2,048 types at most. */
-    if (count + REG_MAX_WEAPONS > 2048u)
+    uint32_t count = n->count, wanted = 0;
+    for (int k = 0; k < g_weaponCount; k++) if (g_weapons[k].state == 1) wanted++;
+    /* A type index travels in 11 bits (the configuration's +0xC, and field type 431): 2,048 types at most. Counted for
+     * the types this session adds, not the most it could, so a game update that adds vanilla types only matters to a
+     * mod set that really would not fit. */
+    if (count + wanted > 2048u)
     {
-        Note("registry: the network configuration has %u types; with %u more they would not fit the 11-bit type index; none added", count, REG_MAX_WEAPONS);
+        Note("registry: the network configuration has %u types; with %u more they would not fit the 11-bit type index; none added", count, wanted);
         return;
     }
     uint32_t added = 0, lastKey;
     memcpy(&lastKey, n->entries + (size_t)(count - 1) * 80, 4);
-    uint8_t* newEntries = EngineAllocate(n->config + 0x70, (size_t)(count + REG_MAX_WEAPONS) * 80);
-    uint8_t* newOwn = EngineAllocate(n->config + 0x28, (size_t)(count + REG_MAX_WEAPONS) * 4);
-    uint8_t* newValues = EngineAllocate(n->config + 0x40, (size_t)(count + REG_MAX_WEAPONS));
+    uint8_t* newEntries = EngineAllocate(n->config + 0x70, (size_t)(count + wanted) * 80);
+    uint8_t* newOwn = EngineAllocate(n->config + 0x28, (size_t)(count + wanted) * 4);
+    uint8_t* newValues = EngineAllocate(n->config + 0x40, (size_t)(count + wanted));
     if (newEntries == NULL || newOwn == NULL || newValues == NULL)
     {
         Note("registry: the engine's allocator is not the reviewed one; the weapons have no network types (equipping them crashes)");

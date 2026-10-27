@@ -24,8 +24,8 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the development template, everything unlocked.
-    public const string FirstProfileTemplate = "unlock-all";
+    // The profile a fresh install starts with: the starter template, no paid content.
+    public const string FirstProfileTemplate = "starter";
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]
@@ -53,8 +53,7 @@ public static partial class ProfileStore
     }
 
     // Every folder under profiles/ made by the launcher, by name. With none (a fresh install), a "default" profile from
-    // the unlock-all development template is created (the starter template if the install has no unlock-all); new
-    // profiles made in the launcher still pick their template.
+    // the starter template is created; new profiles made in the launcher still pick their template.
     public static List<LocalProfile> List(ISessionPaths paths)
     {
         RetireLegacyDefault(paths);

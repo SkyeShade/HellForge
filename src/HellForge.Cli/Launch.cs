@@ -503,7 +503,9 @@ static class Launch
         if (options.TryGetValue("--run", out var wanted))
             picked = runs.FirstOrDefault(r => r.Id == wanted || string.Equals(Path.GetFullPath(r.Folder), Path.GetFullPath(wanted), StringComparison.OrdinalIgnoreCase))
                 ?? throw new ArgumentException($"No session {wanted} in {paths.RunsFolder}.");
-        object Describe(SessionLogs.Run r) => new { r.Id, r.Folder, r.StartedUtc, r.Status, r.Failure, r.GameExitCode, r.CompletedUtc };
+        object Describe(SessionLogs.Run r) => new { r.Id, r.Folder, r.StartedUtc, r.Status, r.Failure, r.GameExitCode, r.CompletedUtc, crashed = CrashReport.Crashed(r.Folder) };
+        if (options.TryGetValue("--crash-report", out var report)) return CrashReportZip(install, picked ?? runs.FirstOrDefault(), report, Yes(options, "--dump", false), Describe);
+        if (options.ContainsKey("--dump")) throw new ArgumentException("--dump goes with --crash-report.");
         if (options.TryGetValue("--export", out var target))
         {
             var run = picked ?? runs.FirstOrDefault() ?? throw new InvalidDataException("No session logs yet: play a session first.");
@@ -521,6 +523,22 @@ static class Launch
                 .Select(f => new { path = Path.GetRelativePath(picked.Folder, f).Replace('\\', '/'), bytes = new FileInfo(f).Length }),
             sessionRunnerLog = File.Exists(runnerLog) ? runnerLog : null,
             gameLogs = Path.Combine(install.UserData, "logs")
+        };
+    }
+
+    // logs --crash-report <file.zip> [--dump yes]: the crash report of one session (the newest without --run), as the
+    // launcher's Save crash report makes it (CrashReport); the crash dump goes in only with --dump yes. Nothing is sent.
+    static object CrashReportZip(InstallLayout install, SessionLogs.Run? run, string target, bool dump, Func<SessionLogs.Run, object> describe)
+    {
+        if (run == null) throw new InvalidDataException("No session logs yet: play a session first.");
+        target = Path.GetFullPath(target);
+        if (File.Exists(target)) throw new ArgumentException($"{target} exists already.");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var saved = CrashReport.Save(run.Folder, Path.Combine(install.UserData, "logs"), target, dump);
+        return new
+        {
+            run = describe(run), saved.Zip, saved.Files, saved.Skipped, dump = saved.Dump,
+            dumpAvailable = CrashReport.Dump(run.Folder) != null, issuePage = CrashReport.IssuePage
         };
     }
 

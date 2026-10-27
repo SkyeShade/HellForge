@@ -60,6 +60,9 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Where players get it (the manifest's "url", an https:// address: ModCatalog.WebAddress), or null. The Mods page links
     // it, and mod sync's prompt offers it (GET IT) to a joiner who has to install the mod themselves.
     public string? Url { get; init; }
+    // Arrowhead's premium content the mod builds on (the manifest's "premium", PremiumContent entries): a player who does
+    // not own all of it gets none of the mod's weapons and stratagems, and a cosmetic mod is not loaded for them.
+    public IReadOnlyList<string> Premium { get; init; } = [];
 }
 
 public static partial class ModCatalog
@@ -251,7 +254,19 @@ public static partial class ModCatalog
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         return new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url };
+            { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
+              Premium = PremiumList(root) };
+    }
+
+    // "premium": the premium content the mod recreates or builds on (PremiumContent), each entry once.
+    static List<string> PremiumList(JsonElement root)
+    {
+        if (!root.TryGetProperty("premium", out var list)) return [];
+        if (list.ValueKind != JsonValueKind.Array) throw new InvalidDataException("premium must be a list such as [\"dlc:super-citizen-edition\"].");
+        var entries = list.EnumerateArray()
+            .Select(entry => entry.ValueKind == JsonValueKind.String ? PremiumContent.Normalize(entry.GetString()!) : throw new InvalidDataException("premium entries are text."))
+            .Distinct(StringComparer.Ordinal).ToList();
+        return entries.Count <= PremiumContent.MaxEntries ? entries : throw new InvalidDataException($"premium lists at most {PremiumContent.MaxEntries} entries.");
     }
 
     // The manifest's format, id, name and version.

@@ -69,14 +69,17 @@ public sealed class Privacy
     public static bool IsText(string path) => TextExtensions.Contains(Path.GetExtension(path));
 
     // A text file's bytes scrubbed (UTF-8, a BOM kept), or the bytes as they are when it is not UTF-8 text.
-    public byte[] ApplyBytes(byte[] bytes)
+    public byte[] ApplyBytes(byte[] bytes) => ApplyBytes(bytes, Apply);
+
+    // The same with another scrub (ReportPrivacy's, which goes further).
+    public static byte[] ApplyBytes(byte[] bytes, Func<string, string> apply)
     {
         var bom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
         string text;
         try { text = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes, bom ? 3 : 0, bytes.Length - (bom ? 3 : 0)); }
         catch (DecoderFallbackException) { return bytes; }
         if (text.Contains('\0')) return bytes;
-        var scrubbed = Apply(text);
+        var scrubbed = apply(text);
         if (ReferenceEquals(scrubbed, text) || scrubbed == text) return bytes;
         var body = Encoding.UTF8.GetBytes(scrubbed);
         return bom ? [0xEF, 0xBB, 0xBF, .. body] : body;

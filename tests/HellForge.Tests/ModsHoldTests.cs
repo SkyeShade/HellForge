@@ -180,5 +180,28 @@ static class ModsHoldTests
             File.Delete(Path.Combine(sandbox, SandboxStats.ChangesName));
             check(SandboxStats.Apply(sandbox, mods, EntityProfile.Current) == null, "Nothing saved, nothing applied.");
         });
+
+        test("Sandboxed editor saves: a host shares its files with them over, in memory, as Apply would put them", () =>
+        {
+            var stats = """{"format":1,"weapons":{"AR-23 Liberator":{"magazine.capacity":60}}}""";
+            var changes = """
+                {"format":1,"changes":[
+                  {"category":"weapons","target":"AR-23 Liberator","key":"weapon.fire_rate","value":900},
+                  {"category":"weapons","target":"AR-23 Liberator","key":"weapon.not_a_field","value":1},
+                  {"category":"mod:you/mod/sentry","target":"you/mod/sentry","key":"stratagem.cooldown","value":150}
+                ]}
+                """;
+            var (shared, values) = SandboxStats.Overlay(stats, null, changes, EntityProfile.Current);
+            check(shared != null && shared.Contains("\"weapon.fire_rate\": 900") && shared.Contains("\"magazine.capacity\": 60") && !shared.Contains("not_a_field"),
+                "The host's edit goes over its Local Stats, what was there stays, and a change the stats pass refuses is left out: " + shared);
+            check(values != null && values.Contains("\"stratagem.cooldown\": 150"), "Mod content values get theirs.");
+            check(SandboxStats.Overlay(stats, "{}", null, EntityProfile.Current) == (stats, "{}") &&
+                  SandboxStats.Overlay(stats, null, "{\"format\":1,\"changes\":[", EntityProfile.Current) == (stats, null),
+                "No changes, or changes being written, leave the files as they are.");
+            var (removed, _) = SandboxStats.Overlay(stats, null, """{"format":1,"changes":[{"category":"weapons","target":"AR-23 Liberator","key":"magazine.capacity","remove":true}]}""", EntityProfile.Current);
+            check(removed != null && !removed.Contains("AR-23 Liberator"), "A removal takes the value back to the game's: " + removed);
+            check(SandboxStats.Overlay(null, null, changes, EntityProfile.Current).Stats?.Contains("\"weapon.fire_rate\": 900") == true,
+                "A host with no Local Stats yet shares its session's edits.");
+        });
     }
 }

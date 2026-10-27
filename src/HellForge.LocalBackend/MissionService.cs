@@ -106,7 +106,9 @@ public sealed class MissionService
         foreach (var list in FindAll(body, key))
             if (list.ValueKind == JsonValueKind.Array)
                 foreach (var item in list.EnumerateArray())
-                    if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue)
+                    // Super Credits found on a map (or claimed by a modified report) are a premium currency: never granted.
+                    if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue &&
+                        !PaidContentSet.IsSuperCredits((uint)mix))
                         items[(uint)mix] = items.GetValueOrDefault((uint)mix) + Math.Min(amount, 10_000);
         return items;
     }

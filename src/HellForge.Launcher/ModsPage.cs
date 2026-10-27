@@ -105,6 +105,7 @@ public partial class MainWindow
     void RefreshMods()
     {
         modDrag = null;
+        premiumOwnership = null;
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -439,7 +440,36 @@ public partial class MainWindow
         if (mod.Stats.Count > 0) tags.Add(("STATS", "#9B85FF"));
         if (mod.HasDataSpec || mod.DataFiles.Count > 0) tags.Add(("DATA", "#5FD08A"));
         if (mod.Archive != null) tags.Add(("ZIP", "#9AA0A8"));
+        if (mod.Premium.Count > 0) tags.Add((PremiumMissing(mod).Count > 0 ? "PREMIUM: LOCKED" : "PREMIUM", "#FFC72C"));
         return tags;
+    }
+
+    // What of a mod's premium list the selected profile's synced account lacks (HellForge.Core PremiumContent): what a
+    // session will lock. Read once per refresh of the page.
+    PremiumContent? premiumOwnership;
+    IReadOnlyList<string> PremiumMissing(ModManifest mod)
+    {
+        if (mod.Premium.Count == 0) return [];
+        premiumOwnership ??= File.Exists(paths.ProgressionFile) && paths.InstallRoot != null
+            ? PremiumContent.ForSnapshot(paths.ProgressionFile, InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name), SteamAccount.Current())
+            : PremiumContent.Nothing;
+        return premiumOwnership.Missing(mod.Premium);
+    }
+
+    void AddPremiumDetails(StackPanel details, ModManifest mod)
+    {
+        if (mod.Premium.Count == 0) return;
+        details.Children.Add(new TextBlock { Text = PremiumText(mod), FontSize = 12, Foreground = PremiumMissing(mod).Count > 0 ? Gold : Light, TextWrapping = TextWrapping.Wrap });
+    }
+
+    string PremiumText(ModManifest mod)
+    {
+        var missing = PremiumMissing(mod);
+        var builds = "Built on " + string.Join(", ", mod.Premium.Select(PremiumContent.Describe)) + ". ";
+        if (missing.Count == 0) return builds + "Your synced account owns it, so everything this mod adds is yours to use.";
+        return builds + "Profile " + Selected.Name + "'s synced account lacks " + string.Join(", ", missing.Select(PremiumContent.Describe)) +
+            (mod.Cosmetic ? ": this mod is not loaded for it." : ": the mod loads, but its weapons and stratagems stay locked.") +
+            " Buy it in the normal game and sync (Profile > Account sync).";
     }
 
     static Border ModTag(string text, string colour)
@@ -511,6 +541,7 @@ public partial class MainWindow
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
         var changes = ModChanges(mod);
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
+        AddPremiumDetails(details, mod);
         if (build is { } b)
             details.Children.Add(new TextBlock { Text = b.Text, FontSize = 12, Foreground = b.Colour, TextWrapping = TextWrapping.Wrap,
                 FontFamily = b.Colour == Red ? new FontFamily("Consolas") : FontFamily.Default });

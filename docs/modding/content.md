@@ -44,6 +44,10 @@ copies a vanilla weapon. You give the copy a name and change what you want; ever
 is the copy's identity. Its ids come from the name (an entity's resource id is the name's hash) or are numbered in the
 order of mod ids (stratagem, projectile and damage types), so every player's game agrees on them without talking.
 
+A copy of premium content (a premium warbond's or a Steam DLC's weapon, a Superstore item) is in a player's armory only
+when they own the original. Content built on premium content in other ways is declared in the manifest's `premium`
+list ([premium content](concepts.md#premium-content)).
+
 Every struct is documented field by field in `native/mod-sdk/hellforge_mod.h`, and every component, field and vanilla
 constant is in the [SDK reference](../sdk-reference.md). The calls on this page, with the SDK version that added each:
 

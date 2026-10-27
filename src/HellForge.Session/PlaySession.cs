@@ -106,6 +106,7 @@ sealed partial class PlaySession(PlayOptions options)
         result["play"] = true;
         result["installRoot"] = install.Root;
         result["engine"] = typeof(PlaySession).Assembly.GetName().Version?.ToString();
+        RecordFacts(options);
         File.WriteAllText(Path.Combine(install.Logs, "play-session.json"),
             new JsonObject { ["runId"] = runId, ["run"] = run, ["startedUtc"] = (string?)result["startedUtc"] }.ToJsonString());
         try
@@ -124,6 +125,19 @@ sealed partial class PlaySession(PlayOptions options)
         Say("Session result: " + Path.Combine(run, "result.json"));
         log.Dispose();
         return (string?)result["status"] == "observed" ? 0 : 1;
+    }
+
+    // The versions, the system and the settings, first in the log and kept for a crash report (CrashReport). Whatever goes
+    // wrong collecting them, the session starts: the report then says they were not recorded.
+    void RecordFacts(PlayOptions options)
+    {
+        try
+        {
+            var facts = SessionHeader.Facts(options, (string?)result["engine"] ?? "unknown");
+            result["report"] = facts.ToJson();
+            foreach (var line in facts.Lines()) Say(line);
+        }
+        catch (Exception error) { Say("Session facts not recorded: " + error.Message); }
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
@@ -150,7 +164,7 @@ sealed partial class PlaySession(PlayOptions options)
         profileName = Path.GetFileName(profileDirectory);
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
         RecoverStandIns();
-        StageMods();
+        StageMods(profileDirectory);
         // The player's mods are held read-only so nothing the game runs can change or plant a mod.
         try { modsHold = ModsHold.Take(install.Mods); }
         catch (IOException error) { throw new SessionFailure(error.Message); }
@@ -211,13 +225,15 @@ sealed partial class PlaySession(PlayOptions options)
 
     // Mods: stage data mods (and remove the last session's) before the copy's files are locked; --progress lets the
     // launcher show source mods being compiled.
-    void StageMods()
+    void StageMods(string profileDirectory)
     {
         var loaderPlan = Path.Combine(run, "modloader-plan.txt");
         // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --sync: after a mod sync, the
         // host's mods instead of the player's own (ModSyncSession).
+        // --premium-snapshot, --premium-locked: mods built on premium content follow the profile's account snapshot
+        // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
-            "--modset", ModSetFile];
+            "--modset", ModSetFile, .. PremiumStageArguments(profileDirectory)];
         if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync)];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
@@ -233,9 +249,10 @@ sealed partial class PlaySession(PlayOptions options)
         modList = (string?)plan["modlist"];
         modNative = (bool?)plan["native"] == true;
         nativeFolders = (plan["nativeFolders"] as JsonArray)?.Select(f => (string?)f).OfType<string>().ToList();
+        var loadedMods = (plan["mods"] as JsonArray ?? []).Select(m => $"{(string?)m!["id"]} {(string?)m["version"]}").ToList();
         result["mods"] = new JsonObject
         {
-            ["loaded"] = new JsonArray((plan["mods"] as JsonArray ?? []).Select(m => (JsonNode?)JsonValue.Create($"{(string?)m!["id"]} {(string?)m["version"]}")).ToArray()),
+            ["loaded"] = new JsonArray(loadedMods.Select(m => (JsonNode?)JsonValue.Create(m)).ToArray()),
             ["problems"] = plan["problems"]?.DeepClone() ?? new JsonArray(),
             ["stagedFiles"] = (plan["staged"] as JsonArray)?.Count ?? 0,
             ["codeMods"] = plan["codeMods"]?.DeepClone(),
@@ -247,6 +264,7 @@ sealed partial class PlaySession(PlayOptions options)
             Say($"Playing with {syncedWith}'s mods (mod sync).");
             if (options.ModSync != null) rejoinFile = Path.GetFullPath(options.ModSync);
         }
+        SayMods(loadedMods);
         foreach (var problem in plan["problems"] as JsonArray ?? []) Say("Mod not loaded: " + (string?)problem);
     }
 
@@ -311,6 +329,13 @@ sealed partial class PlaySession(PlayOptions options)
         profileDirectoryUsed = profileDirectory;
     }
 
+    // The session's mods, each with its version and content hash, for a bug report to say exactly which mods ran.
+    void SayMods(List<string> loaded)
+    {
+        Say($"Mods: {loaded.Count} loaded, modlist digest {modDigest}");
+        foreach (var line in SessionFacts.ModLines(loaded, SessionFiles.ReadJson(ModSetFile))) Say(line);
+    }
+
     string modDigest = "none", profileDirectoryUsed = "";
     string? modList;
     // After a mod sync whose host's mods were all found: the sync file, which the backend uses to bring the game back into
@@ -318,6 +343,14 @@ sealed partial class PlaySession(PlayOptions options)
     string? rejoinFile;
     // The session's mod set (mods-stage --modset), for the backend's mod sync.
     string ModSetFile => Path.Combine(run, "modset.json");
+
+    // The mods whose items stay locked for this player (mods-stage --premium-locked), for the backend.
+    string PremiumLockedFile => Path.Combine(run, "premium-locked.json");
+
+    // mods-stage's premium check: the locked mods' file, and the profile's account snapshot when it has a place for one.
+    string[] PremiumStageArguments(string profileDirectory) => InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) is { } snapshot
+        ? ["--premium-locked", PremiumLockedFile, "--premium-snapshot", snapshot]
+        : ["--premium-locked", PremiumLockedFile];
 
     // What asked the session to stop: "stop" (the launcher) or "mod-sync" (the backend, to restart with a host's mods).
     string ReadSignal()
@@ -947,7 +980,7 @@ sealed partial class PlaySession(PlayOptions options)
         if (!File.Exists(backend)) throw new SessionFailure("The local backend is missing; reinstall HellForge.");
         var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
-                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true" }) start.ArgumentList.Add(argument);
+                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile }) start.ArgumentList.Add(argument);
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         WarArguments(start);

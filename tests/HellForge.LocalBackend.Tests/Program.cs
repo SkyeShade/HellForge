@@ -553,6 +553,8 @@ try
     try { using var store = ProfileStore.Open(null); await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "unpaired"), LoginMode.LocalSession) { Profile = store }); }
     catch (ArgumentException) { unpaired = true; }
     Check(unpaired, "Profile accepted without startup fixtures.");
+    AccountSyncTests.Run(root, Check);
+    Console.WriteLine("PASS account sync: premium only from a sealed snapshot of the signed-in account, free warbond open, Super Credits never served, granted or imported, imports by category with backups and restore");
     results.Add(new { mode = "profile", outcome = "passed", invalidEdits = invalidEdits.Length + 1 });
     Console.WriteLine("PASS profile: fixture defaults, persistence, single server, validation, session audit");
     await LiveWarTests.Run(root, Check);

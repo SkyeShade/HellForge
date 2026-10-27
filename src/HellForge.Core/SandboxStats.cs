@@ -40,6 +40,42 @@ public static partial class SandboxStats
         return new(appliedStats, modValues.Count, refused, settings, presetCount);
     }
 
+    // The Local Stats and mod content values texts with a session's editor changes (changes.json's text) put in, as Apply
+    // puts them in at the session's end, but in memory, writing nothing: what a host plays with during a sandboxed
+    // session, which StatsShare shares with friends live. A text stays as it is when no change is for it, or when the
+    // changes cannot be read (the editor writing them: the next read has them).
+    public static (string? Stats, string? ModValues) Overlay(string? stats, string? modValues, string? changesJson, EntityProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(changesJson)) return (stats, modValues);
+        List<Change> changes;
+        try { changes = Read(changesJson).Changes; }
+        catch (Exception error) when (error is InvalidDataException or JsonException) { return (stats, modValues); }
+        var statChanges = changes.Where(c => !c.Category.StartsWith("mod:", StringComparison.Ordinal)).ToList();
+        var modChanges = changes.Where(c => c.Category.StartsWith("mod:", StringComparison.Ordinal)).ToList();
+        if (statChanges.Count > 0)
+        {
+            var document = Document(stats);
+            var all = (JsonObject)document.DeepClone();
+            foreach (var change in statChanges) Put(all, change);
+            if (!Valid(all, profile)) all = ApplyEach(document, statChanges, profile).Document;
+            stats = Pretty(all);
+        }
+        if (modChanges.Count > 0)
+        {
+            var document = Document(modValues);
+            foreach (var change in modChanges) Put(document, change);
+            modValues = Pretty(document);
+        }
+        return (stats, modValues);
+
+        static JsonObject Document(string? text)
+        {
+            try { return (string.IsNullOrWhiteSpace(text) ? null : JsonNode.Parse(text) as JsonObject) ?? new JsonObject { ["format"] = 1 }; }
+            catch (JsonException) { return new JsonObject { ["format"] = 1 }; }
+        }
+        static string Pretty(JsonObject document) => document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+    }
+
     // The editor's list: {"format":1,"changes":[{"category","target","key","value"} or {..., "remove":true}]}. A change
     // of another shape is counted as refused.
     public static (List<Change> Changes, int Refused) Read(string json)

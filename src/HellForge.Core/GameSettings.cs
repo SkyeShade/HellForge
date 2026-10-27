@@ -88,13 +88,67 @@ public static partial class GameSettings
     }
 
     // The normal game's user data (%APPDATA%/Arrowhead/Helldivers2), where HELLDIVERS 2 keeps its options.
-    public static string VanillaUserData() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
+    // Under Wine (Proton) %APPDATA% is HellForge's own empty prefix, so the normal game's folder is the one in its Proton
+    // prefix in the Linux Steam library (steamapps/compatdata/553850), reached through Wine's Z: drive.
+    public static string VanillaUserData()
+    {
+        if (LinuxNetworkBlock.UnderWine)
+            foreach (var library in LinuxSteamLibraries())
+            {
+                var folder = WineZ(Path.Combine(library, "steamapps", "compatdata", "553850", "pfx", "drive_c", "users", "steamuser",
+                    "AppData", "Roaming", "Arrowhead", "Helldivers2"));
+                if (Directory.Exists(folder)) return folder;
+            }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
+    }
+
+    static string WineZ(string linuxPath) => "Z:" + linuxPath.Replace('/', '\\');
+
+    // The Linux Steam client's folder (the one the launch script exports, else the usual places) and its other libraries.
+    static List<string> LinuxSteamLibraries()
+    {
+        var roots = new List<string>();
+        var home = Environment.GetEnvironmentVariable("HOME");
+        foreach (var candidate in new[] { Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH"),
+                     home + "/.local/share/Steam", home + "/.steam/steam", home + "/.steam/debian-installation",
+                     home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam", home + "/snap/steam/common/.local/share/Steam" })
+            if (!string.IsNullOrEmpty(candidate) && candidate.StartsWith('/') && Directory.Exists(WineZ(candidate)) && !roots.Contains(candidate)) roots.Add(candidate);
+        foreach (var root in roots.ToList())
+        {
+            var vdf = WineZ(root + "/steamapps/libraryfolders.vdf");
+            if (!File.Exists(vdf)) continue;
+            foreach (Match match in LibraryPath().Matches(File.ReadAllText(vdf)))
+            {
+                var library = match.Groups[1].Value.Replace("\\\\", "/");
+                if (library.StartsWith('/') && !roots.Contains(library)) roots.Add(library);
+            }
+        }
+        return roots;
+    }
+
+    [GeneratedRegex("\"path\"\\s+\"([^\"]+)\"")]
+    private static partial Regex LibraryPath();
 
     // The key bindings the signed-in Steam account keeps for HELLDIVERS 2 in its Steam Cloud folder
-    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none.
+    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. Under Wine the
+    // registry has no Steam account, so the Linux Steam client's userdata is searched: the most recently changed file.
     public static string? SteamControls()
     {
+        if (LinuxNetworkBlock.UnderWine)
+        {
+            var found = new List<string>();
+            foreach (var library in LinuxSteamLibraries())
+            {
+                var userdata = WineZ(library + "/userdata");
+                if (!Directory.Exists(userdata)) continue;
+                foreach (var accountFolder in Directory.EnumerateDirectories(userdata).Where(a => Path.GetFileName(a) != "0"))
+                {
+                    var bindings = Path.Combine(accountFolder, "553850", "remote", ControlsFile);
+                    if (File.Exists(bindings)) found.Add(bindings);
+                }
+            }
+            return found.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        }
         if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam ||
             Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null) is not int account || account == 0)
             return null;

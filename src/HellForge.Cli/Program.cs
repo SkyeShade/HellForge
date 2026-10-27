@@ -50,7 +50,7 @@ try
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--strangers yes | no] [--game-options <options>]
-            logs [--install <folder>] [--run <session id>] [--export <file.zip>]
+            logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
@@ -75,7 +75,9 @@ try
             run once started and returns; with it, one JSON line per status until the session ends (exit code 0 when it
             ended normally). stop asks the session to close the game. Mod changes wait until no session runs.
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
-            newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does.
+            newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
+            --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
+            issue), with the crash dump only with --dump yes. Nothing is uploaded.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
@@ -96,7 +98,7 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--premium-snapshot", "--premium-locked"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
@@ -116,7 +118,7 @@ try
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
         "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--game-options"],
-        "logs" => ["--install", "--run", "--export"],
+        "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -258,6 +260,13 @@ try
             // The synced store keeps the mods used most recently (SyncedStore.Keep), this session's among them.
             foreach (var pruned in SyncedStore.Prune(modInstall.Mods, loadOrder.Select(m => m.Folder)))
                 Console.Error.WriteLine("Mod sync: removed the downloaded mod " + pruned + ", used least recently.");
+            // Premium content mods declare (PremiumContent), against the profile's account snapshot (--premium-snapshot): a
+            // cosmetic mod the player does not own is not loaded; a gameplay one loads, its items locked by the backend
+            // (--premium-locked, which the session passes on).
+            var premium = PremiumMods.ForSession(modInstall, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current(), loadOrder);
+            loadOrder = premium.Loaded;
+            modProblems.AddRange(premium.Problems);
+            if (options.TryGetValue("--premium-locked", out var lockedFile)) PremiumMods.WriteLocked(lockedFile, premium.Locked);
             // Mods with a data spec get their data built from the copy's game data first (once per game data and spec);
             // a mod whose data cannot be built is not loaded.
             var (active, dataProblems) = ModDataCache.Prepare(modInstall, loadOrder, Console.Error.WriteLine);
@@ -296,7 +305,7 @@ try
                 loaderRequired = true, // read-only stats snapshots are also collected without mods
                 disabled = mods.Where(m => !m.Enabled).Select(m => m.Id),
                 problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedKept = ModStaging.LastCounts.Kept,
-                native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith,
+                native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith, premiumLocked = premium.Locked,
                 // the session's mods with network type edits (after a mod sync, the host's), for the session's native applier
                 nativeFolders = active.Where(m => m.NetworkFieldTypes.Count > 0).Select(m => Path.GetFullPath(m.Folder))
             };

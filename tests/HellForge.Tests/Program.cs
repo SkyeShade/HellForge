@@ -502,12 +502,15 @@ EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
+CrashReportTests.Register(Test, Check, Reject, root);
 DownpatchTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
 SessionJobTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);
+InventorySyncTests.Register(Test, Check, Reject, root);
+PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");

@@ -4,9 +4,13 @@ What changed in each HellForge release, newest first, as a player updating from 
 are GitHub issues and pull requests (#24); short hashes are commits on `dev`. Each pull request adds its lines under
 Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.md#changelog)).
 
-## Unreleased (0.3.0-beta)
+## Unreleased
 
-On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
+On `dev`, since 0.3.0-beta.
+
+## 0.3.0-beta (2026-10-26)
+
+[Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.
 
 ### Added
 
@@ -57,6 +61,19 @@ On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
   gives SDR content, instead of looking washed out (#53).
 - Language packs: Japanese can be added to the game copy, so the game runs in Japanese instead of crashing when Steam
   is set to it. For now through the command line, `HellForge.Cli language-add --name japanese` (#73).
+- **Sync Inventory** (Profile > Account sync) brings your own HELLDIVERS 2 account's inventory and progression into a
+  profile, after one Windows prompt. A review then shows each category (level and XP, medals, requisition and samples,
+  warbond and armory items, ship modules, weapon levels, ship name, tutorial) side by side, and nothing changes until
+  Apply. Warbond unlocks come as on your account, every item of the warbonds you own, or none; which warbonds you own
+  always follows the sync. Your choices are kept per profile. The game stays connected until you close it, and a sync
+  that cannot read your progression fails and keeps the last complete snapshot (#45). Experimental: during a sync the
+  normal game shows "Could not connect to Easy Anti Cheat network" after the login and closes itself; the sync is
+  complete by then.
+- Profile backups: every import or restore first saves the profile, the newest 10 are kept, and Profile lists them with
+  Restore backup (#45).
+- Crash reports: after a session ends in a crash, the Play page offers Save crash report, a zip for a GitHub issue with
+  the versions, Windows, GPU, settings and mods, the crash note and the logs, scrubbed of Steam ids, names and paths
+  (a crash dump only if you say yes). Every `session.log` now starts with those facts (#70).
 
 ### Changed
 
@@ -76,6 +93,14 @@ On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
 - Play asks Steam whether you own the game only when no check passed in the last 7 days on the same installation,
   Steam account and game build, so HELLDIVERS 2 no longer flashes as running in Steam at every launch. Setup and Check
   and repair always ask (#43, #69).
+- Premium content (premium warbonds, Superstore items bought with Super Credits, and the Steam DLCs' gear) is in a
+  profile only when your last Sync Inventory, for the Steam account signed in now, shows you own it. The unlock-all
+  template no longer includes it (#45).
+- Super Credits can't be earned, found on a map, imported or edited into a profile (#45).
+- A new installation's first profile starts from the starter template instead of unlock-all (#45).
+- Mods that recreate premium content follow your Sync Inventory: their weapons and stratagems are locked, and a
+  cosmetic one isn't loaded, unless you own the original. The Mods page tags them PREMIUM or PREMIUM: LOCKED and says
+  what is missing (#45).
 
 ### Fixed
 
@@ -95,6 +120,8 @@ On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
 - Setup on a full drive blamed Steam's files instead of asking for space (e9e1d63).
 - Rejoining could fail when the host answered before the join started (821aa23).
 - The game crashed as it quit with a mod's added weapon, such as the R-40 Sightliner (#64).
+- Mods together could add only 64 weapons and entities: in a large modpack the last ones were left out, such as a
+  stratagem missing from the stratagem select. Now 192, the most the game's network allows (#79).
 - "Required loopback/egress controls failed." stopped every session on some installations outside drive C: (or moved to
   another folder), where the network block had stopped holding after a restart. The session now places the block again
   by itself, with one Windows prompt, and a failed check says which part failed (#75).
@@ -107,6 +134,9 @@ On `dev`, since 0.2.0-beta. Engine 0.1.40, mod SDK 15.
 - A mod's manifest can give its web page as `"url"`, which MOD SYNC shows as GET IT (15e54f1).
 - `HellForge.Cli mod-hash --mod <folder or zip>` prints a mod's content hash, as mod sync and the verified list use it
   (9f09153).
+- Premium content: a weapon or stratagem a mod makes as a copy of a premium one is locked for players who don't own the
+  original, and a manifest's `"premium"` list (`warbond:<id>`, `dlc:<name>`, `item:<mixId>`) declares other content a mod
+  recreates or builds on ([docs/modding/concepts.md](docs/modding/concepts.md#premium-content), #45).
 
 ### For launcher developers
 
@@ -126,6 +156,8 @@ See [docs/external-launchers.md](docs/external-launchers.md).
   `ownershipCheck` (`full` or `recent`) and, for a reused check, `ownershipConfirmedUtc` (#69).
 - `languages` lists the language packs pinned for the supported build, and `language-add --name <language>` copies one
   from Steam's download into the game copy. `status` prints `languages`, the packs in the copy (#73).
+- `logs --crash-report <file.zip> [--dump yes|no]` makes the crash report of a session that crashed, and `result.json`
+  gains `report`, the opening facts of `session.log` (#70).
 
 ### For contributors
 

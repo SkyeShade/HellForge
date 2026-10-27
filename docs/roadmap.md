@@ -42,7 +42,7 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
 (session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.3.0-beta, engine 0.1.40, mod SDK 15.
+Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 15.
 
 ## Done in 0.2.0-beta
 
@@ -62,9 +62,9 @@ Versions: HellForge 0.3.0-beta, engine 0.1.40, mod SDK 15.
 - Linux under Proton, experimental, from the community's work in issue 1 ([linux.md](linux.md)).
 - The source code, released under GPL-3.
 
-## 0.3.0-beta (built, now in testing)
+## 0.3.0-beta (released 2026-10-26)
 
-This is on the `dev` branch.
+Released 2026-10-26; what changed is in the [changelog](../CHANGELOG.md).
 
 Other HellForge players' public lobbies now show up on the Galactic Map. HellForge lists them on Steam's lobby service,
 and only HellForge players can see them (CowboyBingus, PR #17). If you'd rather not appear there, a switch in the

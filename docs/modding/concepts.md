@@ -48,6 +48,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
 | `code.sdk` | the SDK version the mod needs (see [compatibility](#compatibility)) |
 | `code.prebuilt`, `code.game` | for a mod that ships its DLL ([tools](tools.md#prebuilt-mods)) |
 | `native` | declarative engine edits ([data mods](data.md#native-edits-in-the-manifest)) |
+| `premium` | optional: Arrowhead's premium content the mod recreates or builds on, such as `["dlc:super-citizen-edition"]`. Players who do not own it get none of the mod's weapons and stratagems ([premium content](#premium-content)) |
 
 A mod must change something: code, data, a data spec, stats or native edits. A manifest with none of them is refused.
 
@@ -143,6 +144,56 @@ game: use `hf_set` or `edit_entity` instead.
 - What travels between machines. New content travels as ids (stratagem types, projectile types), so a mod's content
   must exist on every machine, which the modlist code makes sure of. A network field type a mod widens is widened on
   every machine for the same reason.
+
+## Premium content
+
+Arrowhead's premium content (premium warbonds, Superstore items bought with Super Credits, and the Steam DLCs' gear)
+is a player's only when they bought it in the normal game. A player brings it into HellForge with Profile > Account
+sync, which reads their own account and seals it to their PC and Steam account. A mod that ports premium content, or
+builds on it, must follow that sync: it may not give premium content to players who have not bought it.
+
+HellForge does most of this for you.
+
+- **Copies of premium content are locked automatically.** A weapon or stratagem your mod makes as a copy of a premium
+  one (a premium warbond's weapon, a Superstore weapon, the Super Citizen Edition's MP-98 Knight) is in a player's
+  armory only when that player owns the original. It still exists on every machine, so friends with and without it
+  play together; a player without it cannot equip it.
+- **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy: a
+  free weapon made to play like a premium one, a premium armour's look on a free armour, a larger variant of a DLC
+  weapon. Each entry is one of:
+
+  | Entry | Owned when the player holds |
+  |---|---|
+  | `warbond:<id>` | any of that warbond's tokens (Helldivers Mobilize, `warbond:1929468580`, is everyone's) |
+  | `dlc:super-citizen-edition`, `dlc:tr-117-alpha-commander`, `dlc:tr-40-gold-eagle` | any item that Steam DLC grants |
+  | `item:<mixId>` | that item |
+
+  A warbond's id is its key under `seasonPassDetails` in HellForge's progression data (`app/progression-data.json` in an
+  installation, `data/progression-data.json` in the repository). A premium warbond sold on Steam, such as Steeled
+  Veterans, is a `warbond:` entry. A malformed entry or an unknown DLC refuses the mod, and a warbond or item no game
+  data names is never owned, so a typo never unlocks anything.
+
+  ```json
+  {
+    "format": 1,
+    "id": "yourname.knight-carbine",
+    "name": "Knight Carbine",
+    "version": "1.0.0",
+    "premium": ["dlc:super-citizen-edition"],
+    "code": { "dll": "knight_carbine.dll", "sdk": 15 }
+  }
+  ```
+
+- **What a player who does not own all of the list gets:** a gameplay mod still loads (friends keep running the same
+  mods), but none of the weapons and stratagems it adds are in their armory. A cosmetic mod (`"gameplay": false`) is not
+  loaded for them. The Mods page tags the mod PREMIUM, or PREMIUM: LOCKED for the selected profile, and its details say
+  what is missing. A player who has not synced owns nothing premium.
+- **Your code's own effects are yours to gate.** HellForge locks items, not logic: a code mod that recreates a premium
+  booster's or armour passive's effect must not apply it for players without the content. Until the SDK has an
+  ownership call, give such effects only to the items HellForge locks, or leave them out.
+
+Cosmetic packs in the community's format have no `hellforge-mod.json` and cannot declare premium content: ship a
+premium look as a data mod with a manifest instead.
 
 ## Load order and conflicts
 

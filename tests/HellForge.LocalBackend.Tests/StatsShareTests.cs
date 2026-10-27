@@ -107,7 +107,7 @@ static class StatsShareTests
         var log = new ConcurrentQueue<string>();
         var runId = "stats-test-" + Guid.NewGuid().ToString("N")[..8];
         var sharing = true; /* the host's Mods page switch (ModSettings.HostStats) */
-        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue, () => Volatile.Read(ref sharing));
+        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue, new StatsShareOptions(() => Volatile.Read(ref sharing)));
         await using var guestShare = new StatsShare(guestLink, guestLobby, runId, guestMods, id => id == HostId ? "Friend Host" : "?", log.Enqueue);
         check(!File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts), "A host's files left by a session cut short are removed.");
         void Wire(IPeerTransport link, LobbyService lobby, StatsShare share) => link.Received += (peer, bytes) =>

@@ -25,9 +25,12 @@ namespace HellForge.LocalBackend;
 // /Configuration/GameClient carries the live game's cap on the difficulty level (online override 48726272, an int, "10";
 // game.dll 0x11EBB40 returns min(its own maximum, the cap)): it is raised to the level the mod added.
 // Nothing is saved to the profile, so a removed mod leaves nothing behind.
+// Premium content (docs/modding/concepts.md "Premium content"): a weapon or stratagem copied from content the player does
+// not own (OwnsBase: OwnershipFilter's rules), or registered by a mod whose declared premium list the player does not own
+// (LockedMods, from mods-stage), stays out of /Progression/inventory: the game knows it, the player cannot equip it.
 public sealed class RegisteredItems(string path)
 {
-    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0)
+    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "")
     {
         public bool IsStratagem => Stable != 0;
         // Weapons: the items with children, mastery packages and progress of their own.
@@ -50,6 +53,12 @@ public sealed class RegisteredItems(string path)
         var run = Path.GetDirectoryName(Path.GetFullPath(evidence))!;
         return Path.Combine(sandboxed ? Path.Combine(run, "game") : run, "registered-items.json");
     }
+
+    // Whether the player may hold a base item; null: every base (no premium rules, as in tests and the development backend).
+    public Func<uint, bool>? OwnsBase { get; set; }
+
+    // Mods whose items stay out of the player's inventory (mods-stage's --premium-locked).
+    public IReadOnlySet<string> LockedMods { get; set; } = new HashSet<string>();
 
     public IReadOnlyList<Item> Load()
     {
@@ -74,11 +83,11 @@ public sealed class RegisteredItems(string path)
             return null;
         if (item.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "stratagem")
             return copyOf != 0 && item.TryGetProperty("stable", out var stable) && stable.TryGetUInt32(out var stableId) && stableId != 0
-                ? new Item(mixId, copyOf, stableId) : null;
+                ? new Item(mixId, copyOf, stableId, Mod: ModOf(item)) : null;
         if (item.TryGetProperty("kind", out kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "difficulty")
             return copyOf != 0 && item.TryGetProperty("level", out var level) && level.TryGetUInt32(out var levelValue) && levelValue is > 10 and <= 15
-                ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue) : null;
-        return new Item(mixId, copyOf);
+                ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue, Mod: ModOf(item)) : null;
+        return new Item(mixId, copyOf, Mod: ModOf(item));
     }
 
     // The id of a weapon's child item (an attachment's id for that weapon), as the client computes it.
@@ -245,12 +254,37 @@ public sealed class RegisteredItems(string path)
     {
         var have = held.Select(i => Id(i, "mixId")).ToHashSet();
         var children = ChildIds();
-        foreach (var item in items)
+        foreach (var item in items.Where(i => !Locked(i)))
         {
             if (item.IsDifficulty && !have.Contains(item.CopyOf)) continue; /* not before level 10 is unlocked */
             if (have.Add(item.MixId)) held.Add((JsonNode?)new JsonObject { ["mixId"] = item.MixId, ["amount"] = 1, ["isDiscovered"] = true });
             if (item.IsWeapon) AddChildren(held, have, children, item);
         }
+    }
+
+    // The mod that registered an entry (registry.c writes its id).
+    static string ModOf(JsonElement item) => item.TryGetProperty("mod", out var owner) && owner.ValueKind == JsonValueKind.String ? owner.GetString()! : "";
+
+    // A premium mod the player does not own, or a copy of a premium base they do not own; a stratagem whose base cannot be
+    // found yet stays out too, until the game has loaded its stratagems.
+    bool Locked(Item item)
+    {
+        if (LockedMods.Contains(item.Mod)) return true;
+        if (OwnsBase == null || item.IsDifficulty) return false;
+        return BaseItem(item) is not { } baseItem || !OwnsBase(baseItem);
+    }
+
+    // The base's own item: a weapon's is copyOf; a stratagem's is the parent of the catalogue child whose itemId is its stable id.
+    uint? BaseItem(Item item)
+    {
+        if (!item.IsStratagem) return item.CopyOf;
+        if (Source?.Invoke("/Progression/items") is not { ValueKind: JsonValueKind.Array } catalogue) return null;
+        foreach (var entry in catalogue.EnumerateArray())
+            if (entry.TryGetProperty("progressionCategory", out var category) && category.TryGetInt32(out var kind) && kind == 10 &&
+                entry.TryGetProperty("itemId", out var itemId) && itemId.TryGetUInt32(out var stable) && stable == item.CopyOf &&
+                entry.TryGetProperty("parentId", out var parent) && parent.TryGetUInt32(out var parentId))
+                return parentId;
+        return null;
     }
 
     // The copy of every child of a weapon's base the inventory holds.

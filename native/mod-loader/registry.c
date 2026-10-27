@@ -66,7 +66,9 @@
 #define REG_LOADOUT_STRIDE 32u
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
-#define REG_MAX_WEAPONS 64
+/* Weapons and entities mods add, together. Each needs a network type, and the game sends a type in 11 bits: build
+ * 25480438 has 1855 (NET_VANILLA_TYPES), so 193 more at most. */
+#define REG_MAX_WEAPONS 192
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
 #define REG_MAX_OWNED 192 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has) */
