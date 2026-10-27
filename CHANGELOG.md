@@ -21,6 +21,10 @@ On `dev`, since 0.3.0-beta.
 
 ### For mod makers
 
+- Room for 1,024 new stratagems across all mods (was 48). Past 106 of them, the stratagem type travels in co-op in 16
+  bits instead of 8, so every player needs the same mods, as before. In practice the game's item catalogue takes about
+  580, and the loadout picker shows 256 cards, about 160 of them new ones
+  ([docs/modding/content.md](docs/modding/content.md#limits)).
 - Weapons copied from bases with components 140, 201 or 215 got rows past those tables' ends; their sizes now come
   from the game's own catalogue.
 - More mod text fits (stratagem names and headings no longer run out next to a full set of weapons), and unit copies

@@ -193,9 +193,15 @@ and 69 bounds on the type grow by the number of new stratagems. The names the mi
 it. Every instruction and bound is checked against the reviewed game build first, and anything else adds no stratagem.
 The review is in `artifacts/stratagem-registry/BOUNDS.md` (not committed).
 
-There can be 48 new stratagems in all mods: the loadout picker lists at most 150 available stratagems, and up to 96
-vanilla ones can be. A new stratagem does not load its base's ship-upgrade (level) packages (the loadout keeps one per
-vanilla type), never counts in the mission statistics, and is never a mission's random pick.
+There can be 1,024 new stratagems in all mods (types 150 to 1,173). The loadout picker keeps one candidate record
+and one pointer per type on its stack, so its frame (six instructions and its unwind data) grows with the count. In
+co-op a type travels in an 8-bit network field (type 255 at most); past that it is widened to 16 bits when the network
+configuration loads, before any session, and every player with the same mods picks the same width. Eight instructions
+that index the loadout's per-type choices by type go through guards, and the stratagem settings' reload keeps the count.
+What holds them in practice: the game's item catalogue keeps 4,096 items (each stratagem is two, and the local backend
+leaves out what does not fit, stratagems before weapons), and the picker shows 256 cards (the game drops the rest), so
+about 160 new ones show at once. A new stratagem does not load its base's ship-upgrade (level) packages (the loadout
+keeps one per vanilla type), never counts in the mission statistics, and is never a mission's random pick.
 
 To make it owned, the local backend lists each new stratagem for the session as a copy of its base's catalogue item
 (level, price, traits) and its child under the new stable id, and adds it to the inventory. Nothing is saved to the

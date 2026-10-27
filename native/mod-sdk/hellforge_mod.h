@@ -997,7 +997,7 @@ typedef struct HfApi
 
     /* ---- SDK 4 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new stratagem (see HfStratagem). Call it from hellforge_mod_init. Returns its StratagemType (150 and up),
-     * or 0 (the mod's log says why). The game has room for 48 new stratagems in all mods together. */
+     * or 0 (the mod's log says why). There is room for 1,024 new stratagems in all mods together. */
     uint32_t (*add_stratagem)(HfMod* mod, const HfStratagem* stratagem);
     /* The 400-byte settings row of a stratagem a mod added, once the game has loaded its stratagems, or 0. +0 type and
      * +4 stable id must stay; HD2Runtime's research names the rest (docs/internals.md "Stratagems"). */

@@ -1271,6 +1271,96 @@ static void StratagemGuardsFixture(void)
     VirtualFree((void*)game, 0, MEM_RELEASE);
 }
 
+/* The picker's frame for C candidates (WidenPicker): at 150 the game's own bytes again; at 256 the prior research's
+ * figures (P 0x1450, K 0x1C50, F 0x1C60; unwind slots 0x395 / 0x394 / 0x393 / 0x38C); at 1,174 and 4,096 the formula;
+ * past STR_PICKER_MAX refused. */
+static uint32_t PickerValue(uintptr_t game, int site) { uint32_t v; memcpy(&v, (void*)(game + kPickerFrame[site].rva + kPickerFrame[site].at), 4); return v; }
+static uint16_t PickerSlot(uintptr_t game, int code) { uint16_t v; memcpy(&v, (void*)(game + STR_PICKER_UNWIND + 6 + 4 * code), 2); return v; }
+
+static void PickerFrameFixture(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x2600000, MEM_RESERVE, PAGE_NOACCESS);
+    assert(game != 0);
+    assert(VirtualAlloc((void*)(game + 0x18D8000), 0x1000, MEM_COMMIT, PAGE_READWRITE) != NULL);
+    assert(VirtualAlloc((void*)(game + (STR_PICKER_UNWIND & ~0xFFFu)), 0x1000, MEM_COMMIT, PAGE_READWRITE) != NULL);
+    for (int i = 0; i < 6; i++) memcpy((void*)(game + kPickerFrame[i].rva), kPickerFrame[i].pin, kPickerFrame[i].length);
+    memcpy((void*)(game + STR_PICKER_UNWIND), kPickerUnwindPin, sizeof kPickerUnwindPin);
+    assert(PickerFrameFailed(game) == NULL);
+
+    assert(WidenPicker(game, 150) == NULL && PickerFrameFailed(game) == NULL); /* the vanilla frame, byte for byte */
+    assert(WidenPicker(game, 256) == NULL && PickerFrameFailed(game) != NULL);
+    assert(PickerValue(game, 0) == 0x1C60 && PickerValue(game, 5) == 0x1C60 && PickerValue(game, 1) == 0x1C50 && PickerValue(game, 4) == 0x1C50 &&
+        PickerValue(game, 2) == 0x1450 && PickerValue(game, 3) == 0x1450);
+    assert(PickerSlot(game, 0) == 0x395 && PickerSlot(game, 1) == 0x394 && PickerSlot(game, 2) == 0x393 && PickerSlot(game, 3) == 0x38C);
+    uint32_t cookie;
+    memcpy(&cookie, (void*)(game + STR_PICKER_UNWIND + 36), 4);
+    assert(cookie == 0x1C50);
+    static const uint32_t sizes[2] = {1174, 4096};
+    for (int k = 0; k < 2; k++)
+    {
+        uint32_t c = sizes[k];
+        assert(WidenPicker(game, c) == NULL);
+        PickerFrame f = PickerFrameFor(c);
+        assert(f.pointers >= 0x50 + 20 * c && (f.pointers & 15) == 0 && f.cookie == f.pointers + 8 * c && f.frame == f.cookie + 0x10);
+        assert(PickerValue(game, 0) == f.frame && PickerValue(game, 1) == f.cookie && PickerValue(game, 2) == f.pointers);
+        assert(PickerSlot(game, 3) * 8u == f.frame && PickerSlot(game, 2) * 8u == f.frame + 0x38 && PickerSlot(game, 0) * 8u == f.frame + 0x48);
+        memcpy(&cookie, (void*)(game + STR_PICKER_UNWIND + 36), 4);
+        assert(cookie == f.cookie);
+    }
+    assert(PickerFrameFor(1174).frame == 0x80D0); /* research: C 1,174 gives F 0x80D0 (32,976 bytes) */
+    assert(WidenPicker(game, STR_PICKER_MAX + 1) != NULL && PickerValue(game, 0) == PickerFrameFor(4096).frame);
+    /* the rest of the unwind data is the game's */
+    assert(memcmp((void*)(game + STR_PICKER_UNWIND), kPickerUnwindPin, 6) == 0 && memcmp((void*)(game + STR_PICKER_UNWIND + 20), kPickerUnwindPin + 20, 16) == 0);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* The co-op stratagem field (WidenStratagemField): left at 8 bits up to 256 types, 16 past them, and refused when the
+ * row is not the reviewed {kind 1, 8 bits, min 0} or its hash names two rows. */
+static uint8_t* g_fieldConfig;
+static uint8_t** g_fieldHolder = &g_fieldConfig;
+
+static void StratagemFieldFixture(void)
+{
+    static uint8_t rows[4][0x18];
+    static uint8_t config[0x20];
+    uint32_t hashes[4] = {0x11111111u, STR_FIELD_HASH, 0x22222222u, 0x33333333u};
+    uint64_t rowsAt = (uint64_t)(uintptr_t)rows;
+    uint32_t count = 4;
+    memcpy(config + 0x10, &count, 4);
+    memcpy(config + 0x18, &rowsAt, 8);
+    g_fieldConfig = config;
+    char exe[MAX_PATH];
+    assert(GetModuleFileNameA(NULL, exe, sizeof exe) != 0);
+    char savedModule[sizeof g_networkModule];
+    memcpy(savedModule, g_networkModule, sizeof savedModule);
+    uint32_t savedRva = g_networkRva, savedCount = g_stratagemCount;
+    snprintf(g_networkModule, sizeof g_networkModule, "%s", strrchr(exe, '\\') != NULL ? strrchr(exe, '\\') + 1 : exe);
+    g_networkRva = (uint32_t)((uintptr_t)&g_fieldHolder - (uintptr_t)GetModuleHandleA(NULL));
+    struct { uint32_t stratagems; uint8_t bits; int duplicate; int state; uint8_t after; } cases[] = {
+        {106, 8, 0, 1, 8},    /* 256 types: type 255 still fits */
+        {107, 8, 0, 1, 16},   /* 257 types */
+        {1024, 8, 0, 1, 16},
+        {1024, 16, 0, 1, 16}, /* already 16 (a second network load) */
+        {1024, 10, 0, -1, 10}, /* not the reviewed width */
+        {1024, 8, 1, -1, 8}};  /* the hash names two rows */
+    for (size_t k = 0; k < sizeof cases / sizeof cases[0]; k++)
+    {
+        memset(rows, 0, sizeof rows);
+        for (int i = 0; i < 4; i++) { memcpy(rows[i], &hashes[i], 4); rows[i][12] = 1; rows[i][13] = 8; }
+        if (cases[k].duplicate) memcpy(rows[3], &hashes[1], 4);
+        rows[1][13] = cases[k].bits;
+        g_stratagemCount = cases[k].stratagems;
+        g_stratagemField = 0;
+        WidenStratagemField();
+        assert(g_stratagemField == cases[k].state && rows[1][13] == cases[k].after);
+        assert(rows[0][13] == 8 && rows[2][13] == 8 && rows[1][12] == 1); /* nothing else changes */
+    }
+    g_stratagemCount = savedCount;
+    g_stratagemField = 0;
+    memcpy(g_networkModule, savedModule, sizeof savedModule);
+    g_networkRva = savedRva;
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3465,6 +3555,8 @@ int main(int argc, char** argv)
     RegisteredItemsTextFixture();
     SlotCountsFixture();
     StratagemGuardsFixture();
+    PickerFrameFixture();
+    StratagemFieldFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {

@@ -437,7 +437,9 @@ stratagem's page it takes, and `editor_entities` which of your entities stand fo
 
 ### Limits
 
-There is room for 48 new stratagems across all mods. A new stratagem never counts in mission statistics, is never a
+There is room for 1,024 new stratagems across all mods. In practice the game's item catalogue takes about 580 (fewer
+next to many mod weapons; the backend log names what it leaves out), and the loadout picker shows 256 cards, about 160
+of them new ones. A new stratagem never counts in mission statistics, is never a
 mission's random pick, and does not load its base's ship-upgrade packages.
 
 ### Co-op

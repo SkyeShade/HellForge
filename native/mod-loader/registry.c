@@ -154,11 +154,16 @@ typedef struct Weapon
 } Weapon;
 
 /* Mod text by id, answered by the text lookup detour. Every user's at their most: four strings per weapon or entity,
- * three per stratagem (48), two for the difficulty and one per stratagem heading (28), with room to spare. At
- * REG_MAX_WEAPONS * 4 the weapons alone could fill it, and the stratagems' names then showed their bases'. */
-#define REG_MAX_TEXTS (REG_MAX_WEAPONS * 4 + 512)
+ * three per stratagem (STR_MAX_NEW, 1,024; stratagems.c asserts it), two for the difficulty and one per stratagem
+ * heading (28), with room to spare. At REG_MAX_WEAPONS * 4 the weapons alone could fill it, and the stratagems' names
+ * then showed their bases'. The detour runs for every string the game draws, so it finds an id through an index
+ * (open addressing, the first text added under an id wins, as the list's order did) rather than a walk. */
+#define REG_MAX_TEXTS (REG_MAX_WEAPONS * 4 + 1024 * 3 + 64)
+#define REG_TEXT_SLOTS 8192u /* a power of two, at least twice REG_MAX_TEXTS */
+_Static_assert(REG_TEXT_SLOTS >= 2 * REG_MAX_TEXTS && (REG_TEXT_SLOTS & (REG_TEXT_SLOTS - 1)) == 0, "text index size");
 typedef struct ModText { uint32_t id; char* text; } ModText;
 static ModText g_texts[REG_MAX_TEXTS];
+static volatile LONG g_textIndex[REG_TEXT_SLOTS]; /* g_texts index + 1, or 0 */
 static int g_textCount;
 static int g_textHooked;
 static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
@@ -847,9 +852,23 @@ typedef const char* (*EngineTextFn)(uint32_t id, void* a, void* b, void* c);
 static EngineTextFn g_engineText;
 
 /* The engine's text function with the mods' text first. */
+/* A text's slot in the index: where id is, or the empty slot its probe stops at (an entry past g_textCount, left by a
+ * test that took its texts back, counts as empty). */
+static uint32_t TextSlot(uint32_t id)
+{
+    uint32_t at = (id * 0x9E3779B1u) & (REG_TEXT_SLOTS - 1);
+    for (uint32_t probes = 0; probes < REG_TEXT_SLOTS; probes++, at = (at + 1) & (REG_TEXT_SLOTS - 1))
+    {
+        LONG entry = g_textIndex[at];
+        if (entry == 0 || entry > g_textCount || g_texts[entry - 1].id == id) return at;
+    }
+    return 0;
+}
+
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)
 {
-    for (int i = 0; i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
+    LONG entry = g_textIndex[TextSlot(id)];
+    if (entry > 0 && entry <= g_textCount && g_texts[entry - 1].id == id) return g_texts[entry - 1].text;
     return g_engineText != NULL ? g_engineText(id, a, b, c) : "";
 }
 
@@ -888,5 +907,8 @@ static uint32_t AddText(const char* text, const char* key, uint32_t salt)
     uint32_t id = (uint32_t)(Murmur64A(key, strlen(key)) >> 32) ^ salt;
     if (id == 0) id = salt;
     g_texts[g_textCount++] = (ModText){id, copy};
+    uint32_t slot = TextSlot(id);
+    LONG entry = g_textIndex[slot];
+    if (entry == 0 || entry > g_textCount - 1) InterlockedExchange(&g_textIndex[slot], g_textCount); /* the text, then its slot */
     return id;
 }
