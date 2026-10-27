@@ -23,7 +23,7 @@ static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8
 {
     size_t indexBytes = (size_t)REG_LOADOUT_SLOTS * 16;
     size_t copyBytes = 32 + indexBytes + (size_t)REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE;
-    size_t newBytes = copyBytes + (size_t)REG_MAX_WEAPONS * REG_LOADOUT_STRIDE;
+    size_t newBytes = copyBytes + (size_t)g_weaponCount * REG_LOADOUT_STRIDE; /* a record per registered weapon */
     uint8_t* table = (uint8_t*)VirtualAlloc(NULL, newBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (table == NULL) { Note("registry: out of memory"); return 0; }
     memcpy(table, loadout - 32, copyBytes);
@@ -36,7 +36,7 @@ static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8
     L->listCount = listBytes / 8;
     L->lastShort = 0;
     if (L->listCount > 0) memcpy(&L->lastShort, list + 8 * (L->listCount - 1), 4);
-    L->newList = (uint8_t*)VirtualAlloc(NULL, 32 + (size_t)(L->listCount + REG_MAX_WEAPONS) * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    L->newList = (uint8_t*)VirtualAlloc(NULL, 32 + (size_t)(L->listCount + g_weaponCount) * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (L->newList == NULL) { VirtualFree(table, 0, MEM_RELEASE); Note("registry: out of memory"); return 0; }
     memcpy(L->newList, list - 32, 32 + (size_t)L->listCount * 8);
     L->appended = 0;
@@ -121,7 +121,7 @@ static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEnti
         memcpy(&id, L->records + (size_t)r * REG_LOADOUT_STRIDE, 4);
         taken |= id == w->id;
     }
-    if (own != NULL && !taken && L->recordCount < REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
+    if (own != NULL && !taken && L->recordCount < REG_LOADOUT_RECORDS + (uint32_t)g_weaponCount)
     {
         uint32_t baseLoadoutRecord, mine = L->recordCount++;
         memcpy(&baseLoadoutRecord, baseLoadout + 8, 4);
@@ -393,7 +393,7 @@ static void RegisterWeapon(WeaponLoad* L, Weapon* w)
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
     uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
-    if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
+    if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + (uint32_t)g_weaponCount)
     {
         ApiLog(w->mod, "%s: no free row; not registered", w->name);
         return;
@@ -519,18 +519,60 @@ static int NetworkEntryOf(const uint8_t* entries, uint32_t count, uint32_t short
     return -1;
 }
 
+/* The network entity type index (research content-limits\network-width): it travels in the configuration's +0xC bits
+ * (11: 2,048 types), which every session copies as it is created (exe 0x28DC20) and then reads afresh for each type it
+ * sends or receives; and field type 0x931301A0 (row 431, 11 bits) carries a type for corpses. Past 2,048 types both
+ * widen to the bits the count needs, here, before the arrays grow: at the title screen, before start_hosting makes the
+ * session co-op runs in (the boot session it replaces never has peers). +0xC is not in the configuration's hash and row
+ * 431 is, so machines with different widths fail the game's hash check instead of misreading every type. Every machine
+ * with the same mods adds the same types, so picks the same width. NULL, or why not (nothing written then). */
+#define NET_TYPE_FIELD_HASH 0x931301A0u
+#define NET_MAX_WIDTH 12u /* 4,096 types; the entity map's 4,096 rows hold fewer */
+static const uint8_t kTypeFieldPin[24] = {0xA0, 0x01, 0x13, 0x93, 0xFF, 0xFF, 0x7F, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x01, 0x0B, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+static int NetworkSolo(void); /* netapply.c: no co-op session yet (live.c's role) */
+
+static uint32_t NetworkWidthFor(uint32_t types)
+{
+    uint32_t width = 11;
+    while (width < 32 && (1ull << width) < types) width++;
+    return width;
+}
+
+static const char* WidenNetworkTypes(uintptr_t config, uint32_t types)
+{
+    uint32_t width = NetworkWidthFor(types);
+    if (width == 11) return NULL;
+    if (width > NET_MAX_WIDTH) return "more types than the entity map holds";
+    uint8_t current = 0, row[sizeof kTypeFieldPin];
+    if (SafeRead(config + 0xC, &current, 1) || current != 11) return "the configuration's type width is not the reviewed 11 bits";
+    if (!NetworkSolo()) return "a co-op session had already started";
+    uintptr_t field = FindFieldTypeHash(NET_TYPE_FIELD_HASH);
+    if (field == 0 || SafeRead(field, row, sizeof row) || memcmp(row, kTypeFieldPin, sizeof row) != 0) return "the corpse type field is not the reviewed one";
+    uint8_t bits = (uint8_t)width;
+    if (ApiWrite(field + 13, &bits, 1)) return "the corpse type field could not be widened";
+    if (ApiWrite(config + 0xC, &bits, 1))
+    {
+        uint8_t eleven = 11;
+        ApiWrite(field + 13, &eleven, 1); /* both or neither */
+        return "the configuration's type width could not be widened";
+    }
+    Note("registry: %u network types; a type travels in %u bits (11 in vanilla), and so does a corpse's", types, width);
+    return NULL;
+}
+
 /* The registered weapons' types appended to the configuration's three arrays (larger copies from the engine's
  * allocator), in short id order. */
 static void AddNetworkTypes(const NetworkConfig* n)
 {
     uint32_t count = n->count, wanted = 0;
     for (int k = 0; k < g_weaponCount; k++) if (g_weapons[k].state == 1) wanted++;
-    /* A type index travels in 11 bits (the configuration's +0xC, and field type 431): 2,048 types at most. Counted for
-     * the types this session adds, not the most it could, so a game update that adds vanilla types only matters to a
-     * mod set that really would not fit. */
-    if (count + wanted > 2048u)
+    /* Counted for the types this session adds, not the most it could, so the width only grows when a mod set needs it. */
+    const char* why = WidenNetworkTypes(n->config, count + wanted);
+    if (why != NULL)
     {
-        Note("registry: the network configuration has %u types; with %u more they would not fit the 11-bit type index; none added", count, wanted);
+        Note("registry: the network configuration has %u types; %u more need a wider type index (%s); none added", count, wanted, why);
         return;
     }
     uint32_t added = 0, lastKey;

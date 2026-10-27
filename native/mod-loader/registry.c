@@ -66,9 +66,12 @@
 #define REG_LOADOUT_STRIDE 32u
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
-/* Weapons and entities mods add, together. Each needs a network type, and the game sends a type in 11 bits: build
- * 25480438 has 1855 (NET_VANILLA_TYPES), so 193 more at most. */
-#define REG_MAX_WEAPONS 192
+/* Weapons and entities mods add, together. Each needs a network type: build 25480438 has 1855 (NET_VANILLA_TYPES), sent
+ * in 11 bits, which past 2,048 types widen to 12 (WidenNetworkTypes); 4,096 types in 12 bits, and the entity map's 4,096
+ * rows (1,909 vanilla) hold 2,187 more. Each also takes a row in every component table its base has data in, and those
+ * are only half full (ComponentsUnderstood refuses one that is full), and a weapon a loadout row (193 free). Copies of
+ * their records are made for the weapons registered, not for this many (OwnedCopy, CopyLoadoutAndList). */
+#define REG_MAX_WEAPONS 2048
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
 #define REG_MAX_OWNED 330 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one per
@@ -159,7 +162,7 @@ typedef struct Weapon
  * then showed their bases'. The detour runs for every string the game draws, so it finds an id through an index
  * (open addressing, the first text added under an id wins, as the list's order did) rather than a walk. */
 #define REG_MAX_TEXTS (REG_MAX_WEAPONS * 4 + 1024 * 3 + 64)
-#define REG_TEXT_SLOTS 8192u /* a power of two, at least twice REG_MAX_TEXTS */
+#define REG_TEXT_SLOTS 32768u /* a power of two, at least twice REG_MAX_TEXTS */
 _Static_assert(REG_TEXT_SLOTS >= 2 * REG_MAX_TEXTS && (REG_TEXT_SLOTS & (REG_TEXT_SLOTS - 1)) == 0, "text index size");
 typedef struct ModText { uint32_t id; char* text; } ModText;
 static ModText g_texts[REG_MAX_TEXTS];
@@ -811,19 +814,20 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     memcpy(&bytes, table - 12, 4); /* the table's size after its 28-byte header */
     uint32_t recordBytes = bytes > slots * 16u ? bytes - slots * 16u : 0;
     uint32_t first = (recordBytes + stride - 1) / stride; /* the first record index after every vanilla byte */
-    size_t size = 32 + (size_t)slots * 16 + ((size_t)first + REG_MAX_WEAPONS) * stride;
+    uint32_t room = g_weaponCount > 0 ? (uint32_t)g_weaponCount : 1; /* one per weapon registered: all are by now */
+    size_t size = 32 + (size_t)slots * 16 + ((size_t)first + room) * stride;
     uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (copy == NULL) return NULL;
     memcpy(copy, table - 32, 32 + (size_t)bytes);
     owned = &g_owned[g_ownedCount++];
-    *owned = (OwnedTable){c, stride, first, first, first + REG_MAX_WEAPONS, copy + 32};
+    *owned = (OwnedTable){c, stride, first, first, first + room, copy + 32};
     SetStatePointer(state, REG_TABLES + 8 * c, owned->index);
     Note("registry: component %u copied (%u slots, %u-byte records, new records from %u)", c, slots, stride, first);
     return owned;
 }
 
 /* A record of the weapon's own in component table c: HellForge's copy of the table (made once per load: the vanilla table,
- * then room for REG_MAX_WEAPONS records after every vanilla byte), a copy of the base's record placed after the vanilla
+ * then room for a record per registered weapon after every vanilla byte), a copy of the base's record placed after the vanilla
  * records, and the weapon's index row naming it. Returns the new record (or the one it has already), or NULL. */
 static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t baseEntity, uint64_t entity)
 {

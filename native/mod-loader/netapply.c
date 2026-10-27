@@ -40,6 +40,15 @@ static int RefuseNetSwitch(const char* why)
     return 1;
 }
 
+/* Whether this machine is in no co-op session (registry_load.c's type width may change only then). */
+static int NetworkSolo(void)
+{
+    AcquireSRWLockShared(&g_sessionLock);
+    uint32_t role = g_session.role;
+    ReleaseSRWLockShared(&g_sessionLock);
+    return role == HF_SESSION_SOLO;
+}
+
 /* An entity's map row components {pointer, count}, or 0 when it has no row. */
 static int NetComponents(uint8_t* map, uint64_t entity, uint64_t out[2])
 {

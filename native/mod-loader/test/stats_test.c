@@ -1361,6 +1361,56 @@ static void StratagemFieldFixture(void)
     g_networkRva = savedRva;
 }
 
+/* The network type width (WidenNetworkTypes): 11 bits up to 2,048 types, 12 to 4,096, refused past that; the
+ * configuration's +0xC and the corpse type field (row 431) move together or not at all; refused when either is not as
+ * reviewed or a co-op session has started. */
+static void NetworkWidthFixture(void)
+{
+    assert(NetworkWidthFor(1855) == 11 && NetworkWidthFor(2048) == 11 && NetworkWidthFor(2049) == 12 && NetworkWidthFor(4096) == 12 &&
+        NetworkWidthFor(4097) == 13);
+    static uint8_t rows[3][0x18];
+    static uint8_t config[0x20];
+    uint32_t other = 0x12345678u, count = 3;
+    uint64_t rowsAt = (uint64_t)(uintptr_t)rows;
+    memcpy(config + 0x10, &count, 4);
+    memcpy(config + 0x18, &rowsAt, 8);
+    g_fieldConfig = config;
+    char exe[MAX_PATH];
+    assert(GetModuleFileNameA(NULL, exe, sizeof exe) != 0);
+    char savedModule[sizeof g_networkModule];
+    memcpy(savedModule, g_networkModule, sizeof savedModule);
+    uint32_t savedRva = g_networkRva, savedRole = g_session.role;
+    snprintf(g_networkModule, sizeof g_networkModule, "%s", strrchr(exe, '\\') != NULL ? strrchr(exe, '\\') + 1 : exe);
+    g_networkRva = (uint32_t)((uintptr_t)&g_fieldHolder - (uintptr_t)GetModuleHandleA(NULL));
+    struct { uint32_t types; uint8_t width, rowBits; uint32_t role; int refused; uint8_t after; } cases[] = {
+        {2048, 11, 11, HF_SESSION_SOLO, 0, 11},
+        {2049, 11, 11, HF_SESSION_SOLO, 0, 12},
+        {4096, 11, 11, HF_SESSION_SOLO, 0, 12},
+        {4097, 11, 11, HF_SESSION_SOLO, 1, 11},  /* past the entity map */
+        {2049, 11, 10, HF_SESSION_SOLO, 1, 11},  /* the corpse field is not the reviewed one */
+        {2049, 12, 11, HF_SESSION_SOLO, 1, 11},  /* the configuration is not the reviewed 11 bits */
+        {2049, 11, 11, HF_SESSION_HOST, 1, 11}}; /* a co-op session already runs */
+    for (size_t k = 0; k < sizeof cases / sizeof cases[0]; k++)
+    {
+        memset(rows, 0, sizeof rows);
+        memcpy(rows[0], &other, 4);
+        memcpy(rows[1], kTypeFieldPin, sizeof kTypeFieldPin);
+        rows[1][13] = cases[k].rowBits;
+        memcpy(rows[2], &other, 4);
+        rows[2][0] ^= 1;
+        config[0xC] = cases[k].width;
+        g_session.role = cases[k].role;
+        const char* why = WidenNetworkTypes((uintptr_t)config, cases[k].types);
+        assert((why != NULL) == cases[k].refused);
+        uint8_t expectRow = cases[k].refused ? cases[k].rowBits : cases[k].after;
+        assert(rows[1][13] == expectRow && (cases[k].refused ? config[0xC] == cases[k].width : config[0xC] == cases[k].after));
+        assert(rows[0][13] == 0 && rows[2][13] == 0);
+    }
+    g_session.role = savedRole;
+    memcpy(g_networkModule, savedModule, sizeof savedModule);
+    g_networkRva = savedRva;
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3557,6 +3607,7 @@ int main(int argc, char** argv)
     StratagemGuardsFixture();
     PickerFrameFixture();
     StratagemFieldFixture();
+    NetworkWidthFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
