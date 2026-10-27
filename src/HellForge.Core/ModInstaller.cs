@@ -11,7 +11,7 @@ public static class ModInstaller
     // One mod to add: where it comes from, what it is, and the installed copy it replaces (its zip or folder), if any.
     public sealed record Candidate(string Source, bool IsZip, string Id, string Name, string Version, string? Replaces);
 
-    // The archives Windows' tar unpacks for us (Unpack), as a folder to copy: .NET reads only zips.
+    // The archives the system's libarchive tar unpacks for us (Unpack), as a folder to copy: .NET reads only zips.
     static readonly string[] TarArchives = [".rar", ".7z"];
 
     // Reads each chosen file (a .zip, .rar or .7z, or a hellforge-mod.json for its folder) without changing anything. A file that is
@@ -133,15 +133,18 @@ public static class ModInstaller
         : CosmeticPacks.IsPack(folder) ? CosmeticPacks.Parse(folder, CosmeticPacks.Choice.Default)
         : throw new InvalidDataException($"there is no {ModCatalog.ManifestName}, and it is not a cosmetic pack.");
 
-    // .NET reads no RAR or 7z: Windows' own tar (libarchive; Windows 11) unpacks it into the installation's temp, as a
-    // folder to copy. tar refuses absolute and parent paths itself; links are refused here, so the copy reads nothing
-    // outside the archive. Where tar cannot unpack it, the player unpacks it and adds the folder.
+    // .NET reads no RAR or 7z: the system's libarchive tar (Windows' tar.exe, or bsdtar on Linux) unpacks it into the
+    // installation's temp, as a folder to copy. GNU tar reads neither format, so Linux uses bsdtar. tar refuses absolute
+    // and parent paths itself; links are refused here, so the copy reads nothing outside the archive. Where tar cannot
+    // unpack it, the player unpacks it and adds the folder.
     static string Unpack(InstallLayout install, string archive)
     {
         var kind = Path.GetExtension(archive).ToLowerInvariant();
         var target = Path.Combine(install.Temp, "mod-unpacked-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(target);
-        var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+        // Linux: bsdtar (libarchive), which reads 7z and RAR; GNU tar does not.
+        var tar = OperatingSystem.IsLinux() ? (File.Exists("/usr/bin/bsdtar") ? "/usr/bin/bsdtar" : "bsdtar")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
         var start = new System.Diagnostics.ProcessStartInfo(tar) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
         foreach (var a in new[] { "-xf", archive, "-C", target }) start.ArgumentList.Add(a);
         try
@@ -150,9 +153,9 @@ public static class ModInstaller
             var errors = process.StandardError.ReadToEndAsync();
             process.StandardOutput.ReadToEnd();
             process.WaitForExit();
-            if (process.ExitCode != 0) throw new InvalidDataException($"Windows could not unpack it ({errors.Result.Trim()}): unpack the {kind} yourself and add its folder.");
+            if (process.ExitCode != 0) throw new InvalidDataException($"The system could not unpack it ({errors.Result.Trim()}): unpack the {kind} yourself and add its folder.");
         }
-        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException($"Windows has no tar to unpack it with: unpack the {kind} yourself and add its folder."); }
+        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException($"This system has no tar (bsdtar on Linux) to unpack it with: unpack the {kind} yourself and add its folder."); }
         if (new DirectoryInfo(target).EnumerateFileSystemInfos("*", SearchOption.AllDirectories).Any(e => (e.Attributes & FileAttributes.ReparsePoint) != 0))
             throw new InvalidDataException($"the {kind} contains a link; HellForge adds only plain files and folders.");
         var root = ModArchives.ManifestRoot(target);

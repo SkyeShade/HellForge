@@ -197,9 +197,14 @@ static class CosmeticPacksTests
                 "Loaded from the zip: " + string.Join(" | ", loadProblems));
         });
 
-        test("A .7z (as a .rar) is unpacked by Windows' tar and added as a folder: a pack with its files at the root, a mod in a folder", () =>
+        test("A .7z (as a .rar) is unpacked by the system tar and added as a folder: a pack with its files at the root, a mod in a folder", () =>
         {
-            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: uses Windows tar.exe)"); return; }
+            if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) ||
+                (OperatingSystem.IsLinux() && !File.Exists("/usr/bin/bsdtar")))
+            {
+                Console.WriteLine("  (skipped: no libarchive tar)");
+                return;
+            }
             var install = new InstallLayout(Path.Combine(root, "pack-7z-install"));
             install.Create("25480438");
             Directory.CreateDirectory(install.Mods);
@@ -210,7 +215,7 @@ static class CosmeticPacksTests
             File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(mod, "data")).FullName, "9ba626afa44a3aa3.patch_0"), "mod");
             static void SevenZip(string from, string what, string archive)
             {
-                var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+                var tar = OperatingSystem.IsLinux() ? "bsdtar" : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
                 using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tar) { ArgumentList = { "--format", "7zip", "-cf", archive, "-C", from, what }, UseShellExecute = false, CreateNoWindow = true })!;
                 process.WaitForExit();
                 if (process.ExitCode != 0) throw new InvalidOperationException("tar could not write " + archive);
