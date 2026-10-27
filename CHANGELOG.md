@@ -8,6 +8,24 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Fixed
+
+- Mods' stratagems went missing when mods added many weapons. The game keeps only the first 4,096 items HellForge
+  offers it and drops the rest, and every weapon copy comes with all of its base's attachments (57 items for a
+  Liberator). Stratagems now go in first, then weapons while they fit whole, and whatever is left out is named in the
+  session's backend log.
+- A quote or backslash in any mod item's name stopped every mod's weapons and stratagems from showing.
+- Past about 130 mod weapons (or 100 stratagems), the rest were left out without a word.
+- A few memory errors with mod stratagems: the game read past a per-stratagem list for every one, and could write past
+  it or past a list sized for vanilla stratagems.
+
+### For mod makers
+
+- Weapons copied from bases with components 140, 201 or 215 got rows past those tables' ends; their sizes now come
+  from the game's own catalogue.
+- More mod text fits (stratagem names and headings no longer run out next to a full set of weapons), and unit copies
+  and own_all records no longer stop short of the registry's 192.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.

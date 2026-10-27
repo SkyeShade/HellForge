@@ -915,13 +915,14 @@ static void Utf8ToWide(const char* text, wchar_t* out, int capacity)
 static int g_planLine;
 static char g_planBad[160];
 
-/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 4 MB or more, or unreadable. */
+/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 64 MB or more, or unreadable.
+ * At 4 MB a session with a few stats mods was refused: the vanilla stats lines (observe) alone come to 3.5 MB. */
 static char* ReadPlanText(const wchar_t* path)
 {
     HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return NULL;
     DWORD size = GetFileSize(file, NULL), read = 0;
-    char* text = size > 0 && size < (4u << 20) ? (char*)malloc(size + 1) : NULL;
+    char* text = size > 0 && size < (64u << 20) ? (char*)malloc(size + 1) : NULL;
     int ok = text != NULL && ReadFile(file, text, size, &read, NULL) && read == size;
     CloseHandle(file);
     if (!ok) { free(text); return NULL; }

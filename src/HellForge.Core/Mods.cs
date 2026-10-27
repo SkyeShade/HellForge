@@ -731,7 +731,8 @@ public static class ModLoaderPlan
             foreach (var e in StatsData.Edits(mod))
                 lines.Add(FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}"));
         }
-        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
+        // The mod loader reads up to 64 MiB (ReadPlanText); the vanilla stats lines alone come to 3.5 MB.
+        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (64 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 64 MiB.");
         return string.Join("\n", lines) + "\n";
     }
 }
