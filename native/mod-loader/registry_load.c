@@ -758,7 +758,7 @@ static void RevertWeaponProjectiles(void)
  * 0xFC45C0). A unit missing from it is never registered for destruction (0x883200: "Could not find any destructible
  * index data"), which also sets up some of its havok actors; a sentry so left had no aim and a field around it that
  * blocked players, likely for that reason. */
-#define REG_MAX_UNIT_COPIES 64
+#define REG_MAX_UNIT_COPIES REG_MAX_WEAPONS /* every registered entity may have one (at 64, the 65th on went unset) */
 #define DESTR_MANAGER 0x3326550u
 #define DESTR_INDEX 0x2C60u
 static struct { uint64_t base, copy; const char* name; HfMod* mod; } g_unitCopies[REG_MAX_UNIT_COPIES];

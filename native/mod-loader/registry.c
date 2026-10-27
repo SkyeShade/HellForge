@@ -71,7 +71,9 @@
 #define REG_MAX_WEAPONS 192
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
-#define REG_MAX_OWNED 192 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has) */
+#define REG_MAX_OWNED 330 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one per
+                          * table index (the build has 270 tables, numbered up to 323), so an own_all entity never runs
+                          * out (at 192 it could, and kept sharing records it was meant to own) */
 #define REG_MAX_OWN 8     /* components a weapon may own beyond its unit, text and loadout entry */
 #define REG_TEXT_COMPONENT 76u
 #define REG_TEXT_STRIDE 56u
@@ -151,9 +153,12 @@ typedef struct Weapon
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
 } Weapon;
 
-/* Mod text by id, answered by the text lookup detour. */
+/* Mod text by id, answered by the text lookup detour. Every user's at their most: four strings per weapon or entity,
+ * three per stratagem (48), two for the difficulty and one per stratagem heading (28), with room to spare. At
+ * REG_MAX_WEAPONS * 4 the weapons alone could fill it, and the stratagems' names then showed their bases'. */
+#define REG_MAX_TEXTS (REG_MAX_WEAPONS * 4 + 512)
 typedef struct ModText { uint32_t id; char* text; } ModText;
-static ModText g_texts[REG_MAX_WEAPONS * 4];
+static ModText g_texts[REG_MAX_TEXTS];
 static int g_textCount;
 static int g_textHooked;
 static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
@@ -869,7 +874,13 @@ static void HookText(void)
 
 static uint32_t AddText(const char* text, const char* key, uint32_t salt)
 {
-    if (text == NULL || text[0] == 0 || g_textCount >= (int)(sizeof g_texts / sizeof g_texts[0])) return 0;
+    if (text == NULL || text[0] == 0) return 0;
+    if (g_textCount >= REG_MAX_TEXTS)
+    {
+        static int told;
+        if (!told++) Note("registry: mod text is full (%d strings); \"%s\" and any later ones show their bases' text", REG_MAX_TEXTS, key);
+        return 0;
+    }
     size_t length = strlen(text);
     char* copy = (char*)malloc(length + 1);
     if (copy == NULL) return 0;
