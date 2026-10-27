@@ -68,6 +68,27 @@ static class NetworkBlockTests
             check(LinuxNetworkBlock.InPlace(install.Root), "A block for this installation's port is in place.");
         });
 
+        test("Network block: the native Linux session guard needs the wrapper and an emulated marker", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux guard)"); return; }
+            var install = new InstallLayout(Path.Combine(root, "guard-session"));
+            string? Problem()
+            {
+                try { LinuxNetworkBlock.GuardSession(install.Root); return null; }
+                catch (InvalidOperationException error) { return error.Message; }
+            }
+            check(Problem()?.Contains("wrapper is missing", StringComparison.Ordinal) == true, "A missing wrapper passed the guard.");
+            Directory.CreateDirectory(Path.Combine(install.App, "linux"));
+            File.WriteAllText(Path.Combine(install.App, "linux", "hellforge-linux.sh"), "");
+            check(Problem()?.Contains("network block is not set up", StringComparison.Ordinal) == true, "A missing marker passed the guard.");
+            Marker(install, """{"block":"wfp","provider":"{x}","filters":8,"programs":1}""");
+            check(Problem()?.Contains("network block is not set up", StringComparison.Ordinal) == true,
+                "A Windows marker passed the native Linux guard.");
+            Marker(install, """{"block":"wfp","provider":"linux-netns","emulated":"linux-netns"}""");
+            var problem = Problem();
+            check(problem == null, "An emulated marker was refused: " + problem);
+        });
+
         test("Network block: the port has one source, setup, which the WFP script takes and records", () =>
         {
             if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder above the test)"); return; }
