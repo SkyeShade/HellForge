@@ -28,7 +28,7 @@ uid=$(id -u); gid=$(id -g)
 # allowed one (allow-namespace.sh, once with sudo).
 unshare=unshare
 [ -x /usr/local/lib/hellforge/unshare ] && unshare=/usr/local/lib/hellforge/unshare
-if [ "${HELLFORGE_STEAM_UDP:-0}" != 1 ] && [ "$unshare" = unshare ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
+if [ "$unshare" = unshare ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
   echo "This system only lets allowed programs make the network namespace HellForge runs in." >&2
   echo "Run this once: sudo bash $(dirname "$0")/allow-namespace.sh   (docs/linux.md)" >&2
   exit 1
@@ -111,7 +111,10 @@ for pop in json.load(sys.stdin)["pops"].values():
   export HELLFORGE_STEAM_UDP HELLFORGE_UDP_RELAYS
   "$unshare" --user --map-root-user --net bash -c "$inner" "$uid" "$gid" "$selftest" "$@" &
   holder=$!
-  pasta --foreground --quiet --config-net -4 -I eth0 -t none -T none "$holder" &
+  # pasta reads the holder's namespace once: wait until unshare(2) has run, or it would attach to the host's.
+  for _ in $(seq 1 50); do [ "$(readlink /proc/$holder/ns/net 2>/dev/null)" != "$(readlink /proc/self/ns/net)" ] && break; sleep 0.05; done
+  # No port forwarding in either direction, TCP or UDP: the relay rules are the only way out.
+  pasta --foreground --quiet --config-net -4 -I eth0 -t none -T none -u none -U none "$holder" &
   nat=$!
   trap 'kill "$nat" 2>/dev/null || true' EXIT
   trap 'kill "$holder" 2>/dev/null || true; exit 143' INT TERM
