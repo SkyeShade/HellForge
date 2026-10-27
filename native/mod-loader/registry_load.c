@@ -76,11 +76,12 @@ static int ComponentsUnderstood(uint8_t* state, const Weapon* w, uint64_t baseEn
             ApiLog(w->mod, "%s: component %u of the base is not understood (slots %u); not registered", w->name, c, slots);
             return 0;
         }
-        /* The game compiles each table's slot count into its lookups, so a full table cannot grow: refused here, before
-         * anything is written, rather than left without that component (ShareComponentRows' write would go nowhere). */
-        if (FreeRow(t, slots, 16, w->entity) == NULL)
+        /* The game compiles each table's slot count into its lookups, so a full table's index cannot grow: its row goes
+         * past it (component_overflow.c) when every lookup of the table can be made to find it, else the entity is refused
+         * here, before anything is written, rather than left without that component. */
+        if (FreeRow(t, slots, 16, w->entity) == NULL && !OverflowReady(c, t, (uint32_t)componentCount + 1))
         {
-            ApiLog(w->mod, "%s: component %u's table is full (%u slots); not registered", w->name, c, slots);
+            ApiLog(w->mod, "%s: component %u's table is full (%u slots), and HellForge cannot add rows past it; not registered", w->name, c, slots);
             return 0;
         }
     }
@@ -102,7 +103,9 @@ static void ShareComponentRows(uint8_t* state, const Weapon* w, uint64_t baseEnt
         memcpy(entry, &w->entity, 8);
         memcpy(entry + 8, row + 8, 4);
         memset(entry + 12, 0, 4);
-        ApiWrite((uintptr_t)slot, entry, 16);
+        if (slot != NULL) { ApiWrite((uintptr_t)slot, entry, 16); continue; }
+        slot = OverflowAdd(t, c, w->entity); /* the table is full: past it (ComponentsUnderstood made sure it can) */
+        if (slot != NULL) memcpy(slot + 8, entry + 8, 4);
     }
 }
 
@@ -114,6 +117,8 @@ static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEnti
 {
     uint8_t* baseLoadout = FindRow(L->index, REG_LOADOUT_SLOTS, 16, baseEntity);
     uint8_t* own = baseLoadout != NULL ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    if (baseLoadout != NULL && own == NULL && FindRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) == NULL)
+        own = OverflowAdd(L->index, REG_LOADOUT, w->entity); /* the loadout index is full: a row past it */
     int taken = 0;
     for (uint32_t r = 0; r < L->recordCount && own != NULL; r++)
     {
@@ -393,6 +398,10 @@ static void RegisterWeapon(WeaponLoad* L, Weapon* w)
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
     uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    /* The loadout index full (193 free rows): the weapon's row goes past it, once nothing else refuses it. */
+    if (mapRow != NULL && !w->plain && loadoutRow == NULL && L->recordCount < REG_LOADOUT_RECORDS + (uint32_t)g_weaponCount &&
+        FindRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) == NULL)
+        loadoutRow = OverflowAdd(L->index, REG_LOADOUT, w->entity);
     if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + (uint32_t)g_weaponCount)
     {
         ApiLog(w->mod, "%s: no free row; not registered", w->name);

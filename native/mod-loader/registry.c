@@ -223,7 +223,12 @@ static uint32_t SlotsOf(uint32_t component)
     return 0;
 }
 
-/* Open-addressing tables keyed by a u64 at the start of each row. */
+static uint8_t* OverflowFind(const uint8_t* rows, uint64_t entity); /* component_overflow.c */
+static void OverflowMoved(uint32_t c, const uint8_t* from, const uint8_t* to);
+static uint64_t OverflowOwner(uint32_t c, const uint8_t* table, uint32_t record);
+
+/* Open-addressing tables keyed by a u64 at the start of each row. A component table's (16-byte rows) that has run out
+ * may hold more rows past its index (component_overflow.c), found on a miss. */
 static uint8_t* FindRow(uint8_t* rows, uint32_t slots, uint32_t stride, uint64_t key)
 {
     uint32_t at = (uint32_t)(key % slots);
@@ -232,10 +237,10 @@ static uint8_t* FindRow(uint8_t* rows, uint32_t slots, uint32_t stride, uint64_t
         uint64_t value;
         memcpy(&value, rows + (size_t)at * stride, 8);
         if (value == key) return rows + (size_t)at * stride;
-        if (value == 0) return NULL;
+        if (value == 0) break;
         at = at + 1 == slots ? 0 : at + 1;
     }
-    return NULL;
+    return stride == 16 && key != 0 ? OverflowFind(rows, key) : NULL;
 }
 
 static uint8_t* FreeRow(uint8_t* rows, uint32_t slots, uint32_t stride, uint64_t key)
@@ -305,7 +310,7 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
         memcpy(&r, table + 16 * i + 8, 4);
         if (entity != 0 && r == record && !PlainCopy(entity)) { if (owner != 0) return 0; owner = entity; }
     }
-    return owner;
+    return owner != 0 ? owner : OverflowOwner(REG_LOADOUT, table, record); /* a weapon given a row past the index */
 }
 
 /* A text that grows as it is written (registered-items.json): failed once an allocation fails, so nothing incomplete
@@ -822,6 +827,7 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     owned = &g_owned[g_ownedCount++];
     *owned = (OwnedTable){c, stride, first, first, first + room, copy + 32};
     SetStatePointer(state, REG_TABLES + 8 * c, owned->index);
+    OverflowMoved(c, table, owned->index); /* its overflow rows (component_overflow.c) follow it */
     Note("registry: component %u copied (%u slots, %u-byte records, new records from %u)", c, slots, stride, first);
     return owned;
 }

@@ -1411,6 +1411,106 @@ static void NetworkWidthFixture(void)
     g_networkRva = savedRva;
 }
 
+/* Overflow rows (component_overflow.c): a full table takes rows past its index; HellForge's FindRow and the hooked
+ * helpers' thunks (run here as machine code, their originals stand-ins) find them, and nothing else does; they follow
+ * a table HellForge copies; LoadoutOwner finds a weapon whose loadout row is one. */
+static uint8_t* g_fakeHelperHit;
+static uint8_t* FakeHelperByKey(uint64_t key) { return key == 0x77 ? g_fakeHelperHit : NULL; }
+static uint8_t* FakeHelperByPointer(const uint64_t* key) { return key != NULL && *key == 0x77 ? g_fakeHelperHit : NULL; }
+typedef uint8_t* (*ThunkByKey)(uint64_t key);
+typedef uint8_t* (*ThunkByPointer)(const uint64_t* key);
+
+static void OverflowFixture(void)
+{
+    uintptr_t savedGame = g_game;
+    uint8_t* game = VirtualAlloc(NULL, REG_STATE_GLOBAL + 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    uint8_t* state = VirtualAlloc(NULL, REG_TABLES + 8 * OVF_COMPONENTS + 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(game != NULL && state != NULL);
+    memcpy(game + REG_STATE_GLOBAL, &state, 8);
+    g_game = (uintptr_t)game;
+    /* table 32 (MeleeAttack: 324 slots, 16-byte records), full */
+    uint32_t slots = SlotsOf(32);
+    assert(slots == 324 && OverflowStrideOf(32) == 16 && OverflowCapable(32) && !OverflowCapable(107));
+    uint8_t* table = calloc((size_t)slots * 16 + 400 * 16, 1);
+    for (uint32_t i = 0; i < slots; i++) { uint64_t key = 0x1000 + i; memcpy(table + 16 * i, &key, 8); }
+    memcpy(state + REG_TABLES + 8 * 32, &table, 8);
+    assert(FreeRow(table, slots, 16, 0x9999) == NULL && FindRow(table, slots, 16, 0x9999) == NULL);
+
+    g_overflowHooked[32] = 1; /* as if its helpers were hooked */
+    uint8_t* row = OverflowAdd(table, 32, 0x9999);
+    assert(row != NULL && OverflowAdd(table, 32, 0x9999) == NULL); /* one row an entity */
+    uint32_t record = 5;
+    memcpy(row + 8, &record, 4);
+    assert(FindRow(table, slots, 16, 0x9999) == row && FindRow(table, slots, 16, 0x8888) == NULL && FindRow(table, slots, 32, 0x9999) == NULL);
+    uint8_t* expected = table + (size_t)slots * 16 + 5 * 16;
+    assert(OverflowRecord(0x9999, 32) == expected && OverflowRecord(0x8888, 32) == NULL && OverflowRecord(0, 32) == NULL);
+
+    /* the thunks: the helper's own answer first, the overflow only on its miss */
+    uint8_t* code = VirtualAlloc(NULL, 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    assert(code != NULL);
+    size_t byKey = OVF_HELPERS, byPointer = OVF_HELPERS;
+    for (size_t i = 0; i < OVF_HELPERS; i++)
+    {
+        if (kComponentHelpers[i].component == 32 && !kComponentHelpers[i].byPointer) byKey = i;
+        if (kComponentHelpers[i].byPointer && byPointer == OVF_HELPERS) byPointer = i;
+    }
+    assert(byKey < OVF_HELPERS && byPointer < OVF_HELPERS);
+    uint8_t* end = OverflowThunk(byKey, code);
+    assert(end - code <= (ptrdiff_t)OVF_THUNK);
+    assert(OverflowThunk(byPointer, code + OVF_THUNK) - (code + OVF_THUNK) <= (ptrdiff_t)OVF_THUNK);
+    FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
+    g_overflowOriginal[byKey] = (void*)FakeHelperByKey;
+    g_overflowOriginal[byPointer] = (void*)FakeHelperByPointer;
+    uint8_t hit[16];
+    g_fakeHelperHit = hit;
+    ThunkByKey a = (ThunkByKey)(void*)code;
+    assert(a(0x77) == hit && a(0x9999) == expected && a(0x8888) == NULL && a(0) == NULL);
+    /* the by-pointer thunk asks for its own table; point that table's state at table 32's for the check */
+    /* the by-pointer thunk asks its own table (another component): give that one a row too */
+    uint32_t pc = kComponentHelpers[byPointer].component;
+    uint8_t* other = calloc((size_t)SlotsOf(pc) * 16 + 64 * (size_t)OverflowStrideOf(pc), 1);
+    memcpy(state + REG_TABLES + 8 * pc, &other, 8);
+    g_overflowHooked[pc] = 1;
+    uint8_t* otherRow = OverflowAdd(other, pc, 0x9999);
+    assert(pc != 32 && otherRow != NULL);
+    memcpy(otherRow + 8, &record, 4);
+    uint8_t* otherExpected = other + (size_t)SlotsOf(pc) * 16 + 5 * (size_t)OverflowStrideOf(pc);
+    uint64_t keys[4] = {0x77, 0x9999, 0x8888, 0};
+    ThunkByPointer b = (ThunkByPointer)(void*)(code + OVF_THUNK);
+    assert(b(&keys[0]) == hit && b(&keys[1]) == otherExpected && b(NULL) == NULL && b(&keys[2]) == NULL && b(&keys[3]) == NULL);
+
+    /* a table HellForge copies: its rows follow it */
+    uint8_t* copy = calloc((size_t)slots * 16 + 400 * 16, 1);
+    memcpy(copy, table, (size_t)slots * 16);
+    OverflowMoved(32, table, copy);
+    memcpy(state + REG_TABLES + 8 * 32, &copy, 8);
+    assert(FindRow(copy, slots, 16, 0x9999) == row && FindRow(table, slots, 16, 0x9999) == NULL);
+    assert(OverflowRecord(0x9999, 32) == copy + (size_t)slots * 16 + 5 * 16);
+    OverflowMoved(32, table, (uint8_t*)1); /* not its table: nothing moves */
+    assert(g_overflowTable[32] == copy);
+
+    /* the loadout index full: a weapon's row past it, found as its record's owner */
+    uint8_t* loadout = calloc(REG_LOADOUT_SLOTS * 16, 1);
+    g_overflowHooked[REG_LOADOUT] = 1;
+    uint8_t* own = OverflowAdd(loadout, REG_LOADOUT, 0xABCD);
+    assert(own != NULL);
+    uint32_t mine = 300;
+    memcpy(own + 8, &mine, 4);
+    assert(LoadoutOwner(loadout, 300) == 0xABCD && LoadoutOwner(loadout, 301) == 0);
+
+    /* everything back as it was for the fixtures after this one */
+    memset((void*)g_overflowIndex, 0, (size_t)OVF_SLOTS * sizeof(LONG));
+    g_overflowCount = 0;
+    memset((void*)g_overflowTable, 0, sizeof g_overflowTable);
+    memset(g_overflowHooked, 0, sizeof g_overflowHooked);
+    memset(g_overflowOriginal, 0, sizeof g_overflowOriginal);
+    VirtualFree(code, 0, MEM_RELEASE);
+    free(loadout); free(copy); free(table); free(other);
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+    g_game = savedGame;
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3608,6 +3708,7 @@ int main(int argc, char** argv)
     PickerFrameFixture();
     StratagemFieldFixture();
     NetworkWidthFixture();
+    OverflowFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
