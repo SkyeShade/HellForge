@@ -85,5 +85,55 @@ static class RegisteredItemsTests
         check((string)cap["data"]! == "11", "The live game's difficulty cap of 10 still applies.");
         check(MissionService.Rewards.Requisition(11) > MissionService.Rewards.Requisition(10) &&
             MissionService.Rewards.Experience(11, true, 0) > MissionService.Rewards.Experience(10, true, 0), "Difficulty 11 pays no more than 10.");
+
+        Limits(folder, fixtures, check);
+    }
+
+    // The client keeps 4096 catalogue items and 4096 owned items (RegisteredItems' limits). The stress test mod's 64
+    // Liberator copies (57 items each) and 64 stratagems (2 each) are more than fit: every stratagem goes in first,
+    // weapons only whole and while they fit, and what is left out is said once and stays out of every list.
+    static void Limits(string folder, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
+    {
+        const uint Strike = 1560416221, FirstWeapon = 0x7E570001, FirstStratagem = 0x7E571001, FirstStable = 0x7E572001;
+        var file = Path.Combine(folder, "limits.json");
+        var entries = Enumerable.Range(0, 64).Select(i => $$"""{"mixId":{{FirstWeapon + i}},"copyOf":{{Liberator}},"mod":"stress","unit":"t{{i}}"}""")
+            .Concat(Enumerable.Range(0, 64).Select(i =>
+                $$"""{"kind":"stratagem","mixId":{{FirstStratagem + i}},"stable":{{FirstStable + i}},"copyOfType":118,"copyOf":{{Strike}},"mod":"stress","name":"s{{i}}"}"""));
+        File.WriteAllText(file, """{"format":1,"items":[""" + string.Join(",", entries) + "]}");
+        List<string> logged = [];
+        var items = new RegisteredItems(file) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = logged.Add };
+
+        var vanilla = fixtures["/Progression/items"].GetArrayLength();
+        var children = fixtures["/Progression/items"].EnumerateArray().Count(i => i.TryGetProperty("parentId", out var p) && p.GetUInt32() == Liberator);
+        var catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        var ids = catalogue.Select(i => (uint)i!["mixId"]!).ToHashSet();
+        var weapons = Enumerable.Range(0, 64).Select(i => FirstWeapon + (uint)i).Where(ids.Contains).ToList();
+        var fit = (RegisteredItems.CatalogueLimit - vanilla - 64 * 2) / (1 + children);
+        check(catalogue.Count <= RegisteredItems.CatalogueLimit, $"The catalogue has {catalogue.Count} items; the game keeps {RegisteredItems.CatalogueLimit}.");
+        check(Enumerable.Range(0, 64).All(i => ids.Contains(FirstStratagem + (uint)i)), "Stratagems were left out behind weapons.");
+        check(weapons.Count == fit && weapons.SequenceEqual(Enumerable.Range(0, fit).Select(i => FirstWeapon + (uint)i)),
+            $"{weapons.Count} weapons went in, not the first {fit} that fit whole.");
+        check(weapons.All(w => catalogue.Count(i => (uint?)i!["parentId"] == w) == children), "A weapon went in without all of its children.");
+        check(logged.Count == 1 && logged[0].Contains($"{64 - fit} left out", StringComparison.Ordinal), "What was left out was not said: " + string.Join(" | ", logged));
+        items.Apply("/Progression/items", fixtures["/Progression/items"]);
+        check(logged.Count == 1, "The same report was logged twice.");
+
+        var packages = (JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!;
+        var owners = packages.OfType<JsonObject>().SelectMany(p => p["requiredItems"]!.AsArray().Select(r => (uint)r!)).ToHashSet();
+        check(packages.Count <= RegisteredItems.PackageLimit && weapons.All(owners.Contains) && !owners.Contains(FirstWeapon + 63),
+            "Mastery packages are not those of the weapons that went in.");
+
+        // An inventory near the game's limit: the stratagems first, then weapons with their held child, each whole.
+        var baseChild = catalogue.OfType<JsonObject>().First(i => (uint?)i["parentId"] == Liberator);
+        var filler = Enumerable.Range(0, 4000).Select(i => (object)new { mixId = 0x10000000u + (uint)i, amount = 1, isDiscovered = true })
+            .Append(new { mixId = (uint)baseChild["mixId"]!, amount = 1, isDiscovered = true }).ToArray();
+        var held = JsonNode.Parse(items.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = filler })).GetRawText())!["items"]!.AsArray();
+        var owned = held.Select(i => (uint)i!["mixId"]!).ToHashSet();
+        var room = (RegisteredItems.InventoryLimit - filler.Length - 64) / 2;
+        check(held.Count <= RegisteredItems.InventoryLimit && Enumerable.Range(0, 64).All(i => owned.Contains(FirstStratagem + (uint)i)),
+            $"The inventory has {held.Count} items, or lacks a stratagem.");
+        check(weapons.Take(room).All(w => owned.Contains(w) && owned.Contains(RegisteredItems.Rehome((uint)baseChild["mixId"]!, Liberator, w))) &&
+            !weapons.Skip(room).Any(owned.Contains) && !owned.Contains(FirstWeapon + 63), "Weapons were owned in part, past the limit, or without going in.");
+        check(logged.Count == 2 && logged[1].Contains("owned items", StringComparison.Ordinal), "The inventory's limit was not said.");
     }
 }
