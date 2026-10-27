@@ -14,14 +14,15 @@
  *              150, 149 or 148 in walks, guards and sentinels) grow by the number of new types, so walks reach them and
  *              checks pass. Bounds that size fixed 150-entry arrays stay.
  *   0x21D4AA0  the StratagemType names (150, then "Count"), read by type by the mission report: moved too (3 sites).
- *   0x348E3FC  the number of rows loaded (149), which sizes two per-type heap arrays: raised to the new length.
+ *   0x348E3FC  the number of rows loaded (149), which sizes two per-type heap arrays: raised to the new length, and kept
+ *              there when the loader runs again (it sets it back to the rows it loaded, 0x11F2230; kCountStub).
  *   picker 0x18D8710  one register is both the bound of its walk over the types (0x18D8AA9 mov edi, 0x96) and the
  *              count of 150 stack records it then clears; the walk's bound grows and the clear's count is set again
  *              to 150 in the alignment padding before the clear (0x18D8AE5). Its list of available stratagems holds
  *              150, and at most 96 vanilla ones can be available, so mods add at most 48.
  *   loadout +0x78C u32[150]  a level-package choice per type, written only for types whose row lists level packages
- *              (+0x118 / +0x120): new rows list none, so it is never written past its end (its readers only compare the
- *              value with that empty list).
+ *              (+0x118 / +0x120): new rows list none. Six readers index it by the type unchecked, so a new type read
+ *              past its end, and its decoder and writer would write past it; each goes through a guard (kChoiceGuards).
  * Row members HellForge sets (HD2Runtime stratagem research): +0 type, +4 stable id (the catalogue's itemId of the
  * stratagem's kind-10 item and the saved loadout's identity), +0x28 / +0x2C / +0x30 name, cased name and description
  * text ids, +0x40 / +0x48 pointer to the input's u32 directions (1 up, 2 right, 3 down, 4 left) and their count, +0x50
@@ -311,6 +312,94 @@ static int32_t TableDisplacement(uintptr_t table, uintptr_t game, const TableSit
     return s->rip ? (int32_t)(int64_t)(table + s->slot * 8u - (game + s->rva + s->size)) : (int32_t)(int64_t)(table + s->slot * 8u - game);
 }
 
+/* The loadout's per-type choice (+0x78C, u32[150]) is indexed by a stratagem type, unchecked, by six readers (a new
+ * type, 150 and up, read past it into the loadout's next fields), the level-choice decoder's store and the writer
+ * (research stratagem-limit, content-limits\stratagems-wide). Each instruction goes through a stub: for a vanilla
+ * type the instruction itself; for a new one a read gives 0 (no choice) and a write is skipped. The flags are dead
+ * after every site (a call or a flag write comes first), so the stubs compare freely. {rva, length, the instruction,
+ * the type's test (cmp reg, 150), what a read gives instead}. */
+typedef struct ChoiceGuard { uint32_t rva; uint8_t length; uint8_t pin[8]; uint8_t test[7], testLength; uint8_t none[3], noneLength; } ChoiceGuard;
+#define STR_TEST_EAX {0x3D, 0x96, 0x00, 0x00, 0x00}, 5 /* cmp eax, 150 */
+static const ChoiceGuard kChoiceGuards[8] = {
+    {0x13649EEu, 8, {0x44, 0x8B, 0x8C, 0x83, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x45, 0x31, 0xC9}, 3}, /* mov r9d, [rbx+rax*4+0x78c] */
+    {0x1364B19u, 7, {0x8B, 0x84, 0x83, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x31, 0xC0}, 2},             /* mov eax, [rbx+rax*4+0x78c] */
+    {0x13691DEu, 8, {0x44, 0x8B, 0x8C, 0x83, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x45, 0x31, 0xC9}, 3},
+    {0x1369309u, 7, {0x8B, 0x84, 0x83, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x31, 0xC0}, 2},
+    {0x175340Au, 8, {0x44, 0x8B, 0x8C, 0x87, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x45, 0x31, 0xC9}, 3}, /* mov r9d, [rdi+rax*4+0x78c] */
+    {0x175610Cu, 8, {0x44, 0x8B, 0x8C, 0x87, 0x8C, 0x07, 0x00, 0x00}, STR_TEST_EAX, {0x45, 0x31, 0xC9}, 3},
+    {0x11E9201u, 5, {0x43, 0x89, 0x6C, 0xB5, 0x00}, {0x49, 0x81, 0xFE, 0x96, 0x00, 0x00, 0x00}, 7, {0}, 0},  /* mov [r13+r14*4], ebp (decoder) */
+    {0x1467A09u, 8, {0x44, 0x89, 0x8C, 0x88, 0x8C, 0x07, 0x00, 0x00}, {0x81, 0xF9, 0x96, 0x00, 0x00, 0x00}, 6, {0}, 0}}; /* mov [rax+rcx*4+0x78c], r9d */
+#undef STR_TEST_EAX
+#define STR_GUARD_SLOT 32u
+/* The loader's last store of the count (mov [rip -> 0x348E3FC], r10d: the rows it loaded) and its stub, which keeps
+ * the count at least the moved list's length: {store as it was; cmp dword [count], N; jae back; mov dword [count], N;
+ * jmp back}, the rip-relative operands set at install. */
+#define STR_COUNT_STORE 0x11F2230u
+static const uint8_t kCountStorePin[7] = {0x44, 0x89, 0x15, 0xC5, 0xC1, 0x29, 0x02};
+static const uint8_t kCountStub[34] = {
+    0x44, 0x89, 0x15, 0, 0, 0, 0,                 /*  0 mov [rip+count], r10d (disp at 3) */
+    0x81, 0x3D, 0, 0, 0, 0, 0, 0, 0, 0,           /*  7 cmp dword [rip+count], N (disp at 9, N at 13) */
+    0x73, 0x0A,                                   /* 17 jae 29 */
+    0xC7, 0x05, 0, 0, 0, 0, 0, 0, 0, 0,           /* 19 mov dword [rip+count], N (disp at 21, N at 25) */
+    0xE9, 0, 0, 0, 0};                            /* 29 jmp back (rel32 at 30) */
+
+/* NULL when every guarded instruction is the reviewed one. */
+static const char* ChoiceGuardsFailed(uintptr_t game)
+{
+    uint8_t code[8];
+    for (size_t i = 0; i < sizeof kChoiceGuards / sizeof kChoiceGuards[0]; i++)
+        if (SafeRead(game + kChoiceGuards[i].rva, code, kChoiceGuards[i].length) || memcmp(code, kChoiceGuards[i].pin, kChoiceGuards[i].length) != 0)
+            return "an instruction indexing the loadout's choices by type is not the reviewed one";
+    if (SafeRead(game + STR_COUNT_STORE, code, sizeof kCountStorePin) || memcmp(code, kCountStorePin, sizeof kCountStorePin) != 0)
+        return "the stratagem list's loader does not store its count as reviewed";
+    return NULL;
+}
+
+static void PutRel32At(uint8_t* at, uintptr_t target) { int32_t rel = (int32_t)(int64_t)(target - ((uintptr_t)at + 4)); memcpy(at, &rel, 4); }
+
+/* Sends the guarded instructions and the count's store through their stubs (count: the moved list's length); NULL,
+ * or why not. The stubs are complete before any site jumps to them. */
+static const char* GuardStratagemTypes(uintptr_t game, uint32_t count)
+{
+    size_t guards = sizeof kChoiceGuards / sizeof kChoiceGuards[0];
+    uint8_t* code = AllocateNearGame(game, guards * STR_GUARD_SLOT + sizeof kCountStub);
+    if (code == NULL) return "no memory within 2 GB of game.dll for the type guards";
+    for (size_t i = 0; i < guards; i++)
+    {
+        const ChoiceGuard* g = &kChoiceGuards[i];
+        uint8_t* stub = code + i * STR_GUARD_SLOT, *at = stub;
+        uintptr_t back = game + g->rva + g->length;
+        memcpy(at, g->test, g->testLength); at += g->testLength;
+        *at++ = 0x73; *at++ = (uint8_t)(g->length + 5); /* jae: a new type */
+        memcpy(at, g->pin, g->length); at += g->length;  /* a vanilla type: the instruction */
+        *at++ = 0xE9; PutRel32At(at, back); at += 4;
+        memcpy(at, g->none, g->noneLength); at += g->noneLength;
+        *at++ = 0xE9; PutRel32At(at, back);
+    }
+    uint8_t* stub = code + guards * STR_GUARD_SLOT;
+    uintptr_t counted = game + STR_ROWS_LOADED;
+    memcpy(stub, kCountStub, sizeof kCountStub);
+    /* each rip-relative operand counts from the end of its instruction */
+    int32_t rel = (int32_t)(int64_t)(counted - ((uintptr_t)stub + 7)); memcpy(stub + 3, &rel, 4);
+    rel = (int32_t)(int64_t)(counted - ((uintptr_t)stub + 17)); memcpy(stub + 9, &rel, 4);
+    memcpy(stub + 13, &count, 4);
+    rel = (int32_t)(int64_t)(counted - ((uintptr_t)stub + 29)); memcpy(stub + 21, &rel, 4);
+    memcpy(stub + 25, &count, 4);
+    PutRel32At(stub + 30, game + STR_COUNT_STORE + sizeof kCountStorePin);
+    DWORD protect;
+    if (!VirtualProtect(code, guards * STR_GUARD_SLOT + sizeof kCountStub, PAGE_EXECUTE_READ, &protect)) return "the type guards could not be made executable";
+    for (size_t i = 0; i <= guards; i++)
+    {
+        uintptr_t site = i < guards ? game + kChoiceGuards[i].rva : game + STR_COUNT_STORE;
+        uint8_t length = i < guards ? kChoiceGuards[i].length : (uint8_t)sizeof kCountStorePin;
+        uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        int32_t to = (int32_t)(int64_t)((uintptr_t)(code + i * STR_GUARD_SLOT) - (site + 5)); /* from the site, not this copy */
+        memcpy(jump + 1, &to, 4);
+        if (ApiWrite(site, jump, length)) return "an instruction indexing by stratagem type could not be guarded";
+    }
+    return NULL;
+}
+
 /* NULL when every instruction addressing the list and reading the names is the reviewed one. */
 static const char* StratagemReadersFailed(uintptr_t game)
 {
@@ -336,6 +425,7 @@ static const char* StratagemSitesFailed(uintptr_t game)
     if (SafeRead(game + STR_CLEAR, clear, sizeof clear) || memcmp(clear, kStratagemClearPin, sizeof clear) != 0)
         return "the stratagem list's loader does not clear the reviewed 150 slots";
     const char* why = StratagemReadersFailed(game);
+    if (why == NULL) why = ChoiceGuardsFailed(game);
     if (why != NULL) return why;
     uint8_t bound[sizeof kPickerBoundPin], pad[sizeof kPickerPadPin];
     if (SafeRead(game + STR_PICKER_BOUND, bound, sizeof bound) || memcmp(bound, kPickerBoundPin, sizeof bound) != 0 ||
@@ -468,6 +558,9 @@ static const char* MoveStratagems(uintptr_t game, uint8_t** moved)
     const char* why = MoveStratagemReaders(game, table, names);
     if (why != NULL) return why;
     uint32_t count = STR_VANILLA + g_stratagemCount;
+    /* Before the count and the bounds let code reach a new type: nothing then indexes the choices past their end. */
+    why = GuardStratagemTypes(game, count);
+    if (why != NULL) return why;
     if (ApiWrite(game + STR_ROWS_LOADED, &count, 4)) return "the row count could not be raised";
     if (ApiWrite(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad) || ApiWrite(game + STR_PICKER_BOUND + 1, &count, 4))
         return "the loadout picker could not be widened";

@@ -1202,6 +1202,75 @@ static void SlotCountsFixture(void)
     assert(known == 270);
 }
 
+/* The stratagem type guards (GuardStratagemTypes), run as machine code: each guarded instruction sits at its RVA in a
+ * fake game.dll, inside a small function that loads its registers from the arguments; the guard sends it through its
+ * stub. A vanilla type reads and writes the loadout's choice as before; a new one reads 0 and writes nothing, and the
+ * loader's count store keeps the moved list's length. */
+typedef uint32_t (*GuardCallFn)(uint8_t* base, uint32_t type, uint32_t value);
+static uint8_t* GuardHarness(uintptr_t game, uint32_t rva, const uint8_t* prefix, size_t prefixLength, const uint8_t* pin, size_t length,
+    const uint8_t* suffix, size_t suffixLength)
+{
+    uint8_t* at = (uint8_t*)(game + rva - prefixLength);
+    assert(VirtualAlloc((void*)((uintptr_t)at & ~(uintptr_t)0xFFF), 0x2000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    memcpy(at, prefix, prefixLength);
+    memcpy(at + prefixLength, pin, length);
+    memcpy(at + prefixLength + length, suffix, suffixLength);
+    return at;
+}
+
+static void StratagemGuardsFixture(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x3500000, MEM_RESERVE, PAGE_NOACCESS);
+    assert(game != 0);
+    /* rbx / rdi = the loadout, eax = the type; the read's result returned */
+    static const uint8_t rbxIn[] = {0x53, 0x48, 0x89, 0xCB, 0x89, 0xD0}, rdiIn[] = {0x57, 0x48, 0x89, 0xCF, 0x89, 0xD0};
+    static const uint8_t r9Out[] = {0x44, 0x89, 0xC8, 0x5B, 0xC3}, eaxOut[] = {0x5B, 0xC3}, r9OutRdi[] = {0x44, 0x89, 0xC8, 0x5F, 0xC3};
+    /* decoder: r13 = the choices, r14 = the type, ebp = the value; writer: rax = the loadout, ecx = the type, r9d = the value */
+    static const uint8_t decodeIn[] = {0x41, 0x55, 0x41, 0x56, 0x55, 0x49, 0x89, 0xCD, 0x41, 0x89, 0xD6, 0x44, 0x89, 0xC5};
+    static const uint8_t decodeOut[] = {0x5D, 0x41, 0x5E, 0x41, 0x5D, 0xC3};
+    static const uint8_t writeIn[] = {0x48, 0x89, 0xC8, 0x89, 0xD1, 0x45, 0x89, 0xC1}, ret[] = {0xC3};
+    static const uint8_t countIn[] = {0x41, 0x89, 0xD2}; /* mov r10d, edx (the rows loaded) */
+    GuardCallFn call[9];
+    for (int i = 0; i < 8; i++)
+    {
+        const ChoiceGuard* g = &kChoiceGuards[i];
+        int rdi = g->pin[3] == 0x87, r9 = g->pin[0] == 0x44;
+        if (i == 6) call[i] = (GuardCallFn)GuardHarness(game, g->rva, decodeIn, sizeof decodeIn, g->pin, g->length, decodeOut, sizeof decodeOut);
+        else if (i == 7) call[i] = (GuardCallFn)GuardHarness(game, g->rva, writeIn, sizeof writeIn, g->pin, g->length, ret, sizeof ret);
+        else call[i] = (GuardCallFn)GuardHarness(game, g->rva, rdi ? rdiIn : rbxIn, sizeof rbxIn, g->pin, g->length,
+            rdi ? r9OutRdi : r9 ? r9Out : eaxOut, rdi ? sizeof r9OutRdi : r9 ? sizeof r9Out : sizeof eaxOut);
+    }
+    call[8] = (GuardCallFn)GuardHarness(game, STR_COUNT_STORE, countIn, sizeof countIn, kCountStorePin, sizeof kCountStorePin, ret, sizeof ret);
+    uint32_t* count = (uint32_t*)(game + STR_ROWS_LOADED);
+    assert(VirtualAlloc((void*)((uintptr_t)count & ~(uintptr_t)0xFFF), 0x1000, MEM_COMMIT, PAGE_READWRITE) != NULL);
+    assert(ChoiceGuardsFailed(game) == NULL);
+
+    static uint8_t loadout[0x1000];
+    uint32_t* choices = (uint32_t*)(loadout + 0x78C);
+    for (uint32_t t = 0; t < (sizeof loadout - 0x78C) / 4; t++) choices[t] = t < 150 ? 1000 + t : 0xDEADBEEFu;
+    for (int i = 0; i < 6; i++) assert(call[i](loadout, 149, 0) == 1149 && call[i](loadout, 150, 0) == 0xDEADBEEFu); /* unguarded: reads past */
+    assert(GuardStratagemTypes(game, 198) == NULL);
+    for (int i = 0; i < 6; i++)
+    {
+        assert(call[i](loadout, 0, 0) == 1000 && call[i](loadout, 7, 0) == 1007 && call[i](loadout, 149, 0) == 1149);
+        assert(call[i](loadout, 150, 0) == 0 && call[i](loadout, 197, 0) == 0 && call[i](loadout, 255, 0) == 0 && call[i](loadout, 0xFFFFFFFFu, 0) == 0);
+    }
+    call[6](loadout + 0x78C, 5, 77);
+    call[6](loadout + 0x78C, 150, 99);
+    call[6](loadout + 0x78C, 255, 99);
+    call[7](loadout, 9, 88);
+    call[7](loadout, 151, 99);
+    call[7](loadout, 1173, 99);
+    assert(choices[5] == 77 && choices[9] == 88 && choices[150] == 0xDEADBEEFu && choices[151] == 0xDEADBEEFu && choices[255] == 0xDEADBEEFu);
+    for (uint32_t t = 0; t < 150; t++) assert(t == 5 || t == 9 || choices[t] == 1000 + t);
+    *count = 0;
+    call[8](NULL, 149, 0);
+    assert(*count == 198); /* the loader's 149 rows, kept at the moved list's length */
+    call[8](NULL, 300, 0);
+    assert(*count == 300);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
 /* registered-items.json's text: it grows past any first size, and names are escaped so the backend can read it. */
 static void RegisteredItemsTextFixture(void)
 {
@@ -3395,6 +3464,7 @@ int main(int argc, char** argv)
     DifficultyFixture();
     RegisteredItemsTextFixture();
     SlotCountsFixture();
+    StratagemGuardsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {
