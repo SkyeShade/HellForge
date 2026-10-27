@@ -51,6 +51,17 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
+# bsdtar (libarchive) unpacks .7z and .rar mods; zips and folders need no extra program, so this is only a warning.
+if ! command -v bsdtar >/dev/null; then
+  echo "Warning: bsdtar was not found; it is needed only to add .7z or .rar mods, so zips and folders still work." >&2
+  if command -v pacman >/dev/null; then echo "Install it with: sudo pacman -S --needed libarchive" >&2
+  elif command -v apt-get >/dev/null; then echo "Install it with: sudo apt install libarchive-tools" >&2
+  elif command -v dnf >/dev/null; then echo "Install it with: sudo dnf install bsdtar" >&2
+  elif command -v zypper >/dev/null; then echo "Install it with: sudo zypper install bsdtar" >&2
+  else echo "Install it with your package manager: bsdtar is in libarchive (libarchive-tools on Debian and Ubuntu)." >&2
+  fi
+fi
+
 if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then INSTALL="$(cd "$here/../.." && pwd)"; fi
 : "${INSTALL:?INSTALL is not set: the HellForge installation folder (the one with hellforge-install.json)}"
 [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }
