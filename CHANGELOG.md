@@ -8,6 +8,20 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Added
+
+- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
+  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
+  taken off between releases.
+
+### For launcher developers
+
+- `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
+  list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
+  installation's saved list.
+- A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
+  and why a published list was not taken.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.
