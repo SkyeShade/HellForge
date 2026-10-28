@@ -7,9 +7,9 @@
 # (hf-bridge-host.sh, unless one is running already), fetches the live galactic war while this PC still has its network
 # (the session that follows has none and serves this copy), and starts the requested program inside a network namespace
 # with loopback only (hellforge-offline.sh), where hf-inner.sh forwards Steam's ports and runs it through Proton.
-# The bridge it started stops when the wrapped program and its session processes close.
+# A bridge it starts is stopped by the last wrapper using it; one started by hand is left alone.
 # When started as the launcher, it also prepares mod tools once; when called with a program and arguments it runs that
-# request through Proton. The bridge it started stops when the wrapped program and its session processes close.
+# request through Proton.
 #
 # Settings (environment variables; each has a default that is found):
 #   PROTON                            the proton script to run HellForge with (default: one the Steam client has, the last
@@ -39,14 +39,14 @@ fi
 
 # The programs these scripts run, with the install command for the package manager this system has.
 missing=""
-for program in socat ip ss unshare pgrep; do command -v "$program" >/dev/null || missing="$missing $program"; done
+for program in socat ip ss unshare pgrep flock; do command -v "$program" >/dev/null || missing="$missing $program"; done
 if [ -n "$missing" ]; then
   echo "HellForge on Linux needs these programs, which were not found:$missing" >&2
   if command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed iproute2 socat util-linux procps-ng" >&2
   elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install iproute2 socat util-linux procps" >&2
   elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install iproute socat util-linux procps-ng" >&2
   elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install iproute2 socat util-linux procps" >&2
-  else echo "Install them with your package manager: ip and ss are in iproute2 (iproute on Fedora), unshare in util-linux, pgrep in procps, and socat in socat." >&2
+  else echo "Install them with your package manager: ip and ss are in iproute2 (iproute on Fedora), unshare and flock in util-linux, pgrep in procps, and socat in socat." >&2
   fi
   exit 1
 fi
@@ -116,25 +116,104 @@ if [ ! -x /usr/local/lib/hellforge/unshare ] && [ "$(cat /proc/sys/kernel/apparm
   exit 1
 fi
 
-# Steam's bridge: the one running, else one of our own for as long as HellForge runs.
+# Steam's bridge. The state lock serializes checking for a bridge, starting one, and stopping the last one. Each wrapper
+# holds the users lock shared until it exits; only the last user gets it exclusively and may stop the bridge. A bridge
+# started by hand has no PID file and is left alone.
 dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-bridge=""
+lock="$dir/hf-bridge.lock"
+users_lock="$dir/hf-bridge-users.lock"
+pidfile="$dir/hf-bridge.pid"
+uid=$(id -u)
+state_lock=0
+user_lock=0
+exec 8>"$lock"
+exec 9>"$users_lock"
+
+bridge_pid_running() {
+  local pid=$1 state
+  [ -r "/proc/$pid/stat" ] || return 1
+  read -r _ _ state _ < "/proc/$pid/stat" 2>/dev/null || return 1
+  [ "$state" != Z ]
+}
+
+bridge_pid_ok() {
+  local pid=$1 owner arg
+  [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] || return 1
+  owner=$(stat -c %u "/proc/$pid" 2>/dev/null 8>&- 9>&- || true)
+  [ "$owner" = "$uid" ] || return 1
+  while IFS= read -r -d '' arg; do
+    [ "${arg##*/}" = "hf-bridge-host.sh" ] && return 0
+  done < "/proc/$pid/cmdline" 2>/dev/null
+  return 1
+}
+
+read_bridge_pid() {
+  local pid
+  pid=$(cat "$pidfile" 2>/dev/null 8>&- 9>&- || true)
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  bridge_pid_ok "$pid" || return 1
+  printf '%s\n' "$pid"
+}
+
+stop_bridge() {
+  local pid=$1
+  kill -TERM "$pid" 2>/dev/null 8>&- 9>&- || true
+  for _ in $(seq 1 50); do
+    bridge_pid_running "$pid" || break
+    bridge_pid_ok "$pid" || break
+    sleep 0.1 8>&- 9>&-
+  done
+  if bridge_pid_running "$pid" && bridge_pid_ok "$pid"; then
+    echo "Steam bridge did not stop after 5 seconds; killing it." >&2
+    kill -KILL "$pid" 2>/dev/null 8>&- 9>&- || true
+  fi
+  wait "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  local status=$?
+  local status=$? pid
   echo "HellForge wrapper exiting with code $status."
-  if [ -n "$bridge" ]; then kill "$bridge" 2>/dev/null || true; wait "$bridge" 2>/dev/null || true; fi
+  if [ "$state_lock" = 1 ] || [ "$user_lock" = 1 ]; then
+    if [ "$state_lock" != 1 ]; then
+      exec 8>"$lock"
+      flock -x 8
+      state_lock=1
+    fi
+    if [ "$user_lock" = 1 ]; then
+      flock -u 9
+      user_lock=0
+    fi
+    if flock -x -n 9; then
+      if pid="$(read_bridge_pid)"; then stop_bridge "$pid"; fi
+      rm -f "$pidfile" 8>&- 9>&-
+      flock -u 9
+    fi
+    exec 8>&-
+    state_lock=0
+  fi
 }
 trap cleanup EXIT
 trap 'echo "HellForge wrapper received SIGINT."; exit 130' INT
 trap 'echo "HellForge wrapper received SIGTERM."; exit 143' TERM
 # a bridge answers on its sockets (ones left by a bridge that was killed do not)
-bridged() { for s in "$dir"/hf-steam-*.sock; do [ -S "$s" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null && return 0; done; return 1; }
+bridged() { local s; for s in "$dir"/hf-steam-*.sock; do [ -S "$s" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null 8>&- 9>&- && return 0; done; return 1; }
+flock -x 8
+state_lock=1
+flock -s 9
+user_lock=1
 if ! bridged; then
-  bash "$here/hf-bridge-host.sh" &
-  bridge=$!
-  for _ in $(seq 1 20); do bridged && break; kill -0 "$bridge" 2>/dev/null || break; sleep 0.5; done
+  bash "$here/hf-bridge-host.sh" 8>&- 9>&- &
+  host=$!
+  printf '%s\n' "$host" > "$pidfile"
+  for _ in $(seq 1 20); do bridged && break; kill -0 "$host" 2>/dev/null || break; sleep 0.5 8>&- 9>&-; done
 fi
-bridged || { echo "Steam's local ports could not be bridged: is Steam running and signed in?" >&2; exit 1; }
+if ! bridged; then
+  echo "Steam's local ports could not be bridged: is Steam running and signed in?" >&2
+  exit 1
+fi
+flock -u 8
+exec 8>&-
+state_lock=0
 
 # The live war, now, while there is a network (Wine sees / as Z:). A failure is not fatal: the session then serves the
 # last war fetched, or HellForge's built-in one. The ownership probe does not need the war fetch and skips it so the
@@ -142,7 +221,7 @@ bridged || { echo "Steam's local ports could not be bridged: is Steam running an
 if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   backend="$INSTALL/app/backend/HellForge.LocalBackend.exe"
   cache="Z:$(printf '%s' "$INSTALL/live-war.json" | tr '/' '\\')"
-  if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache"; then echo "Fetched the live galactic war."
+  if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&-; then echo "Fetched the live galactic war."
   else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
   # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
@@ -159,7 +238,7 @@ if [ -n "$pin" ] && ! zigReady; then
   else
     echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..."
     root="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
-    timeout 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null || true
+    timeout 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null 9>&- || true
     for _ in $(seq 1 900); do pgrep -f "HellForge.Cli.exe mod-tools" >/dev/null || break; sleep 1; done
     if zigReady; then echo "Fetched the mod tools."
     else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
@@ -178,7 +257,7 @@ fi
 
 # Run through bash, so the scripts work without their executable bit (lost when copied from Windows or unpacked by setup).
 echo "Entering the offline network namespace."
-if bash "$here/hellforge-offline.sh" bash "$here/hf-inner.sh" "$@"; then
+if bash "$here/hellforge-offline.sh" bash "$here/hf-inner.sh" "$@" 9>&-; then
   echo "Offline namespace command completed."
 else
   status=$?
