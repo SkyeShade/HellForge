@@ -115,6 +115,7 @@ public partial class MainWindow
         SetupStartButton.Content = repair ? "Check and repair" : "Start setup";
         if (reason != null) SetupIntro.Text = reason;
         for (var i = 0; i < setupRows.Count; i++) SetRow((SetupStep)i, null, "");
+        InitializeLinuxSandboxProbeRow();
         if (install != null) _ = DiscoverProtons(install, discovery);
     }
 
@@ -315,7 +316,8 @@ public partial class MainWindow
             reportStep(current);
         }
 
-        var (steamRoot, wrapper, probe) = await CheckLinuxSetupFiles(install, proton);
+        // Phase 1 is information only: the result is shown whether setup continues or later stops, and it enables nothing.
+        var (steamRoot, wrapper, probe) = await CheckLinuxSetupFilesWithProbe(install, proton);
         var build = SupportedBuild.Current;
         var game = await FindLinuxGame(install, steamRoot, build);
 

@@ -89,8 +89,8 @@ default is `~/.local/share/hellforge-prefix`. When the prefix has no HellForge l
 `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs the engine package from
 `app/engine-package.zip`, saves the Proton choice and starts the native launcher. The setup wizard starts automatically
 while the game copy is incomplete. The installer checks the package's required entries before it prepares the prefix,
-and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher or
-`app/linux/hellforge-linux.sh`.
+and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
+`app/linux/hellforge-linux.sh` or `app/linux/hf-sandbox-probe`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -110,8 +110,9 @@ The wizard runs natively. At its start, choose the Proton version; the installer
 saves the choice in `proton-selection.json` and uses it for setup and later game sessions. Settings > Installation >
 Check and repair can change it.
 
-Setup first checks Steam, the chosen Proton and its own files, and installs the engine package from
-`app/engine-package.zip`. It then looks for the game in this order:
+Before those checks, setup runs the informational [sandbox probe](#sandbox-probe) and shows its one-line result. That
+result never stops setup in phase 1. Setup then checks Steam, the chosen Proton and its own files, and installs the
+engine package from `app/engine-package.zip`. It then looks for the game in this order:
 
 1. the installation's own copy, if every file matches the supported build;
 2. Steam's installed copy, if it is the supported build;
@@ -262,15 +263,74 @@ Windows program of the prefix running outside would share its network with HellF
 ([one prefix, one network](#one-prefix-one-network)), and the real game, started while HellForge runs, would have no
 network.
 
+## Sandbox probe
+
+Phase 1 of the planned Linux sandbox is a probe, not a sandbox. It changes nothing: it does not enable the sandbox,
+does not refuse a session, and does not change how the game starts. It answers two questions:
+does this kernel provide the unprivileged mechanisms the design needs, and do the four canaries hold in a throwaway
+child that uses them? The package ships the static x86_64 program as `app/linux/hf-sandbox-probe`; it needs no game,
+Steam, Proton, compiler, root or setuid helper.
+
+Run it as your normal user:
+
+```fish
+bash "<installation>/app/linux/hellforge-linux.sh" --sandbox-probe
+```
+
+The wrapper prints one `PASS`, `FAIL` or `SKIP` line per mechanism and canary, with the evidence it saw, then a final
+one-line result. It writes `logs/sandbox-probe.json`; the wrapper prints that path. Exit code 0 means every mechanism is
+present and every canary held. Any other result is non-zero, and the last line names the first reason. A `SKIP` is not a
+pass.
+
+The mechanisms are Landlock ABI 3 or later, seccomp filter mode and user notification, unprivileged user, mount, PID,
+IPC and network namespaces, overlayfs in a user namespace with a read-only lower layer, a read-only bind of `/` with a
+writable session bind, private `/tmp` and `/dev/shm`, `openat2`, `close_range`, `PR_SET_NO_NEW_PRIVS`, and the AppArmor
+user-namespace sysctl. The canaries then try to write outside the session folders, use `ptrace`/`process_vm_writev`/signals
+on a process outside, fork/exec/clone a new process, and reach a loopback TCP port opened outside. Each attempt must fail;
+writes in the session folder, thread creation and a signal to the process itself must still work. The probe makes its
+temporary folders under `TMPDIR` (or `/tmp`), bounds every child and removes the folders when it exits.
+
+On Ubuntu 24.04 and later, run the existing `allow-namespace.sh` step first when the AppArmor sysctl is 1. After that the
+wrapper runs the probe under the same allowed `unshare` copy and profile as a session, so the probe can still make its
+nested user namespace; the report records that profile instead of calling the restriction a failure. Without the helper
+the probe reports the restriction as `SKIP` and exits non-zero, never as a pass.
+
+### Tester procedure
+
+Run the command above on each target, from Desktop Mode on SteamOS and Bazzite, and attach the report plus the exact
+command, `uname -a`, `/etc/os-release`, and
+`cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns`:
+
+- Fedora 44;
+- Arch or CachyOS;
+- Ubuntu 24.04 or later, with `allow-namespace.sh` applied if the sysctl is 1;
+- SteamOS 3.x (the root filesystem is read-only and `/home` is separate);
+- Bazzite.
+
+Do not run it with `sudo`. If the report says the probe is missing, the package is incomplete; update HellForge. If a
+probe child says `SKIP`, include the report unchanged: it is the evidence that a mechanism was unavailable or not
+testable, not a substitute for a pass.
+
+The design claims that need the game rather than this probe are items 8-18. They are phase 2-4 work:
+
+- **Phase 2:** 8 (a per-session overlay prefix gets its own `wineserver`), 9 (trusted Windows clients reach a
+  `wineserver` across the chosen namespaces), 16 (Wine's job and token calls are not a Linux boundary, and a forced
+  `--sandbox` must be refused), 17 (`.NET` file-share locks do not stop Wine writes), and 18 (the copy-back refuses links,
+  FIFOs, devices and special files without hanging).
+- **Phase 3:** 14 (the complete Wine helper set starts before the game is locked down) and 15 (Wine exceptions, signals
+  and threads still work with the seccomp rules).
+- **Phase 4:** 10-13 (the broker's named pipe flags, client pid and ring, Valve's DLL through `lsteamclient`, and
+  Proton's DLL overrides in the game).
+
 ## Settings
 
 ### Check and repair
 
-Settings > Installation > Check and repair reruns the native setup: choose the Proton version, install the engine
-package again, confirm Steam ownership, verify the game copy (copying missing or damaged files from Steam, a complete
-depot download or a build patch), and check the namespace marker (installing it, with the self-test, when it is
-missing). It also renews the desktop shortcut and the bundled mods. Use it after changing Proton, when the game copy is
-damaged, or after replacing `app` by hand.
+Settings > Installation > Check and repair reruns the native setup: run the informational
+[sandbox probe](#sandbox-probe), choose the Proton version, install the engine package again, confirm Steam ownership,
+verify the game copy (copying missing or damaged files from Steam, a complete depot download or a build patch), and check
+the namespace marker (installing it, with the self-test, when it is missing). It also renews the desktop shortcut and the
+bundled mods. Use it after changing Proton, when the game copy is damaged, or after replacing `app` by hand.
 
 ### Prefix backup and restore
 

@@ -31,6 +31,8 @@ static class LinuxInstallerTests
                 "The new app did not replace the old files.");
             check((File.GetUnixFileMode(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher")) & UnixFileMode.UserExecute) != 0,
                 "The new launcher is not executable.");
+            check((File.GetUnixFileMode(Path.Combine(install.App, "linux", "hf-sandbox-probe")) & UnixFileMode.UserExecute) != 0,
+                "The Linux sandbox probe is not executable.");
             LinuxAppInstaller.Commit(install, previous);
             check(!Directory.Exists(previous) && !Directory.Exists(LinuxAppInstaller.PreviousRoot(install)) &&
                 !Directory.Exists(LinuxAppInstaller.Staging(install)), "The old app or the staging folder stayed after commit.");
@@ -221,6 +223,7 @@ static class LinuxInstallerTests
         Add("app/engine-package.zip", "engine");
         Add("app/launcher-linux/HellForge.Launcher", launcher);
         Add("app/linux/hellforge-linux.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-sandbox-probe", "probe");
         Add("app/new-only.txt", "new file");
         if (topLevelProgram != null) Add("HellForge.exe", topLevelProgram);
         if (extraRootFolder != null) Add(extraRootFolder + "/payload.txt", "payload");
