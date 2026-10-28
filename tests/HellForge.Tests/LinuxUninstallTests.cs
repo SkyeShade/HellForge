@@ -28,6 +28,7 @@ static class LinuxUninstallTests
 
         test("Linux uninstall finds the removed shell installer's paths under XDG folders", () =>
         {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux uninstall)"); return; }
             var defaults = new LinuxUninstallLocations("/home/me");
             check(LinuxUninstall.OldConfigPath(defaults) == Path.Combine("/home/me/.config", "hellforge-linux", "config"),
                 "Default config path.");
