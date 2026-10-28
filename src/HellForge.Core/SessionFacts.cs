@@ -25,16 +25,22 @@ public sealed record SessionFacts(string HellForge, string Engine, int ModSdk, s
 
     static string OnOff(bool value) => value ? "on" : "off";
 
-    public IEnumerable<string> Lines()
+    // linuxSandboxUnavailable: the saved setting is on, but this Linux session runs without a sandbox. The Settings line
+    // says why and a line of its own says what it means; Windows and a Linux session whose setting is off pass false.
+    public IEnumerable<string> Lines(bool linuxSandboxUnavailable = false)
     {
         yield return Privacy.Scrub($"HellForge {HellForge}, engine {Engine}, mod SDK {ModSdk}, game build {GameBuild}");
         yield return Privacy.Scrub("System: " + System + (Wine != null ? ", under Wine " + Wine : ""));
         foreach (var gpu in Gpus) yield return Privacy.Scrub($"GPU: {gpu.Name}, driver {gpu.Driver}");
         if (Gpus.Count == 0) yield return "GPU: not found";
         var s = Settings;
-        yield return Privacy.Scrub($"Settings: sandboxed {(s.Sandboxed ? "yes" : "no")}, war {s.War}, Local PlayFab {OnOff(s.LocalPlayFab)}, " +
+        var notSandboxedOnLinux = linuxSandboxUnavailable && !s.Sandboxed;
+        var sandbox = s.Sandboxed ? "yes" : "no";
+        if (notSandboxedOnLinux) sandbox = $"no (not sandboxed because {SessionRunner.LinuxSandboxUnavailableReason})";
+        yield return Privacy.Scrub($"Settings: sandboxed {sandbox}, war {s.War}, Local PlayFab {OnOff(s.LocalPlayFab)}, " +
             $"multiplayer {OnOff(s.Multiplayer)}, engine log {OnOff(s.EngineLog)}, crash dump {OnOff(s.CrashDump)}, launch options " +
             (s.GameOptions.Count == 0 ? "none" : GameLaunchOptions.CommandLine(s.GameOptions)));
+        if (notSandboxedOnLinux) yield return Privacy.Scrub(SessionRunner.LinuxNotSandboxed);
     }
 
     public JsonObject ToJson() => new()

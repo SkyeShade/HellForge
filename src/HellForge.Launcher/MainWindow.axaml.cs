@@ -270,7 +270,10 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
-        if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
+        if (OperatingSystem.IsLinux() && ProfileStore.LoadSandbox(paths))
+            Append(SessionRunner.LinuxNotSandboxed, LauncherLine);
+        else if (SandboxBox.IsChecked == true)
+            Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
             previousRunId = SessionRunner.LatestRunId(paths);

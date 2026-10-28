@@ -73,6 +73,8 @@ sealed partial class PlaySession(PlayOptions options)
 
     public int Run()
     {
+        // Linux, native or under Wine, must never enter the Windows low-integrity code below for an explicit request.
+        SessionRunner.RefuseSandboxOnLinux(options.Sandbox);
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
         // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
@@ -133,9 +135,13 @@ sealed partial class PlaySession(PlayOptions options)
     {
         try
         {
+            // The setting defaults on, but Linux ignores it until the sandbox exists. Keep the value as it is and say so
+            // in the Settings line and on a line of its own; a Windows session, or one whose setting is off, is unchanged.
+            var linuxSandboxUnavailable = !options.Sandbox && SessionRunner.IsLinuxHost &&
+                ProfileStore.LoadSandbox(new InstallSessionPaths(install));
             var facts = SessionHeader.Facts(options, (string?)result["engine"] ?? "unknown");
             result["report"] = facts.ToJson();
-            foreach (var line in facts.Lines()) Say(line);
+            foreach (var line in facts.Lines(linuxSandboxUnavailable)) Say(line);
         }
         catch (Exception error) { Say("Session facts not recorded: " + error.Message); }
     }

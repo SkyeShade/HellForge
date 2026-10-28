@@ -56,6 +56,19 @@ static class CrashReportTests
             check(SessionFacts.From(JsonDocument.Parse("[]").RootElement) == null, "An old session's missing facts were read.");
         });
 
+        test("Linux session facts say the saved-on sandbox is unavailable and what that means", () =>
+        {
+            var facts = new SessionFacts("0.3.0-beta (abc1234)", "0.1.40.0", 15, "25480438", "Fedora Linux 44 (KDE Plasma Desktop Edition)", "10.0",
+                [], new SessionSettings(false, "live", true, false, false, false, []));
+            var lines = facts.Lines(linuxSandboxUnavailable: true).ToList();
+            check(lines[3].StartsWith("Settings: sandboxed no (not sandboxed because the sandbox is not available on Linux yet), war live",
+                    StringComparison.Ordinal), "Settings line: " + lines[3]);
+            check(lines[^1] == SessionRunner.LinuxNotSandboxed && lines[^1].Contains("game and mods can write the player's files", StringComparison.Ordinal),
+                "The consequence is not on its own line: " + lines[^1]);
+            check(!facts.Lines().Any(line => line.Contains("not available on Linux", StringComparison.Ordinal)),
+                "A Windows session gained the Linux sandbox note.");
+        });
+
         test("System facts: Windows 11 by its build, NVIDIA's driver number, and what this PC says", () =>
         {
             check(SystemFacts.Describe(10, 0, 26100, 4652, "24H2") == "Windows 11 24H2 (10.0.26100.4652)" && SystemFacts.Describe(10, 0, 19044, 2364, null) == "Windows 10 (10.0.19044.2364)",

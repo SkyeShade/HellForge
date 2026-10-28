@@ -28,6 +28,10 @@ static class Launch
         _ => throw new ArgumentException($"{key} takes yes or no.")
     };
 
+    // --sandbox when given (and validated), else null so Play starts from the saved setting.
+    static bool? SandboxOption(Dictionary<string, string> options) =>
+        options.ContainsKey("--sandbox") ? Yes(options, "--sandbox", false) : null;
+
     // A session runner of any installation: the engine allows one game at a time.
     static bool SessionRunning()
     {
@@ -42,6 +46,10 @@ static class Launch
     public static int Play(Dictionary<string, string> options)
     {
         if (!SessionRunner.IsSupported) throw new InvalidDataException(SessionRunner.UnsupportedMessage);
+        // A saved-on setting runs unsandboxed on Linux with a notice (F.0b); an explicit request is refused here before
+        // any installation or runner is touched, and again by SessionRunner.Start and PlaySession.
+        var requestedSandbox = SandboxOption(options);
+        SessionRunner.RefuseSandboxOnLinux(requestedSandbox == true);
         var install = Install(options);
         var paths = new InstallSessionPaths(install);
         foreach (var (part, file) in new[] { ("The local backend", paths.Backend), ("The session runner", paths.Session) })
@@ -55,7 +63,7 @@ static class Launch
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
+            Sandbox: requestedSandbox ?? SessionRunner.SandboxByDefault(paths), FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
             SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)));
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);

@@ -17,8 +17,18 @@ public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War
 // reports through the run directory's files, so it does not depend on this process staying alive to clean up.
 public sealed class SessionRunner
 {
+    // Linux cannot take the Windows low-integrity path (docs/linux.md): native Linux and Wine both report Windows for
+    // parts of the session, so Wine is detected as well. Until the Linux sandbox exists, an explicit request refuses
+    // rather than entering code whose effect there is undefined.
+    public const string LinuxSandboxRefusal = "A sandboxed session cannot start because the sandbox is not available on Linux yet.";
+    public const string LinuxSandboxUnavailableReason = "the sandbox is not available on Linux yet";
+    public const string LinuxNotSandboxed = "This session is not sandboxed because " + LinuxSandboxUnavailableReason +
+        "; the game and mods can write the player's files.";
+
     Process? controller;
     int? exitCode;
+
+    public static bool IsLinuxHost => OperatingSystem.IsLinux() || LinuxNetworkBlock.UnderWine;
 
     public static bool IsSupported => OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
 
@@ -77,6 +87,17 @@ public sealed class SessionRunner
 
     // Whether a session is sandboxed unless told otherwise: the setting (on unless turned off), where it can be offered.
     public static bool SandboxByDefault(ISessionPaths paths) => CanSandbox(paths) && ProfileStore.LoadSandbox(paths);
+
+    // The refusal for an explicit sandbox request on Linux. The booleans are injected so the native and Wine cases can be
+    // tested on either build host; Windows returns null and keeps its existing sandbox path.
+    public static string? SandboxRefusal(bool requested, bool linux, bool underWine) =>
+        requested && (linux || underWine) ? LinuxSandboxRefusal : null;
+
+    public static void RefuseSandboxOnLinux(bool requested)
+    {
+        if (SandboxRefusal(requested, OperatingSystem.IsLinux(), LinuxNetworkBlock.UnderWine) is { } refusal)
+            throw new InvalidDataException(refusal);
+    }
 
     // What #62's HELLFORGE_STEAM_UDP=1 path runs: pasta (the passt package) and python3 (Valve's relay list). Null when
     // both are on PATH; otherwise the refusal, with the install command for this system's package manager. onPath is
@@ -138,6 +159,7 @@ public sealed class SessionRunner
         if (!IsSupported) throw new PlatformNotSupportedException(UnsupportedMessage);
         if (IsRunning) return;
         if (paths.InstallRoot == null) throw new InvalidOperationException("Sessions run in installations made with HellForge-Setup.");
+        RefuseSandboxOnLinux(options.Sandbox);
         var linux = OperatingSystem.IsLinux();
         var prefix = linux ? WinePath.PrefixFromInstallRoot(paths.InstallRoot) : null;
         var arguments = Arguments(paths, profile, options, prefix);

@@ -175,6 +175,59 @@ static class SessionLaunchTests
             check(!SessionRunner.SandboxByDefault(paths), "Unless turned off.");
         });
 
+        test("An explicit sandbox request is refused on Linux, before the Windows low-integrity path", () =>
+        {
+            check(SessionRunner.SandboxRefusal(true, linux: true, underWine: false) == SessionRunner.LinuxSandboxRefusal,
+                "Native Linux did not refuse the sandbox.");
+            check(SessionRunner.SandboxRefusal(true, linux: false, underWine: true) == SessionRunner.LinuxSandboxRefusal,
+                "A Windows build under Wine did not refuse the sandbox.");
+            check(SessionRunner.SandboxRefusal(true, linux: false, underWine: false) == null,
+                "Windows lost its existing sandbox path.");
+            check(SessionRunner.SandboxRefusal(false, linux: true, underWine: false) == null,
+                "A Linux session that did not ask for the sandbox was refused.");
+
+            var source = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src"));
+            var launch = File.ReadAllText(Path.Combine(source, "HellForge.Cli", "Launch.cs"));
+            var playSession = File.ReadAllText(Path.Combine(source, "HellForge.Session", "PlaySession.cs"));
+            check(launch.Contains("SessionRunner.RefuseSandboxOnLinux(requestedSandbox == true);", StringComparison.Ordinal),
+                "The CLI parses --sandbox but does not refuse an explicit yes on Linux.");
+            check(playSession.Contains("SessionRunner.RefuseSandboxOnLinux(options.Sandbox);", StringComparison.Ordinal),
+                "PlaySession does not refuse --sandbox on Linux before the Windows code.");
+
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux refusal)"); return; }
+            var paths = Install("launch-sandbox-refusal");
+            var profile = ProfileStore.List(paths)[0];
+            try
+            {
+                new SessionRunner().Start(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], Sandbox: true));
+                check(false, "SessionRunner started a sandboxed session on Linux.");
+            }
+            catch (InvalidDataException error)
+            {
+                check(error.Message == SessionRunner.LinuxSandboxRefusal, "The refusal was not the clear sandbox message: " + error.Message);
+            }
+        });
+
+        test("A saved-on sandbox is announced as unavailable on Linux without changing the setting", () =>
+        {
+            var paths = Install("launch-sandbox-notice");
+            check(ProfileStore.LoadSandbox(paths), "The saved setting is not on by default.");
+            ProfileStore.SaveSandbox(paths, true);
+            if (OperatingSystem.IsLinux())
+                check(ProfileStore.LoadSandbox(paths) && !SessionRunner.SandboxByDefault(paths),
+                    "Linux did not keep the setting on while leaving this session unsandboxed.");
+
+            var source = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src"));
+            var launcher = File.ReadAllText(Path.Combine(source, "HellForge.Launcher", "MainWindow.axaml.cs"));
+            var playSession = File.ReadAllText(Path.Combine(source, "HellForge.Session", "PlaySession.cs"));
+            check(launcher.Contains("if (OperatingSystem.IsLinux() && ProfileStore.LoadSandbox(paths))", StringComparison.Ordinal) &&
+                launcher.Contains("Append(SessionRunner.LinuxNotSandboxed, LauncherLine);", StringComparison.Ordinal),
+                "The launcher console does not announce the Linux sandbox's absence.");
+            check(playSession.Contains("var linuxSandboxUnavailable = !options.Sandbox && SessionRunner.IsLinuxHost", StringComparison.Ordinal) &&
+                playSession.Contains("facts.Lines(linuxSandboxUnavailable)", StringComparison.Ordinal),
+                "The session log does not get the Linux sandbox note.");
+        });
+
         test("A session's run folder is the one the session runner named after it started, not an earlier one", () =>
         {
             var paths = Install("launch-run");
