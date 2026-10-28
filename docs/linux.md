@@ -367,6 +367,23 @@ ziglang.org), and again only when a release pins another Zig. Source mods are co
 namespace, where the download would be refused ("Access denied. (ziglang.org:443)"). The Mods page's "Install mod tools"
 button cannot fetch them on Linux for the same reason; start HellForge again with `hellforge-linux.sh` instead.
 
+### Co-op on Linux: opening UDP (optional)
+
+**Experimental.** The game starts and runs with this, and the network check below passes. The restricted version below joined Windows players' games and played a full mission (reported on issue 22 by two testers, one of them as the fourth player in a lobby of Windows players). Please report what you see, good or bad, with `backend/multiplayer.log` from the session.
+
+Steam's networking, which co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP, so the
+default namespace (no route at all) cannot carry it. Start with `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` and
+`hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which gives it a real route. Two policy rules then
+close it again: `ip rule add ipproto tcp prohibit` refuses every TCP connection with the same WSAEACCES, so the session's
+network probe passes as before, and UDP is allowed only to Valve's relays, address and port range each, from the list Valve
+publishes for the game (`ISteamApps/GetSDRConfig/v1`, app 553850), fetched at launch while this PC still has its network
+(the last one is kept in `~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not
+start). Every other UDP destination, name lookups included, is refused, and the self-test refuses to start if one
+works. It needs `python3` for the list. Co-op through Steam's relays should still work; a direct peer-to-peer path between
+two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a relay address and port
+goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused, loopback fine. A solo session's packet capture
+(about 5 minutes) showed only backend UDP to Valve relays and nothing from the game process.
+
 ## One prefix, one network
 
 Wine opens a Windows program's sockets in the prefix's `wineserver`, so a program gets the wineserver's network, not its
