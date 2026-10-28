@@ -196,6 +196,8 @@ public partial class MainWindow : Window
         UpdateButton();
         ShowProfile();
         InitializeSetup();
+        if (OperatingSystem.IsLinux() && paths.InstallRoot != null)
+            InitializeLinuxPrefixBackup(new InstallLayout(paths.InstallRoot));
         poll.Start();
         PruneSessionLogs();
     }

@@ -1,7 +1,8 @@
 using HellForge.Core;
 
 // The path and ownership decisions behind Linux uninstall: AppArmor's exact commands, the removed shell installer's paths
-// and content checks, Steam's content folders and state patches, and that removal refuses links and keeps going.
+// and content checks, Steam's content folders and state patches, the prefix marker and deletion offer, and that removal
+// refuses links and keeps going.
 static class LinuxUninstallTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
@@ -114,6 +115,7 @@ static class LinuxUninstallTests
 
             var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
             check(plan.Prefix == prefix, "Wrong prefix.");
+            check(plan.PrefixDeletion is { Offered: false }, "A prefix without a marker was offered.");
             check(plan.Steam != null && plan.Steam.Depots.Count == build.Depots.Count, "Steam depots not planned.");
             check(plan.Steam!.Patches.Count == 2, "Steam's state patches were not planned.");
             check(plan.Steam.AppFolders.Count == 1, "The empty download folder was not planned.");
@@ -219,6 +221,122 @@ static class LinuxUninstallTests
             check(!File.Exists(second) && !Directory.Exists(second), "A later patch was not removed after a failure.");
             check(Directory.Exists(outside) && File.Exists(Path.Combine(outside, "keep.txt")), "A link target was removed.");
             check(Directory.Exists(linkedDepot) && new DirectoryInfo(linkedDepot).LinkTarget != null, "The link itself was removed.");
+        });
+
+        test("Linux uninstall writes the prefix marker only for a new or empty prefix", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux prefix marker)"); return; }
+            var sandbox = Path.Combine(root, "linux-prefix-marker");
+            var created = Path.Combine(sandbox, "created");
+            Directory.CreateDirectory(created);
+            check(LinuxUninstall.WritePrefixMarker(created, existed: false, empty: true), "A new prefix was not marked.");
+            check(File.ReadAllText(LinuxUninstall.PrefixMarkerPath(created)).Trim() == LinuxUninstall.PrefixMarkerText(created),
+                "The marker does not hold the prefix's full path.");
+            var shared = Path.Combine(sandbox, "shared");
+            Directory.CreateDirectory(shared);
+            File.WriteAllText(Path.Combine(shared, "keep.txt"), "keep");
+            check(!LinuxUninstall.WritePrefixMarker(shared, existed: true, empty: false), "A shared prefix was marked.");
+            check(!File.Exists(LinuxUninstall.PrefixMarkerPath(shared)), "A marker was written into a non-empty prefix.");
+            var empty = Path.Combine(sandbox, "empty");
+            Directory.CreateDirectory(empty);
+            check(LinuxUninstall.WritePrefixMarker(empty, existed: true, empty: true), "An empty existing prefix was not marked.");
+            check(LinuxUninstall.PrefixWasCreated(false, false) && LinuxUninstall.PrefixWasCreated(true, true) &&
+                !LinuxUninstall.PrefixWasCreated(true, false), "The new-or-empty decision is wrong.");
+        });
+
+        test("Linux uninstall offers a prefix only with its own marker and the installation inside it", () =>
+        {
+            var prefix = "/srv/hellforge-prefix";
+            var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
+            var good = new LinuxPrefixObservation(true, true, true, LinuxUninstall.PrefixMarkerText(prefix) + "\n",
+                false, false, false);
+            check(LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam", good).Offered,
+                "A matching marker was not offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
+                good with { MarkerExists = false }).Offered, "A missing marker was offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
+                good with { MarkerPlainFile = false }).Offered, "A marker that is not a plain file was offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
+                good with { MarkerText = "/srv/other-prefix\n" }).Offered, "Another prefix's marker was offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, "/srv/other/pfx/drive_c/HellForge", "/home/me",
+                "/home/me/Steam", good).Offered, "A prefix without the installation was offered.");
+            check(LinuxUninstall.PrefixContainsInstall(prefix, installRoot) &&
+                !LinuxUninstall.PrefixContainsInstall(prefix, "/srv/elsewhere"),
+                "The installation-inside-prefix check is wrong.");
+        });
+
+        test("Linux uninstall refuses the home folder, the root, Steam's folder and compatdata", () =>
+        {
+            var home = "/home/me";
+            var steam = Path.Combine(home, ".local", "share", "Steam");
+            var forbidden = new[]
+            {
+                home, "/", steam,
+                Path.Combine(steam, "steamapps", "compatdata", "553850"),
+                "/games/SteamLibrary/steamapps/compatdata/553850"
+            };
+            foreach (var prefix in forbidden)
+            {
+                var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
+                var observation = new LinuxPrefixObservation(true, true, true,
+                    LinuxUninstall.PrefixMarkerText(prefix) + "\n", false, false, false);
+                var offer = LinuxUninstall.DecidePrefixOffer(prefix, installRoot, home, steam, observation);
+                check(!offer.Offered, "A forbidden prefix was offered: " + prefix);
+            }
+        });
+
+        test("Linux uninstall refuses a symlinked prefix, marker or link inside it", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux prefix links)"); return; }
+            var sandbox = Path.Combine(root, "linux-prefix-links");
+            var home = Path.Combine(sandbox, "home");
+            var locations = new LinuxUninstallLocations(home);
+
+            var markerPrefix = Path.Combine(sandbox, "marker-prefix");
+            var markerInstall = new InstallLayout(Path.Combine(markerPrefix, "pfx", "drive_c", "HellForge"));
+            markerInstall.Create(SupportedBuild.Current.BuildId);
+            var markerTarget = Path.Combine(sandbox, "marker-target");
+            File.WriteAllText(markerTarget, LinuxUninstall.PrefixMarkerText(markerPrefix) + "\n");
+            File.CreateSymbolicLink(LinuxUninstall.PrefixMarkerPath(markerPrefix), markerTarget);
+            var markerOffer = LinuxUninstall.CheckPrefixDeletion(markerInstall, markerPrefix, locations, null);
+            check(!markerOffer.Offered && markerOffer.Reason.Contains("marker", StringComparison.Ordinal),
+                "A symlinked marker was accepted: " + markerOffer.Reason);
+
+            var realPrefix = Path.Combine(sandbox, "real-prefix");
+            var linkedPrefix = Path.Combine(sandbox, "linked-prefix");
+            var realInstall = new InstallLayout(Path.Combine(realPrefix, "pfx", "drive_c", "HellForge"));
+            realInstall.Create(SupportedBuild.Current.BuildId);
+            LinuxUninstall.WritePrefixMarker(realPrefix, existed: true, empty: true);
+            Directory.CreateSymbolicLink(linkedPrefix, realPrefix);
+            var linkedInstall = new InstallLayout(Path.Combine(linkedPrefix, "pfx", "drive_c", "HellForge"));
+            var linkedOffer = LinuxUninstall.CheckPrefixDeletion(linkedInstall, linkedPrefix, locations, null);
+            check(!linkedOffer.Offered && linkedOffer.Reason.Contains("link", StringComparison.Ordinal),
+                "A symlinked prefix was accepted: " + linkedOffer.Reason);
+
+            var innerPrefix = Path.Combine(sandbox, "inner-prefix");
+            var innerInstall = new InstallLayout(Path.Combine(innerPrefix, "pfx", "drive_c", "HellForge"));
+            innerInstall.Create(SupportedBuild.Current.BuildId);
+            LinuxUninstall.WritePrefixMarker(innerPrefix, existed: true, empty: true);
+            var outside = Path.Combine(sandbox, "outside");
+            Directory.CreateDirectory(outside);
+            Directory.CreateSymbolicLink(Path.Combine(innerPrefix, "pfx", "drive_c", "linked-data"), outside);
+            var innerOffer = LinuxUninstall.CheckPrefixDeletion(innerInstall, innerPrefix, locations, null);
+            check(!innerOffer.Offered && innerOffer.Reason.Contains("link", StringComparison.Ordinal),
+                "A prefix with a link inside it was accepted: " + innerOffer.Reason);
+        });
+
+        test("Linux uninstall treats WINEPREFIX or a path inside the prefix as a process using it", () =>
+        {
+            var prefix = "/srv/hellforge-prefix";
+            var pfx = Path.Combine(prefix, "pfx");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("wineserver", "/usr/bin/wineserver", [],
+                ["WINEPREFIX=" + pfx], null), prefix), "WINEPREFIX was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", Path.Combine(pfx, "drive_c", "game.exe"),
+                [], [], null), prefix), "An executable inside the prefix was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("shell", "/usr/bin/bash", [],
+                [], Path.Combine(pfx, "drive_c", "users", "steamuser")), prefix), "A working folder inside the prefix was ignored.");
+            check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("bash", "/usr/bin/bash", [],
+                ["HOME=/home/me"], "/tmp"), prefix), "An unrelated process was treated as using the prefix.");
         });
     }
 }

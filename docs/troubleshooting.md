@@ -50,6 +50,9 @@ Setup found no Steam installation. Install Steam and HELLDIVERS 2, then start se
 Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is not code-signed; choose More info > Run
 anyway.
 
+On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
+[linux.md](linux.md#setting-it-up).
+
 ### Setup cannot find the supported build
 
 Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, setup finds the
@@ -124,7 +127,8 @@ Windows Firewall does not need to be on.
 
 Antivirus programs sometimes flag or quarantine HellForge's files. That is a false positive. Add an exclusion for the
 HellForge installation folder in your antivirus, then restore anything it quarantined. Running `HellForge-Setup.exe`
-again over the installation puts the app back and keeps your game copy, profiles and settings.
+again over the installation puts the app back and keeps your game copy, profiles and settings. On Linux, run the
+graphical installer again over the same prefix instead; see [linux.md](linux.md#updating).
 
 Cases HellForge already recognises:
 
@@ -170,6 +174,9 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
+
+On Linux, a message ending in "reinstall HellForge" means running the graphical installer again over the same prefix;
+see [linux.md](linux.md#updating).
 
 ### The game could not be prepared or connected
 

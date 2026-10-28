@@ -25,11 +25,24 @@ public sealed record LinuxUninstallPlan(
     public string? Shortcut { get; init; }
     public string? ShortcutExec { get; init; }
     public bool ShortcutRemovable { get; init; }
+    // The prefix deletion offer: only a prefix this installer made, still containing this installation, and not a link,
+    // in use, or in a forbidden place is offered.
+    public LinuxPrefixOffer? PrefixDeletion { get; init; }
 }
 
 public sealed record LinuxUninstallResult(IReadOnlyList<string> Removed, IReadOnlyList<string> Failed, IReadOnlyList<string> Left);
 
 public sealed record LinuxUninstallLocations(string Home, string? ConfigHome = null, string? DataHome = null);
+
+// What the disk says about a prefix before uninstall: whether it is there, what its marker is and says, whether a link is
+// on the path to it or below it, and whether a process is using it.
+public sealed record LinuxPrefixObservation(bool Exists, bool MarkerExists, bool MarkerPlainFile, string? MarkerText,
+    bool PrefixLink, bool LinksBelow, bool InUse);
+
+// Whether uninstall may offer to delete a prefix, and why not. Only a prefix this installer made (its marker names it) and
+// that still contains this installation is offered; home, /, Steam's folder, Steam's compatibility data, links and a prefix
+// in use are refused.
+public sealed record LinuxPrefixOffer(string Prefix, bool Offered, string Reason);
 
 // The paths HellForge and the removed shell installer put outside an installation on Linux, and the decisions that say
 // whether they belong to this installation. The path checks are pure so they can be tested without a real Steam or prefix;
@@ -93,6 +106,150 @@ public static class LinuxUninstall
         return commands;
     }
 
+    // A prefix gets this marker only when the native installer made the folder (it did not exist, or was empty, before
+    // InitializePrefix). The marker holds the prefix's full path, so uninstall can tell it is the same prefix and not one
+    // HELLDIVERS 2 or the player chose.
+    public const string PrefixMarkerFile = ".hellforge-created";
+
+    public static bool PrefixWasCreated(bool existed, bool empty) => !existed || empty;
+
+    public static string PrefixMarkerPath(string prefix) => Path.Combine(LocalInstall.FullPath(prefix), PrefixMarkerFile);
+
+    public static string PrefixMarkerText(string prefix) => LocalInstall.FullPath(prefix);
+
+    public static bool PrefixMarkerBelongs(string text, string prefix)
+    {
+        try { return text.TrimEnd('\r', '\n').Equals(LocalInstall.FullPath(prefix), StringComparison.Ordinal); }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
+    }
+
+    // The installation must be under <prefix>/pfx/drive_c: a marker alone must not let uninstall delete a prefix that no
+    // longer holds the installation it was made for.
+    public static bool PrefixContainsInstall(string prefix, string installRoot)
+    {
+        try
+        {
+            var driveC = Path.Combine(LocalInstall.FullPath(prefix), "pfx", "drive_c");
+            return LocalInstall.Within(installRoot, driveC);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
+    }
+
+    // Paths that are never offered, even with a matching marker: the player's home, the filesystem root, Steam's folder and
+    // Steam's compatibility data, where HELLDIVERS 2's own prefix lives. The compatdata check is by path component so it
+    // also covers Steam libraries other than the one SteamLocator found.
+    public static bool PrefixForbidden(string prefix, string home, string? steamRoot)
+    {
+        try
+        {
+            var path = LocalInstall.FullPath(prefix);
+            var pathRoot = Path.GetPathRoot(path);
+            if (pathRoot != null && path.Equals(LocalInstall.FullPath(pathRoot), StringComparison.Ordinal)) return true;
+            if (!string.IsNullOrWhiteSpace(home) &&
+                path.Equals(LocalInstall.FullPath(home), StringComparison.Ordinal)) return true;
+            if (UnderCompatData(path)) return true;
+            if (string.IsNullOrWhiteSpace(steamRoot)) return false;
+            return path.Equals(LocalInstall.FullPath(steamRoot), StringComparison.Ordinal);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return true; }
+    }
+
+    static bool UnderCompatData(string path)
+    {
+        var parts = path.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        for (var index = 0; index + 1 < parts.Length; index++)
+            if (parts[index].Equals("steamapps", StringComparison.OrdinalIgnoreCase) &&
+                parts[index + 1].Equals("compatdata", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    // The decision is pure: the disk checks below fill LinuxPrefixObservation, and tests can build one directly.
+    public static LinuxPrefixOffer DecidePrefixOffer(string prefix, string installRoot, string home, string? steamRoot,
+        LinuxPrefixObservation observation)
+    {
+        if (PrefixForbidden(prefix, home, steamRoot))
+            return new(prefix, false, "it is the home folder, the filesystem root, Steam's folder or under Steam's compatibility data");
+        if (!observation.Exists) return new(prefix, false, "the prefix folder does not exist");
+        if (observation.PrefixLink) return new(prefix, false, "a link is on the path to it or it is a link");
+        if (!observation.MarkerExists)
+            return new(prefix, false, "it has no HellForge marker (prefixes made by earlier HellForge versions have none)");
+        if (!observation.MarkerPlainFile) return new(prefix, false, "its HellForge marker is not a plain file");
+        if (observation.MarkerText == null) return new(prefix, false, "its HellForge marker could not be read");
+        if (!PrefixMarkerBelongs(observation.MarkerText, prefix))
+            return new(prefix, false, "its HellForge marker names another prefix");
+        if (!PrefixContainsInstall(prefix, installRoot))
+            return new(prefix, false, "it does not contain this installation");
+        if (observation.LinksBelow) return new(prefix, false, "it contains a link");
+        if (observation.InUse)
+            return new(prefix, false, "a process is using it (WINEPREFIX points at its pfx folder, or its executable or working folder is inside it)");
+        return new(prefix, true, "");
+    }
+
+    // Reads the disk and decides whether the confirmation may offer the prefix. The caller repeats this after the player
+    // confirms, because a process can start or the marker can change in between.
+    public static LinuxPrefixOffer CheckPrefixDeletion(InstallLayout install, string prefix,
+        LinuxUninstallLocations locations, string? steamRoot)
+    {
+        prefix = LocalInstall.FullPath(prefix);
+        var markerPath = PrefixMarkerPath(prefix);
+        var exists = Directory.Exists(prefix) || File.Exists(prefix);
+        var prefixLink = exists && HasLink(prefix);
+        var markerExists = Exists(markerPath);
+        var markerPlain = false;
+        string? markerText = null;
+        if (markerExists && !IsLink(markerPath))
+        {
+            try
+            {
+                LocalInstall.NoLinks(markerPath);
+                if (File.Exists(markerPath)) { markerText = File.ReadAllText(markerPath); markerPlain = true; }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
+        }
+        var candidate = exists && !prefixLink && markerExists && markerPlain && markerText != null &&
+            PrefixMarkerBelongs(markerText, prefix) && PrefixContainsInstall(prefix, install.Root) &&
+            !PrefixForbidden(prefix, locations.Home, steamRoot);
+        var linksBelow = candidate && HasLinkBelow(prefix);
+        var inUse = candidate && LinuxInstallProcesses.RunningInPrefix(prefix).Count > 0;
+        return DecidePrefixOffer(prefix, install.Root, locations.Home, steamRoot,
+            new(exists, markerExists, markerPlain, markerText, prefixLink, linksBelow, inUse));
+    }
+
+    // Writes the marker only for a prefix this installer made; an existing non-empty folder (a shared or HELLDIVERS 2
+    // prefix) never gets one.
+    public static bool WritePrefixMarker(string prefix, bool existed, bool empty)
+    {
+        if (!PrefixWasCreated(existed, empty)) return false;
+        File.WriteAllText(PrefixMarkerPath(prefix), PrefixMarkerText(prefix) + "\n");
+        return true;
+    }
+
+    static bool HasLink(string path)
+    {
+        try { LocalInstall.NoLinks(path); return false; }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return true; }
+    }
+
+    // The same rule as NoLinksBelow, with one exception: Wine's own pfx/dosdevices drive letters are links by design and
+    // are not followed. Every other link under the prefix refuses the deletion.
+    static bool HasLinkBelow(string prefix)
+    {
+        try { return HasLinkBelow(new DirectoryInfo(prefix), Path.Combine(prefix, "pfx", "dosdevices")); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+    }
+
+    static bool HasLinkBelow(DirectoryInfo folder, string dosdevices)
+    {
+        foreach (var entry in folder.EnumerateFileSystemInfos())
+        {
+            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) return true;
+            if ((entry.Attributes & FileAttributes.Directory) == 0) continue;
+            if (entry.FullName.Equals(dosdevices, StringComparison.Ordinal)) continue;
+            if (HasLinkBelow(new DirectoryInfo(entry.FullName), dosdevices)) return true;
+        }
+        return false;
+    }
+
     // Steam's state files are named state_<app>_<something>.patch (the old script's state_553850_*.patch).
     public static bool StatePatchName(string path, string appId)
     {
@@ -126,7 +283,10 @@ public static class LinuxUninstall
         var profile = Exists(AppArmorProfile);
         var copy = Exists(AppArmorUnshare);
         return new(install.Root, prefix, steam, oldScript, left, AppArmorPaths(profile, copy),
-            AppArmorCommands(profile, copy), logPath);
+            AppArmorCommands(profile, copy), logPath)
+        {
+            PrefixDeletion = prefix == null ? null : CheckPrefixDeletion(install, prefix, locations, steamRoot)
+        };
     }
 
     // Removes the plan's state patches and old-script files, then Steam's depot folders through SteamDepotDownload. Every

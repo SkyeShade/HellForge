@@ -7,13 +7,14 @@ using HellForge.Core;
 namespace HellForge.Launcher;
 
 // Settings > Installation > Uninstall on Linux: the exact outside paths the confirmation lists, their removal before the
-// launcher exits, and the helper that deletes the installation once it has.
+// launcher exits, and the helper that deletes the installation (and, when the player asks, the prefix HellForge made) once
+// it has.
 public partial class MainWindow
 {
     // Removes what the old shell installer and Steam left outside the installation first, then starts a small script that
-    // deletes the installation and its shortcut once this launcher has exited. A failed path is reported in the log and
-    // never stops the others. AppArmor needs sudo, so the launcher only shows the commands for it.
-    async Task UninstallLinux(InstallLayout install)
+    // deletes the installation, its shortcut and the owned prefix once this launcher has exited. A failed path is reported
+    // in the log and never stops the others. AppArmor needs sudo, so the launcher only shows the commands for it.
+    async Task UninstallLinux(InstallLayout install, bool deletePrefix)
     {
         try { UninstallSafety(install.Root); }
         catch (InvalidDataException refused) { UninstallText.Text = Privacy.Scrub(refused.Message); return; }
@@ -26,6 +27,26 @@ public partial class MainWindow
         try
         {
             var plan = linuxUninstallPlan ?? BuildLinuxUninstallPlan(install);
+            string? prefix = null;
+            if (deletePrefix)
+            {
+                if (plan.PrefixDeletion is not { Offered: true } offered)
+                {
+                    UninstallText.Text = "The Proton prefix was not offered for deletion; nothing was removed.";
+                    UninstallButton.IsEnabled = true;
+                    return;
+                }
+                // The player may have started the game, changed the marker, or made a link since the confirmation appeared.
+                var fresh = await Task.Run(() => LinuxUninstall.CheckPrefixDeletion(install, offered.Prefix,
+                    UninstallLocations(), SteamLocator.SteamRoot()));
+                if (!fresh.Offered)
+                {
+                    UninstallText.Text = Privacy.Scrub("The Proton prefix was not deleted: " + fresh.Reason + " Nothing was removed.");
+                    UninstallButton.IsEnabled = true;
+                    return;
+                }
+                prefix = fresh.Prefix;
+            }
             UninstallButton.IsEnabled = false;
             UninstallText.Text = "Removing Steam's download and the removed installer's files...";
             LinuxUninstallResult result;
@@ -35,10 +56,11 @@ public partial class MainWindow
                 result = new([], [error.Message], []);
             }
             WriteLinuxUninstallLog(plan, result);
+            var removing = prefix == null ? "this installation" : "this installation and its Proton prefix";
             UninstallText.Text = result.Failed.Count == 0
-                ? "Removing this installation after the launcher closes..."
-                : $"{result.Failed.Count} item(s) could not be removed; the details are in {plan.LogPath}. Removing this installation after the launcher closes...";
-            StartLinuxUninstallHelper(install, plan);
+                ? $"Removing {removing} after the launcher closes..."
+                : $"{result.Failed.Count} item(s) could not be removed; the details are in {plan.LogPath}. Removing {removing} after the launcher closes...";
+            StartLinuxUninstallHelper(install, plan, prefix);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
@@ -47,11 +69,13 @@ public partial class MainWindow
         }
     }
 
+    static LinuxUninstallLocations UninstallLocations() => new(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"), Environment.GetEnvironmentVariable("XDG_DATA_HOME"));
+
     LinuxUninstallPlan BuildLinuxUninstallPlan(InstallLayout install)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var locations = new LinuxUninstallLocations(home,
-            Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"), Environment.GetEnvironmentVariable("XDG_DATA_HOME"));
+        var locations = UninstallLocations();
         var log = Path.Combine(Path.GetTempPath(), $"hellforge-uninstall-{Environment.ProcessId}-{Guid.NewGuid():N}.log");
         var plan = LinuxUninstall.Plan(install, SupportedBuild.Current, locations, SteamLocator.SteamRoot(), log);
         var launcher = LocalInstall.FullPath(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher"));
@@ -86,11 +110,15 @@ public partial class MainWindow
         else text.AppendLine("  - a desktop shortcut: none found");
         AppendSteamRemovals(text, plan.Steam);
         AppendOldScriptRemovals(text, plan.OldScript);
+        AppendPrefixRemoval(text, plan);
         text.AppendLine();
         text.AppendLine("It leaves:");
+        var prefixOffered = plan.PrefixDeletion is { Offered: true };
         text.AppendLine(plan.Prefix is null
             ? "  - the Proton prefix (its path could not be read)"
-            : $"  - the Proton prefix: {plan.Prefix} (and everything in it)");
+            : prefixOffered
+                ? $"  - the Proton prefix: {plan.Prefix} (kept unless you tick the prefix box)"
+                : $"  - the Proton prefix: {plan.Prefix} (left: {plan.PrefixDeletion?.Reason ?? "it could not be checked"})");
         text.AppendLine("  - Steam, HELLDIVERS 2, your Proton versions and every other file outside this installation");
         text.AppendLine("  - Steam's own update and download state elsewhere under steamapps");
         if (plan.AppArmorPaths.Count > 0)
@@ -134,6 +162,16 @@ public partial class MainWindow
         foreach (var item in oldScript) text.AppendLine($"  - the removed shell installer's {item.Description}: {item.Path}");
     }
 
+    // The prefix checkbox is a separate choice, off by default. A prefix without this installer's marker (HELLDIVERS 2's own
+    // compatdata prefix, one the player chose, or one from an earlier HellForge version) is never offered.
+    static void AppendPrefixRemoval(StringBuilder text, LinuxUninstallPlan plan)
+    {
+        if (plan.PrefixDeletion is { Offered: true } offer)
+            text.AppendLine($"  - the Proton prefix only if you tick the box below: {offer.Prefix} (the game copy, every profile, every mod and everything else in it)");
+        else
+            text.AppendLine("  - the Proton prefix: not offered; only a prefix this installer made is. Prefixes from earlier HellForge versions have no marker, so delete one by hand if you want it gone");
+    }
+
     static void WriteLinuxUninstallLog(LinuxUninstallPlan plan, LinuxUninstallResult result)
     {
         try
@@ -151,10 +189,10 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
-    void StartLinuxUninstallHelper(InstallLayout install, LinuxUninstallPlan plan)
+    void StartLinuxUninstallHelper(InstallLayout install, LinuxUninstallPlan plan, string? prefix)
     {
         var script = Path.Combine(Path.GetTempPath(), $"hellforge-uninstall-{Guid.NewGuid():N}.sh");
-        File.WriteAllText(script, """
+        var helperText = """
             #!/usr/bin/env bash
             set -u
             root=$1
@@ -162,7 +200,9 @@ public partial class MainWindow
             shortcut=${3:-}
             expected_exec=${4:-}
             log=$5
+            prefix=${6:-}
             say() { printf '%s\n' "$*" >>"$log" 2>/dev/null || true; }
+            @PREFIX_IN_USE@
             failed=0
             while kill -0 "$launcher_pid" 2>/dev/null; do sleep 1; done
             if [ -n "$shortcut" ] && { [ -e "$shortcut" ] || [ -L "$shortcut" ]; }; then
@@ -186,16 +226,39 @@ public partial class MainWindow
             else
               say "not found: $root"
             fi
+            if [ -n "$prefix" ]; then
+              if [ -L "$prefix" ]; then
+                say "failed: $prefix (link; refused)"; failed=1
+              elif [ ! -e "$prefix" ]; then
+                say "not found: $prefix"
+              elif [ ! -d "$prefix" ]; then
+                say "failed: $prefix (not a folder)"; failed=1
+              else
+                deadline=$((SECONDS + 30))
+                while prefix_in_use; do
+                  if [ "$SECONDS" -ge "$deadline" ]; then
+                    say "failed: $prefix (still in use by $pfx_in_use_names)"; failed=1; prefix=""
+                    break
+                  fi
+                  sleep 1
+                done
+                if [ -n "$prefix" ]; then
+                  rm -rf --one-file-system -- "$prefix" 2>/dev/null || true
+                  if [ -e "$prefix" ] || [ -L "$prefix" ]; then say "failed: $prefix"; failed=1; else say "removed: $prefix"; fi
+                fi
+              fi
+            fi
             if [ "$failed" -eq 0 ]; then
               say "Uninstall finished: every planned path was removed."
             else
               say "Uninstall finished with items that could not be removed; see above."
             fi
             rm -f -- "$0" 2>/dev/null || true
-            """);
+            """;
+        File.WriteAllText(script, LinuxHelperScripts.IncludePrefixInUse(helperText));
         var start = new ProcessStartInfo("bash") { WorkingDirectory = Path.GetTempPath(), UseShellExecute = false, CreateNoWindow = true };
         foreach (var argument in new[] { script, install.Root, Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
-                     plan.ShortcutRemovable ? plan.Shortcut ?? "" : "", plan.ShortcutExec ?? "", plan.LogPath })
+                     plan.ShortcutRemovable ? plan.Shortcut ?? "" : "", plan.ShortcutExec ?? "", plan.LogPath, prefix ?? "" })
             start.ArgumentList.Add(argument);
         using var cleanup = Process.Start(start) ?? throw new IOException("The Linux uninstall helper did not start.");
         Close();

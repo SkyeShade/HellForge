@@ -348,11 +348,41 @@
                 <Border x:Name="UninstallConfirm" IsVisible="False" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                   <StackPanel Spacing="10">
                     <SelectableTextBlock x:Name="UninstallWarning" TextWrapping="Wrap" />
+                    <CheckBox x:Name="UninstallPrefixBox" IsVisible="False" IsChecked="False" HorizontalAlignment="Left" />
                     <Button x:Name="UninstallCopyCommandsButton" Classes="ghost" Content="Copy sudo commands"
                             HorizontalAlignment="Left" IsVisible="False" />
                     <StackPanel Orientation="Horizontal" Spacing="10">
                       <Button x:Name="UninstallConfirmButton" Classes="danger" Content="Uninstall and delete everything" />
                       <Button x:Name="UninstallCancelButton" Classes="ghost" Content="Cancel" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="LinuxBackupCard" Classes="card" IsVisible="False">
+              <StackPanel Spacing="8">
+                <TextBlock Text="PREFIX BACKUP" Classes="h2" Margin="0" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Save the whole Proton prefix (HellForge, its profiles and mods, the game copy and Steam's depots) to one archive, or put a saved one back. Archives are standard tar files: .tar.zst when zstd is installed, otherwise .tar.gz. HellForge refuses while a session or another launcher is running." />
+                <Grid ColumnDefinitions="*,10,Auto">
+                  <TextBox x:Name="LinuxBackupFolder" VerticalContentAlignment="Center" />
+                  <Button x:Name="LinuxBackupFolderButton" Grid.Column="2" Classes="ghost" Content="Choose folder" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button x:Name="LinuxBackupButton" Classes="primary" Content="Back up prefix" />
+                  <Button x:Name="LinuxRestoreButton" Classes="ghost" Content="Restore prefix..." />
+                  <Button x:Name="LinuxBackupCancelButton" Classes="ghost" Content="Cancel backup" IsVisible="False" />
+                </StackPanel>
+                <ProgressBar x:Name="LinuxBackupProgress" IsVisible="False" />
+                <TextBlock x:Name="LinuxBackupText" Classes="muted" TextWrapping="Wrap" />
+                <Border x:Name="LinuxRestoreConfirm" IsVisible="False" BorderBrush="{StaticResource DangerBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="14,12">
+                  <StackPanel Spacing="10">
+                    <SelectableTextBlock x:Name="LinuxRestoreWarning" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Button x:Name="LinuxRestoreConfirmButton" Classes="danger" Content="Restore and replace the prefix" />
+                      <Button x:Name="LinuxRestoreCancelButton" Classes="ghost" Content="Cancel" />
                     </StackPanel>
                   </StackPanel>
                 </Border>

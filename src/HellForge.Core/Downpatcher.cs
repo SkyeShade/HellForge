@@ -20,7 +20,12 @@ public sealed record DownpatchProgress(Action<long, long>? Download = null, Acti
 // the downloaded pack at PackPath, which Pack lists, into Build, with the patch tool (Hpatchz); Http fetches
 // DownloadOverrides' files (null: none can be).
 public sealed record DownpatchJob(string SteamGame, string GameDestination, string PackPath, DownpatchPack Pack, SupportedBuild Build,
-    string Hpatchz, HttpClient? Http);
+    string Hpatchz, HttpClient? Http)
+{
+    // Linux setup's launcher is native and hpatchz is a Windows program: the selected Proton runs it. Null starts it
+    // directly (Windows, and the tests).
+    public string? Proton { get; init; }
+}
 
 // Patches HELLDIVERS 2 as Steam has it into the supported build. Packs are listed in downpatch/index.json on
 // files.hf-mod.com (scripts/New-DownpatchPack.ps1 builds one for each new Steam build), so a game update needs a new pack,
@@ -137,7 +142,18 @@ public static partial class Downpatcher
 
         var hpatchz = await EnsureHpatchz(tempFolder, http, cancellation);
         var packPath = await DownloadPack(tempFolder, pack, http, progress?.Download, cancellation);
-        ApplyPack(new(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http), progress?.Apply, cancellation);
+        var job = new DownpatchJob(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http);
+        if (LinuxProton(gameDestination) is { } proton) job = job with { Proton = proton };
+        ApplyPack(job, progress?.Apply, cancellation);
+    }
+
+    // The Proton that runs the Windows hpatchz when setup's launcher is native (Linux): the installation's setup choice,
+    // else Steam's default. Null on Windows, where hpatchz starts directly.
+    static string? LinuxProton(string gameDestination)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        var root = Path.GetDirectoryName(Path.GetFullPath(gameDestination));
+        return root == null ? null : SteamLocator.SelectedProtonScript(new InstallLayout(root)) ?? SteamLocator.ProtonScript();
     }
 
     static string Sha256(string path)
@@ -358,8 +374,7 @@ public static partial class Downpatcher
         {
             patchEntry.ExtractToFile(patchTemp, overwrite: true);
             // hpatchz writes progress to its console: not redirected, so a full pipe never stalls it
-            var psi = new ProcessStartInfo(job.Hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
-            using var proc = Process.Start(psi) ?? throw new InvalidOperationException("hpatchz did not start.");
+            using var proc = Process.Start(ToolStart(job, from, patchTemp, partial)) ?? throw new InvalidOperationException("hpatchz did not start.");
             proc.WaitForExit();
             if (proc.ExitCode != 0)
             {
@@ -372,6 +387,31 @@ public static partial class Downpatcher
             if (File.Exists(patchTemp)) File.Delete(patchTemp);
         }
     }
+
+    // Without Proton, hpatchz starts directly (Windows). On Linux its selected Proton runs the Windows tool in the
+    // installation's prefix, with the files as Windows paths, like the Linux wrapper runs HellForge's other Windows
+    // programs; ProtonToolArguments uses waitforexitandrun so this process's exit code is hpatchz's.
+    static ProcessStartInfo ToolStart(DownpatchJob job, string from, string patchTemp, string partial)
+    {
+        if (job.Proton == null)
+            return new ProcessStartInfo(job.Hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
+        var prefix = WinePath.PrefixFromInstallRoot(job.GameDestination);
+        var steamRoot = SteamLocator.SteamRoot() ?? throw new InvalidDataException("Steam was not found to run the build patch.");
+        var start = new ProcessStartInfo(job.Proton) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in ProtonToolArguments(job.Hpatchz, prefix, from, patchTemp, partial)) start.ArgumentList.Add(argument);
+        start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
+        start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
+        start.Environment["STEAM_COMPAT_APP_ID"] = LocalInstall.AppId;
+        start.Environment["SteamGameId"] = LocalInstall.AppId;
+        return start;
+    }
+
+    // The arguments for Proton running hpatchz: waitforexitandrun is the verb Steam uses for games; it waits for the
+    // prefix's wineserver and returns the program's exit code. "run" can return as soon as the Windows program starts
+    // (linux/hellforge-linux.sh and hf-inner.sh wait for processes for the same reason), which would leave ApplyPack
+    // reading a partly written file or a wrong exit code.
+    public static IReadOnlyList<string> ProtonToolArguments(string hpatchz, string prefix, string from, string patch, string output) =>
+        ["waitforexitandrun", hpatchz, "-f", WinePath.ToWinePath(from, prefix), WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix)];
 
     static bool Matches(string path, SupportedFile file) => SupportedBuild.Accepts(path, file);
 
