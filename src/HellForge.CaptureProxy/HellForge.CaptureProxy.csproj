@@ -1,9 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The launcher's Sync Inventory capture (HellForge.Core InventorySync): reads the player's own inventory and
-       progression from the live API during the normal game's login. Runs elevated (hosts file, LocalMachine root store,
-       port 443); published to app/capture by scripts/Publish-HellForge.ps1. -->
+       progression from the live API during the normal game's login. The Windows build is elevated (hosts file,
+       LocalMachine root store, port 443); the native Linux build runs unprivileged below the root helper that owns
+       those two system changes. Published to app/capture and app/capture-linux by scripts/Publish-HellForge.ps1. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Directory.Build.props sets TargetFramework=net10.0; an empty value here clears that inherited property so
+         TargetFrameworks (and the two explicit publishes in scripts/Publish-HellForge.ps1) really build both. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net10.0-windows;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <AssemblyName>HellForge.CaptureProxy</AssemblyName>
   </PropertyGroup>

@@ -1,4 +1,9 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using HellForge.Core;
 
 // Profile > Account sync (InventorySync, SnapshotSeal, ProfileBackups, AccountImportSettings): where snapshots live, how a
@@ -25,18 +30,46 @@ static class InventorySyncTests
             check(InventorySync.HasSnapshot(expected), "An inventory without progression is not a snapshot.");
         });
 
-        test("Sync Inventory finds its capture only in an installation's app/capture", () =>
+        test("Sync Inventory finds its capture only in the platform's installation folder", () =>
         {
             var install = Path.Combine(root, "sync-proxy");
             check(InventorySync.FindCaptureProxy(null) == null, "Found a capture without an installation.");
             check(InventorySync.FindCaptureProxy(install) == null, "Found a capture that is not there.");
-            var proxy = Path.Combine(install, "app", "capture", InventorySync.ProxyExe);
+            var nativeLinux = OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine;
+            var proxy = nativeLinux
+                ? Path.Combine(install, "app", "capture-linux", InventorySync.LinuxProxyExe)
+                : Path.Combine(install, "app", "capture", InventorySync.ProxyExe);
             Directory.CreateDirectory(Path.GetDirectoryName(proxy)!);
             File.WriteAllText(proxy, "synthetic");
             check(InventorySync.FindCaptureProxy(install) == proxy, "The installed capture was not found.");
+
+            var other = nativeLinux
+                ? Path.Combine(install, "app", "capture", InventorySync.ProxyExe)
+                : Path.Combine(install, "app", "capture-linux", InventorySync.LinuxProxyExe);
+            Directory.CreateDirectory(Path.GetDirectoryName(other)!);
+            File.WriteAllText(other, "synthetic");
+            check(InventorySync.FindCaptureProxy(install) == proxy, "The capture for the other platform was chosen.");
         });
 
         test("The capture's hosts line never joins the player's last entry, and cleanup removes only the capture's lines", () => Hosts(root, check));
+
+        test("Linux capture finds HELLDIVERS 2's prefix, maps its certificate to Wine paths, and records it for removal", () =>
+            LinuxPaths(root, check));
+
+        test("The Linux supervisor refuses a running game or session, a missing helper, prefix, Proton or API address", () =>
+            LinuxRefusals(root, check));
+
+        test("The Linux capture helper relays bytes both ways on loopback", () => LinuxRelay(root, check));
+
+        test("The Linux CA is the Windows Root store's serialized Blob in a UTF-16 LE registry file", () => CertificateRegistry(root, check));
+
+        test("The capture refuses a loopback, unspecified, link-local or private API address", () => Addresses(check));
+
+        test("Steam's compatibility-tool mapping chooses HELLDIVERS 2's Proton, or the capture refuses", () => CompatibilityTool(root, check));
+
+        test("The capture helper writes and removes only its exact hosts lines against a test file", () => HelperHosts(root, check));
+
+        test("The capture helper holds its lock and ends when the watched proxy pid is gone or its lifetime ends", () => HelperWatch(root, check));
 
         test("A snapshot seal holds only for its files, its Steam account and this installation's key", () =>
             Seals(root, check));
@@ -82,12 +115,580 @@ static class InventorySyncTests
             CaptureHosts.Add(hosts, Host);
             var lines = File.ReadAllLines(hosts);
             check(lines.Contains(CaptureHosts.Marker) && lines.Contains("127.0.0.1 " + Host), name + ": the capture's lines are not lines of their own.");
+            check(InventorySync.HasLeftoverRedirect(hosts), name + ": the Linux hosts path did not detect the leftover marker.");
             check(!original.Contains("foo", StringComparison.Ordinal) || lines.Contains("0.0.0.0 foo.com"), name + ": the player's last entry was changed.");
             check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
+            check(!InventorySync.HasLeftoverRedirect(hosts), name + ": the Linux hosts path still reports a leftover marker.");
             check(File.ReadAllLines(hosts).SequenceEqual(original.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)), name + ": cleanup changed the player's entries.");
             check(!CaptureHosts.Remove(hosts, Host), name + ": a second cleanup removed more.");
         }
         check(!CaptureHosts.Remove(Path.Combine(folder, "missing"), Host), "Cleanup of a missing file removed something.");
+    }
+
+    static void LinuxPaths(string root, Action<bool, string> check)
+    {
+        var steamRoot = Directory.CreateDirectory(Path.Combine(root, "linux-capture-prefix", "Steam")).FullName;
+        var steamApps = Directory.CreateDirectory(Path.Combine(steamRoot, "steamapps")).FullName;
+        File.WriteAllText(Path.Combine(steamApps, "appmanifest_553850.acf"), "\"AppState\" { \"appid\" \"553850\" }");
+        var prefix = Directory.CreateDirectory(Path.Combine(steamApps, "compatdata", "553850", "pfx")).FullName;
+        var compatibilityData = Path.GetDirectoryName(prefix)!;
+        check(LinuxCapture.FindPrefix(steamRoot, null) == compatibilityData, "The HELLDIVERS 2 prefix was not found from its Steam app manifest.");
+
+        var caFile = Path.Combine(compatibilityData, "capture-ca.cer");
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=HellForge Capture CA", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        var der = certificate.Export(X509ContentType.Cert);
+        File.WriteAllBytes(caFile, der);
+        var thumbprint = LinuxCapture.CertificateThumbprint(File.ReadAllBytes(caFile));
+        check(thumbprint == certificate.Thumbprint && thumbprint.Length == 40, "The public CA blob did not read back as its certificate.");
+
+        var wineCa = LinuxCapture.WinePath(Path.Combine(prefix, "drive_c", "hf-ca.cer"), compatibilityData);
+        check(wineCa == @"C:\hf-ca.cer", "A prefix C: certificate was not mapped to C: for Wine: " + wineCa);
+        var zCa = LinuxCapture.WinePath(Path.Combine(root, "logs", "capture-ca.cer"), compatibilityData);
+        check(zCa.StartsWith(@"Z:\", StringComparison.Ordinal) && zCa.EndsWith(@"\logs\capture-ca.cer", StringComparison.Ordinal),
+            "A sync-folder certificate was not mapped through Z: for Wine: " + zCa);
+
+        var sync = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "sync-1")).FullName;
+        LinuxCapture.WriteCertificateRecord(sync, new(compatibilityData, Path.Combine(steamRoot, "proton"), steamRoot, caFile, thumbprint));
+        var record = LinuxCapture.ReadCertificateRecord(sync);
+        check(record is { Thumbprint: var saved } && saved == thumbprint && record.Prefix == compatibilityData && record.CaFile == caFile,
+            "The certificate record did not round trip.");
+        if (OperatingSystem.IsLinux())
+        {
+            check(File.GetUnixFileMode(LinuxCapture.CertificateRecordPath(sync)) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                "The Linux certificate record is not mode 0600.");
+
+            // A stand-in for `proton run reg import/query`: its Root key holds the expected Blob after the add and is gone
+            // after the delete. This checks the supervisor's proof-before-opening and verified-removal flow.
+            var fakeState = Path.Combine(root, "linux-capture-record", "fake-root-store.txt");
+            var fakeProton = Path.Combine(root, "linux-capture-record", "fake-proton");
+            var expectedHex = Convert.ToHexString(LinuxCapture.CertificateBlob(der));
+            var stateQuoted = fakeState.Replace("'", "'\\''", StringComparison.Ordinal);
+            File.WriteAllText(fakeProton, "#!/bin/sh\nstate='" + stateQuoted + "'\n" +
+                "case \"$*\" in\n" +
+                "  *'reg import'*capture-delete.reg*) : > \"$state\" ;;\n" +
+                "  *'reg import'*) printf '%s\\n' '" + expectedHex + "' > \"$state\" ;;\n" +
+                "  *'reg query'*'/v Blob'*) if [ -s \"$state\" ]; then printf '    Blob    REG_BINARY    %s\\n' \"$(cat \"$state\")\"; else echo 'reg: Unable to find the specified registry value' >&2; exit 1; fi ;;\n" +
+                "  *'reg query'*) if [ -s \"$state\" ]; then cat \"$state\"; else echo 'reg: Unable to find the specified registry key' >&2; exit 1; fi ;;\n" +
+                "esac\n");
+            File.SetUnixFileMode(fakeProton, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var fakeRecord = record! with { Proton = fakeProton };
+            LinuxCapture.InstallCertificate(fakeRecord);
+            check(File.ReadAllText(fakeState).Contains(expectedHex, StringComparison.OrdinalIgnoreCase),
+                "The certificate add was not confirmed from the prefix registry value.");
+            check(LinuxCapture.RemoveCertificate(fakeRecord) == null && File.ReadAllText(fakeState).Length == 0,
+                "The certificate key was not verified as removed.");
+
+            var badProton = Path.Combine(root, "linux-capture-record", "fake-bad-proton");
+            File.WriteAllText(badProton, "#!/bin/sh\ncase \"$*\" in *'reg query'*) printf '    Blob    REG_BINARY    00\\n' ;; esac\n");
+            File.SetUnixFileMode(badProton, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var blocked = false;
+            try { LinuxCapture.InstallCertificate(fakeRecord with { Proton = badProton }); }
+            catch (InvalidOperationException) { blocked = true; }
+            check(blocked, "A mismatching reg query answer was accepted as the capture CA.");
+        }
+        LinuxCapture.DeleteCertificateRecord(sync);
+        check(LinuxCapture.ReadCertificateRecord(sync) == null, "The removed certificate record still reads.");
+    }
+
+    static void CertificateRegistry(string root, Action<bool, string> check)
+    {
+        var der = new byte[] { 0x30, 0x03, 0x02, 0x01, 0x00 };
+        var blob = LinuxCapture.CertificateBlob(der);
+        check(blob.Length == 17 && blob.AsSpan(0, 4).SequenceEqual(new byte[] { 0x20, 0, 0, 0 }) &&
+            blob.AsSpan(4, 4).SequenceEqual(new byte[] { 1, 0, 0, 0 }) && blob.AsSpan(8, 4).SequenceEqual(new byte[] { 5, 0, 0, 0 }) &&
+            blob.AsSpan(12).SequenceEqual(der), "The certificate Blob's header fields or DER length are wrong.");
+
+        var thumbprint = new string('A', 40);
+        var text = LinuxCapture.AddRegistryText(thumbprint.ToLowerInvariant(), der);
+        check(text.StartsWith("Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" +
+            thumbprint + "]\r\n", StringComparison.Ordinal), "The add .reg header or key is wrong.");
+        check(text.Contains("\"Blob\"=hex:20,00,00,00,01,00,00,00,05,00,00,00,30,03,02,01,00\r\n", StringComparison.Ordinal),
+            "The add .reg Blob hex is wrong.");
+        check(!text.Replace("\r\n", "", StringComparison.Ordinal).Contains('\n'), "The add .reg does not use CRLF line ends.");
+        var delete = LinuxCapture.DeleteRegistryText(thumbprint);
+        check(delete.Contains("[-HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + thumbprint + "]",
+            StringComparison.Ordinal) && delete.EndsWith("\r\n", StringComparison.Ordinal), "The delete .reg key is wrong.");
+
+        var folder = Directory.CreateDirectory(Path.Combine(root, "linux-registry")).FullName;
+        var regPath = Path.Combine(folder, "capture-add.reg");
+        LinuxCapture.WriteRegistryFile(regPath, text);
+        var bytes = File.ReadAllBytes(regPath);
+        check(bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xFE, "The .reg file is not UTF-16 LE with a BOM.");
+        check(Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2) == text, "The .reg file text did not round trip as UTF-16 LE.");
+        if (OperatingSystem.IsLinux())
+            check(File.GetUnixFileMode(regPath) == (UnixFileMode.UserRead | UnixFileMode.UserWrite), "The .reg file is not mode 0600.");
+
+        check(LinuxCapture.NormalizeThumbprint(thumbprint.ToLowerInvariant()) == thumbprint, "A lower-case thumbprint was not normalised.");
+        foreach (var bad in new string?[] { null, "", new string('A', 39), new string('A', 41), new string('G', 40), " " + new string('A', 39) })
+            check(LinuxCapture.NormalizeThumbprint(bad) == null, "An invalid thumbprint was accepted: " + (bad ?? "null"));
+        var threw = false;
+        try { LinuxCapture.RegistryKey("not-a-thumbprint"); } catch (ArgumentException) { threw = true; }
+        check(threw, "An invalid thumbprint reached a registry key name.");
+
+        var key = LinuxCapture.RegistryKey(thumbprint);
+        check(key == @"HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates\" + thumbprint, "The registry key is wrong.");
+        check(LinuxCapture.ImportRegistryArguments(@"Z:\tmp\capture.reg").SequenceEqual(["run", "reg", "import", @"Z:\tmp\capture.reg"]),
+            "The registry import arguments are wrong.");
+        check(LinuxCapture.QueryBlobArguments(thumbprint).SequenceEqual(["run", "reg", "query", key, "/v", "Blob"]),
+            "The registry Blob query arguments are wrong.");
+        check(LinuxCapture.QueryKeyArguments(thumbprint).SequenceEqual(["run", "reg", "query", key]),
+            "The registry key query arguments are wrong.");
+
+        var expected = Convert.ToHexString(blob);
+        var query = "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + thumbprint +
+            "\r\n    Blob    REG_BINARY    " + expected + "\r\n";
+        check(LinuxCapture.QueryBlobHex(query) == expected && LinuxCapture.BlobMatches(query, blob),
+            "A matching reg query answer was not read as the written Blob.");
+        check(!LinuxCapture.BlobMatches(query.Replace(expected, "00" + expected[2..], StringComparison.Ordinal), blob),
+            "A mismatching reg query answer was accepted.");
+        check(LinuxCapture.QuerySaysAbsent(new(1, "reg: Unable to find the specified registry key")) &&
+            !LinuxCapture.QuerySaysAbsent(new(0, "HKEY_LOCAL_MACHINE")) &&
+            !LinuxCapture.QuerySaysAbsent(new(-1, "Proton timed out.")) &&
+            !LinuxCapture.QuerySaysAbsent(new(1, "")), "A reg query failure was mistaken for an absent key.");
+
+        var hashFile = Path.Combine(folder, "hash.txt");
+        File.WriteAllText(hashFile, "abc");
+        check(LinuxCapture.FileSha256(hashFile) == "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
+            "The helper hash is not SHA-256.");
+    }
+
+    static void Addresses(Action<bool, string> check)
+    {
+        foreach (var rejected in new[] { "0.0.0.0", "127.0.0.1", "10.0.0.1", "172.16.0.1", "172.31.255.255",
+            "192.168.1.1", "169.254.1.1", "100.64.0.1" })
+            check(!LinuxCapture.IsPublicAddress(IPAddress.Parse(rejected)), "A non-public API address was accepted: " + rejected);
+        check(LinuxCapture.IsPublicAddress(IPAddress.Parse("8.8.8.8")), "A public API address was rejected.");
+        check(!LinuxCapture.IsPublicAddress(IPAddress.IPv6Loopback), "An IPv6 loopback address was accepted as an IPv4 API address.");
+        var publicAddress = LinuxCapture.FirstPublicIPv4([IPAddress.Loopback, IPAddress.Parse("10.1.1.1"), IPAddress.Parse("8.8.8.8")]);
+        check(publicAddress?.ToString() == "8.8.8.8" && LinuxCapture.FirstPublicIPv4([IPAddress.Loopback]) == null,
+            "The first public IPv4 address was not chosen.");
+    }
+
+    static void CompatibilityTool(string root, Action<bool, string> check)
+    {
+        var steam = Directory.CreateDirectory(Path.Combine(root, "compat-tool", "Steam")).FullName;
+        var common = Directory.CreateDirectory(Path.Combine(steam, "steamapps", "common")).FullName;
+        var proton9 = Directory.CreateDirectory(Path.Combine(common, "Proton 9.0")).FullName;
+        var experimental = Directory.CreateDirectory(Path.Combine(common, "Proton - Experimental")).FullName;
+        File.WriteAllText(Path.Combine(proton9, "proton"), "");
+        File.WriteAllText(Path.Combine(experimental, "proton"), "");
+        var config = Directory.CreateDirectory(Path.Combine(steam, "config")).FullName;
+        var configPath = Path.Combine(config, "config.vdf");
+
+        const string GameMapping = """
+            "InstallConfigStore"
+            {
+              "Software"
+              {
+                "Valve"
+                {
+                  "Steam"
+                  {
+                    "CompatToolMapping"
+                    {
+                      "553850" { "name" "proton_9" "config" "" "Priority" "250" }
+                      "0" { "name" "proton_experimental" "config" "" }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        check(LinuxCapture.CompatToolName(GameMapping) == "proton_9", "The game's CompatToolMapping name was not read.");
+        File.WriteAllText(configPath, GameMapping);
+        check(LinuxCapture.ProtonForGame(steam) == Path.Combine(proton9, "proton"),
+            "The Proton Steam maps to HELLDIVERS 2 was not chosen.");
+
+        const string DefaultMapping = """
+            "InstallConfigStore"
+            {
+              "Steam"
+              {
+                "CompatToolMapping"
+                {
+                  "0" { "name" "proton_experimental" }
+                }
+              }
+            }
+            """;
+        check(LinuxCapture.CompatToolName(DefaultMapping) == "proton_experimental", "Steam's default CompatToolMapping was not read.");
+        File.WriteAllText(configPath, DefaultMapping);
+        check(LinuxCapture.ProtonForGame(steam) == Path.Combine(experimental, "proton"),
+            "Steam's default Proton was not used when the game has no mapping.");
+
+        const string BrokenMapping = """
+            "InstallConfigStore"
+            {
+              "Steam"
+              {
+                "CompatToolMapping"
+                {
+                  "553850" { "config" "" }
+                  "0" { "name" "proton_experimental" }
+                }
+              }
+            }
+            """;
+        check(LinuxCapture.CompatToolName(BrokenMapping) == null, "A game mapping without a name fell back to another Proton.");
+        File.WriteAllText(configPath, GameMapping.Replace("proton_9", "proton_not_installed", StringComparison.Ordinal));
+        check(LinuxCapture.ProtonForGame(steam) == null, "An unresolved compatibility tool was guessed instead of refused.");
+        check(LinuxCapture.ProtonForGame(Path.Combine(root, "missing-steam")) == null, "A missing Steam config resolved a Proton.");
+        check(LinuxCapture.CompatToolName("{") == null, "Malformed Steam metadata resolved a tool.");
+
+        var custom = Directory.CreateDirectory(Path.Combine(steam, "compatibilitytools.d", "GE-Proton10-25")).FullName;
+        File.WriteAllText(Path.Combine(custom, "proton"), "");
+        File.WriteAllText(Path.Combine(custom, "compatibilitytool.vdf"), """
+            "compatibilitytools"
+            {
+              "compat_tools"
+              {
+                "GE-Proton10-25"
+                {
+                  "install_path" "."
+                  "display_name" "GE-Proton10-25"
+                }
+              }
+            }
+            """);
+        File.WriteAllText(configPath, GameMapping.Replace("proton_9", "GE-Proton10-25", StringComparison.Ordinal));
+        check(LinuxCapture.ProtonForGame(steam) == Path.Combine(custom, "proton"),
+            "A compatibilitytools.d Proton was not resolved through its compatibilitytool.vdf.");
+    }
+
+    static void LinuxRefusals(string root, Action<bool, string> check)
+    {
+        var install = Path.Combine(root, "linux-refusals");
+        var pfx = Directory.CreateDirectory(Path.Combine(install, "compatdata", "553850", "pfx")).FullName;
+        var compatibilityData = Path.GetDirectoryName(pfx)!;
+        var proton = Path.Combine(install, "proton");
+        File.WriteAllText(proton, "#!/bin/sh\n");
+        var proxy = Path.Combine(install, "app", "capture-linux", InventorySync.LinuxProxyExe);
+        Directory.CreateDirectory(Path.GetDirectoryName(proxy)!);
+        File.WriteAllText(proxy, "synthetic");
+        var shippedHelper = Path.Combine(install, "app", "linux", LinuxCapture.HelperScript);
+        Directory.CreateDirectory(Path.GetDirectoryName(shippedHelper)!);
+        File.WriteAllText(shippedHelper, "#!/bin/sh\n");
+        var sync = Path.Combine(install, "logs", "sync-refusal");
+        var snapshot = Path.Combine(install, InventorySync.SnapshotFolder, "player");
+
+        check(LinuxCapture.StartRefusal(install, null, null, null, gameRunning: true, sessionRunning: false, helper: new(true, true))!.Contains("Close HELLDIVERS 2", StringComparison.Ordinal),
+            "A running game was not refused.");
+        check(LinuxCapture.StartRefusal(install, null, null, null, gameRunning: false, sessionRunning: true, helper: new(true, true))!.Contains("session", StringComparison.Ordinal),
+            "A running session was not refused.");
+        check(LinuxCapture.StartRefusal(install, null, null, null, gameRunning: false, sessionRunning: false, helper: new(false, false))!.Contains("allow-capture.sh", StringComparison.Ordinal),
+            "A missing helper did not name its installer.");
+        check(LinuxCapture.StartRefusal(install, null, null, null, gameRunning: false, sessionRunning: false, helper: new(true, false))!.Contains("allow-capture.sh", StringComparison.Ordinal),
+            "A stale helper did not name its installer.");
+        check(LinuxCapture.StartRefusal(install, null, proton, "8.8.8.8", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("prefix", StringComparison.Ordinal),
+            "A missing game prefix was not refused.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, null, "8.8.8.8", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("Proton", StringComparison.Ordinal),
+            "A missing Proton was not refused.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, Path.Combine(install, "missing-proton"), "8.8.8.8",
+                gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("Proton", StringComparison.Ordinal),
+            "A missing Proton file was not refused.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, proton, null, gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("public IPv4", StringComparison.Ordinal),
+            "A missing API address did not say it needs a public IPv4 address.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, proton, "127.0.0.1", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("not a public IPv4", StringComparison.Ordinal),
+            "A loopback API address was not refused with its reason.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, proton, "192.168.1.2", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("not a public IPv4", StringComparison.Ordinal),
+            "A private API address was not refused with its reason.");
+        check(LinuxCapture.StartRefusal(install, compatibilityData, proton, "8.8.8.8", gameRunning: false, sessionRunning: false, helper: new(true, true)) == null,
+            "A ready capture was refused.");
+
+        // The real caller's own checks: a session flag from the launcher, and the actual game process lookup.
+        if (OperatingSystem.IsLinux())
+        {
+            var session = Refusal(() => InventorySync.StartCaptureProxy(install, proxy, Path.Combine(install, "logs", "sync-session"), snapshot, Account, sessionRunning: true));
+            check(session.Contains("session", StringComparison.Ordinal), "StartCaptureProxy did not use the launcher's session check: " + session);
+
+            var sleep = File.Exists("/usr/bin/sleep") ? "/usr/bin/sleep" : "/bin/sleep";
+            var fakeGame = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "linux-refusals-game")).FullName, "helldivers2");
+            File.Copy(sleep, fakeGame, overwrite: true);
+            File.SetUnixFileMode(fakeGame, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+            using var game = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fakeGame, "30")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }) ?? throw new Exception("The synthetic game did not start.");
+            try
+            {
+                Thread.Sleep(200);
+                check(InventorySync.IsGameRunning(), "The synthetic game process was not found.");
+                var running = Refusal(() => InventorySync.StartCaptureProxy(install, proxy, sync, snapshot, Account, sessionRunning: false));
+                check(running.Contains("Close HELLDIVERS 2", StringComparison.Ordinal), "StartCaptureProxy did not use the real game check: " + running);
+                var record = new LinuxCapture.CertificateRecord(compatibilityData, proton, install, Path.Combine(install, "capture-ca.cer"), new string('A', 40));
+                check(LinuxCapture.RemoveCertificate(record)?.Contains("Close HELLDIVERS 2", StringComparison.Ordinal) == true,
+                    "Certificate removal touched the prefix while the game ran.");
+                check(LinuxCapture.Cleanup(install)?.Contains("Close HELLDIVERS 2", StringComparison.Ordinal) == true,
+                    "Cleanup touched the prefix while the game ran.");
+                var installBlocked = false;
+                try { LinuxCapture.InstallCertificate(record); }
+                catch (InvalidOperationException error) { installBlocked = error.Message.Contains("Close HELLDIVERS 2", StringComparison.Ordinal); }
+                check(installBlocked, "Certificate install touched the prefix while the game ran.");
+            }
+            finally
+            {
+                if (!game.HasExited) game.Kill();
+                game.WaitForExit(5000);
+            }
+        }
+    }
+
+    static string Refusal(Action action)
+    {
+        try { action(); return "no refusal"; }
+        catch (InvalidOperationException error) { return error.Message; }
+    }
+
+    static void LinuxRelay(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux capture relay)"); return; }
+        var helperScript = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (!File.Exists(helperScript)) { Console.WriteLine("  (skipped: linux/capture-helper.sh is not in the test working directory)"); return; }
+        if (!HasSocat()) { Console.WriteLine("  (skipped: socat is not installed)"); return; }
+
+        static int FreePort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
+        }
+
+        static void ReadExactly(NetworkStream stream, byte[] buffer)
+        {
+            var read = 0;
+            while (read < buffer.Length)
+            {
+                var count = stream.Read(buffer, read, buffer.Length - read);
+                if (count == 0) throw new IOException("The relay closed before all bytes arrived.");
+                read += count;
+            }
+        }
+
+        var target = new TcpListener(IPAddress.Loopback, 0);
+        target.Start();
+        var targetPort = ((IPEndPoint)target.LocalEndpoint).Port;
+        var listenPort = FreePort();
+        System.Diagnostics.Process? helper = null;
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("bash") { UseShellExecute = false, CreateNoWindow = true };
+            start.ArgumentList.Add(helperScript);
+            start.ArgumentList.Add("relay");
+            start.ArgumentList.Add("--listen-port");
+            start.ArgumentList.Add(listenPort.ToString());
+            start.ArgumentList.Add("--target-port");
+            start.ArgumentList.Add(targetPort.ToString());
+            helper = System.Diagnostics.Process.Start(start);
+            if (helper == null) throw new Exception("The relay helper did not start.");
+
+            var accepted = target.AcceptTcpClientAsync();
+            TcpClient? client = null;
+            for (var i = 0; i < 50 && client == null; i++)
+            {
+                try { client = new TcpClient(); client.Connect(IPAddress.Loopback, listenPort); }
+                catch (SocketException)
+                {
+                    client?.Dispose();
+                    client = null;
+                    Thread.Sleep(100);
+                }
+            }
+            if (client == null) throw new Exception("No connection reached the relay.");
+            if (!accepted.Wait(5000)) throw new Exception("The relay did not connect to its target.");
+            using (client)
+            using (var server = accepted.Result)
+            {
+                client.ReceiveTimeout = 5000;
+                server.ReceiveTimeout = 5000;
+                var network = client.GetStream();
+                var targetStream = server.GetStream();
+                var ping = "ping"u8.ToArray();
+                network.Write(ping);
+                var received = new byte[ping.Length];
+                ReadExactly(targetStream, received);
+                check(received.SequenceEqual(ping), "The relay did not carry bytes to its target.");
+
+                var pong = "pong"u8.ToArray();
+                targetStream.Write(pong);
+                var returned = new byte[pong.Length];
+                ReadExactly(network, returned);
+                check(returned.SequenceEqual(pong), "The relay did not carry bytes back.");
+            }
+        }
+        finally
+        {
+            target.Stop();
+            if (helper is { HasExited: false }) { try { helper.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
+            helper?.Dispose();
+        }
+    }
+
+    static bool HasSocat()
+    {
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("bash") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("command -v socat");
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process == null) return false;
+            process.WaitForExit();
+            return process.ExitCode == 0;
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
+    }
+
+    static void HelperHosts(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux capture helper hosts test)"); return; }
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (!File.Exists(script)) { Console.WriteLine("  (skipped: linux/capture-helper.sh is not in the test working directory)"); return; }
+        var folder = Directory.CreateDirectory(Path.Combine(root, "helper-hosts")).FullName;
+        var hosts = Path.Combine(folder, "hosts");
+        var state = Path.Combine(folder, "state");
+        const string player = "10.0.0.1 a.b # HellForge-CaptureProxy";
+        File.WriteAllText(hosts, "127.0.0.1 localhost\n" + player);
+        var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+        File.SetUnixFileMode(hosts, mode);
+
+        var add = RunHelper(script, "hosts-add", "--hosts-file", hosts, "--state-dir", state);
+        check(add.ExitCode == 0, "The helper could not add its hosts lines: " + add.Output);
+        var lines = File.ReadAllLines(hosts);
+        check(lines.Contains(CaptureHosts.Marker) && lines.Contains("127.0.0.1 " + LinuxCapture.ApiHost),
+            "The helper's marker or mapping is missing.");
+        check(lines.Contains(player), "The player's line that contains the marker text was removed.");
+        check(File.GetUnixFileMode(hosts) == mode, "The helper did not keep the hosts file's mode.");
+        check(RunHelper(script, "hosts-add", "--hosts-file", hosts, "--state-dir", state).ExitCode == 0,
+            "A second hosts add failed.");
+        check(File.ReadAllLines(hosts).Count(line => line == CaptureHosts.Marker) == 1,
+            "The helper duplicated its marker.");
+
+        var remove = RunHelper(script, "hosts-remove", "--hosts-file", hosts, "--state-dir", state);
+        check(remove.ExitCode == 0, "The helper could not remove its hosts lines: " + remove.Output);
+        var after = File.ReadAllLines(hosts);
+        check(!after.Contains(CaptureHosts.Marker) && !after.Contains("127.0.0.1 " + LinuxCapture.ApiHost),
+            "The helper left its marker or mapping behind.");
+        check(after.Contains(player), "The helper removed the player's line that merely contains the marker text.");
+        var missing = Path.Combine(folder, "missing-hosts");
+        check(RunHelper(script, "hosts-remove", "--hosts-file", missing, "--state-dir", state).ExitCode == 0 && !File.Exists(missing),
+            "Removing a missing hosts file failed or created it.");
+    }
+
+    static void HelperWatch(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux capture helper watch test)"); return; }
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (!File.Exists(script)) { Console.WriteLine("  (skipped: linux/capture-helper.sh is not in the test working directory)"); return; }
+        var folder = Directory.CreateDirectory(Path.Combine(root, "helper-watch")).FullName;
+        var hosts = Path.Combine(folder, "hosts");
+        var state = Path.Combine(folder, "state");
+        File.WriteAllText(hosts, "# player\n");
+
+        using var standIn = StartProxyStandIn();
+        var watch = StartHelperWatch(script, standIn.Id, hosts, state, seconds: null);
+        try
+        {
+            WaitFor(() => File.ReadAllText(hosts).Contains(CaptureHosts.Marker, StringComparison.Ordinal), 5000,
+                "The watch helper did not add its hosts lines.");
+            var locked = RunHelper(script, "hosts-add", "--hosts-file", hosts, "--state-dir", state);
+            check(locked.ExitCode != 0 && locked.Output.Contains("another capture helper", StringComparison.Ordinal),
+                "A second helper did not take the same lock: " + locked.Output);
+            standIn.Kill();
+            check(standIn.WaitForExit(5000), "The watched pid did not end.");
+            check(watch.WaitForExit(10000), "The watch helper did not end after its pid was gone.");
+            check(!File.ReadAllText(hosts).Contains(CaptureHosts.Marker, StringComparison.Ordinal),
+                "The watch helper left its hosts lines after its pid was gone.");
+        }
+        finally
+        {
+            if (!watch.HasExited) { try { watch.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
+            watch.Dispose();
+            if (!standIn.HasExited) { try { standIn.Kill(); } catch (InvalidOperationException) { } }
+        }
+
+        using var standInWithCap = StartProxyStandIn();
+        var capped = StartHelperWatch(script, standInWithCap.Id, hosts, state, seconds: "1");
+        try
+        {
+            WaitFor(() => File.ReadAllText(hosts).Contains(CaptureHosts.Marker, StringComparison.Ordinal), 5000,
+                "The capped helper did not add its hosts lines.");
+            check(capped.WaitForExit(10000), "The helper's hard lifetime cap did not end it.");
+            check(!File.ReadAllText(hosts).Contains(CaptureHosts.Marker, StringComparison.Ordinal),
+                "The capped helper left its hosts lines behind.");
+        }
+        finally
+        {
+            if (!capped.HasExited) { try { capped.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
+            capped.Dispose();
+            if (!standInWithCap.HasExited) { try { standInWithCap.Kill(); } catch (InvalidOperationException) { } }
+        }
+    }
+
+    static Process StartProxyStandIn()
+    {
+        var start = new ProcessStartInfo("bash") { UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add("exec -a HellForge.CaptureProxy sleep 30");
+        return Process.Start(start) ?? throw new Exception("The proxy stand-in did not start.");
+    }
+
+    static Process StartHelperWatch(string helper, int pid, string hosts, string state, string? seconds)
+    {
+        var start = new ProcessStartInfo("bash") { UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add(helper);
+        start.ArgumentList.Add("watch");
+        start.ArgumentList.Add("--pid");
+        start.ArgumentList.Add(pid.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add("--hosts-file");
+        start.ArgumentList.Add(hosts);
+        start.ArgumentList.Add("--state-dir");
+        start.ArgumentList.Add(state);
+        if (seconds != null)
+        {
+            start.ArgumentList.Add("--seconds");
+            start.ArgumentList.Add(seconds);
+        }
+        return Process.Start(start) ?? throw new Exception("The watch helper did not start.");
+    }
+
+    static (int ExitCode, string Output) RunHelper(string helper, params string[] arguments)
+    {
+        var start = new ProcessStartInfo("bash")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add(helper);
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new Exception("The capture helper did not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(10000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            throw new Exception("The capture helper did not finish.");
+        }
+        return (process.ExitCode, (output.GetAwaiter().GetResult() + error.GetAwaiter().GetResult()).Trim());
+    }
+
+    static void WaitFor(Func<bool> condition, int milliseconds, string reason)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition()) return;
+            Thread.Sleep(50);
+        }
+        throw new Exception(reason);
     }
 
     static void Seals(string root, Action<bool, string> check)

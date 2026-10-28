@@ -90,7 +90,8 @@ default is `~/.local/share/hellforge-prefix`. When the prefix has no HellForge l
 `app/engine-package.zip`, saves the Proton choice and starts the native launcher. The setup wizard starts automatically
 while the game copy is incomplete. The installer checks the package's required entries before it prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
-`app/linux/hellforge-linux.sh` or `app/linux/hf-sandbox-probe`.
+`app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-sandbox-probe`,
+`app/linux/allow-capture.sh` or `app/linux/capture-helper.sh`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -321,6 +322,72 @@ The design claims that need the game rather than this probe are items 8-18. They
   and threads still work with the seccomp rules).
 - **Phase 4:** 10-13 (the broker's named pipe flags, client pid and ring, Valve's DLL through `lsteamclient`, and
   Proton's DLL overrides in the game).
+
+## Account sync
+
+The profile page's **Sync Inventory** button opens the normal game through Steam and copies the signed-in account's
+inventory and progression into a sealed snapshot. It is the same capture as on Windows, but on Linux the proxy is a
+native program and the two system changes are made by one root-owned helper.
+
+Install the helper once, from the account that plays HellForge:
+
+```fish
+sudo bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge/app/linux/allow-capture.sh
+```
+
+That is the only password prompt. The installer copies `capture-helper.sh` to
+`/usr/local/lib/hellforge/capture-helper`, records its SHA-256 in `capture-helper.sha256` and adds
+`/etc/sudoers.d/hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop` and `cleanup`
+commands, so that account needs no other password. There is no wildcard and no port argument; `start` reads the native
+proxy's pid from stdin and the relay port is fixed at 18443. Running `allow-capture.sh --remove` removes the rule, the
+helper and the hash. The helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller.
+The launcher hashes the installed copy against the one in this installation and refuses to sync if an update left the
+root copy stale, telling the player to run `allow-capture.sh` again.
+
+For the length of a sync, until the normal game exits, these change:
+
+- `/etc/hosts` gets two marked lines: `# HellForge-CaptureProxy` and
+  `127.0.0.1 api.live.prod.thehelldiversgame.com`. The helper rewrites the file next to itself and moves the new file into
+  place, keeping its mode, owner and SELinux label, so a kill during the write cannot leave it empty. It removes only its
+  own exact marker and the mapping directly below it; a player's line that merely contains the marker text stays.
+- The helper listens on `127.0.0.1:443` and relays to `127.0.0.1:18443`, where the native proxy listens. Nothing is
+  bound beyond loopback, and the relay handles connections as `nobody` after the root helper binds the port. The relay
+  stops with the helper.
+- The proxy makes a one-day CA and writes only its public certificate to the sync folder. HellForge starts the Proton
+  that Steam's `CompatToolMapping` selects for HELLDIVERS 2, not HellForge's own Proton choice, and refuses if it cannot
+  resolve that exact tool. The supervisor imports the certificate into HELLDIVERS 2's own Proton prefix,
+  `steamapps/compatdata/553850/pfx`, as the Windows Root store's serialized `Blob`
+  (`HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>`), using
+  `proton run reg import` with a UTF-16 LE `.reg` file. It reads the value back with `proton run reg query` and
+  requires the returned hex to equal the blob it wrote before the game opens. Removal imports a delete `.reg` and
+  requires the key to be gone;
+  a failed check is a failure, never "removed". Wine runs only while the game is closed. The private key stays in the
+  proxy process.
+- `logs/sync-<utc>/` is mode `0700`; the inventory, progression, state, certificate and seal files are mode `0600`. The
+  snapshot is sealed natively with the machine-id transform; the account is the one the Steam probe confirmed. Captured
+  JSON is never put in a log.
+
+The normal host CA bundle, the prefix's `hosts` file, nftables/iptables and Steam launch options are not changed, and Wine
+is never started as root. During the sync, the game may still show "Could not connect to Easy Anti Cheat network" after
+the login and close itself; the capture is finished by then, as on Windows.
+
+If a sync was killed before it could clean up, start HellForge and press **Clean up**, or run:
+
+```fish
+sudo /usr/local/lib/hellforge/capture-helper cleanup
+```
+
+The launcher checks `/etc/hosts` for the marker on every start and, when the game is not running, runs that cleanup at
+startup. If it fails, the card offers **Clean up**. The CA record is under `logs/sync-*/capture-ca.json`; **Clean up**
+removes the recorded registry key through Wine's `reg.exe` too.
+
+If HellForge itself is killed mid-sync, the helper watches the native proxy's pid and the proxy's pid is checked against
+`/proc/<pid>/cmdline`, so a reused pid does not keep the redirect alive. The helper removes the hosts lines and the relay
+when the proxy exits, and has a hard lifetime cap of the proxy's 10-minute timeout plus two minutes (never more than an
+hour). The prefix CA is not removed by that helper; if HellForge was killed, the next launcher start finds
+`capture-ca.json` and removes the certificate, with **Clean up** as the manual fallback. If the game is still running,
+the launcher refuses to touch the prefix with Wine and leaves the record until the next start after the game closes.
+Closing the launcher window while a sync runs stops the helper and attempts the CA removal before the window closes.
 
 ## Settings
 
@@ -553,6 +620,10 @@ probe, and a real game session have not been tested here.
 - The graphical installer's install and update path (the staged app swap, rollback and new engine install), build
   patches applied through Proton, prefix backup and restore, and uninstall's outside cleanup (including the AppArmor
   commands) and prefix deletion offer have not been tried with a real game and Steam on a Linux machine.
+- A real Account Sync on Linux has not been run yet. The open checks are whether the registry `Blob` import puts the
+  native proxy's CA in HELLDIVERS 2's prefix `Root` store, whether the game uses that store, and whether the root
+  helper's 443 relay and `/etc/hosts` lines carry the login. Treat Account Sync on Linux as experimental until those are
+  recorded.
 
 ## Helping with Linux
 
