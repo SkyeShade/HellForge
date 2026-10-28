@@ -112,8 +112,9 @@ public static class LinuxNetworkBlock
         }));
     }
 
-    // The native launcher verifies the wrapper and marker; the wrapper and session runner verify the live namespace.
-    // Under Wine, this process still proves the live isolation itself. Windows: nothing.
+    // On native Linux this checks only the wrapper and the marker. The live checks are linux/hellforge-offline.sh's
+    // self-test before it enters the namespace and the session runner's in-Wine probe (PlaySession.NetworkProbeInProcess)
+    // before the game starts. Under Wine, this process still proves the live isolation itself. Windows: nothing.
     public static void GuardSession(string installRoot)
     {
         if (OperatingSystem.IsLinux())

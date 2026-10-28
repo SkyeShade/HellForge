@@ -17,15 +17,16 @@ check and Steam folder search in `hellforge-linux.sh`, follow NO LONGER NEEDED D
 - About 50 GB of free space while setting up: Steam's download of the supported build and HellForge's copy of the game
   are about 24 GB each. Setup deletes the download after copying unless you untick that.
 - `HellForge-Linux.zip` from the HellForge release package. It contains the app but no game files.
-- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` (from util-linux) and `pgrep` (from procps).
+- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` (from util-linux), `pgrep` (from procps) and
+  `bsdtar`. `bsdtar` is needed only to add `.7z` or `.rar` mods.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
   |---|---|---|
-  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 socat util-linux procps-ng` |
-  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 socat util-linux procps` |
-  | `dnf` | Fedora, Nobara | `sudo dnf install iproute socat util-linux procps-ng` |
-  | `zypper` | openSUSE | `sudo zypper install iproute2 socat util-linux procps` |
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 socat util-linux procps-ng libarchive` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 socat util-linux procps libarchive-tools` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install iproute socat util-linux procps-ng bsdtar` |
+  | `zypper` | openSUSE | `sudo zypper install iproute2 socat util-linux procps bsdtar` |
 
   On other systems, install the same packages with your package manager.
 
