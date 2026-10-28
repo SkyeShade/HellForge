@@ -404,19 +404,20 @@ static class InventorySyncTests
             var session = Refusal(() => InventorySync.StartCaptureProxy(install, proxy, Path.Combine(install, "logs", "sync-session"), snapshot, Account, sessionRunning: true));
             check(session.Contains("session", StringComparison.Ordinal), "StartCaptureProxy did not use the launcher's session check: " + session);
 
-            var sleep = File.Exists("/usr/bin/sleep") ? "/usr/bin/sleep" : "/bin/sleep";
+            // A script, not a copy of sleep: a script's process takes the script's name, while a multi-call coreutils
+            // (Ubuntu 26.04's) refuses to run as an unknown program. The shell stays while its sleep runs.
             var fakeGame = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "linux-refusals-game")).FullName, "helldivers2");
-            File.Copy(sleep, fakeGame, overwrite: true);
+            File.WriteAllText(fakeGame, "#!/bin/sh\nsleep 30\n");
             File.SetUnixFileMode(fakeGame, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
-            using var game = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fakeGame, "30")
+            using var game = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fakeGame)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true
             }) ?? throw new Exception("The synthetic game did not start.");
             try
             {
-                Thread.Sleep(200);
+                for (var waited = 0; waited < 50 && !InventorySync.IsGameRunning(); waited++) Thread.Sleep(100);
                 check(InventorySync.IsGameRunning(), "The synthetic game process was not found.");
                 var running = Refusal(() => InventorySync.StartCaptureProxy(install, proxy, sync, snapshot, Account, sessionRunning: false));
                 check(running.Contains("Close HELLDIVERS 2", StringComparison.Ordinal), "StartCaptureProxy did not use the real game check: " + running);
@@ -432,7 +433,7 @@ static class InventorySyncTests
             }
             finally
             {
-                if (!game.HasExited) game.Kill();
+                if (!game.HasExited) game.Kill(entireProcessTree: true);
                 game.WaitForExit(5000);
             }
         }
