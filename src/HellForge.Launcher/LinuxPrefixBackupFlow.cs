@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using Avalonia;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
@@ -113,10 +115,16 @@ public partial class MainWindow
     async Task ChooseLinuxRestoreArchive(InstallLayout install)
     {
         if (linuxArchiveBusy) return;
+        // The backup card shows the folder the backups are written to; open the picker there when it exists.
+        IStorageFolder? backupFolder = null;
+        var backupText = LinuxBackupFolder.Text?.Trim() ?? "";
+        if (backupText.Length > 0 && Directory.Exists(backupText))
+            backupFolder = await StorageProvider.TryGetFolderFromPathAsync(Path.GetFullPath(backupText));
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Choose a prefix backup to restore",
             AllowMultiple = false,
+            SuggestedStartLocation = backupFolder,
             FileTypeFilter = [new FilePickerFileType("Prefix backups (.tar.zst, .tar.gz)")
                 { Patterns = ["*.tar.zst", "*.tar.gz"] }]
         });
@@ -132,6 +140,14 @@ public partial class MainWindow
             "until the restored one is in place; if the replacement fails, it is put back. HellForge closes to replace " +
             "the prefix, then starts again. Close any session first.";
         LinuxRestoreConfirm.IsVisible = true;
+        // The card can sit below the fold of the Settings scroll view. Once the confirmation has been laid out, move
+        // the view to its position in the Settings content.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (SettingsPage.Content is Visual content &&
+                LinuxRestoreConfirm.TranslatePoint(new Point(0, 0), content) is { } position)
+                SettingsPage.Offset = new Vector(SettingsPage.Offset.X, position.Y);
+        }, DispatcherPriority.Loaded);
         LinuxBackupText.Text = "";
     }
 
