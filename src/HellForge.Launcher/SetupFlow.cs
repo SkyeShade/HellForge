@@ -218,7 +218,11 @@ public partial class MainWindow
             var found = await FindGameStep(install);
             // When downpatching, copy first so the supported build's steam_api64.dll is available for the ownership check
             // (the newer build's DLL may not work with the probe).
-            if (found.DownpatchPack != null) { step = SetupStep.Copy; await DownpatchStep(install, found); }
+            if (found.DownpatchPack != null)
+            {
+                step = SetupStep.Copy;
+                await DownpatchStep(install, found.Build, found.SteamRoot, found.Game!.Report.Pin.BuildId, found.DownpatchPack, found.DownpatchSource!);
+            }
             var steamApi = SteamApiPath(install, found);
             step = SetupStep.Ownership;
             await OwnershipStep(install, steamApi);
@@ -264,8 +268,10 @@ public partial class MainWindow
     }
 
     // What Linux setup found for the copy: the supported build, Steam's root, whether this installation's own copy or
-    // Steam's depot download already holds it, and the copy's source folder and steam_api64.dll for the ownership check.
-    sealed record LinuxSetupSource(SupportedBuild Build, string SteamRoot, bool ExistingGame, bool FromDepots, string? Source, string? SteamApi);
+    // Steam's depot download already holds it, the copy's source folder and steam_api64.dll for the ownership check, and
+    // a build patch that converts the installed build to the supported one.
+    sealed record LinuxSetupSource(SupportedBuild Build, string SteamRoot, bool ExistingGame, bool FromDepots, string? Source,
+        string? SteamApi, DownpatchPack? DownpatchPack = null);
 
     // Confirms Steam ownership with the probe through the selected Proton version. The evidence file decides; a failed
     // check throws SetupStopped with the probe's reason.
@@ -321,6 +327,14 @@ public partial class MainWindow
         var build = SupportedBuild.Current;
         var game = await FindLinuxGame(install, steamRoot, build);
 
+        // As on Windows, a build patch comes before the ownership check: the check needs the patched build's
+        // steam_api64.dll, which only the copied game has.
+        if (game.DownpatchPack is { } downpatchPack)
+        {
+            SetStep(SetupStep.Copy);
+            await DownpatchStep(install, game.Build, game.SteamRoot, downpatchPack.SourceBuild, downpatchPack, game.Source!);
+        }
+
         SetStep(SetupStep.Ownership);
         await CheckLinuxOwnership(install, proton, wrapper, probe, game);
 
@@ -336,8 +350,11 @@ public partial class MainWindow
             ? "Steam confirmed ownership; pinned mod tools are ready."
             : "Steam confirmed ownership. Optional mod tools could not be downloaded; see logs/linux-session-wrapper.log.");
 
-        SetStep(SetupStep.Copy);
-        await CopyLinuxGame(install, game);
+        if (game.DownpatchPack == null)
+        {
+            SetStep(SetupStep.Copy);
+            await CopyLinuxGame(install, game);
+        }
 
         SetStep(SetupStep.NetworkBlock);
         await CheckLinuxNetworkBlock(install);
@@ -364,55 +381,60 @@ public partial class MainWindow
         return (steamRoot, wrapper, probe);
     }
 
-    // Finds the game Linux setup copies from: this installation's verified copy, Steam's installed supported build or
-    // Steam's depot download. Offers Steam's download (throwing SetupWaiting) when none is complete.
+    // Finds the game Linux setup copies from: this installation's verified copy, Steam's installed supported build,
+    // Steam's depot download or a build patch. Offers Steam's download (throwing SetupWaiting) when none is usable.
     async Task<LinuxSetupSource> FindLinuxGame(InstallLayout install, string steamRoot, SupportedBuild build)
     {
-        var fromDepots = false;
-        var existingGame = false;
-        string? source = null;
-        string? steamApi = null;
         SetRow(SetupStep.Find, null, "Checking the existing HellForge game folder...", running: true);
         if (await Task.Run(() => build.IsComplete(install.Game) &&
             build.Verify(install.Game, install.VerifyCache).Count == 0))
         {
-            existingGame = true;
-            steamApi = Path.Combine(install.Game, "bin", "steam_api64.dll");
             SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} already verified in {Privacy.Scrub(install.Game)}");
+            return new(build, steamRoot, true, false, null, Path.Combine(install.Game, "bin", "steam_api64.dll"));
         }
-        else
-        {
-            (fromDepots, source, steamApi) = await FindLinuxSteamGame(steamRoot, build);
-        }
-        return new(build, steamRoot, existingGame, fromDepots, source, steamApi);
+        // The build patches published since this release (a game update gets one there, not a new HellForge).
+        using (var http = new HttpClient()) await Downpatcher.RefreshAsync(http, Path.Combine(install.Temp, "downpatch-index.json"));
+        return await FindLinuxSteamGame(install, steamRoot, build);
     }
 
-    // Steam's installed supported build or its depot download, for the copy; offers Steam's download when neither is
-    // there. Returns whether it comes from the depots, and the copy's source folder and steam_api64.dll.
-    async Task<(bool FromDepots, string? Source, string? SteamApi)> FindLinuxSteamGame(string steamRoot, SupportedBuild build)
+    // Steam's installed build, its depot download or a published build patch, for the copy, in Windows setup's order;
+    // offers Steam's download when none is usable. Returns the source and the steam_api64.dll the ownership check uses.
+    async Task<LinuxSetupSource> FindLinuxSteamGame(InstallLayout install, string steamRoot, SupportedBuild build)
     {
         SteamGame? game;
         string? unusable = null;
         try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
         catch (Exception error) when (error is InvalidDataException or IOException) { game = null; unusable = error.Message; }
 
-        if (game is { SupportedBuild: true })
+        var depots = await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build));
+        var downpatch = game == null ? null : Downpatcher.FindPack(game.Report.Pin);
+        switch (SetupSourceChoice.Linux(game is { SupportedBuild: true }, depots, downpatch, downpatch != null && failedPatches.Contains(downpatch.Sha256)))
         {
-            var source = game.Report.Source;
-            var steamApi = Path.Combine(source, "bin", "steam_api64.dll");
-            SetRow(SetupStep.Find, true, $"Supported build {game.Report.Pin.BuildId} in {source}");
-            return (false, source, steamApi);
+            case SetupSourceKind.SteamGame:
+            {
+                var source = game!.Report.Source;
+                var steamApi = Path.Combine(source, "bin", "steam_api64.dll");
+                SetRow(SetupStep.Find, true, $"Supported build {game.Report.Pin.BuildId} in {source}");
+                return new(build, steamRoot, false, false, source, steamApi);
+            }
+            case SetupSourceKind.DepotDownload:
+            {
+                var steamApi = SteamDepotDownload.Locate(steamRoot, build, build.Files.Single(file => file.Path == "bin/steam_api64.dll"));
+                SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} downloaded by Steam into {SteamDepotDownload.ContentFolder(steamRoot, build)}");
+                return new(build, steamRoot, false, true, null, steamApi);
+            }
+            case SetupSourceKind.BuildPatch:
+            {
+                var source = game!.Report.Source;
+                SetRow(SetupStep.Find, true, $"Build {game.Report.Pin.BuildId} in {source}. A {downpatch!.Size / 1e9:0.0} GB patch converts it to build {build.BuildId}.");
+                return new(build, steamRoot, false, false, source, Path.Combine(install.Game, "bin", "steam_api64.dll"), downpatch);
+            }
+            default:
+                var have = game == null
+                    ? unusable == null ? "no supported game build" : "an unusable HELLDIVERS 2 installation"
+                    : $"unsupported HELLDIVERS 2 build {game.Report.Pin.BuildId}";
+                throw OfferDownload(steamRoot, game, unusable, build, have);
         }
-        if (await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build)))
-        {
-            var steamApi = SteamDepotDownload.Locate(steamRoot, build, build.Files.Single(file => file.Path == "bin/steam_api64.dll"));
-            SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} downloaded by Steam into {SteamDepotDownload.ContentFolder(steamRoot, build)}");
-            return (true, null, steamApi);
-        }
-        ShowDownload(steamRoot, game == null
-            ? unusable == null ? "no supported game build" : "an unusable HELLDIVERS 2 installation"
-            : $"unsupported HELLDIVERS 2 build {game.Report.Pin.BuildId}");
-        throw new SetupWaiting("Steam needs to finish downloading the three supported-build depots before setup can continue.");
     }
 
     // Copies the game into the installation from the source FindLinuxGame chose, or keeps the verified copy, and
@@ -556,28 +578,27 @@ public partial class MainWindow
         // ("Linked/reparse paths are not supported: Z:\", GitHub issue 1), so the download is the way there.
         if (game == null && unusable != null && !LinuxNetworkBlock.UnderWine)
             throw new SetupStopped($"HELLDIVERS 2 is in Steam, but setup cannot use it right now: {unusable}");
-        OfferDownload(steamRoot, game, unusable, build);
-        throw new InvalidOperationException("unreachable"); // OfferDownload always throws
+        throw OfferDownload(steamRoot, game, unusable, build);
     }
 
-    // Offers Steam's download of the supported build and stops setup until it is complete (throws SetupWaiting).
-    void OfferDownload(string steamRoot, SteamGame? game, string? unusable, SupportedBuild build)
+    // Offers Steam's download of the supported build and returns the stop that waits for it (thrown by the caller).
+    // Have names what Steam has, when the caller says it in its own words.
+    SetupWaiting OfferDownload(string steamRoot, SteamGame? game, string? unusable, SupportedBuild build, string? have = null)
     {
-        var have = game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
+        have ??= game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
             : unusable != null ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2";
         ShowDownload(steamRoot, have);
         var noPatch = game == null ? ""
             : Downpatcher.FindPack(game.Report.Pin) != null ? $" The build patch for build {game.Report.Pin.BuildId} did not work earlier."
             : $" HellForge has no patch for build {game.Report.Pin.BuildId} yet; once one is published, Check again uses it.";
-        throw new SetupWaiting($"Steam has {have}, but this version of HellForge needs build {build.BuildId}.{noPatch} Steam can download that exact " +
+        return new SetupWaiting($"Steam has {have}, but this version of HellForge needs build {build.BuildId}.{noPatch} Steam can download that exact " +
             "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
     }
 
     // Applies the build patch into the installation (the copy step's row), offering Steam's download when it will not fit or fails.
-    async Task DownpatchStep(InstallLayout install, SetupSource found)
+    async Task DownpatchStep(InstallLayout install, SupportedBuild build, string steamRoot, string sourceBuild,
+        DownpatchPack downpatchPack, string source)
     {
-        var build = found.Build;
-        var downpatchPack = found.DownpatchPack!;
         // Only the screen order changes: each step keeps its own row (setupRows by step), so the patch's progress
         // and errors show on the copy row. (Swapping the rows here as well put them on "Confirm you own the game",
         // and a second run swapped the screen order back.)
@@ -589,7 +610,7 @@ public partial class MainWindow
             SetupSteps.Children.Insert(SetupSteps.Children.IndexOf(ownershipRow), copyRow);
         }
         SetRow(SetupStep.Copy, null, "Downloading and applying the build patch...", running: true);
-        try { await DownpatchGame(found.DownpatchSource!, install, downpatchPack); }
+        try { await DownpatchGame(source, install, downpatchPack); }
         // a full drive: the patch is fine and Steam's download would need the same room, so ask for space; the
         // files already patched are kept
         catch (NotEnoughSpaceException error)
@@ -602,7 +623,7 @@ public partial class MainWindow
             or InvalidOperationException or Win32Exception)
         {
             failedPatches.Add(downpatchPack.Sha256);
-            ShowDownload(found.SteamRoot, $"HELLDIVERS 2 build {found.Game!.Report.Pin.BuildId}");
+            ShowDownload(steamRoot, $"HELLDIVERS 2 build {sourceBuild}");
             throw new SetupWaiting($"The build patch did not work: {Describe(error)} Steam can download build {build.BuildId} for your " +
                 "account instead: follow the steps below. Setup continues by itself when the download is complete.");
         }
