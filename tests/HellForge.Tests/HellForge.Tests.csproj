@@ -9,4 +9,7 @@
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>
   <!-- which running games keep a session from starting (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/GameProcesses.cs" Link="Session/GameProcesses.cs" /></ItemGroup>
+  <!-- the launcher's session file poll (LauncherPollTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Launcher/LineTail.cs" Link="Launcher/LineTail.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/HellForge.Launcher/ResultFile.cs" Link="Launcher/ResultFile.cs" /></ItemGroup>
 </Project>
