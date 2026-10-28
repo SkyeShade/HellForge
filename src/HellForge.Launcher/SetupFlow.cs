@@ -266,6 +266,7 @@ public partial class MainWindow
     {
         SetRow(SetupStep.Ownership, null, "Confirming Steam ownership through Proton...", running: true);
         var evidence = Path.Combine(install.Logs, "setup-ownership.json");
+        var wrapperLog = Path.Combine(install.Logs, "linux-session-wrapper.log");
         var checkStarted = DateTime.UtcNow;
         if (File.Exists(evidence)) File.Delete(evidence);
         int exit;
@@ -280,11 +281,24 @@ public partial class MainWindow
             errorMessage = "";
         }
         catch (InvalidDataException error) { exit = 1; errorMessage = error.Message; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            exit = 1;
+            errorMessage = error.Message.EndsWith('.') ? error.Message : error.Message + ".";
+        }
         if (exit == 0 && SteamOwnershipCheck.Problem(evidence, checkStarted) is { } problem) (exit, errorMessage) = (1, problem + ".");
         if (exit != 0)
+        {
+            // The wrapper truncates its log when it starts, so a log written since this check began is this run's: it says
+            // why the wrapper stopped before writing a report (missing programs, AppArmor, no Steam bridge).
+            var wrapperProblem = errorMessage.Length > 0
+                ? null
+                : SteamOwnershipCheck.ReadLinuxWrapperProblem(wrapperLog, checkStarted);
             throw new SetupStopped("The ownership check did not pass: " +
                 (errorMessage.Length > 0 ? errorMessage : $"exit code {exit}.") +
+                (wrapperProblem is null ? "" : $" The wrapper log says: \"{wrapperProblem}\".") +
                 " Make sure Steam is running and signed in to an account that owns HELLDIVERS 2.");
+        }
     }
 
     async Task RunLinuxSetup(InstallLayout install, string proton, Action<SetupStep> reportStep)

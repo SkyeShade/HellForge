@@ -69,6 +69,46 @@ public static class SteamOwnershipCheck
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { return null; }
     }
 
+    // Lines the Linux wrapper writes when it stops before the probe can report: missing programs, AppArmor's
+    // user-namespace restriction, no Steam bridge, or the offline namespace refusing to start.
+    static readonly string[] LinuxWrapperFailures =
+    [
+        "needs these programs, which were not found:",
+        "only lets allowed programs make the network namespace",
+        "local ports could not be bridged",
+        "no bridge sockets found",
+        "is not a proton script that can be run",
+        "is not a HellForge installation",
+        "is still running in the Wine prefix",
+        "outside connection SUCCEEDED, refusing to start",
+        "need iproute2 (ip)",
+        "need socat"
+    ];
+
+    // The first line of the wrapper log that explains why it stopped, or null when there is none. The wrapper truncates
+    // its log when it starts, so the text is one run's output. Pure, so it is tested with sample logs in
+    // tests/HellForge.Tests.
+    public static string? LinuxWrapperProblem(string? log)
+    {
+        if (string.IsNullOrEmpty(log)) return null;
+        return log.Split('\n').Select(line => line.Trim())
+            .FirstOrDefault(line => LinuxWrapperFailures.Any(failure => line.Contains(failure, StringComparison.Ordinal)));
+    }
+
+    // The first failure in the wrapper log when this check's wrapper wrote it: the wrapper truncates the log when it
+    // starts, so a log whose LastWriteTimeUtc is not before notBeforeUtc is this run's. Null when there is no failure,
+    // the file does not exist, it is from an earlier run, or it cannot be read.
+    public static string? ReadLinuxWrapperProblem(string path, DateTime notBeforeUtc)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.LastWriteTimeUtc < notBeforeUtc) return null;
+            return LinuxWrapperProblem(File.ReadAllText(path));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
     // The check without PowerShell (under Wine, where powershell.exe runs nothing): the probe on a fresh copy of the
     // given steam_api64.dll. Windows checks the DLL's Valve signature in the script; Wine cannot, so the DLL must be the
     // supported build's own (its depot SHA-1 from supported-build.json). Returns the probe's exit code (0 confirmed).

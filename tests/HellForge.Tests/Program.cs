@@ -654,6 +654,7 @@ ModSyncTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
+OwnershipLogTests.Register(Test, Check, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;
