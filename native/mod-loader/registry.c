@@ -203,12 +203,16 @@ static EntityLoaderFn g_entityLoader;
 static ArmoryBuilderFn g_armoryBuilder;
 static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
+static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
+static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
 
 static uint32_t SlotsOf(uint32_t component)
 {
+    uint32_t grown = GrownSlots(component);
+    if (grown != 0) return grown;
     for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
         if (kSlots[i].component == component) return kSlots[i].slots;
     for (int i = 0; i < g_componentCount; i++)
@@ -290,7 +294,7 @@ static int PlainCopy(uint64_t entity)
 static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
 {
     uint64_t owner = 0;
-    for (uint32_t i = 0; i < REG_LOADOUT_SLOTS; i++)
+    for (uint32_t i = 0, slots = SlotsOf(REG_LOADOUT); i < slots; i++)
     {
         uint64_t entity;
         uint32_t r;

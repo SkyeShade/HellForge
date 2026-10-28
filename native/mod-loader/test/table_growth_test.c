@@ -26,6 +26,13 @@ static const struct { uint8_t at, length, immOffset, immSize, formula; } kGrowth
 
 typedef uint8_t* (*GrowthLookupFn)(uint64_t entity);
 
+/* x / d as the 65-bit form computes it (table_growth.c Magic65). */
+static uint64_t Divide65(uint64_t x, uint64_t magic, uint32_t shift)
+{
+    uint64_t hi = (uint64_t)(((unsigned __int128)x * magic) >> 64);
+    return (((x - hi) >> 1) + hi) >> shift;
+}
+
 /* A busy thread, for the rewrite to pause: counts until told to stop. */
 static volatile LONG g_growthSpinStop;
 static DWORD WINAPI GrowthSpin(void* counter)
@@ -117,7 +124,7 @@ static void GrowthLookupFixture(void)
     GrowthRules rules = {100000, 2, 0, 1}; /* records start at 16 * S / 32: S even */
     uint32_t slots = GrowthSlots(records + 200, &rules);
     assert(slots >= 2 * (records + 200));
-    uint8_t* grown = RebuildTable(table, oldSlots, slots, stride, records, 200);
+    uint8_t* grown = RebuildTable(table, oldSlots, slots, (size_t)records * stride, (size_t)200 * stride);
     assert(grown != NULL);
     GrowthPatch patches[6];
     for (int i = 0; i < 6; i++)
@@ -193,6 +200,7 @@ static void GrowthSitesFixture(void)
     for (size_t t = 0; t < sizeof kGrowthTables / sizeof kGrowthTables[0]; t++)
     {
         const GrowthTable* table = &kGrowthTables[t];
+        assert(SlotsOf(table->component) == table->slots && table->component < GROW_COMPONENTS); /* registry.c's sizes agree */
         for (int i = 0; i < table->count; i++)
         {
             const GrowthConstant* c = &kGrowthConstants[table->first + i];
@@ -208,7 +216,7 @@ static void GrowthSitesFixture(void)
         uint32_t slots = GrowthSlots(used + more, &table->rules);
         assert(slots >= 2 * (used + more) && slots <= table->rules.maxSlots);
         static GrowthPatch patches[64];
-        assert(table->count <= 64 && GrowthPatchesFor(table, slots, 0x180000000ull, patches) == table->count);
+        assert(table->count <= 64 && GrowthPatchesFor(table, table->slots, slots, 0x180000000ull, patches) == table->count);
         for (int i = 0; i < table->count; i++) assert(ImmediateFits(patches[i].value, patches[i].immSize));
         if (table->component == 62) assert(GrowthSlots(used + 200, &table->rules) == 0); /* past its one-byte bounds */
     }
@@ -227,4 +235,115 @@ static void GrowthSitesFixture(void)
                     !memcmp(c->bytes, kGrowthLookup + kGrowthLookupSites[k].at, c->length);
         assert(found);
     }
+}
+
+/* A vanilla table of component t at `slots` slots: `used` entities, record k for entity k, and its header. */
+static uint8_t* GrowthVanillaTable(const GrowthTable* t, uint32_t used)
+{
+    uint32_t size = t->slots * 16u + t->records * t->stride;
+    uint8_t* block = calloc(1, 32 + (size_t)size);
+    uint8_t* table = block + 32;
+    memcpy(block, &t->component, 2);
+    memcpy(table - 12, &size, 4);
+    for (uint32_t k = 0; k < used; k++)
+    {
+        uint64_t key = GrowthKey(k);
+        uint32_t record = k % t->records;
+        uint8_t* row = FreeRow(table, t->slots, 16, key);
+        assert(row != NULL);
+        memcpy(row, &key, 8);
+        memcpy(row + 8, &record, 4);
+    }
+    return table;
+}
+
+/* Every constant of t in the image at `game` holds its value for `slots`, the rest of its instruction as reviewed. */
+static void GrowthConstantsAre(const GrowthTable* t, uintptr_t game, uint32_t slots)
+{
+    for (int i = 0; i < t->count; i++)
+    {
+        const GrowthConstant* c = &kGrowthConstants[t->first + i];
+        const uint8_t* code = (const uint8_t*)(game + c->rva);
+        int ok;
+        uint64_t value = GrowthValue(c->formula, slots, t->stride, t->records, c->divisor, &ok), stored = 0;
+        memcpy(&stored, code + c->immOffset, c->immSize);
+        uint64_t mask = c->immSize == 8 ? ~0ull : (1ull << (8 * c->immSize)) - 1;
+        assert(ok && stored == (value & mask));
+        assert(!memcmp(code, c->bytes, c->immOffset) && !memcmp(code + c->immOffset + c->immSize, c->bytes + c->immOffset + c->immSize,
+            c->length - c->immOffset - c->immSize));
+    }
+}
+
+/* GrowTable end to end on table 62 (42 slots, one-byte bounds), its constants laid out at their places in a stand-in for
+ * game.dll: grown for 41 rows to 82 slots (constants rewritten, the state pointed at the new table, SlotsOf and the
+ * profile following), built again at 82 when the loader makes a vanilla table anew, grown again from 82; refused past
+ * its bounds and when the code is not as reviewed. */
+static void GrowthTableFixture(void)
+{
+    const GrowthTable* t = GrowthTableOf(62);
+    assert(t != NULL && t->slots == 42);
+    assert(!GrowthWanted(21, 10, 42) && GrowthWanted(21, 11, 42) && !GrowthWanted(40, 0, 42));
+    uintptr_t savedGame = g_game;
+    int savedComponents = g_componentCount;
+    uint8_t* image = VirtualAlloc(NULL, 0x2200000, MEM_RESERVE, PAGE_READWRITE);
+    assert(image != NULL);
+    for (int i = 0; i < t->count; i++)
+    {
+        const GrowthConstant* c = &kGrowthConstants[t->first + i];
+        assert(VirtualAlloc(image + c->rva, c->length, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+        memcpy(image + c->rva, c->bytes, c->length);
+    }
+    g_game = (uintptr_t)image;
+    uint8_t* state = VirtualAlloc(NULL, REG_TABLES + 8 * 400, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* vanilla = GrowthVanillaTable(t, 21);
+    memcpy(state + REG_TABLES + 8 * 62, &vanilla, 8);
+    Component* profile = &g_components[g_componentCount++];
+    memset(profile, 0, sizeof *profile);
+    profile->index = 62; profile->indices = 42; profile->recordOffset = 42 * 16; profile->records = t->records; profile->stride = t->stride;
+    memcpy(profile->header, vanilla - 28, 28);
+
+    /* a different instruction at one place: nothing written, nothing swapped */
+    image[kGrowthConstants[t->first + 3].rva] ^= 0xFF;
+    assert(!GrowTable(state, 62, 41) && g_grownCount == 0 && StatePointer(state, REG_TABLES + 8 * 62) == vanilla);
+    image[kGrowthConstants[t->first + 3].rva] ^= 0xFF;
+    GrowthConstantsAre(t, g_game, 42);
+
+    assert(GrowTable(state, 62, 41) && SlotsOf(62) == 82);
+    GrowthConstantsAre(t, g_game, 82);
+    uint8_t* grown = StatePointer(state, REG_TABLES + 8 * 62);
+    uint32_t size;
+    memcpy(&size, grown - 12, 4);
+    assert(grown != vanilla && size == 82 * 16u + t->records * t->stride);
+    for (uint32_t k = 0; k < 21; k++)
+    {
+        uint8_t* row = FindRow(grown, 82, 16, GrowthKey(k));
+        uint32_t record;
+        assert(row != NULL);
+        memcpy(&record, row + 8, 4);
+        assert(record == k % t->records);
+    }
+    assert(!memcmp(grown + 82 * 16, vanilla + 42 * 16, (size_t)t->records * t->stride));
+    assert(profile->indices == 82 && profile->recordOffset == 82 * 16 && !memcmp(profile->header, grown - 28, 28));
+
+    /* the loader makes the table again at its vanilla size: built at 82 */
+    uint8_t* fresh = GrowthVanillaTable(t, 21);
+    memcpy(state + REG_TABLES + 8 * 62, &fresh, 8);
+    RegrowLoaded(state);
+    uint8_t* again = StatePointer(state, REG_TABLES + 8 * 62);
+    assert(again != fresh && again != grown && FindRow(again, 82, 16, GrowthKey(20)) != NULL);
+    RegrowLoaded(state); /* once */
+    assert(StatePointer(state, REG_TABLES + 8 * 62) == again);
+
+    /* grown again from 82, then nothing past its one-byte bounds */
+    assert(GrowTable(state, 62, 60) && SlotsOf(62) == 120 && profile->indices == 120);
+    GrowthConstantsAre(t, g_game, 120);
+    assert(!GrowTable(state, 62, 70) && SlotsOf(62) == 120);
+
+    g_grownCount = 0;
+    g_componentCount = savedComponents;
+    g_game = savedGame;
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(image, 0, MEM_RELEASE);
+    free(vanilla - 32);
+    free(fresh - 32);
 }
