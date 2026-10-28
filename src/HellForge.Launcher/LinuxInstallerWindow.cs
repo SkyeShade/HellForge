@@ -157,8 +157,9 @@ sealed class LinuxInstallerWindow : Window
                 throw new InvalidDataException("Choose a folder for the HellForge prefix.");
 
             var installRoot = Path.Combine(prefix, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge");
-            var launcher = Path.Combine(installRoot, "app", "launcher-linux", "HellForge.Launcher");
-            if (File.Exists(launcher))
+            var install = new InstallLayout(installRoot);
+            var updating = File.Exists(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher"));
+            if (updating)
                 Status("Existing installation found; updating its app files and preserving game data...");
             else
             {
@@ -166,20 +167,30 @@ sealed class LinuxInstallerWindow : Window
                 await InitializePrefix(proton, prefix, steamRoot);
             }
 
-            // The status above is painted before this yield; extraction then runs without blocking repaints or input.
-            Status("Extracting HellForge...");
-            await Task.Run(() =>
+            // The status above is painted before this yield; the package is staged and swapped in without blocking repaints.
+            Status(updating ? "Updating HellForge..." : "Extracting HellForge...");
+            var previousApp = await Task.Run(() => LinuxAppInstaller.Install(install, payload, () =>
             {
-                Directory.CreateDirectory(installRoot);
-                ZipFile.ExtractToDirectory(payload, installRoot, overwriteFiles: true);
-                MakeLinuxFilesExecutable(installRoot);
-                SteamLocator.SaveProtonSelection(new InstallLayout(installRoot), proton);
-            });
-            if (!File.Exists(launcher))
-                throw new InvalidDataException("The package did not contain app/launcher-linux/HellForge.Launcher.");
-
+                EnginePackageInstaller.Install(install);
+                SteamLocator.SaveProtonSelection(install, proton);
+            }));
+            var launcher = Path.Combine(install.App, "launcher-linux", "HellForge.Launcher");
             Status("Starting the native launcher and setup wizard...");
-            Process.Start(new ProcessStartInfo(launcher) { WorkingDirectory = installRoot, UseShellExecute = true });
+            try
+            {
+                _ = Process.Start(new ProcessStartInfo(launcher) { WorkingDirectory = installRoot, UseShellExecute = true }) ??
+                    throw new InvalidDataException("The new launcher did not start.");
+            }
+            catch (Exception error)
+            {
+                if (previousApp != null)
+                {
+                    await Task.Run(() => LinuxAppInstaller.Rollback(install, previousApp));
+                    throw new InvalidDataException("The new launcher could not start: " + error.Message + " The previous installation was restored.", error);
+                }
+                throw new InvalidDataException("HellForge was installed, but the new launcher could not start: " + error.Message, error);
+            }
+            await Task.Run(() => LinuxAppInstaller.Commit(install, previousApp));
             installing = false;
             Close();
         }
@@ -225,15 +236,6 @@ sealed class LinuxInstallerWindow : Window
             "app/linux/hellforge-linux.sh"
         })
             if (!entries.Contains(required)) throw new InvalidDataException("The Linux package is incomplete; missing " + required + ".");
-    }
-
-    static void MakeLinuxFilesExecutable(string installRoot)
-    {
-        const UnixFileMode executable = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-        var launcher = Path.Combine(installRoot, "app", "launcher-linux", "HellForge.Launcher");
-        File.SetUnixFileMode(launcher, File.GetUnixFileMode(launcher) | executable);
-        foreach (var script in Directory.EnumerateFiles(Path.Combine(installRoot, "app", "linux"), "*.sh"))
-            File.SetUnixFileMode(script, File.GetUnixFileMode(script) | executable);
     }
 
     void Status(string message) => status.Text = message;
