@@ -3,6 +3,10 @@
 # backend and Steam's bridge, a veth adapter so Wine sees a network, and "prohibit" default routes so every outside
 # connection is refused at once (WSAEACCES, as the Windows block's probe expects). A self-test refuses to start if
 # 1.1.1.1 is reachable.
+# HELLFORGE_STEAM_UDP=1 (co-op on Linux): the namespace is made by pasta instead, so UDP leaves it (Steam's networking, which
+# co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP), while TCP stays refused by a
+# policy rule ("ip rule ... ipproto tcp prohibit", the same WSAEACCES). The block is then looser than the default one, but
+# UDP only reaches Valve's relays (the list Valve publishes for the game, fetched at launch); every other address is refused.
 # From DreamyBranch's LinuxSupport (SkyeShade/HellForge issue 1), with joshua-software-dev; docs/linux.md.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 command [args...]" >&2; exit 2; }
@@ -10,6 +14,9 @@ set -euo pipefail
 selftest='
 if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
   echo "hellforge-offline: outside connection SUCCEEDED, refusing to start" >&2; exit 1
+fi
+if timeout 3 bash -c "exec 3<>/dev/udp/1.1.1.1/53" 2>/dev/null; then
+  echo "hellforge-offline: UDP to a non-relay address SUCCEEDED, refusing to start" >&2; exit 1
 fi
 exec "$@"'
 
@@ -51,21 +58,69 @@ if [ -d "$prefix" ]; then
   fi
 fi
 
-exec "$unshare" --user --map-root-user --net bash -c '
-  # 1. Bring up loopback for local backend and Steam socat bridge
+# Everything below runs as root of a new user + network namespace. Default: nothing but loopback and a dead end.
+# HELLFORGE_STEAM_UDP=1: the namespace is the same, but pasta (userspace networking, no root) is attached to it from
+# outside and gives it an interface with a real route; the "ip rule" then refuses every TCP connection the way the
+# prohibit routes do, so only UDP gets out. (Running the game under `pasta -- command` instead gave it its own pid, mount,
+# ipc and hostname namespaces too, and the game quit during start.)
+inner='
   ip link set lo up
-
-  # 2. Create a virtual network adapter so Wine/the game sees a valid network interface
-  ip link add eth0 type veth peer name veth0
-  ip addr add 192.168.1.50/24 dev eth0
-  ip link set eth0 up
-  ip link set veth0 up
-
-  # 3. Block all WAN traffic with prohibit (returns 10013 WSAEACCES for NetworkProbe)
-  ip route add prohibit default
-  ip -6 route add prohibit default 2>/dev/null || true
-
-  # 4. Drop back to your normal user account
+  if [ "$HELLFORGE_STEAM_UDP" = 1 ]; then
+    for _ in $(seq 1 100); do [ -d /sys/class/net/eth0 ] && ip -4 route show default | grep -q . && break; sleep 0.1; done
+    ip -4 route show default | grep -q . || { echo "hellforge-offline: pasta did not bring the network up" >&2; exit 1; }
+    ip rule add ipproto tcp prohibit
+    ip -6 rule add ipproto tcp prohibit 2>/dev/null || true
+    # UDP only to Valve relays (address and port range each), everything else refused; loopback is in the local table.
+    while read -r addr lo hi; do
+      ip rule add pref 1000 to "$addr/32" ipproto udp dport "$lo-$hi" lookup main
+    done <<< "$HELLFORGE_UDP_RELAYS"
+    ip rule add pref 2000 prohibit
+    ip -6 rule add pref 2000 prohibit 2>/dev/null || true
+  else
+    ip link add eth0 type veth peer name veth0
+    ip addr add 192.168.1.50/24 dev eth0
+    ip link set eth0 up
+    ip link set veth0 up
+    ip route add prohibit default
+    ip -6 route add prohibit default 2>/dev/null || true
+  fi
   exec unshare --user --map-user="$0" --map-group="$1" \
     env HELLFORGE_LINUX_NETNS=1 bash -c "$2" _ "${@:3}"
-' "$uid" "$gid" "$selftest" "$@"
+'
+
+if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
+  command -v pasta >/dev/null || { echo "HELLFORGE_STEAM_UDP=1 needs pasta (the passt package)" >&2; exit 1; }
+  # Valve's relay list for the game (the one Steam's networking uses), fetched now while this PC still has its network;
+  # the last good copy is kept so a launch without a network still works. No list, no start.
+  command -v python3 >/dev/null || { echo "HELLFORGE_STEAM_UDP=1 needs python3 (to read Valve's relay list)" >&2; exit 1; }
+  relay_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hellforge/sdr-relays.txt"
+  mkdir -p "$(dirname "$relay_cache")"
+  if curl -fsS --max-time 20 'https://api.steampowered.com/ISteamApps/GetSDRConfig/v1/?appid=553850' 2>/dev/null | python3 -c '
+import json, sys
+for pop in json.load(sys.stdin)["pops"].values():
+    for r in pop.get("relays", []):
+        if "ipv4" in r: print(r["ipv4"], r["port_range"][0], r["port_range"][1])' > "$relay_cache.new" && [ -s "$relay_cache.new" ]; then
+    mv "$relay_cache.new" "$relay_cache"
+  else
+    rm -f "$relay_cache.new"
+    [ -s "$relay_cache" ] && echo "hellforge-offline: could not fetch Valve's relay list, using the last one ($relay_cache)" >&2
+  fi
+  [ -s "$relay_cache" ] || { echo "hellforge-offline: no relay list for UDP; refusing to open it" >&2; exit 1; }
+  HELLFORGE_UDP_RELAYS=$(<"$relay_cache")
+  echo "hellforge-offline: UDP is open to Valve's relays only ($(wc -l < "$relay_cache") addresses) for Steam's networking (co-op); everything else is refused." >&2
+  export HELLFORGE_STEAM_UDP HELLFORGE_UDP_RELAYS
+  "$unshare" --user --map-root-user --net bash -c "$inner" "$uid" "$gid" "$selftest" "$@" &
+  holder=$!
+  # pasta reads the holder's namespace once: wait until unshare(2) has run, or it would attach to the host's.
+  for _ in $(seq 1 50); do [ "$(readlink /proc/$holder/ns/net 2>/dev/null)" != "$(readlink /proc/self/ns/net)" ] && break; sleep 0.05; done
+  # No port forwarding in either direction, TCP or UDP: the relay rules are the only way out.
+  pasta --foreground --quiet --config-net -4 -I eth0 -t none -T none -u none -U none "$holder" &
+  nat=$!
+  trap 'kill "$nat" 2>/dev/null || true' EXIT
+  trap 'kill "$holder" 2>/dev/null || true; exit 143' INT TERM
+  wait "$holder"; status=$?
+  exit "$status"
+fi
+HELLFORGE_STEAM_UDP=0
+export HELLFORGE_STEAM_UDP
+exec "$unshare" --user --map-root-user --net bash -c "$inner" "$uid" "$gid" "$selftest" "$@"
