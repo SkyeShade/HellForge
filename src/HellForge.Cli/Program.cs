@@ -22,6 +22,7 @@ try
             prepare-session --install <folder> --profile <name> [--user-data <root>]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
             mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>]
+            build-source-mods --install <folder> [--progress <file>]
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
             sdk-headers --repo <HellForge source folder> [--mode write | check]
@@ -64,7 +65,9 @@ try
             new-mod makes a code mod from the SDK's template: in the installation's mods folder (built there, it is
             installed) or in --out. build-mod compiles a code mod with the SDK's pinned Zig: in an installation's mods
             folder into the build a session loads (temp/mod-builds; sessions build source mods themselves), elsewhere into
-            the DLL its manifest names. package-mod compiles a source mod, then zips it to share (the installation's exports
+            the DLL its manifest names. build-source-mods builds every enabled source mod into temp/mod-builds before a
+            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine.
+            package-mod compiles a source mod, then zips it to share (the installation's exports
             folder, or --out): sources and files, no DLL a player's HellForge would rebuild, no IDE leftovers.
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
@@ -99,6 +102,7 @@ try
         "prepare-session" => ["--install", "--profile", "--user-data"],
         "migrate" => ["--install", "--from", "--appdata"],
         "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--premium-snapshot", "--premium-locked"],
+        "build-source-mods" => ["--install", "--progress"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
@@ -136,6 +140,17 @@ try
         return value.ToUpperInvariant();
     }
     object result;
+    // --progress: a JSON file the launcher reads for its "compiling mods" bar (written whole, then moved in place).
+    void WriteProgress(string? file, ModBuildProgress p)
+    {
+        if (file == null) return;
+        try
+        {
+            File.WriteAllText(file + ".partial", JsonSerializer.Serialize(new { stage = p.Stage, done = p.Done, total = p.Total, mod = p.Mod }));
+            File.Move(file + ".partial", file, overwrite: true);
+        }
+        catch (IOException) { } /* the launcher is reading it: the next one */
+    }
     switch (args[0])
     {
         case "play":
@@ -272,20 +287,9 @@ try
             var (active, dataProblems) = ModDataCache.Prepare(modInstall, loadOrder, Console.Error.WriteLine);
             modProblems.AddRange(dataProblems);
             // Source mods are built (or their cached build reused) for this session; one that does not compile stays off.
-            // --progress: a JSON file the launcher reads for its "compiling mods" bar (written whole, then moved in place)
             var progressFile = options.GetValueOrDefault("--progress");
-            void Progress(ModBuildProgress p)
-            {
-                if (progressFile == null) return;
-                try
-                {
-                    File.WriteAllText(progressFile + ".partial", System.Text.Json.JsonSerializer.Serialize(new { stage = p.Stage, done = p.Done, total = p.Total, mod = p.Mod }));
-                    File.Move(progressFile + ".partial", progressFile, overwrite: true);
-                }
-                catch (IOException) { } /* the launcher is reading it: the next one */
-            }
             var (built, buildProblems) = ModBuilds.Prepare(modInstall, ModSdk.Find(modInstall.Root), active, SupportedBuild.Current.BuildId, Console.Error.WriteLine,
-                progress: Progress);
+                progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
             var staged = ModStaging.Stage(modInstall, active);
@@ -309,6 +313,22 @@ try
                 // the session's mods with network type edits (after a mod sync, the host's), for the session's native applier
                 nativeFolders = active.Where(m => m.NetworkFieldTypes.Count > 0).Select(m => Path.GetFullPath(m.Folder))
             };
+            break;
+        }
+        case "build-source-mods":
+        {
+            // The Linux wrapper's native agent: every enabled source mod built into temp/mod-builds before the session,
+            // with the same key and record the session checks. A mod that fails is reported, and the session leaves it off.
+            var buildInstall = new InstallLayout(Path.GetFullPath(Required("--install")));
+            if (!buildInstall.Exists) throw new InvalidDataException($"{buildInstall.Root} is not a HellForge installation.");
+            var (mods, loadProblems) = ModCatalog.Load(buildInstall.Mods);
+            foreach (var problem in loadProblems) Console.Error.WriteLine(problem);
+            var activeMods = ModCatalog.Active(mods);
+            var sourceMods = activeMods.Count(m => m.HasSource);
+            var progressFile = options.GetValueOrDefault("--progress");
+            var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
+                Console.Error.WriteLine, installTools: false, progress: p => WriteProgress(progressFile, p));
+            result = new { install = buildInstall.Root, sourceMods, built = prebuilt.Count(m => m.HasSource), problems = buildProblems };
             break;
         }
         case "check-stats":
@@ -389,7 +409,7 @@ try
             var sdk = ModSdk.Find(Required("--install")) ?? throw new IOException("The mod SDK was not found there.");
             var ide = options.GetValueOrDefault("--ide") is { } flag ? flag == "yes" ? true : flag == "no" ? false : throw new ArgumentException("--ide is yes or no.") : false;
             ModKit.InstallToolsAsync(sdk, ide, Console.Error.WriteLine).GetAwaiter().GetResult();
-            result = new { tools = sdk.Tools, zig = sdk.Zig, ide };
+            result = new { tools = sdk.Tools, zig = OperatingSystem.IsLinux() ? sdk.NativeZig : sdk.Zig, ide };
             break;
         }
         case "editor-data":

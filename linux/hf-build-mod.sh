@@ -6,8 +6,10 @@
 # Reads the mod's CMakeLists.txt for the language and the source list (hellforge_add_mod(...)); without one, uses
 # src/*.cpp or src/*.c and the "dll" name in hellforge-mod.json. Compiles to a Windows DLL and installs it, with
 # hellforge-mod.json and data/, into <HellForge>/mods/<mod-folder-name>/.
-# Needs INSTALL (the HellForge installation; default: the installation this script is in) and ZIG (the native Linux
-# zig; default ~/.local/share/zig-native/zig, else zig from PATH).
+# Compiles with the installation's pinned native Linux Zig (<installation>/tools/zig-linux/zig) first, then ZIG,
+# ~/.local/share/zig-native/zig and zig on PATH. A mod already in an installation's mods folder is built into the
+# session's cache by the native build agent instead, so Build now and the session share one DLL.
+# Needs INSTALL (the HellForge installation; default: the installation this script is in).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 
@@ -25,7 +27,7 @@ sdk_dir() {  # the mod SDK folder (headers such as hellforge_mod.h); empty outpu
 
 # ---- build ----------------------------------------------------------------------------------------------------------
 cmd_build() {  # $1 = the mod folder (the one with hellforge-mod.json)
-  local proj="${1:-}" sdk zig is_cxx=0 name="" dll dllname lang_line call inner f s folder target
+  local proj="${1:-}" sdk zig is_cxx=0 name="" dll dllname lang_line call inner f s folder target install_root
   local sources=() toks=() cpp=() cfiles=() src_args=()
   [ -n "$proj" ] || die "usage: $(basename "$0") <mod-folder>"
   [ -d "$proj" ] || die "$proj is not a folder"
@@ -37,12 +39,30 @@ cmd_build() {  # $1 = the mod folder (the one with hellforge-mod.json)
     die "INSTALL is not set (the HellForge installation folder with hellforge-install.json); set INSTALL, or run this script from an installation's app/linux folder"
   fi
   [ -f "$INSTALL/hellforge-install.json" ] || die "$INSTALL is not a HellForge installation (no hellforge-install.json); set INSTALL, or run this script from an installation's app/linux folder"
+  install_root="$(realpath "$INSTALL")"
   sdk="$(sdk_dir)"
   [ -n "$sdk" ] || die "mod SDK (hellforge_mod.h) not found under $INSTALL"
 
-  zig="${ZIG:-$HOME/.local/share/zig-native/zig}"
-  [ -x "$zig" ] || zig="$(command -v zig 2>/dev/null || true)"
-  [ -n "$zig" ] && [ -x "$zig" ] || die "native Linux zig not found; install it to ~/.local/share/zig-native/zig, have 'zig' in PATH, or set ZIG"
+  # A mod inside the installation is already installed: let the native build agent fill temp/mod-builds, the build a
+  # session loads. Mods outside an installation keep the direct compile and copy below.
+  if [ -x "$install_root/app/cli-linux/HellForge.Cli" ]; then
+    case "$proj" in
+      "$install_root"/mods/*)
+        echo "building $proj into the installation's source cache..."
+        "$install_root/app/cli-linux/HellForge.Cli" build-mod --mod "$proj"
+        exit 0
+        ;;
+    esac
+  fi
+
+  zig="$install_root/tools/zig-linux/zig"
+  if [ ! -x "$zig" ] && [ -n "${ZIG:-}" ]; then zig="$ZIG"; fi
+  if [ ! -x "$zig" ]; then zig="$HOME/.local/share/zig-native/zig"; fi
+  if [ ! -x "$zig" ]; then zig="$(command -v zig 2>/dev/null || true)"; fi
+  [ -n "$zig" ] && [ -x "$zig" ] || die "native Linux zig not found; install it to <installation>/tools/zig-linux/zig or ~/.local/share/zig-native/zig, have 'zig' in PATH, or set ZIG"
+  # Zig's cache stays inside the installation, beside the pinned tools' own cache (ModKit.Build).
+  export ZIG_GLOBAL_CACHE_DIR="$install_root/tools/zig-cache-linux"
+  mkdir -p "$ZIG_GLOBAL_CACHE_DIR"
 
   if [ -f "$proj/CMakeLists.txt" ]; then
     lang_line="$(grep -m1 '^project(' "$proj/CMakeLists.txt" || true)"
@@ -80,11 +100,11 @@ cmd_build() {  # $1 = the mod folder (the one with hellforge-mod.json)
   for s in "${sources[@]}"; do src_args+=("$proj/$s"); done
 
   if [ "$is_cxx" = 1 ]; then
-    "$zig" c++ -target x86_64-windows-gnu -shared -std=c++17 -Wall -Werror -Wno-unused-parameter -s \
-      -I "$sdk" -o "$dll" "${src_args[@]}" || die "build failed"
+    "$zig" c++ -std=c++17 -target x86_64-windows-gnu -shared -O2 -Wall -Werror -Wno-unused-parameter -s \
+      -I "$sdk" "${src_args[@]}" -o "$dll" || die "build failed"
   else
-    "$zig" cc -target x86_64-windows-gnu -shared -std=c11 -Wall -Werror -Wno-unused-parameter -s \
-      -I "$sdk" -o "$dll" "${src_args[@]}" || die "build failed"
+    "$zig" cc -std=c11 -target x86_64-windows-gnu -shared -O2 -Wall -Werror -Wno-unused-parameter -s \
+      -I "$sdk" "${src_args[@]}" -o "$dll" || die "build failed"
   fi
 
   ! command -v file >/dev/null || file "$dll"
