@@ -238,14 +238,19 @@ public static class LinuxPrefixBackup
         return null;
     }
 
-    // A link may stay inside the prefix, or be one of the standard Wine dosdevices links: z: to /, and com/lpt ports
-    // to /dev. Nothing else may point outside the top-level folder.
+    // A link may stay inside the prefix, be one of the standard Wine dosdevices links (z: to /, com/lpt ports to
+    // /dev), or point into a Proton installation. Proton links about 1,400 of its own files into a prefix by absolute
+    // path, e.g. pfx/drive_c/.../msado15.dll -> <library>/steamapps/common/Proton - Experimental/files/lib/wine/
+    // x86_64-windows/msado15.dll, and refusing those refuses every real backup. Such a link is safe to restore: no
+    // entry in the archive may be under a link (checked below), so restore cannot write through it; extraction only
+    // creates the links in a staging folder, and the helper moves and deletes folders without following links. The
+    // restored prefix already has Wine's z: -> / by design, so these links add no reach either.
     static string? CheckLink(LinuxArchiveEntry entry, string top)
     {
         if (entry.Target is not { Length: > 0 } target) return "a link entry has no target: " + entry.Name;
         if (target.IndexOf('\0') >= 0) return "a link target contains a null character: " + entry.Name;
         if (target[0] == '/')
-            return WineAbsoluteTargetAllowed(entry.Name, top, target) ? null
+            return WineAbsoluteTargetAllowed(entry.Name, top, target) || ProtonTargetAllowed(target) ? null
                 : "a link points outside the top-level folder: " + entry.Name + " -> " + target;
         return LinkStaysInside(entry.Name, target, top) ? null
             : "a link escapes the top-level folder: " + entry.Name + " -> " + target;
@@ -285,6 +290,52 @@ public static class LinuxPrefixBackup
     static bool NumberedDevice(string name, string prefix) =>
         name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length &&
         name[prefix.Length] is >= '1' and <= '9' && name[(prefix.Length + 1)..].All(char.IsAsciiDigit);
+
+    // A target inside a Proton installation, matched on whole components after normalising it: either steamapps,
+    // common, a name starting with "Proton", and files/ or dist/ with something below it, or compatibilitytools.d,
+    // any name, and files/ or dist/ with something below it. What comes before steamapps or compatibilitytools.d is
+    // not checked: Steam libraries can be on any disk and a backup can be restored on another machine, and this is a
+    // pure listing decision with no Steam roots to compare against. The location does not make the link dangerous,
+    // because restore never writes through it (see CheckLink) and the restored prefix already has Wine's z: -> /; the
+    // target is only where a Proton installation lives, not a place restore will write.
+    static bool ProtonTargetAllowed(string target)
+    {
+        var parts = NormalizedAbsoluteParts(target);
+        if (parts == null) return false;
+        for (var index = 0; index + 2 < parts.Count; index++)
+        {
+            if (parts[index].Equals("steamapps", StringComparison.Ordinal) &&
+                parts[index + 1].Equals("common", StringComparison.Ordinal) &&
+                parts[index + 2].StartsWith("Proton", StringComparison.Ordinal) &&
+                FilesOrDistWithEntry(parts, index + 3)) return true;
+            if (parts[index].Equals("compatibilitytools.d", StringComparison.Ordinal) &&
+                FilesOrDistWithEntry(parts, index + 2)) return true;
+        }
+        return false;
+    }
+
+    // files/ or dist/ at index, with at least one component below it.
+    static bool FilesOrDistWithEntry(IReadOnlyList<string> parts, int index) =>
+        index + 1 < parts.Count &&
+        (parts[index].Equals("files", StringComparison.Ordinal) || parts[index].Equals("dist", StringComparison.Ordinal));
+
+    // Splits an absolute target into its components and resolves "." and ".."; null when ".." would climb above "/".
+    static IReadOnlyList<string>? NormalizedAbsoluteParts(string target)
+    {
+        var stack = new List<string>();
+        foreach (var part in target.Split('/'))
+        {
+            if (part.Length == 0 || part == ".") continue;
+            if (part == "..")
+            {
+                if (stack.Count == 0) return null;
+                stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(part);
+        }
+        return stack;
+    }
 
     static bool SameOrUnder(string name, string link)
     {
