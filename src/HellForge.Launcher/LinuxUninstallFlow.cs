@@ -8,13 +8,14 @@ namespace HellForge.Launcher;
 
 // Settings > Installation > Uninstall on Linux: the exact outside paths the confirmation lists, their removal before the
 // launcher exits, and the helper that deletes the installation (and, when the player asks, the prefix HellForge made) once
-// it has.
+// it has. Steam's depot download and state files are a separate choice, off by default.
 public partial class MainWindow
 {
-    // Removes what the old shell installer and Steam left outside the installation first, then starts a small script that
-    // deletes the installation, its shortcut and the owned prefix once this launcher has exited. A failed path is reported
-    // in the log and never stops the others. AppArmor needs sudo, so the launcher only shows the commands for it.
-    async Task UninstallLinux(InstallLayout install, bool deletePrefix)
+    // Removes what the old shell installer left outside the installation first, and Steam's download when its box is ticked,
+    // then starts a small script that deletes the installation, its shortcut and the owned prefix once this launcher has
+    // exited. A failed path is reported in the log and never stops the others. AppArmor needs sudo, so the launcher only
+    // shows the commands for it.
+    async Task UninstallLinux(InstallLayout install, bool deletePrefix, bool deleteSteam)
     {
         try { UninstallSafety(install.Root); }
         catch (InvalidDataException refused) { UninstallText.Text = Privacy.Scrub(refused.Message); return; }
@@ -26,7 +27,7 @@ public partial class MainWindow
 
         try
         {
-            var plan = linuxUninstallPlan ?? BuildLinuxUninstallPlan(install);
+            var plan = (linuxUninstallPlan ?? BuildLinuxUninstallPlan(install)) with { RemoveSteam = deleteSteam };
             string? prefix = null;
             if (deletePrefix)
             {
@@ -49,7 +50,9 @@ public partial class MainWindow
                 prefix = fresh.Prefix;
             }
             UninstallButton.IsEnabled = false;
-            UninstallText.Text = "Removing Steam's download and the removed installer's files...";
+            UninstallText.Text = deleteSteam
+                ? "Removing Steam's download and the removed installer's files..."
+                : "Removing the removed installer's files (Steam's download is left)...";
             LinuxUninstallResult result;
             try { result = await Task.Run(() => LinuxUninstall.Remove(plan)); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
@@ -101,6 +104,27 @@ public partial class MainWindow
         return plan with { ShortcutExec = expected };
     }
 
+    // Fills the warning and the separate Steam choice: off by default, with the exact paths it would delete listed under
+    // it. The plan scans Steam even when the box is off, so the paths are known before the player chooses.
+    void FillLinuxUninstallWarning(InstallLayout install, LinuxUninstallPlan plan)
+    {
+        UninstallWarning.Text = LinuxUninstallWarning(install, plan);
+        UninstallSteamBox.IsChecked = false;
+        UninstallSteamBox.IsVisible = false;
+        UninstallSteamPaths.Text = "";
+        UninstallSteamPaths.IsVisible = false;
+        if (plan.Steam is not { } steam ||
+            (steam.Depots.Count == 0 && steam.AppFolders.Count == 0 && steam.Patches.Count == 0))
+        {
+            UninstallSteamBox.Content = "";
+            return;
+        }
+        UninstallSteamBox.Content = $"Also delete Steam's depot download and its state files for build {steam.Build.BuildId}: this deletes the depot folders and state patches in this Steam library, including a download made for another HellForge installation";
+        UninstallSteamPaths.Text = LinuxUninstallSteamPaths(steam);
+        UninstallSteamBox.IsVisible = true;
+        UninstallSteamPaths.IsVisible = true;
+    }
+
     static string LinuxUninstallWarning(InstallLayout install, LinuxUninstallPlan plan)
     {
         var text = new StringBuilder();
@@ -109,7 +133,7 @@ public partial class MainWindow
         if (plan.ShortcutRemovable) text.AppendLine($"  - its desktop shortcut after the launcher closes: {plan.Shortcut}");
         else if (plan.Shortcut != null) text.AppendLine($"  - no desktop shortcut (the one at {plan.Shortcut} is not unchanged HellForge's; it is left)");
         else text.AppendLine("  - a desktop shortcut: none found");
-        AppendSteamRemovals(text, plan.Steam);
+        AppendSteamRemovals(text, plan);
         AppendOldScriptRemovals(text, plan.OldScript);
         AppendPrefixRemoval(text, plan);
         text.AppendLine();
@@ -121,6 +145,7 @@ public partial class MainWindow
                 ? $"  - the Proton prefix: {offeredPrefix} (kept unless you tick the prefix box)"
                 : $"  - the Proton prefix: {plan.Prefix} (left: {plan.PrefixDeletion?.Reason ?? "it could not be checked"})");
         text.AppendLine("  - Steam, HELLDIVERS 2, your Proton versions and every other file outside this installation");
+        AppendSteamLeft(text, plan);
         text.AppendLine("  - Steam's own update and download state elsewhere under steamapps");
         if (plan.AppArmorPaths.Count > 0)
         {
@@ -136,11 +161,21 @@ public partial class MainWindow
         return text.ToString();
     }
 
-    static void AppendSteamRemovals(StringBuilder text, LinuxUninstallSteam? steam)
+    // The Steam box is a separate choice, off by default, so the removal list only claims its paths when the plan carries
+    // the choice. The scan still ran when it was off, so the confirmation can name what ticking it would delete.
+    static void AppendSteamRemovals(StringBuilder text, LinuxUninstallPlan plan)
     {
-        if (steam == null)
+        if (plan.Steam is not { } steam)
         {
             text.AppendLine("  - Steam's download of the supported build: Steam's folder was not found, so none was removed");
+            return;
+        }
+        if (!plan.RemoveSteam)
+        {
+            var count = steam.Depots.Count + steam.AppFolders.Count + steam.Patches.Count;
+            text.AppendLine(count == 0
+                ? $"  - Steam's depot download and state files for build {steam.Build.BuildId}: none found"
+                : $"  - Steam's depot download and state files for build {steam.Build.BuildId}: only if you tick the Steam box below");
             return;
         }
         if (steam.Depots.Count == 0 && steam.AppFolders.Count == 0)
@@ -151,6 +186,29 @@ public partial class MainWindow
             text.AppendLine($"  - Steam's download state files in or next to its content/app_{steam.Build.AppId} folder: none found");
         foreach (var item in steam.Patches)
             text.AppendLine($"  - Steam's download state file in or next to its content/app_{steam.Build.AppId} folder: {item.Path}");
+    }
+
+    // The Steam box is unticked in the confirmation the plan is built for: name the exact paths it leaves unless the player
+    // ticks it. The paths come from the same scan the box uses, so they match what ticking it would delete.
+    static void AppendSteamLeft(StringBuilder text, LinuxUninstallPlan plan)
+    {
+        if (plan.RemoveSteam || plan.Steam is not { } steam) return;
+        foreach (var item in steam.Depots)
+            text.AppendLine($"  - Steam's depot download (kept unless you tick the Steam box): {item.Path}");
+        foreach (var item in steam.AppFolders)
+            text.AppendLine($"  - Steam's download folder once empty (kept unless you tick the Steam box): {item.Path}");
+        foreach (var item in steam.Patches)
+            text.AppendLine($"  - Steam's download state file (kept unless you tick the Steam box): {item.Path}");
+    }
+
+    // The Steam box lists its exact paths under itself before it is ticked, so the player can see what it would delete.
+    static string LinuxUninstallSteamPaths(LinuxUninstallSteam steam)
+    {
+        var lines = new List<string>();
+        foreach (var item in steam.Depots) lines.Add("Steam's depot download: " + item.Path);
+        foreach (var item in steam.AppFolders) lines.Add("Steam's download folder once empty: " + item.Path);
+        foreach (var item in steam.Patches) lines.Add("Steam's download state file: " + item.Path);
+        return string.Join(Environment.NewLine, lines);
     }
 
     static void AppendOldScriptRemovals(StringBuilder text, IReadOnlyList<LinuxUninstallItem> oldScript)

@@ -15,8 +15,9 @@ public sealed record LinuxUninstallSteam(SupportedBuild Build, string Root,
     IReadOnlyList<LinuxUninstallItem> Patches);
 
 // What Settings > Uninstall removes outside the installation now, and what stays for the player to remove or keep. Steam's
-// leftovers and the removed shell installer's files are removed before the launcher exits; the installation root and the
-// desktop shortcut are left to the helper that runs afterwards, and AppArmor is only ever removed by the player with sudo.
+// leftovers when its box is ticked, and the removed shell installer's files, are removed before the launcher exits; the
+// installation root and the desktop shortcut are left to the helper that runs afterwards, and AppArmor is only ever removed
+// by the player with sudo.
 public sealed record LinuxUninstallPlan(
     string Root, string? Prefix, LinuxUninstallSteam? Steam,
     IReadOnlyList<LinuxUninstallItem> OldScript, IReadOnlyList<string> Left,
@@ -25,6 +26,9 @@ public sealed record LinuxUninstallPlan(
     public string? Shortcut { get; init; }
     public string? ShortcutExec { get; init; }
     public bool ShortcutRemovable { get; init; }
+    // Steam's depot download and its state files are removed only when the player ticks the separate Steam box. The plan
+    // still scans them when it is off, so the confirmation can show the exact paths ticking the box would delete.
+    public bool RemoveSteam { get; init; }
     // The prefix deletion offer: only a prefix this installer made, still containing this installation, that is not
     // itself a link, not in use, and not in a forbidden place is offered. A link above the prefix is resolved first.
     public LinuxPrefixOffer? PrefixDeletion { get; init; }
@@ -301,8 +305,9 @@ public static class LinuxUninstall
 
     // Builds the list the confirmation shows and the removal uses. A path that is a link, is outside its folder, or cannot
     // be read is left and named, not followed. Steam is searched only in its four content folders and its steamapps trees.
+    // Its download and state files are removed only when removeSteam is set, the separate box on the confirmation.
     public static LinuxUninstallPlan Plan(InstallLayout install, SupportedBuild build, LinuxUninstallLocations locations,
-        string? steamRoot, string logPath)
+        string? steamRoot, string logPath, bool removeSteam = false)
     {
         var left = new List<string>();
         var prefix = Prefix(install.Root, left);
@@ -313,12 +318,13 @@ public static class LinuxUninstall
         return new(install.Root, prefix, steam, oldScript, left, AppArmorPaths(profile, copy),
             AppArmorCommands(profile, copy), logPath)
         {
+            RemoveSteam = removeSteam,
             PrefixDeletion = prefix == null ? null : CheckPrefixDeletion(install, prefix, locations, steamRoot)
         };
     }
 
-    // Removes the plan's state patches and old-script files, then Steam's depot folders through SteamDepotDownload. Every
-    // item is attempted: a failure is added to Failed and the rest still run.
+    // Removes the plan's state patches and old-script files, then Steam's depot folders through SteamDepotDownload when the
+    // Steam box was ticked. Every item is attempted: a failure is added to Failed and the rest still run.
     public static LinuxUninstallResult Remove(LinuxUninstallPlan plan)
     {
         var removed = new List<string>();
@@ -326,22 +332,36 @@ public static class LinuxUninstall
         var left = new List<string>();
         if (plan.Steam is { } steam)
         {
-            // Patches first so the app folder can become empty and SteamDepotDownload.Delete can remove it too.
-            foreach (var patch in steam.Patches) RemoveItem(patch, removed, failed, left);
-            try
-            {
-                SteamDepotDownload.Delete(steam.Root, steam.Build,
-                    (path, error) => failed.Add($"{path}: {error.Message}"), removed.Add);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                failed.Add($"{steam.Root}: {error.Message}");
-            }
-            foreach (var folder in steam.AppFolders)
-                if (Directory.Exists(folder.Path)) left.Add($"{folder.Path} (not removed: it is not empty)");
+            if (plan.RemoveSteam) RemoveSteamFiles(steam, removed, failed, left);
+            else NoteSteamLeft(steam, left);
         }
         foreach (var item in plan.OldScript) RemoveItem(item, removed, failed, left);
         return new(removed, failed, left);
+    }
+
+    // The Steam box was ticked: patches first so the app folder can become empty and SteamDepotDownload.Delete can remove
+    // it too.
+    static void RemoveSteamFiles(LinuxUninstallSteam steam, List<string> removed, List<string> failed, List<string> left)
+    {
+        foreach (var patch in steam.Patches) RemoveItem(patch, removed, failed, left);
+        try
+        {
+            SteamDepotDownload.Delete(steam.Root, steam.Build,
+                (path, error) => failed.Add($"{path}: {error.Message}"), removed.Add);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            failed.Add($"{steam.Root}: {error.Message}");
+        }
+        foreach (var folder in steam.AppFolders)
+            if (Directory.Exists(folder.Path)) left.Add($"{folder.Path} (not removed: it is not empty)");
+    }
+
+    // The Steam box was off, so its exact paths stay. The removal log names them rather than claiming they were removed.
+    static void NoteSteamLeft(LinuxUninstallSteam steam, List<string> left)
+    {
+        foreach (var item in steam.Depots.Concat(steam.AppFolders).Concat(steam.Patches))
+            left.Add($"{item.Path} (left: the Steam download box is not ticked)");
     }
 
     static string? Prefix(string root, List<string> left)

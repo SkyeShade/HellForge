@@ -113,7 +113,8 @@ static class LinuxUninstallTests
             Directory.CreateDirectory(Path.GetDirectoryName(config)!);
             File.WriteAllText(config, LinuxUninstall.OldConfigHeader + "\nPFX=" + prefix + "\n");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
+            check(plan.RemoveSteam, "The Steam download choice was not kept.");
             check(plan.Prefix == prefix, "Wrong prefix.");
             check(plan.PrefixDeletion is { Offered: false }, "A prefix without a marker was offered.");
             check(plan.Steam != null && plan.Steam.Depots.Count == build.Depots.Count, "Steam depots not planned.");
@@ -128,6 +129,47 @@ static class LinuxUninstallTests
                 "A planned file remains.");
             check(File.Exists(keep), "A file outside the download was removed.");
             check(Directory.Exists(install.Root) && Directory.Exists(prefix), "The installation or prefix was touched.");
+        });
+
+        test("Linux uninstall leaves Steam's download and state files unless its box is ticked", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux uninstall)"); return; }
+            var sandbox = Path.Combine(root, "linux-uninstall-steam-choice");
+            var home = Path.Combine(sandbox, "home");
+            var prefix = Path.Combine(home, ".local", "share", "hellforge-prefix");
+            var install = new InstallLayout(Path.Combine(prefix, "pfx", "drive_c", "HellForge"));
+            install.Create(SupportedBuild.Current.BuildId);
+            var locations = new LinuxUninstallLocations(home);
+            var build = SupportedBuild.Current;
+            var steam = Path.Combine(home, ".local", "share", "Steam");
+            var content = SteamDepotDownload.ContentFolder(steam, build);
+            foreach (var depot in build.Depots) Directory.CreateDirectory(Path.Combine(content, "depot_" + depot.Id));
+            var patch = Path.Combine(content, "state_" + build.AppId + "_1.patch");
+            File.WriteAllText(patch, "state");
+            var nearby = Path.Combine(Path.GetDirectoryName(content)!, "state_" + build.AppId + "_2.patch");
+            File.WriteAllText(nearby, "state");
+            var keep = Path.Combine(steam, "steamapps", "common", "keep.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(keep)!);
+            File.WriteAllText(keep, "keep");
+
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            check(!plan.RemoveSteam, "Steam's download is removed without its box.");
+            check(plan.Steam != null && plan.Steam.Depots.Count == build.Depots.Count, "The Steam box has no depot paths.");
+            check(plan.Steam!.Patches.Count == 2, "The Steam box does not list its state files.");
+            check(plan.Steam.AppFolders.Count == 1, "The Steam box does not list its empty download folder.");
+            var result = LinuxUninstall.Remove(plan);
+            check(result.Failed.Count == 0, "Removal failed: " + string.Join("; ", result.Failed));
+            check(Directory.Exists(content) && build.Depots.All(depot => Directory.Exists(Path.Combine(content, "depot_" + depot.Id))),
+                "A depot download was removed without the box.");
+            check(File.Exists(patch) && File.Exists(nearby), "A state file was removed without the box.");
+            check(result.Left.Any(note => note.Contains(patch, StringComparison.Ordinal)), "The left state file was not reported.");
+
+            var chosen = plan with { RemoveSteam = true };
+            var chosenResult = LinuxUninstall.Remove(chosen);
+            check(chosenResult.Failed.Count == 0, "Removal failed: " + string.Join("; ", chosenResult.Failed));
+            check(!Directory.Exists(content), "Steam's download folder remains with the box ticked.");
+            check(!File.Exists(patch) && !File.Exists(nearby), "A state file remains with the box ticked.");
+            check(File.Exists(keep), "A file outside the download was removed.");
         });
 
         test("Steam's own state files away from the depot download folder are left alone", () =>
@@ -152,7 +194,7 @@ static class LinuxUninstallTests
             File.WriteAllText(inSteamApps, "steam's own state");
             File.WriteAllText(nextToMissingApp, "steam's own state");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
             check(plan.Steam != null && plan.Steam.Patches.Count == 0, "Steam's own state files were planned.");
             var result = LinuxUninstall.Remove(plan);
             check(result.Failed.Count == 0, "Removal failed: " + string.Join("; ", result.Failed));
@@ -209,7 +251,7 @@ static class LinuxUninstallTests
             File.WriteAllText(first, "first");
             File.WriteAllText(second, "second");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
             check(plan.Steam != null && plan.Steam.Depots.Count == 0, "A linked depot was planned.");
             check(plan.Left.Any(note => note.Contains(linkedDepot, StringComparison.Ordinal)), "The linked depot was not reported.");
             check(plan.Steam!.Patches.Count == 2, "The state patches were not planned.");

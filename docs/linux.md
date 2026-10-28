@@ -258,8 +258,10 @@ refuses a prefix that is the home folder, the filesystem root, Steam's folder or
 has a link on its path.
 
 **Restore prefix...** lists the archive with tar first and refuses an archive that is not one top-level folder, has an
-absolute path or `..`, contains a device or special entry, or has a link that would leave the prefix (Wine's own
-`pfx/dosdevices` links are allowed). Restore refuses the same prefix locations and needs the archive's decompressor
+absolute path or `..`, contains a device or special entry, or has a link that would leave the prefix. Wine's own
+`pfx/dosdevices` links and Proton's links to its own files are allowed (Proton links its own files into every prefix):
+the target must be below `files` or `dist` in `steamapps/common/Proton*` or `compatibilitytools.d/<name>`. Nothing in
+the archive may be written through a link. Restore refuses the same prefix locations and needs the archive's decompressor
 (`zstd` or `gzip`) on `PATH`. It unpacks the archive beside the prefix and refuses when there is not room for the
 unpacked prefix while the current one is kept. The launcher then closes; a helper waits for the prefix to be free,
 moves the current prefix aside, moves the restored one into place, removes the old one, and starts the launcher again.
@@ -268,11 +270,14 @@ If the move fails, the old prefix is put back. The current prefix is not touched
 ### Removing HellForge
 
 Settings > Installation > Uninstall HellForge... (the confirmation button says **Uninstall this installation**) shows
-exactly what will be removed. After you confirm, it first removes what HellForge put outside the installation:
+exactly what will be removed. Steam's depot download is a separate checkbox, off by default. After you confirm, it first
+removes what HellForge put outside the installation:
 
-- Steam's depot download of the supported build: the `depot_<id>` folders under
+- Steam's depot download of the supported build, only when its checkbox is ticked: the `depot_<id>` folders under
   `<Steam>/steamapps/content/app_553850`, also looked for under `ubuntu12_32`, `ubuntu12_64` and `steamrt64`, plus the
-  `state_553850_*.patch` download-state files in or next to that folder.
+  `state_553850_*.patch` download-state files in or next to that folder. The confirmation lists those paths under the
+  checkbox and warns that a depot download made for another HellForge installation in the same Steam library is removed
+  too. While the box is unticked, they are left where they are.
 - The removed shell installer's app-menu entry, `~/.local/bin/hellforge-linux` command and
   `~/.config/hellforge-linux/config` saved settings, when the saved settings name this prefix.
 
@@ -298,10 +303,13 @@ before uninstall.
 The Proton prefix is left unless the native installer made it. The installer writes `.hellforge-created` into a prefix
 that did not exist or was empty before, and the marker names the prefix. Uninstall offers the prefix only when that
 marker matches, the prefix still contains this installation, it is not the home folder, the filesystem root, Steam's
-folder or under Steam's `compatdata`, it has no links (other than Wine's own drive entries) and no process is using it.
-The checkbox is off by default; ticking it deletes the whole prefix, including the game copy, every profile and every
-mod. A prefix made by HELLDIVERS 2, one you chose as an existing non-empty folder, or one from an earlier HellForge
-version has no marker and is never offered; delete it by hand if you want it gone.
+folder or under Steam's `compatdata`, and no process is using it. Links inside the prefix do not refuse it: Proton links
+its own files into every prefix, and the helper deletes with `rm -rf --one-file-system`, which removes a link without
+following it. A link above the prefix, such as `/home -> /var/home`, is resolved first, and the real folder is offered
+and deleted. Only a prefix or marker that is itself a link is refused. The checkbox is off by default; ticking it
+deletes the whole prefix, including the game copy, every profile and every mod. A prefix made by HELLDIVERS 2, one you
+chose as an existing non-empty folder, or one from an earlier HellForge version has no marker and is never offered;
+delete it by hand if you want it gone.
 
 ## Building mods with native Zig
 
