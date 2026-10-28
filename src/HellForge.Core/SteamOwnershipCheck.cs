@@ -13,12 +13,13 @@ namespace HellForge.Core;
 public static class SteamOwnershipCheck
 {
     public sealed record LinuxProbeRequest(string Wrapper, string Proton, string InstallRoot, string Prefix, string SteamRoot,
-        string Probe, string SteamApi, string WorkRoot, string EvidencePath, TimeSpan Timeout);
+        string Probe, string SteamApi, string WorkRoot, string EvidencePath, TimeSpan Timeout, string? PrivateResult = null);
 
     sealed record PreparedProbe(string Run, string Library, string Hash, string Report);
 
     public const uint AppId = 553850;
     public const string Confirmed = "local_steam_client_subscription_confirmed";
+    public static readonly TimeSpan LinuxProbeTimeout = TimeSpan.FromSeconds(60);
 
     // Null when the evidence at path confirms ownership and was written at or after notBeforeUtc; else why it does not.
     public static string? Problem(string path, DateTime notBeforeUtc)
@@ -111,12 +112,14 @@ public static class SteamOwnershipCheck
 
     // The check without PowerShell (under Wine, where powershell.exe runs nothing): the probe on a fresh copy of the
     // given steam_api64.dll. Windows checks the DLL's Valve signature in the script; Wine cannot, so the DLL must be the
-    // supported build's own (its depot SHA-1 from supported-build.json). Returns the probe's exit code (0 confirmed).
-    public static int RunProbe(string probe, string steamApi, string workRoot, string evidencePath, TimeSpan timeout)
+    // supported build's own (its depot SHA-1 from supported-build.json). The optional private result is the account
+    // handoff, never copied to evidence. Returns the probe's exit code (0 confirmed).
+    public static int RunProbe(string probe, string steamApi, string workRoot, string evidencePath, TimeSpan timeout,
+        string? privateResult = null)
     {
         var prepared = PrepareProbe(probe, steamApi, workRoot);
         var start = new ProcessStartInfo(probe) { WorkingDirectory = prepared.Run, UseShellExecute = false, CreateNoWindow = true };
-        AddProbeArguments(start, prepared, useWinePaths: false, prefix: "");
+        AddProbeArguments(start, prepared, useWinePaths: false, prefix: "", privateResult);
         using var process = Process.Start(start) ?? throw new InvalidDataException("The Steam ownership probe did not start.");
         if (!process.WaitForExit((int)timeout.TotalMilliseconds))
         {
@@ -132,25 +135,33 @@ public static class SteamOwnershipCheck
     // final report, so the report is authoritative and avoids waiting for unrelated shutdown work.
     public static int RunProbeThroughLinuxWrapper(LinuxProbeRequest request)
     {
-        if (!File.Exists(request.Proton)) throw new InvalidDataException("Proton was not found in Steam; install a Proton version or set PROTON.");
-        var prepared = PrepareProbe(request.Probe, request.SteamApi, request.WorkRoot);
-        var start = new ProcessStartInfo("bash") { WorkingDirectory = request.InstallRoot, UseShellExecute = false, CreateNoWindow = true };
-        start.ArgumentList.Add(request.Wrapper);
-        start.ArgumentList.Add(WinePath.ToWinePath(request.Probe, request.Prefix));
-        AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix);
-        start.Environment["INSTALL"] = request.InstallRoot;
-        start.Environment["PROTON"] = request.Proton;
-        start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = request.SteamRoot;
-        start.Environment["STEAM_COMPAT_DATA_PATH"] = request.Prefix;
-        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
-        start.Environment["HELLFORGE_WORKING_DIRECTORY"] = prepared.Run;
-        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
-        start.Environment["HELLFORGE_SKIP_MOD_TOOLS"] = "1";
-        start.Environment["HELLFORGE_WAIT_FOR_PROCESSES"] = "0";
-        // The ownership check is not a co-op session: keep #62's UDP path off even when the launcher inherited the variable.
-        start.Environment.Remove("HELLFORGE_STEAM_UDP");
-        using var process = Process.Start(start) ?? throw new InvalidDataException("The Linux Steam ownership check did not start.");
-        return WaitForLinuxProbe(process, prepared.Report, request.EvidencePath, request.Timeout);
+        try
+        {
+            if (!File.Exists(request.Proton)) throw new InvalidDataException("Proton was not found in Steam; install a Proton version or set PROTON.");
+            var prepared = PrepareProbe(request.Probe, request.SteamApi, request.WorkRoot);
+            var start = new ProcessStartInfo("bash") { WorkingDirectory = request.InstallRoot, UseShellExecute = false, CreateNoWindow = true };
+            start.ArgumentList.Add(request.Wrapper);
+            start.ArgumentList.Add(WinePath.ToWinePath(request.Probe, request.Prefix));
+            AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix, request.PrivateResult);
+            start.Environment["INSTALL"] = request.InstallRoot;
+            start.Environment["PROTON"] = request.Proton;
+            start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = request.SteamRoot;
+            start.Environment["STEAM_COMPAT_DATA_PATH"] = request.Prefix;
+            start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
+            start.Environment["HELLFORGE_WORKING_DIRECTORY"] = prepared.Run;
+            start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
+            start.Environment["HELLFORGE_SKIP_MOD_TOOLS"] = "1";
+            start.Environment["HELLFORGE_WAIT_FOR_PROCESSES"] = "0";
+            // The ownership check is not a co-op session: keep #62's UDP path off even when the launcher inherited the variable.
+            start.Environment.Remove("HELLFORGE_STEAM_UDP");
+            using var process = Process.Start(start) ?? throw new InvalidDataException("The Linux Steam ownership check did not start.");
+            return WaitForLinuxProbe(process, prepared.Report, request.EvidencePath, request.Timeout);
+        }
+        finally
+        {
+            // The private handoff names the account; read it here, then delete it even when the probe timed out.
+            if (request.PrivateResult is { Length: > 0 } privateResult) SteamAccount.RememberProbe(privateResult);
+        }
     }
 
     static PreparedProbe PrepareProbe(string probe, string steamApi, string workRoot)
@@ -169,11 +180,13 @@ public static class SteamOwnershipCheck
         return new(run, library, hash, Path.Combine(run, "result.json"));
     }
 
-    static void AddProbeArguments(ProcessStartInfo start, PreparedProbe probe, bool useWinePaths, string prefix)
+    static void AddProbeArguments(ProcessStartInfo start, PreparedProbe probe, bool useWinePaths, string prefix, string? privateResult = null)
     {
         start.ArgumentList.Add(useWinePaths ? WinePathMap(probe.Library, prefix) : probe.Library);
         start.ArgumentList.Add(probe.Hash);
         start.ArgumentList.Add(useWinePaths ? WinePathMap(probe.Report, prefix) : probe.Report);
+        if (privateResult is { Length: > 0 })
+            start.ArgumentList.Add(useWinePaths ? WinePathMap(privateResult, prefix) : privateResult);
     }
 
     static string WinePathMap(string path, string prefix) => HellForge.Core.WinePath.ToWinePath(path, prefix);

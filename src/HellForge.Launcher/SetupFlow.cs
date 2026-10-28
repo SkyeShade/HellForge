@@ -279,6 +279,7 @@ public partial class MainWindow
     {
         SetRow(SetupStep.Ownership, null, "Confirming Steam ownership through Proton...", running: true);
         var evidence = Path.Combine(install.Logs, "setup-ownership.json");
+        var privateAccount = Path.Combine(install.Temp, "ownership", Guid.NewGuid().ToString("N") + ".account.json");
         var wrapperLog = Path.Combine(install.Logs, "linux-session-wrapper.log");
         var checkStarted = DateTime.UtcNow;
         if (File.Exists(evidence)) File.Delete(evidence);
@@ -289,7 +290,7 @@ public partial class MainWindow
         {
             var request = new SteamOwnershipCheck.LinuxProbeRequest(wrapper, proton, install.Root,
                 WinePath.PrefixFromInstallRoot(install.Root), game.SteamRoot, probe, ownershipSteamApi,
-                Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(60));
+                Path.Combine(install.Temp, "ownership"), evidence, SteamOwnershipCheck.LinuxProbeTimeout, privateAccount);
             exit = await Task.Run(() => SteamOwnershipCheck.RunProbeThroughLinuxWrapper(request));
             errorMessage = "";
         }

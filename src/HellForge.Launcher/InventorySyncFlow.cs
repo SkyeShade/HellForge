@@ -65,17 +65,35 @@ public partial class MainWindow
             await CleanUpSync(proxy);
             return;
         }
-        if (SyncRefusal(out var account) is { } refusal)
+        if (SyncRefusal() is { } refusal)
         {
             SetSyncStatus(refusal, Orange);
             return;
         }
         var install = new InstallLayout(paths.InstallRoot);
+        syncStarting = true;
+        SyncButton.IsEnabled = false;
+        SetSyncStatus("Checking the signed-in Steam account...", Gold);
+        ulong? signedIn;
+        try { signedIn = await Task.Run(() => SteamAccount.Current(install)); }
+        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception)
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+            SetSyncStatus("The signed-in Steam account could not be read: " + error.Message, Orange);
+            return;
+        }
+        if (signedIn is not { } account)
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+            SetSyncStatus("Sign in to Steam first: the sync is sealed for your Steam account.", Orange);
+            return;
+        }
         var profile = Selected;
         var snapshot = InventorySync.SnapshotDirectory(install.Root, profile.Name);
         var folder = Path.Combine(install.Logs, "sync-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
-        syncStarting = true;
-        SyncButton.IsEnabled = false;
         SetSyncStatus("Waiting for the administrator prompt...", Gold);
         Process? started = null;
         string? failure = null;
@@ -96,14 +114,11 @@ public partial class MainWindow
         Append("Inventory sync: capture started for profile " + profile.Name + ". HELLDIVERS 2 opens through Steam; take it past the title screen.", LauncherLine);
     }
 
-    // Why a sync cannot start now; null with the signed-in Steam account it will be sealed for.
-    string? SyncRefusal(out ulong account)
+    // Why a sync cannot start now; its Steam account is asked for separately, off the UI thread when the probe is needed.
+    string? SyncRefusal()
     {
-        account = 0;
         if (runner.IsRunning) return "Stop the HellForge session first.";
         if (InventorySync.IsGameRunning()) return "Close HELLDIVERS 2 first: the sync reads its next login.";
-        if (SteamAccount.Current() is not { } signedIn) return "Sign in to Steam first: the sync is sealed for your Steam account.";
-        account = signedIn;
         return null;
     }
 

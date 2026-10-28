@@ -445,7 +445,8 @@ public partial class MainWindow
     }
 
     // What of a mod's premium list the selected profile's synced account lacks (HellForge.Core PremiumContent): what a
-    // session will lock. Read once per refresh of the page.
+    // session will lock. Read once per refresh of the page. Current() without an installation never starts a probe; with
+    // no fresh account cached, ForSnapshot treats the snapshot as another account's and every premium item shows locked.
     PremiumContent? premiumOwnership;
     IReadOnlyList<string> PremiumMissing(ModManifest mod)
     {

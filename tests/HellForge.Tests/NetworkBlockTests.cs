@@ -149,7 +149,7 @@ static class NetworkBlockTests
             var probeExecutable = ownershipCheck.IndexOf(
                 "start.ArgumentList.Add(WinePath.ToWinePath(request.Probe, request.Prefix));", StringComparison.Ordinal);
             var probeArguments = ownershipCheck.IndexOf(
-                "AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix);", StringComparison.Ordinal);
+                "AddProbeArguments(start, prepared, useWinePaths: true, prefix: request.Prefix, request.PrivateResult);", StringComparison.Ordinal);
             check(probeExecutable >= 0 && probeArguments > probeExecutable,
                 "The Linux wrapper receives the mapped Steam probe executable before its DLL, hash, and result arguments.");
             var prepareOnly = wrapper.IndexOf("HELLFORGE_PREPARE_MOD_TOOLS_ONLY", StringComparison.Ordinal);
