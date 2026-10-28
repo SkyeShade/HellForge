@@ -123,11 +123,13 @@ public partial class MainWindow : Window
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
         };
         // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
-        // Windows (SessionRunner.CanSandbox).
+        // Windows (SessionRunner.CanSandbox). It is not yet implemented on Linux, where the network namespace is the block.
         var steamBridge = SessionRunner.HasSteamBridge(paths);
+        var linux = OperatingSystem.IsLinux();
         SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
         SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
-        SandboxUnavailable.IsVisible = !steamBridge;
+        SandboxUnavailable.IsVisible = !linux && !steamBridge;
+        SandboxLinuxNote.IsVisible = linux;
         SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;

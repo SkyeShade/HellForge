@@ -419,6 +419,8 @@
                            Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Applies to the next session." />
                 <TextBlock x:Name="SandboxUnavailable" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False"
                            Text="This HellForge was built without the Steam bridge, so the game cannot run sandboxed." />
+                <TextBlock x:Name="SandboxLinuxNote" Classes="muted" TextWrapping="Wrap" IsVisible="False"
+                           Text="The sandbox is not available on Linux yet. Until it is, HellForge's network namespace keeps the game off the internet, but the game, its mods and anything they run can still write to your files, as in an unsandboxed session on Windows." />
               </StackPanel>
             </Border>
 

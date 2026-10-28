@@ -65,7 +65,7 @@ static class SessionLaunchTests
                 dealt[dealt.IndexOf("--war-seaf") + 1] == "no" && !dealt.Contains("--war-subfactions"), "Only what differs from the default is passed: " + string.Join(" ", dealt));
         });
 
-        test("The sandbox is on unless turned off, and offered only by an engine built with the Steam bridge", () =>
+        test("The sandbox is on unless turned off, and offered only by an engine built with the Steam bridge on Windows", () =>
         {
             var paths = Install("launch-sandbox");
             check(ProfileStore.LoadSandbox(paths), "On without a settings file.");
@@ -86,7 +86,10 @@ static class SessionLaunchTests
             check(ProfileStore.LoadSandbox(paths) && !SessionRunner.SandboxByDefault(paths), "On, but a session is not sandboxed without the bridge.");
             File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}, "steamBridge": "AB12"}""");
             check(SessionRunner.HasSteamBridge(paths), "Built with it.");
-            check(SessionRunner.CanSandbox(paths) && SessionRunner.SandboxByDefault(paths), "With the bridge on Windows, a session is sandboxed by default.");
+            if (OperatingSystem.IsLinux())
+                check(!SessionRunner.CanSandbox(paths) && !SessionRunner.SandboxByDefault(paths), "On Linux, the sandbox is Windows-only.");
+            else
+                check(SessionRunner.CanSandbox(paths) && SessionRunner.SandboxByDefault(paths), "With the bridge, a session is sandboxed by default.");
             ProfileStore.SaveSandbox(paths, false);
             check(!SessionRunner.SandboxByDefault(paths), "Unless turned off.");
         });
