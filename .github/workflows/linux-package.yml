@@ -1,6 +1,9 @@
 name: Build Linux package
 
 on:
+  # Every merge into linux-native gets a test build: workflow_dispatch can only be started once this file is on main.
+  push:
+    branches: [linux-native]
   workflow_dispatch:
 
 permissions:
