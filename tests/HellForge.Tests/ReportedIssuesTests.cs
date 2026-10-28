@@ -86,8 +86,8 @@ static class ReportedIssuesTests
             try
             {
                 var (ready, problems) = ModBuilds.Prepare(install, sdk, [ModCatalog.Parse(folder, EntityProfile.Current)], "25480438");
-                check(ready.Count == 0 && problems is [var problem] && problem.Contains("hellforge-linux.sh") && !problem.Contains("ziglang.org"),
-                    "Not the namespace's refusal, but how to get the tools: " + string.Join(" | ", problems));
+                check(ready.Count == 0 && problems is [var problem] && problem.Contains("Mods page") && problem.Contains("Install mod tools") &&
+                    !problem.Contains("ziglang.org"), "Not the namespace's refusal, but how to get the tools: " + string.Join(" | ", problems));
                 check(Directory.GetFileSystemEntries(sdk.Tools).Length == 0, "A download was started.");
             }
             finally { Environment.SetEnvironmentVariable(LinuxNetworkBlock.EnvVar, null); }

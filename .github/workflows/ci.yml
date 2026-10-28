@@ -112,6 +112,13 @@ jobs:
         env:
           TMPDIR: ${{ github.workspace }}/artifacts/tmp
         run: dotnet run --project tests/HellForge.Tests -c Release --no-build
+      - name: HellForge.LocalBackend.Tests
+        env:
+          # Unix socket paths are limited to 108 characters; runner.temp is short (/home/runner/work/_temp).
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          dotnet build tests/HellForge.LocalBackend.Tests -c Release
+          dotnet run --project tests/HellForge.LocalBackend.Tests -c Release --no-build
 
   # The native code: the mod loader and its tests, the PlayFab stand-ins, the steam_api64.dll stand-in and its census
   # build, the network gate, the broker's channel and local lobby, the WFP tool, the example code mods, the smokes, the

@@ -122,7 +122,7 @@ public static class LinuxNetworkBlock
             if (!File.Exists(Path.Combine(installRoot, "app", "linux", "hellforge-linux.sh")))
                 throw new InvalidOperationException("The Linux session wrapper is missing. Reinstall HellForge.");
             if (!InPlace(installRoot))
-                throw new InvalidOperationException("The network block is not set up. Run HellForge-Setup.exe through app/linux/hellforge-linux.sh first.");
+                throw new InvalidOperationException("The network block is not set up. Run setup from the launcher (Settings, Check and repair) first.");
             return;
         }
         if (!Requested)

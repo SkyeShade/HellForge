@@ -347,7 +347,9 @@
                 </StackPanel>
                 <Border x:Name="UninstallConfirm" IsVisible="False" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                   <StackPanel Spacing="10">
-                    <TextBlock x:Name="UninstallWarning" TextWrapping="Wrap" />
+                    <SelectableTextBlock x:Name="UninstallWarning" TextWrapping="Wrap" />
+                    <Button x:Name="UninstallCopyCommandsButton" Classes="ghost" Content="Copy sudo commands"
+                            HorizontalAlignment="Left" IsVisible="False" />
                     <StackPanel Orientation="Horizontal" Spacing="10">
                       <Button x:Name="UninstallConfirmButton" Classes="danger" Content="Uninstall and delete everything" />
                       <Button x:Name="UninstallCancelButton" Classes="ghost" Content="Cancel" />
