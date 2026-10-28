@@ -1176,7 +1176,7 @@ static void DifficultyFixture(void)
     uint8_t* last = NULL;
     for (uintptr_t bar = 3; bar <= DIF_BARS + 4; bar++) last = widgetOf((void*)(bar << 12));
     assert(last == first + (DIF_BARS - 1) * DIF_WIDGET && widgetOf((void*)0x2000) == second);
-    char text[1024]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0;
+    char text[2 * REG_ITEM_ROOM]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0; /* room for an entry (REG_ITEM_ROOM) */
     assert(strstr(text, "\"kind\":\"difficulty\"") && strstr(text, "\"copyOf\":2695783738"));
     VirtualFree(game, 0, MEM_RELEASE);
 }
@@ -2692,6 +2692,65 @@ static void WeaponOrderFixture(void)
     g_weaponCount = savedCount;
 }
 
+/* registered-items.json for the backend (registry.c RegisteredItemsText): every weapon of a full registry, with names as
+ * long as they go and holding quotes, backslashes and control bytes, then the stratagems, as one JSON text. A fixed
+ * 16 KiB once stopped at about 150 weapons, and a quote in a name broke the file for every item. */
+static int Occurrences(const char* text, const char* what)
+{
+    int n = 0;
+    for (const char* at = strstr(text, what); at != NULL; at = strstr(at + 1, what)) n++;
+    return n;
+}
+
+static void RegisteredItemsFixture(void)
+{
+    char escaped[64];
+    assert(!strcmp(JsonText("a\"b\\c\n\x01", escaped, sizeof escaped), "a\\\"b\\\\c\\u000a\\u0001"));
+    assert(!strcmp(JsonText("plain/unit_01", escaped, sizeof escaped), "plain/unit_01"));
+    assert(strlen(JsonText("\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"", escaped, sizeof escaped)) < sizeof escaped); /* cut, never past */
+
+    int savedCount = g_weaponCount;
+    uint32_t savedStratagems = g_stratagemCount;
+    static Weapon saved[REG_MAX_WEAPONS];
+    memcpy(saved, g_weapons, sizeof saved);
+    HfMod mod;
+    memset(&mod, 0, sizeof mod);
+    memset(mod.id, 'm', sizeof mod.id - 1); /* the longest mod id */
+    g_weaponCount = REG_MAX_WEAPONS;
+    for (int i = 0; i < REG_MAX_WEAPONS; i++)
+    {
+        memset(&g_weapons[i], 0, sizeof g_weapons[i]);
+        g_weapons[i].mod = &mod;
+        g_weapons[i].id = 0x1000 + (uint32_t)i;
+        g_weapons[i].base = 0xAA035309;
+        g_weapons[i].plain = i == 7; /* an entity of add_entity: not an item */
+        memset(g_weapons[i].name, i % 2 ? '"' : 'n', sizeof g_weapons[i].name - 1);
+        g_weapons[i].name[0] = '\\';
+    }
+    g_stratagemCount = 0;
+    int size = 16384;
+    char* text = NULL;
+    int n = 0;
+    for (; size <= (1 << 24); size *= 2) /* as WriteRegisteredItems grows it */
+    {
+        free(text);
+        text = (char*)malloc((size_t)size);
+        n = RegisteredItemsText(text, size);
+        if (n < size - REG_ITEM_ROOM) break;
+    }
+    assert(size > 16384); /* the old fixed text could not hold it */
+    assert(n == (int)strlen(text) && !strcmp(text + n - 3, "]}\n"));
+    assert(Occurrences(text, "\"mixId\":") == REG_MAX_WEAPONS - 1); /* every weapon, the plain entity left out */
+    assert(Occurrences(text, "\"mixId\":4287,") == 1); /* the last one (0x1000 + 191) */
+    assert(strstr(text, "\"mixId\":4103,") == NULL); /* the plain entity (0x1000 + 7) */
+    /* every quote is escaped: none ends a string early, so each entry still has its four keys */
+    assert(Occurrences(text, "\",\"unit\":\"") == REG_MAX_WEAPONS - 1 && Occurrences(text, "\\\"") > 0);
+    free(text);
+    memcpy(g_weapons, saved, sizeof saved);
+    g_weaponCount = savedCount;
+    g_stratagemCount = savedStratagems;
+}
+
 /* Code mods set up in id order (the same on every machine), their edits queued meanwhile kept in load order, so the top
  * mod still wins a conflict (hellforge_modloader.c SetupOrder, fields.c QueueEdit and FinishSetupEdits). */
 static void SetupOrderFixture(void)
@@ -3185,6 +3244,7 @@ int main(int argc, char** argv)
     ReaperFixture();
     ShadowLaunchFixture();
     WeaponOrderFixture();
+    RegisteredItemsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
     ExtraFixtures();
@@ -3385,7 +3445,7 @@ int main(int argc, char** argv)
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
-        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; "
+        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
         "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn");
     return 0;
 }
