@@ -23,7 +23,7 @@ trap 'rm -rf "$backend_tmp"' EXIT
 TMPDIR="$backend_tmp" dotnet run --project tests/HellForge.LocalBackend.Tests -c Release --no-build
 
 # Test.ps1's fixture checks make NTFS junctions, so they need Windows and are skipped.
-python3 scripts/lint/lint.py check
+python3 scripts/lint/lint.py check --warnings-as-errors
 
 for script in linux/*.sh; do
   bash -n "$script"

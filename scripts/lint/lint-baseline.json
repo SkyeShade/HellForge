@@ -2,5 +2,8 @@
   "format": 2,
   "note": "Known structure violations per (unit, file, rule, function) with the measured values. `py -3 scripts/lint/lint.py check` reports what is new or worse (scripts/lint/README.md); `update` rewrites this file.",
   "entries": [
+    {"unit": "HellForge.Core", "file": "EnginePackageInstaller.cs", "rule": "R10", "function": "EnginePackageInstaller.Install", "value": 42},
+    {"unit": "HellForge.Core", "file": "GameSettings.cs", "rule": "R10", "function": "GameSettings.SteamControls", "value": 16},
+    {"unit": "editor", "file": "editor.cpp", "rule": "R10", "function": "UpdateHdr", "value": 16}
   ]
 }
