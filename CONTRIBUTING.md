@@ -22,8 +22,8 @@ not submit the game's files or code taken from the game, or code from other proj
   (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`); a pull request into `main` from any other branch fails
   its checks.
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
-  (`py -3 scripts/lint/lint.py check`, [scripts/lint/README.md](scripts/lint/README.md)), the build, where warnings
-  are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
+  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where
+  its warnings are errors too, the build, where warnings are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
   editor are built and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's
   version (below).
 - **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`, bumped with
