@@ -8,6 +8,12 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Fixed
+
+- A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11: the game keeps only so many
+  items, and each weapon brings all of its base's attachments. Difficulty 11 and stratagems now go in first, so past
+  the limit it is the last weapons that are missing.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.

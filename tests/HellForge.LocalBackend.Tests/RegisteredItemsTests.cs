@@ -85,5 +85,24 @@ static class RegisteredItemsTests
         check((string)cap["data"]! == "11", "The live game's difficulty cap of 10 still applies.");
         check(MissionService.Rewards.Requisition(11) > MissionService.Rewards.Requisition(10) &&
             MissionService.Rewards.Experience(11, true, 0) > MissionService.Rewards.Experience(10, true, 0), "Difficulty 11 pays no more than 10.");
+
+        // The client drops catalogue items past its capacity, so a weapon registered first (as mods load) still goes in
+        // after the difficulty and the stratagem: a large weapon pack loses its last weapons, not level 11 or a stratagem.
+        const uint Second = 0x32895C2B;
+        File.WriteAllText(file, $$"""
+            {"format":1,"items":[
+              {"mixId":{{Gold}},"copyOf":{{Liberator}},"mod":"test","unit":"test/gold"},
+              {"kind":"stratagem","mixId":{{Item}},"stable":{{Stable}},"copyOfType":83,"copyOf":{{Strike}},"mod":"test","name":"test/s"},
+              {"mixId":{{Second}},"copyOf":{{Liberator}},"mod":"test","unit":"test/second"},
+              {"kind":"difficulty","mixId":{{HellForge}},"copyOf":{{SuperHelldive}},"level":11,"mod":"test","name":"test/hell"}]}
+            """);
+        check(items.Load().Select(i => i.MixId).SequenceEqual([Gold, Item, Second, HellForge]) &&
+            RegisteredItems.Prioritized(items.Load()).Select(i => i.MixId).SequenceEqual([HellForge, Item, Gold, Second]),
+            "Difficulties, then stratagems, then weapons, each kind in the order it registered.");
+        catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        int Index(uint mixId) => catalogue.Select((item, index) => (item, index)).Single(x => (uint)x.item!["mixId"]! == mixId).index;
+        check(Index(HellForge) < Index(Item) && Index(Item) < Index(Gold) && Index(Gold) < Index(Second) &&
+            Index(RegisteredItems.WeaponChild(Stable, Item)) == Index(Item) + 1 && (uint?)catalogue[Index(Gold) + 1]!["parentId"] == Gold,
+            "In the catalogue: level 11, the stratagem and its child, then each weapon with its children.");
     }
 }

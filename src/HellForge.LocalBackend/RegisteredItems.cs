@@ -112,13 +112,22 @@ public sealed class RegisteredItems(string path)
     // The id of the new weapon's mastery package.
     public static uint PackageFor(uint basePackage, uint from, uint to) => Rehome(basePackage, from, to);
 
+    // The order the items are added in: difficulties and stratagems (one or two catalogue items each) before weapons (the
+    // base's item and every one of its children: 57 for the AR-23 Liberator), each kind in the order mods registered it.
+    // The client keeps only so many catalogue items, and drops the rest: with 64 Liberator copies (about 6,575 items in
+    // all) every mod stratagem was missing, with 16 (about 3,840) none was. Weapons register as mods load and stratagems
+    // only once the game has loaded its own, so in registration order a large weapon pack pushed out every stratagem and
+    // level 11; in this order, only its last weapons.
+    public static IReadOnlyList<Item> Prioritized(IReadOnlyList<Item> items) =>
+        [.. items.OrderBy(i => i.IsDifficulty ? 0 : i.IsStratagem ? 1 : 2)];
+
     // The response body for a startup path, with the registered items added where they belong.
     public JsonElement Apply(string path, JsonElement body)
     {
         if (path is not ("/Progression/items" or "/Progression/inventory" or "/Progression/ProgressionPackages" or "/Progression" or
             "/Configuration/GameClient"))
             return body;
-        var items = Load();
+        var items = Prioritized(Load());
         if (items.Count == 0) return body;
         var node = JsonNode.Parse(body.GetRawText());
         switch (path)
