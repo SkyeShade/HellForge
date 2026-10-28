@@ -4,8 +4,8 @@ using HellForge.Core;
 namespace HellForge.Launcher;
 
 // result.json is written whole and moved into place, and it embeds every backend request, so it can be large. Keeps the
-// last parsed state and parses again only when the file's size or last-write time changed. Once it has completedUtc and
-// the runner is not running, the run is over and the file is no longer looked at.
+// last parsed state and parses again only when the file's size or last-write time changed. Once the runner is not
+// running the run is over: even a result without completedUtc cannot change, and the launcher shows that it ended.
 sealed class ResultFile
 {
     readonly Func<string, JsonElement?> read;
@@ -26,15 +26,13 @@ sealed class ResultFile
         finished = false;
     }
 
-    // The current state, or null when there is none or the run has finished. The runner writes completedUtc before its
-    // process exits, so a result is final only when the runner is not running.
+    // The current state, or null when there is none or the run has finished. A state is final once the runner is not
+    // running, whether or not its cleanup managed to write completedUtc.
     public JsonElement? Read(string path, bool runnerRunning)
     {
         if (finished) return null;
         var current = ReadChanged(path);
-        if (current is { } value && value.ValueKind == JsonValueKind.Object && !runnerRunning &&
-            value.TryGetProperty("completedUtc", out _))
-            finished = true;
+        if (current is { ValueKind: JsonValueKind.Object } && !runnerRunning) finished = true;
         return current;
     }
 

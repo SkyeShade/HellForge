@@ -956,7 +956,8 @@ public static class ModStaging
     // The previous session's staged files stay where they are what this one stages (same name, and the same size and
     // time as the file they come from: a copy keeps its source's time): a session start copied and deleted every patch
     // again, ~3 GB for a tester's packs, and kept the drive busy for minutes. Only new or changed patches are copied;
-    // those no longer staged are removed.
+    // those no longer staged are removed. The journal is written before the first change and every file goes through a
+    // .staging name, so Unstage can remove exactly this session's work even after a kill.
     public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods)
     {
         var data = Path.Combine(install.Game, "data");
@@ -966,30 +967,46 @@ public static class ModStaging
         var left = new HashSet<string>(previous, StringComparer.Ordinal); /* staged here before and still in game/data */
         var staged = new List<string>();
         int copied = 0, kept = 0;
+        Directory.CreateDirectory(install.Temp);
+        var journal = new HashSet<string>(previous, StringComparer.Ordinal);
+        journal.UnionWith(wanted);
+        WriteRecord(install, journal);
+        var completed = false;
         try
         {
+            Directory.CreateDirectory(data);
             foreach (var name in previous.Where(n => !wanted.Contains(n)))
             {
                 var path = Path.Combine(data, name);
                 if (File.Exists(path)) File.Delete(path);
+                if (File.Exists(path + ".staging")) File.Delete(path + ".staging");
                 left.Remove(name);
             }
             foreach (var (source, target) in plan)
             {
                 var path = Path.Combine(data, target);
-                if (left.Contains(target) && Same(source, path)) { staged.Add(target); left.Remove(target); kept++; continue; }
-                if (left.Remove(target) && File.Exists(path)) File.Delete(path);
-                File.Copy(source, path, overwrite: false);
+                var staging = path + ".staging";
+                if (left.Contains(target) && Same(source, path))
+                {
+                    if (File.Exists(staging)) File.Delete(staging);
+                    staged.Add(target);
+                    left.Remove(target);
+                    kept++;
+                    continue;
+                }
+                left.Remove(target);
+                File.Copy(source, staging, overwrite: true);
+                if (new FileInfo(staging).Length != new FileInfo(source).Length)
+                    throw new InvalidDataException("A staged mod file was not copied whole: " + target);
+                File.Move(staging, path, overwrite: true);
                 staged.Add(target);
                 copied++;
             }
+            completed = true;
         }
         finally
         {
-            Directory.CreateDirectory(install.Temp);
-            /* a stage cut short: what it placed, and the last session's files it did not get to, for the next one to remove */
-            staged.AddRange(left.Where(n => File.Exists(Path.Combine(data, n))));
-            File.WriteAllText(Path.Combine(install.Temp, RecordName), JsonSerializer.Serialize(staged));
+            if (completed) WriteRecord(install, staged);
             LastCounts = (copied, kept);
         }
         return staged;
@@ -1037,7 +1054,9 @@ public static class ModStaging
         return sources;
     }
 
-    // The last session's staged files (patch file names only).
+    // The last session's staged files (patch file names only), for the data audit and Unstage.
+    public static IReadOnlyCollection<string> Recorded(InstallLayout install) => Previous(install);
+
     static HashSet<string> Previous(InstallLayout install)
     {
         var record = Path.Combine(install.Temp, RecordName);
@@ -1050,7 +1069,18 @@ public static class ModStaging
         catch (JsonException) { return new HashSet<string>(StringComparer.Ordinal); }
     }
 
-    // A staged file still is its source: the same size and last write time (a copy keeps its source's time).
+    // The record itself is replaced whole: a kill while writing it leaves the previous journal, not half a name list.
+    static void WriteRecord(InstallLayout install, IEnumerable<string> names)
+    {
+        var record = Path.Combine(install.Temp, RecordName);
+        var partial = record + ".partial";
+        var entries = names.Where(name => ModCatalog.PatchFile().IsMatch(name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        File.WriteAllText(partial, JsonSerializer.Serialize(entries));
+        File.Move(partial, record, overwrite: true);
+    }
+
+    // A staged file still is its source: the same size and last write time (a copy keeps its source's time). The staged
+    // name is only ever reached through a rename, so a match cannot be a partially written file.
     static bool Same(string source, string staged)
     {
         var from = new FileInfo(source);
@@ -1063,9 +1093,12 @@ public static class ModStaging
         var record = Path.Combine(install.Temp, RecordName);
         if (!File.Exists(record)) return;
         var data = Path.Combine(install.Game, "data");
-        foreach (var name in JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? [])
-            if (ModCatalog.PatchFile().IsMatch(name) && File.Exists(Path.Combine(data, name))) File.Delete(Path.Combine(data, name));
+        foreach (var name in Previous(install))
+            foreach (var path in new[] { Path.Combine(data, name), Path.Combine(data, name + ".staging") })
+                if (File.Exists(path)) File.Delete(path);
         File.Delete(record);
+        var partial = record + ".partial";
+        if (File.Exists(partial)) File.Delete(partial);
     }
 }
 

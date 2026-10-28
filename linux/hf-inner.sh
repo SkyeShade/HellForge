@@ -180,9 +180,18 @@ if [ "$session_run" = 1 ]; then
 fi
 program="${1:-$INSTALL/HellForge.exe}"
 if [ "$session_run" = 1 ]; then steam_shader_caches; fi
+# Proton itself is bounded as well as the session wait: a runner stuck in preparation must not live forever when an
+# external launcher (with no native SessionRunner.Kill) waits for it. HELLFORGE_PROTON_TIMEOUT is in seconds.
+wait_timeout="${HELLFORGE_WAIT_TIMEOUT:-43200}"
+[[ "$wait_timeout" =~ ^[0-9]+$ ]] || { echo "hf-inner: HELLFORGE_WAIT_TIMEOUT must be a number of seconds." >&2; exit 1; }
+proton_timeout="${HELLFORGE_PROTON_TIMEOUT:-$wait_timeout}"
+[[ "$proton_timeout" =~ ^[0-9]+$ ]] || { echo "hf-inner: HELLFORGE_PROTON_TIMEOUT must be a number of seconds." >&2; exit 1; }
 echo "hf-inner: launching $(basename -- "$program") through Proton." >&2
 proton_status=0
-if [ $# -gt 0 ]; then "$PROTON" run "$@" || proton_status=$?; else "$PROTON" run "$program" || proton_status=$?; fi
+if [ $# -gt 0 ]; then timeout -k 10 "$proton_timeout" "$PROTON" run "$@" || proton_status=$?; else timeout -k 10 "$proton_timeout" "$PROTON" run "$program" || proton_status=$?; fi
+if [ "$proton_status" = 124 ]; then
+  echo "hf-inner: Proton did not return within ${proton_timeout} seconds; timeout ended it." >&2
+fi
 echo "Proton returned exit code $proton_status." >&2
 
 # A command that does not start a session is a pass-through: Proton's stdout, stderr and exit code belong to the caller.
@@ -200,8 +209,6 @@ fi
 # writing completedUtc, wait only for a game or backend it left behind. The overall wait is bounded by
 # HELLFORGE_WAIT_TIMEOUT seconds (default 12 hours).
 if [ "${HELLFORGE_WAIT_FOR_PROCESSES:-1}" != 0 ]; then
-  wait_timeout="${HELLFORGE_WAIT_TIMEOUT:-43200}"
-  [[ "$wait_timeout" =~ ^[0-9]+$ ]] || { echo "hf-inner: HELLFORGE_WAIT_TIMEOUT must be a number of seconds." >&2; exit 1; }
   wait_started=$SECONDS
   # Processes of this installation only. The wrapper and its parents have the Windows exe path in their arguments, so
   # leave them out. Wine shows Windows paths (with backslashes) in command lines; the environment works for both forms.

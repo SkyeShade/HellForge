@@ -19,7 +19,7 @@ try
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             create-install --root <folder>
-            prepare-session --install <folder> --profile <name> [--user-data <root>]
+            prepare-session --install <folder> --profile <name> [--user-data <root>] [--verify-all yes | no]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
             mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>]
             build-source-mods --install <folder> [--progress <file>]
@@ -99,7 +99,7 @@ try
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
         "create-install" => ["--root"],
-        "prepare-session" => ["--install", "--profile", "--user-data"],
+        "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
         "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--premium-snapshot", "--premium-locked"],
         "build-source-mods" => ["--install", "--progress"],
@@ -240,7 +240,13 @@ try
             var install = new InstallLayout(Required("--install"));
             if (!install.Exists) throw new InvalidDataException($"{install.Root} is not a HellForge installation.");
             var vanilla = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
-            var prepared = GameSettings.PrepareSession(install, Required("--profile"), vanilla, options.GetValueOrDefault("--user-data"));
+            var verifyAll = options.GetValueOrDefault("--verify-all") switch
+            {
+                null or "no" => false,
+                "yes" => true,
+                _ => throw new ArgumentException("--verify-all is yes or no.")
+            };
+            var prepared = GameSettings.PrepareSession(install, Required("--profile"), vanilla, options.GetValueOrDefault("--user-data"), verifyAll);
             Console.WriteLine(JsonSerializer.Serialize(prepared, CopyPreparer.JsonOptions));
             return prepared.Problems.Count == 0 ? 0 : 2;
         case "mods-stage":

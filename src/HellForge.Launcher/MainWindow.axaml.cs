@@ -59,7 +59,8 @@ public partial class MainWindow : Window
     DateTime? seasonPassUtc;
     bool reachedShip;
     bool modProblemsShown; // this session's mod problems (result.json mods.problems) went to the console
-    bool stopRequested, closeConfirmed, scrollQueued;
+    bool stopRequested, stopKilled, closeConfirmed, scrollQueued;
+    int stopAttempt;
     (int Index, bool Failed) shownStep = (-2, false);
     double? stepProgress; /* the current step's progress (0 .. 1), or null while it cannot be told */
 
@@ -86,6 +87,9 @@ public partial class MainWindow : Window
         DiscordButton.Click += (_, _) => OpenLink(DiscordInvite);
         ToolTip.SetTip(DiscordButton, "Support, news and mods: the HellForge Discord (" + DiscordInvite + ")");
         PlayButton.Click += (_, _) => PlayClicked();
+        GameRepairButton.Click += (_, _) => EnterSetup(repair: true);
+        EndLeftoverProcessesButton.Click += (_, _) => EndLeftoverProcesses();
+        DismissLeftoverProcessesButton.Click += (_, _) => LeftoverProcessesCard.IsVisible = false;
         ProfileCombo.SelectionChanged += (_, _) => OnProfileSelected();
         TemplateCombo.SelectionChanged += (_, _) => ShowTemplateDescription();
         NewProfileButton.Click += (_, _) => ShowNewProfileForm(!NewProfileForm.IsVisible);
@@ -204,6 +208,7 @@ public partial class MainWindow : Window
         UpdateButton();
         ShowProfile();
         InitializeSetup();
+        ShowLeftoverProcesses();
         if (OperatingSystem.IsLinux() && paths.InstallRoot != null)
             InitializeLinuxPrefixBackup(new InstallLayout(paths.InstallRoot));
         poll.Start();
@@ -245,6 +250,7 @@ public partial class MainWindow : Window
         runLookupPending = false;
         crashRun = null;
         CrashReportPanel.IsVisible = false;
+        GameRepairButton.IsVisible = false;
         NoteSessionEditor();
         if (!StartPreflight()) return;
         // A name typed into the open new-profile form is created and used rather than dropped.
@@ -255,6 +261,9 @@ public partial class MainWindow : Window
         seasonPassUtc = null;
         reachedShip = false;
         stopRequested = false;
+        stopKilled = false;
+        stopAttempt++;
+        LeftoverProcessesCard.IsVisible = false;
         lines.Clear();
         modProblemsShown = false;
         Append("Starting play session.", LauncherLine);
@@ -306,6 +315,12 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        if (ShowLeftoverProcesses())
+        {
+            SetStatus("A game, anti-cheat or session process is still running.", Phase.Attention,
+                "End it on the play page, then press PLAY again.");
+            return false;
+        }
         // Without Local PlayFab the game's own lobby search would list vanilla players' Steam lobbies: the session runner
         // refuses multiplayer then, and so does the launcher, with the switch to change.
         if (SdkShimsBox.IsChecked == true && LocalPlayFabBox.IsChecked != true)
@@ -320,6 +335,8 @@ public partial class MainWindow : Window
     {
         if (!runner.IsRunning || stopRequested) return;
         stopRequested = true;
+        stopKilled = false;
+        var attempt = ++stopAttempt;
         if (runDirectory != null)
         {
             try
@@ -333,14 +350,45 @@ public partial class MainWindow : Window
                 return;
             }
             SetStatus("Stopping: closing the game...", Phase.Busy);
+            // Linux only: there a session stuck before or after Observe has nothing else to end it (H.6). Windows keeps
+            // its own STOP and cleanup, including the sandbox's teardown, unchanged.
+            if (OperatingSystem.IsLinux()) _ = EscalateStopAsync(attempt);
         }
         else
         {
-            runner.Kill();
+            try { runner.Kill(); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { Append("Could not stop the session runner: " + error.Message, Red); }
+            stopRequested = false;
             RenderSteps(-1, false);
             SetStatus("Cancelled before launch.", Phase.Idle, "Nothing was started.");
         }
         UpdateButton();
+    }
+
+    // STOP asks the session to close first. A runner stuck in preparation or cleanup gets a bounded wait, then its
+    // whole process tree is ended so the launcher cannot remain in STOPPING and the next session can start.
+    async Task EscalateStopAsync(int attempt)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        if (attempt != stopAttempt || !stopRequested || !runner.IsRunning) return;
+        try
+        {
+            runner.Kill();
+            stopKilled = true;
+            Append("The session did not stop; HellForge ended it.", Orange);
+            SetStatus("The session did not stop; HellForge ended it.", Phase.Ended,
+                "Its own cleanup may not have finished. Check the session logs before playing again.");
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            Append("The session did not stop and could not be ended: " + error.Message, Red);
+            SetStatus("The session did not stop and could not be ended.", Phase.Failed, failure: error.Message);
+        }
+        finally
+        {
+            stopRequested = false;
+            UpdateButton();
+        }
     }
 
     void Refresh()
@@ -369,6 +417,12 @@ public partial class MainWindow : Window
         // Mod sync: the backend stopped the session so that it starts again with the host's mods it downloaded.
         if (runnerExited && TryModSyncRestart()) return;
         if (runnerExited && runDirectory == null) HandleEarlyExit(runnerExitCode);
+        if (runnerExited)
+        {
+            stopRequested = false;
+            stopAttempt++;
+            ShowLeftoverProcesses();
+        }
     }
 
     // While a run folder exists: new backend requests, the latest result.json (or mod-build progress before it), the mod-sync card.
@@ -378,7 +432,14 @@ public partial class MainWindow : Window
         foreach (var line in requests.ReadNewLines(Path.Combine(runDirectory!, "backend", "requests.jsonl"))) AppendRequest(line);
         if (resultFile.Read(Path.Combine(runDirectory!, "result.json"), runner.IsRunning) is { } state) ShowState(state);
         // Mods are built before the script writes its first result.json: their progress shows from the start.
-        else if (!resultFile.Finished && !stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
+        else if (!runner.IsRunning && !resultFile.Finished) { ShowRunnerEnded(); return; }
+        else if (resultFile.Finished)
+        {
+            // The final state is already on screen; finish showing any backend requests that are still queued.
+            if (requests.AtEnd) runFinished = true;
+            return;
+        }
+        else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
         if (runner.IsRunning) ShowModSync(runDirectory!);
         else ModSyncCard.IsVisible = false;
         // Once the result has completedUtc and the runner is gone the run cannot change again. A request backlog larger
@@ -444,8 +505,16 @@ public partial class MainWindow : Window
     void ShowState(JsonElement state)
     {
         var stopped = !runner.IsRunning;
+        var status = SessionFiles.Text(state, "status");
         ShowModProblems(state);
-        switch (SessionFiles.Text(state, "status"))
+        if (stopped && !state.TryGetProperty("completedUtc", out _))
+        {
+            var canRepair = state.TryGetProperty("gameCopyProblem", out var problem) && problem.ValueKind == JsonValueKind.String;
+            ShowRunnerEnded(SessionFiles.Text(state, "failure"), canRepair);
+            return;
+        }
+        if (status != "failed") GameRepairButton.IsVisible = false;
+        switch (status)
         {
             case "preparing": ShowPreparing(); break;
             case "awaiting_network_block_install":
@@ -492,16 +561,92 @@ public partial class MainWindow : Window
     void ShowObserved(JsonElement state, bool stopped)
     {
         RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-        if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
-        else SetStatus("Ending the session...", Phase.Busy);
+        if (!stopped) SetStatus("Ending the session...", Phase.Busy);
+        else if (stopKilled) SetStatus("The session did not stop; HellForge ended it.", Phase.Ended,
+            Cleanup(state) + "Its own cleanup may not have finished. Check the session logs before playing again.");
+        else SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
     }
 
     void ShowFailed(JsonElement state, bool stopped)
     {
         FailCurrentStep();
         var failure = SessionFiles.Text(state, "failure");
-        SetStatus(stopped ? "Session failed." : "Session failed. Cleaning up...", Phase.Failed,
-            stopped ? "Open the session logs for details." : "", failure.Length > 0 ? failure : "unknown");
+        var canRepair = stopped && state.TryGetProperty("gameCopyProblem", out var problem) &&
+            problem.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(problem.GetString());
+        GameRepairButton.IsVisible = canRepair;
+        if (stopped && stopKilled)
+            SetStatus("The session did not stop; HellForge ended it.", Phase.Ended,
+                "Its own cleanup may not have finished. Check the session logs before playing again.",
+                failure.Length > 0 ? failure : null);
+        else
+            SetStatus(stopped ? "Session failed." : "Session failed. Cleaning up...", Phase.Failed,
+                !stopped ? "" : canRepair ? "The bad file is named here. Check and repair verifies and replaces it." : "Open the session logs for details.",
+                failure.Length > 0 ? failure : "unknown");
+    }
+
+    // The runner is gone, so its last result cannot change. A run without completedUtc means its cleanup did not
+    // finish; never leave the page saying it is preparing or launching.
+    void ShowRunnerEnded(string? failure = null, bool canRepair = false)
+    {
+        runFinished = true;
+        ModSyncCard.IsVisible = false;
+        GameRepairButton.IsVisible = canRepair;
+        if (stopKilled)
+        {
+            SetStatus("The session did not stop; HellForge ended it.", Phase.Ended,
+                canRepair ? "The bad file is named here. Check and repair verifies and replaces it." :
+                    "Its own cleanup may not have finished. Check the session logs before playing again.",
+                failure is { Length: > 0 } ? failure : null);
+            return;
+        }
+        SetStatus("The session ended without finishing cleanup.", Phase.Ended,
+            canRepair ? "The bad file is named here. Check and repair verifies and replaces it." :
+                "The session runner exited before writing completedUtc. Check the session logs before playing again.",
+            failure is { Length: > 0 } ? failure : null);
+    }
+
+    bool ShowLeftoverProcesses()
+    {
+        if (!OperatingSystem.IsLinux() || paths.InstallRoot == null || runner.IsRunning)
+        {
+            LeftoverProcessesCard.IsVisible = false;
+            return false;
+        }
+        try
+        {
+            var names = LinuxInstallProcesses.Running(paths.InstallRoot);
+            if (names.Count == 0)
+            {
+                LeftoverProcessesCard.IsVisible = false;
+                return false;
+            }
+            LeftoverProcessesText.Text = "Still running: " + string.Join(", ", names) +
+                ". End them before starting the next session.";
+            LeftoverProcessesCard.IsVisible = true;
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            LeftoverProcessesCard.IsVisible = false;
+            Append("Could not look for leftover session processes: " + error.Message, Red);
+            return false;
+        }
+    }
+
+    void EndLeftoverProcesses()
+    {
+        if (paths.InstallRoot == null) return;
+        try
+        {
+            var ended = LinuxInstallProcesses.End(paths.InstallRoot);
+            Append(ended.Count > 0 ? "Ended " + string.Join(", ", ended) + "." : "No leftover session processes were found.",
+                ended.Count > 0 ? Green : Light);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Append("Could not end the leftover session processes: " + error.Message, Red);
+        }
+        ShowLeftoverProcesses();
     }
 
     // The network block an installation keeps (WFP, the Linux namespace, persistent rules) stays; only a session that placed

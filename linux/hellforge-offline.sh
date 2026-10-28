@@ -12,10 +12,10 @@ set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 command [args...]" >&2; exit 2; }
 
 selftest='
-if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+if timeout -k 1 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
   echo "hellforge-offline: outside connection SUCCEEDED, refusing to start" >&2; exit 1
 fi
-if timeout 3 bash -c "exec 3<>/dev/udp/1.1.1.1/53" 2>/dev/null; then
+if timeout -k 1 3 bash -c "exec 3<>/dev/udp/1.1.1.1/53" 2>/dev/null; then
   echo "hellforge-offline: UDP to a non-relay address SUCCEEDED, refusing to start" >&2; exit 1
 fi
 exec "$@"'

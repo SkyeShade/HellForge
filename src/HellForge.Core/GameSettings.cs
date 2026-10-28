@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace HellForge.Core;
 
 public sealed record PreparedSession(string BuildId, IReadOnlyList<string> Problems, string ProfileData, bool ProfileSeeded,
-    IReadOnlyList<string> GameFiles);
+    IReadOnlyList<string> GameFiles, int HashedFiles);
 
 // The build's data/settings.ini names %APPDATA%/Arrowhead/Helldivers2 for everything the game writes: settings, saves,
 // shader cache, logs and crash dumps. A session points them into the installation's userdata folder instead, with the
@@ -40,7 +40,8 @@ public static partial class GameSettings
     // profile starts from the normal game's settings (graphics, controls, answered first-run prompts), read from
     // vanillaUserData; nothing is written there. Returns the problems instead of preparing when the game is not the
     // supported build. userData is the root the settings point at: the installation's, or a sandboxed session's copy.
-    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData, string? userData = null)
+    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData, string? userData = null,
+        bool fullVerify = false)
     {
         var root = userData ?? install.UserData;
         if (!ProfileName().IsMatch(profile)) throw new ArgumentException("Profile names use 1-32 lowercase letters, digits or hyphens.");
@@ -51,22 +52,40 @@ public static partial class GameSettings
         {
             if (!File.Exists(settingsFile) || !SupportedBuild.Sha1(settingsFile).Equals(settings.Sha1, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("data/settings.ini was changed and its original is missing; repair the game copy.");
-            File.Copy(settingsFile, install.OriginalSettings);
+            CopyOriginalAtomically(settingsFile, install.OriginalSettings);
         }
         var problems = new List<string>();
         if (!SupportedBuild.Sha1(install.OriginalSettings).Equals(settings.Sha1, StringComparison.OrdinalIgnoreCase))
             problems.Add("changed: " + SettingsPath + " (kept original)");
         Directory.CreateDirectory(install.Temp);
         var others = build with { Files = build.Files.Where(file => file.Path != SettingsPath).ToList() };
-        problems.AddRange(others.Verify(install.Game, install.VerifyCache));
+        var verification = others.VerifyDetailed(install.Game, install.VerifyCache, useCache: !fullVerify);
+        problems.AddRange(verification.Problems);
+        var hashedFiles = 1 + verification.HashedFiles;
         var profileData = Path.Combine(root, "profiles", profile);
         var files = build.Files.Select(file => file.Path).ToList();
-        if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files);
+        if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files, hashedFiles);
 
         var seeded = SeedProfile(profileData, vanillaUserData);
         var original = Utf8.GetString(File.ReadAllBytes(install.OriginalSettings));
         File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, root, profile)));
-        return new(build.BuildId, problems, profileData, seeded, files);
+        return new(build.BuildId, problems, profileData, seeded, files, hashedFiles);
+    }
+
+    // The kept original is either absent or whole: a kill during the copy leaves only the .partial file.
+    internal static void CopyOriginalAtomically(string settingsFile, string original)
+    {
+        var partial = original + ".partial";
+        try
+        {
+            File.Copy(settingsFile, partial, overwrite: true);
+            File.Move(partial, original, overwrite: true);
+        }
+        finally
+        {
+            try { if (File.Exists(partial)) File.Delete(partial); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     // A new profile's user data: its saves folder, with the normal game's settings when there are any. True when the

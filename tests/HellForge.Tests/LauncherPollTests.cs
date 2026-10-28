@@ -54,6 +54,16 @@ static class LauncherPollTests
             check(result.Read(path, false) is null && parses == 1, "A finished run was read again.");
         });
 
+        test("result.json: a runner that ends without completedUtc is final, not still running", () =>
+        {
+            var path = ResultPath(root, "ended-without-cleanup");
+            System.IO.File.WriteAllText(path, """{"status": "patching"}""");
+            var result = new ResultFile(p => SessionFiles.ReadJson(p));
+            check(result.Read(path, true) is not null && !result.Finished, "A live run was treated as ended.");
+            check(result.Read(path, false) is not null && result.Finished, "A runner that ended without completedUtc stayed live.");
+            check(result.Read(path, false) is null, "The ended run was read again.");
+        });
+
         test("LineTail: the same lines across chunk boundaries, with a UTF-8 character split between reads", () =>
         {
             var path = ResultPath(root, "line-tail-chunks");

@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace HellForge.Core;
@@ -6,16 +8,42 @@ namespace HellForge.Core;
 public sealed record LinuxProcessInfo(string Name, string? Executable, IReadOnlyList<string> Arguments,
     IReadOnlyList<string> Environment, string? WorkingDirectory);
 
+// A process of an installation, with the id needed to end it.
+public sealed record LinuxInstallProcess(int Id, string Name);
+
 // Finds processes that belong to an installation, using the evidence hf-inner.sh uses: a path under the installation,
 // INSTALL=<root> in the environment, or the installation as the working directory. The launcher has no state file of its
 // own; a session's play-session.json is left behind after it ends, so the live processes are what decides.
 public static class LinuxInstallProcesses
 {
-    public static IReadOnlyList<string> Running(string installRoot)
+    public static IReadOnlyList<string> Running(string installRoot) =>
+        Find(installRoot).Select(process => process.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+
+    // The processes themselves, for the launcher's "End these processes" action.
+    public static IReadOnlyList<LinuxInstallProcess> Find(string installRoot)
     {
         if (!OperatingSystem.IsLinux()) return [];
         var root = LocalInstall.FullPath(installRoot);
-        return RunningNames(process => BelongsTo(process, root));
+        return Matching(process => BelongsTo(process, root));
+    }
+
+    // Ends every live process of this installation and returns the names it asked the kernel to end. The next scan
+    // decides whether they are gone; a process that exits between the scan and the kill is already in the desired state.
+    public static IReadOnlyList<string> End(string installRoot)
+    {
+        var ended = new List<string>();
+        foreach (var process in Find(installRoot))
+        {
+            try
+            {
+                using var handle = Process.GetProcessById(process.Id);
+                handle.Kill(entireProcessTree: true);
+                handle.WaitForExit(5000);
+                ended.Add(process.Name);
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException) { }
+        }
+        return ended.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 
     // A prefix is in use while any process has WINEPREFIX=<prefix>/pfx or an executable or working folder inside it. The
@@ -24,26 +52,27 @@ public static class LinuxInstallProcesses
     {
         if (!OperatingSystem.IsLinux()) return [];
         var root = LocalInstall.FullPath(prefix);
-        return RunningNames(process => UsesPrefix(process, root));
+        return Matching(process => UsesPrefix(process, root)).Select(process => process.Name)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 
-    static IReadOnlyList<string> RunningNames(Func<LinuxProcessInfo, bool> belongs)
+    static IReadOnlyList<LinuxInstallProcess> Matching(Func<LinuxProcessInfo, bool> belongs)
     {
         var ignored = new HashSet<int> { Environment.ProcessId };
         var parent = Parent(Environment.ProcessId);
         while (parent is { } pid && pid > 1 && ignored.Add(pid)) parent = Parent(pid);
-        var names = new HashSet<string>(StringComparer.Ordinal);
+        var processes = new List<LinuxInstallProcess>();
         foreach (var folder in Directory.EnumerateDirectories("/proc"))
         {
             if (!int.TryParse(Path.GetFileName(folder), NumberStyles.None, CultureInfo.InvariantCulture, out var pid) ||
                 ignored.Contains(pid)) continue;
             try
             {
-                if (Read(pid) is { } process && belongs(process)) names.Add(process.Name);
+                if (Read(pid) is { } process && belongs(process)) processes.Add(new(pid, process.Name));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         }
-        return names.Order(StringComparer.Ordinal).ToArray();
+        return processes.OrderBy(process => process.Name, StringComparer.Ordinal).ThenBy(process => process.Id).ToArray();
     }
 
     public static bool UsesPrefix(LinuxProcessInfo process, string prefix)

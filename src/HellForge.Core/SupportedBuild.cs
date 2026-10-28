@@ -5,6 +5,7 @@ namespace HellForge.Core;
 
 public sealed record SupportedDepot(uint Id, string ManifestId);
 public sealed record SupportedFile(string Path, long Size, string Sha1, uint Depot);
+public sealed record BuildVerification(IReadOnlyList<string> Problems, int HashedFiles, int CacheSkippedFiles);
 
 // The HD2 build HellForge's runtime patches target, as Steam publishes it: the files of its depots with sizes and SHA-1
 // hashes from Steam's depot manifests. Setup copies exactly these files and sessions verify them. The list holds names
@@ -92,13 +93,21 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
 
     // A quick check without hashing: every file is present with its size. Verify proves the content.
     // Sessions write data/settings.ini from a kept original (GameSettings), so that original is the copy checked here.
-    public bool IsComplete(string gameRoot) => Files.All(file =>
+    public bool IsComplete(string gameRoot) => FirstCompletenessProblem(gameRoot) == null;
+
+    // The first reason the quick check fails, in the same words Verify uses, or null when the sizes are complete.
+    public string? FirstCompletenessProblem(string gameRoot)
     {
-        var path = Path.Combine(gameRoot, file.Path);
-        if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
-        var info = new FileInfo(path);
-        return info.Exists && (info.Length == file.Size || IsReplaceable(file.Path));
-    });
+        foreach (var file in Files)
+        {
+            var path = Path.Combine(gameRoot, file.Path);
+            if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
+            var info = new FileInfo(path);
+            if (!info.Exists) return "missing: " + file.Path;
+            if (!IsReplaceable(file.Path) && info.Length != file.Size) return "wrong size: " + file.Path;
+        }
+        return null;
+    }
 
     public static string Sha1(string path)
     {
@@ -107,36 +116,60 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
     }
 
     // Problems that keep a game folder from being this build; empty when it matches. With a cache file, a file whose
-    // size and last write time match its last successful check is not hashed again.
+    // size and last write time match its last successful check is not hashed again. useCache false hashes every file and
+    // rewrites the cache with what it proved.
     public IReadOnlyList<string> Verify(string gameRoot, string? cachePath = null, Action<long, long>? progress = null,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default) =>
+        VerifyDetailed(gameRoot, cachePath, progress, cancellation).Problems;
+
+    public BuildVerification VerifyDetailed(string gameRoot, string? cachePath = null, Action<long, long>? progress = null,
+        CancellationToken cancellation = default, bool useCache = true)
     {
         gameRoot = LocalInstall.NoLinks(gameRoot, gameRoot);
-        var cache = LoadCache(cachePath);
+        var cache = useCache ? LoadCache(cachePath) : new Dictionary<string, string>(StringComparer.Ordinal);
         var verified = new Dictionary<string, string>(StringComparer.Ordinal);
         var problems = new List<string>();
+        int hashed = 0, cached = 0;
         long done = 0, total = TotalBytes;
         foreach (var file in Files)
         {
             cancellation.ThrowIfCancellationRequested();
-            var path = Path.Combine(gameRoot, file.Path);
-            if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
-            var info = new FileInfo(path);
-            if (!info.Exists) problems.Add("missing: " + file.Path);
-            else if (IsReplaceable(file.Path)) { }
-            else if (info.Length != file.Size) problems.Add("wrong size: " + file.Path);
-            else
-            {
-                var stamp = $"{info.Length}|{info.LastWriteTimeUtc.Ticks}|{file.Sha1}";
-                if (cache.TryGetValue(file.Path, out var cached) && cached == stamp) verified[file.Path] = stamp;
-                else if (!Sha1(path).Equals(file.Sha1, StringComparison.OrdinalIgnoreCase)) problems.Add("changed: " + file.Path);
-                else verified[file.Path] = stamp;
-            }
+            var check = CheckFile(file, gameRoot, cache, verified, out var problem);
+            if (problem != null) problems.Add(problem);
+            if (check == FileCheck.Hashed) hashed++;
+            else if (check == FileCheck.Cached) cached++;
             done += file.Size;
             progress?.Invoke(done, total);
         }
         if (cachePath != null) File.WriteAllText(cachePath, JsonSerializer.Serialize(verified));
-        return problems;
+        return new(problems, hashed, cached);
+    }
+
+    enum FileCheck { None, Hashed, Cached }
+
+    static FileCheck CheckFile(SupportedFile file, string gameRoot, Dictionary<string, string> cache,
+        Dictionary<string, string> verified, out string? problem)
+    {
+        problem = null;
+        var path = Path.Combine(gameRoot, file.Path);
+        if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
+        var info = new FileInfo(path);
+        if (!info.Exists) { problem = "missing: " + file.Path; return FileCheck.None; }
+        if (IsReplaceable(file.Path)) return FileCheck.None;
+        if (info.Length != file.Size) { problem = "wrong size: " + file.Path; return FileCheck.None; }
+        var stamp = $"{info.Length}|{info.LastWriteTimeUtc.Ticks}|{file.Sha1}";
+        if (cache.TryGetValue(file.Path, out var previous) && previous == stamp)
+        {
+            verified[file.Path] = stamp;
+            return FileCheck.Cached;
+        }
+        if (!Sha1(path).Equals(file.Sha1, StringComparison.OrdinalIgnoreCase))
+        {
+            problem = "changed: " + file.Path;
+            return FileCheck.Hashed;
+        }
+        verified[file.Path] = stamp;
+        return FileCheck.Hashed;
     }
 
     static Dictionary<string, string> LoadCache(string? path)
