@@ -146,6 +146,8 @@ typedef struct Difficulty
 static Difficulty g_difficulty;
 static int g_difficultyAdded;
 static int g_difficultyState; /* 0 waiting, 1 installed (or none added), -1 refused */
+static ULONGLONG g_difficultySeen; /* when game.dll was first seen: the decode wait's start */
+static int g_difficultyAttempts;   /* InstallDifficulty's polls, for the decode wait's line */
 static uint8_t* g_difficultyTable;
 static uintptr_t g_difficultyGame;
 static uint32_t g_objectivePlaces = 16;  /* the objective list's places: 30 once moved */
@@ -361,6 +363,29 @@ static int32_t DifficultyDisplacement(uintptr_t table, uintptr_t game, const Dif
 {
     uintptr_t target = table + s->field;
     return s->rip ? (int32_t)(int64_t)(target - (game + s->rva + s->size)) : (int32_t)(int64_t)(target - game);
+}
+
+/* A signed 32-bit displacement that can hold this distance (the stub jumps and the table reads are rel32). */
+static int InRel32(int64_t distance) { return distance >= -2147483647LL - 1 && distance <= 2147483647LL; }
+
+/* B.2: the rel32 a jump patch is about to write, with the site and the stub it was computed from. The written bytes
+ * cannot show a truncated one: the cast below hides a stub outside +-2 GB. */
+static int32_t DifficultyJumpRel(uintptr_t site, uintptr_t stub)
+{
+    int64_t distance = (int64_t)stub - (int64_t)(site + 5);
+    NoteDiagnostic("difficulty: stub site=0x%llx stub=0x%llx distance=%+lld in-range=%s", (unsigned long long)site,
+        (unsigned long long)stub, (long long)distance, InRel32(distance) ? "yes" : "no");
+    return (int32_t)distance;
+}
+
+/* B.2: a disp32 patch's target (a moved table's base or a RIP-relative read), with the site and the base the distance
+ * is from. */
+static int32_t DifficultyDispRel(const char* what, uintptr_t site, uintptr_t target, uintptr_t base)
+{
+    int64_t distance = (int64_t)target - (int64_t)base;
+    NoteDiagnostic("difficulty: %s site=0x%llx target=0x%llx distance=%+lld in-range=%s", what, (unsigned long long)site,
+        (unsigned long long)target, (long long)distance, InRel32(distance) ? "yes" : "no");
+    return (int32_t)distance;
 }
 
 static int RefuseDifficulty(const char* why)
@@ -666,10 +691,13 @@ static const char* MoveTableReaders(DifficultyInstall* d)
             return "a caller of the highest level could not keep 10";
     for (size_t i = 0; i < sizeof kDifficultySites / sizeof kDifficultySites[0]; i++)
     {
-        int32_t disp = DifficultyDisplacement((uintptr_t)d->table, d->game, &kDifficultySites[i]);
-        if (ApiWrite(d->game + kDifficultySites[i].rva + kDifficultySites[i].dispAt, &disp, 4))
+        const DifficultySite* s = &kDifficultySites[i];
+        uintptr_t target = (uintptr_t)d->table + s->field;
+        uintptr_t base = s->rip ? d->game + s->rva + s->size : d->game;
+        int32_t disp = DifficultyDispRel("table", d->game + s->rva + s->dispAt, target, base);
+        if (ApiWrite(d->game + s->rva + s->dispAt, &disp, 4))
         {
-            Note("difficulty: could not rewrite the instruction at 0x%x; %zu of %zu moved", kDifficultySites[i].rva, i,
+            Note("difficulty: could not rewrite the instruction at 0x%x; %zu of %zu moved", s->rva, i,
                 sizeof kDifficultySites / sizeof kDifficultySites[0]);
             return "an instruction could not be rewritten";
         }
@@ -696,8 +724,9 @@ static const char* MoveDistanceReaders(DifficultyInstall* d)
 {
     for (size_t i = 0; i < 7; i++)
     {
-        int32_t disp = (int32_t)(int64_t)((uintptr_t)d->distance - d->game);
-        if (ApiWrite(d->game + kDistanceSites[i][0] + kDistanceSites[i][1], &disp, 4)) return "a mission distance read could not be moved";
+        uintptr_t site = d->game + kDistanceSites[i][0] + kDistanceSites[i][1];
+        int32_t disp = DifficultyDispRel("distance", site, (uintptr_t)d->distance, d->game);
+        if (ApiWrite(site, &disp, 4)) return "a mission distance read could not be moved";
     }
     return NULL;
 }
@@ -786,7 +815,7 @@ static const char* JumpToLevelStubs(DifficultyInstall* d)
     for (int i = 0; i < DIF_LEVEL_LOADS; i++)
     {
         uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
-        int32_t rel = (int32_t)((uintptr_t)(d->levelStubs + 0x20 * i) - (d->game + kLevelLoads[i].rva + 5));
+        int32_t rel = DifficultyJumpRel(d->game + kLevelLoads[i].rva, (uintptr_t)(d->levelStubs + 0x20 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + kLevelLoads[i].rva, jump, kLevelLoads[i].length)) return "a per-level value's reader could not be clamped";
     }
@@ -815,6 +844,17 @@ static void NoteDifficulty(const DifficultyInstall* d)
     Note("difficulty: the table moved to 0x%llx (%zu instructions, %zu bounds, %zu callers keep 10); level 11 is %s",
         (unsigned long long)(uintptr_t)d->table, sizeof kDifficultySites / sizeof kDifficultySites[0],
         sizeof kDifficultyBounds / sizeof kDifficultyBounds[0], sizeof kDifficultyKeepTen / sizeof kDifficultyKeepTen[0], g_difficulty.name);
+    int64_t table = (int64_t)((uintptr_t)d->table - d->game), bands = (int64_t)((uintptr_t)d->bands - d->game);
+    int64_t distance = (int64_t)((uintptr_t)d->distance - d->game), code = (int64_t)((uintptr_t)d->code - d->game);
+    int64_t widgets = (int64_t)((uintptr_t)d->widgets - d->game), watch = (int64_t)((uintptr_t)d->watch - d->game);
+    NoteDiagnostic("difficulty: base game=0x%llx; table=0x%llx (%+lld, rel32 %s); bands=0x%llx (%+lld, rel32 %s); distance=0x%llx (%+lld, rel32 %s)",
+        (unsigned long long)d->game, (unsigned long long)(uintptr_t)d->table, (long long)table, InRel32(table) ? "yes" : "no",
+        (unsigned long long)(uintptr_t)d->bands, (long long)bands, InRel32(bands) ? "yes" : "no",
+        (unsigned long long)(uintptr_t)d->distance, (long long)distance, InRel32(distance) ? "yes" : "no");
+    NoteDiagnostic("difficulty: base code=0x%llx (%+lld, rel32 %s); widgets=0x%llx (%+lld, rel32 %s); watch=0x%llx (%+lld, rel32 %s)",
+        (unsigned long long)(uintptr_t)d->code, (long long)code, InRel32(code) ? "yes" : "no",
+        (unsigned long long)(uintptr_t)d->widgets, (long long)widgets, InRel32(widgets) ? "yes" : "no",
+        (unsigned long long)(uintptr_t)d->watch, (long long)watch, InRel32(watch) ? "yes" : "no");
     ApiLog(g_difficulty.mod, "difficulty %s is level 11 (unlock item %08x): encounter %.0f, guardforce %.0f, spawner cooldown %.2f s",
         g_difficulty.name, g_difficulty.item, (double)points[0], (double)points[1], (double)points[2]);
     if (g_difficulty.mapScale > 1.0f)

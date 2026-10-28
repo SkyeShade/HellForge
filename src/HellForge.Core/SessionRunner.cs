@@ -125,6 +125,14 @@ public sealed class SessionRunner
         if (linux && options.SteamUdp && SteamUdpProblem() is { } problem) throw new InvalidOperationException(problem);
     }
 
+    // HELLFORGE_DIFFICULTY_FIELDWATCH=0 goes to the game: the wrapper and the session runner inherit it, and
+    // HostBoundedProcess gives the game a copy of the session runner's environment.
+    static void ConfigureDifficultyFieldWatch(ProcessStartInfo start)
+    {
+        if (Environment.GetEnvironmentVariable("HELLFORGE_DIFFICULTY_FIELDWATCH") is { Length: > 0 } fieldWatch)
+            start.Environment["HELLFORGE_DIFFICULTY_FIELDWATCH"] = fieldWatch;
+    }
+
     public void Start(ISessionPaths paths, LocalProfile profile, SessionOptions options)
     {
         if (!IsSupported) throw new PlatformNotSupportedException(UnsupportedMessage);
@@ -165,6 +173,9 @@ public sealed class SessionRunner
             var crashDump = Path.Combine(paths.InstallRoot!, "app", "cli", "HellForge.Cli.exe");
             start.Environment["HELLFORGE_CRASH_DUMP"] = prefix == null ? crashDump : WinePath.ToWinePath(crashDump, prefix);
         }
+        // The difficulty diagnostics' FieldWatch switch: a tester's HELLFORGE_DIFFICULTY_FIELDWATCH=0 reaches the game the
+        // same way (the wrapper, the session runner, then HostBoundedProcess's copy of its environment).
+        ConfigureDifficultyFieldWatch(start);
         // An installation keeps even temporary files inside its folder.
         var temp = Directory.CreateDirectory(Path.Combine(paths.InstallRoot!, "temp")).FullName;
         start.Environment["TEMP"] = start.Environment["TMP"] = temp;

@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     readonly LauncherPaths paths;
     readonly SessionRunner runner = new();
     readonly LineTail requests = new();
+    readonly ResultFile resultFile = new();
     readonly ObservableCollection<LogLine> lines = [];
     readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly List<(Border Circle, TextBlock Number, Shape Glyph, TextBlock Label)> steps = [];
@@ -49,6 +50,7 @@ public partial class MainWindow : Window
     SelectableTextBlock? runPathText, profilePathText;
     TaskCompletionSource<bool>? confirm;
     string? runDirectory;
+    bool runFinished;  // result.json has completedUtc and the runner is gone: the run cannot change again
     string? previousRunId;
     bool runLookupPending;
     // The first launch of a new installation can stop in the cryo pod: the client asks for /SeasonPass and then never
@@ -237,6 +239,8 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) return;
         runDirectory = null;  // Forget the previous run so its final state does not overwrite this one.
+        resultFile.Reset();
+        runFinished = false;
         previousRunId = null;
         runLookupPending = false;
         crashRun = null;
@@ -370,12 +374,16 @@ public partial class MainWindow : Window
     // While a run folder exists: new backend requests, the latest result.json (or mod-build progress before it), the mod-sync card.
     void RefreshRun()
     {
+        if (runFinished) return;
         foreach (var line in requests.ReadNewLines(Path.Combine(runDirectory!, "backend", "requests.jsonl"))) AppendRequest(line);
-        if (SessionFiles.ReadJson(Path.Combine(runDirectory!, "result.json")) is { } state) ShowState(state);
+        if (resultFile.Read(Path.Combine(runDirectory!, "result.json"), runner.IsRunning) is { } state) ShowState(state);
         // Mods are built before the script writes its first result.json: their progress shows from the start.
-        else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
+        else if (!resultFile.Finished && !stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
         if (runner.IsRunning) ShowModSync(runDirectory!);
         else ModSyncCard.IsVisible = false;
+        // Once the result has completedUtc and the runner is gone the run cannot change again. A request backlog larger
+        // than one poll's chunk is still shown first.
+        if (resultFile.Finished && requests.AtEnd) runFinished = true;
     }
 
     // The backend stopped the session so the launcher starts again with the host's mods it downloaded; true when it restarted.
@@ -416,6 +424,8 @@ public partial class MainWindow : Window
     {
         if (SessionRunner.RunSince(paths, previousRunId) is not { } run) return;
         runDirectory = run;
+        resultFile.Reset();
+        runFinished = false;
         runLookupPending = false;
         if (runPathText != null) runPathText.Text = run;
     }

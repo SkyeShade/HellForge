@@ -121,7 +121,8 @@ static const char* JumpToRestartStubs(DifficultyInstall* d)
     for (int i = 0; i < 4; i++)
     {
         uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
-        int32_t rel = (int32_t)((uintptr_t)(i == 0 && d->unreachableStub != NULL ? d->unreachableStub : d->restartStubs + 0x20 * i) - (d->game + kRestartSites[i] + 5));
+        int32_t rel = DifficultyJumpRel(d->game + kRestartSites[i],
+            (uintptr_t)(i == 0 && d->unreachableStub != NULL ? d->unreachableStub : d->restartStubs + 0x20 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + kRestartSites[i], jump, 6)) return "a level generation restart could not be noted";
     }
@@ -133,7 +134,7 @@ static const char* JumpToCapture(DifficultyInstall* d)
     uint8_t jump[11];
     memset(jump, 0x90, sizeof jump);
     jump[0] = 0xE9;
-    int32_t rel = (int32_t)((uintptr_t)d->captureStub - (d->game + DIF_CAPTURE_SITE + 5));
+    int32_t rel = DifficultyJumpRel(d->game + DIF_CAPTURE_SITE, (uintptr_t)d->captureStub);
     memcpy(jump + 1, &rel, 4);
     if (ApiWrite(d->game + DIF_CAPTURE_SITE, jump, sizeof jump)) return "the minimap capture could not be noted";
     return NULL;
@@ -350,7 +351,7 @@ static int WatchLevel(void)
     static ULONGLONG levelSeen;
     static int levelLogs;
     uintptr_t latest = *(volatile uintptr_t*)(g_restartWatch + 0x20);
-    if (latest != 0 && latest != level) { level = latest; levelSeen = GetTickCount64(); levelLogs = 0; FieldWatch(latest + 0x2D70); }
+    if (latest != 0 && latest != level) { level = latest; levelSeen = GetTickCount64(); levelLogs = 0; FieldWatch(latest + 0x2D70); AuditPatchSitesNow(); }
     if (level != 0) FieldWatch(level + 0x2D70); /* again once the preview record is known (DR2) */
     ULONGLONG age = GetTickCount64() - levelSeen;
     if (level == 0 || levelLogs >= 2 || age < (levelLogs == 0 ? 1500u : 6000u)) return 0;
@@ -405,6 +406,7 @@ static int WatchLaunch(void)
     timed = launched;
     Note("difficulty: a level-11 mission launched with the %.0f-minute countdown delta (%u so far)", (double)g_difficulty.minutes, launched);
     NoteMissionMap();
+    AuditPatchSitesNow(); /* the next level the mission loads is the hellpod's */
     return 1;
 }
 

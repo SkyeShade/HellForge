@@ -888,7 +888,7 @@ static const char* InstallGrant(DifficultyInstall* d)
     DWORD grantProtect;
     VirtualProtect(grant, 0x200, PAGE_EXECUTE_READ, &grantProtect);
     uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
-    rel = (int32_t)((uintptr_t)grant - (game + DIF_GRANT_SITE + 5)); memcpy(jump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_GRANT_SITE, (uintptr_t)grant); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_GRANT_SITE, jump, sizeof jump)) return "the mission stratagems could not be extended";
     ApiLog(g_difficulty.mod, "difficulty %s: every mission grants stratagem %u (%u mission kinds)", g_difficulty.name, g_difficulty.grant, added);
     return NULL;
@@ -912,7 +912,7 @@ static const char* InstallRadar(DifficultyInstall* d)
         DWORD radarProtect;
         VirtualProtect(radar, 0x100, PAGE_EXECUTE_READ, &radarProtect);
         uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-        rel = (int32_t)((uintptr_t)radar - (game + DIF_RADAR_STATE_SITE + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + DIF_RADAR_STATE_SITE, (uintptr_t)radar); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + DIF_RADAR_STATE_SITE, jump, sizeof jump)) return "the radar station's discovered state could not be set";
     }
     RadarInstall(game);
@@ -923,7 +923,7 @@ static const char* InstallRadar(DifficultyInstall* d)
 static const char* JumpToTelemetry(DifficultyInstall* d)
 {
     uint8_t limit[5] = {0xE9};
-    int32_t rel = (int32_t)((uintptr_t)d->telemetryStub - (d->game + DIF_TELEMETRY_SITE + 5));
+    int32_t rel = DifficultyJumpRel(d->game + DIF_TELEMETRY_SITE, (uintptr_t)d->telemetryStub);
     memcpy(limit + 1, &rel, 4);
     if (ApiWrite(d->game + DIF_TELEMETRY_SITE, limit, sizeof limit)) return "the selected mission's telemetry could not be limited";
     return NULL;
@@ -932,7 +932,7 @@ static const char* JumpToTelemetry(DifficultyInstall* d)
 static const char* JumpToSpawners(DifficultyInstall* d)
 {
     uint8_t spawners[6] = {0xE9, 0, 0, 0, 0, 0x90};
-    int32_t rel = (int32_t)((uintptr_t)d->spawnerStub - (d->game + DIF_SPAWNER_SITE + 5));
+    int32_t rel = DifficultyJumpRel(d->game + DIF_SPAWNER_SITE, (uintptr_t)d->spawnerStub);
     memcpy(spawners + 1, &rel, 4);
     if (ApiWrite(d->game + DIF_SPAWNER_SITE, spawners, sizeof spawners)) return "the director's spawner list could not be limited";
     return NULL;
@@ -947,7 +947,7 @@ static const char* JumpToMarkerStubs(DifficultyInstall* d)
         uint8_t jump[8];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        int32_t rel = (int32_t)((uintptr_t)(d->markerStubs + 0x20 * i) - (d->game + markerSites[i] + 5));
+        int32_t rel = DifficultyJumpRel(d->game + markerSites[i], (uintptr_t)(d->markerStubs + 0x20 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + markerSites[i], jump, markerLengths[i])) return "the map's marker slots could not be guarded";
     }
@@ -970,7 +970,7 @@ static const char* JumpToObjectiveStubs(DifficultyInstall* d)
         uint8_t jump[11];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        int32_t rel = (int32_t)((uintptr_t)(d->objectiveStubs + jumps[i].at) - (d->game + jumps[i].site + 5));
+        int32_t rel = DifficultyJumpRel(d->game + jumps[i].site, (uintptr_t)(d->objectiveStubs + jumps[i].at));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + jumps[i].site, jump, jumps[i].length)) return "the objective selection or mission-end telemetry could not be extended";
     }
