@@ -25,8 +25,8 @@ public sealed record LinuxUninstallPlan(
     public string? Shortcut { get; init; }
     public string? ShortcutExec { get; init; }
     public bool ShortcutRemovable { get; init; }
-    // The prefix deletion offer: only a prefix this installer made, still containing this installation, and not a link,
-    // in use, or in a forbidden place is offered.
+    // The prefix deletion offer: only a prefix this installer made, still containing this installation, that is not
+    // itself a link, not in use, and not in a forbidden place is offered. A link above the prefix is resolved first.
     public LinuxPrefixOffer? PrefixDeletion { get; init; }
 }
 
@@ -34,19 +34,20 @@ public sealed record LinuxUninstallResult(IReadOnlyList<string> Removed, IReadOn
 
 public sealed record LinuxUninstallLocations(string Home, string? ConfigHome = null, string? DataHome = null);
 
-// What the disk says about a prefix before uninstall: whether it is there, what its marker is and says, whether a link is
-// on the path to it or below it, and whether a process is using it.
+// What the disk says about a prefix before uninstall: whether it is there, what its marker is and says, whether it is
+// itself a link, and whether a process is using it.
 public sealed record LinuxPrefixObservation(bool Exists, bool MarkerExists, bool MarkerPlainFile, string? MarkerText,
-    bool PrefixLink, bool LinksBelow, bool InUse);
+    bool PrefixLink, bool InUse);
 
 // Whether uninstall may offer to delete a prefix, and why not. Only a prefix this installer made (its marker names it) and
-// that still contains this installation is offered; home, /, Steam's folder, Steam's compatibility data, links and a prefix
-// in use are refused.
+// that still contains this installation is offered; home, /, Steam's folder, Steam's compatibility data, a prefix that is
+// itself a link, a marker that is a link or not a plain file, and a prefix in use are refused.
 public sealed record LinuxPrefixOffer(string Prefix, bool Offered, string Reason);
 
 // The paths HellForge and the removed shell installer put outside an installation on Linux, and the decisions that say
-// whether they belong to this installation. The path checks are pure so they can be tested without a real Steam or prefix;
-// the plan and Remove read the disk and report every failure without stopping the other removals.
+// whether they belong to this installation. The path checks work on paths that do not exist (links are resolved only where
+// they do), so they can be tested without a real Steam or prefix; the plan and Remove read the disk and report every
+// failure without stopping the other removals.
 public static class LinuxUninstall
 {
     public const string AppArmorProfile = "/etc/apparmor.d/hellforge-unshare";
@@ -117,39 +118,47 @@ public static class LinuxUninstall
 
     public static string PrefixMarkerText(string prefix) => LocalInstall.FullPath(prefix);
 
+    // A marker may name the prefix as it was chosen, with a link above it (Fedora Atomic's /home -> /var/home), so both
+    // paths are resolved before they are compared.
     public static bool PrefixMarkerBelongs(string text, string prefix)
     {
-        try { return text.TrimEnd('\r', '\n').Equals(LocalInstall.FullPath(prefix), StringComparison.Ordinal); }
+        try
+        {
+            return ResolveLinks(LocalInstall.FullPath(text.TrimEnd('\r', '\n')))
+                .Equals(ResolveLinks(LocalInstall.FullPath(prefix)), StringComparison.Ordinal);
+        }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
 
     // The installation must be under <prefix>/pfx/drive_c: a marker alone must not let uninstall delete a prefix that no
-    // longer holds the installation it was made for.
+    // longer holds the installation it was made for. Both paths are resolved because either may have been named through
+    // a link above the prefix.
     public static bool PrefixContainsInstall(string prefix, string installRoot)
     {
         try
         {
-            var driveC = Path.Combine(LocalInstall.FullPath(prefix), "pfx", "drive_c");
-            return LocalInstall.Within(installRoot, driveC);
+            var driveC = Path.Combine(ResolveLinks(LocalInstall.FullPath(prefix)), "pfx", "drive_c");
+            return LocalInstall.Within(ResolveLinks(LocalInstall.FullPath(installRoot)), driveC);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
 
     // Paths that are never offered, even with a matching marker: the player's home, the filesystem root, Steam's folder and
     // Steam's compatibility data, where HELLDIVERS 2's own prefix lives. The compatdata check is by path component so it
-    // also covers Steam libraries other than the one SteamLocator found.
+    // also covers Steam libraries other than the one SteamLocator found. The paths are resolved so a link above them
+    // (/home -> /var/home) does not hide a forbidden place.
     public static bool PrefixForbidden(string prefix, string home, string? steamRoot)
     {
         try
         {
-            var path = LocalInstall.FullPath(prefix);
+            var path = ResolveLinks(LocalInstall.FullPath(prefix));
             var pathRoot = Path.GetPathRoot(path);
             if (pathRoot != null && path.Equals(LocalInstall.FullPath(pathRoot), StringComparison.Ordinal)) return true;
             if (!string.IsNullOrWhiteSpace(home) &&
-                path.Equals(LocalInstall.FullPath(home), StringComparison.Ordinal)) return true;
+                path.Equals(ResolveLinks(LocalInstall.FullPath(home)), StringComparison.Ordinal)) return true;
             if (UnderCompatData(path)) return true;
             if (string.IsNullOrWhiteSpace(steamRoot)) return false;
-            return path.Equals(LocalInstall.FullPath(steamRoot), StringComparison.Ordinal);
+            return path.Equals(ResolveLinks(LocalInstall.FullPath(steamRoot)), StringComparison.Ordinal);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return true; }
     }
@@ -163,14 +172,18 @@ public static class LinuxUninstall
         return false;
     }
 
-    // The decision is pure: the disk checks below fill LinuxPrefixObservation, and tests can build one directly.
+    // The decision works from an observation record, so tests can build one directly; the path checks resolve links on
+    // disk where a path exists. A link anywhere inside the prefix does not refuse it: the uninstall helper deletes the
+    // prefix with rm -rf --one-file-system, which removes a link without following it. A link above the prefix is
+    // resolved before the offer (Fedora Atomic's /home -> /var/home), so only the prefix's own last component may not be
+    // a link.
     public static LinuxPrefixOffer DecidePrefixOffer(string prefix, string installRoot, string home, string? steamRoot,
         LinuxPrefixObservation observation)
     {
         if (PrefixForbidden(prefix, home, steamRoot))
             return new(prefix, false, "it is the home folder, the filesystem root, Steam's folder or under Steam's compatibility data");
         if (!observation.Exists) return new(prefix, false, "the prefix folder does not exist");
-        if (observation.PrefixLink) return new(prefix, false, "a link is on the path to it or it is a link");
+        if (observation.PrefixLink) return new(prefix, false, "it is a link");
         if (!observation.MarkerExists)
             return new(prefix, false, "it has no HellForge marker (prefixes made by earlier HellForge versions have none)");
         if (!observation.MarkerPlainFile) return new(prefix, false, "its HellForge marker is not a plain file");
@@ -179,7 +192,6 @@ public static class LinuxUninstall
             return new(prefix, false, "its HellForge marker names another prefix");
         if (!PrefixContainsInstall(prefix, installRoot))
             return new(prefix, false, "it does not contain this installation");
-        if (observation.LinksBelow) return new(prefix, false, "it contains a link");
         if (observation.InUse)
             return new(prefix, false, "a process is using it (WINEPREFIX points at its pfx folder, or its executable or working folder is inside it)");
         return new(prefix, true, "");
@@ -190,10 +202,11 @@ public static class LinuxUninstall
     public static LinuxPrefixOffer CheckPrefixDeletion(InstallLayout install, string prefix,
         LinuxUninstallLocations locations, string? steamRoot)
     {
-        prefix = LocalInstall.FullPath(prefix);
+        var configured = LocalInstall.FullPath(prefix);
+        prefix = ResolvePrefix(configured);
         var markerPath = PrefixMarkerPath(prefix);
         var exists = Directory.Exists(prefix) || File.Exists(prefix);
-        var prefixLink = exists && HasLink(prefix);
+        var prefixLink = IsLink(configured);
         var markerExists = Exists(markerPath);
         var markerPlain = false;
         string? markerText = null;
@@ -209,10 +222,12 @@ public static class LinuxUninstall
         var candidate = exists && !prefixLink && markerExists && markerPlain && markerText != null &&
             PrefixMarkerBelongs(markerText, prefix) && PrefixContainsInstall(prefix, install.Root) &&
             !PrefixForbidden(prefix, locations.Home, steamRoot);
-        var linksBelow = candidate && HasLinkBelow(prefix);
-        var inUse = candidate && LinuxInstallProcesses.RunningInPrefix(prefix).Count > 0;
+        // Check both names: WINEPREFIX may hold the path as chosen, while /proc reports the resolved executable and folder.
+        var inUse = candidate && (LinuxInstallProcesses.RunningInPrefix(configured).Count > 0 ||
+            (!configured.Equals(prefix, StringComparison.Ordinal) &&
+             LinuxInstallProcesses.RunningInPrefix(prefix).Count > 0));
         return DecidePrefixOffer(prefix, install.Root, locations.Home, steamRoot,
-            new(exists, markerExists, markerPlain, markerText, prefixLink, linksBelow, inUse));
+            new(exists, markerExists, markerPlain, markerText, prefixLink, inUse));
     }
 
     // Writes the marker only for a prefix this installer made; an existing non-empty folder (a shared or HELLDIVERS 2
@@ -224,30 +239,43 @@ public static class LinuxUninstall
         return true;
     }
 
-    static bool HasLink(string path)
+    // The prefix is named as the player chose it, which may use a link above it (Fedora Atomic's /home -> /var/home).
+    // Resolve the parent to its real path so the offer and the helper name the folder that will be deleted, and leave the
+    // last component unresolved so a prefix that is itself a link is still seen.
+    static string ResolvePrefix(string prefix)
     {
-        try { LocalInstall.NoLinks(path); return false; }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return true; }
+        var full = LocalInstall.FullPath(prefix);
+        var name = Path.GetFileName(full);
+        var parent = Path.GetDirectoryName(full);
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(parent)) return full;
+        return Path.Combine(ResolveLinks(parent), name);
     }
 
-    // The same rule as NoLinksBelow, with one exception: Wine's own pfx/dosdevices drive letters are links by design and
-    // are not followed. Every other link under the prefix refuses the deletion.
-    static bool HasLinkBelow(string prefix)
+    // Resolves every link component of a path from the filesystem root down, following each link to its final target. A
+    // missing or unreadable component is left as it is; the caller's existence and marker checks decide what that means.
+    static string ResolveLinks(string path)
     {
-        try { return HasLinkBelow(new DirectoryInfo(prefix), Path.Combine(prefix, "pfx", "dosdevices")); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
-    }
-
-    static bool HasLinkBelow(DirectoryInfo folder, string dosdevices)
-    {
-        foreach (var entry in folder.EnumerateFileSystemInfos())
+        var full = LocalInstall.FullPath(path);
+        var root = Path.GetPathRoot(full);
+        if (string.IsNullOrEmpty(root)) return full;
+        var current = root;
+        foreach (var name in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
         {
-            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) return true;
-            if ((entry.Attributes & FileAttributes.Directory) == 0) continue;
-            if (entry.FullName.Equals(dosdevices, StringComparison.Ordinal)) continue;
-            if (HasLinkBelow(new DirectoryInfo(entry.FullName), dosdevices)) return true;
+            current = Path.Combine(current, name);
+            try
+            {
+                var target = Directory.ResolveLinkTarget(current, returnFinalTarget: true);
+                if (target != null)
+                {
+                    var resolved = target.FullName;
+                    if (!Path.IsPathRooted(resolved))
+                        resolved = Path.Combine(Path.GetDirectoryName(current) ?? root, resolved);
+                    current = LocalInstall.FullPath(resolved);
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
         }
-        return false;
+        return current;
     }
 
     // Steam's state files are named state_<app>_<something>.patch (the old script's state_553850_*.patch).
@@ -504,8 +532,9 @@ public static class LinuxUninstall
                     removed.Add(item.Path);
                     break;
                 case LinuxUninstallKind.Directory:
+                    // Only the folder's own path is checked: the folder is deleted, not copied or read through, and
+                    // Directory.Delete(recursive: true) on Linux unlinks a link inside it without following it.
                     LocalInstall.NoLinks(item.Path);
-                    LocalInstall.NoLinksBelow(item.Path);
                     Directory.Delete(item.Path, recursive: true);
                     if (Directory.Exists(item.Path)) throw new IOException("The folder is still there.");
                     removed.Add(item.Path);

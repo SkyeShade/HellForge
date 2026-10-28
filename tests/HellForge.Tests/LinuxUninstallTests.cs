@@ -249,9 +249,11 @@ static class LinuxUninstallTests
             var prefix = "/srv/hellforge-prefix";
             var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
             var good = new LinuxPrefixObservation(true, true, true, LinuxUninstall.PrefixMarkerText(prefix) + "\n",
-                false, false, false);
+                false, false);
             check(LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam", good).Offered,
                 "A matching marker was not offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
+                good with { PrefixLink = true }).Offered, "A prefix that is itself a link was offered.");
             check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
                 good with { MarkerExists = false }).Offered, "A missing marker was offered.");
             check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
@@ -279,18 +281,31 @@ static class LinuxUninstallTests
             {
                 var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
                 var observation = new LinuxPrefixObservation(true, true, true,
-                    LinuxUninstall.PrefixMarkerText(prefix) + "\n", false, false, false);
+                    LinuxUninstall.PrefixMarkerText(prefix) + "\n", false, false);
                 var offer = LinuxUninstall.DecidePrefixOffer(prefix, installRoot, home, steam, observation);
                 check(!offer.Offered, "A forbidden prefix was offered: " + prefix);
             }
         });
 
-        test("Linux uninstall refuses a symlinked prefix, marker or link inside it", () =>
+        test("Linux uninstall offers a prefix with Proton links inside or a linked parent and refuses a linked prefix or marker", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux prefix links)"); return; }
             var sandbox = Path.Combine(root, "linux-prefix-links");
             var home = Path.Combine(sandbox, "home");
             var locations = new LinuxUninstallLocations(home);
+
+            var proton = Path.Combine(sandbox, "steamapps", "common", "Proton - Experimental", "files", "lib", "wine", "x86_64-windows");
+            Directory.CreateDirectory(proton);
+            File.WriteAllText(Path.Combine(proton, "msado15.dll"), "proton");
+            var protonPrefix = Path.Combine(sandbox, "proton-prefix");
+            var protonInstall = new InstallLayout(Path.Combine(protonPrefix, "pfx", "drive_c", "HellForge"));
+            protonInstall.Create(SupportedBuild.Current.BuildId);
+            LinuxUninstall.WritePrefixMarker(protonPrefix, existed: true, empty: true);
+            var ado = Path.Combine(protonPrefix, "pfx", "drive_c", "Program Files", "Common Files", "System", "ADO");
+            Directory.CreateDirectory(ado);
+            File.CreateSymbolicLink(Path.Combine(ado, "msado15.dll"), Path.Combine(proton, "msado15.dll"));
+            var protonOffer = LinuxUninstall.CheckPrefixDeletion(protonInstall, protonPrefix, locations, null);
+            check(protonOffer.Offered, "A prefix with an absolute Proton link inside was refused: " + protonOffer.Reason);
 
             var markerPrefix = Path.Combine(sandbox, "marker-prefix");
             var markerInstall = new InstallLayout(Path.Combine(markerPrefix, "pfx", "drive_c", "HellForge"));
@@ -306,23 +321,28 @@ static class LinuxUninstallTests
             var linkedPrefix = Path.Combine(sandbox, "linked-prefix");
             var realInstall = new InstallLayout(Path.Combine(realPrefix, "pfx", "drive_c", "HellForge"));
             realInstall.Create(SupportedBuild.Current.BuildId);
-            LinuxUninstall.WritePrefixMarker(realPrefix, existed: true, empty: true);
             Directory.CreateSymbolicLink(linkedPrefix, realPrefix);
+            LinuxUninstall.WritePrefixMarker(linkedPrefix, existed: true, empty: true);
             var linkedInstall = new InstallLayout(Path.Combine(linkedPrefix, "pfx", "drive_c", "HellForge"));
             var linkedOffer = LinuxUninstall.CheckPrefixDeletion(linkedInstall, linkedPrefix, locations, null);
             check(!linkedOffer.Offered && linkedOffer.Reason.Contains("link", StringComparison.Ordinal),
                 "A symlinked prefix was accepted: " + linkedOffer.Reason);
 
-            var innerPrefix = Path.Combine(sandbox, "inner-prefix");
-            var innerInstall = new InstallLayout(Path.Combine(innerPrefix, "pfx", "drive_c", "HellForge"));
-            innerInstall.Create(SupportedBuild.Current.BuildId);
-            LinuxUninstall.WritePrefixMarker(innerPrefix, existed: true, empty: true);
-            var outside = Path.Combine(sandbox, "outside");
-            Directory.CreateDirectory(outside);
-            Directory.CreateSymbolicLink(Path.Combine(innerPrefix, "pfx", "drive_c", "linked-data"), outside);
-            var innerOffer = LinuxUninstall.CheckPrefixDeletion(innerInstall, innerPrefix, locations, null);
-            check(!innerOffer.Offered && innerOffer.Reason.Contains("link", StringComparison.Ordinal),
-                "A prefix with a link inside it was accepted: " + innerOffer.Reason);
+            // The test's home is a link to var/home, like Fedora Atomic's /home -> /var/home.
+            var realHome = Path.Combine(sandbox, "var", "home");
+            var homePrefix = Path.Combine(realHome, "prefix");
+            var homeInstall = new InstallLayout(Path.Combine(homePrefix, "pfx", "drive_c", "HellForge"));
+            homeInstall.Create(SupportedBuild.Current.BuildId);
+            var linkedHome = Path.Combine(sandbox, "home");
+            Directory.CreateSymbolicLink(linkedHome, realHome);
+            check(LinuxUninstall.PrefixForbidden(realHome, linkedHome, null),
+                "The home reached through a link was not refused.");
+            var parentPrefix = Path.Combine(linkedHome, "prefix");
+            LinuxUninstall.WritePrefixMarker(parentPrefix, existed: true, empty: true);
+            var parentInstall = new InstallLayout(Path.Combine(parentPrefix, "pfx", "drive_c", "HellForge"));
+            var parentOffer = LinuxUninstall.CheckPrefixDeletion(parentInstall, parentPrefix, locations, null);
+            check(parentOffer.Offered, "A prefix under a linked folder was refused: " + parentOffer.Reason);
+            check(parentOffer.Prefix == homePrefix, "The offer did not name the resolved prefix: " + parentOffer.Prefix);
         });
 
         test("Linux uninstall treats WINEPREFIX or a path inside the prefix as a process using it", () =>

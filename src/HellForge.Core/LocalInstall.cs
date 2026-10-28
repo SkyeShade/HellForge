@@ -41,17 +41,6 @@ public static class LocalInstall
         }
     }
 
-    // Refuses a link anywhere inside a folder that is about to be removed recursively, so nothing outside it is followed.
-    public static void NoLinksBelow(string path)
-    {
-        foreach (var entry in new DirectoryInfo(path).EnumerateFileSystemInfos())
-        {
-            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException($"Linked/reparse paths are not supported: {entry.FullName}");
-            if ((entry.Attributes & FileAttributes.Directory) != 0) NoLinksBelow(entry.FullName);
-        }
-    }
-
     public static IReadOnlyList<string> FindManifests(string steamRoot) =>
         FindLibraries(steamRoot).Select(root => Path.Combine(root, "steamapps", $"appmanifest_{AppId}.acf"))
             .Where(File.Exists).Order(StringComparer.OrdinalIgnoreCase).ToArray();

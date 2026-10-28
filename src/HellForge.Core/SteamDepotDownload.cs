@@ -61,7 +61,8 @@ public static class SteamDepotDownload
 
     // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it). With
     // callbacks, a failed path is reported and the rest are still attempted; without one, a failure is thrown as before.
-    // On Linux a depot folder that is a link is refused, never followed or removed.
+    // On Linux a depot folder that is a link is refused, never followed or removed; links inside a depot folder are
+    // removed with it, because Directory.Delete(recursive: true) unlinks them without following them.
     public static void Delete(string steamRoot, SupportedBuild build, Action<string, Exception>? failed = null,
         Action<string>? removed = null)
     {
@@ -79,7 +80,6 @@ public static class SteamDepotDownload
         try
         {
             RefuseLinks(folder);
-            RefuseLinksBelow(folder);
             Directory.Delete(folder, recursive: true);
             removed?.Invoke(folder);
         }
@@ -112,10 +112,5 @@ public static class SteamDepotDownload
     static void RefuseLinks(string path)
     {
         if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path);
-    }
-
-    static void RefuseLinksBelow(string path)
-    {
-        if (OperatingSystem.IsLinux()) LocalInstall.NoLinksBelow(path);
     }
 }

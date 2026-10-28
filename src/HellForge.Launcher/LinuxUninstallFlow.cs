@@ -37,7 +37,8 @@ public partial class MainWindow
                     return;
                 }
                 // The player may have started the game, changed the marker, or made a link since the confirmation appeared.
-                var fresh = await Task.Run(() => LinuxUninstall.CheckPrefixDeletion(install, offered.Prefix,
+                // Check the path as it was chosen so a WINEPREFIX that uses a link above the prefix still matches.
+                var fresh = await Task.Run(() => LinuxUninstall.CheckPrefixDeletion(install, plan.Prefix ?? offered.Prefix,
                     UninstallLocations(), SteamLocator.SteamRoot()));
                 if (!fresh.Offered)
                 {
@@ -113,11 +114,11 @@ public partial class MainWindow
         AppendPrefixRemoval(text, plan);
         text.AppendLine();
         text.AppendLine("It leaves:");
-        var prefixOffered = plan.PrefixDeletion is { Offered: true };
+        var offeredPrefix = plan.PrefixDeletion is { Offered: true } offer ? offer.Prefix : null;
         text.AppendLine(plan.Prefix is null
             ? "  - the Proton prefix (its path could not be read)"
-            : prefixOffered
-                ? $"  - the Proton prefix: {plan.Prefix} (kept unless you tick the prefix box)"
+            : offeredPrefix != null
+                ? $"  - the Proton prefix: {offeredPrefix} (kept unless you tick the prefix box)"
                 : $"  - the Proton prefix: {plan.Prefix} (left: {plan.PrefixDeletion?.Reason ?? "it could not be checked"})");
         text.AppendLine("  - Steam, HELLDIVERS 2, your Proton versions and every other file outside this installation");
         text.AppendLine("  - Steam's own update and download state elsewhere under steamapps");
@@ -202,6 +203,20 @@ public partial class MainWindow
             log=$5
             prefix=${6:-}
             say() { printf '%s\n' "$*" >>"$log" 2>/dev/null || true; }
+            # A link above the prefix is followed to the real folder, so the deletion names the same place the offer does;
+            # the prefix's own last component is checked separately and may not be a link. Links inside the resolved
+            # prefix are removed as links: rm -rf --one-file-system never follows them.
+            resolve_prefix() {
+              local path=$1 parent name real
+              case "$path" in
+                /*/*) parent=${path%/*}; name=${path##*/} ;;
+                /*) parent=/; name=${path#/} ;;
+                *) return 1 ;;
+              esac
+              [ -n "$name" ] || return 1
+              real=$(cd -- "$parent" 2>/dev/null && pwd -P) || return 1
+              printf '%s\n' "${real%/}/$name"
+            }
             @PREFIX_IN_USE@
             failed=0
             while kill -0 "$launcher_pid" 2>/dev/null; do sleep 1; done
@@ -233,7 +248,10 @@ public partial class MainWindow
                 say "not found: $prefix"
               elif [ ! -d "$prefix" ]; then
                 say "failed: $prefix (not a folder)"; failed=1
+              elif ! resolved=$(resolve_prefix "$prefix"); then
+                say "failed: $prefix (its folder could not be resolved)"; failed=1
               else
+                prefix=$resolved
                 deadline=$((SECONDS + 30))
                 while prefix_in_use; do
                   if [ "$SECONDS" -ge "$deadline" ]; then
@@ -243,6 +261,8 @@ public partial class MainWindow
                   sleep 1
                 done
                 if [ -n "$prefix" ]; then
+                  # --one-file-system keeps the deletion on the prefix's filesystem; links inside the prefix are removed
+                  # as links and never followed.
                   rm -rf --one-file-system -- "$prefix" 2>/dev/null || true
                   if [ -e "$prefix" ] || [ -L "$prefix" ]; then say "failed: $prefix"; failed=1; else say "removed: $prefix"; fi
                 fi
