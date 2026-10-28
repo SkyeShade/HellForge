@@ -27,6 +27,8 @@ public partial class MainWindow
     readonly List<(Border Dot, TextBlock Detail)> setupRows = [];
     CancellationTokenSource? setupCancel;
     bool setupRunning;
+    // The latest Steam/Proton lookup; a result from an earlier one is ignored.
+    int protonDiscovery;
     // Build patches (by SHA-256) that failed in this launcher run: Check again uses Steam's download instead, and a
     // re-published pack (another hash) is tried. Restarting the launcher tries a failed one again.
     readonly HashSet<string> failedPatches = new(StringComparer.OrdinalIgnoreCase);
@@ -71,7 +73,8 @@ public partial class MainWindow
         if (OperatingSystem.IsLinux())
         {
             InstallCard.IsVisible = true;
-            InstallText.Text = SupportedBuild.Current.IsComplete(install.Game)
+            var complete = SupportedBuild.Current.IsComplete(install.Game);
+            InstallText.Text = complete
                 ? $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}. Native setup and repair are available."
                 : $"{Privacy.Scrub(install.Root)}  ·  Complete setup natively with Steam for Linux.";
             UninstallButton.IsVisible = true;
@@ -79,7 +82,7 @@ public partial class MainWindow
             UninstallDescription.Text = "Uninstall removes this HellForge installation and its desktop shortcut after the launcher closes. The Proton prefix, Steam files and anything outside this installation folder are left intact.";
             DesktopShortcutBox.IsVisible = StartMenuShortcutBox.IsVisible = ImportBox.IsVisible = false;
             SetupIntro.Text = "Choose a Proton version first. Setup finds the supported game files, confirms Steam ownership, then copies the game if needed and checks the Linux network namespace.";
-            if (!SupportedBuild.Current.IsComplete(install.Game)) EnterSetup(repair: false);
+            if (!complete) EnterSetup(repair: false);
             return;
         }
         ImportBox.IsVisible = Directory.Exists(Path.Combine(EarlierGameData, "profiles")) || File.Exists(Path.Combine(EarlierGameData, "user_settings.config"));
@@ -91,30 +94,17 @@ public partial class MainWindow
     void EnterSetup(bool repair)
     {
         if (runner.IsRunning) return;
+        InstallLayout? install = null;
+        var discovery = 0;
         if (OperatingSystem.IsLinux() && paths.InstallRoot != null)
         {
-            var install = new InstallLayout(paths.InstallRoot);
-            var steamRoot = SteamLocator.SteamRoot();
-            IReadOnlyList<ProtonVersion> protons;
-            string? protonError = null;
-            try { protons = SteamLocator.ProtonVersions(steamRoot); }
-            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
-            {
-                protons = [];
-                protonError = "Could not read Steam's Proton installations: " + error.Message;
-            }
+            install = new InstallLayout(paths.InstallRoot);
+            discovery = ++protonDiscovery;
             ProtonChoiceCard.IsVisible = true;
-            ProtonCombo.ItemsSource = protons;
-            var savedProton = SteamLocator.SelectedProtonScript(install);
-            var configuredPath = Environment.GetEnvironmentVariable("PROTON");
-            var configuredProton = !string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)
-                ? LocalInstall.FullPath(configuredPath) : null;
-            var defaultProton = savedProton ?? configuredProton ?? protons.LastOrDefault()?.ScriptPath;
-            ProtonCombo.SelectedItem = protons.FirstOrDefault(proton => proton.ScriptPath == defaultProton);
-            ProtonChoiceHint.Text = protons.Count == 0
-                ? protonError ?? "No Proton versions were found. Install Proton in Steam, then reopen setup."
-                : "This Proton version will be used for setup and future game sessions.";
-            SetupStartButton.IsEnabled = protons.Count > 0;
+            ProtonCombo.ItemsSource = Array.Empty<ProtonVersion>();
+            ProtonCombo.SelectedItem = null;
+            ProtonChoiceHint.Text = "Looking for installed Proton versions...";
+            SetupStartButton.IsEnabled = false;
         }
         foreach (var page in new Control[] { PlayPage, ProfilePage, ModsPage, ConsolePage, SettingsPage }) page.IsVisible = false;
         SetupPage.IsVisible = true;
@@ -127,6 +117,51 @@ public partial class MainWindow
         SetupTitle.Text = repair ? "Check and repair" : "Set up HellForge";
         SetupStartButton.Content = repair ? "Check and repair" : "Start setup";
         for (var i = 0; i < setupRows.Count; i++) SetRow((SetupStep)i, null, "");
+        if (install != null) _ = DiscoverProtons(install, discovery);
+    }
+
+    // Steam's libraries and Proton installations are on disk and can take a while (many libraries, a slow disk): find them
+    // away from the UI thread, then fill the setup page on it. A later EnterSetup supersedes an earlier lookup.
+    async Task DiscoverProtons(InstallLayout install, int discovery)
+    {
+        (IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) found;
+        try { found = await Task.Run(() => FindProtons(install)).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            found = (Array.Empty<ProtonVersion>(), "Could not look up Steam's Proton installations: " + error.Message, null, null);
+        }
+        Dispatcher.UIThread.Post(() => ApplyProtons(found, discovery));
+    }
+
+    static (IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) FindProtons(InstallLayout install)
+    {
+        var steamRoot = SteamLocator.SteamRoot();
+        IReadOnlyList<ProtonVersion> protons;
+        string? protonError = null;
+        try { protons = SteamLocator.ProtonVersions(steamRoot); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            protons = [];
+            protonError = "Could not read Steam's Proton installations: " + error.Message;
+        }
+        var savedProton = SteamLocator.SelectedProtonScript(install);
+        var configuredPath = Environment.GetEnvironmentVariable("PROTON");
+        var configuredProton = !string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)
+            ? LocalInstall.FullPath(configuredPath) : null;
+        return (Protons: protons, Error: protonError, SavedProton: savedProton, ConfiguredProton: configuredProton);
+    }
+
+    void ApplyProtons((IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) found, int discovery)
+    {
+        if (discovery != protonDiscovery) return;
+        var protons = found.Protons;
+        var defaultProton = found.SavedProton ?? found.ConfiguredProton ?? protons.LastOrDefault()?.ScriptPath;
+        ProtonCombo.ItemsSource = protons;
+        ProtonCombo.SelectedItem = protons.FirstOrDefault(proton => proton.ScriptPath == defaultProton);
+        ProtonChoiceHint.Text = protons.Count == 0
+            ? found.Error ?? "No Proton versions were found. Install Proton in Steam, then reopen setup."
+            : "This Proton version will be used for setup and future game sessions.";
+        SetupStartButton.IsEnabled = protons.Count > 0;
     }
 
     void SetBackButtonPrimary(bool primary)
