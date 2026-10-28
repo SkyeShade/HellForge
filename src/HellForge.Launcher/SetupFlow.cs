@@ -86,7 +86,7 @@ public partial class MainWindow
                 : $"{Privacy.Scrub(install.Root)}  ·  Complete setup natively with Steam for Linux.";
             UninstallButton.IsVisible = true;
             UninstallConfirmButton.Content = "Uninstall this installation";
-            UninstallDescription.Text = "Uninstall removes this HellForge installation, its desktop shortcut and HellForge's Steam download and old setup leftovers when they are found, after the launcher closes. The Proton prefix, your game, Steam and your Proton versions are left intact.";
+            UninstallDescription.Text = "Uninstall removes this HellForge installation, its desktop shortcut and HellForge's Steam download and old setup leftovers when they are found, after the launcher closes. The Proton prefix is left unless this installer made it, in which case the confirmation also offers to delete it. Steam, your game and your Proton versions are left intact.";
             DesktopShortcutBox.IsVisible = StartMenuShortcutBox.IsVisible = ImportBox.IsVisible = false;
             SetupIntro.Text = "Choose a Proton version first. Setup finds the supported game files, confirms Steam ownership, then copies the game if needed and checks the Linux network namespace.";
             if (!complete) EnterSetup(repair: false);
@@ -919,10 +919,18 @@ public partial class MainWindow
     // is deleted when Windows' permission is declined, or while anything from the installation still runs.
     void AskUninstall(InstallLayout install)
     {
+        UninstallPrefixBox.IsChecked = false;
+        UninstallPrefixBox.IsVisible = false;
         if (OperatingSystem.IsLinux())
         {
             linuxUninstallPlan = BuildLinuxUninstallPlan(install);
             UninstallWarning.Text = LinuxUninstallWarning(install, linuxUninstallPlan);
+            if (linuxUninstallPlan.PrefixDeletion is { Offered: true } prefix)
+            {
+                UninstallPrefixBox.Content = $"Also delete the Proton prefix {prefix.Prefix}: this deletes the game copy, every profile and every mod in it";
+                UninstallPrefixBox.IsVisible = true;
+            }
+            else UninstallPrefixBox.Content = "";
             UninstallCopyCommandsButton.Content = "Copy sudo commands";
             UninstallCopyCommandsButton.IsVisible = linuxUninstallPlan.AppArmorCommands.Count > 0;
         }
@@ -943,7 +951,7 @@ public partial class MainWindow
         if (runner.IsRunning || setupRunning) { UninstallText.Text = "Stop the session (or setup) first."; return; }
         if (OperatingSystem.IsLinux())
         {
-            await UninstallLinux(install);
+            await UninstallLinux(install, UninstallPrefixBox.IsChecked == true);
             return;
         }
         // Under Wine, Windows PowerShell is a stub that does nothing.

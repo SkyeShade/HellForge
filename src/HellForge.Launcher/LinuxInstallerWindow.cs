@@ -207,6 +207,10 @@ sealed class LinuxInstallerWindow : Window
 
     async Task InitializePrefix(string proton, string prefix, string steamRoot)
     {
+        // Record whether this installer makes the prefix before wineboot fills it. Only a new or empty folder is ours to
+        // offer for deletion later; a prefix HELLDIVERS 2 or the player chose may be shared and never gets the marker.
+        var existed = Directory.Exists(prefix);
+        var empty = !existed || !Directory.EnumerateFileSystemEntries(prefix).Any();
         Directory.CreateDirectory(prefix);
         var start = new ProcessStartInfo(proton) { WorkingDirectory = Path.GetDirectoryName(proton)!, UseShellExecute = false };
         foreach (var argument in new[] { "run", "wineboot", "-u" }) start.ArgumentList.Add(argument);
@@ -222,6 +226,7 @@ sealed class LinuxInstallerWindow : Window
             throw new InvalidDataException("Proton took too long to prepare the prefix.");
         }
         if (process.ExitCode != 0) throw new InvalidDataException($"Proton could not prepare the prefix (exit code {process.ExitCode}).");
+        LinuxUninstall.WritePrefixMarker(prefix, existed, empty);
     }
 
     static void ValidatePackage(string archivePath)

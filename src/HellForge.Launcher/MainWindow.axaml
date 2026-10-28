@@ -348,6 +348,7 @@
                 <Border x:Name="UninstallConfirm" IsVisible="False" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                   <StackPanel Spacing="10">
                     <SelectableTextBlock x:Name="UninstallWarning" TextWrapping="Wrap" />
+                    <CheckBox x:Name="UninstallPrefixBox" IsVisible="False" IsChecked="False" HorizontalAlignment="Left" />
                     <Button x:Name="UninstallCopyCommandsButton" Classes="ghost" Content="Copy sudo commands"
                             HorizontalAlignment="Left" IsVisible="False" />
                     <StackPanel Orientation="Horizontal" Spacing="10">
