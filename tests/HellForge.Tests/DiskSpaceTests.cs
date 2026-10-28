@@ -8,6 +8,7 @@ static class DiskSpaceTests
     {
         test("The file system holding a folder is its longest mount point, matched on path boundaries", () =>
         {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux mount points)"); return; }
             check(DiskSpace.MatchMount("/home/deck/x", ["/", "/home"]) == "/home", "The /home mount was not chosen.");
             check(DiskSpace.MatchMount("/homework", ["/", "/home"]) == "/", "/home was chosen for /homework.");
             check(DiskSpace.MatchMount("/home", ["/", "/home"]) == "/home", "An exact mount point was not chosen.");
