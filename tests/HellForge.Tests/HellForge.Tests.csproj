@@ -12,4 +12,6 @@
   <!-- the launcher's session file poll (LauncherPollTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Launcher/LineTail.cs" Link="Launcher/LineTail.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/HellForge.Launcher/ResultFile.cs" Link="Launcher/ResultFile.cs" /></ItemGroup>
+  <!-- the crash dump's free-space choice (CrashDumpTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Cli/CrashDump.cs" Link="Cli/CrashDump.cs" /></ItemGroup>
 </Project>

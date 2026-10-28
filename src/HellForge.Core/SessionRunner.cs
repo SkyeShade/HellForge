@@ -166,7 +166,7 @@ public sealed class SessionRunner
             }
         }
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        // The mod loader has HellForge.Cli write a full dump at the game's first crash (WriteCrashDump); the game inherits
+        // The mod loader has HellForge.Cli write a dump at the game's first crash (WriteCrashDump); the game inherits
         // the session runner's environment.
         if (options.CrashDump)
         {
