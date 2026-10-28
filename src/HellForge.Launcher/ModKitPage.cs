@@ -12,6 +12,7 @@ namespace HellForge.Launcher;
 // on request. Builds wait while a session runs: the game has the mods' DLLs loaded.
 public partial class MainWindow
 {
+    const string NativeZigTip = "native Linux zig not found; install it to ~/.local/share/zig-native/zig, have 'zig' in PATH, or set ZIG.";
     bool modKitBusy;
     string modKitStatus = "";
 
@@ -46,19 +47,36 @@ public partial class MainWindow
     {
         var sdk = Sdk;
         var linux = OperatingSystem.IsLinux();
-        var linuxBuilder = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "linux", "hellforge-linux-install.sh");
+        var linuxBuilder = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "linux", "hf-build-mod.sh");
+        var linuxBuilderExists = linux && linuxBuilder != null && File.Exists(linuxBuilder);
+        var nativeZig = linuxBuilderExists ? ModKit.FindNativeLinuxZig(Environment.GetEnvironmentVariable("ZIG"),
+            Environment.GetEnvironmentVariable("HOME"), Environment.GetEnvironmentVariable("PATH"), LinuxExecutable) : null;
         var build = new MenuItem
         {
             Header = "Build now",
             IsEnabled = !modsLocked && !modKitBusy && sdk != null &&
-                (linux ? linuxBuilder != null && File.Exists(linuxBuilder) : ModKit.ToolsReady(sdk))
+                (linux ? linuxBuilderExists && nativeZig != null : ModKit.ToolsReady(sdk))
         };
         ToolTip.SetShowOnDisabled(build, true);
         ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
-            : linux ? "Compiles src/ with native Linux Zig via app/linux/hellforge-linux-install.sh."
+            : linux && !linuxBuilderExists ? "The Linux mod-build helper is missing; reinstall HellForge."
+            : linux && nativeZig == null ? NativeZigTip
+            : linux ? "Compiles src/ with native Linux Zig via app/linux/hf-build-mod.sh."
             : "Compiles src/ with HellForge's pinned Zig now, as a session would (sessions build it anyway; this shows errors early).");
         build.Click += (_, _) => BuildMod(mod);
         return build;
+    }
+
+    // The build script's [ -x ]: any execute bit.
+    static bool LinuxExecutable(string path)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists(path)) return false;
+        try
+        {
+            const UnixFileMode execute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+            return (File.GetUnixFileMode(path) & execute) != 0;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
     // The build a session would make (ModBuilds), now: its errors show on the mod's card.
@@ -76,7 +94,7 @@ public partial class MainWindow
             {
                 if (OperatingSystem.IsLinux())
                 {
-                    var helper = Path.Combine(install.App, "linux", "hellforge-linux-install.sh");
+                    var helper = Path.Combine(install.App, "linux", "hf-build-mod.sh");
                     if (!File.Exists(helper)) throw new InvalidDataException("the Linux mod-build helper is missing; reinstall HellForge.");
                     var start = new ProcessStartInfo("bash")
                     {
@@ -86,9 +104,8 @@ public partial class MainWindow
                         RedirectStandardError = true
                     };
                     start.ArgumentList.Add(helper);
-                    start.ArgumentList.Add("build");
                     start.ArgumentList.Add(mod.Folder);
-                    start.Environment["PFX"] = WinePath.PrefixFromInstallRoot(install.Root);
+                    start.Environment["INSTALL"] = install.Root;
                     using var process = Process.Start(start) ?? throw new InvalidDataException("the Linux mod-build helper did not start.");
                     void ReportLine(object? _, DataReceivedEventArgs e)
                     {

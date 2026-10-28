@@ -21,19 +21,40 @@ static class ModKitTests
                 installed.Template == Path.Combine(sdk, "templates", "c-mod"), "Installation SDK: app/sdk, tools beside app.");
         });
 
-        test("Linux Build now uses the native helper while Windows keeps the pinned build", () =>
+        test("Linux Build now uses hf-build-mod.sh while Windows keeps the pinned build", () =>
         {
             var page = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "HellForge.Launcher", "ModKitPage.cs"));
-            var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hellforge-linux-install.sh"));
+            var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hf-build-mod.sh"));
             var linuxBuild = page.IndexOf("if (OperatingSystem.IsLinux())", StringComparison.Ordinal);
             var scriptArg = linuxBuild < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(helper);", linuxBuild, StringComparison.Ordinal);
-            var buildArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(\"build\");", scriptArg, StringComparison.Ordinal);
-            var modArg = buildArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", buildArg, StringComparison.Ordinal);
+            var modArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", scriptArg, StringComparison.Ordinal);
             var windowsBuild = modArg < 0 ? -1 : page.IndexOf("ModBuilds.Ensure(install, sdk, mod", modArg, StringComparison.Ordinal);
-            check(linuxBuild >= 0 && scriptArg > linuxBuild && buildArg > scriptArg && modArg > buildArg &&
-                windowsBuild > modArg && page.Contains("start.Environment[\"PFX\"] = WinePath.PrefixFromInstallRoot(install.Root);", StringComparison.Ordinal) &&
-                helper.Contains("build <mod-folder>", StringComparison.Ordinal),
-                "Linux invokes the bundled helper with this installation's prefix and mod folder; Windows retains ModBuilds.");
+            check(linuxBuild >= 0 && scriptArg > linuxBuild && modArg > scriptArg && windowsBuild > modArg &&
+                page.Contains("start.Environment[\"INSTALL\"] = install.Root;", StringComparison.Ordinal) &&
+                !page.Contains("start.Environment[\"PFX\"]", StringComparison.Ordinal) &&
+                page.Contains("app/linux/hf-build-mod.sh", StringComparison.Ordinal) &&
+                !page.Contains("start.ArgumentList.Add(\"build\");", StringComparison.Ordinal) &&
+                helper.Contains("usage: $(basename \"$0\") <mod-folder>", StringComparison.Ordinal),
+                "Linux invokes the bundled hf-build-mod.sh with this installation and mod folder only; Windows retains ModBuilds.");
+        });
+
+        test("Native Linux Zig is found where hf-build-mod.sh finds it", () =>
+        {
+            var home = Path.Combine(root, "zig-home");
+            var configured = Path.Combine(root, "zig-configured");
+            var local = Path.Combine(home, ".local", "share", "zig-native", "zig");
+            var first = Path.Combine(root, "zig-path-1");
+            var second = Path.Combine(root, "zig-path-2");
+            var fromPath = Path.Combine(second, "zig");
+            var executable = new HashSet<string>(StringComparer.Ordinal) { configured, local, fromPath };
+            var searchPath = first + Path.PathSeparator + second;
+            string? Find(string? zig, string? path) => ModKit.FindNativeLinuxZig(zig, home, path, executable.Contains);
+            check(Find(configured, searchPath) == configured, "ZIG wins.");
+            check(Find(null, searchPath) == local, "The default wins over PATH.");
+            executable.Remove(local);
+            check(Find(null, searchPath) == fromPath, "PATH is the fallback.");
+            check(Find(Path.Combine(root, "zig-not-executable"), first) == null, "A Zig that is not executable is not used.");
+            check(Find(null, first) == null, "No executable Zig means none.");
         });
 
         test("New mods are made from the template with every placeholder filled, and bad ids or existing folders are refused", () =>

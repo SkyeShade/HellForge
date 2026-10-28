@@ -17,12 +17,12 @@ jobs:
       - name: Require the text-only Steam export manifest
         shell: pwsh
         run: |
-          if (-not (Test-Path -LiteralPath 'steam-export-manifest.json')) {
-            throw 'Missing steam-export-manifest.json. Generate it from the supported game DLL with the documented local command, commit only the JSON, and push it first.'
+          if (-not (Test-Path -LiteralPath 'data/steam-export-manifest.json')) {
+            throw 'Missing data/steam-export-manifest.json. Generate it from the supported game DLL with the documented local command, commit only the JSON, and push it first.'
           }
       - name: Build package
         shell: pwsh
-        run: ./scripts/Package-HellForge.ps1 -SteamExports steam-export-manifest.json
+        run: ./scripts/Package-HellForge.ps1 -SteamExports data/steam-export-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: HellForge-Linux-package
