@@ -45,7 +45,6 @@ if [ "$session_run" = 1 ]; then
 fi
 program="${1:-$INSTALL/HellForge.exe}"
 echo "hf-inner: launching $(basename -- "$program") through Proton."
-echo "Starting $(basename -- "$program") through Proton."
 proton_status=0
 if [ $# -gt 0 ]; then "$PROTON" run "$@" || proton_status=$?; else "$PROTON" run "$program" || proton_status=$?; fi
 echo "Proton returned exit code $proton_status."
