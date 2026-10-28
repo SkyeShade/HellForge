@@ -64,6 +64,22 @@ if ! command -v bsdtar >/dev/null; then
   fi
 fi
 
+# Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. As with bsdtar, warn here;
+# hellforge-offline.sh refuses before it makes the namespace when either is missing.
+if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
+  missing=""
+  for program in pasta python3; do command -v "$program" >/dev/null || missing="$missing $program"; done
+  if [ -n "$missing" ]; then
+    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. Co-op over Steam relays cannot start without them." >&2
+    if command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2
+    elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install passt python3" >&2
+    elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install passt python3" >&2
+    elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install passt python3" >&2
+    else echo "Install them with your package manager: passt provides pasta, and Python 3 provides python3." >&2
+    fi
+  fi
+fi
+
 if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then INSTALL="$(cd "$here/../.." && pwd)"; fi
 : "${INSTALL:?INSTALL is not set: the HellForge installation folder (the one with hellforge-install.json)}"
 [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }

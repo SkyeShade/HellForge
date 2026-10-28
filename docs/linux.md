@@ -35,6 +35,19 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 
   On other systems, install the same packages with your package manager.
 
+  `passt` (which provides the `pasta` command) and `python3` are needed only for co-op over Steam relays, the optional
+  Settings switch below. `hellforge-linux.sh` warns when `HELLFORGE_STEAM_UDP=1` and either is missing, and the native
+  launcher refuses a co-op session before it starts and prints this install command:
+
+  | Package manager | Common distributions | Command for co-op only |
+  |---|---|---|
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed passt python` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install passt python3` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install passt python3` |
+  | `zypper` | openSUSE | `sudo zypper install passt python3` |
+
+  On other systems, install `passt` and Python 3 with your package manager.
+
 ## Building the Linux package without a Windows PC
 
 The engine's session runner and backend are Windows NativeAOT programs, so the complete package must be built on a
@@ -372,17 +385,25 @@ button cannot fetch them on Linux for the same reason; start HellForge again wit
 **Experimental.** The game starts and runs with this, and the network check below passes. The restricted version below joined Windows players' games and played a full mission (reported on issue 22 by two testers, one of them as the fourth player in a lobby of Windows players). Please report what you see, good or bad, with `backend/multiplayer.log` from the session.
 
 Steam's networking, which co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP, so the
-default namespace (no route at all) cannot carry it. Start with `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` and
-`hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which gives it a real route. Two policy rules then
-close it again: `ip rule add ipproto tcp prohibit` refuses every TCP connection with the same WSAEACCES, so the session's
-network probe passes as before, and UDP is allowed only to Valve's relays, address and port range each, from the list Valve
-publishes for the game (`ISteamApps/GetSDRConfig/v1`, app 553850), fetched at launch while this PC still has its network
-(the last one is kept in `~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not
-start). Every other UDP destination, name lookups included, is refused, and the self-test refuses to start if one
-works. It needs `python3` for the list. Co-op through Steam's relays should still work; a direct peer-to-peer path between
-two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a relay address and port
-goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused, loopback fine. A solo session's packet capture
-(about 5 minutes) showed only backend UDP to Valve relays and nothing from the game process.
+default namespace (no route at all) cannot carry it. In the native launcher, turn on Settings > Multiplayer >
+**Co-op over Steam relays (UDP to Valve's relays only)** and press PLAY. It is off by default. The launcher sets
+`HELLFORGE_STEAM_UDP=1` for that session's wrapper only, not for the Steam ownership check. For the wrapper directly or
+an external launcher, `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` does the same.
+
+With it on, `hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the
+game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which
+gives it a real route. Two policy rules then close it again: `ip rule add ipproto tcp prohibit` refuses every TCP
+connection with the same WSAEACCES, so the session's network probe passes as before, and UDP is allowed only to Valve's
+relays, address and port range each, from the list Valve publishes for the game (`ISteamApps/GetSDRConfig/v1`, app
+553850), fetched at launch while this PC still has its network (the last one is kept in
+`~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not start). Every other UDP
+destination, name lookups included, is refused, and the self-test refuses to start if one works. It needs `python3` for
+the list; without `pasta` or `python3`, the launcher refuses before the session starts and the wrapper warns, with the
+package-manager commands in [What you need](#what-you-need). Co-op through Steam's relays should still work; a direct
+peer-to-peer path between two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a
+relay address and port goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused,
+loopback fine. A solo session's packet capture (about 5 minutes) showed only backend UDP to Valve relays and nothing
+from the game process.
 
 ## One prefix, one network
 

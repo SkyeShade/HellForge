@@ -132,14 +132,19 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), saves the ones given, checks
+them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false,
+ "gameOptions": "", "sandbox": true, "steamUdp": false, "steamBridge": true, "playWithStrangers": false,
  "file": "<installation>\\launcher-settings.json"}
 ```
+
+`settings --steam-udp yes|no` saves co-op over Steam relays (off by default). On Linux, `play` sets
+`HELLFORGE_STEAM_UDP=1` for the session when it is on: UDP goes to Valve's Steam relay servers only, and TCP and every
+other destination stay refused. The session refuses before it starts if `passt`'s `pasta` command or `python3` is
+missing ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions.
 
 `settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
@@ -152,8 +157,8 @@ lists and creates profiles; `settings --profile <name>` selects one.
 
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
-                       [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--game-options "<launch options>"]
-                       [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
+                       [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
+                       [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
@@ -165,6 +170,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
+| `--steam-udp` | the launcher's setting, off by default | on Linux, opens UDP to Valve's Steam relay servers only so Steam networking can carry co-op, with TCP and every other destination refused. Needs `passt`'s `pasta` command and `python3`; the session refuses before it starts without them. Defaults to the saved setting and applies to this session only; `settings --steam-udp` saves it ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |

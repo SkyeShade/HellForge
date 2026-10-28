@@ -403,6 +403,11 @@
                 <CheckBox x:Name="SdkShimsBox" Content="Lobby and session through Steam friends" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
+                <StackPanel x:Name="SteamUdpOptions" Spacing="8" IsVisible="False">
+                  <CheckBox x:Name="SteamUdpBox" Content="Co-op over Steam relays (UDP to Valve's relays only)" />
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="Off: the session has no route out. On: it opens UDP to Valve's Steam relay servers only, from the list Valve publishes for HELLDIVERS 2, so Steam networking can carry co-op; TCP and every other destination stay refused. Needs passt (the pasta command) and python3. Applies to the next session." />
+                </StackPanel>
                 <CheckBox x:Name="StrangersBox" Content="Play with strangers" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Off: only Steam friends reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs." />

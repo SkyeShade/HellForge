@@ -111,6 +111,10 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
+        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): off by default, and passed to a session only.
+        SteamUdpOptions.IsVisible = OperatingSystem.IsLinux();
+        SteamUdpBox.IsChecked = ProfileStore.LoadSteamUdp(paths);
+        SteamUdpBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSteamUdp(paths, SteamUdpBox.IsChecked == true);
         // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
         StrangersBox.IsEnabled = paths.ModsFolder != null;
         StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
@@ -268,7 +272,8 @@ public partial class MainWindow : Window
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
-                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
+                SteamUdp: SteamUdpBox.IsChecked == true));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
