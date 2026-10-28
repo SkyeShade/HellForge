@@ -192,7 +192,7 @@ public partial class MainWindow
     void StartLinuxUninstallHelper(InstallLayout install, LinuxUninstallPlan plan, string? prefix)
     {
         var script = Path.Combine(Path.GetTempPath(), $"hellforge-uninstall-{Guid.NewGuid():N}.sh");
-        File.WriteAllText(script, """
+        var helperText = """
             #!/usr/bin/env bash
             set -u
             root=$1
@@ -202,31 +202,7 @@ public partial class MainWindow
             log=$5
             prefix=${6:-}
             say() { printf '%s\n' "$*" >>"$log" 2>/dev/null || true; }
-            pfx_in_use_names=""
-            add_in_use() {
-              local name
-              name=$(cat "/proc/$1/comm" 2>/dev/null || true)
-              [ -n "$name" ] || name="pid $1"
-              pfx_in_use_names="${pfx_in_use_names}${pfx_in_use_names:+, }$name"
-            }
-            prefix_in_use() {
-              local dir pid exe cwd
-              pfx_in_use_names=""
-              for dir in /proc/[0-9]*; do
-                pid=${dir##*/}
-                [ "$pid" = "$$" ] && continue
-                [ -O "$dir" ] || continue
-                if [ -r "$dir/environ" ] &&
-                   { tr '\0' '\n' <"$dir/environ"; } 2>/dev/null | grep -Fxq -- "WINEPREFIX=$prefix/pfx"; then
-                  add_in_use "$pid"; continue
-                fi
-                exe=$(readlink "$dir/exe" 2>/dev/null || true)
-                cwd=$(readlink "$dir/cwd" 2>/dev/null || true)
-                case "$exe" in "$prefix"|"$prefix"/*) add_in_use "$pid"; continue ;; esac
-                case "$cwd" in "$prefix"|"$prefix"/*) add_in_use "$pid" ;; esac
-              done
-              [ -n "$pfx_in_use_names" ]
-            }
+            @PREFIX_IN_USE@
             failed=0
             while kill -0 "$launcher_pid" 2>/dev/null; do sleep 1; done
             if [ -n "$shortcut" ] && { [ -e "$shortcut" ] || [ -L "$shortcut" ]; }; then
@@ -278,7 +254,8 @@ public partial class MainWindow
               say "Uninstall finished with items that could not be removed; see above."
             fi
             rm -f -- "$0" 2>/dev/null || true
-            """);
+            """;
+        File.WriteAllText(script, LinuxHelperScripts.IncludePrefixInUse(helperText));
         var start = new ProcessStartInfo("bash") { WorkingDirectory = Path.GetTempPath(), UseShellExecute = false, CreateNoWindow = true };
         foreach (var argument in new[] { script, install.Root, Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
                      plan.ShortcutRemovable ? plan.Shortcut ?? "" : "", plan.ShortcutExec ?? "", plan.LogPath, prefix ?? "" })

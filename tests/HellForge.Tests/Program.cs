@@ -653,6 +653,7 @@ ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 LinuxInstallerTests.Register(Test, Check, Reject, root);
 LinuxUninstallTests.Register(Test, Check, Reject, root);
+LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
