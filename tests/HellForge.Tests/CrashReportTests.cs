@@ -67,6 +67,28 @@ static class CrashReportTests
             check(SystemFacts.Gpus().All(g => g.Name.Length > 0 && Privacy.Scrub(g.Name) == g.Name), "A GPU entry is empty or names the PC.");
         });
 
+        test("Crash reports keep the OS name when this PC is named fedora", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var scrub = new ReportPrivacy(fedora, []);
+            var line = "This PC now: " + system;
+            check(scrub.ApplyNames(line) == line, "The OS name was scrubbed: " + scrub.ApplyNames(line));
+            check(scrub.Apply(system + @" at C:\Users\Alex and /home/alex") == system + @" at %USERPROFILE% and ~",
+                "The OS line kept the user folders: " + scrub.Apply(system + @" at C:\Users\Alex and /home/alex"));
+        });
+
+        test("A PC named after a word of the OS name is still scrubbed in other text", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var line = system + " on host fedora";
+            check(new ReportPrivacy(fedora, []).Apply(line) == system + " on host PC", "The PC name outside the OS name was kept: " + fedora.Apply(line));
+            var gaming = new Privacy(@"C:\Users\Alex", ["fedora-gaming"], "/home/alex", system);
+            check(gaming.Apply(system + " on host fedora-gaming") == system + " on host PC",
+                "A longer PC name was kept: " + gaming.Apply(system + " on host fedora-gaming"));
+        });
+
         test("Mod lines carry each mod's version and content hash", () =>
         {
             using var modset = JsonDocument.Parse("""{"mods": [{"id": "skye.d11", "version": "1.2.0", "hash": "0123456789abcdef0123456789abcdef"}]}""");

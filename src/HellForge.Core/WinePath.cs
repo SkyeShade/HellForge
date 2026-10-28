@@ -17,7 +17,9 @@ public static class WinePath
         if (DrivePath(path, 'C', out var cRelative))
         {
             var root = Path.GetFullPath(Path.Combine(prefix, "pfx", "drive_c"));
-            var mapped = Path.GetFullPath(Path.Combine(root, NativeRelative(cRelative)));
+            // C:\\folder repeats the root separator but still means C:\folder, not a rooted host path.
+            var relative = NativeRelative(cRelative).TrimStart(Path.DirectorySeparatorChar);
+            var mapped = relative.Length == 0 ? root : Path.GetFullPath(Path.Combine(root, relative));
             if (!Within(root, mapped)) throw new InvalidDataException("The Windows path escapes the Proton prefix's C: drive.");
             return mapped;
         }
@@ -26,11 +28,19 @@ public static class WinePath
             var root = Path.GetPathRoot(Path.GetFullPath(prefix))!;
             return Path.GetFullPath(Path.Combine(root, NativeRelative(zRelative)));
         }
+        // A host path on Linux never starts with a drive letter, so an unmapped drive is a Windows path
+        // with no host equivalent. Proton prefixes provide only C: and Z:.
+        if (OperatingSystem.IsLinux() && WindowsDrive(path) is { } drive)
+            throw new InvalidDataException($"The Windows path uses drive {drive}:, which has no host equivalent here; only C: and Z: are mapped.");
         return path;
     }
 
     public static string ToWinePath(string path, string prefix)
     {
+        // A host path on Linux never starts with a drive letter. Mapping an already-Windows path would
+        // produce a Z: path to a literal "C:\..." folder, which cannot be opened.
+        if (OperatingSystem.IsLinux() && WindowsDrive(path) is { } drive)
+            throw new InvalidDataException($"The path is already a Windows path on drive {drive}:, not a host path: {path}");
         var fullPath = Path.GetFullPath(path);
         var cRoot = Path.GetFullPath(Path.Combine(prefix, "pfx", "drive_c"));
         if (Within(cRoot, fullPath))
@@ -42,6 +52,14 @@ public static class WinePath
         var root = Path.GetPathRoot(fullPath)!;
         var fromRoot = Path.GetRelativePath(root, fullPath);
         return fromRoot == "." ? @"Z:\" : @"Z:\" + WineRelative(fromRoot);
+    }
+
+    // The drive letter of a path that starts with one (C:, D:\folder, Z:/folder), or null.
+    static char? WindowsDrive(string? path)
+    {
+        if (path is not { Length: >= 2 } || !char.IsAsciiLetter(path[0]) || path[1] != ':') return null;
+        if (path.Length > 2 && path[2] is not ('\\' or '/')) return null;
+        return char.ToUpperInvariant(path[0]);
     }
 
     static bool DrivePath(string path, char drive, out string relative)
