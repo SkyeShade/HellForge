@@ -98,6 +98,8 @@ public sealed class SessionRunner
             start.ArgumentList.Add(paths.Session);
             start.Environment["INSTALL"] = paths.InstallRoot!;
             start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix!;
+            // The wrapper has no terminal here: keep its output in logs/linux-session-wrapper.log.
+            start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
             if (SteamLocator.SelectedProtonScript(new InstallLayout(paths.InstallRoot!)) is { } proton)
             {
                 if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");

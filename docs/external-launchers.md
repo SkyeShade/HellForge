@@ -247,9 +247,14 @@ place of HellForge.exe, with its arguments:
 PROTON=<proton> STEAM_COMPAT_DATA_PATH=<prefix> app/linux/hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes
 ```
 
-The script returns when the session's programs have ended. `stop` and the other commands also run through Proton
-outside the namespace (`"$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" stop`). None of them goes online except
-`fetch-war`, which is meant to.
+For `play` that starts a session, the script returns when the session's programs have ended, even when `play` itself
+returned as soon as the session started. Every other command, including `play --dry-run yes`, returns as soon as Proton
+returns, with the command's exit code. The command's standard output is passed through unchanged, so `status` prints
+its JSON with nothing from the wrapper on that stream; the wrapper's own messages go to standard error, as do the
+command's own error messages. Only the native launcher sets `HELLFORGE_WRAPPER_LOG=1`, which sends the wrapper's
+output to `logs/linux-session-wrapper.log` instead; do not set it in your own launcher. `stop` and the other commands
+also run through Proton outside the namespace (`"$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" stop`). None of
+them goes online except `fetch-war`, which is meant to.
 
 ## Related pages
 

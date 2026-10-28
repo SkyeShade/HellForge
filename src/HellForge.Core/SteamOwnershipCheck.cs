@@ -142,6 +142,7 @@ public static class SteamOwnershipCheck
         start.Environment["PROTON"] = request.Proton;
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = request.SteamRoot;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = request.Prefix;
+        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
         start.Environment["HELLFORGE_WORKING_DIRECTORY"] = prepared.Run;
         start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
         start.Environment["HELLFORGE_SKIP_MOD_TOOLS"] = "1";

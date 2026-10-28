@@ -489,8 +489,8 @@ public partial class MainWindow
         start.Environment["PROTON"] = proton;
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = WinePath.PrefixFromInstallRoot(install.Root);
-        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
-        start.Environment["HELLFORGE_PREPARE_MOD_TOOLS_ONLY"] = "1";
+        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
+        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = start.Environment["HELLFORGE_PREPARE_MOD_TOOLS_ONLY"] = "1";
         using var process = Process.Start(start) ?? throw new IOException("The Linux mod-tools preparation did not start.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(16));
