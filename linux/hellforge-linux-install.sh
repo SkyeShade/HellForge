@@ -7,7 +7,7 @@
 #   ./hellforge-linux-install.sh proton                            pick a different Proton (remembered for next time)
 #   ./hellforge-linux-install.sh where                             show where the prefix, install, Steam and Proton are
 #   ./hellforge-linux-install.sh build <mod-folder>                build a HellForge mod with a native Linux Zig and install it into
-#                                                                  HellForge's mods/ folder (replaces build-hf-mod.fish)
+#                                                                  HellForge's mods/ folder
 #   ./hellforge-linux-install.sh sdk [mod-folder]                  show the mod SDK folder; with a mod folder, copy the SDK headers
 #                                                                  (hellforge_mod.h ...) into <mod-folder>/src so the mod builds
 #   ./hellforge-linux-install.sh backup [folder]                   back up the whole prefix (default: ~/hellforge-backups) and list the backups

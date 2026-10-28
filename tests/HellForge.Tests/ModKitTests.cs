@@ -36,6 +36,25 @@ static class ModKitTests
                 "Linux invokes the bundled helper with this installation's prefix and mod folder; Windows retains ModBuilds.");
         });
 
+        test("Native Linux Zig is found where the install script finds it", () =>
+        {
+            var home = Path.Combine(root, "zig-home");
+            var configured = Path.Combine(root, "zig-configured");
+            var local = Path.Combine(home, ".local", "share", "zig-native", "zig");
+            var first = Path.Combine(root, "zig-path-1");
+            var second = Path.Combine(root, "zig-path-2");
+            var fromPath = Path.Combine(second, "zig");
+            var executable = new HashSet<string>(StringComparer.Ordinal) { configured, local, fromPath };
+            var searchPath = first + Path.PathSeparator + second;
+            string? Find(string? zig, string? path) => ModKit.FindNativeLinuxZig(zig, home, path, executable.Contains);
+            check(Find(configured, searchPath) == configured, "ZIG wins.");
+            check(Find(null, searchPath) == local, "The default wins over PATH.");
+            executable.Remove(local);
+            check(Find(null, searchPath) == fromPath, "PATH is the fallback.");
+            check(Find(Path.Combine(root, "zig-not-executable"), first) == null, "A Zig that is not executable is not used.");
+            check(Find(null, first) == null, "No executable Zig means none.");
+        });
+
         test("New mods are made from the template with every placeholder filled, and bad ids or existing folders are refused", () =>
         {
             var repository = ModSdk.Find(Directory.GetCurrentDirectory())!;

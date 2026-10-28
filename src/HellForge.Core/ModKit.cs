@@ -145,6 +145,22 @@ public static partial class ModKit
     public static bool ToolsReady(ModSdk sdk, bool ide = false) =>
         Tools(sdk).Where(t => ide || !t.Ide).All(t => File.Exists(Path.Combine(sdk.Tools, t.Name, t.Exe)));
 
+    // The native Linux Zig the install script's build command uses: ZIG (else ~/.local/share/zig-native/zig), then zig on
+    // PATH; each candidate must be executable.
+    public static string? FindNativeLinuxZig(string? zig, string? home, string? path, Func<string, bool> isExecutable)
+    {
+        var candidate = !string.IsNullOrEmpty(zig) ? zig
+            : !string.IsNullOrEmpty(home) ? Path.Combine(home, ".local", "share", "zig-native", "zig")
+            : null;
+        if (candidate != null && isExecutable(candidate)) return candidate;
+        foreach (var folder in (path ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            candidate = Path.Combine(folder, "zig");
+            if (isExecutable(candidate)) return candidate;
+        }
+        return null;
+    }
+
     // Downloads the pinned tools into the SDK's tools folder (Zig; CMake and Ninja too with ide), each checked against
     // its SHA-256 before it is unpacked. Tools already there at their pinned archive are kept.
     public static async Task InstallToolsAsync(ModSdk sdk, bool ide, Action<string> progress, CancellationToken cancel = default)
