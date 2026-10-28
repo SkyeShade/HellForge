@@ -476,7 +476,7 @@ try
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HD2BeyondTheStars"));
             break;
         case "crash-dump":
-            // A crashed game's full memory dump, from outside it (CrashDump.cs; started by the mod loader's crash note).
+            // A crashed game's memory dump, from outside it (CrashDump.cs; started by the mod loader's crash note).
             result = CrashDump.Write(int.Parse(Required("--pid"), System.Globalization.CultureInfo.InvariantCulture),
                 uint.Parse(Required("--thread"), System.Globalization.CultureInfo.InvariantCulture),
                 ulong.Parse(Required("--pointers"), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture),

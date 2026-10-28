@@ -411,8 +411,13 @@ static void InstallFailFastNote(void)
  * factor (+0x2D80, DR1) in every thread; each new game address that touches them is logged once. */
 static volatile uintptr_t g_fieldWatched;
 static volatile uintptr_t g_previewRecord; /* the record 0x1003EE6 copies the radius into (+0x240); watched with DR2 */
-static uintptr_t g_fieldHits[48];
+#define FIELD_WATCH_HITS 48
+static uintptr_t g_fieldHits[FIELD_WATCH_HITS];
 static volatile LONG g_fieldHitCount;
+/* B.4b: every trap FieldWatchHit claims. The native test counts them after the watchpoints are off. */
+static volatile LONG g_fieldTrapCount;
+/* B.4b: the loader's thread turns the watchpoints off once their log is full, and they stay off in this process. */
+static volatile LONG g_fieldWatchOff;
 
 /* B.4: the threads FieldWatch armed, by id. The loader's thread records an id before SetThreadContext and before it
  * resumes that thread; a full list means the thread is not armed. The exception handler reads the list without a lock.
@@ -663,6 +668,7 @@ static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
     CONTEXT* c = info->ContextRecord;
     int claim = FieldWatchClaim(info->ExceptionRecord->ExceptionCode, c->Dr6, c->EFlags, FieldWatchArmed(GetCurrentThreadId()));
     if (claim == FIELD_WATCH_PASS) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedIncrement(&g_fieldTrapCount);
     uintptr_t at = c->Rip;
     int which = claim == FIELD_WATCH_CLAIM ? ((c->Dr6 & 1) ? 0 : (c->Dr6 & 2) ? 1 : 2) : -1;
     /* DR0's instruction is the one that copies the radius; with Dr6=0 (Wine) which watchpoint fired is unknown. DR1's or
@@ -670,8 +676,8 @@ static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
     if ((which == 0 || which == -1) && at == ApiModuleBase("game.dll", NULL) + 0x1003EE6) g_previewRecord = c->Rsi;
     c->Dr6 = 0;
     LONG n = g_fieldHitCount;
-    for (LONG i = 0; i < n && i < 48; i++) if (g_fieldHits[i] == at) return EXCEPTION_CONTINUE_EXECUTION;
-    if (n < 48) NoteFieldHit(info, at, which, n);
+    for (LONG i = 0; i < n && i < FIELD_WATCH_HITS; i++) if (g_fieldHits[i] == at) return EXCEPTION_CONTINUE_EXECUTION;
+    if (n < FIELD_WATCH_HITS) NoteFieldHit(info, at, which, n);
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
@@ -725,6 +731,40 @@ static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
     return set;
 }
 
+/* B.4b: one armed thread's watchpoints off, set while it is suspended, as WatchThread sets them. Dr0-Dr2 and their
+ * Dr7 enable bits go; Dr3 and the rest of Dr7 stay. A thread that has ended cannot be opened and is skipped. */
+static void ClearWatchThread(DWORD id)
+{
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
+    if (thread == NULL) return;
+    if (SuspendThread(thread) != (DWORD)-1)
+    {
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (GetThreadContext(thread, &context))
+        {
+            context.Dr0 = context.Dr1 = context.Dr2 = 0;
+            context.Dr7 &= ~(DWORD64)0x7;
+            SetThreadContext(thread, &context);
+        }
+        ResumeThread(thread);
+    }
+    CloseHandle(thread);
+}
+
+/* B.4b: once the 48 places are full, the loader's thread turns the watchpoints off: never the exception handler, which
+ * may be running on a thread that would then be suspended. The armed threads stay listed and the handler stays
+ * installed, so a trap already on its way is still claimed; after this, FieldWatch never arms again. */
+static void FieldWatchTick(void)
+{
+    if (g_fieldWatchOff || g_fieldHitCount < FIELD_WATCH_HITS) return;
+    g_fieldWatchOff = 1;
+    LONG count = g_fieldWatchThreadCount;
+    if (count > FIELD_WATCH_THREADS) count = FIELD_WATCH_THREADS;
+    for (LONG i = 0; i < count; i++) ClearWatchThread((DWORD)g_fieldWatchThreads[i]);
+    Note("difficulty: watchpoints off: their log is full (%d places)", FIELD_WATCH_HITS);
+}
+
 static void FieldWatch(uintptr_t field)
 {
     static int handler, notedOff;
@@ -738,6 +778,8 @@ static void FieldWatch(uintptr_t field)
         }
         return;
     }
+    if (g_fieldWatchOff) return;
+    if (g_fieldHitCount >= FIELD_WATCH_HITS) { FieldWatchTick(); return; }
     if (!FieldWatchSelfTest()) return;
     if (field == g_fieldWatched && g_previewRecord == record) return;
     record = g_previewRecord;

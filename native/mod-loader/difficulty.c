@@ -124,6 +124,7 @@ static int LevelClamp(uint8_t* at, uint8_t reg)
 }
 
 static void FieldWatch(uintptr_t field); /* crash_notes.c: the preview diagnostic's watchpoints */
+static void FieldWatchTick(void); /* crash_notes.c: B.4b, off once their log is full */
 static volatile uint8_t* g_restartWatch; /* +0 the last level that restarted, +8 a count per site, +0x18 pockets left,
                                           * +0x20 the last level initialised, +0x40 the countdown delta registered,
                                           * +0x44 level-11 missions launched with it, +0x48..+0x54 the mission

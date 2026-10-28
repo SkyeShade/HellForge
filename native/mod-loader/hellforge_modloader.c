@@ -881,6 +881,7 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
     if (g_difficultyState == 1) DifficultyWatch();
+    FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
     AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
