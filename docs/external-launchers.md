@@ -30,7 +30,9 @@ The interface is the commands and the JSON they print. Other files in an install
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
-game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version.
+game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version. On
+Linux, the player runs a newer `HellForge-Linux-Installer` with the same prefix instead; see
+[linux.md](linux.md#updating).
 
 ## Finding an installation
 

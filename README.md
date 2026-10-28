@@ -66,6 +66,9 @@ HellForge's frozen war, or open every planet to liberation (Settings > Galactic 
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
+On Linux, use the graphical Linux installer instead of `HellForge-Setup.exe`:
+[docs/linux.md](docs/linux.md#setting-it-up).
+
 HellForge runs one game build (Steam build 25480438). When Steam has a newer build that HellForge has a patch pack for,
 setup downloads the pack (about 1.7 GB) and makes the copy by patching your own Steam files. Otherwise the wizard shows
 commands to paste into the Steam console, and Steam itself downloads the supported build for your account.

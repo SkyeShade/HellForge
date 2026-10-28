@@ -63,6 +63,9 @@ Reference and related pages:
 
 ### What setup does
 
+On Linux, the graphical installer and native setup wizard do this instead; see
+[linux.md](linux.md#setting-it-up).
+
 `HellForge-Setup.exe` unpacks HellForge into the folder you pick and opens the launcher, whose setup wizard:
 
 1. Finds HELLDIVERS 2 in your Steam libraries and checks that it is the supported build (Steam build 25480438).
@@ -124,7 +127,8 @@ An update brings their new versions. An older copy you downloaded separately (in
 ### Updating, repairing and uninstalling
 
 - Update: run a newer `HellForge-Setup.exe` and pick the existing installation (the button then says Update). It
-  replaces the app and keeps the game copy, profiles and settings. Close HellForge first.
+  replaces the app and keeps the game copy, profiles and settings. Close HellForge first. On Linux, run a newer
+  `HellForge-Linux-Installer` with the same prefix instead; see [linux.md](linux.md#updating).
 - Repair: Settings > Installation > Check and repair compares the game files with the supported build, copies any that
   are missing or damaged from Steam, and renews the network block and shortcuts.
 - Uninstall: Settings > Installation > Uninstall HellForge... removes the network block (Windows asks for permission)
