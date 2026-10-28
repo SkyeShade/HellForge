@@ -150,7 +150,8 @@ public sealed class SessionRunner
     public static void SignalStop(string runDirectory) =>
         File.WriteAllText(Path.Combine(runDirectory, "stop-observation.signal"), "stop");
 
-    // Only before a run directory exists: the session runner has not started the game yet.
+    // Used before a run directory exists, when the session runner has not started the game yet, and on Linux when closing
+    // the launcher after a stop did not finish in time. The latter skips the session runner's own cleanup.
     public void Kill()
     {
         if (!IsRunning) return;

@@ -885,6 +885,23 @@ public partial class MainWindow : Window
         RequestStop();
         // Give the script time to stop the game and restore its logs; the game's job ends with the script anyway.
         await runner.WaitForExitAsync(TimeSpan.FromSeconds(60));
+        if (OperatingSystem.IsLinux() && runner.IsRunning)
+        {
+            try
+            {
+                runner.Kill();
+                ConfirmTitle.Text = "Session stopped";
+                ConfirmText.Text = "The session did not stop in time, so it was ended before closing.";
+            }
+            catch (Exception error)
+            {
+                // The process may have gone between the check and the kill, or this user may not be allowed to kill it.
+                ConfirmTitle.Text = "Session did not stop";
+                ConfirmText.Text = "The session did not stop in time and could not be ended: " + error.Message + " Closing anyway.";
+            }
+            // Leave the outcome on screen for a moment before the window closes.
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
         closeConfirmed = true;
         Close();
     }
