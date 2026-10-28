@@ -58,6 +58,11 @@ foreach($app in @(
 Write-Output 'Publishing launcher-linux'
 dotnet publish (Join-Path $project 'src/HellForge.Launcher/HellForge.Launcher.csproj') -c Release -r linux-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'launcher-linux')
 if($LASTEXITCODE){throw 'Publishing launcher-linux failed.'}
+# app/cli-linux: the native Linux build agent hellforge-linux.sh runs before a session to compile source mods, and the
+# launcher's Build now runs for one mod. Self-contained, like the launcher.
+Write-Output 'Publishing cli-linux'
+dotnet publish (Join-Path $project 'src/HellForge.Cli/HellForge.Cli.csproj') -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'cli-linux')
+if($LASTEXITCODE){throw 'Publishing cli-linux failed.'}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem

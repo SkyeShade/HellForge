@@ -2,6 +2,9 @@ using HellForge.Core;
 
 static class ModKitTests
 {
+    // A build test runs with this host's pinned compiler: tools/zig-linux/zig on Linux, tools/zig/zig.exe on Windows.
+    static bool ZigReady(ModSdk sdk) => File.Exists(OperatingSystem.IsLinux() ? sdk.NativeZig : sdk.Zig);
+
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
         test("The mod SDK is found in the repository and in an installation, with its template and tool pins", () =>
@@ -10,7 +13,12 @@ static class ModKitTests
             check(repository != null && repository.Folder.EndsWith(Path.Combine("native", "mod-sdk"), StringComparison.Ordinal) &&
                 Directory.Exists(repository.Template) && File.Exists(Path.Combine(repository.Template, "hellforge-mod.json")), "Repository SDK.");
             var tools = ModKit.Tools(repository!);
-            check(tools.Count == 3 && tools.Single(t => t.Name == "zig") is { Ide: false, Version: "0.17.0" } && tools.All(t => t.Sha256.Length == 64), "Tool pins.");
+            check(tools.Count == 4 && tools.All(t => t.Platform is "windows-x64" or "linux-x64") &&
+                tools.Single(t => t.Name == "zig") is { Ide: false, Version: "0.17.0", Platform: "windows-x64" } &&
+                tools.Single(t => t.Name == "zig-linux") is { Ide: false, Version: "0.17.0", Platform: "linux-x64", Exe: "zig", Bytes: 57332648L,
+                    Sha256: "1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026",
+                    Url: "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz" } &&
+                tools.All(t => t.Sha256.Length == 64), "Tool pins, including the pinned native Linux Zig.");
 
             var install = Path.Combine(root, "mdk-install");
             var sdk = Directory.CreateDirectory(Path.Combine(install, "app", "sdk")).FullName;
@@ -21,21 +29,22 @@ static class ModKitTests
                 installed.Template == Path.Combine(sdk, "templates", "c-mod"), "Installation SDK: app/sdk, tools beside app.");
         });
 
-        test("Linux Build now uses hf-build-mod.sh while Windows keeps the pinned build", () =>
+        test("Linux Build now runs the native build agent while Windows keeps the pinned build", () =>
         {
             var page = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "HellForge.Launcher", "ModKitPage.cs"));
             var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hf-build-mod.sh"));
             var linuxBuild = page.IndexOf("if (OperatingSystem.IsLinux())", StringComparison.Ordinal);
-            var scriptArg = linuxBuild < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(helper);", linuxBuild, StringComparison.Ordinal);
-            var modArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", scriptArg, StringComparison.Ordinal);
+            var commandArg = linuxBuild < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(\"build-mod\");", linuxBuild, StringComparison.Ordinal);
+            var modArg = commandArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", commandArg, StringComparison.Ordinal);
             var windowsBuild = modArg < 0 ? -1 : page.IndexOf("ModBuilds.Ensure(install, sdk, mod", modArg, StringComparison.Ordinal);
-            check(linuxBuild >= 0 && scriptArg > linuxBuild && modArg > scriptArg && windowsBuild > modArg &&
-                page.Contains("start.Environment[\"INSTALL\"] = install.Root;", StringComparison.Ordinal) &&
+            check(linuxBuild >= 0 && commandArg > linuxBuild && modArg > commandArg && windowsBuild > modArg &&
+                page.Contains("\"cli-linux\", \"HellForge.Cli\"", StringComparison.Ordinal) &&
+                !page.Contains("hf-build-mod.sh", StringComparison.Ordinal) &&
                 !page.Contains("start.Environment[\"PFX\"]", StringComparison.Ordinal) &&
-                page.Contains("app/linux/hf-build-mod.sh", StringComparison.Ordinal) &&
                 !page.Contains("start.ArgumentList.Add(\"build\");", StringComparison.Ordinal) &&
-                helper.Contains("usage: $(basename \"$0\") <mod-folder>", StringComparison.Ordinal),
-                "Linux invokes the bundled hf-build-mod.sh with this installation and mod folder only; Windows retains ModBuilds.");
+                helper.Contains("tools/zig-linux/zig", StringComparison.Ordinal) &&
+                helper.Contains("-O2", StringComparison.Ordinal) && helper.Contains("build-mod --mod", StringComparison.Ordinal),
+                "Linux invokes the native build agent for one mod; Windows retains ModBuilds; hf-build-mod.sh uses the pinned Zig and -O2.");
         });
 
         test("Native Linux Zig is found where hf-build-mod.sh finds it", () =>
@@ -80,7 +89,7 @@ static class ModKitTests
         test("A mod made from the template builds with the pinned Zig and then loads as a code mod", () =>
         {
             var repository = ModSdk.Find(Directory.GetCurrentDirectory())!;
-            if (!File.Exists(repository.Zig)) { Console.WriteLine("  (skipped: no Zig in tools/; run scripts/Setup-ModTools.ps1)"); return; }
+            if (!ZigReady(repository)) { Console.WriteLine("  (skipped: no Zig for this host; run scripts/Setup-ModTools.ps1 or install the native Zig)"); return; }
             var parent = Directory.CreateDirectory(Path.Combine(root, "mdk-build")).FullName;
             var folder = ModKit.Create(repository, parent, "tester.built-mod", "Built Mod");
             var dll = ModKit.Build(folder, repository);
@@ -184,7 +193,7 @@ static class ModKitTests
         test("Source mods are built by HellForge before a session, cached, checked and reused; one that does not compile stays off", () =>
         {
             var repository = ModSdk.Find(Directory.GetCurrentDirectory())!;
-            if (!File.Exists(repository.Zig)) { Console.WriteLine("  (skipped: no Zig in tools/; run scripts/Setup-ModTools.ps1)"); return; }
+            if (!ZigReady(repository)) { Console.WriteLine("  (skipped: no Zig for this host; run scripts/Setup-ModTools.ps1 or install the native Zig)"); return; }
             var install = new InstallLayout(Directory.CreateDirectory(Path.Combine(root, "source-install")).FullName);
             var mods = Directory.CreateDirectory(Path.Combine(install.Root, "mods")).FullName;
             var folder = ModKit.Create(repository, mods, "tester.source-mod", "Source Mod");
@@ -226,6 +235,136 @@ static class ModKitTests
                 """{"format":1,"id":"test.prebuilt","name":"Prebuilt","version":"1","code":{"dll":"mod.dll","sdk":6,"game":"25480438"}}""");
             check(ModCatalog.Parse(prebuilt, EntityProfile.Current) is { HasSource: false } p && p.DllPath == Path.Combine(prebuilt, "mod.dll"),
                 "A prebuilt DLL for this game build loads from its folder; one for another build is refused.");
+        });
+
+        test("The source cache key names the compiler's identity on both hosts, and a Wine session is refused zig.exe", () =>
+        {
+            var mod = Directory.CreateDirectory(Path.Combine(root, "key-mod")).FullName;
+            File.WriteAllText(Path.Combine(mod, ModCatalog.ManifestName), """{"format":1,"id":"test.key","name":"Key","version":"1"}""");
+            Directory.CreateDirectory(Path.Combine(mod, "src"));
+            File.WriteAllText(Path.Combine(mod, "src", "key.c"), "int key(void) { return 1; }\n");
+
+            string Pin(string name, string version)
+            {
+                var platform = name == "zig" ? "windows-x64" : "linux-x64";
+                var exe = name == "zig" ? "zig.exe" : "zig";
+                var sha = name == "zig" ? new string('B', 64) : new string('A', 64);
+                return $$"""
+                    {"name":"{{name}}","version":"{{version}}","url":"https://example.invalid/{{name}}","sha256":"{{sha}}","exe":"{{exe}}","ide":false,"platform":"{{platform}}"}
+                    """;
+            }
+            ModSdk Fixture(string folder, string pins)
+            {
+                var sdkFolder = Directory.CreateDirectory(folder).FullName;
+                File.WriteAllText(Path.Combine(sdkFolder, "hellforge_mod.h"), "/* shared header */\n");
+                File.WriteAllText(Path.Combine(sdkFolder, "tools.json"), "{\"format\":1,\"tools\":[" + pins + "]}");
+                return new ModSdk(sdkFolder, Path.Combine(folder, "tools"), Path.Combine(sdkFolder, "templates", "c-mod"), Path.Combine(sdkFolder, "docs"));
+            }
+
+            var windows = Fixture(Path.Combine(root, "key-windows"), Pin("zig", "0.17.0") + "," + Pin("zig-linux", "0.17.0"));
+            var linuxOnly = Fixture(Path.Combine(root, "key-linux"), Pin("zig-linux", "0.17.0"));
+            var older = Fixture(Path.Combine(root, "key-older"), Pin("zig-linux", "0.16.0"));
+            var key = ModBuilds.Key(mod, windows, "25480438");
+            check(key == ModBuilds.Key(mod, linuxOnly, "25480438"),
+                "The same sources and Zig version share one key whether the pin is the Windows or the Linux one.");
+            check(key != ModBuilds.Key(mod, older, "25480438"), "Another Zig version is another key.");
+            check(ModKit.Compiler(windows, linuxHost: false, nativeOnly: false) == windows.Zig, "Windows keeps tools/zig/zig.exe.");
+            reject(() => ModKit.Compiler(windows, linuxHost: false, nativeOnly: true));
+            check(ModKit.ToolsForThisPlatform(windows).Single().Name == (OperatingSystem.IsLinux() ? "zig-linux" : "zig"),
+                "Mod tools are selected for the host platform.");
+        });
+
+        test("A native Linux build record is found by the session, which starts neither zig-linux nor zig.exe", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux compiler)"); return; }
+            var install = new InstallLayout(Directory.CreateDirectory(Path.Combine(root, "native-build-install")).FullName);
+            install.Create("25480438");
+            var sdkFolder = Directory.CreateDirectory(Path.Combine(install.App, "sdk")).FullName;
+            File.WriteAllText(Path.Combine(sdkFolder, "hellforge_mod.h"), "/* fixture */\n");
+            var tools = Path.Combine(install.Root, "tools");
+            var nativeZig = Path.Combine(tools, "zig-linux", "zig");
+            Directory.CreateDirectory(Path.GetDirectoryName(nativeZig)!);
+            var marker = Path.Combine(root, "native-zig-ran.txt");
+            File.WriteAllText(nativeZig, $"""
+                #!/bin/sh
+                out=""
+                previous=""
+                for argument in "$@"; do
+                  if [ "$previous" = "-o" ]; then out="$argument"; fi
+                  previous="$argument"
+                done
+                echo run >> "{marker}"
+                printf 'native build' > "$out"
+                """);
+            File.SetUnixFileMode(nativeZig, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var windowsZig = Path.Combine(tools, "zig", "zig.exe");
+            Directory.CreateDirectory(Path.GetDirectoryName(windowsZig)!);
+            var wineMarker = Path.Combine(root, "wine-zig-ran.txt");
+            File.WriteAllText(windowsZig, $"""
+                #!/bin/sh
+                echo run >> "{wineMarker}"
+                """);
+            File.SetUnixFileMode(windowsZig, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.WriteAllText(Path.Combine(sdkFolder, "tools.json"), """
+                {"format":1,"tools":[
+                  {"name":"zig","version":"0.17.0","url":"https://example.invalid/zig.zip","sha256":"B5663F69581DCF391293FBF16C06CB80D81D806545CE618B4D0BAB7F0EB8C428","exe":"zig.exe","ide":false,"platform":"windows-x64"},
+                  {"name":"zig-linux","version":"0.17.0","url":"https://example.invalid/zig.tar.xz","sha256":"1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026","bytes":57332648,"exe":"zig","ide":false,"platform":"linux-x64"}
+                ]}
+                """);
+            var sdk = new ModSdk(sdkFolder, tools, Path.Combine(sdkFolder, "templates", "c-mod"), Path.Combine(sdkFolder, "docs"));
+            var folder = Directory.CreateDirectory(Path.Combine(install.Mods, "native-mod")).FullName;
+            File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName),
+                "{\"format\":1,\"id\":\"test.native\",\"name\":\"Native\",\"version\":\"1\",\"code\":{\"dll\":\"native.dll\",\"sdk\":" +
+                ModCatalog.SdkVersion + "}}");
+            Directory.CreateDirectory(Path.Combine(folder, "src"));
+            File.WriteAllText(Path.Combine(folder, "src", "native.c"), "int native(void) { return 1; }\n");
+            var mod = ModCatalog.Parse(folder, EntityProfile.Current);
+            check(ModKit.Compiler(sdk, linuxHost: true, nativeOnly: false) == nativeZig, "Linux runs the pinned tools/zig-linux/zig.");
+
+            var dll = ModBuilds.Ensure(install, sdk, mod, "25480438");
+            var record = ModBuilds.Record(install, mod.Id)!;
+            check(File.Exists(dll) && File.Exists(marker) && record.CompilerHost == "linux-x64" &&
+                record.Compiler == "zig 0.17.0 / x86_64-windows-gnu" && record.DllSha256 != null &&
+                record.Key == ModBuilds.Key(folder, sdk, "25480438"), "The native build records its compiler and host.");
+
+            // The session finds the record with no compiler installed at all, and starts neither compiler.
+            File.Delete(nativeZig);
+            File.Delete(marker);
+            var fallback = Path.Combine(root, "native-zig-fallback");
+            File.WriteAllText(fallback, $"""
+                #!/bin/sh
+                echo run >> "{marker}"
+                """);
+            File.SetUnixFileMode(fallback, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var previousZig = Environment.GetEnvironmentVariable("ZIG");
+            var previousMarker = Environment.GetEnvironmentVariable(ModKit.NativeBuildsVariable);
+            Environment.SetEnvironmentVariable("ZIG", fallback);
+            Environment.SetEnvironmentVariable(ModKit.NativeBuildsVariable, "1");
+            try
+            {
+                check(ModKit.NativeBuildOnly, "The wrapper's native-build marker reaches ModBuilds.");
+                var (ready, problems) = ModBuilds.Prepare(install, sdk, [mod], "25480438", installTools: false);
+                check(problems.Count == 0 && ready.Count == 1 && ready[0].BuiltDll == dll &&
+                    !File.Exists(marker) && !File.Exists(wineMarker),
+                    "The session reused the native record without starting zig-linux or zig.exe: " + string.Join(" | ", problems));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("ZIG", previousZig);
+                Environment.SetEnvironmentVariable(ModKit.NativeBuildsVariable, previousMarker);
+            }
+            reject(() => ModKit.Compiler(sdk, linuxHost: false, nativeOnly: true));
+        });
+
+        test("The Linux wrapper builds source mods natively before the namespace and marks the session", () =>
+        {
+            var wrapper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hellforge-linux.sh"));
+            var session = wrapper.IndexOf("if session_command \"$@\"; then", StringComparison.Ordinal);
+            var build = session < 0 ? -1 : wrapper.IndexOf("build-source-mods --install", session, StringComparison.Ordinal);
+            var marker = build < 0 ? -1 : wrapper.IndexOf("export HELLFORGE_NATIVE_MOD_BUILDS=1", build, StringComparison.Ordinal);
+            var space = marker < 0 ? -1 : wrapper.IndexOf("Entering the offline network namespace.", marker, StringComparison.Ordinal);
+            check(session >= 0 && build > session && marker > build && space > marker,
+                "The wrapper must build source mods before the namespace and tell the session they were built natively.");
         });
     }
 }

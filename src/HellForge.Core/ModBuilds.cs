@@ -1,21 +1,26 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace HellForge.Core;
 
 // Source-first mod builds (docs/sdk-roadmap.md phase 4, docs/modding/tools.md, docs/internals.md "Source mod builds"): a code mod that ships its C or C++
 // sources (src/) is compiled by HellForge before the session, with the SDK's pinned Zig and the same flags on every
 // machine, into <installation>/temp/mod-builds/<mod id>/, and loaded from there; a DLL in the mod's own folder is not used.
-//   key     a hash of the mod's manifest and every file under src/, the SDK's headers, the compiler pin and flags, and the
-//           game build: anything that changes rebuilds, so a mod follows a game update by itself when its names still exist.
+//   key     a hash of the mod's manifest and every file under src/, the SDK's headers, the compiler's identity (its
+//           version and target, not its archive) and flags, and the game build: anything that changes rebuilds, so a mod
+//           follows a game update by itself when its names still exist, and a native Linux build and a Windows session
+//           of the same mod share one key.
 //   record  record.json beside the build: its key, the sources' hash and the DLL's SHA-256. A session uses the build only
 //           when the key and both hashes still match (a stale, corrupted or swapped DLL is rebuilt, never loaded): a guard
 //           against accidents and casual swaps, not a determined local attacker (who could edit the sources or the record).
 //   errors  a mod that does not compile stays off for that session (the session still runs); its record keeps the
 //           compiler's message (file and line) for the launcher's Mods page, and the same sources are not compiled again.
 // Friends compare a source mod by its sources (ModCatalog.Digest), so peers build identical mods.
-public sealed record ModBuildRecord(string Key, string SourceHash, string Dll, string? DllSha256, string? Error, DateTime Built);
+public sealed record ModBuildRecord(string Key, string SourceHash, string Dll, string? DllSha256, string? Error, DateTime Built,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Compiler = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CompilerHost = null);
 
 // Where a session's source builds are, for the launcher's progress bar (HellForge.Cli mods-stage --progress): the stage
 // ("tools": fetching the compiler, "compiling", "done"), the source mods done and in all, and the one being built.
@@ -55,14 +60,16 @@ public static class ModBuilds
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
-    // The build's key: the sources, the SDK headers, the compiler (its pinned archive) and flags, and the game build.
+    // The build's key: the sources, the SDK headers, the compiler's identity and flags, and the game build. The
+    // "hf-source-key-v2" salt changes the scheme's meaning from the compiler archive to its identity; it rebuilds old
+    // caches once, then a Windows and a native Linux build of the same sources and pin share the key.
     public static string Key(string modFolder, ModSdk sdk, string buildId) => Key(SourceHash(modFolder), sdk, buildId, ModKit.Sources(modFolder).Any(f => f.EndsWith(".cpp", StringComparison.Ordinal)));
 
     static string Key(string sourceHash, ModSdk sdk, string buildId, bool cpp)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(Encoding.UTF8.GetBytes(sourceHash + "\n" + buildId + "\n" + string.Join(" ", ModKit.Flags(cpp)) + "\n"));
-        hash.AppendData(Encoding.UTF8.GetBytes((ModKit.Tools(sdk).FirstOrDefault(t => t.Name == "zig")?.Sha256 ?? "no zig") + "\n"));
+        hash.AppendData(Encoding.UTF8.GetBytes("hf-source-key-v2\n" + sourceHash + "\n" + buildId + "\n" + string.Join(" ", ModKit.Flags(cpp)) + "\n"));
+        hash.AppendData(Encoding.UTF8.GetBytes(ModKit.CompilerIdentity(sdk) + "\n"));
         foreach (var header in Directory.EnumerateFiles(sdk.Folder, "*.h").Order(StringComparer.Ordinal))
         {
             hash.AppendData(Encoding.UTF8.GetBytes(Path.GetFileName(header) + "\n"));
@@ -80,7 +87,8 @@ public static class ModBuilds
     }
 
     // Every enabled source mod built (or its build reused) for this session: the mods to load, with the DLL each loads,
-    // and the problems (a mod that did not compile is left out). tools: installs the SDK's pinned compiler when missing.
+    // and the problems (a mod that did not compile is left out). tools: on Windows, installs the SDK's pinned compiler
+    // when missing; Linux installs the native compiler in the wrapper before the session.
     public static (List<ModManifest> Mods, List<string> Problems) Prepare(InstallLayout install, ModSdk? sdk, IReadOnlyList<ModManifest> mods, string buildId,
         Action<string>? log = null, bool installTools = true, Action<ModBuildProgress>? progress = null)
     {
@@ -94,19 +102,10 @@ public static class ModBuilds
             {
                 progress?.Invoke(new("compiling", done, total, mod.Name)); // the name players see, for the launcher's bar
                 if (sdk == null) throw new InvalidDataException("the mod SDK is missing from this installation (app/sdk); reinstall HellForge.");
-                if (!ModKit.ToolsReady(sdk))
-                {
-                    if (!installTools) throw new InvalidDataException("the mod tools are not installed (the launcher's Mods page: Install mod tools).");
-                    // Linux: the session is in a network namespace with no way out, where the download is refused (issue
-                    // 20); hellforge-linux.sh fetches them before it enters the namespace, and the launcher's Mods page can
-                    // install them too.
-                    if (LinuxNetworkBlock.Requested)
-                        throw new InvalidDataException("the mod tools (Zig) are not installed, and the session has no network to fetch them: they could not be fetched " +
-                            "before the session; install them from the launcher's Mods page (Install mod tools), then start the session again.");
-                    log?.Invoke("Installing the mod tools (HellForge's pinned Zig) to build source mods...");
-                    progress?.Invoke(new("tools", done, total, mod.Name));
-                    ModKit.InstallToolsAsync(sdk, ide: false, line => log?.Invoke(line)).GetAwaiter().GetResult();
-                }
+                // Linux builds natively before the session (hellforge-linux.sh), and a Wine session uses that record: it
+                // never installs or starts zig.exe. Windows keeps installing the pinned tools on first need.
+                if (!OperatingSystem.IsLinux() && !ModKit.NativeBuildOnly)
+                    InstallTools(sdk, installTools, new("tools", done, total, mod.Name), log, progress);
                 ready.Add(mod with { BuiltDll = Ensure(install, sdk, mod, buildId, log) });
             }
             catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or HttpRequestException or
@@ -118,6 +117,20 @@ public static class ModBuilds
         }
         progress?.Invoke(new("done", done, total, ""));
         return (ready, problems);
+    }
+
+    // The pinned tools a Windows session installs on first need. Linux installs its native Zig in the wrapper before
+    // the session instead (hellforge-linux.sh), so its sessions never download or start zig.exe.
+    static void InstallTools(ModSdk sdk, bool installTools, ModBuildProgress state, Action<string>? log, Action<ModBuildProgress>? progress)
+    {
+        if (ModKit.ToolsReady(sdk)) return;
+        if (!installTools) throw new InvalidDataException("the mod tools are not installed (the launcher's Mods page: Install mod tools).");
+        if (LinuxNetworkBlock.Requested)
+            throw new InvalidDataException("the mod tools (Zig) are not installed, and the session has no network to fetch them: they could not be fetched " +
+                "before the session; install them from the launcher's Mods page (Install mod tools), then start the session again.");
+        log?.Invoke("Installing the mod tools (HellForge's pinned Zig) to build source mods...");
+        progress?.Invoke(state);
+        ModKit.InstallToolsAsync(sdk, ide: false, line => log?.Invoke(line)).GetAwaiter().GetResult();
     }
 
     // The mod's DLL for this build: its cached build when the record and both hashes match, else built now.
@@ -143,7 +156,7 @@ public static class ModBuilds
             var target = Path.GetDirectoryName(dll)!;
             if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
             Directory.Move(staging, target);
-            Write(folder, new ModBuildRecord(key, sourceHash, mod.CodeDll!, Sha256(dll), null, DateTime.UtcNow));
+            Write(folder, NewRecord(key, sourceHash, mod.CodeDll!, Sha256(dll), null, sdk));
             foreach (var old in Directory.GetDirectories(folder).Where(d => Path.GetFileName(d) != key[..16]))
                 try { Directory.Delete(old, recursive: true); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { } /* a DLL a running game holds: next time */
@@ -152,7 +165,7 @@ public static class ModBuilds
         }
         catch (InvalidDataException error)
         {
-            Write(folder, new ModBuildRecord(key, sourceHash, mod.CodeDll!, null, Trim(error.Message), DateTime.UtcNow));
+            Write(folder, NewRecord(key, sourceHash, mod.CodeDll!, null, Trim(error.Message), sdk));
             throw new InvalidDataException("did not compile:\n" + Trim(error.Message));
         }
         finally
@@ -167,6 +180,13 @@ public static class ModBuilds
         var text = message.StartsWith("The mod did not compile:\n", StringComparison.Ordinal) ? message["The mod did not compile:\n".Length..] : message;
         var lines = text.Split('\n').Select(l => l.TrimEnd()).Where(l => l.Length > 0).Take(40);
         return string.Join("\n", lines);
+    }
+
+    // A native Linux build says which host and compiler made it; a Windows build keeps the record it had.
+    static ModBuildRecord NewRecord(string key, string sourceHash, string dll, string? sha256, string? error, ModSdk sdk)
+    {
+        var host = OperatingSystem.IsLinux() ? ModKit.HostPlatform : null;
+        return new(key, sourceHash, dll, sha256, error, DateTime.UtcNow, host == null ? null : ModKit.CompilerIdentity(sdk), host);
     }
 
     static void Write(string folder, ModBuildRecord record)

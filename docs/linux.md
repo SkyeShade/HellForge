@@ -134,8 +134,9 @@ followed by the probe's reason or exit code, `The wrapper log says: "..."` when 
 report (missing programs, AppArmor, no Steam bridge, and so on), and `Make sure Steam is running and signed in to an
 account that owns HELLDIVERS 2.`
 
-After the ownership check, setup prepares the optional mod tools through the wrapper: HellForge's pinned Zig, about
-90 MB from ziglang.org. A failure is reported in the row but does not stop setup. Setup then copies
+After the ownership check, setup prepares the optional mod tools through the wrapper: the pinned native Linux Zig (about
+55 MB, a `.tar.xz` from ziglang.org) that compiles source mods, and the pinned Windows Zig (about 90 MB) for an
+installation that is also used from Windows. A failure is reported in the row but does not stop setup. Setup then copies
 the game from the source it chose, or keeps the installation's own copy after verifying it, and checks every file
 against Steam's hashes. When the copy came from Steam's depot download and **Delete Steam's download after copying** is
 ticked, the download is deleted afterwards. Setup installs the namespace marker only after `hellforge-linux.sh`'s
@@ -212,8 +213,11 @@ writes only HellForge's local files.
 
 The wrapper checks the programs listed above, finds Steam, the prefix and Proton, and refuses with the exact command
 when AppArmor restricts user namespaces. Before entering the namespace it fetches the live galactic war
-(`HellForge.LocalBackend.exe fetch-live-war`, with a 60-second timeout) and, once per Zig pin, the pinned mod tools
-(about 90 MB). A failure is logged and the session continues without that data or those tools.
+(`HellForge.LocalBackend.exe fetch-live-war`, with a 60-second timeout), the pinned mod tools once per pin (the native
+Linux Zig, and the Windows Zig for an installation shared with Windows), and then compiles the enabled source mods with
+the native Linux Zig into `temp/mod-builds`. The session finds those builds ready, so it never runs `zig.exe` under
+Wine. A failure is logged, and the session continues without that data or those tools (a source mod it could not build
+stays off with the normal mod problem).
 
 The wrapper starts a shared bridge to Steam when none is running. The bridge exposes Steam's loopback ports as
 `hf-steam-*.sock` files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}`, and `hf-inner.sh` recreates the same loopback ports
@@ -326,23 +330,42 @@ delete it by hand if you want it gone.
 
 ## Building mods with native Zig
 
-On Linux, a source mod's **Build now** compiles with a native Linux Zig, not the pinned Windows Zig sessions use.
-HellForge looks for Zig at `$ZIG`, `~/.local/share/zig-native/zig`, then `zig` on `PATH`; without one, Build now is
-disabled and its tooltip says how to install it. Build now runs `app/linux/hf-build-mod.sh <mod folder>`:
+On Linux, a source mod is compiled by the pinned native Linux Zig (Zig 0.17.0, `app/sdk/tools.json`), never the
+pinned Windows `zig.exe` under Wine (issue 81). The wrapper installs it into `<installation>/tools/zig-linux/zig`
+before the session and runs the native build agent, which calls the same `ModBuilds` code a session does:
+
+```fish
+app/cli-linux/HellForge.Cli build-source-mods --install <installation>
+```
+
+That builds every enabled source mod into `temp/mod-builds` with the cache key and `record.json` a session checks. The
+session then finds the DLLs ready and does not compile. The key names the compiler (`zig 0.17.0 /
+x86_64-windows-gnu`) rather than its archive, so a Windows session and a native Linux build of the same sources share
+it. A mod that does not compile is recorded with its compiler message and stays off for that session, as before.
+
+**Build now** in a mod's ⋮ menu runs the same native agent for that mod on Linux
+(`app/cli-linux/HellForge.Cli build-mod --mod <mod folder>`), so it fills the build the next session loads. It is
+enabled when the pinned native Zig is installed; `$ZIG`, `~/.local/share/zig-native/zig` and `zig` on `PATH` are
+fallbacks for a compiler installed elsewhere.
+
+`app/linux/hf-build-mod.sh` remains the authoring helper for mods outside an installation:
 
 - it reads `CMakeLists.txt` for the first `hellforge_add_mod(...)` call, for the language and the source list;
 - without one, it uses the `dll` name in `hellforge-mod.json` and `src/*.cpp` or `src/*.c`;
-- it compiles an `x86_64-windows-gnu` DLL with the SDK headers from `app/sdk`, `-Wall -Werror`, C++17 or C11, and copies
-  `hellforge-mod.json`, the DLL and `data/` into `<installation>/mods/<mod-folder-name>/`.
+- it compiles an `x86_64-windows-gnu` DLL with the SDK headers from `app/sdk`, the same flags as a session (`-O2
+  -Wall -Werror`, C++17 or C11) and a cache under the installation, and copies the manifest, the DLL and `data/` into
+  `<installation>/mods/<mod-folder-name>/`. For a mod already in `mods/`, it delegates to the native agent instead.
 
-The script can be run by hand with `INSTALL` set to the installation and `ZIG` to the native zig:
+It uses `<installation>/tools/zig-linux/zig` first, then `$ZIG`, `~/.local/share/zig-native/zig` and `zig` on `PATH`.
+For a mod outside an installation:
 
 ```fish
 bash "$INSTALL/app/linux/hf-build-mod.sh" <mod-folder>
 ```
 
-It needs a native Linux Zig: `$ZIG`, else `~/.local/share/zig-native/zig`, else `zig` on `PATH`. Sessions still build
-source mods with the pinned Windows Zig inside the namespace.
+A synced source mod that is first downloaded from the host during a session cannot be prebuilt by the wrapper: it stays
+off for that session with the normal mod problem, and the next start can build it when the synced copy is still in
+`mods/.synced`.
 
 ## How it keeps the game off the internet
 
@@ -375,10 +398,11 @@ The galactic war is fetched just before the namespace is entered (`HellForge.Loc
 session serves that copy. With "Follow the live galactic war", the war is the one from launch time and moves on at the
 next launch.
 
-The mod tools are fetched there too, once (`HellForge.Cli.exe mod-tools`: HellForge's pinned Zig, about 90 MB from
-ziglang.org), and again only when a release pins another Zig. Source mods are compiled when a session starts, inside the
-namespace, where the download would be refused ("Access denied. (ziglang.org:443)"). The Mods page's "Install mod tools"
-button cannot fetch them on Linux for the same reason; start HellForge again with `hellforge-linux.sh` instead.
+The mod tools are fetched there too, once (`HellForge.Cli.exe mod-tools` for the Windows Zig and the native
+`app/cli-linux/HellForge.Cli mod-tools` for `tools/zig-linux`), and again only when a release pins another Zig. The
+native agent then compiles the enabled source mods before the namespace, where a download would be refused ("Access
+denied. (ziglang.org:443)"). The Mods page's **Install mod tools** installs the same native Zig directly; the wrapper
+fetches it before a session too.
 
 ### Co-op on Linux: opening UDP (optional)
 

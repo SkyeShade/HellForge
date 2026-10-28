@@ -11,7 +11,9 @@ namespace HellForge.Core;
 // sdk/cmake, so the same CMake files work in either.
 public sealed record ModSdk(string Folder, string Tools, string Template, string Docs)
 {
+    // Windows sessions compile with the pinned zig.exe; a Linux host compiles natively with zig-linux (tools.json).
     public string Zig => Path.Combine(Tools, "zig", "zig.exe");
+    public string NativeZig => Path.Combine(Tools, "zig-linux", "zig");
 
     // The SDK of an installation, else of the repository a folder is in (searching upwards from it).
     public static ModSdk? Find(string start)
@@ -30,7 +32,8 @@ public sealed record ModSdk(string Folder, string Tools, string Template, string
     }
 }
 
-public sealed record ModTool(string Name, string Version, string Url, string Sha256, string Exe, bool Ide);
+public sealed record ModTool(string Name, string Version, string Url, string Sha256, string Exe, bool Ide,
+    string Platform = "windows-x64", long Bytes = 0);
 
 public static partial class ModKit
 {
@@ -93,15 +96,18 @@ public static partial class ModKit
     {
         modFolder = Path.GetFullPath(modFolder);
         sdk ??= ModSdk.Find(modFolder) ?? throw new IOException("The mod SDK was not found above " + modFolder + ".");
-        if (!File.Exists(sdk.Zig)) throw new IOException("The mod tools are missing: install them first (HellForge.Cli mod-tools, or the launcher's Mods page).");
+        var linuxHost = OperatingSystem.IsLinux();
+        var zig = Compiler(sdk, linuxHost, NativeBuildOnly);
+        if (!File.Exists(zig)) throw new IOException("The mod tools are missing: install them with the Mods page's Install mod tools (or HellForge.Cli mod-tools).");
         var dllName = CodeDll(modFolder);
         var sources = Sources(modFolder);
         if (sources.Count == 0) throw new InvalidDataException("No C or C++ sources in the mod's src folder.");
         var cpp = sources.Any(f => f.EndsWith(".cpp", StringComparison.Ordinal));
         var dll = into ?? Path.Combine(modFolder, dllName);
-        var start = new ProcessStartInfo(sdk.Zig) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        // Zig's own cache beside the tools, not in %LOCALAPPDATA%\zig: what HellForge writes stays in its folders.
-        start.Environment["ZIG_GLOBAL_CACHE_DIR"] = Path.Combine(sdk.Tools, "zig-cache");
+        var start = new ProcessStartInfo(zig) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        // Zig's own cache beside the tools, not in %LOCALAPPDATA%\zig or ~/.cache/zig: what HellForge writes stays in its
+        // folders (the native host's is separate, so a shared installation keeps the two caches apart).
+        start.Environment["ZIG_GLOBAL_CACHE_DIR"] = Path.Combine(sdk.Tools, linuxHost ? "zig-cache-linux" : "zig-cache");
         foreach (var argument in Flags(cpp).Concat(["-I", sdk.Folder])) start.ArgumentList.Add(argument);
         foreach (var source in sources) start.ArgumentList.Add(source);
         start.ArgumentList.Add("-o"); start.ArgumentList.Add(dll);
@@ -113,6 +119,16 @@ public static partial class ModKit
         if (process.ExitCode != 0) throw new InvalidDataException("The mod did not compile:\n" + text.TrimEnd());
         foreach (var leftover in Directory.EnumerateFiles(Path.GetDirectoryName(dll)!).Where(f => Path.GetExtension(f) is ".lib" or ".pdb")) File.Delete(leftover);
         return dll;
+    }
+
+    // The compiler a build starts: the pinned native Linux Zig on a Linux host, else the pinned zig.exe. A Wine-hosted
+    // session on Linux (the wrapper sets HELLFORGE_NATIVE_MOD_BUILDS) is refused instead of trying zig.exe: its mods were
+    // built natively before the session, and one without a build stays off.
+    public static string Compiler(ModSdk sdk, bool linuxHost, bool nativeOnly)
+    {
+        if (linuxHost) return NativeLinuxZig(sdk) ?? throw new IOException("The native Linux Zig is missing: install it with the Mods page's Install mod tools (or HellForge.Cli mod-tools), set ZIG, or put zig on PATH.");
+        if (nativeOnly) throw new IOException("Source mods are built with the native Linux Zig before the session; this build did not run, so the mod stays off rather than compiling tools/zig/zig.exe under Wine. Use the Mods page's Install mod tools, then start the session again.");
+        return sdk.Zig;
     }
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
@@ -139,14 +155,64 @@ public static partial class ModKit
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(sdk.Folder, "tools.json")));
         return document.RootElement.GetProperty("tools").EnumerateArray().Select(t => new ModTool(t.GetProperty("name").GetString()!,
             t.GetProperty("version").GetString()!, t.GetProperty("url").GetString()!, t.GetProperty("sha256").GetString()!,
-            t.GetProperty("exe").GetString()!, t.GetProperty("ide").GetBoolean())).ToList();
+            t.GetProperty("exe").GetString()!, t.GetProperty("ide").GetBoolean(),
+            t.TryGetProperty("platform", out var platform) ? platform.GetString()! : "windows-x64",
+            t.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0)).ToList();
     }
 
-    public static bool ToolsReady(ModSdk sdk, bool ide = false) =>
-        Tools(sdk).Where(t => ide || !t.Ide).All(t => File.Exists(Path.Combine(sdk.Tools, t.Name, t.Exe)));
+    // The host whose tools an installation needs: Windows sessions and IDEs keep zig.exe, CMake and Ninja; a Linux host
+    // installs only zig-linux, which builds its source mods natively before a session.
+    public static string HostPlatform => OperatingSystem.IsLinux() ? "linux-x64" : "windows-x64";
 
-    // The native Linux Zig hf-build-mod.sh uses: ZIG (else ~/.local/share/zig-native/zig), then zig on
-    // PATH; each candidate must be executable.
+    public static IReadOnlyList<ModTool> ToolsForThisPlatform(ModSdk sdk, bool ide = false) =>
+        Tools(sdk).Where(t => t.Platform == HostPlatform && (ide || !t.Ide)).ToList();
+
+    public static bool ToolsReady(ModSdk sdk, bool ide = false)
+    {
+        var tools = ToolsForThisPlatform(sdk, ide);
+        return tools.Count > 0 && tools.All(t => File.Exists(Path.Combine(sdk.Tools, t.Name, t.Exe)));
+    }
+
+    // The compiler a cache key identifies: the Zig version and target, deliberately not the host, URL or archive hash.
+    // Both pins are Zig 0.17.0 targeting x86_64-windows-gnu, so a native build and a Windows session share the key.
+    public static string CompilerIdentity(ModSdk sdk)
+    {
+        var tools = Tools(sdk);
+        var version = tools.FirstOrDefault(t => t.Name == "zig")?.Version
+            ?? tools.FirstOrDefault(t => t.Name == "zig-linux")?.Version ?? "no zig";
+        return "zig " + version + " / x86_64-windows-gnu";
+    }
+
+    // A Wine-hosted session on Linux cannot run the native compiler, so the wrapper builds first and sets this for the
+    // session it starts: one without a build is reported, never compiled with zig.exe under Wine.
+    public const string NativeBuildsVariable = "HELLFORGE_NATIVE_MOD_BUILDS";
+    public static bool NativeBuildOnly => Environment.GetEnvironmentVariable(NativeBuildsVariable) == "1";
+
+    // The native Linux Zig hf-build-mod.sh and a Linux-host build use: the pinned tools/zig-linux/zig first, then ZIG,
+    // ~/.local/share/zig-native/zig, then zig on PATH; each candidate must be executable.
+    public static string? NativeLinuxZig(ModSdk sdk, string? zig, string? home, string? path, Func<string, bool> isExecutable)
+    {
+        if (isExecutable(sdk.NativeZig)) return sdk.NativeZig;
+        return FindNativeLinuxZig(zig, home, path, isExecutable);
+    }
+
+    public static string? NativeLinuxZig(ModSdk sdk) => NativeLinuxZig(sdk, Environment.GetEnvironmentVariable("ZIG"),
+        Environment.GetEnvironmentVariable("HOME"), Environment.GetEnvironmentVariable("PATH"), CanRun);
+
+    static bool CanRun(string path)
+    {
+        if (!File.Exists(path)) return false;
+        if (!OperatingSystem.IsLinux()) return true;
+        try
+        {
+            const UnixFileMode execute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+            return (File.GetUnixFileMode(path) & execute) != 0;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    // The native Linux Zig from ZIG (else ~/.local/share/zig-native/zig), then zig on PATH; each candidate must be
+    // executable. The pinned tools/zig-linux/zig is checked first by NativeLinuxZig.
     public static string? FindNativeLinuxZig(string? zig, string? home, string? path, Func<string, bool> isExecutable)
     {
         var candidate = !string.IsNullOrEmpty(zig) ? zig
@@ -167,7 +233,7 @@ public static partial class ModKit
     {
         var downloads = Directory.CreateDirectory(Path.Combine(sdk.Tools, "downloads")).FullName;
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
-        foreach (var tool in Tools(sdk).Where(t => ide || !t.Ide))
+        foreach (var tool in ToolsForThisPlatform(sdk, ide))
         {
             var destination = Path.Combine(sdk.Tools, tool.Name);
             var marker = Path.Combine(destination, ".hellforge-archive-sha256");
@@ -199,7 +265,8 @@ public static partial class ModKit
     {
         var staging = destination + "-staging";
         foreach (var folder in new[] { staging, destination }) if (Directory.Exists(folder)) await RetryWhileHeld(() => Directory.Delete(folder, true), progress, cancel);
-        ZipFile.ExtractToDirectory(archive, staging);
+        if (archive.EndsWith(".tar.xz", StringComparison.OrdinalIgnoreCase)) ExtractTar(archive, staging);
+        else ZipFile.ExtractToDirectory(archive, staging);
         var entries = Directory.GetFileSystemEntries(staging);
         if (entries.Length == 1 && Directory.Exists(entries[0]))
         {
@@ -207,6 +274,26 @@ public static partial class ModKit
             await RetryWhileHeld(() => Directory.Delete(staging), progress, cancel);
         }
         else await RetryWhileHeld(() => Directory.Move(staging, destination), progress, cancel);
+    }
+
+    // Zig's Linux archive is a .tar.xz, which only the system tar unpacks (with xz support). No fallback: a missing tar
+    // is reported clearly instead of leaving a half-installed compiler or reaching for the Windows Zig under Wine.
+    static void ExtractTar(string archive, string staging)
+    {
+        Directory.CreateDirectory(staging);
+        var start = new ProcessStartInfo("tar") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add("-xJf"); start.ArgumentList.Add(archive);
+        start.ArgumentList.Add("-C"); start.ArgumentList.Add(staging);
+        Process process;
+        try { process = Process.Start(start) ?? throw new IOException("tar did not start."); }
+        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException("tar is needed to unpack " + Path.GetFileName(archive) + " and was not found; install tar with xz support, then try again."); }
+        using (process)
+        {
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+            if (process.ExitCode != 0) throw new InvalidDataException("Could not unpack " + Path.GetFileName(archive) + ":\n" + (output.Result + error.Result).Trim());
+        }
     }
 
     // Moving or deleting files that were just unpacked: antivirus (Windows Defender) scans a new executable, Zig's is

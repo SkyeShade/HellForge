@@ -298,10 +298,18 @@ public static class LinuxAppInstaller
     static void MakeExecutable(string launcher, string scripts)
     {
         if (!OperatingSystem.IsLinux()) return;
+        MakeExecutable(launcher);
+        // The native source-mod build agent; optional, so a package from before it still installs.
+        var agent = Path.Combine(Path.GetDirectoryName(launcher)!, "..", "cli-linux", "HellForge.Cli");
+        if (File.Exists(agent)) MakeExecutable(agent);
+        foreach (var script in Directory.EnumerateFiles(scripts, "*.sh")) MakeExecutable(script);
+    }
+
+    static void MakeExecutable(string path)
+    {
+        if (!OperatingSystem.IsLinux()) return;
         const UnixFileMode executable = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-        File.SetUnixFileMode(launcher, File.GetUnixFileMode(launcher) | executable);
-        foreach (var script in Directory.EnumerateFiles(scripts, "*.sh"))
-            File.SetUnixFileMode(script, File.GetUnixFileMode(script) | executable);
+        File.SetUnixFileMode(path, File.GetUnixFileMode(path) | executable);
     }
 
     static void TryDelete(string path)

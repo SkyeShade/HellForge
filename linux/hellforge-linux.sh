@@ -245,11 +245,17 @@ if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
 fi
 
-# The mod tools (HellForge's pinned Zig, about 90 MB from ziglang.org), once, also now: source mods are compiled when a
-# session starts, inside the namespace, where the download is refused (issue 20). Fetched again only when the pin changes.
-# Not fatal either: without them source mods stay off.
+# The mod tools, once, also now while there is a network: source mods are compiled before a session starts, where the
+# download is refused inside the namespace (issue 20). Two pins: the Windows Zig (about 90 MB) for an installation that is
+# also used from Windows, fetched through Proton as before, and the native Linux Zig (about 55 MB, .tar.xz) that builds
+# source mods on this host. Fetched again only when a pin changes. Not fatal either: without them source mods stay off.
 pin="$(grep '"name": "zig"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E 's/.*"sha256": "([0-9A-Fa-f]+)".*/\1/' || true)"
 zigReady() { [ -f "$INSTALL/tools/zig/zig.exe" ] && [ "$(cat "$INSTALL/tools/zig/.hellforge-archive-sha256" 2>/dev/null)" = "$pin" ]; }
+nativePin="$(grep '"name": "zig-linux"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E 's/.*"sha256": "([0-9A-Fa-f]+)".*/\1/' || true)"
+nativeZigReady() { [ -f "$INSTALL/tools/zig-linux/zig" ] && [ "$(cat "$INSTALL/tools/zig-linux/.hellforge-archive-sha256" 2>/dev/null)" = "$nativePin" ]; }
+cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
+# An installation unpacked on Windows may have lost the agent's execute bit; the package's Linux installer sets it too.
+[ ! -f "$cliNative" ] || [ -x "$cliNative" ] || chmod +x "$cliNative" 2>/dev/null || true
 if [ -n "$pin" ] && ! zigReady; then
   if [ "${HELLFORGE_SKIP_MOD_TOOLS:-}" = 1 ]; then
     echo "Skipping the mod-tools download for the Steam ownership check." >&2
@@ -262,16 +268,60 @@ if [ -n "$pin" ] && ! zigReady; then
     else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
   fi
 fi
+if [ -n "$nativePin" ] && ! nativeZigReady; then
+  if [ "${HELLFORGE_SKIP_MOD_TOOLS:-}" = 1 ]; then
+    echo "Skipping the native mod-tools download for the Steam ownership check." >&2
+  elif [ -x "$cliNative" ]; then
+    echo "Fetching the native Linux mod tools (Zig, about 55 MB, once) to build source mods..." >&2
+    timeout 900 "$cliNative" mod-tools --install "$INSTALL" --ide no >/dev/null 9>&- || true
+    if nativeZigReady; then echo "Fetched the native Linux mod tools." >&2
+    else echo "Could not fetch the native Linux mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
+  else
+    echo "The native Linux build agent is missing (app/cli-linux/HellForge.Cli); reinstall HellForge. Source mods stay off." >&2
+  fi
+fi
 
 # Setup calls the wrapper after Steam confirms ownership to prepare the optional tools without launching a session.
 if [ "${HELLFORGE_PREPARE_MOD_TOOLS_ONLY:-}" = 1 ]; then
-  if [ -n "$pin" ] && zigReady; then
+  if [ -n "$nativePin" ] && nativeZigReady; then
     echo "Mod tools are ready." >&2
     exit 0
   fi
   echo "Could not prepare the pinned mod tools." >&2
   exit 1
 fi
+
+# Which commands start a session runner (the same test hf-inner.sh makes): HellForge.Session.exe play, and
+# HellForge.Cli.exe play unless --dry-run yes.
+session_command() {
+  local program="${1:-}" i next
+  [ "${2:-}" = play ] || return 1
+  case "${program,,}" in
+    *hellforge.session.exe) return 0 ;;
+    *hellforge.cli.exe)
+      for ((i = 3; i < $#; i++)); do
+        next=$((i + 1))
+        if [ "${!i}" = --dry-run ] && [ "${!next}" = yes ]; then return 1; fi
+      done
+      return 0 ;;
+  esac
+  return 1
+}
+
+# Source mods are compiled here, natively, before the namespace: inside it the session's Wine cannot run the pinned
+# Windows Zig (issue 81). The session then finds the builds in temp/mod-builds and never starts zig.exe.
+if session_command "$@"; then
+  if [ "${HELLFORGE_SKIP_MOD_BUILDS:-}" = 1 ]; then
+    echo "Skipping the source-mod build." >&2
+  elif [ -x "$cliNative" ]; then
+    echo "Building the enabled source mods with the native Linux Zig..." >&2
+    timeout 1800 "$cliNative" build-source-mods --install "$INSTALL" 9>&- >&2 || echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
+  else
+    echo "The native Linux build agent is missing (app/cli-linux/HellForge.Cli); source mods stay off." >&2
+  fi
+fi
+# ModBuilds reads this in the Wine session: a source mod without a prebuilt record is reported, never compiled with zig.exe.
+export HELLFORGE_NATIVE_MOD_BUILDS=1
 
 # Run through bash, so the scripts work without their executable bit (lost when copied from Windows or unpacked by setup).
 echo "Entering the offline network namespace." >&2
