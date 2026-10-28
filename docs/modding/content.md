@@ -70,9 +70,12 @@ code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call ad
 ([compatibility](concepts.md#compatibility)).
 
 Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
-the game's item catalogue (57 items for an AR-23 Liberator copy), and the game keeps only so many catalogue items: 16
-Liberator copies fit across all mods, 64 did not. HellForge adds level 11 and new stratagems first, so past that limit
-it is the last weapons that are missing, not a mod's stratagems.
+the game's item catalogue (57 items for an AR-23 Liberator copy), and the game keeps only the first 4,096 catalogue
+items (vanilla has 2,925), the first 4,096 inventory entries and 256 progression packages (vanilla has 56; each new
+weapon takes one). That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new
+stratagems (2 items each), then each weapon whole, and leaves out what does not fit, with a line in the session's
+backend log for each. So past the limit it is the last weapons that are missing, never half of one, and not a mod's
+stratagems.
 
 ## Changing existing content
 
