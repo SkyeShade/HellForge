@@ -3145,6 +3145,81 @@ static void HookChainFixture(void)
     assert(((volatile ChainFn)ChainTarget2)(5) == 2 * 5 + 7 + 110 && !strcmp(g_trail, "ba"));
 }
 
+/* B.4: which debug exceptions FieldWatchHit claims. Dr6 bits 0-2 name the watchpoint; when bits 0-3 are clear, a system
+ * that does not report Dr6 (Wine) still sends the trap of a thread FieldWatch armed, unless TF is a single step of
+ * someone else's. Every combination of code, Dr6, TF and armed. */
+static void FieldWatchClaimFixture(void)
+{
+    static const DWORD codes[] = {EXCEPTION_SINGLE_STEP, EXCEPTION_BREAKPOINT, EXCEPTION_ACCESS_VIOLATION};
+    static const DWORD64 dr6s[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        0x4000000000000000ull, 0xFFFFFFFFFFFFFFFFull};
+    for (size_t c = 0; c < sizeof codes / sizeof codes[0]; c++)
+        for (size_t d = 0; d < sizeof dr6s / sizeof dr6s[0]; d++)
+            for (int tf = 0; tf < 2; tf++)
+                for (int armed = 0; armed < 2; armed++)
+                {
+                    int expected = FIELD_WATCH_PASS;
+                    if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 7) != 0) expected = FIELD_WATCH_CLAIM;
+                    else if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 0xF) == 0 && armed && !tf) expected = FIELD_WATCH_CLAIM_UNKNOWN;
+                    assert(FieldWatchClaim(codes[c], dr6s[d], tf ? 0x100 : 0, armed) == expected);
+                }
+    /* the exact B.3 context: single step, Dr6=0, TF clear, on an armed thread is ours; unarmed and TF single steps pass */
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 1) == FIELD_WATCH_CLAIM_UNKNOWN);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0x100, 1) == FIELD_WATCH_PASS);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 0) == FIELD_WATCH_PASS);
+    puts("PASS field watch: Dr6 names the watchpoint, Dr6=0 on an armed thread with TF clear is claimed, TF single steps and unarmed threads pass on");
+}
+
+/* B.4 end to end: the real self-test, then FieldWatch arming a helper of this test process; the helper reads and
+ * writes a watched buffer at +0 and +0x10. Nothing here needs game.dll. */
+static volatile LONG g_fieldE2eBuffer[8];
+static volatile LONG g_fieldE2eThreadId;
+static HANDLE g_fieldE2eReady, g_fieldE2eGo;
+
+static DWORD WINAPI FieldWatchE2eThread(void* unused)
+{
+    g_fieldE2eThreadId = (LONG)GetCurrentThreadId();
+    if (g_fieldE2eReady == NULL || !SetEvent(g_fieldE2eReady)) return 0;
+    if (g_fieldE2eGo == NULL || WaitForSingleObject(g_fieldE2eGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldE2eBuffer[0] = 1;
+    LONG first = g_fieldE2eBuffer[0];
+    g_fieldE2eBuffer[4] = 2;
+    LONG second = g_fieldE2eBuffer[4];
+    return (DWORD)(first + second);
+}
+
+static void FieldWatchEndToEndFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG before = g_fieldHitCount;
+    g_fieldE2eReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldE2eGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldE2eReady != NULL && g_fieldE2eGo != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchE2eThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldE2eReady, 5000) == WAIT_OBJECT_0);
+    FieldWatch((uintptr_t)g_fieldE2eBuffer);
+    assert(SetEvent(g_fieldE2eGo));
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); /* alive: no trap reached the default handler */
+    DWORD exit = 0;
+    assert(GetExitCodeThread(thread, &exit) && exit == 3);
+    CloseHandle(thread);
+    CloseHandle(g_fieldE2eReady);
+    CloseHandle(g_fieldE2eGo);
+    g_fieldE2eReady = g_fieldE2eGo = NULL;
+    if (works)
+    {
+        assert(g_fieldHitCount > before);
+        assert(FieldWatchArmed((DWORD)g_fieldE2eThreadId));
+    }
+    else
+    {
+        assert(g_fieldWatchThreadCount == 0);
+        assert(g_fieldHitCount == before);
+    }
+    puts("PASS field watch: the self-test ran for real; an armed helper's watched reads and writes were claimed, and a system without watchpoints arms nothing");
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -3381,6 +3456,8 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    FieldWatchClaimFixture();
+    FieldWatchEndToEndFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
