@@ -64,14 +64,33 @@
 #define REG_LOADOUT_SLOTS 386u
 #define REG_LOADOUT_RECORDS 193u
 #define REG_LOADOUT_STRIDE 32u
+/* The game's loadout lookup (game.dll+0x4F5C10: entity -> its LoadoutEntry record): the only code besides the armory
+ * builder (which HellForge replaces) that knows table 29's size: 386 slots by modulo (a multiply-shift and imul 0x182),
+ * the wrap (cmp 0x181) and the probe bound (cmp 0x182), and the records right after the index (add 0xC1, shl 5). Every
+ * other reader goes through it (research\entity-limit\lookup-patch-manifest.md section 29; a scan of game.dll for the
+ * table array +0xF12478 finds only null checks of table 29 besides). HellForge replaces it (LoadoutLookupDetour) with
+ * the same lookup for a table of 386 slots and its own copy's REG_LOADOUT_WIDE_SLOTS, so the loadout index holds as
+ * many weapons as the registry: 193 more fit 386. Pinned byte for byte; without it the copy keeps 386. */
+#define REG_LOADOUT_LOOKUP 0x4F5C10u
+#define REG_LOADOUT_WIDE_SLOTS (2u * (REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)) /* half full, as vanilla's */
+static const uint8_t kLoadoutLookupPin[143] = {
+    0x48, 0x85, 0xc9, 0x74, 0x71, 0x48, 0x8b, 0x05, 0x7c, 0x63, 0xf7, 0x02, 0x44, 0x8b, 0xc1, 0x4c,
+    0x8b, 0x90, 0x60, 0x25, 0xf1, 0x00, 0x48, 0xb8, 0xc7, 0xea, 0x0f, 0xf4, 0x48, 0x09, 0x39, 0x15,
+    0x48, 0xf7, 0xe1, 0x48, 0xc1, 0xea, 0x05, 0x69, 0xc2, 0x82, 0x01, 0x00, 0x00, 0x44, 0x2b, 0xc0,
+    0x45, 0x33, 0xc9, 0x0f, 0x1f, 0x40, 0x00, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x41, 0x8b, 0xc0, 0x48, 0xc1, 0xe0, 0x04, 0x49, 0x03, 0xc2, 0x48, 0x8b, 0x10, 0x48, 0x3b, 0xd1,
+    0x74, 0x27, 0x48, 0x85, 0xd2, 0x74, 0x1f, 0x41, 0x8b, 0xc0, 0x41, 0x8d, 0x50, 0x01, 0x45, 0x33,
+    0xc0, 0x41, 0xff, 0xc1, 0x3d, 0x81, 0x01, 0x00, 0x00, 0x44, 0x0f, 0x45, 0xc2, 0x41, 0x81, 0xf9,
+    0x82, 0x01, 0x00, 0x00, 0x72, 0xca, 0x33, 0xc0, 0xc3, 0x48, 0x85, 0xc0, 0x74, 0xf8, 0x8b, 0x40,
+    0x08, 0x48, 0x05, 0xc1, 0x00, 0x00, 0x00, 0x48, 0xc1, 0xe0, 0x05, 0x49, 0x03, 0xc2, 0xc3};
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
 /* Weapons and entities mods add, together. Each needs a network type: build 25480438 has 1855 (NET_VANILLA_TYPES), and
  * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
  * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
- * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
- * (2,187 more rows), and for weapons the game's 4,096 catalogue items (RegisteredItems.cs). 512: the research's target
- * (research\entity-limit\README.md). */
+ * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons, unless
+ * HellForge's lookup is in: REG_LOADOUT_LOOKUP), the entity map (2,187 more rows), and for weapons the game's 4,096
+ * catalogue items (RegisteredItems.cs). 512: the research's target (research\entity-limit\README.md). */
 #define REG_MAX_WEAPONS 512
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
@@ -194,6 +213,8 @@ static void WeaponOrder(int order[REG_MAX_WEAPONS])
 static uintptr_t g_game;
 static uint8_t* g_loadoutTable; /* HellForge's copy of component 29 (pointer to its index, as the game's) */
 static uint32_t g_loadoutRecords;
+static uint32_t g_loadoutSlots = REG_LOADOUT_SLOTS; /* g_loadoutTable's index slots (REG_LOADOUT_WIDE_SLOTS once the lookup is HellForge's) */
+static int g_loadoutLookup;                          /* 1: HellForge's lookup replaces the game's (LoadoutLookupDetour) */
 static uint8_t* g_armory;
 /* HellForge's copies of component tables that registered weapons have records of their own in (besides component 29). */
 typedef struct OwnedTable { uint32_t component, stride, first, next, end; uint8_t* index; } OwnedTable;
@@ -207,8 +228,18 @@ static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
 
+/* The index slots of a loadout table: HellForge's copy's, or the game's 386. */
+static uint32_t LoadoutSlotsOf(const uint8_t* table)
+{
+    return table != NULL && table == g_loadoutTable ? g_loadoutSlots : REG_LOADOUT_SLOTS;
+}
+
+static uint8_t* EntityState(void);
+static uint8_t* StatePointer(uint8_t* state, uint32_t offset);
+
 static uint32_t SlotsOf(uint32_t component)
 {
+    if (component == REG_LOADOUT) return LoadoutSlotsOf(StatePointer(EntityState(), REG_TABLES + 8 * REG_LOADOUT)); /* the one in use */
     for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
         if (kSlots[i].component == component) return kSlots[i].slots;
     for (int i = 0; i < g_componentCount; i++)
@@ -290,7 +321,7 @@ static int PlainCopy(uint64_t entity)
 static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
 {
     uint64_t owner = 0;
-    for (uint32_t i = 0; i < REG_LOADOUT_SLOTS; i++)
+    for (uint32_t i = 0, slots = LoadoutSlotsOf(table); i < slots; i++)
     {
         uint64_t entity;
         uint32_t r;

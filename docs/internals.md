@@ -149,7 +149,14 @@ entities together), the loader widens both to 12 bits (4,096 types) when it adds
 fits keeps the game's own wire format. Every player in a game runs the same mods, so every one widens or none does. If
 the widths are not the ones reviewed, or the set needs more than 4,096, the first types that fit get one and the rest
 are logged (`registry_load.c` `AddNetworkTypes`). Other limits come first for many sets, each refused on its own: a
-component table's compiled slots, the loadout index (193 more weapons) and the game's 4,096 catalogue items.
+component table's compiled slots and the game's 4,096 catalogue items.
+
+**The loadout index.** Each weapon takes a row in the game's loadout index (component 29: 386 slots, 193 of them
+vanilla), so 193 more weapons fit it. Its size is compiled into one function, the loadout lookup (`game.dll+0x4F5C10`),
+and into the armory builder, which HellForge already replaces. HellForge replaces the lookup too, with the same probe
+for the game's own table and for its copy, which has room for every weapon the registry holds
+(`REG_LOADOUT_WIDE_SLOTS`). The lookup is pinned byte for byte: when it is not the reviewed code, the copy keeps the
+game's 386 slots, as before.
 
 ### Projectiles and damage
 

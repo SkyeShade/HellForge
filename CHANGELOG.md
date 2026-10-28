@@ -14,6 +14,8 @@ On `dev`, since 0.3.0-beta.
   network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
   Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
   can still be refused; each refusal is in the mod's log.
+- The game's loadout index no longer stops mod weapons at 193: HellForge's own loadout lookup takes its place, with room
+  for every weapon the registry holds.
 
 ### Fixed
 

@@ -11,25 +11,42 @@ typedef struct WeaponLoad
     uint8_t* table;   /* the loadout table's copy (its header), */
     uint8_t* index;   /* its index */
     uint8_t* records; /* and its records */
+    uint32_t slots;   /* its index slots: 386, or REG_LOADOUT_WIDE_SLOTS with HellForge's lookup */
     uint32_t recordCount;
     uint8_t* newList; /* the short ids' copy (its header) */
     uint32_t listCount, lastShort, appended;
 } WeaponLoad;
 
-/* HellForge's copy of the loadout table: the same index, room for the new records (the vanilla record -> row array after
- * the records is only read by the armory builder, which HellForge replaces). Short ids: appended after the largest
- * vanilla one, in the entities' order (WeaponOrder), the same on every machine. 0 (noted) out of memory. */
+/* HellForge's copy of the loadout table: its index (the game's 386 slots byte for byte, or with HellForge's lookup in,
+ * REG_LOADOUT_WIDE_SLOTS with every vanilla row placed again, its record number kept), the vanilla records, room for the
+ * new ones (the vanilla record -> row array after the records is only read by the armory builder, which HellForge
+ * replaces). Short ids: appended after the largest vanilla one, in the entities' order (WeaponOrder), the same on every
+ * machine. 0 (noted) out of memory. */
 static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8_t* list)
 {
-    size_t indexBytes = (size_t)REG_LOADOUT_SLOTS * 16;
-    size_t copyBytes = 32 + indexBytes + (size_t)REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE;
-    size_t newBytes = copyBytes + (size_t)REG_MAX_WEAPONS * REG_LOADOUT_STRIDE;
-    uint8_t* table = (uint8_t*)VirtualAlloc(NULL, newBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint32_t slots = g_loadoutLookup ? REG_LOADOUT_WIDE_SLOTS : REG_LOADOUT_SLOTS;
+    size_t indexBytes = (size_t)slots * 16, recordBytes = (size_t)(REG_LOADOUT_RECORDS + REG_MAX_WEAPONS) * REG_LOADOUT_STRIDE;
+    uint8_t* table = (uint8_t*)VirtualAlloc(NULL, 32 + indexBytes + recordBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (table == NULL) { Note("registry: out of memory"); return 0; }
-    memcpy(table, loadout - 32, copyBytes);
+    memcpy(table, loadout - 32, 32);
     L->table = table;
     L->index = table + 32;
     L->records = L->index + indexBytes;
+    L->slots = slots;
+    memcpy(L->records, loadout + (size_t)REG_LOADOUT_SLOTS * 16, (size_t)REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE);
+    if (slots == REG_LOADOUT_SLOTS) memcpy(L->index, loadout, indexBytes);
+    else
+    {
+        uint32_t size = (uint32_t)(indexBytes + recordBytes); /* the header's size of what follows it */
+        memcpy(table + 32 - 12, &size, 4);
+        for (uint32_t i = 0; i < REG_LOADOUT_SLOTS; i++)
+        {
+            uint64_t key;
+            memcpy(&key, loadout + (size_t)i * 16, 8);
+            uint8_t* row = key != 0 ? FreeRow(L->index, slots, 16, key) : NULL;
+            if (row != NULL) memcpy(row, loadout + (size_t)i * 16, 16);
+        }
+    }
     L->recordCount = REG_LOADOUT_RECORDS;
     uint32_t listBytes = 0;
     memcpy(&listBytes, list - 12, 4);
@@ -112,8 +129,8 @@ static void ShareComponentRows(uint8_t* state, const Weapon* w, uint64_t baseEnt
  * remote copy never reached the player's hands (2026-10-18). */
 static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEntity)
 {
-    uint8_t* baseLoadout = FindRow(L->index, REG_LOADOUT_SLOTS, 16, baseEntity);
-    uint8_t* own = baseLoadout != NULL ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    uint8_t* baseLoadout = FindRow(L->index, L->slots, 16, baseEntity);
+    uint8_t* own = baseLoadout != NULL ? FreeRow(L->index, L->slots, 16, w->entity) : NULL;
     int taken = 0;
     for (uint32_t r = 0; r < L->recordCount && own != NULL; r++)
     {
@@ -134,7 +151,7 @@ static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEnti
     }
     else if (own != NULL) ApiLog(w->mod, "%s: no loadout record of its own (%s); the game may not hand it to a player", w->name,
         taken ? "its id is taken" : "no room");
-    else if (baseLoadout != NULL) /* the base has one, but the index has no row for the copy (386 rows, 193 vanilla) */
+    else if (baseLoadout != NULL) /* the base has one, but the index has no row for the copy (L->slots rows, 193 vanilla) */
         ApiLog(w->mod, "%s: no loadout record of its own (the loadout index is full, or the entity is in it already); the game may not "
             "hand it to a player", w->name);
 }
@@ -395,7 +412,7 @@ static void RegisterWeapon(WeaponLoad* L, Weapon* w)
     w->copies = baseEntity;
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
-    uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, L->slots, 16, w->entity) : NULL;
     if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
     {
         ApiLog(w->mod, "%s: no free row; not registered", w->name);
@@ -436,6 +453,7 @@ static void RegisterWeapons(void)
     if (L.appended == 0) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     uint32_t newListBytes = (L.listCount + L.appended) * 8;
     memcpy(L.newList + 32 - 12, &newListBytes, 4);
+    g_loadoutSlots = L.slots; /* with the table, before the game sees it: HellForge's lookup reads both */
     g_loadoutTable = L.index;
     g_loadoutRecords = L.recordCount;
     SetStatePointer(state, REG_TABLES + 8 * REG_LOADOUT, L.index);
@@ -708,7 +726,7 @@ static void BuildArmory(void)
     if (g_armory == NULL) g_armory = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_armory == NULL || table == NULL) return;
     memset(g_armory, 0, bytes);
-    uint8_t* records = table + (size_t)REG_LOADOUT_SLOTS * 16;
+    uint8_t* records = table + (size_t)LoadoutSlotsOf(table) * 16;
     uint32_t counts[REG_ARMORY_TYPES] = {0}, starts[REG_ARMORY_TYPES], placed[REG_ARMORY_TYPES] = {0};
     for (uint32_t r = 0; r < count; r++)
     {
@@ -817,6 +835,41 @@ static void ArmoryBuilderDetour(void* list)
     BuildArmory();
     static int checked;
     if (!checked++) { SelfCheck("armory built"); WriteArsenal(); }
+}
+
+/* The game's loadout lookup, in place of game.dll+0x4F5C10 (registry.c REG_LOADOUT_LOOKUP): an entity's LoadoutEntry
+ * record, or NULL. The same probe as the game's (key mod slots, on to the next row, stopping at an empty one or after
+ * every slot; the records right after the index), over the table in use with its slots: the game's own 386 until
+ * HellForge's copy goes in, then the copy's. Called on the game's threads, so it reads as the game did, unchecked. */
+static uint8_t* LoadoutLookupDetour(uint64_t entity)
+{
+    if (entity == 0) return NULL;
+    uint8_t* state = *(uint8_t* const*)(g_game + REG_STATE_GLOBAL);
+    uint8_t* table = *(uint8_t* const*)(state + REG_TABLES + 8 * REG_LOADOUT);
+    if (table == NULL) return NULL; /* not loaded (the game's would read through it) */
+    uint32_t slots = LoadoutSlotsOf(table);
+    uint8_t* row = FindRow(table, slots, 16, entity);
+    if (row == NULL) return NULL;
+    uint32_t record;
+    memcpy(&record, row + 8, 4);
+    return table + (size_t)slots * 16 + (size_t)record * REG_LOADOUT_STRIDE;
+}
+
+/* HellForge's loadout lookup in, when the game's is the reviewed one; else the loadout copy keeps 386 slots. */
+static void HookLoadoutLookup(void)
+{
+    uint8_t code[sizeof kLoadoutLookupPin];
+    void* original = NULL;
+    if (HookedCode(g_game + REG_LOADOUT_LOOKUP, code, sizeof code) || memcmp(code, kLoadoutLookupPin, sizeof code) != 0)
+        Note("registry: the loadout lookup is not the reviewed code; the loadout index keeps %u slots (%u more weapons)",
+            REG_LOADOUT_SLOTS, REG_LOADOUT_SLOTS - REG_LOADOUT_RECORDS);
+    else if (LoaderHook("weapon registry: loadout lookup", g_game + REG_LOADOUT_LOOKUP, (void*)LoadoutLookupDetour, &original))
+        Note("registry: the loadout lookup could not be hooked; the loadout index keeps %u slots", REG_LOADOUT_SLOTS);
+    else
+    {
+        g_loadoutLookup = 1;
+        Note("registry: loadout lookup is HellForge's; the loadout index gets %u slots", REG_LOADOUT_WIDE_SLOTS);
+    }
 }
 
 /* A 14-byte absolute jump (jmp [rip+0]; dq target). */
@@ -975,6 +1028,7 @@ static void StartRegistry(void)
     Note(hooked ? "registry: hooked the entity loader and the armory builder for %d weapon(s)" : "registry: could not hook (%d weapon(s))", g_weaponCount);
     g_registryActive = hooked;
     if (hooked) HookText();
+    if (hooked) HookLoadoutLookup(); /* before any copy of the loadout table goes in */
     /* Entity data that loaded before the hook still gets the weapons. */
     if (hooked && StatePointer(EntityState(), REG_MAP) != NULL)
     {
