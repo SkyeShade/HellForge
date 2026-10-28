@@ -338,5 +338,37 @@ static class LinuxUninstallTests
             check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("bash", "/usr/bin/bash", [],
                 ["HOME=/home/me"], "/tmp"), prefix), "An unrelated process was treated as using the prefix.");
         });
+
+        test("Linux prefix process check does not resolve relative WINEPREFIX or paths against its own folder", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux processes)"); return; }
+            var prefix = Path.Combine(root, "linux-prefix-relative");
+            var pfx = Path.Combine(prefix, "pfx");
+            Directory.CreateDirectory(pfx);
+            var originalDirectory = Environment.CurrentDirectory;
+            try
+            {
+                Directory.SetCurrentDirectory(prefix);
+                foreach (var value in new[] { "pfx", "./pfx", "pfx/.", "pfx/drive_c/.." })
+                    check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("wineserver", "/usr/bin/wineserver", [],
+                        ["WINEPREFIX=" + value], null), prefix), $"A relative WINEPREFIX ({value}) was resolved.");
+                check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", "pfx/drive_c/game.exe", [], [], null), prefix),
+                    "A relative executable was resolved.");
+                check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("shell", "/usr/bin/bash", [], [], "pfx/drive_c"), prefix),
+                    "A relative working folder was resolved.");
+                foreach (var argument in new[] { "bash", "-c", "--no-daemon", ".", "app" })
+                    check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("bash", "/usr/bin/bash", [argument], [], "/tmp"), prefix),
+                        $"A relative argument ({argument}) was resolved.");
+            }
+            finally { Directory.SetCurrentDirectory(originalDirectory); }
+
+            var game = Path.Combine(pfx, "drive_c", "game.exe");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", game, [], [], null), prefix),
+                "An absolute executable inside the prefix was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", @"Z:" + game.Replace('/', '\\'), [], [], null), prefix),
+                "A Z: executable inside the prefix was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("wineserver", "/usr/bin/wineserver", [],
+                ["WINEPREFIX=" + @"Z:" + pfx.Replace('/', '\\')], null), prefix), "A Z: WINEPREFIX was ignored.");
+        });
     }
 }

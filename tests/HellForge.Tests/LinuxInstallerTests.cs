@@ -177,18 +177,31 @@ static class LinuxInstallerTests
             var prefix = Path.Combine(root, "linux-processes");
             var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
             var launcher = Path.Combine(installRoot, "app", "launcher-linux", "HellForge.Launcher");
+            var wrapper = Path.Combine(installRoot, "app", "linux", "hellforge-linux.sh");
+            Directory.CreateDirectory(installRoot);
             check(LinuxInstallProcesses.BelongsTo(new("HellForge.Launcher", launcher, [], [], null), installRoot),
                 "A launcher from this app was not recognised.");
             check(!LinuxInstallProcesses.BelongsTo(new("HellForge.Launcher", Path.Combine(root, "other", "HellForge.Launcher"), [], [], null),
                 installRoot), "A launcher from another folder was treated as this installation's.");
-            check(LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash",
-                [Path.Combine(installRoot, "app", "linux", "hellforge-linux.sh")], [], null), installRoot), "The wrapper argument was not recognised.");
+            var originalDirectory = Environment.CurrentDirectory;
+            try
+            {
+                Directory.SetCurrentDirectory(installRoot);
+                foreach (var argument in new[] { "bash", "-c", "--no-daemon", ".", "app" })
+                    check(!LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash", [argument], [], "/tmp"), installRoot),
+                        $"A relative argument ({argument}) was resolved against the launcher's working directory.");
+            }
+            finally { Directory.SetCurrentDirectory(originalDirectory); }
+            check(LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash", [wrapper], [], null), installRoot),
+                "The wrapper argument was not recognised.");
             check(LinuxInstallProcesses.BelongsTo(new("hf-inner.sh", "/usr/bin/bash", [], ["INSTALL=" + installRoot], null), installRoot),
                 "The INSTALL environment entry was not recognised.");
             check(LinuxInstallProcesses.BelongsTo(new("hf-inner.sh", "/usr/bin/bash", [], [], installRoot), installRoot),
                 "The installation as working directory was not recognised.");
             check(LinuxInstallProcesses.BelongsTo(new("HellForge.Session.exe", null,
                 [@"C:\HellForge\app\session\HellForge.Session.exe"], [], null), installRoot), "The Wine path was not recognised.");
+            check(LinuxInstallProcesses.BelongsTo(new("HellForge.Session.exe", null,
+                [@"Z:" + wrapper.Replace('/', '\\')], [], null), installRoot), "A Z: path argument was not recognised.");
             check(!LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash", [], ["INSTALL=" + installRoot + "-other"], null), installRoot),
                 "A similar installation path was treated as this one.");
         });
