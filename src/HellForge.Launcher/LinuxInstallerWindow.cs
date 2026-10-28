@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Runtime.Versioning;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -27,9 +28,9 @@ sealed class LinuxInstallerWindow : Window
         this.payload = Path.GetFullPath(payload);
         Title = "HellForge Linux setup";
         Width = 620;
-        Height = 390;
-        MinWidth = 520;
-        MinHeight = 350;
+        Height = 560;
+        MinWidth = 440;
+        MinHeight = 280;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = new SolidColorBrush(Color.Parse("#11141B"));
         Foreground = Brushes.White;
@@ -54,9 +55,9 @@ sealed class LinuxInstallerWindow : Window
         prefixRow.Children.Add(browseButton);
         prefixRow.Children.Add(prefixPath);
 
-        Content = new StackPanel
+        var body = new StackPanel
         {
-            Margin = new Thickness(32),
+            Margin = new Thickness(32, 32, 32, 0),
             Spacing = 18,
             Children =
             {
@@ -72,12 +73,46 @@ sealed class LinuxInstallerWindow : Window
                 protonChoice,
                 new TextBlock { Text = "Proton prefix folder", FontWeight = FontWeight.SemiBold },
                 prefixRow,
-                status,
-                installButton
+                status
             }
         };
+        // The body scrolls when the screen or the player makes the window short; the button row stays outside the
+        // ScrollViewer and docked to the bottom, so it is visible at every window size.
+        var bodyScroll = new ScrollViewer
+        {
+            Content = body,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        var buttonRow = new StackPanel
+        {
+            Margin = new Thickness(32, 18, 32, 32),
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Children = { installButton }
+        };
+        var layout = new DockPanel();
+        DockPanel.SetDock(buttonRow, Dock.Bottom);
+        layout.Children.Add(buttonRow);
+        layout.Children.Add(bodyScroll);
+        Content = layout;
         // The window is shown before this runs, so a slow Steam library does not hold up the first paint.
-        Opened += (sender, args) => _ = DiscoverProtons();
+        Opened += (sender, args) =>
+        {
+            FitToScreen();
+            _ = DiscoverProtons();
+        };
+    }
+
+    // The default size fits the whole body on a large screen. On a small or heavily scaled screen, shrink to the
+    // screen's working area (in logical pixels, less a margin) so the window and its docked button stay on screen; the
+    // body then scrolls.
+    void FitToScreen()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null || screen.Scaling <= 0) return;
+        const double margin = 16;
+        Width = Math.Max(MinWidth, Math.Min(Width, screen.WorkingArea.Width / screen.Scaling - margin * 2));
+        Height = Math.Max(MinHeight, Math.Min(Height, screen.WorkingArea.Height / screen.Scaling - margin * 2));
     }
 
     // Steam's libraries and Proton installations are on disk and can take a while (many libraries, a slow disk): find them

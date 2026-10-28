@@ -131,41 +131,42 @@ public static class LinuxPrefixBackup
         return total;
     }
 
-    // The prefix itself must exist, be a plain folder with no links on the path to it, not be a place that is never
-    // touched (the same rule uninstall uses), and nothing may be using it.
+    // The prefix itself must exist and must not be a link: a link above it (Fedora Atomic's /home -> /var/home) is
+    // resolved, but a linked prefix would back up some other folder. It must not be a place that is never touched (the
+    // same rule uninstall uses), and nothing may be using it.
     public static void CheckBackupSource(string prefix, LinuxUninstallLocations locations, string? steamRoot,
         string installRoot)
     {
-        prefix = LocalInstall.FullPath(prefix);
+        var configured = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         ForbidLocation(prefix, locations, steamRoot);
         if (!Directory.Exists(prefix)) throw new InvalidDataException("The Proton prefix does not exist: " + prefix);
-        LocalInstall.NoLinks(prefix);
-        RequireIdle(prefix, installRoot);
+        RequireIdle(configured, installRoot);
     }
 
-    // The archive goes outside the prefix: one written inside it would include itself while tar reads the folder.
+    // The archive goes outside the prefix: one written inside it would include itself while tar reads the folder. Both
+    // folders are protected, so a link above either is resolved and the folder itself may not be a link.
     public static void CheckBackupFolder(string prefix, string folder)
     {
-        prefix = LocalInstall.FullPath(prefix);
-        folder = LocalInstall.FullPath(folder);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
+        folder = LocalInstall.NoLinks(folder, folder);
         if (LocalInstall.Within(folder, prefix))
             throw new InvalidDataException("Choose a backup folder outside the Proton prefix: an archive inside it would include itself.");
         if (LinuxUninstall.Exists(folder) && !Directory.Exists(folder))
             throw new InvalidDataException("The backup path is not a folder: " + folder);
         Directory.CreateDirectory(folder);
-        LocalInstall.NoLinks(folder);
     }
 
     public static void CheckRestoreTarget(string prefix, LinuxUninstallLocations locations, string? steamRoot,
         string installRoot)
     {
-        prefix = LocalInstall.FullPath(prefix);
+        var configured = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         ForbidLocation(prefix, locations, steamRoot);
         if (PrefixName(prefix).Length == 0) throw new InvalidDataException("Choose a folder for the Proton prefix.");
         if (LinuxUninstall.Exists(prefix) && !Directory.Exists(prefix))
             throw new InvalidDataException("The Proton prefix path is not a folder: " + prefix);
-        LocalInstall.NoLinks(prefix);
-        RequireIdle(prefix, installRoot);
+        RequireIdle(configured, installRoot);
     }
 
     static void ForbidLocation(string prefix, LinuxUninstallLocations locations, string? steamRoot)
@@ -176,10 +177,14 @@ public static class LinuxPrefixBackup
     }
 
     // RunningInPrefix also sees the launcher, but ignores this process and its parents; another launcher of this
-    // installation, a session, or any process using the prefix refuses both operations.
+    // installation, a session, or any process using the prefix refuses both operations. The prefix may be named with a
+    // link above it (/home -> /var/home) or by its real path, so both are checked.
     public static void RequireIdle(string prefix, string installRoot)
     {
-        var names = LinuxInstallProcesses.RunningInPrefix(prefix)
+        var configured = LocalInstall.FullPath(prefix);
+        var real = LocalInstall.ResolveParentLinks(configured);
+        var names = new[] { configured, real }.Distinct(StringComparer.Ordinal)
+            .SelectMany(candidate => LinuxInstallProcesses.RunningInPrefix(candidate))
             .Concat(LinuxInstallProcesses.Running(installRoot))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         if (names.Length > 0)
@@ -235,14 +240,19 @@ public static class LinuxPrefixBackup
         return null;
     }
 
-    // A link may stay inside the prefix, or be one of the standard Wine dosdevices links: z: to /, and com/lpt ports
-    // to /dev. Nothing else may point outside the top-level folder.
+    // A link may stay inside the prefix, be one of the standard Wine dosdevices links (z: to /, com/lpt ports to
+    // /dev), or point into a Proton installation. Proton links about 1,400 of its own files into a prefix by absolute
+    // path, e.g. pfx/drive_c/.../msado15.dll -> <library>/steamapps/common/Proton - Experimental/files/lib/wine/
+    // x86_64-windows/msado15.dll, and refusing those refuses every real backup. Such a link is safe to restore: no
+    // entry in the archive may be under a link (checked below), so restore cannot write through it; extraction only
+    // creates the links in a staging folder, and the helper moves and deletes folders without following links. The
+    // restored prefix already has Wine's z: -> / by design, so these links add no reach either.
     static string? CheckLink(LinuxArchiveEntry entry, string top)
     {
         if (entry.Target is not { Length: > 0 } target) return "a link entry has no target: " + entry.Name;
         if (target.IndexOf('\0') >= 0) return "a link target contains a null character: " + entry.Name;
         if (target[0] == '/')
-            return WineAbsoluteTargetAllowed(entry.Name, top, target) ? null
+            return WineAbsoluteTargetAllowed(entry.Name, top, target) || ProtonTargetAllowed(target) ? null
                 : "a link points outside the top-level folder: " + entry.Name + " -> " + target;
         return LinkStaysInside(entry.Name, target, top) ? null
             : "a link escapes the top-level folder: " + entry.Name + " -> " + target;
@@ -282,6 +292,52 @@ public static class LinuxPrefixBackup
     static bool NumberedDevice(string name, string prefix) =>
         name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length &&
         name[prefix.Length] is >= '1' and <= '9' && name[(prefix.Length + 1)..].All(char.IsAsciiDigit);
+
+    // A target inside a Proton installation, matched on whole components after normalising it: either steamapps,
+    // common, a name starting with "Proton", and files/ or dist/ with something below it, or compatibilitytools.d,
+    // any name, and files/ or dist/ with something below it. What comes before steamapps or compatibilitytools.d is
+    // not checked: Steam libraries can be on any disk and a backup can be restored on another machine, and this is a
+    // pure listing decision with no Steam roots to compare against. The location does not make the link dangerous,
+    // because restore never writes through it (see CheckLink) and the restored prefix already has Wine's z: -> /; the
+    // target is only where a Proton installation lives, not a place restore will write.
+    static bool ProtonTargetAllowed(string target)
+    {
+        var parts = NormalizedAbsoluteParts(target);
+        if (parts == null) return false;
+        for (var index = 0; index + 2 < parts.Count; index++)
+        {
+            if (parts[index].Equals("steamapps", StringComparison.Ordinal) &&
+                parts[index + 1].Equals("common", StringComparison.Ordinal) &&
+                parts[index + 2].StartsWith("Proton", StringComparison.Ordinal) &&
+                FilesOrDistWithEntry(parts, index + 3)) return true;
+            if (parts[index].Equals("compatibilitytools.d", StringComparison.Ordinal) &&
+                FilesOrDistWithEntry(parts, index + 2)) return true;
+        }
+        return false;
+    }
+
+    // files/ or dist/ at index, with at least one component below it.
+    static bool FilesOrDistWithEntry(IReadOnlyList<string> parts, int index) =>
+        index + 1 < parts.Count &&
+        (parts[index].Equals("files", StringComparison.Ordinal) || parts[index].Equals("dist", StringComparison.Ordinal));
+
+    // Splits an absolute target into its components and resolves "." and ".."; null when ".." would climb above "/".
+    static IReadOnlyList<string>? NormalizedAbsoluteParts(string target)
+    {
+        var stack = new List<string>();
+        foreach (var part in target.Split('/'))
+        {
+            if (part.Length == 0 || part == ".") continue;
+            if (part == "..")
+            {
+                if (stack.Count == 0) return null;
+                stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(part);
+        }
+        return stack;
+    }
 
     static bool SameOrUnder(string name, string link)
     {
@@ -351,8 +407,8 @@ public static class LinuxPrefixBackup
         Action<long>? progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        prefix = LocalInstall.FullPath(prefix);
-        archive = LocalInstall.FullPath(archive);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
+        archive = LocalInstall.NoLinks(archive, archive);
         var folder = Path.GetDirectoryName(archive) ?? throw new InvalidDataException("The archive needs a folder: " + archive);
         Directory.CreateDirectory(folder);
         var part = archive + ".part";
@@ -388,8 +444,9 @@ public static class LinuxPrefixBackup
     public static LinuxPrefixRestorePlan PrepareRestore(string archive, string prefix, string token,
         LinuxUninstallLocations locations, string? steamRoot, string installRoot)
     {
-        archive = LocalInstall.FullPath(archive);
-        prefix = LocalInstall.FullPath(prefix);
+        archive = LocalInstall.NoLinks(archive, archive);
+        var configuredPrefix = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         if (!File.Exists(archive)) throw new InvalidDataException("The backup was not found: " + archive);
         if (!TryCompression(archive, out var compression))
             throw new InvalidDataException("Not a prefix backup (.tar.zst or .tar.gz): " + archive);
@@ -406,13 +463,13 @@ public static class LinuxPrefixBackup
         Directory.CreateDirectory(staging);
         try
         {
-            LocalInstall.NoLinks(staging);
+            staging = LocalInstall.NoLinks(staging, staging);
             Extract(archive, compression, staging);
             var staged = Path.Combine(staging, check.TopLevel);
             if (!Directory.Exists(staged))
                 throw new InvalidDataException("The backup has no top-level folder after unpacking: " + check.TopLevel);
-            LocalInstall.NoLinks(staged);
-            RequireIdle(prefix, installRoot);
+            staged = LocalInstall.NoLinks(staged, staged);
+            RequireIdle(configuredPrefix, installRoot);
             return new(archive, prefix, staged, staging, old, check.UncompressedBytes, check.TopLevel);
         }
         catch

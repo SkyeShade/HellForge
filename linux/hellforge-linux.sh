@@ -27,8 +27,10 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # A native GUI launcher has no terminal to show wrapper/Proton output. Keep the latest launch diagnostics in the
-# installation so failures before HellForge.Session creates its own run folder are still visible to the player.
-if [ -n "${INSTALL:-}" ] && [ -f "$INSTALL/hellforge-install.json" ]; then
+# installation so failures before HellForge.Session creates its own run folder are still visible to the player. Only
+# the native launcher asks for this (HELLFORGE_WRAPPER_LOG=1, set by SessionRunner, the Steam ownership check and the
+# setup's mod-tools step): an external launcher needs the command's own stdout and stderr, so they stay with the caller.
+if [ "${HELLFORGE_WRAPPER_LOG:-}" = 1 ] && [ -n "${INSTALL:-}" ] && [ -f "$INSTALL/hellforge-install.json" ]; then
   if mkdir -p "$INSTALL/logs"; then
     : > "$INSTALL/logs/linux-session-wrapper.log"
     exec >> "$INSTALL/logs/linux-session-wrapper.log" 2>&1
@@ -59,6 +61,22 @@ if ! command -v bsdtar >/dev/null; then
   elif command -v dnf >/dev/null; then echo "Install it with: sudo dnf install bsdtar" >&2
   elif command -v zypper >/dev/null; then echo "Install it with: sudo zypper install bsdtar" >&2
   else echo "Install it with your package manager: bsdtar is in libarchive (libarchive-tools on Debian and Ubuntu)." >&2
+  fi
+fi
+
+# Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. As with bsdtar, warn here;
+# hellforge-offline.sh refuses before it makes the namespace when either is missing.
+if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
+  missing=""
+  for program in pasta python3; do command -v "$program" >/dev/null || missing="$missing $program"; done
+  if [ -n "$missing" ]; then
+    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. Co-op over Steam relays cannot start without them." >&2
+    if command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2
+    elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install passt python3" >&2
+    elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install passt python3" >&2
+    elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install passt python3" >&2
+    else echo "Install them with your package manager: passt provides pasta, and Python 3 provides python3." >&2
+    fi
   fi
 fi
 
@@ -96,8 +114,8 @@ if [ -z "${PROTON:-}" ]; then
   mapfile -t protons < <(ls -d "$STEAM_COMPAT_CLIENT_INSTALL_PATH"/steamapps/common/Proton*/proton "$STEAM_COMPAT_CLIENT_INSTALL_PATH"/compatibilitytools.d/*/proton 2>/dev/null | sort -V)
   if [ "${#protons[@]}" -gt 0 ]; then PROTON="${protons[-1]}"; fi
   if [ "${#protons[@]}" -gt 1 ]; then
-    echo "Proton: using $PROTON. Also found (set PROTON to use one of them):"
-    printf '  %s\n' "${protons[@]:0:${#protons[@]}-1}"
+    echo "Proton: using $PROTON. Also found (set PROTON to use one of them):" >&2
+    printf '  %s\n' "${protons[@]:0:${#protons[@]}-1}" >&2
   fi
 fi
 : "${PROTON:?PROTON is not set and no Proton was found in Steam: install one in Steam, or set PROTON to a proton script, e.g. .../compatibilitytools.d/<name>/proton}"
@@ -105,8 +123,8 @@ fi
 export PROTON
 : "${STEAM_COMPAT_APP_ID:=553850}"
 export STEAM_COMPAT_APP_ID
-echo "HellForge: $INSTALL with $PROTON (prefix $STEAM_COMPAT_DATA_PATH)"
-echo "Steam compatibility app ID: $STEAM_COMPAT_APP_ID"
+echo "HellForge: $INSTALL with $PROTON (prefix $STEAM_COMPAT_DATA_PATH)" >&2
+echo "Steam compatibility app ID: $STEAM_COMPAT_APP_ID" >&2
 
 # Where only allowed programs may make a user namespace (Ubuntu 24.04 and later), say so now rather than after the war
 # fetch; hellforge-offline.sh checks the same.
@@ -172,7 +190,7 @@ stop_bridge() {
 
 cleanup() {
   local status=$? pid
-  echo "HellForge wrapper exiting with code $status."
+  echo "HellForge wrapper exiting with code $status." >&2
   if [ "$state_lock" = 1 ] || [ "$user_lock" = 1 ]; then
     if [ "$state_lock" != 1 ]; then
       exec 8>"$lock"
@@ -193,8 +211,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-trap 'echo "HellForge wrapper received SIGINT."; exit 130' INT
-trap 'echo "HellForge wrapper received SIGTERM."; exit 143' TERM
+trap 'echo "HellForge wrapper received SIGINT." >&2; exit 130' INT
+trap 'echo "HellForge wrapper received SIGTERM." >&2; exit 143' TERM
 # a bridge answers on its sockets (ones left by a bridge that was killed do not)
 bridged() { local s; for s in "$dir"/hf-steam-*.sock; do [ -S "$s" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null 8>&- 9>&- && return 0; done; return 1; }
 flock -x 8
@@ -202,7 +220,7 @@ state_lock=1
 flock -s 9
 user_lock=1
 if ! bridged; then
-  bash "$here/hf-bridge-host.sh" 8>&- 9>&- &
+  bash "$here/hf-bridge-host.sh" 8>&- 9>&- >&2 &
   host=$!
   printf '%s\n' "$host" > "$pidfile"
   for _ in $(seq 1 20); do bridged && break; kill -0 "$host" 2>/dev/null || break; sleep 0.5 8>&- 9>&-; done
@@ -221,7 +239,7 @@ state_lock=0
 if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   backend="$INSTALL/app/backend/HellForge.LocalBackend.exe"
   cache="Z:$(printf '%s' "$INSTALL/live-war.json" | tr '/' '\\')"
-  if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&-; then echo "Fetched the live galactic war."
+  if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&- 1>&2; then echo "Fetched the live galactic war." >&2
   else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
   # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
@@ -234,13 +252,13 @@ pin="$(grep '"name": "zig"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E '
 zigReady() { [ -f "$INSTALL/tools/zig/zig.exe" ] && [ "$(cat "$INSTALL/tools/zig/.hellforge-archive-sha256" 2>/dev/null)" = "$pin" ]; }
 if [ -n "$pin" ] && ! zigReady; then
   if [ "${HELLFORGE_SKIP_MOD_TOOLS:-}" = 1 ]; then
-    echo "Skipping the mod-tools download for the Steam ownership check."
+    echo "Skipping the mod-tools download for the Steam ownership check." >&2
   else
-    echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..."
+    echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..." >&2
     root="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
     timeout 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null 9>&- || true
     for _ in $(seq 1 900); do pgrep -f "HellForge.Cli.exe mod-tools" >/dev/null || break; sleep 1; done
-    if zigReady; then echo "Fetched the mod tools."
+    if zigReady; then echo "Fetched the mod tools." >&2
     else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
   fi
 fi
@@ -248,7 +266,7 @@ fi
 # Setup calls the wrapper after Steam confirms ownership to prepare the optional tools without launching a session.
 if [ "${HELLFORGE_PREPARE_MOD_TOOLS_ONLY:-}" = 1 ]; then
   if [ -n "$pin" ] && zigReady; then
-    echo "Mod tools are ready."
+    echo "Mod tools are ready." >&2
     exit 0
   fi
   echo "Could not prepare the pinned mod tools." >&2
@@ -256,9 +274,9 @@ if [ "${HELLFORGE_PREPARE_MOD_TOOLS_ONLY:-}" = 1 ]; then
 fi
 
 # Run through bash, so the scripts work without their executable bit (lost when copied from Windows or unpacked by setup).
-echo "Entering the offline network namespace."
+echo "Entering the offline network namespace." >&2
 if bash "$here/hellforge-offline.sh" bash "$here/hf-inner.sh" "$@" 9>&-; then
-  echo "Offline namespace command completed."
+  echo "Offline namespace command completed." >&2
 else
   status=$?
   echo "Offline namespace command exited with code $status." >&2

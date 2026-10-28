@@ -24,19 +24,22 @@ public static partial class SandboxStats
     // one the editor writes, and IOException when the Local Stats file stays locked.
     public static Applied? Apply(string folder, string modsFolder, EntityProfile profile)
     {
+        // The game can write anywhere under this folder: every file read from it is checked from the folder down, not
+        // just from the file's own parents.
+        if (OperatingSystem.IsLinux()) folder = LocalInstall.NoLinks(folder, folder);
         var changesFile = Path.Combine(folder, ChangesName);
         var settingsFile = Path.Combine(folder, SettingsName);
         var presets = Path.Combine(folder, PresetsName);
         if (!File.Exists(changesFile) && !File.Exists(settingsFile) && !Directory.Exists(presets)) return null;
-        var (changes, refused) = File.Exists(changesFile) ? Read(Text(changesFile, MaxChangesBytes)) : ([], 0);
+        var (changes, refused) = File.Exists(changesFile) ? Read(Text(changesFile, MaxChangesBytes, folder)) : ([], 0);
         var stats = changes.Where(c => !c.Category.StartsWith("mod:", StringComparison.Ordinal)).ToList();
         var modValues = changes.Where(c => c.Category.StartsWith("mod:", StringComparison.Ordinal)).ToList();
         var appliedStats = stats.Count == 0 ? 0 : ApplyStats(modsFolder, stats, profile);
         refused += stats.Count - appliedStats;
         var editor = Path.Combine(modsFolder, BundledMods.EditorFolder);
-        if (modValues.Count > 0) ApplyModValues(Path.Combine(editor, ModValuesName), modValues);
-        var settings = File.Exists(settingsFile) && CopySettings(settingsFile, Path.Combine(editor, SettingsName));
-        var presetCount = Directory.Exists(presets) ? CopyPresets(presets, Path.Combine(editor, PresetsName)) : 0;
+        if (modValues.Count > 0) ApplyModValues(Path.Combine(editor, ModValuesName), modValues, modsFolder);
+        var settings = File.Exists(settingsFile) && CopySettings(settingsFile, Path.Combine(editor, SettingsName), folder);
+        var presetCount = Directory.Exists(presets) ? CopyPresets(presets, Path.Combine(editor, PresetsName), folder) : 0;
         return new(appliedStats, modValues.Count, refused, settings, presetCount);
     }
 
@@ -166,25 +169,26 @@ public static partial class SandboxStats
 
     // The editor's mod content values (mod-stats.json in its folder): read as the editor would (a broken file is a new
     // one), the changes put in, written whole.
-    static void ApplyModValues(string path, List<Change> changes)
+    static void ApplyModValues(string path, List<Change> changes, string protectedRoot)
     {
         JsonObject document;
-        try { document = (File.Exists(path) ? JsonNode.Parse(Text(path, MaxChangesBytes)) as JsonObject : null) ?? new JsonObject { ["format"] = 1 }; }
+        try { document = (File.Exists(path) ? JsonNode.Parse(Text(path, MaxChangesBytes, protectedRoot)) as JsonObject : null) ?? new JsonObject { ["format"] = 1 }; }
         catch (JsonException) { document = new JsonObject { ["format"] = 1 }; }
         foreach (var change in changes) Put(document, change);
         Write(path, document);
     }
 
-    static bool CopySettings(string from, string to)
+    static bool CopySettings(string from, string to, string protectedRoot)
     {
-        if (JsonNode.Parse(Text(from, MaxSettingsBytes)) is not JsonObject settings) throw new InvalidDataException("The session's editor settings are not an object.");
+        if (JsonNode.Parse(Text(from, MaxSettingsBytes, protectedRoot)) is not JsonObject settings) throw new InvalidDataException("The session's editor settings are not an object.");
         Write(to, settings);
         return true;
     }
 
     // Exported presets: *.hd2rpreset.json with a plain name, each a JSON object the editor marks as its preset.
-    static int CopyPresets(string from, string to)
+    static int CopyPresets(string from, string to, string protectedRoot)
     {
+        if (OperatingSystem.IsLinux()) from = LocalInstall.NoLinks(from, protectedRoot);
         var copied = 0;
         foreach (var file in Directory.EnumerateFiles(from).Take(MaxPresets))
         {
@@ -192,7 +196,7 @@ public static partial class SandboxStats
             if (!PresetName().IsMatch(name)) continue;
             try
             {
-                if (JsonNode.Parse(Text(file, MaxPresetBytes)) is not JsonObject preset || (string?)preset["format"] != "hd2r-editor-preset") continue;
+                if (JsonNode.Parse(Text(file, MaxPresetBytes, protectedRoot)) is not JsonObject preset || (string?)preset["format"] != "hd2r-editor-preset") continue;
                 Directory.CreateDirectory(to);
                 Write(Path.Combine(to, name), preset);
                 copied++;
@@ -205,9 +209,9 @@ public static partial class SandboxStats
     [GeneratedRegex(@"^[A-Za-z0-9 _.()'-]{1,80}\.hd2rpreset\.json$")]
     private static partial Regex PresetName();
 
-    static string Text(string path, long limit)
+    static string Text(string path, long limit, string protectedRoot)
     {
-        LocalInstall.NoLinks(path);
+        path = LocalInstall.NoLinks(path, protectedRoot);
         if (new FileInfo(path).Length > limit) throw new InvalidDataException($"{Path.GetFileName(path)} from the session is too large.");
         return File.ReadAllText(path);
     }

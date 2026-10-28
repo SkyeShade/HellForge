@@ -51,12 +51,25 @@ public static class LinuxInstallProcesses
         var root = LocalInstall.FullPath(prefix);
         var pfx = Path.Combine(root, "pfx");
         if (process.Environment.Any(entry => entry.StartsWith("WINEPREFIX=", StringComparison.Ordinal) &&
-                SamePath(entry["WINEPREFIX=".Length..], pfx))) return true;
-        return Under(process.Executable, root) || Under(process.WorkingDirectory, root);
+                SamePath(entry["WINEPREFIX=".Length..], root, pfx))) return true;
+        return UnderHostOrWine(process.Executable, root, root) || UnderHostOrWine(process.WorkingDirectory, root, root);
     }
 
-    static bool SamePath(string path, string expected)
+    // A path from another process is matched only when it is absolute: /proc gives absolute readlink paths, but a
+    // WINEPREFIX or an argument may be relative to the process that has it. Resolving one here would use this process's
+    // working directory, which setup sets to the installation. A Windows path is mapped with WinePath first; a relative
+    // path maps to itself and the absolute check rejects it.
+    static bool SamePath(string? path, string prefix, string expected)
     {
+        if (SameHostPath(path, expected)) return true;
+        if (string.IsNullOrEmpty(path)) return false;
+        try { return SameHostPath(WinePath.ToHostPath(path, prefix), expected); }
+        catch (Exception error) when (error is InvalidDataException or ArgumentException or NotSupportedException or IOException) { return false; }
+    }
+
+    static bool SameHostPath(string? path, string expected)
+    {
+        if (string.IsNullOrEmpty(path) || !Path.IsPathRooted(path)) return false;
         try { return LocalInstall.FullPath(path).Equals(expected, StringComparison.Ordinal); }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
@@ -70,20 +83,23 @@ public static class LinuxInstallProcesses
         return Under(process.WorkingDirectory, root);
     }
 
-    static bool UnderHostOrWine(string path, string root)
+    // prefix is the Proton prefix that owns root; UsesPrefix already has it and BelongsTo derives it from the
+    // installation. A path that is neither absolute on the host nor a Windows path is never matched.
+    static bool UnderHostOrWine(string? path, string root, string? prefix = null)
     {
         if (Under(path, root)) return true;
+        if (string.IsNullOrEmpty(path)) return false;
         try
         {
-            var prefix = WinePath.PrefixFromInstallRoot(root);
-            return Under(WinePath.ToHostPath(path, prefix), root);
+            var winePrefix = prefix ?? WinePath.PrefixFromInstallRoot(root);
+            return Under(WinePath.ToHostPath(path, winePrefix), root);
         }
-        catch (Exception error) when (error is InvalidOperationException or InvalidDataException or ArgumentException or IOException) { return false; }
+        catch (Exception error) when (error is InvalidOperationException or InvalidDataException or ArgumentException or NotSupportedException or IOException) { return false; }
     }
 
     static bool Under(string? path, string root)
     {
-        if (string.IsNullOrEmpty(path)) return false;
+        if (string.IsNullOrEmpty(path) || !Path.IsPathRooted(path)) return false;
         try { return LocalInstall.Within(path, root); }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }

@@ -7,9 +7,10 @@ namespace HellForge.Core;
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse). ModSync:
 // the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: the game at low
 // integrity (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
-// (SteamOwnershipRecord), for that one session.
+// (SteamOwnershipRecord), for that one session. SteamUdp: co-op over Steam relays, UDP to Valve's relays only
+// (ProfileStore.LoadSteamUdp, #62).
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false);
+    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool SteamUdp = false);
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -69,12 +70,60 @@ public sealed class SessionRunner
         SessionFiles.ReadJson(Path.Combine(app, "sdk-shims", "build.json")) is { } build &&
         SessionFiles.Text(build, "steamBridge") is { Length: > 0 };
 
-    // Whether the sandbox can be offered: an engine built with the Steam bridge, on Windows (under Wine/Proton the game's
-    // block is the network namespace, and the sandbox is untested there).
-    public static bool CanSandbox(ISessionPaths paths) => HasSteamBridge(paths) && !LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested;
+    // Whether the sandbox can be offered: an engine built with the Steam bridge, on Windows for now (not yet implemented
+    // on Linux, native or under Wine/Proton, where the game's block is the network namespace).
+    public static bool CanSandbox(ISessionPaths paths) =>
+        HasSteamBridge(paths) && OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested;
 
     // Whether a session is sandboxed unless told otherwise: the setting (on unless turned off), where it can be offered.
     public static bool SandboxByDefault(ISessionPaths paths) => CanSandbox(paths) && ProfileStore.LoadSandbox(paths);
+
+    // What #62's HELLFORGE_STEAM_UDP=1 path runs: pasta (the passt package) and python3 (Valve's relay list). Null when
+    // both are on PATH; otherwise the refusal, with the install command for this system's package manager. onPath is
+    // injectable for tests.
+    public static string? SteamUdpProblem(Func<string, bool>? onPath = null)
+    {
+        onPath ??= OnPath;
+        var pasta = onPath("pasta");
+        var python = onPath("python3");
+        if (pasta && python) return null;
+        var missing = (pasta, python) switch
+        {
+            (false, false) => "pasta (the passt package) and python3",
+            (false, true) => "pasta (the passt package)",
+            _ => "python3"
+        };
+        return $"Co-op over Steam relays needs {missing}, which could not be found on PATH. {SteamUdpInstallHint(onPath, !pasta, !python)}";
+    }
+
+    static string SteamUdpInstallHint(Func<string, bool> onPath, bool pasta, bool python)
+    {
+        static string Packages(bool pasta, bool python, string pythonPackage) =>
+            string.Join(' ', new[] { pasta ? "passt" : "", python ? pythonPackage : "" }.Where(name => name.Length > 0));
+        if (onPath("pacman")) return "Install with: sudo pacman -S --needed " + Packages(pasta, python, "python") + ".";
+        if (onPath("apt-get")) return "Install with: sudo apt install " + Packages(pasta, python, "python3") + ".";
+        if (onPath("dnf")) return "Install with: sudo dnf install " + Packages(pasta, python, "python3") + ".";
+        if (onPath("zypper")) return "Install with: sudo zypper install " + Packages(pasta, python, "python3") + ".";
+        return "Install with your package manager: passt provides pasta, and Python 3 provides python3.";
+    }
+
+    static bool OnPath(string program) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Any(folder => File.Exists(Path.Combine(folder, program)));
+
+    // HELLFORGE_STEAM_UDP=1 goes to the wrapper for a Linux session only when the switch is on. When it is off, remove
+    // any inherited value too: starting the launcher from a shell that set it must not open UDP by accident.
+    public static void ConfigureLinuxSteamUdp(ProcessStartInfo start, SessionOptions options)
+    {
+        if (OperatingSystem.IsLinux() && options.SteamUdp) start.Environment["HELLFORGE_STEAM_UDP"] = "1";
+        else start.Environment.Remove("HELLFORGE_STEAM_UDP");
+    }
+
+    // Refuse before the wrapper starts: #62 cannot open UDP without pasta, and its relay list needs python3.
+    static void CheckLinuxSteamUdp(bool linux, SessionOptions options)
+    {
+        if (linux && options.SteamUdp && SteamUdpProblem() is { } problem) throw new InvalidOperationException(problem);
+    }
 
     public void Start(ISessionPaths paths, LocalProfile profile, SessionOptions options)
     {
@@ -85,6 +134,7 @@ public sealed class SessionRunner
         var prefix = linux ? WinePath.PrefixFromInstallRoot(paths.InstallRoot) : null;
         var arguments = Arguments(paths, profile, options, prefix);
         LinuxNetworkBlock.GuardSession(paths.InstallRoot!);
+        CheckLinuxSteamUdp(linux, options);
         var wrapper = Path.Combine(paths.InstallRoot!, "app", "linux", "hellforge-linux.sh");
         var start = new ProcessStartInfo(linux ? "bash" : paths.Session)
         {
@@ -96,8 +146,11 @@ public sealed class SessionRunner
         {
             start.ArgumentList.Add(wrapper);
             start.ArgumentList.Add(paths.Session);
+            ConfigureLinuxSteamUdp(start, options);
             start.Environment["INSTALL"] = paths.InstallRoot!;
             start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix!;
+            // The wrapper has no terminal here: keep its output in logs/linux-session-wrapper.log.
+            start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
             if (SteamLocator.SelectedProtonScript(new InstallLayout(paths.InstallRoot!)) is { } proton)
             {
                 if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");

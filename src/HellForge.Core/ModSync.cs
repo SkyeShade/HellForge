@@ -319,8 +319,12 @@ public sealed class ModLocator(string modsFolder, EntityProfile? profile = null)
     {
         if (!ModCatalog.IsModId(id) || !ModSets.Hex(hash, 64)) return null;
         DateTime stamp;
-        try { stamp = File.GetLastWriteTimeUtc(SyncedStore.RecordIn(modsFolder, id, hash)); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        try
+        {
+            var record = LocalInstall.NoLinks(SyncedStore.RecordIn(modsFolder, id, hash), SyncedStore.Root(modsFolder));
+            stamp = File.GetLastWriteTimeUtc(record);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { return null; }
         lock (synced)
             if (synced.TryGetValue((id, hash), out var known) && known.Stamp == stamp) return known.Folder;
         var folder = SyncedStore.Find(modsFolder, id, hash, profile);
@@ -408,9 +412,12 @@ public static class SyncedStore
     public static string? Find(string modsFolder, string id, string hash, EntityProfile? profile = null)
     {
         if (!ModCatalog.IsModId(id) || !ModSets.Hex(hash, 64)) return null;
-        var folder = Path.Combine(Root(modsFolder), Name(id, hash));
+        var store = Root(modsFolder);
         try
         {
+            // The store holds files a host sent: nothing in it, from the store down, may be a link.
+            var folder = LocalInstall.NoLinks(Path.Combine(store, Name(id, hash)), store);
+            LocalInstall.NoLinksBelow(folder);
             var record = Path.Combine(folder, RecordName);
             if (!File.Exists(record) || (string?)JsonNode.Parse(File.ReadAllText(record))?["hash"] != hash) return null;
             var mod = ModCatalog.Parse(folder, profile ?? EntityProfile.Current);
@@ -435,15 +442,16 @@ public static class SyncedStore
     // A stored mod a session plays now: its record's "used", which Prune goes by.
     public static void Touch(string folder)
     {
-        var record = Path.Combine(folder, RecordName);
+        var store = Path.GetDirectoryName(Path.GetFullPath(folder))!;
         try
         {
+            var record = LocalInstall.NoLinks(Path.Combine(folder, RecordName), store);
             if (JsonNode.Parse(File.ReadAllText(record)) is not JsonObject node) return;
             node["used"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             File.WriteAllText(record + ".tmp", node.ToJsonString());
             File.Move(record + ".tmp", record, overwrite: true);
         }
-        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException or InvalidDataException) { }
     }
 
     // Deletes the stored mods beyond the `keep` used most recently (a record's "used", else when it was downloaded), never
@@ -451,8 +459,10 @@ public static class SyncedStore
     // removed, by folder name.
     public static List<string> Prune(string modsFolder, IEnumerable<string> inUse, int keep = Keep)
     {
-        var store = Root(modsFolder);
         var removed = new List<string>();
+        string store;
+        try { store = LocalInstall.NoLinks(Root(modsFolder), Root(modsFolder)); }
+        catch (InvalidDataException) { return removed; }
         if (!Directory.Exists(store)) return removed;
         var kept = inUse.Select(f => Path.GetFullPath(f).TrimEnd('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var partials = Path.Combine(store, PartialFolder);
@@ -476,12 +486,13 @@ public static class SyncedStore
     {
         try
         {
-            var node = JsonNode.Parse(File.ReadAllText(Path.Combine(folder, RecordName)));
+            var record = LocalInstall.NoLinks(Path.Combine(folder, RecordName), Path.GetDirectoryName(Path.GetFullPath(folder))!);
+            var node = JsonNode.Parse(File.ReadAllText(record));
             foreach (var key in new[] { "used", "synced" })
                 if (node?[key] is JsonValue value && value.TryGetValue<string>(out var text) &&
                     DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var time)) return time;
         }
-        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException or InvalidDataException) { }
         return DateTime.MinValue; // no record: the first to go
     }
 

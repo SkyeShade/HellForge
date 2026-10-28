@@ -113,7 +113,8 @@ static class LinuxUninstallTests
             Directory.CreateDirectory(Path.GetDirectoryName(config)!);
             File.WriteAllText(config, LinuxUninstall.OldConfigHeader + "\nPFX=" + prefix + "\n");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
+            check(plan.RemoveSteam, "The Steam download choice was not kept.");
             check(plan.Prefix == prefix, "Wrong prefix.");
             check(plan.PrefixDeletion is { Offered: false }, "A prefix without a marker was offered.");
             check(plan.Steam != null && plan.Steam.Depots.Count == build.Depots.Count, "Steam depots not planned.");
@@ -128,6 +129,47 @@ static class LinuxUninstallTests
                 "A planned file remains.");
             check(File.Exists(keep), "A file outside the download was removed.");
             check(Directory.Exists(install.Root) && Directory.Exists(prefix), "The installation or prefix was touched.");
+        });
+
+        test("Linux uninstall leaves Steam's download and state files unless its box is ticked", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux uninstall)"); return; }
+            var sandbox = Path.Combine(root, "linux-uninstall-steam-choice");
+            var home = Path.Combine(sandbox, "home");
+            var prefix = Path.Combine(home, ".local", "share", "hellforge-prefix");
+            var install = new InstallLayout(Path.Combine(prefix, "pfx", "drive_c", "HellForge"));
+            install.Create(SupportedBuild.Current.BuildId);
+            var locations = new LinuxUninstallLocations(home);
+            var build = SupportedBuild.Current;
+            var steam = Path.Combine(home, ".local", "share", "Steam");
+            var content = SteamDepotDownload.ContentFolder(steam, build);
+            foreach (var depot in build.Depots) Directory.CreateDirectory(Path.Combine(content, "depot_" + depot.Id));
+            var patch = Path.Combine(content, "state_" + build.AppId + "_1.patch");
+            File.WriteAllText(patch, "state");
+            var nearby = Path.Combine(Path.GetDirectoryName(content)!, "state_" + build.AppId + "_2.patch");
+            File.WriteAllText(nearby, "state");
+            var keep = Path.Combine(steam, "steamapps", "common", "keep.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(keep)!);
+            File.WriteAllText(keep, "keep");
+
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            check(!plan.RemoveSteam, "Steam's download is removed without its box.");
+            check(plan.Steam != null && plan.Steam.Depots.Count == build.Depots.Count, "The Steam box has no depot paths.");
+            check(plan.Steam!.Patches.Count == 2, "The Steam box does not list its state files.");
+            check(plan.Steam.AppFolders.Count == 1, "The Steam box does not list its empty download folder.");
+            var result = LinuxUninstall.Remove(plan);
+            check(result.Failed.Count == 0, "Removal failed: " + string.Join("; ", result.Failed));
+            check(Directory.Exists(content) && build.Depots.All(depot => Directory.Exists(Path.Combine(content, "depot_" + depot.Id))),
+                "A depot download was removed without the box.");
+            check(File.Exists(patch) && File.Exists(nearby), "A state file was removed without the box.");
+            check(result.Left.Any(note => note.Contains(patch, StringComparison.Ordinal)), "The left state file was not reported.");
+
+            var chosen = plan with { RemoveSteam = true };
+            var chosenResult = LinuxUninstall.Remove(chosen);
+            check(chosenResult.Failed.Count == 0, "Removal failed: " + string.Join("; ", chosenResult.Failed));
+            check(!Directory.Exists(content), "Steam's download folder remains with the box ticked.");
+            check(!File.Exists(patch) && !File.Exists(nearby), "A state file remains with the box ticked.");
+            check(File.Exists(keep), "A file outside the download was removed.");
         });
 
         test("Steam's own state files away from the depot download folder are left alone", () =>
@@ -152,7 +194,7 @@ static class LinuxUninstallTests
             File.WriteAllText(inSteamApps, "steam's own state");
             File.WriteAllText(nextToMissingApp, "steam's own state");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
             check(plan.Steam != null && plan.Steam.Patches.Count == 0, "Steam's own state files were planned.");
             var result = LinuxUninstall.Remove(plan);
             check(result.Failed.Count == 0, "Removal failed: " + string.Join("; ", result.Failed));
@@ -209,7 +251,7 @@ static class LinuxUninstallTests
             File.WriteAllText(first, "first");
             File.WriteAllText(second, "second");
 
-            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"));
+            var plan = LinuxUninstall.Plan(install, build, locations, steam, Path.Combine(sandbox, "uninstall.log"), removeSteam: true);
             check(plan.Steam != null && plan.Steam.Depots.Count == 0, "A linked depot was planned.");
             check(plan.Left.Any(note => note.Contains(linkedDepot, StringComparison.Ordinal)), "The linked depot was not reported.");
             check(plan.Steam!.Patches.Count == 2, "The state patches were not planned.");
@@ -249,9 +291,11 @@ static class LinuxUninstallTests
             var prefix = "/srv/hellforge-prefix";
             var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
             var good = new LinuxPrefixObservation(true, true, true, LinuxUninstall.PrefixMarkerText(prefix) + "\n",
-                false, false, false);
+                false, false);
             check(LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam", good).Offered,
                 "A matching marker was not offered.");
+            check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
+                good with { PrefixLink = true }).Offered, "A prefix that is itself a link was offered.");
             check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
                 good with { MarkerExists = false }).Offered, "A missing marker was offered.");
             check(!LinuxUninstall.DecidePrefixOffer(prefix, installRoot, "/home/me", "/home/me/Steam",
@@ -279,18 +323,31 @@ static class LinuxUninstallTests
             {
                 var installRoot = Path.Combine(prefix, "pfx", "drive_c", "HellForge");
                 var observation = new LinuxPrefixObservation(true, true, true,
-                    LinuxUninstall.PrefixMarkerText(prefix) + "\n", false, false, false);
+                    LinuxUninstall.PrefixMarkerText(prefix) + "\n", false, false);
                 var offer = LinuxUninstall.DecidePrefixOffer(prefix, installRoot, home, steam, observation);
                 check(!offer.Offered, "A forbidden prefix was offered: " + prefix);
             }
         });
 
-        test("Linux uninstall refuses a symlinked prefix, marker or link inside it", () =>
+        test("Linux uninstall offers a prefix with Proton links inside or a linked parent and refuses a linked prefix or marker", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux prefix links)"); return; }
             var sandbox = Path.Combine(root, "linux-prefix-links");
             var home = Path.Combine(sandbox, "home");
             var locations = new LinuxUninstallLocations(home);
+
+            var proton = Path.Combine(sandbox, "steamapps", "common", "Proton - Experimental", "files", "lib", "wine", "x86_64-windows");
+            Directory.CreateDirectory(proton);
+            File.WriteAllText(Path.Combine(proton, "msado15.dll"), "proton");
+            var protonPrefix = Path.Combine(sandbox, "proton-prefix");
+            var protonInstall = new InstallLayout(Path.Combine(protonPrefix, "pfx", "drive_c", "HellForge"));
+            protonInstall.Create(SupportedBuild.Current.BuildId);
+            LinuxUninstall.WritePrefixMarker(protonPrefix, existed: true, empty: true);
+            var ado = Path.Combine(protonPrefix, "pfx", "drive_c", "Program Files", "Common Files", "System", "ADO");
+            Directory.CreateDirectory(ado);
+            File.CreateSymbolicLink(Path.Combine(ado, "msado15.dll"), Path.Combine(proton, "msado15.dll"));
+            var protonOffer = LinuxUninstall.CheckPrefixDeletion(protonInstall, protonPrefix, locations, null);
+            check(protonOffer.Offered, "A prefix with an absolute Proton link inside was refused: " + protonOffer.Reason);
 
             var markerPrefix = Path.Combine(sandbox, "marker-prefix");
             var markerInstall = new InstallLayout(Path.Combine(markerPrefix, "pfx", "drive_c", "HellForge"));
@@ -306,23 +363,28 @@ static class LinuxUninstallTests
             var linkedPrefix = Path.Combine(sandbox, "linked-prefix");
             var realInstall = new InstallLayout(Path.Combine(realPrefix, "pfx", "drive_c", "HellForge"));
             realInstall.Create(SupportedBuild.Current.BuildId);
-            LinuxUninstall.WritePrefixMarker(realPrefix, existed: true, empty: true);
             Directory.CreateSymbolicLink(linkedPrefix, realPrefix);
+            LinuxUninstall.WritePrefixMarker(linkedPrefix, existed: true, empty: true);
             var linkedInstall = new InstallLayout(Path.Combine(linkedPrefix, "pfx", "drive_c", "HellForge"));
             var linkedOffer = LinuxUninstall.CheckPrefixDeletion(linkedInstall, linkedPrefix, locations, null);
             check(!linkedOffer.Offered && linkedOffer.Reason.Contains("link", StringComparison.Ordinal),
                 "A symlinked prefix was accepted: " + linkedOffer.Reason);
 
-            var innerPrefix = Path.Combine(sandbox, "inner-prefix");
-            var innerInstall = new InstallLayout(Path.Combine(innerPrefix, "pfx", "drive_c", "HellForge"));
-            innerInstall.Create(SupportedBuild.Current.BuildId);
-            LinuxUninstall.WritePrefixMarker(innerPrefix, existed: true, empty: true);
-            var outside = Path.Combine(sandbox, "outside");
-            Directory.CreateDirectory(outside);
-            Directory.CreateSymbolicLink(Path.Combine(innerPrefix, "pfx", "drive_c", "linked-data"), outside);
-            var innerOffer = LinuxUninstall.CheckPrefixDeletion(innerInstall, innerPrefix, locations, null);
-            check(!innerOffer.Offered && innerOffer.Reason.Contains("link", StringComparison.Ordinal),
-                "A prefix with a link inside it was accepted: " + innerOffer.Reason);
+            // The test's home is a link to var/home, like Fedora Atomic's /home -> /var/home.
+            var realHome = Path.Combine(sandbox, "var", "home");
+            var homePrefix = Path.Combine(realHome, "prefix");
+            var homeInstall = new InstallLayout(Path.Combine(homePrefix, "pfx", "drive_c", "HellForge"));
+            homeInstall.Create(SupportedBuild.Current.BuildId);
+            var linkedHome = Path.Combine(sandbox, "home");
+            Directory.CreateSymbolicLink(linkedHome, realHome);
+            check(LinuxUninstall.PrefixForbidden(realHome, linkedHome, null),
+                "The home reached through a link was not refused.");
+            var parentPrefix = Path.Combine(linkedHome, "prefix");
+            LinuxUninstall.WritePrefixMarker(parentPrefix, existed: true, empty: true);
+            var parentInstall = new InstallLayout(Path.Combine(parentPrefix, "pfx", "drive_c", "HellForge"));
+            var parentOffer = LinuxUninstall.CheckPrefixDeletion(parentInstall, parentPrefix, locations, null);
+            check(parentOffer.Offered, "A prefix under a linked folder was refused: " + parentOffer.Reason);
+            check(parentOffer.Prefix == homePrefix, "The offer did not name the resolved prefix: " + parentOffer.Prefix);
         });
 
         test("Linux uninstall treats WINEPREFIX or a path inside the prefix as a process using it", () =>
@@ -337,6 +399,38 @@ static class LinuxUninstallTests
                 [], Path.Combine(pfx, "drive_c", "users", "steamuser")), prefix), "A working folder inside the prefix was ignored.");
             check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("bash", "/usr/bin/bash", [],
                 ["HOME=/home/me"], "/tmp"), prefix), "An unrelated process was treated as using the prefix.");
+        });
+
+        test("Linux prefix process check does not resolve relative WINEPREFIX or paths against its own folder", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux processes)"); return; }
+            var prefix = Path.Combine(root, "linux-prefix-relative");
+            var pfx = Path.Combine(prefix, "pfx");
+            Directory.CreateDirectory(pfx);
+            var originalDirectory = Environment.CurrentDirectory;
+            try
+            {
+                Directory.SetCurrentDirectory(prefix);
+                foreach (var value in new[] { "pfx", "./pfx", "pfx/.", "pfx/drive_c/.." })
+                    check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("wineserver", "/usr/bin/wineserver", [],
+                        ["WINEPREFIX=" + value], null), prefix), $"A relative WINEPREFIX ({value}) was resolved.");
+                check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", "pfx/drive_c/game.exe", [], [], null), prefix),
+                    "A relative executable was resolved.");
+                check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("shell", "/usr/bin/bash", [], [], "pfx/drive_c"), prefix),
+                    "A relative working folder was resolved.");
+                foreach (var argument in new[] { "bash", "-c", "--no-daemon", ".", "app" })
+                    check(!LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("bash", "/usr/bin/bash", [argument], [], "/tmp"), prefix),
+                        $"A relative argument ({argument}) was resolved.");
+            }
+            finally { Directory.SetCurrentDirectory(originalDirectory); }
+
+            var game = Path.Combine(pfx, "drive_c", "game.exe");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", game, [], [], null), prefix),
+                "An absolute executable inside the prefix was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("game", @"Z:" + game.Replace('/', '\\'), [], [], null), prefix),
+                "A Z: executable inside the prefix was ignored.");
+            check(LinuxInstallProcesses.UsesPrefix(new LinuxProcessInfo("wineserver", "/usr/bin/wineserver", [],
+                ["WINEPREFIX=" + @"Z:" + pfx.Replace('/', '\\')], null), prefix), "A Z: WINEPREFIX was ignored.");
         });
     }
 }

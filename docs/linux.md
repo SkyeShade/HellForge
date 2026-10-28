@@ -35,6 +35,19 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 
   On other systems, install the same packages with your package manager.
 
+  `passt` (which provides the `pasta` command) and `python3` are needed only for co-op over Steam relays, the optional
+  Settings switch below. `hellforge-linux.sh` warns when `HELLFORGE_STEAM_UDP=1` and either is missing, and the native
+  launcher refuses a co-op session before it starts and prints this install command:
+
+  | Package manager | Common distributions | Command for co-op only |
+  |---|---|---|
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed passt python` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install passt python3` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install passt python3` |
+  | `zypper` | openSUSE | `sudo zypper install passt python3` |
+
+  On other systems, install `passt` and Python 3 with your package manager.
+
 ## Building the Linux package without a Windows PC
 
 The engine's session runner and backend are Windows NativeAOT programs, so the complete package must be built on a
@@ -258,8 +271,10 @@ refuses a prefix that is the home folder, the filesystem root, Steam's folder or
 has a link on its path.
 
 **Restore prefix...** lists the archive with tar first and refuses an archive that is not one top-level folder, has an
-absolute path or `..`, contains a device or special entry, or has a link that would leave the prefix (Wine's own
-`pfx/dosdevices` links are allowed). Restore refuses the same prefix locations and needs the archive's decompressor
+absolute path or `..`, contains a device or special entry, or has a link that would leave the prefix. Wine's own
+`pfx/dosdevices` links and Proton's links to its own files are allowed (Proton links its own files into every prefix):
+the target must be below `files` or `dist` in `steamapps/common/Proton*` or `compatibilitytools.d/<name>`. Nothing in
+the archive may be written through a link. Restore refuses the same prefix locations and needs the archive's decompressor
 (`zstd` or `gzip`) on `PATH`. It unpacks the archive beside the prefix and refuses when there is not room for the
 unpacked prefix while the current one is kept. The launcher then closes; a helper waits for the prefix to be free,
 moves the current prefix aside, moves the restored one into place, removes the old one, and starts the launcher again.
@@ -268,11 +283,14 @@ If the move fails, the old prefix is put back. The current prefix is not touched
 ### Removing HellForge
 
 Settings > Installation > Uninstall HellForge... (the confirmation button says **Uninstall this installation**) shows
-exactly what will be removed. After you confirm, it first removes what HellForge put outside the installation:
+exactly what will be removed. Steam's depot download is a separate checkbox, off by default. After you confirm, it first
+removes what HellForge put outside the installation:
 
-- Steam's depot download of the supported build: the `depot_<id>` folders under
+- Steam's depot download of the supported build, only when its checkbox is ticked: the `depot_<id>` folders under
   `<Steam>/steamapps/content/app_553850`, also looked for under `ubuntu12_32`, `ubuntu12_64` and `steamrt64`, plus the
-  `state_553850_*.patch` download-state files in or next to that folder.
+  `state_553850_*.patch` download-state files in or next to that folder. The confirmation lists those paths under the
+  checkbox and warns that a depot download made for another HellForge installation in the same Steam library is removed
+  too. While the box is unticked, they are left where they are.
 - The removed shell installer's app-menu entry, `~/.local/bin/hellforge-linux` command and
   `~/.config/hellforge-linux/config` saved settings, when the saved settings name this prefix.
 
@@ -298,10 +316,13 @@ before uninstall.
 The Proton prefix is left unless the native installer made it. The installer writes `.hellforge-created` into a prefix
 that did not exist or was empty before, and the marker names the prefix. Uninstall offers the prefix only when that
 marker matches, the prefix still contains this installation, it is not the home folder, the filesystem root, Steam's
-folder or under Steam's `compatdata`, it has no links (other than Wine's own drive entries) and no process is using it.
-The checkbox is off by default; ticking it deletes the whole prefix, including the game copy, every profile and every
-mod. A prefix made by HELLDIVERS 2, one you chose as an existing non-empty folder, or one from an earlier HellForge
-version has no marker and is never offered; delete it by hand if you want it gone.
+folder or under Steam's `compatdata`, and no process is using it. Links inside the prefix do not refuse it: Proton links
+its own files into every prefix, and the helper deletes with `rm -rf --one-file-system`, which removes a link without
+following it. A link above the prefix, such as `/home -> /var/home`, is resolved first, and the real folder is offered
+and deleted. Only a prefix or marker that is itself a link is refused. The checkbox is off by default; ticking it
+deletes the whole prefix, including the game copy, every profile and every mod. A prefix made by HELLDIVERS 2, one you
+chose as an existing non-empty folder, or one from an earlier HellForge version has no marker and is never offered;
+delete it by hand if you want it gone.
 
 ## Building mods with native Zig
 
@@ -364,17 +385,25 @@ button cannot fetch them on Linux for the same reason; start HellForge again wit
 **Experimental.** The game starts and runs with this, and the network check below passes. The restricted version below joined Windows players' games and played a full mission (reported on issue 22 by two testers, one of them as the fourth player in a lobby of Windows players). Please report what you see, good or bad, with `backend/multiplayer.log` from the session.
 
 Steam's networking, which co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP, so the
-default namespace (no route at all) cannot carry it. Start with `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` and
-`hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which gives it a real route. Two policy rules then
-close it again: `ip rule add ipproto tcp prohibit` refuses every TCP connection with the same WSAEACCES, so the session's
-network probe passes as before, and UDP is allowed only to Valve's relays, address and port range each, from the list Valve
-publishes for the game (`ISteamApps/GetSDRConfig/v1`, app 553850), fetched at launch while this PC still has its network
-(the last one is kept in `~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not
-start). Every other UDP destination, name lookups included, is refused, and the self-test refuses to start if one
-works. It needs `python3` for the list. Co-op through Steam's relays should still work; a direct peer-to-peer path between
-two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a relay address and port
-goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused, loopback fine. A solo session's packet capture
-(about 5 minutes) showed only backend UDP to Valve relays and nothing from the game process.
+default namespace (no route at all) cannot carry it. In the native launcher, turn on Settings > Multiplayer >
+**Co-op over Steam relays (UDP to Valve's relays only)** and press PLAY. It is off by default. The launcher sets
+`HELLFORGE_STEAM_UDP=1` for that session's wrapper only, not for the Steam ownership check. For the wrapper directly or
+an external launcher, `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` does the same.
+
+With it on, `hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the
+game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which
+gives it a real route. Two policy rules then close it again: `ip rule add ipproto tcp prohibit` refuses every TCP
+connection with the same WSAEACCES, so the session's network probe passes as before, and UDP is allowed only to Valve's
+relays, address and port range each, from the list Valve publishes for the game (`ISteamApps/GetSDRConfig/v1`, app
+553850), fetched at launch while this PC still has its network (the last one is kept in
+`~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not start). Every other UDP
+destination, name lookups included, is refused, and the self-test refuses to start if one works. It needs `python3` for
+the list; without `pasta` or `python3`, the launcher refuses before the session starts and the wrapper warns, with the
+package-manager commands in [What you need](#what-you-need). Co-op through Steam's relays should still work; a direct
+peer-to-peer path between two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a
+relay address and port goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused,
+loopback fine. A solo session's packet capture (about 5 minutes) showed only backend UDP to Valve relays and nothing
+from the game process.
 
 ## One prefix, one network
 

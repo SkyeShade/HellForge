@@ -127,10 +127,10 @@ public static partial class Downpatcher
         DownpatchProgress? progress = null,
         CancellationToken cancellation = default)
     {
-        steamGame = LocalInstall.FullPath(steamGame);
-        gameDestination = LocalInstall.FullPath(gameDestination);
-        LocalInstall.NoLinks(steamGame);
-        LocalInstall.NoLinks(gameDestination);
+        // Steam's game and the copy being patched are protected: links above them are resolved, a link at or inside
+        // either would read or write through it.
+        steamGame = LocalInstall.NoLinks(steamGame, steamGame);
+        gameDestination = LocalInstall.NoLinks(gameDestination, gameDestination);
         Directory.CreateDirectory(gameDestination);
         Directory.CreateDirectory(tempFolder);
         // before the download: room for the pack and every game file not yet in place (ApplyPack checks again with the
@@ -266,6 +266,7 @@ public static partial class Downpatcher
             cancellation.ThrowIfCancellationRequested();
             var expected = listed[file.Path];
             var destPath = Destination(job.GameDestination, file);
+            if (OperatingSystem.IsLinux()) destPath = LocalInstall.NoLinks(destPath, job.GameDestination);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
             if (!Matches(destPath, expected)) WriteFile(zip, job, file, expected, destPath, cancellation);
@@ -320,8 +321,12 @@ public static partial class Downpatcher
     {
         var partial = destPath + ".partial";
         var src = Path.Combine(job.SteamGame, file.Path.Replace('/', Path.DirectorySeparatorChar));
-        string FromSteam() => File.Exists(src) ? src
-            : throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+        string FromSteam()
+        {
+            if (!File.Exists(src))
+                throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+            return OperatingSystem.IsLinux() ? LocalInstall.NoLinks(src, job.SteamGame) : src;
+        }
 
         if (DownloadOverrides.TryGetValue(file.Path, out var overrideUrl) && file.Op != "add")
             DownloadOverride(job.Http, file, overrideUrl, partial, cancellation);

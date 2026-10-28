@@ -14,7 +14,9 @@ public sealed class InstallLayout(string root)
     // The marker of installations made before the rename (HD2 Beyond The Stars); Find renames it.
     public const string LegacyMarkerFile = "bts-install.json";
 
-    public string Root { get; } = LocalInstall.FullPath(root);
+    // On Linux the folders above the installation are resolved if they are links (Fedora Atomic's /home -> /var/home), so
+    // every path below Root is the real one. Root's own last component is left alone and Create refuses it if it is a link.
+    public string Root { get; } = LocalInstall.ResolveParentLinks(root);
     public string Marker => Path.Combine(Root, MarkerFile);
     public string App => Path.Combine(Root, "app");
     public string Game => Path.Combine(Root, "game");
@@ -92,13 +94,13 @@ public sealed class InstallLayout(string root)
     // Marks a folder as an installation; refuses a folder that already is one or that lies inside Steam.
     public InstallMarker Create(string buildId)
     {
-        LocalInstall.NoLinks(Root);
-        if (Exists) throw new InvalidDataException($"{Root} is already a HellForge installation.");
-        if (Root.Split(Path.DirectorySeparatorChar).Any(part => part.Equals("steamapps", StringComparison.OrdinalIgnoreCase)))
+        var root = LocalInstall.NoLinks(Root, Root);
+        if (Exists) throw new InvalidDataException($"{root} is already a HellForge installation.");
+        if (root.Split(Path.DirectorySeparatorChar).Any(part => part.Equals("steamapps", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException("Install HellForge outside Steam's steamapps folder.");
-        foreach (var folder in new[] { Root, App, Game, UserData, Profiles, Logs, Temp }) Directory.CreateDirectory(folder);
+        foreach (var folder in new[] { root, App, Game, UserData, Profiles, Logs, Temp }) Directory.CreateDirectory(folder);
         var marker = new InstallMarker(1, buildId, DateTime.UtcNow);
-        using var output = new FileStream(Marker, FileMode.CreateNew);
+        using var output = new FileStream(Path.Combine(root, MarkerFile), FileMode.CreateNew);
         JsonSerializer.Serialize(output, marker, CopyPreparer.JsonOptions);
         return marker;
     }

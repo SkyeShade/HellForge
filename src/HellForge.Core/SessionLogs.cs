@@ -19,7 +19,7 @@ public static partial class SessionLogs
     public static Pruned Prune(string sessionsFolder, int keep = Keep)
     {
         if (!Directory.Exists(sessionsFolder)) return new(0, 0, 0);
-        LocalInstall.NoLinks(sessionsFolder);
+        sessionsFolder = LocalInstall.NoLinks(sessionsFolder, sessionsFolder);
         var runs = new DirectoryInfo(sessionsFolder).GetDirectories()
             .Where(d => RunId().IsMatch(d.Name) && (d.Attributes & FileAttributes.ReparsePoint) == 0)
             .OrderByDescending(d => d.CreationTimeUtc).ThenByDescending(d => d.Name, StringComparer.Ordinal).ToList();

@@ -86,7 +86,7 @@ public partial class MainWindow
                 : $"{Privacy.Scrub(install.Root)}  ·  Complete setup natively with Steam for Linux.";
             UninstallButton.IsVisible = true;
             UninstallConfirmButton.Content = "Uninstall this installation";
-            UninstallDescription.Text = "Uninstall removes this HellForge installation, its desktop shortcut and HellForge's Steam download and old setup leftovers when they are found, after the launcher closes. The Proton prefix is left unless this installer made it, in which case the confirmation also offers to delete it. Steam, your game and your Proton versions are left intact.";
+            UninstallDescription.Text = "Uninstall removes this HellForge installation, its desktop shortcut and the removed shell installer's leftovers when they are found, after the launcher closes. The Proton prefix is left unless this installer made it, in which case the confirmation also offers to delete it. Steam's depot download is a separate choice, off by default. Steam, your game and your Proton versions are left intact.";
             DesktopShortcutBox.IsVisible = StartMenuShortcutBox.IsVisible = ImportBox.IsVisible = false;
             SetupIntro.Text = "Choose a Proton version first. Setup finds the supported game files, confirms Steam ownership, then copies the game if needed and checks the Linux network namespace.";
             if (!complete) EnterSetup(repair: false);
@@ -489,8 +489,8 @@ public partial class MainWindow
         start.Environment["PROTON"] = proton;
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = WinePath.PrefixFromInstallRoot(install.Root);
-        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
-        start.Environment["HELLFORGE_PREPARE_MOD_TOOLS_ONLY"] = "1";
+        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
+        start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = start.Environment["HELLFORGE_PREPARE_MOD_TOOLS_ONLY"] = "1";
         using var process = Process.Start(start) ?? throw new IOException("The Linux mod-tools preparation did not start.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(16));
@@ -945,7 +945,7 @@ public partial class MainWindow
         if (OperatingSystem.IsLinux())
         {
             linuxUninstallPlan = BuildLinuxUninstallPlan(install);
-            UninstallWarning.Text = LinuxUninstallWarning(install, linuxUninstallPlan);
+            FillLinuxUninstallWarning(install, linuxUninstallPlan);
             if (linuxUninstallPlan.PrefixDeletion is { Offered: true } prefix)
             {
                 UninstallPrefixBox.Content = $"Also delete the Proton prefix {prefix.Prefix}: this deletes the game copy, every profile and every mod in it";
@@ -972,7 +972,7 @@ public partial class MainWindow
         if (runner.IsRunning || setupRunning) { UninstallText.Text = "Stop the session (or setup) first."; return; }
         if (OperatingSystem.IsLinux())
         {
-            await UninstallLinux(install, UninstallPrefixBox.IsChecked == true);
+            await UninstallLinux(install, UninstallPrefixBox.IsChecked == true, UninstallSteamBox.IsChecked == true);
             return;
         }
         // Under Wine, Windows PowerShell is a stub that does nothing.
@@ -1022,9 +1022,8 @@ public partial class MainWindow
     // one of its known folders.
     static void UninstallSafety(string root)
     {
-        root = LocalInstall.FullPath(root);
+        root = LocalInstall.NoLinks(root, root);
         if (!new InstallLayout(root).Exists) throw new InvalidDataException("This folder is not a HellForge installation; nothing was removed.");
-        LocalInstall.NoLinks(root);
         var keep = new[] { Path.GetPathRoot(root), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.Windows) };

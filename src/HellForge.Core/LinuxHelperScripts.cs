@@ -18,6 +18,9 @@ public static class LinuxHelperScripts
         prefix_in_use() {
           local dir pid exe cwd
           pfx_in_use_names=""
+          # readlink prints absolute paths and WINEPREFIX is compared as written; nothing here is resolved against the
+          # helper's working directory. A relative prefix cannot name one of those values, so it matches nothing.
+          case "$prefix" in /*) ;; *) return 1 ;; esac
           for dir in /proc/[0-9]*; do
             pid=${dir##*/}
             [ "$pid" = "$$" ] && continue

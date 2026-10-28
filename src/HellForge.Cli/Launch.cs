@@ -55,7 +55,8 @@ static class Launch
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false));
+            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
+            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)));
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -196,6 +197,7 @@ static class Launch
                 engineLog = ProfileStore.LoadEngineLog(paths),
                 crashDump = ProfileStore.LoadCrashDump(paths),
                 sandbox = ProfileStore.LoadSandbox(paths),
+                steamUdp = ProfileStore.LoadSteamUdp(paths),
                 gameOptions = ProfileStore.LoadLaunchOptions(paths)
             },
             session = new
@@ -470,6 +472,7 @@ static class Launch
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
         if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
         if (options.ContainsKey("--sandbox")) ProfileStore.SaveSandbox(paths, Yes(options, "--sandbox", false));
+        if (options.ContainsKey("--steam-udp")) ProfileStore.SaveSteamUdp(paths, Yes(options, "--steam-udp", false));
         if (options.TryGetValue("--game-options", out var typed))
         {
             _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself
@@ -487,6 +490,7 @@ static class Launch
             crashDump = ProfileStore.LoadCrashDump(paths),
             gameOptions = ProfileStore.LoadLaunchOptions(paths),
             sandbox = ProfileStore.LoadSandbox(paths),
+            steamUdp = ProfileStore.LoadSteamUdp(paths),
             steamBridge = SessionRunner.HasSteamBridge(paths),
             playWithStrangers = ModSettings.PlayWithStrangers(install.Mods),
             file = paths.SettingsFile

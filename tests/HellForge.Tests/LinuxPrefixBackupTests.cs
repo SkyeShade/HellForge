@@ -108,6 +108,53 @@ static class LinuxPrefixBackupTests
             }
         });
 
+        test("Links into a Proton installation pass and other outside links are still refused", () =>
+        {
+            var top = new LinuxArchiveEntry('d', 0, "hellforge-prefix/");
+            const string link = "hellforge-prefix/pfx/drive_c/Program Files/Common Files/System/ADO/msado15.dll";
+            foreach (var target in new[]
+                     {
+                         "/home/user/.local/share/Steam/steamapps/common/Proton - Experimental/files/lib/wine/x86_64-windows/msado15.dll",
+                         "/mnt/storage/SteamLibrary/steamapps/common/Proton 9.0 (Beta)/dist/lib/wine/x86_64-windows/msado15.dll",
+                         "/home/user/.local/share/Steam/compatibilitytools.d/GE-Proton10-25/files/lib/wine/x86_64-windows/msado15.dll",
+                         "/opt/compatibilitytools.d/custom/dist/lib/wine/x86_64-windows/msado15.dll",
+                         // ".." is resolved before the components are matched.
+                         "/x/steamapps/common/Proton/files/lib/../x86_64-windows/msado15.dll",
+                         // The location before steamapps is not checked; see ProtonTargetAllowed.
+                         "/etc/steamapps/common/Proton/files/passwd"
+                     })
+            {
+                var accepted = LinuxPrefixBackup.CheckEntries([top, new LinuxArchiveEntry('l', 0, link, target)]);
+                check(accepted.Safe, "A Proton link was refused: " + target + " (" + accepted.Reason + ")");
+            }
+            foreach (var target in new[]
+                     {
+                         "/home/x",
+                         "/etc/passwd",
+                         "/home/x/steamapps/common/ProtonX/files/../../../../etc",
+                         "/x/steamapps/common/NotProton/files/x",
+                         "/x/steamapps/common/myProton/files/a",
+                         "/x/steamapps/common/Proton/files",
+                         "/x/steamapps/common/Proton/lib/msado15.dll",
+                         "/x/steamapps/common/Proton/files/../lib/x",
+                         "/x/compatibilitytools.d/GE-Proton10-25/lib/x"
+                     })
+            {
+                var refused = LinuxPrefixBackup.CheckEntries([top, new LinuxArchiveEntry('l', 0, link, target)]);
+                check(!refused.Safe, "An outside link was accepted: " + target);
+            }
+            var relative = LinuxPrefixBackup.CheckEntries([top,
+                new LinuxArchiveEntry('l', 0, "hellforge-prefix/link", "../steamapps/common/Proton/files/x")]);
+            check(!relative.Safe, "A relative link out of the prefix was accepted.");
+            var through = LinuxPrefixBackup.CheckEntries([
+                top,
+                new LinuxArchiveEntry('l', 0, link,
+                    "/home/user/.local/share/Steam/steamapps/common/Proton - Experimental/files/lib/wine/x86_64-windows/msado15.dll"),
+                new LinuxArchiveEntry('-', 0, link + "/passwd")
+            ]);
+            check(!through.Safe, "An entry under a Proton link was accepted.");
+        });
+
         test("An entry under a link entry is refused in either order", () =>
         {
             var top = new LinuxArchiveEntry('d', 0, "hellforge-prefix/");

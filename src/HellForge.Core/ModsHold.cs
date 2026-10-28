@@ -16,7 +16,9 @@ public sealed class ModsHold : IDisposable
 
     public int Held => locks.Count;
 
-    ModsHold(string modsFolder) => root = Path.GetFullPath(modsFolder);
+    ModsHold(string modsFolder) => root = OperatingSystem.IsLinux()
+        ? LocalInstall.NoLinks(modsFolder, modsFolder)
+        : Path.GetFullPath(modsFolder);
 
     // Holds every file but the writable ones; a file that cannot be held throws IOException naming it.
     public static ModsHold Take(string modsFolder)
@@ -29,9 +31,8 @@ public sealed class ModsHold : IDisposable
                 hold.snapshot.Add(Path.GetFullPath(dir));
             foreach (var file in Directory.EnumerateFiles(hold.root, "*", SearchOption.AllDirectories))
             {
-                var full = Path.GetFullPath(file);
+                var full = LocalInstall.NoLinks(file, hold.root);
                 hold.snapshot.Add(full);
-                LocalInstall.NoLinks(full);
                 if (Writable(hold.Relative(full))) continue;
                 try { hold.locks.Add(new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read)); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)

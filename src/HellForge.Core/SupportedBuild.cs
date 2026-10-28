@@ -111,8 +111,7 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
     public IReadOnlyList<string> Verify(string gameRoot, string? cachePath = null, Action<long, long>? progress = null,
         CancellationToken cancellation = default)
     {
-        gameRoot = LocalInstall.FullPath(gameRoot);
-        LocalInstall.NoLinks(gameRoot);
+        gameRoot = LocalInstall.NoLinks(gameRoot, gameRoot);
         var cache = LoadCache(cachePath);
         var verified = new Dictionary<string, string>(StringComparer.Ordinal);
         var problems = new List<string>();

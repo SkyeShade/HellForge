@@ -17,7 +17,13 @@ sealed partial class PlaySession
         StopBrokerAndBackend();
         FinishApplier();
         RecordBackendRequests();
-        if (gameStarted != null) Try("networkCensusError", () => result["networkCensus"] = NetworkCensus.Summarize(Path.Combine(gameOut, CensusLog)));
+        if (gameStarted != null)
+            Try("networkCensusError", () =>
+            {
+                var census = Path.Combine(gameOut, CensusLog);
+                if (OperatingSystem.IsLinux()) census = LocalInstall.NoLinks(census, gameOut);
+                result["networkCensus"] = NetworkCensus.Summarize(census);
+            });
         if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
         ReleaseHolds();
         RestoreStandIns();
@@ -34,7 +40,8 @@ sealed partial class PlaySession
     void Try(string what, Action action)
     {
         try { action(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception or SessionFailure or JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or
+                                         System.ComponentModel.Win32Exception or SessionFailure or JsonException)
         { result[what] = error.Message; }
     }
 
@@ -54,12 +61,7 @@ sealed partial class PlaySession
             Try("engineLogError", () =>
             {
                 var engineLogs = Path.Combine(run, "engine-logs");
-                var places = new[] { Path.Combine(copy, "bin"), profileFolder, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HellForge"), install.UserData };
-                var found = places.Where(p => p != null && Directory.Exists(p))
-                    .SelectMany(p => Directory.EnumerateFiles(p!, "*", SearchOption.AllDirectories))
-                    .Where(f => (f.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) &&
-                                !f.StartsWith(run, StringComparison.OrdinalIgnoreCase))
-                    .Select(f => new FileInfo(f)).Where(f => f.LastWriteTimeUtc >= started && f.Length < 200L * 1024 * 1024).ToList();
+                var found = EngineLogFiles(started);
                 if (found.Count > 0) Directory.CreateDirectory(engineLogs);
                 var copied = new JsonArray();
                 // The game names its console logs after the computer and writes the user folder in them: the copies don't.
@@ -71,6 +73,36 @@ sealed partial class PlaySession
                 }
                 result["engineLogFiles"] = copied;
             });
+    }
+
+    // The logs and text files this session wrote, in the game copy and in every place the game's profile can write.
+    List<FileInfo> EngineLogFiles(DateTime started)
+    {
+        string?[] places = [Path.Combine(copy, "bin"), profileFolder, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HellForge"), install.UserData];
+        var found = new List<FileInfo>();
+        foreach (var place in places)
+        {
+            if (place == null || !Directory.Exists(place)) continue;
+            foreach (var file in Directory.EnumerateFiles(place, "*", SearchOption.AllDirectories))
+            {
+                var full = ReadableLogFile(file, place);
+                if (full == null) continue;
+                var info = new FileInfo(full);
+                if ((full.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || full.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) &&
+                    !full.StartsWith(run, StringComparison.OrdinalIgnoreCase) && info.LastWriteTimeUtc >= started && info.Length < 200L * 1024 * 1024)
+                    found.Add(info);
+            }
+        }
+        return found;
+    }
+
+    // One place is a sandbox copy the game can write: never read a log through a link it planted below that place. A link
+    // skips the file; the rest of the logs are still copied.
+    static string? ReadableLogFile(string file, string place)
+    {
+        if (!OperatingSystem.IsLinux()) return file;
+        try { return LocalInstall.NoLinks(file, place); }
+        catch (InvalidDataException) { return null; }
     }
 
     void StopBrokerAndBackend()

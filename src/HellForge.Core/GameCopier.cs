@@ -12,41 +12,44 @@ public static class GameCopier
 {
     const int BufferSize = 4 << 20;
 
+    // Where a copy's files come from: a folder all of them are under, and how to locate one in it.
+    sealed record CopySource(string Root, Func<SupportedFile, string> Locate);
+
     // progress: bytes done, bytes total, file being copied.
     public static void Copy(string source, string destination, SupportedBuild build, Action<long, long, string>? progress = null,
         CancellationToken cancellation = default)
     {
-        source = LocalInstall.FullPath(source);
-        destination = LocalInstall.FullPath(destination);
-        LocalInstall.NoLinks(source);
-        LocalInstall.NoLinks(destination);
+        // Steam's game folder and the game folder being written are protected: links above them are normal, a link at or
+        // inside either would copy through it to somewhere else.
+        source = LocalInstall.NoLinks(source, source);
+        destination = LocalInstall.NoLinks(destination, destination);
         if (LocalInstall.Within(destination, source) || LocalInstall.Within(source, destination))
             throw new InvalidDataException("The game folder must not overlap the Steam installation.");
         if (Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(source)!)!).Equals("steamapps", StringComparison.OrdinalIgnoreCase) &&
             LocalInstall.Within(destination, Path.GetDirectoryName(Path.GetDirectoryName(source)!)!))
             throw new InvalidDataException("The game folder must be outside Steam's steamapps folder.");
 
-        CopyFiles(file => Path.Combine(source, file.Path), destination, build, "the installation", "validate the game in Steam", progress, cancellation);
+        CopyFiles(new CopySource(source, file => Path.Combine(source, file.Path)), destination, build, "the installation",
+            "validate the game in Steam", progress, cancellation);
     }
 
     // From Steam's downloads of the build's depots (<Steam>/steamapps/content/app_553850/depot_<id>).
     public static void CopyFromDepots(string steamRoot, string destination, SupportedBuild build, Action<long, long, string>? progress = null,
         CancellationToken cancellation = default)
     {
-        steamRoot = LocalInstall.FullPath(steamRoot);
-        destination = LocalInstall.FullPath(destination);
-        LocalInstall.NoLinks(destination);
+        steamRoot = LocalInstall.ResolveLinks(steamRoot);
+        destination = LocalInstall.NoLinks(destination, destination);
         if (LocalInstall.Within(destination, Path.Combine(steamRoot, "steamapps")))
             throw new InvalidDataException("The game folder must be outside Steam's steamapps folder.");
-        CopyFiles(file => SteamDepotDownload.Locate(steamRoot, build, file), destination, build, "Steam's download",
-            "run its download_depot command again", progress, cancellation);
+        CopyFiles(new CopySource(steamRoot, file => SteamDepotDownload.Locate(steamRoot, build, file)), destination, build,
+            "Steam's download", "run its download_depot command again", progress, cancellation);
     }
 
     // where: names the source in errors; fix: what to do when a file there is wrong.
-    static void CopyFiles(Func<SupportedFile, string> locate, string destination, SupportedBuild build, string where, string fix,
+    static void CopyFiles(CopySource source, string destination, SupportedBuild build, string where, string fix,
         Action<long, long, string>? progress, CancellationToken cancellation)
     {
-        var missing = build.Files.Where(file => !File.Exists(locate(file))).Select(file => file.Path).ToList();
+        var missing = build.Files.Where(file => !File.Exists(source.Locate(file))).Select(file => file.Path).ToList();
         if (missing.Count > 0) throw new InvalidDataException($"{char.ToUpperInvariant(where[0])}{where[1..]} lacks {missing.Count} game files, starting with {missing[0]}; {fix}.");
         Directory.CreateDirectory(destination);
         DiskSpace.Require((destination, build.Files.Where(file => !Present(Path.Combine(destination, file.Path), file)).Sum(file => file.Size)));
@@ -56,9 +59,9 @@ public static class GameCopier
         foreach (var file in build.Files)
         {
             cancellation.ThrowIfCancellationRequested();
-            var from = locate(file);
+            var from = LocalInstall.NoLinks(source.Locate(file), source.Root);
             var to = Path.Combine(destination, file.Path);
-            LocalInstall.NoLinks(from);
+            if (OperatingSystem.IsLinux()) to = LocalInstall.NoLinks(to, destination);
             if (Matches(to, file))
             {
                 done += file.Size;

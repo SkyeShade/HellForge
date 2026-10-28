@@ -111,6 +111,10 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
+        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): off by default, and passed to a session only.
+        SteamUdpOptions.IsVisible = OperatingSystem.IsLinux();
+        SteamUdpBox.IsChecked = ProfileStore.LoadSteamUdp(paths);
+        SteamUdpBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSteamUdp(paths, SteamUdpBox.IsChecked == true);
         // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
         StrangersBox.IsEnabled = paths.ModsFolder != null;
         StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
@@ -123,11 +127,13 @@ public partial class MainWindow : Window
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
         };
         // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
-        // Windows (SessionRunner.CanSandbox).
+        // Windows (SessionRunner.CanSandbox). It is not yet implemented on Linux, where the network namespace is the block.
         var steamBridge = SessionRunner.HasSteamBridge(paths);
+        var linux = OperatingSystem.IsLinux();
         SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
         SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
-        SandboxUnavailable.IsVisible = !steamBridge;
+        SandboxUnavailable.IsVisible = !linux && !steamBridge;
+        SandboxLinuxNote.IsVisible = linux;
         SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
@@ -266,7 +272,8 @@ public partial class MainWindow : Window
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
-                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+                EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
+                SteamUdp: SteamUdpBox.IsChecked == true));
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {

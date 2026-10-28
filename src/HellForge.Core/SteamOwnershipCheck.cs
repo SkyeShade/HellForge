@@ -142,10 +142,13 @@ public static class SteamOwnershipCheck
         start.Environment["PROTON"] = request.Proton;
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = request.SteamRoot;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = request.Prefix;
+        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
         start.Environment["HELLFORGE_WORKING_DIRECTORY"] = prepared.Run;
         start.Environment["HELLFORGE_SKIP_LIVE_WAR"] = "1";
         start.Environment["HELLFORGE_SKIP_MOD_TOOLS"] = "1";
         start.Environment["HELLFORGE_WAIT_FOR_PROCESSES"] = "0";
+        // The ownership check is not a co-op session: keep #62's UDP path off even when the launcher inherited the variable.
+        start.Environment.Remove("HELLFORGE_STEAM_UDP");
         using var process = Process.Start(start) ?? throw new InvalidDataException("The Linux Steam ownership check did not start.");
         return WaitForLinuxProbe(process, prepared.Report, request.EvidencePath, request.Timeout);
     }
