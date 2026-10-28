@@ -302,6 +302,9 @@ public static class LinuxAppInstaller
         // The native source-mod build agent; optional, so a package from before it still installs.
         var agent = Path.Combine(Path.GetDirectoryName(launcher)!, "..", "cli-linux", "HellForge.Cli");
         if (File.Exists(agent)) MakeExecutable(agent);
+        // The native Linux sandbox probe. New packages require it; this keeps a hand-extracted file usable too.
+        var sandboxProbe = Path.Combine(scripts, "hf-sandbox-probe");
+        if (File.Exists(sandboxProbe)) MakeExecutable(sandboxProbe);
         foreach (var script in Directory.EnumerateFiles(scripts, "*.sh")) MakeExecutable(script);
     }
 

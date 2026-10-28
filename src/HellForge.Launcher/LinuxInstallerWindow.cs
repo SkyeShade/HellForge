@@ -273,7 +273,8 @@ sealed class LinuxInstallerWindow : Window
             "app/app-build.json",
             "app/engine-package.zip",
             "app/launcher-linux/HellForge.Launcher",
-            "app/linux/hellforge-linux.sh"
+            "app/linux/hellforge-linux.sh",
+            "app/linux/hf-sandbox-probe"
         })
             if (!entries.Contains(required)) throw new InvalidDataException("The Linux package is incomplete; missing " + required + ".");
     }

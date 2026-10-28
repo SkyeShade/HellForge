@@ -26,6 +26,38 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The phase-1 sandbox probe is information only. It runs before Steam, Proton and the normal dependency checks because it
+# needs none of them: it only asks the kernel for the mechanisms a Linux sandbox would use, then runs its canaries.
+if [ "${1:-}" = "--sandbox-probe" ]; then
+  [ "$#" -eq 1 ] || { echo "Usage: $0 --sandbox-probe" >&2; exit 2; }
+  if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then INSTALL="$(cd "$here/../.." && pwd)"; fi
+  : "${INSTALL:?INSTALL is not set: the HellForge installation folder (the one with hellforge-install.json)}"
+  [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }
+  INSTALL="$(cd "$INSTALL" && pwd)"
+  export INSTALL
+  probe="$here/hf-sandbox-probe"
+  [ -f "$probe" ] || { echo "The Linux sandbox probe is missing: $probe. Update HellForge so app/linux/hf-sandbox-probe is installed." >&2; exit 1; }
+  [ -x "$probe" ] || chmod +x "$probe" 2>/dev/null || true
+  [ -x "$probe" ] || { echo "The Linux sandbox probe is not executable: $probe" >&2; exit 1; }
+  mkdir -p "$INSTALL/logs"
+  report="$INSTALL/logs/sandbox-probe.json"
+  rm -f "$report"
+  # On Ubuntu's AppArmor-restricted systems, the probe runs under the same allowed unshare copy and profile as a session.
+  # The profile stays attached across exec, so the probe can still make its own nested user namespace. Without the helper
+  # it runs directly, reports the restriction as SKIP and exits non-zero; it never silently claims the mechanism works.
+  runner=("$probe")
+  if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ] &&
+     [ -x /usr/local/lib/hellforge/unshare ] && [ -f /etc/apparmor.d/hellforge-unshare ]; then
+    runner=(/usr/local/lib/hellforge/unshare --user --map-user="$(id -u)" --map-group="$(id -g)" -- "$probe")
+  fi
+  set +e
+  "${runner[@]}" --json "$report"
+  status=$?
+  set -e
+  echo "Sandbox probe report: $report"
+  exit "$status"
+fi
+
 # A native GUI launcher has no terminal to show wrapper/Proton output. Keep the latest launch diagnostics in the
 # installation so failures before HellForge.Session creates its own run folder are still visible to the player. Only
 # the native launcher asks for this (HELLFORGE_WRAPPER_LOG=1, set by SessionRunner, the Steam ownership check and the
