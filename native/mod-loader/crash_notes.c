@@ -297,10 +297,27 @@ static void CrashLocationRecords(const CONTEXT* c, uintptr_t game)
     CrashGenerationBlock(c, game);
 }
 
+/* B.2: a single-step or breakpoint the crash note passes on (FieldWatchHit handles the watchpoint ones): the first 8. */
+static void NoteDebugException(EXCEPTION_POINTERS* info, DWORD code)
+{
+    static volatile LONG reported;
+    if (InterlockedIncrement(&reported) > 8) return;
+    CONTEXT* c = info->ContextRecord;
+    NoteDiagnostic("crash: %08lx (%s) passed on: thread %lu at 0x%llx; Dr6=0x%llx Dr7=0x%llx", code,
+        code == EXCEPTION_SINGLE_STEP ? "single-step" : "breakpoint", GetCurrentThreadId(),
+        (unsigned long long)(uintptr_t)info->ExceptionRecord->ExceptionAddress,
+        (unsigned long long)c->Dr6, (unsigned long long)c->Dr7);
+}
+
 static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
 {
     static volatile LONG reported;
     DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (code == EXCEPTION_SINGLE_STEP || code == EXCEPTION_BREAKPOINT)
+    {
+        NoteDebugException(info, code);
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
     if ((code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION) || InterlockedIncrement(&reported) > 4)
         return EXCEPTION_CONTINUE_SEARCH;
     if (reported == 1) WriteCrashDump(info);
@@ -315,12 +332,14 @@ static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
     if (SafeRead(c->Rsp, stack, sizeof stack)) trail[0] = 0;
     else GameTrail(stack, 256, 24, &g, trail, (int)sizeof trail);
     Note("crash: %08lx on thread %lu at %s+0x%llx (0x%llx), %s 0x%llx; rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx r8 %llx "
-        "r9 %llx r12 %llx r13 %llx r14 %llx r15 %llx; stack:%s", code, GetCurrentThreadId(), module, (unsigned long long)offset,
+        "r9 %llx r12 %llx r13 %llx r14 %llx r15 %llx; Dr0 %llx Dr1 %llx Dr2 %llx Dr3 %llx Dr6 %llx Dr7 %llx; stack:%s", code, GetCurrentThreadId(), module, (unsigned long long)offset,
         (unsigned long long)at, info->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",
         (unsigned long long)(info->ExceptionRecord->NumberParameters > 1 ? info->ExceptionRecord->ExceptionInformation[1] : 0),
         (unsigned long long)c->Rax, (unsigned long long)c->Rbx, (unsigned long long)c->Rcx, (unsigned long long)c->Rdx,
         (unsigned long long)c->Rsi, (unsigned long long)c->Rdi, (unsigned long long)c->R8, (unsigned long long)c->R9,
-        (unsigned long long)c->R12, (unsigned long long)c->R13, (unsigned long long)c->R14, (unsigned long long)c->R15, trail);
+        (unsigned long long)c->R12, (unsigned long long)c->R13, (unsigned long long)c->R14, (unsigned long long)c->R15,
+        (unsigned long long)c->Dr0, (unsigned long long)c->Dr1, (unsigned long long)c->Dr2, (unsigned long long)c->Dr3,
+        (unsigned long long)c->Dr6, (unsigned long long)c->Dr7, trail);
     CrashModules(at, c, &g, stack, sizeof stack);
     if (module[0] == 'g' && offset == 0xF8F670) CrashObjectiveList(c);
     if (module[0] == 'g' && offset == 0xC176B8) CrashLocationRecords(c, g.game);
@@ -410,15 +429,34 @@ static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-/* One thread's watchpoints, set while it is briefly suspended: 1 when they are. */
+/* B.2: HELLFORGE_DIFFICULTY_FIELDWATCH=0 disables the preview watchpoints: no thread is suspended, no debug register is
+ * set and no watchpoint handler is added. Unset or any other value keeps them. */
+static int FieldWatchEnabled(void)
+{
+    static int enabled = -1;
+    if (enabled < 0)
+    {
+        wchar_t value[8];
+        DWORD length = GetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", value, 8);
+        enabled = !(length == 1 && value[0] == L'0');
+    }
+    return enabled;
+}
+
+/* One thread's watchpoints, set while it is briefly suspended: 1 when they are. B.2 logs the values that were set. */
 static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
 {
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
-    if (thread == NULL) return 0;
+    if (thread == NULL)
+    {
+        NoteDiagnostic("difficulty: watchpoint install thread=%lu Dr0=0x0 Dr1=0x0 Dr2=0x0 Dr7=0x0 set=no (could not open the thread)", id);
+        return 0;
+    }
     int set = 0;
+    const char* why = "";
+    CONTEXT context = {0};
     if (SuspendThread(thread) != (DWORD)-1)
     {
-        CONTEXT context = {0};
         context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         if (GetThreadContext(thread, &context))
         {
@@ -427,17 +465,32 @@ static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
             context.Dr7 = (context.Dr7 & ~0xFF000Full) | 1 | 4 | (0xFull << 16) | (0xFull << 20); /* L0, L1: read/write, 4 bytes */
             if (record != 0) { context.Dr2 = record + 0x240; context.Dr7 = (context.Dr7 & ~0xF000030ull) | 0x10 | (0xFull << 24); } /* L2 */
             if (SetThreadContext(thread, &context)) set++;
+            else why = " (SetThreadContext failed)";
         }
+        else why = " (could not read its debug registers)";
         ResumeThread(thread);
     }
+    else why = " (could not suspend the thread)";
+    NoteDiagnostic("difficulty: watchpoint install thread=%lu Dr0=0x%llx Dr1=0x%llx Dr2=0x%llx Dr7=0x%llx set=%s%s", id,
+        (unsigned long long)context.Dr0, (unsigned long long)context.Dr1, (unsigned long long)context.Dr2,
+        (unsigned long long)context.Dr7, set ? "yes" : "no", why);
     CloseHandle(thread);
     return set;
 }
 
 static void FieldWatch(uintptr_t field)
 {
-    static int handler;
+    static int handler, notedOff;
     static uintptr_t record;
+    if (!FieldWatchEnabled())
+    {
+        if (!notedOff)
+        {
+            notedOff = 1;
+            NoteDiagnostic("difficulty: watchpoints are off (HELLFORGE_DIFFICULTY_FIELDWATCH=0): no thread is suspended, no debug register is set and no watchpoint handler is added");
+        }
+        return;
+    }
     if (field == g_fieldWatched && g_previewRecord == record) return;
     record = g_previewRecord;
     if (!handler) { AddVectoredExceptionHandler(1, FieldWatchHit); handler = 1; }

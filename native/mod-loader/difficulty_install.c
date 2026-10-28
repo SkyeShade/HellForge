@@ -33,27 +33,77 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
 
+/* B.2: the same steps by name, so a refusal says which one (and how many completed) kept their patches. */
+static const char* const kInstallStepNames[] = {
+    "AllocateTable", "PrepareExtraWidget", "PrepareIconStubs", "PrepareBarStubs", "PrepareObjectiveStubs", "PrepareLevelStubs",
+    "PrepareMarkerStubs", "PrepareMapStubs", "PrepareCellStubs", "PrepareRestartStubs", "PrepareZoneStubs", "PrepareLaunchStub",
+    "PrepareTimeStubs", "PrepareHoloStubs", "PrepareCardViewStub", "PrepareMapViewStub", "PrepareSpawnerStub", "PrepareTelemetryStub",
+    "PrepareCaptureStub", "PrepareUnreachableStub", "ProtectStubs",
+    "MakeLevelRow", "MoveTableReaders", "WidenObjectives", "MoveDistanceReaders", "MoveRosterWeights", "WidenCompositions",
+    "WidenMissionRanges", "InstallBoard", "InstallSpreadGuard", "InstallHashInsertGuard", "MixStep", "InstallGrant", "InstallRadar",
+    "MoveBandsAndIcons",
+    "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
+    "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid",
+    "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
+    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
+_Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
+    "every install step needs a name");
+#define DIF_STEP_COUNT (sizeof kInstallSteps / sizeof kInstallSteps[0])
+
+/* One step, and its line: done, or the refusal that leaves this step partly applied and every earlier one applied. */
+static const char* RunInstallStep(DifficultyInstall* d, size_t i)
+{
+    const char* why = kInstallSteps[i](d);
+    if (why == NULL) NoteDiagnostic("difficulty: install step %zu/%zu %s done; state 0", i + 1, DIF_STEP_COUNT, kInstallStepNames[i]);
+    else NoteDiagnostic("difficulty: install refused at step %zu/%zu %s: %s; %zu step(s) complete plus step %zu partial; state -1",
+        i + 1, DIF_STEP_COUNT, kInstallStepNames[i], why, i, i + 1);
+    return why;
+}
+
 /* Polled after GAME_LOADED until it returns 1: moves the table and adds level 11. pinsReady: the grace period for code
  * still being decoded is over. */
 static int InstallDifficulty(uintptr_t game, int pinsReady)
 {
     if (g_difficultyState != 0) return 1;
     if (!g_difficultyAdded) { g_difficultyState = 1; return 1; }
+    g_difficultyAttempts++;
     int waiting;
     const char* why = DifficultySitesFailed(game, &waiting);
-    if (why != NULL) return waiting || !pinsReady ? 0 : RefuseDifficulty(why);
-    DifficultyInstall d = {game};
-    for (size_t i = 0; i < sizeof kInstallSteps / sizeof kInstallSteps[0]; i++)
+    if (why != NULL)
     {
-        why = kInstallSteps[i](&d);
-        if (why != NULL) return RefuseDifficulty(why);
+        if (waiting || !pinsReady)
+        {
+            if (g_difficultyAttempts == 1)
+                NoteDiagnostic("difficulty: decode wait: first check at +%llu ms: %s", (unsigned long long)(GetTickCount64() - g_difficultySeen), why);
+            return 0;
+        }
+        NoteDiagnostic("difficulty: decode wait: first seen tick=%llu, pinsReady at +20000 ms, refused at +%llu ms after %d attempt(s), first failing check: %s",
+            (unsigned long long)g_difficultySeen, (unsigned long long)(GetTickCount64() - g_difficultySeen), g_difficultyAttempts, why);
+        NoteDiagnostic("difficulty: install refused at the checks before step 1/%zu: %s; 0 step(s) complete; state -1", DIF_STEP_COUNT, why);
+        return RefuseDifficulty(why);
+    }
+    NoteDiagnostic("difficulty: decode wait: first seen tick=%llu, pinsReady at +20000 ms, install started at +%llu ms after %d attempt(s)",
+        (unsigned long long)g_difficultySeen, (unsigned long long)(GetTickCount64() - g_difficultySeen), g_difficultyAttempts);
+    DifficultyInstall d = {game};
+    g_patchAuditOn = 1;
+    for (size_t i = 0; i < DIF_STEP_COUNT; i++)
+    {
+        why = RunInstallStep(&d, i);
+        if (why != NULL) { g_patchAuditOn = 0; return RefuseDifficulty(why); }
     }
     g_difficultyGame = game;
     g_restartWatch = d.watch;
     why = WidenDifficultyBounds(game);
-    if (why != NULL) return RefuseDifficulty(why);
+    g_patchAuditOn = 0;
+    if (why != NULL)
+    {
+        NoteDiagnostic("difficulty: install refused after step %zu/%zu WidenDifficultyBounds: %s; all %zu step(s) complete; state -1",
+            DIF_STEP_COUNT, DIF_STEP_COUNT, why, DIF_STEP_COUNT);
+        return RefuseDifficulty(why);
+    }
     g_difficultyTable = d.table;
     g_difficultyState = 1;
+    NoteDiagnostic("difficulty: install steps: all %zu done; WidenDifficultyBounds done; state 1", DIF_STEP_COUNT);
     HookText();
     NoteDifficulty(&d);
     return 1;

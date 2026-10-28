@@ -505,7 +505,7 @@ static const char* InstallBoard(DifficultyInstall* d)
     for (int i = 0; i < 3; i++)
     {
         uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
-        rel = (int32_t)((uintptr_t)(board + 0x80 * i) - (game + kBoardSites[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kBoardSites[i].site, (uintptr_t)(board + 0x80 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kBoardSites[i].site, jump, kBoardSites[i].length)) return "the war table's mission board could not be given level 11";
     }
     if (ApiWrite(game + DIF_BOARD_REGION_MAX + 1, &level, 4)) return "the regions' missions could not reach level 11";
@@ -517,16 +517,16 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
 {
     uintptr_t game = d->game;
     int32_t rel;
-    int32_t bandDisp = (int32_t)(int64_t)((uintptr_t)d->bands - game);
+    int32_t bandDisp = DifficultyDispRel("band", game + DIF_BAND_SITE + 4, (uintptr_t)d->bands, game);
     if (ApiWrite(game + DIF_BAND_SITE + 4, &bandDisp, 4)) return "the band sprites could not be moved";
     uint8_t iconCallNew[5] = {0xE8};
-    rel = (int32_t)((uintptr_t)d->iconStub - (game + DIF_ICON_CALL + 5));
+    rel = DifficultyJumpRel(game + DIF_ICON_CALL, (uintptr_t)d->iconStub);
     memcpy(iconCallNew + 1, &rel, 4);
     if (g_difficulty.icon != 0 && ApiWrite(game + DIF_ICON_CALL, iconCallNew, 5)) return "the difficulty icon setter could not be extended";
     for (int i = 0; i < 4 && g_difficulty.icon != 0; i++)
     {
         uintptr_t call = i == 0 ? game + DIF_HUD_ICON_CALL : game + kIconSites[i - 1].call;
-        rel = (int32_t)((uintptr_t)(d->iconChecks + 0x10 * i) - (call + 5));
+        rel = DifficultyJumpRel(call, (uintptr_t)(d->iconChecks + 0x10 * i));
         memcpy(iconCallNew + 1, &rel, 4);
         if (ApiWrite(call, iconCallNew, 5)) return "a difficulty icon reader could not be extended";
     }
@@ -535,7 +535,7 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
         uint8_t jump[32];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)d->barStubs[i] - (game + kBarSites[i].rva + 5));
+        rel = DifficultyJumpRel(game + kBarSites[i].rva, (uintptr_t)d->barStubs[i]);
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kBarSites[i].rva, jump, kBarSites[i].length)) return "the bar could not be given its 11th widget";
     }
@@ -546,9 +546,9 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
 static const char* JumpToMapView(DifficultyInstall* d)
 {
     uintptr_t game = d->game;
-    int32_t toOne = (int32_t)((uintptr_t)&d->viewValues[0] - (game + DIF_MAPVIEW_MIN + 9));
+    int32_t toOne = DifficultyDispRel("map view", game + DIF_MAPVIEW_MIN + 5, (uintptr_t)&d->viewValues[0], game + DIF_MAPVIEW_MIN + 9);
     uint8_t cap[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-    int32_t rel = (int32_t)((uintptr_t)d->viewStub - (game + DIF_MAPVIEW_CAP + 5));
+    int32_t rel = DifficultyJumpRel(game + DIF_MAPVIEW_CAP, (uintptr_t)d->viewStub);
     memcpy(cap + 1, &rel, 4);
     if (ApiWrite(game + DIF_MAPVIEW_MIN + 5, &toOne, 4) || ApiWrite(game + DIF_MAPVIEW_CAP, cap, sizeof cap))
         return "the war table's map view could not be widened";
@@ -564,13 +564,14 @@ static const char* JumpToCardStubs(DifficultyInstall* d)
     for (int i = 0; i < 9; i++)
     {
         uintptr_t site = game + kCardScales[i].rva;
-        int32_t disp = (int32_t)((uintptr_t)(d->watch + 0x48 + 4 * kCardScales[i].global) - (site + kCardScales[i].length));
+        int32_t disp = DifficultyDispRel("card", site + kCardScales[i].at,
+            (uintptr_t)(d->watch + 0x48 + 4 * kCardScales[i].global), site + kCardScales[i].length);
         if (ApiWrite(site + kCardScales[i].at, &disp, 4)) return "the mission card's markers could not be scaled";
     }
     uint8_t view[42];
     memset(view, 0x90, sizeof view);
     view[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)d->cardViewStub - (game + DIF_CARD_VIEW_SITE + 5));
+    rel = DifficultyJumpRel(game + DIF_CARD_VIEW_SITE, (uintptr_t)d->cardViewStub);
     memcpy(view + 1, &rel, 4);
     if (ApiWrite(game + DIF_CARD_VIEW_SITE, view, sizeof view)) return "the mission card's map view could not be widened";
     for (int i = 0; i < 4; i++)
@@ -578,7 +579,7 @@ static const char* JumpToCardStubs(DifficultyInstall* d)
         uint8_t jump[10];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)(d->holoStubs + 0x80 * i) - (game + kHoloStubs[i].site + 5));
+        rel = DifficultyJumpRel(game + kHoloStubs[i].site, (uintptr_t)(d->holoStubs + 0x80 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kHoloStubs[i].site, jump, kHoloStubs[i].length)) return "the war table hologram's mission scale could not be fitted";
     }
