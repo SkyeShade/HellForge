@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The snapshot seal's tests inject a synthetic Linux machine id, so they never read the real one. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="HellForge.Tests" />
+    <InternalsVisibleTo Include="HellForge.LocalBackend.Tests" />
+  </ItemGroup>
   <ItemGroup><EmbeddedResource Include="supported-build.json" />
     <EmbeddedResource Include="supported-languages.json" />
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />

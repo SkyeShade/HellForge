@@ -114,9 +114,12 @@ static class SteamAccountTests
                   playSession.Contains("Environment.SetEnvironmentVariable(SteamAccount.EnvironmentVariable", StringComparison.Ordinal),
                 "The session's own ownership probe does not adopt its account into the session environment.");
             var modsPage = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "ModsPage.cs"));
-            check(modsPage.Contains("SteamAccount.Current())", StringComparison.Ordinal) &&
+            check(modsPage.Contains("SteamAccount.Current()", StringComparison.Ordinal) &&
                   !modsPage.Contains("SteamAccount.Current(new InstallLayout", StringComparison.Ordinal),
                 "The Mods page starts a probe instead of using only a fresh account cache.");
+            check(modsPage.Contains("OperatingSystem.IsLinux() && account == null", StringComparison.Ordinal) &&
+                  modsPage.Contains("Premium items are checked against the signed-in Steam account when the session starts.", StringComparison.Ordinal),
+                "The Mods page shows premium content as locked when Linux has no fresh account.");
         });
 
         test("Every account consumer goes through SteamAccount, and the probe's private file stays out of the report", () =>

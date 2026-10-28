@@ -22,6 +22,10 @@ static class AccountSyncTests
 
     public static void Run(string root, Action<bool, string> check)
     {
+        // The Linux snapshot seal uses this synthetic machine id; the real /etc/machine-id is never read.
+        var machineId = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-id")).FullName, "seal-test");
+        File.WriteAllText(machineId, "0123456789abcdef0123456789abcdef\n");
+        SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
         var paid = PaidContentSet.Load();
         var ids = FindIds(paid);
         PremiumRules(paid, ids, check);
@@ -68,7 +72,6 @@ static class AccountSyncTests
     // A hand-edited profile may list an item twice; an import must still work and keep one entry per item it touches.
     static void DuplicateItems(string root, Ids ids, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
         var (profileDir, _) = Install(root, "duplicates", ids);
         using (ProfileStore.Open(profileDir, "starter")) { }
         var file = Path.Combine(profileDir, ProfileStore.FileName);
@@ -155,7 +158,6 @@ static class AccountSyncTests
 
     static void Seals(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
         var (_, snapshot) = Install(root, "seals", ids);
         var owned = OwnershipFilter.ForSnapshot(paid, snapshot, Player, out var problem);
         check(problem == null && owned.OwnedPaidCount == 3, "A sealed snapshot did not unlock its premium items: " + problem);
@@ -201,7 +203,6 @@ static class AccountSyncTests
 
     static void Imports(string root, Ids ids, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
         var (profileDir, _) = Install(root, "imports", ids);
         long beforeVanillaXp;
         using (var store = ProfileStore.Open(profileDir, "starter"))
@@ -265,7 +266,6 @@ static class AccountSyncTests
     // snapshot's: the free warbond and the one whose token it holds; another warbond's items are never unlocked.
     static void WarbondChoices(string root, PaidContentSet paid, Ids ids, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
         var owned = paid.OwnedWarbonds(new HashSet<uint> { ids.OwnedToken }).ToList();
         check(owned.Count == 2 && owned.Any(w => w.Tokens.Length == 0) && owned.Any(w => w.Tokens.Contains(ids.OwnedToken)),
             "Owned warbonds are not the free one and the one whose token the snapshot holds.");

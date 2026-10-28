@@ -188,7 +188,8 @@ public static class InventorySync
     {
         if (ReadInventory(Path.Combine(syncDir, InventoryFile), out var items) is { } inventoryProblem) return inventoryProblem;
         if (ReadProgression(Path.Combine(syncDir, ProgressionFile), out var experience) is { } progressionProblem) return progressionProblem;
-        if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir)) == null) return "The capture is not sealed for this PC. Sync again.";
+        if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir), out var sealProblem) == null)
+            return sealProblem ?? "The capture is not sealed for this PC. Sync again.";
         // A capture without progression is a failed sync: the last complete snapshot keeps the level and unlocks it imported.
         if (!File.Exists(Path.Combine(syncDir, ProgressionFile)) && ReadMetadata(snapshotDir) is { Progression: true } kept)
             return "The capture got your inventory but not your progression, and the snapshot from " +

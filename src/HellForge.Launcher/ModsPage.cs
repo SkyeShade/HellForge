@@ -106,6 +106,8 @@ public partial class MainWindow
     {
         modDrag = null;
         premiumOwnership = null;
+        premiumAccountRead = false;
+        premiumChecksAtSession = false;
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -440,33 +442,51 @@ public partial class MainWindow
         if (mod.Stats.Count > 0) tags.Add(("STATS", "#9B85FF"));
         if (mod.HasDataSpec || mod.DataFiles.Count > 0) tags.Add(("DATA", "#5FD08A"));
         if (mod.Archive != null) tags.Add(("ZIP", "#9AA0A8"));
-        if (mod.Premium.Count > 0) tags.Add((PremiumMissing(mod).Count > 0 ? "PREMIUM: LOCKED" : "PREMIUM", "#FFC72C"));
+        if (mod.Premium.Count > 0) tags.Add(PremiumTag(mod));
         return tags;
     }
 
+    (string Label, string Colour) PremiumTag(ModManifest mod)
+    {
+        var missing = PremiumMissing(mod);
+        return premiumChecksAtSession ? ("PREMIUM: CHECK AT SESSION", "#9AA0A8")
+            : missing.Count > 0 ? ("PREMIUM: LOCKED", "#FFC72C") : ("PREMIUM", "#FFC72C");
+    }
+
     // What of a mod's premium list the selected profile's synced account lacks (HellForge.Core PremiumContent): what a
-    // session will lock. Read once per refresh of the page. Current() without an installation never starts a probe; with
-    // no fresh account cached, ForSnapshot treats the snapshot as another account's and every premium item shows locked.
+    // session will lock. Read once per refresh of the page. Current() without an installation never starts a probe. On
+    // Linux no fresh account is not "locked": the session's ownership check may supply one, so the page says it will
+    // check then. A known account that differs still shows the locked state.
     PremiumContent? premiumOwnership;
+    bool premiumAccountRead, premiumChecksAtSession;
     IReadOnlyList<string> PremiumMissing(ModManifest mod)
     {
         if (mod.Premium.Count == 0) return [];
-        premiumOwnership ??= File.Exists(paths.ProgressionFile) && paths.InstallRoot != null
-            ? PremiumContent.ForSnapshot(paths.ProgressionFile, InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name), SteamAccount.Current())
-            : PremiumContent.Nothing;
-        return premiumOwnership.Missing(mod.Premium);
+        if (!premiumAccountRead)
+        {
+            premiumAccountRead = true;
+            var account = SteamAccount.Current();
+            premiumChecksAtSession = OperatingSystem.IsLinux() && account == null;
+            premiumOwnership = File.Exists(paths.ProgressionFile) && paths.InstallRoot != null
+                ? PremiumContent.ForSnapshot(paths.ProgressionFile, InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name), account)
+                : PremiumContent.Nothing;
+        }
+        return premiumChecksAtSession ? [] : premiumOwnership!.Missing(mod.Premium);
     }
 
     void AddPremiumDetails(StackPanel details, ModManifest mod)
     {
         if (mod.Premium.Count == 0) return;
-        details.Children.Add(new TextBlock { Text = PremiumText(mod), FontSize = 12, Foreground = PremiumMissing(mod).Count > 0 ? Gold : Light, TextWrapping = TextWrapping.Wrap });
+        var missing = PremiumMissing(mod);
+        details.Children.Add(new TextBlock { Text = PremiumText(mod), FontSize = 12, Foreground = premiumChecksAtSession || missing.Count == 0 ? Light : Gold,
+            TextWrapping = TextWrapping.Wrap });
     }
 
     string PremiumText(ModManifest mod)
     {
         var missing = PremiumMissing(mod);
         var builds = "Built on " + string.Join(", ", mod.Premium.Select(PremiumContent.Describe)) + ". ";
+        if (premiumChecksAtSession) return builds + "Premium items are checked against the signed-in Steam account when the session starts.";
         if (missing.Count == 0) return builds + "Your synced account owns it, so everything this mod adds is yours to use.";
         return builds + "Profile " + Selected.Name + "'s synced account lacks " + string.Join(", ", missing.Select(PremiumContent.Describe)) +
             (mod.Cosmetic ? ": this mod is not loaded for it." : ": the mod loads, but its weapons and stratagems stay locked.") +
