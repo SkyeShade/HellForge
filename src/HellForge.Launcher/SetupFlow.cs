@@ -79,17 +79,7 @@ public partial class MainWindow
         };
         if (OperatingSystem.IsLinux())
         {
-            InstallCard.IsVisible = true;
-            var complete = SupportedBuild.Current.IsComplete(install.Game);
-            InstallText.Text = complete
-                ? $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}. Native setup and repair are available."
-                : $"{Privacy.Scrub(install.Root)}  ·  Complete setup natively with Steam for Linux.";
-            UninstallButton.IsVisible = true;
-            UninstallConfirmButton.Content = "Uninstall this installation";
-            UninstallDescription.Text = "Uninstall removes this HellForge installation, its desktop shortcut and the removed shell installer's leftovers when they are found, after the launcher closes. The Proton prefix is left unless this installer made it, in which case the confirmation also offers to delete it. Steam's depot download is a separate choice, off by default. Steam, your game and your Proton versions are left intact.";
-            DesktopShortcutBox.IsVisible = StartMenuShortcutBox.IsVisible = ImportBox.IsVisible = false;
-            SetupIntro.Text = "Choose a Proton version first. Setup finds the supported game files, confirms Steam ownership, then copies the game if needed and checks the Linux network namespace.";
-            if (!complete) EnterSetup(repair: false);
+            InitializeLinuxSetup(install);
             return;
         }
         ImportBox.IsVisible = Directory.Exists(Path.Combine(EarlierGameData, "profiles")) || File.Exists(Path.Combine(EarlierGameData, "user_settings.config"));
@@ -98,7 +88,7 @@ public partial class MainWindow
         if (!SupportedBuild.Current.IsComplete(install.Game)) EnterSetup(repair: false);
     }
 
-    void EnterSetup(bool repair)
+    void EnterSetup(bool repair, string? reason = null)
     {
         if (runner.IsRunning) return;
         InstallLayout? install = null;
@@ -123,6 +113,7 @@ public partial class MainWindow
         SetupStartButton.IsVisible = true;
         SetupTitle.Text = repair ? "Check and repair" : "Set up HellForge";
         SetupStartButton.Content = repair ? "Check and repair" : "Start setup";
+        if (reason != null) SetupIntro.Text = reason;
         for (var i = 0; i < setupRows.Count; i++) SetRow((SetupStep)i, null, "");
         if (install != null) _ = DiscoverProtons(install, discovery);
     }
@@ -236,7 +227,7 @@ public partial class MainWindow
                 step = SetupStep.Shortcuts;
                 await ShortcutsStep(install);
             }
-            ReadyToPlay();
+            ReadyToPlay(install);
         }
         catch (OperationCanceledException)
         {
@@ -363,7 +354,7 @@ public partial class MainWindow
         SetRow(SetupStep.Import, true, "Skipped on Linux.");
         CreateLinuxDesktopShortcut(install);
         await SyncBundledMods(install);
-        ReadyToPlay();
+        ReadyToPlay(install);
     }
 
     // Checks Steam, the selected Proton version and the Linux setup files, then installs the engine package. Returns
@@ -387,8 +378,19 @@ public partial class MainWindow
     async Task<LinuxSetupSource> FindLinuxGame(InstallLayout install, string steamRoot, SupportedBuild build)
     {
         SetRow(SetupStep.Find, null, "Checking the existing HellForge game folder...", running: true);
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            throw new SetupStopped("The SDK stand-ins left by an interrupted session could not be restored: " + error.Message);
+        }
+        var audit = GameDataAudit.Quarantine(install, build);
+        if (audit.Problems.Count > 0)
+            throw new SetupStopped("The game copy has a data file that cannot be used: " + audit.Problems[0]);
+        if (audit.Extras.Count > 0)
+            Append("Moved extra game data files out of game/data: " + string.Join(", ", audit.Extras), Orange);
+        // Check and repair is the full check: it does not trust the size and time cache that may have accepted the file.
         if (await Task.Run(() => build.IsComplete(install.Game) &&
-            build.Verify(install.Game, install.VerifyCache).Count == 0))
+            build.Verify(install.Game).Count == 0))
         {
             SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} already verified in {Privacy.Scrub(install.Game)}");
             return new(build, steamRoot, true, false, null, Path.Combine(install.Game, "bin", "steam_api64.dll"));
@@ -727,18 +729,6 @@ public partial class MainWindow
         var made = CreateShortcuts(install);
         SetRow(SetupStep.Shortcuts, true, made.Count > 0 ? string.Join(", ", made) : "Skipped.");
         await SyncBundledMods(install); // with the game copied: the editor's icons and fonts, Hell Forge's icon
-    }
-
-    // Setup is done: the highlighted button on the right always moves forward, which here is Continue. Checking again
-    // stays available under Settings > Installation.
-    void ReadyToPlay()
-    {
-        SetupTitle.Text = "Ready to play";
-        SetupStartButton.IsVisible = false;
-        SetupBackButton.Content = "Continue";
-        SetBackButtonPrimary(true);
-        SetupBackButton.IsVisible = true;
-        Nav.IsVisible = true;
     }
 
     // From Steam's installed game (source), or from its depot downloads when source is null.

@@ -72,6 +72,7 @@
               <StackPanel Grid.Column="1" Spacing="6">
                 <TextBlock x:Name="StatusText" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" />
                 <SelectableTextBlock x:Name="FailureText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
+                <Button x:Name="GameRepairButton" Classes="ghost" Content="Check and repair" HorizontalAlignment="Left" IsVisible="False" />
                 <TextBlock x:Name="HintText" Classes="muted" TextWrapping="Wrap" />
                 <ProgressBar x:Name="BootProgress" Classes="detail" Minimum="0" Maximum="1000" IsVisible="False" Margin="0,6,0,0" />
                 <!-- After a session that ended in a crash (CrashReport): one zip for a GitHub issue, saved to the Desktop -->
@@ -113,10 +114,23 @@
             </StackPanel>
           </Border>
 
-          <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
-          <Border x:Name="ModSyncCard" Grid.Row="3" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
-            <StackPanel x:Name="ModSyncPanel" Spacing="8" />
-          </Border>
+          <StackPanel Grid.Row="3">
+            <!-- Linux can leave a game or anti-cheat process behind when a session is force-ended. -->
+            <Border x:Name="LeftoverProcessesCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel Spacing="8">
+                <TextBlock x:Name="LeftoverProcessesText" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button x:Name="EndLeftoverProcessesButton" Classes="danger" Content="End these processes" />
+                  <Button x:Name="DismissLeftoverProcessesButton" Classes="ghost" Content="Not now" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
+            <Border x:Name="ModSyncCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel x:Name="ModSyncPanel" Spacing="8" />
+            </Border>
+          </StackPanel>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel VerticalAlignment="Bottom" Spacing="4" Margin="0,0,24,4">

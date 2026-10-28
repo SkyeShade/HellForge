@@ -9,6 +9,9 @@ namespace HellForge.Session;
 // What a session step failed on: the message is the session's failure (result.json), as the script's throws were.
 sealed class SessionFailure(string message) : Exception(message);
 
+// A stop the player asked for, rather than a failure: the result ends as an observed (ended) session.
+sealed class SessionStopped : Exception { }
+
 static class Tools
 {
     public static string PowerShell => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");

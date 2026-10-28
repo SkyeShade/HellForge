@@ -12,28 +12,42 @@ sealed partial class PlaySession
 {
     void CleanUp()
     {
-        StopGameJob();
-        CopyEngineLogs();
-        StopBrokerAndBackend();
-        FinishApplier();
-        RecordBackendRequests();
-        if (gameStarted != null)
-            Try("networkCensusError", () =>
-            {
-                var census = Path.Combine(gameOut, CensusLog);
-                if (OperatingSystem.IsLinux()) census = LocalInstall.NoLinks(census, gameOut);
-                result["networkCensus"] = NetworkCensus.Summarize(census);
-            });
-        if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
-        ReleaseHolds();
-        RestoreStandIns();
-        RestoreGameGuardLogs();
-        CheckHashes();
-        CheckPlantedMods();
-        SandboxCopyBack();
-        lease?.Dispose();
-        result["completedUtc"] = DateTime.UtcNow.ToString("o");
-        Save();
+        try
+        {
+            StopGameJob();
+            CopyEngineLogs();
+            StopBrokerAndBackend();
+            FinishApplier();
+            RecordBackendRequests();
+            if (gameStarted != null)
+                Try("networkCensusError", () =>
+                {
+                    var census = Path.Combine(gameOut, CensusLog);
+                    if (OperatingSystem.IsLinux()) census = LocalInstall.NoLinks(census, gameOut);
+                    result["networkCensus"] = NetworkCensus.Summarize(census);
+                });
+            if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
+            Try("releaseHoldsError", ReleaseHolds);
+            RestoreStandIns();
+            RestoreGameGuardLogs();
+            CheckHashes();
+            CheckPlantedMods();
+            SandboxCopyBack();
+        }
+        catch (Exception error)
+        {
+            // No clean-up step should get this far, but a result that says cleanup was incomplete is still a result.
+            result["cleanupError"] = error.Message;
+            Say("Cleanup stopped early: " + error.Message);
+        }
+        finally
+        {
+            try { lease?.Dispose(); }
+            catch (Exception error) { result["leaseDisposeError"] = error.Message; }
+            result["completedUtc"] = DateTime.UtcNow.ToString("o");
+            try { Save(); }
+            catch (Exception error) { Say("The final result could not be written: " + error.Message); }
+        }
     }
 
     // Runs one clean-up step, recording its error in the result instead of throwing (clean-up carries on).
@@ -49,10 +63,32 @@ sealed partial class PlaySession
     {
         if (job != null && result["gameExitCode"] == null)
             Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
-        if (job != null)
-            try { job.Stop(); result["jobEmpty"] = job.ActiveProcesses == 0; }
-            catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
-            finally { job.Dispose(); }
+        if (job == null) return;
+        var current = job;
+        // TerminateJobObject normally returns at once. If it does not, cleanup must still finish and write its result.
+        var stop = Task.Run(() => current.Stop());
+        bool completed;
+        try { completed = stop.Wait(TimeSpan.FromSeconds(10)); }
+        catch (AggregateException error)
+        {
+            result["jobStopError"] = error.InnerException?.Message ?? error.Message;
+            try { current.Dispose(); }
+            catch (Exception disposeError) when (disposeError is System.ComponentModel.Win32Exception or InvalidOperationException) { result["jobDisposeError"] = disposeError.Message; }
+            return;
+        }
+        if (!completed)
+        {
+            result["jobStopTimeout"] = true;
+            Say("Stopping the game job is taking longer than 10 seconds; cleanup goes on without it.");
+            return;
+        }
+        try { result["jobEmpty"] = current.ActiveProcesses == 0; }
+        catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
+        finally
+        {
+            try { current.Dispose(); }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { result["jobDisposeError"] = error.Message; }
+        }
     }
 
     void CopyEngineLogs()

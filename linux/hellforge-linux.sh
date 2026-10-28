@@ -239,7 +239,7 @@ state_lock=0
 if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   backend="$INSTALL/app/backend/HellForge.LocalBackend.exe"
   cache="Z:$(printf '%s' "$INSTALL/live-war.json" | tr '/' '\\')"
-  if timeout 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&- 1>&2; then echo "Fetched the live galactic war." >&2
+  if timeout -k 10 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&- 1>&2; then echo "Fetched the live galactic war." >&2
   else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
   # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
@@ -262,7 +262,7 @@ if [ -n "$pin" ] && ! zigReady; then
   else
     echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..." >&2
     root="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
-    timeout 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null 9>&- || true
+    timeout -k 10 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null 9>&- || true
     for _ in $(seq 1 900); do pgrep -f "HellForge.Cli.exe mod-tools" >/dev/null || break; sleep 1; done
     if zigReady; then echo "Fetched the mod tools." >&2
     else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
@@ -273,7 +273,7 @@ if [ -n "$nativePin" ] && ! nativeZigReady; then
     echo "Skipping the native mod-tools download for the Steam ownership check." >&2
   elif [ -x "$cliNative" ]; then
     echo "Fetching the native Linux mod tools (Zig, about 55 MB, once) to build source mods..." >&2
-    timeout 900 "$cliNative" mod-tools --install "$INSTALL" --ide no >/dev/null 9>&- || true
+    timeout -k 10 900 "$cliNative" mod-tools --install "$INSTALL" --ide no >/dev/null 9>&- || true
     if nativeZigReady; then echo "Fetched the native Linux mod tools." >&2
     else echo "Could not fetch the native Linux mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi
   else
@@ -315,7 +315,7 @@ if session_command "$@"; then
     echo "Skipping the source-mod build." >&2
   elif [ -x "$cliNative" ]; then
     echo "Building the enabled source mods with the native Linux Zig..." >&2
-    timeout 1800 "$cliNative" build-source-mods --install "$INSTALL" 9>&- >&2 || echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
+    timeout -k 10 1800 "$cliNative" build-source-mods --install "$INSTALL" 9>&- >&2 || echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
   else
     echo "The native Linux build agent is missing (app/cli-linux/HellForge.Cli); source mods stay off." >&2
   fi
