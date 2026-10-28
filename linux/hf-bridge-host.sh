@@ -13,14 +13,29 @@ dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 ports=$(ss -Htlnp 2>/dev/null | awk '/users:\(\("steam",/ && $4 ~ /^127\.0\.0\.1:/ {sub(/.*:/,"",$4); print $4}' | sort -un)
 [ -n "$ports" ] || { echo "no loopback ports found for the steam process; is Steam running?" >&2; exit 1; }
 
-rm -f "$dir"/hf-steam-*.sock
+# Remove stale sockets only: one another live bridge answers on is left in place.
+socket_answers() { [ -S "$1" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$1" 2>/dev/null; }
+for s in "$dir"/hf-steam-*.sock; do
+  [ -S "$s" ] || continue
+  socket_answers "$s" || rm -f "$s"
+done
 pids=()
-cleanup() { kill "${pids[@]}" 2>/dev/null || true; rm -f "$dir"/hf-steam-*.sock; }
-trap cleanup EXIT INT TERM
+sockets=()
+cleanup() {
+  kill "${pids[@]}" 2>/dev/null || true
+  [ "${#sockets[@]}" -eq 0 ] || rm -f "${sockets[@]}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 for p in $ports; do
-  socat UNIX-LISTEN:"$dir/hf-steam-$p.sock",fork,mode=600 TCP:127.0.0.1:"$p",nodelay &
+  sock="$dir/hf-steam-$p.sock"
+  socket_answers "$sock" && continue
+  rm -f "$sock"
+  socat UNIX-LISTEN:"$sock",fork,mode=600 TCP:127.0.0.1:"$p",nodelay &
   pids+=($!)
+  sockets+=("$sock")
   echo "bridging Steam loopback port $p"
 done
 echo "Bridge running. Leave this open; Ctrl-C stops it."

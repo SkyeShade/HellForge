@@ -17,8 +17,8 @@ check and Steam folder search in `hellforge-linux.sh`, follow NO LONGER NEEDED D
 - About 50 GB of free space while setting up: Steam's download of the supported build and HellForge's copy of the game
   are about 24 GB each. Setup deletes the download after copying unless you untick that.
 - `HellForge-Linux.zip` from the HellForge release package. It contains the app but no game files.
-- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` (from util-linux), `pgrep` (from procps) and
-  `bsdtar`. `bsdtar` is needed only to add `.7z` or `.rar` mods.
+- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from
+  procps) and `bsdtar`. `bsdtar` is needed only to add `.7z` or `.rar` mods.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
@@ -143,8 +143,9 @@ HellForge's local files. Do not start a session runner directly through Proton o
 | `STEAM_COMPAT_DATA_PATH` | the prefix the installation is in (the part of its path before `/pfx/drive_c/`); for an installation outside a prefix, HELLDIVERS 2's prefix, `steamapps/compatdata/553850` |
 | `STEAM_COMPAT_APP_ID` | `553850` (HELLDIVERS 2), unless explicitly set otherwise |
 
-It starts the bridge to Steam itself and stops it when the wrapped program closes. A bridge already running
-(`hf-bridge-host.sh`) is used as it is.
+`hellforge-linux.sh` starts a bridge to Steam when none is running. Sessions that run at the same time share it, and
+the last one to close stops it. A bridge started by hand with `hf-bridge-host.sh` is used as it is, and HellForge never
+stops it.
 
 Another launcher (a mod manager, [external-launchers.md](external-launchers.md)) starts sessions through the same
 script. It passes the Windows program to run in place of HellForge.exe, for example
