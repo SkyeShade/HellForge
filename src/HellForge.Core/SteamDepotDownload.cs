@@ -22,8 +22,12 @@ public static class SteamDepotDownload
     // <Steam>/steamapps/content (GitHub issue 11).
     static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64"];
 
-    static IEnumerable<string> ContentFolders(string steamRoot, SupportedBuild build) =>
-        [ContentFolder(steamRoot, build), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps", "content", "app_" + build.AppId))];
+    // Steam's steamapps folders: its own and the ones under the client folders its download_depot runs from.
+    public static IReadOnlyList<string> SteamAppsFolders(string steamRoot) =>
+        [Path.Combine(steamRoot, "steamapps"), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps"))];
+
+    public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
+        [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
 
     // The depot's folder: the first place Steam put it, else the usual one (while nothing is there yet).
     public static string DepotFolder(string steamRoot, SupportedBuild build, uint depot) =>
@@ -55,17 +59,63 @@ public static class SteamDepotDownload
 
     public static bool IsComplete(string steamRoot, SupportedBuild build) => Status(steamRoot, build).All(depot => depot.Complete);
 
-    // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it).
-    public static void Delete(string steamRoot, SupportedBuild build)
+    // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it). With
+    // callbacks, a failed path is reported and the rest are still attempted; without one, a failure is thrown as before.
+    // On Linux a depot folder that is a link is refused, never followed or removed.
+    public static void Delete(string steamRoot, SupportedBuild build, Action<string, Exception>? failed = null,
+        Action<string>? removed = null)
     {
         foreach (var app in ContentFolders(steamRoot, build))
         {
             foreach (var depot in build.Depots)
-            {
-                var folder = Path.Combine(app, "depot_" + depot.Id);
-                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
-            }
-            if (Directory.Exists(app) && !Directory.EnumerateFileSystemEntries(app).Any()) Directory.Delete(app);
+                DeleteFolder(Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteEmptyApp(app, failed, removed);
         }
+    }
+
+    static void DeleteFolder(string folder, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(folder)) return;
+        try
+        {
+            RefuseLinks(folder);
+            RefuseLinksBelow(folder);
+            Directory.Delete(folder, recursive: true);
+            removed?.Invoke(folder);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(folder, error);
+        }
+    }
+
+    static void DeleteEmptyApp(string app, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(app)) return;
+        try
+        {
+            RefuseLinks(app);
+            if (Directory.EnumerateFileSystemEntries(app).Any()) return;
+            Directory.Delete(app);
+            removed?.Invoke(app);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(app, error);
+        }
+    }
+
+    // Linux uninstall refuses links so a depot download can never lead outside Steam's folders. Windows keeps its old
+    // behaviour.
+    static void RefuseLinks(string path)
+    {
+        if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path);
+    }
+
+    static void RefuseLinksBelow(string path)
+    {
+        if (OperatingSystem.IsLinux()) LocalInstall.NoLinksBelow(path);
     }
 }
