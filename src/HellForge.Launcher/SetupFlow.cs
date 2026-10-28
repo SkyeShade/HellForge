@@ -468,23 +468,34 @@ public partial class MainWindow
         var launcher = Path.Combine(install.App, "launcher-linux", "HellForge.Launcher");
         if (!File.Exists(launcher)) throw new SetupStopped("The native Linux launcher is missing: " + launcher);
         var executable = LocalInstall.FullPath(launcher);
-        if (executable.Contains('\n') || executable.Contains('\r'))
-            throw new InvalidDataException("The launcher path cannot be represented in a desktop shortcut.");
-        var desktop = Path.GetDirectoryName(LinuxDesktopShortcutPath())!;
-        Directory.CreateDirectory(desktop);
-        var shortcut = LinuxDesktopShortcutPath();
         try
         {
-            if ((File.GetAttributes(shortcut) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("The desktop shortcut path is a link; remove it and run setup again.");
+            if (executable.Contains('\n') || executable.Contains('\r'))
+                throw new InvalidDataException("The launcher path cannot be represented in a desktop shortcut.");
+            var desktop = Path.GetDirectoryName(LinuxDesktopShortcutPath())!;
+            Directory.CreateDirectory(desktop);
+            var shortcut = LinuxDesktopShortcutPath();
+            try
+            {
+                if ((File.GetAttributes(shortcut) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("The desktop shortcut path is a link; remove it and run setup again.");
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            File.WriteAllText(shortcut,
+                "[Desktop Entry]\nType=Application\nName=HellForge\nComment=HellForge native Linux launcher\n" +
+                LinuxDesktopExecLine(executable) + "\nTerminal=false\nCategories=Game;\n");
+            File.SetUnixFileMode(shortcut, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
-        catch (FileNotFoundException) { }
-        catch (DirectoryNotFoundException) { }
-        File.WriteAllText(shortcut,
-            "[Desktop Entry]\nType=Application\nName=HellForge\nComment=HellForge native Linux launcher\n" +
-            LinuxDesktopExecLine(executable) + "\nTerminal=false\nCategories=Game;\n");
-        File.SetUnixFileMode(shortcut, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-            UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // The installation is complete and usable without a shortcut: report the shortcut on its own row and let setup finish.
+            SetRow(SetupStep.Shortcuts, false, "The desktop shortcut could not be created: " + Privacy.Scrub(error.Message) +
+                " HellForge is installed; start it from " + Privacy.Scrub(executable) + ".");
+            Append("Could not create the desktop shortcut: " + error.Message, Red);
+            return;
+        }
         SetRow(SetupStep.Shortcuts, true, "Desktop shortcut created. Your desktop may ask you to allow launching it.");
     }
 
