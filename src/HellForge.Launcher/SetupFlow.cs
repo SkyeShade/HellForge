@@ -256,78 +256,25 @@ public partial class MainWindow
         }
     }
 
-    async Task RunLinuxSetup(InstallLayout install, string proton, Action<SetupStep> reportStep)
+    // What Linux setup found for the copy: the supported build, Steam's root, whether this installation's own copy or
+    // Steam's depot download already holds it, and the copy's source folder and steam_api64.dll for the ownership check.
+    sealed record LinuxSetupSource(SupportedBuild Build, string SteamRoot, bool ExistingGame, bool FromDepots, string? Source, string? SteamApi);
+
+    // Confirms Steam ownership with the probe through the selected Proton version. The evidence file decides; a failed
+    // check throws SetupStopped with the probe's reason.
+    async Task CheckLinuxOwnership(InstallLayout install, string proton, string wrapper, string probe, LinuxSetupSource game)
     {
-        var step = SetupStep.Find;
-        void SetStep(SetupStep current)
-        {
-            step = current;
-            reportStep(current);
-        }
-
-        SetRow(step, null, "Checking Steam, Proton and the engine package...", running: true);
-        var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam was not found. Start Steam and sign in, then try setup again.");
-        if (!File.Exists(proton)) throw new SetupStopped("The selected Proton version is no longer installed. Choose another version and try again.");
-        var wrapper = Path.Combine(install.App, "linux", "hellforge-linux.sh");
-        var package = Path.Combine(install.App, "engine-package.zip");
-        var probe = Path.Combine(install.App, "steamprobe", "HellForge.SteamProbe.exe");
-        if (!File.Exists(wrapper) || !File.Exists(package) || !File.Exists(probe))
-            throw new SetupStopped("The Linux setup files are missing. Update HellForge so app/linux, app/engine-package.zip and app/steamprobe are installed.");
-        await Task.Run(() => EnginePackageInstaller.Install(install));
-
-        var build = SupportedBuild.Current;
-        var fromDepots = false;
-        var existingGame = false;
-        string? source = null;
-        string? steamApi = null;
-        SetRow(step, null, "Checking the existing HellForge game folder...", running: true);
-        if (await Task.Run(() => build.IsComplete(install.Game) &&
-            build.Verify(install.Game, install.VerifyCache).Count == 0))
-        {
-            existingGame = true;
-            steamApi = Path.Combine(install.Game, "bin", "steam_api64.dll");
-            SetRow(step, true, $"Supported build {build.BuildId} already verified in {Privacy.Scrub(install.Game)}");
-        }
-        else
-        {
-            SteamGame? game;
-            string? unusable = null;
-            try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
-            catch (Exception error) when (error is InvalidDataException or IOException) { game = null; unusable = error.Message; }
-
-            if (game is { SupportedBuild: true })
-            {
-                source = game.Report.Source;
-                steamApi = Path.Combine(source, "bin", "steam_api64.dll");
-                SetRow(step, true, $"Supported build {game.Report.Pin.BuildId} in {source}");
-            }
-            else if (await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build)))
-            {
-                fromDepots = true;
-                steamApi = SteamDepotDownload.Locate(steamRoot, build, build.Files.Single(file => file.Path == "bin/steam_api64.dll"));
-                SetRow(step, true, $"Supported build {build.BuildId} downloaded by Steam into {SteamDepotDownload.ContentFolder(steamRoot, build)}");
-            }
-            else
-            {
-                ShowDownload(steamRoot, game == null
-                    ? unusable == null ? "no supported game build" : "an unusable HELLDIVERS 2 installation"
-                    : $"unsupported HELLDIVERS 2 build {game.Report.Pin.BuildId}");
-                throw new SetupWaiting("Steam needs to finish downloading the three supported-build depots before setup can continue.");
-            }
-        }
-
-        SetStep(SetupStep.Ownership);
-        SetRow(step, null, "Confirming Steam ownership through Proton...", running: true);
+        SetRow(SetupStep.Ownership, null, "Confirming Steam ownership through Proton...", running: true);
         var evidence = Path.Combine(install.Logs, "setup-ownership.json");
         var checkStarted = DateTime.UtcNow;
         if (File.Exists(evidence)) File.Delete(evidence);
         int exit;
         string errorMessage;
-        var ownershipSteamApi = steamApi ?? throw new InvalidDataException("The supported build's Steam API library was not found.");
+        var ownershipSteamApi = game.SteamApi ?? throw new InvalidDataException("The supported build's Steam API library was not found.");
         try
         {
             var request = new SteamOwnershipCheck.LinuxProbeRequest(wrapper, proton, install.Root,
-                WinePath.PrefixFromInstallRoot(install.Root), steamRoot, probe, ownershipSteamApi,
+                WinePath.PrefixFromInstallRoot(install.Root), game.SteamRoot, probe, ownershipSteamApi,
                 Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(60));
             exit = await Task.Run(() => SteamOwnershipCheck.RunProbeThroughLinuxWrapper(request));
             errorMessage = "";
@@ -338,6 +285,23 @@ public partial class MainWindow
             throw new SetupStopped("The ownership check did not pass: " +
                 (errorMessage.Length > 0 ? errorMessage : $"exit code {exit}.") +
                 " Make sure Steam is running and signed in to an account that owns HELLDIVERS 2.");
+    }
+
+    async Task RunLinuxSetup(InstallLayout install, string proton, Action<SetupStep> reportStep)
+    {
+        var step = SetupStep.Find;
+        void SetStep(SetupStep current)
+        {
+            step = current;
+            reportStep(current);
+        }
+
+        var (steamRoot, wrapper, probe) = await CheckLinuxSetupFiles(install, proton);
+        var build = SupportedBuild.Current;
+        var game = await FindLinuxGame(install, steamRoot, build);
+
+        SetStep(SetupStep.Ownership);
+        await CheckLinuxOwnership(install, proton, wrapper, probe, game);
 
         setupCancel = new();
         var token = setupCancel.Token;
@@ -352,38 +316,119 @@ public partial class MainWindow
             : "Steam confirmed ownership. Optional mod tools could not be downloaded; see logs/linux-session-wrapper.log.");
 
         SetStep(SetupStep.Copy);
-        string copied;
-        if (existingGame)
-            copied = $"{build.Files.Count} existing files ({build.TotalBytes / 1e9:0.0} GB) verified against Steam's hashes; no download or copy needed.";
-        else
-        {
-            SetRow(step, null, "Copying and verifying game files...", running: true);
-            await CopyGame(source, steamRoot, install);
-            token.ThrowIfCancellationRequested();
-            copied = $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), each verified against Steam's hashes.";
-        }
-        if (fromDepots && DeleteDownloadBox.IsChecked == true)
-        {
-            SetRow(step, null, copied + " Deleting Steam's download...", running: true);
-            await Task.Run(() => SteamDepotDownload.Delete(steamRoot, build), token);
-            copied += " Steam's download was deleted.";
-        }
-        DownloadCard.IsVisible = false;
-        SetRow(step, true, copied);
+        await CopyLinuxGame(install, game, token);
 
         SetStep(SetupStep.NetworkBlock);
-        SetRow(step, null, "Checking the offline network namespace...", running: true);
-        if (LinuxNetworkBlock.InPlace(install.Root)) SetRow(step, true, "The network namespace marker is already in place.");
-        else
-        {
-            await LinuxNetworkBlock.Install(install);
-            SetRow(step, true, "The namespace self-test passed; sessions will run inside the offline network namespace.");
-        }
+        await CheckLinuxNetworkBlock(install);
 
         SetRow(SetupStep.Import, true, "Skipped on Linux.");
         CreateLinuxDesktopShortcut(install);
         await SyncBundledMods(install);
         ReadyToPlay();
+    }
+
+    // Checks Steam, the selected Proton version and the Linux setup files, then installs the engine package. Returns
+    // Steam's root and the wrapper and probe paths the later steps run.
+    async Task<(string SteamRoot, string Wrapper, string Probe)> CheckLinuxSetupFiles(InstallLayout install, string proton)
+    {
+        SetRow(SetupStep.Find, null, "Checking Steam, Proton and the engine package...", running: true);
+        var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam was not found. Start Steam and sign in, then try setup again.");
+        if (!File.Exists(proton)) throw new SetupStopped("The selected Proton version is no longer installed. Choose another version and try again.");
+        var wrapper = Path.Combine(install.App, "linux", "hellforge-linux.sh");
+        var package = Path.Combine(install.App, "engine-package.zip");
+        var probe = Path.Combine(install.App, "steamprobe", "HellForge.SteamProbe.exe");
+        if (!File.Exists(wrapper) || !File.Exists(package) || !File.Exists(probe))
+            throw new SetupStopped("The Linux setup files are missing. Update HellForge so app/linux, app/engine-package.zip and app/steamprobe are installed.");
+        await Task.Run(() => EnginePackageInstaller.Install(install));
+        return (steamRoot, wrapper, probe);
+    }
+
+    // Finds the game Linux setup copies from: this installation's verified copy, Steam's installed supported build or
+    // Steam's depot download. Offers Steam's download (throwing SetupWaiting) when none is complete.
+    async Task<LinuxSetupSource> FindLinuxGame(InstallLayout install, string steamRoot, SupportedBuild build)
+    {
+        var fromDepots = false;
+        var existingGame = false;
+        string? source = null;
+        string? steamApi = null;
+        SetRow(SetupStep.Find, null, "Checking the existing HellForge game folder...", running: true);
+        if (await Task.Run(() => build.IsComplete(install.Game) &&
+            build.Verify(install.Game, install.VerifyCache).Count == 0))
+        {
+            existingGame = true;
+            steamApi = Path.Combine(install.Game, "bin", "steam_api64.dll");
+            SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} already verified in {Privacy.Scrub(install.Game)}");
+        }
+        else
+        {
+            (fromDepots, source, steamApi) = await FindLinuxSteamGame(steamRoot, build);
+        }
+        return new(build, steamRoot, existingGame, fromDepots, source, steamApi);
+    }
+
+    // Steam's installed supported build or its depot download, for the copy; offers Steam's download when neither is
+    // there. Returns whether it comes from the depots, and the copy's source folder and steam_api64.dll.
+    async Task<(bool FromDepots, string? Source, string? SteamApi)> FindLinuxSteamGame(string steamRoot, SupportedBuild build)
+    {
+        SteamGame? game;
+        string? unusable = null;
+        try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
+        catch (Exception error) when (error is InvalidDataException or IOException) { game = null; unusable = error.Message; }
+
+        if (game is { SupportedBuild: true })
+        {
+            var source = game.Report.Source;
+            var steamApi = Path.Combine(source, "bin", "steam_api64.dll");
+            SetRow(SetupStep.Find, true, $"Supported build {game.Report.Pin.BuildId} in {source}");
+            return (false, source, steamApi);
+        }
+        if (await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build)))
+        {
+            var steamApi = SteamDepotDownload.Locate(steamRoot, build, build.Files.Single(file => file.Path == "bin/steam_api64.dll"));
+            SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} downloaded by Steam into {SteamDepotDownload.ContentFolder(steamRoot, build)}");
+            return (true, null, steamApi);
+        }
+        ShowDownload(steamRoot, game == null
+            ? unusable == null ? "no supported game build" : "an unusable HELLDIVERS 2 installation"
+            : $"unsupported HELLDIVERS 2 build {game.Report.Pin.BuildId}");
+        throw new SetupWaiting("Steam needs to finish downloading the three supported-build depots before setup can continue.");
+    }
+
+    // Copies the game into the installation from the source FindLinuxGame chose, or keeps the verified copy, and
+    // deletes Steam's download when asked. The copy row shows the result.
+    async Task CopyLinuxGame(InstallLayout install, LinuxSetupSource game, CancellationToken token)
+    {
+        var build = game.Build;
+        string copied;
+        if (game.ExistingGame)
+            copied = $"{build.Files.Count} existing files ({build.TotalBytes / 1e9:0.0} GB) verified against Steam's hashes; no download or copy needed.";
+        else
+        {
+            SetRow(SetupStep.Copy, null, "Copying and verifying game files...", running: true);
+            await CopyGame(game.Source, game.SteamRoot, install);
+            token.ThrowIfCancellationRequested();
+            copied = $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), each verified against Steam's hashes.";
+        }
+        if (game.FromDepots && DeleteDownloadBox.IsChecked == true)
+        {
+            SetRow(SetupStep.Copy, null, copied + " Deleting Steam's download...", running: true);
+            await Task.Run(() => SteamDepotDownload.Delete(game.SteamRoot, build), token);
+            copied += " Steam's download was deleted.";
+        }
+        DownloadCard.IsVisible = false;
+        SetRow(SetupStep.Copy, true, copied);
+    }
+
+    // Checks the offline network namespace's marker, and installs the namespace (running its self-test) when missing.
+    async Task CheckLinuxNetworkBlock(InstallLayout install)
+    {
+        SetRow(SetupStep.NetworkBlock, null, "Checking the offline network namespace...", running: true);
+        if (LinuxNetworkBlock.InPlace(install.Root)) SetRow(SetupStep.NetworkBlock, true, "The network namespace marker is already in place.");
+        else
+        {
+            await LinuxNetworkBlock.Install(install);
+            SetRow(SetupStep.NetworkBlock, true, "The namespace self-test passed; sessions will run inside the offline network namespace.");
+        }
     }
 
     static async Task<bool> PrepareLinuxModTools(string wrapper, string proton, InstallLayout install, string steamRoot,
