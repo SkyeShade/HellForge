@@ -142,6 +142,15 @@ inventory (`registered-items.json` in the session folder, or its `game` folder w
 
 In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
 
+**Network types past 2,048.** Every weapon and entity a mod adds takes a network type, a copy of its base's. The game
+sends a type in 11 bits (the network configuration's width byte, and network field type 431, which names a corpse's
+source type), so 2,048 types fit, 1,855 of them vanilla. For a mod set with more (HellForge allows 512 weapons and
+entities together), the loader widens both to 12 bits (4,096 types) when it adds the types, and only then: a set that
+fits keeps the game's own wire format. Every player in a game runs the same mods, so every one widens or none does. If
+the widths are not the ones reviewed, or the set needs more than 4,096, the first types that fit get one and the rest
+are logged (`registry_load.c` `AddNetworkTypes`). Other limits come first for many sets, each refused on its own: a
+component table's compiled slots, the loadout index (193 more weapons) and the game's 4,096 catalogue items.
+
 ### Projectiles and damage
 
 A weapon gets its own projectile through `HfWeapon.projectile`. This gives the weapon its own

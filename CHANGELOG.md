@@ -8,6 +8,13 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Changed
+
+- Mods together can add 512 weapons and entities, up from 192. Past 2,048 network types, HellForge widens the game's
+  network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
+  Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
+  can still be refused; each refusal is in the mod's log.
+
 ### Fixed
 
 - With more than about 150 mod weapons, the rest and every mod stratagem never reached your inventory: the list of

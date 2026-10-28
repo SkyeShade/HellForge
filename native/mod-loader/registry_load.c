@@ -524,18 +524,129 @@ static int NetworkEntryOf(const uint8_t* entries, uint32_t count, uint32_t short
 
 /* The registered weapons' types appended to the configuration's three arrays (larger copies from the engine's
  * allocator), in short id order. */
+/* A type index travels in the configuration's width (+0xC, one byte: 11 in build 25480438, read from the stream at
+ * helldivers2.exe+0x175787), and a corpse names its source's type in network field type 431 (hash 0x931301A0, a
+ * kind-1 integer of 11 bits, minimum 0): 2,048 types, 1,855 of them vanilla. Both widen to 12 bits (4,096 types)
+ * for a mod set that needs it, and only then: a set that fits keeps the game's own wire format. Every machine
+ * playing together runs the same mods (the modlist code), so every one widens or none does. Research:
+ * research\entity-limit\network-evidence.md. */
+#define NET_TYPE_BITS 11u
+#define NET_WIDE_BITS 12u
+#define NET_CORPSE_TYPE_FIELD 0x931301A0u
+
+/* The field type row that carries a corpse's source type (one row with its hash, an 11-bit integer from 0), or 0. */
+static uintptr_t CorpseTypeField(void)
+{
+    uintptr_t rows, match = 0;
+    uint32_t count, found = 0;
+    if (FieldTypes(&rows, &count)) return 0;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint8_t row[0x18];
+        uint32_t hash, min;
+        if (SafeRead(rows + (uintptr_t)i * 0x18, row, sizeof row)) return 0;
+        memcpy(&hash, row, 4);
+        memcpy(&min, row + 16, 4);
+        if (hash == NET_CORPSE_TYPE_FIELD) { found++; match = row[12] == 1 && row[13] == NET_TYPE_BITS && min == 0 ? rows + (uintptr_t)i * 0x18 : 0; }
+    }
+    return found == 1 ? match : 0;
+}
+
+/* The game session (Stingray's GameSession, one at a time, built at boot and again on each join or host) copies the
+ * width into its own byte when it is built (helldivers2.exe+0x28DC1C: mov rcx,[rsi+0x18]; movzx eax,[rcx+0xC];
+ * mov [rsi+0x4870],al), and its 16 type readers and writers use that copy. Later sessions copy the widened width; the
+ * one already built (at boot, before HellForge adds its types) has 11, and gets 12 here too, but only while it has no
+ * connections: nothing has been sent in either width yet. Reached as the network manager's +0xA8 ([exe+0x1A10278],
+ * as netreap.c does), its +0x18 the configuration. Research: research\network-width\README.md. Variables so the fixture
+ * can stand in for the game's. */
+static uint32_t g_netManagerRva = 0x1A10278u;  /* the network manager: +0x98 the transport (+0xA0 its connections), +0xA8 the session */
+static uint32_t g_netSessionVtRva = 0x1675B70u;
+static uint32_t g_netWidthCopyRva = 0x28DC1Cu;
+static const uint8_t kSessionWidthCopy[18] = {0x48, 0x8b, 0x4e, 0x18, 0x0f, 0xb6, 0x41, 0x0c, 0x88, 0x86, 0x70, 0x48, 0x00, 0x00, 0x0f, 0xb6, 0x41, 0x0d};
+#define NET_SESSION_CONFIG 0x18u
+#define NET_SESSION_WIDTH 0x4870u
+
+/* Where the live session's copy of the width is (0: no session yet), or 1 when it cannot be widened: the copy is not the
+ * reviewed code, the session is not one of a configuration we know, or it has connections. */
+static uintptr_t SessionWidth(uintptr_t config)
+{
+    uintptr_t exe = ApiModuleBase(g_networkModule, NULL), manager = 0, transport = 0, session = 0, vtable = 0, sessionConfig = 0;
+    uint8_t copy[sizeof kSessionWidthCopy], width = 0;
+    uint32_t connections = 1;
+    if (exe == 0 || SafeRead(exe + g_netWidthCopyRva, copy, sizeof copy) || memcmp(copy, kSessionWidthCopy, sizeof copy) != 0) return 1;
+    if (SafeRead(exe + g_netManagerRva, &manager, 8) || manager == 0 || SafeRead(manager + 0x98, &transport, 8) || transport == 0 ||
+        SafeRead(transport + 0xA0, &connections, 4) || connections != 0 || SafeRead(manager + 0xA8, &session, 8)) return 1;
+    if (session == 0) return 0;
+    if (SafeRead(session, &vtable, 8) || vtable != exe + g_netSessionVtRva || SafeRead(session + NET_SESSION_CONFIG, &sessionConfig, 8) ||
+        sessionConfig != config || SafeRead(session + NET_SESSION_WIDTH, &width, 1) || width != NET_TYPE_BITS) return 1;
+    return session + NET_SESSION_WIDTH;
+}
+
+/* The widths to 12 bits: the configuration's, the corpse-type field's and the live session's copy; 0 (nothing written)
+ * unless all are as reviewed. */
+static int WidenNetworkTypes(uintptr_t config)
+{
+    uint8_t width = 0, wide = (uint8_t)NET_WIDE_BITS;
+    uintptr_t corpse = CorpseTypeField();
+    if (SafeRead(config + 0xC, &width, 1) || width != NET_TYPE_BITS || corpse == 0) return 0;
+    uintptr_t session = SessionWidth(config);
+    if (session == 1) return 0;
+    if ((session != 0 && ApiWrite(session, &wide, 1)) || ApiWrite(corpse + 13, &wide, 1) || ApiWrite(config + 0xC, &wide, 1)) return 0;
+    return 1;
+}
+
+/* How many of the `wanted` more types the arrays are made for, and whether that takes 12 bits (*widen). Counted for the
+ * types this session adds, not the most it could, so a game update that adds vanilla types only matters to a mod set
+ * that really would not fit. One that does not fit even widened gives types to the first that fit (in short id order). */
+static uint32_t NetworkTypesToAdd(uint32_t count, uint32_t wanted, int* widen)
+{
+    uint32_t room = (1u << NET_TYPE_BITS) > count ? (1u << NET_TYPE_BITS) - count : 0;
+    *widen = wanted > room && count + wanted <= (1u << NET_WIDE_BITS);
+    if (*widen || wanted <= room) return wanted;
+    Note("registry: %u network types and %u more would not fit even a %u-bit type index; only %u get one", count, wanted, NET_WIDE_BITS, room);
+    return room;
+}
+
+/* The types the arrays (made for `wanted`) take: all, once the widths are 12 bits, else what 11 bits hold. */
+static uint32_t NetworkTypesWidened(uintptr_t config, uint32_t count, uint32_t wanted)
+{
+    uint32_t room = (1u << NET_TYPE_BITS) - count;
+    if (WidenNetworkTypes(config))
+    {
+        Note("registry: the network type index is %u bits wide now, for %u types (%u vanilla)", NET_WIDE_BITS, count + wanted, count);
+        return wanted;
+    }
+    Note("registry: the type index stays 11 bits (its widths, field type %08x or the game session's copy are not the reviewed ones, or the "
+        "session has connections); only %u of %u more types get one", NET_CORPSE_TYPE_FIELD, room, wanted);
+    return room;
+}
+
+/* The configuration's three arrays as AddNetworkTypes makes them anew: entries, own indices, values. */
+typedef struct NetworkTypeArrays { uint8_t *entries, *own, *values; } NetworkTypeArrays;
+
+/* The weapon's type at `index`: a copy of its base's entry under its short id (above lastKey, the order the engine
+ * searches); 0 when its base has none (logged). */
+static int AddNetworkType(const NetworkConfig* n, const NetworkTypeArrays* to, Weapon* w, uint32_t index, uint32_t lastKey)
+{
+    int found = NetworkEntryOf(n->entries, n->count, w->baseShortId);
+    if (found < 0 || w->shortId <= lastKey) { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); return 0; }
+    if (CopyNetworkEntry(to->entries + (size_t)index * 80, n->entries + (size_t)found * 80))
+        ApiLog(w->mod, "%s: its network type keeps its base's field lists (no memory for its own)", w->name);
+    memcpy(to->entries + (size_t)index * 80, &w->shortId, 4);
+    memcpy(to->own + (size_t)index * 4, &index, 4);
+    to->values[index] = n->values[found];
+    g_networkTypes[g_networkTypeCount++] = (NetworkType){index, (uint32_t)found, w->entity, w->copies, w->name, w->mod};
+    ApiLog(w->mod, "%s: network entity type %u (a copy of type %d)", w->name, index, found);
+    return 1;
+}
+
 static void AddNetworkTypes(const NetworkConfig* n)
 {
     uint32_t count = n->count, wanted = 0;
     for (int k = 0; k < g_weaponCount; k++) if (g_weapons[k].state == 1) wanted++;
-    /* A type index travels in 11 bits (the configuration's +0xC, and field type 431): 2,048 types at most. Counted for
-     * the types this session adds, not the most it could, so a game update that adds vanilla types only matters to a
-     * mod set that really would not fit. */
-    if (count + wanted > 2048u)
-    {
-        Note("registry: the network configuration has %u types; with %u more they would not fit the 11-bit type index; none added", count, wanted);
-        return;
-    }
+    int widen;
+    wanted = NetworkTypesToAdd(count, wanted, &widen);
+    if (wanted == 0) return;
     uint32_t added = 0, lastKey;
     memcpy(&lastKey, n->entries + (size_t)(count - 1) * 80, 4);
     uint8_t* newEntries = EngineAllocate(n->config + 0x70, (size_t)(count + wanted) * 80);
@@ -546,26 +657,19 @@ static void AddNetworkTypes(const NetworkConfig* n)
         Note("registry: the engine's allocator is not the reviewed one; the weapons have no network types (equipping them crashes)");
         return;
     }
+    if (widen) wanted = NetworkTypesWidened(n->config, count, wanted); /* once the larger arrays are there, just before they go in */
     memcpy(newEntries, n->entries, (size_t)count * 80);
     memcpy(newOwn, n->own, (size_t)count * 4);
     memcpy(newValues, n->values, count);
     int order[REG_MAX_WEAPONS];
     WeaponOrder(order);
+    NetworkTypeArrays to = {newEntries, newOwn, newValues};
     for (int k = 0; k < g_weaponCount; k++)
     {
         Weapon* w = &g_weapons[order[k]];
         if (w->state != 1) continue;
-        int found = NetworkEntryOf(n->entries, count, w->baseShortId);
-        if (found < 0 || w->shortId <= lastKey) { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); continue; }
-        uint32_t index = count + added++;
-        if (CopyNetworkEntry(newEntries + (size_t)index * 80, n->entries + (size_t)found * 80))
-            ApiLog(w->mod, "%s: its network type keeps its base's field lists (no memory for its own)", w->name);
-        memcpy(newEntries + (size_t)index * 80, &w->shortId, 4);
-        memcpy(newOwn + (size_t)index * 4, &index, 4);
-        newValues[index] = n->values[found];
-        lastKey = w->shortId;
-        g_networkTypes[g_networkTypeCount++] = (NetworkType){index, (uint32_t)found, w->entity, w->copies, w->name, w->mod};
-        ApiLog(w->mod, "%s: network entity type %u (a copy of type %d)", w->name, index, found);
+        if (added == wanted) ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name);
+        else if (AddNetworkType(n, &to, w, count + added, lastKey)) { added++; lastKey = w->shortId; }
     }
     if (added == 0) return;
     g_networkVanillaTypes = count;
