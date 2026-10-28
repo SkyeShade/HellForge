@@ -231,6 +231,15 @@ wineserver of the prefix still running outside it, and refuses to start while on
 the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the
 game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
+For a session, `hf-inner.sh` also gives the game the shader caches Steam gives it: the folder
+`steamapps/shadercache/553850` in the Steam library that has HELLDIVERS 2, with the same NVIDIA, Mesa, AMD and DXVK
+cache variables Steam sets. The game then reuses the shaders Steam has already compiled for it (and, on a Steam Deck, the
+ones Valve ships) instead of compiling them again into an empty cache, which shows as short freezes the first time a
+planet, the hellpod or a mission loads. Like Steam, it also records the session's new pipelines with Steam's Fossilize
+layer, which Steam then compiles in the background; whether Steam shares them is Steam's own shader pre-caching
+setting. A variable the player has already set is kept, `DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1` turns the recording
+off, and when Steam has no shader cache for the game the wrapper says so and leaves the driver's defaults.
+
 `hellforge-linux.sh` reads these settings from the environment. Each one has a default it finds by itself:
 
 | Variable | Default |

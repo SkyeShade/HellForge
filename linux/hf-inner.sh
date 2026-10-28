@@ -5,6 +5,33 @@
 # namespace and forwards it to Steam. Then it starts HellForge with Proton: HellForge.exe, or the Windows program and
 # arguments it was given (another launcher's HellForge.Cli play, docs/external-launchers.md).
 # Needs PROTON, INSTALL, STEAM_COMPAT_DATA_PATH and STEAM_COMPAT_CLIENT_INSTALL_PATH in the environment.
+
+# Steam's shader log prefixes every message with a timestamp. grep filters the growing log in C; only its Setting
+# lines are parsed here, and each logged cache path is resolved before it is compared with ours.
+shader_cache_read_only() {
+  local shader_dir=$1 log=$2 read_only="steam_cache,steam_precompiled"
+  local shader_real line cache_dir cache_real value
+  shader_real=$(readlink -m -- "$shader_dir" 2>/dev/null || printf '%s\n' "$shader_dir")
+  [ -f "$log" ] || { printf '%s\n' "$read_only"; return 0; }
+  while IFS= read -r line; do
+    line=${line#*] }
+    case "$line" in
+      "Setting MESA_GLSL_CACHE_DIR="*" MESA_DISK_CACHE_READ_ONLY_FOZ_DBS="*) ;;
+      *) continue ;;
+    esac
+    cache_dir=${line#Setting MESA_GLSL_CACHE_DIR=}
+    cache_dir=${cache_dir%% MESA_DISK_CACHE_READ_ONLY_FOZ_DBS=*}
+    cache_real=$(readlink -m -- "$cache_dir" 2>/dev/null || printf '%s\n' "$cache_dir")
+    [ "$cache_real" = "$shader_real" ] || continue
+    value=${line#*MESA_DISK_CACHE_READ_ONLY_FOZ_DBS=}
+    value=${value%%[[:space:]]*}
+    read_only=${value:-steam_cache,steam_precompiled}
+  done < <(grep -F -- "] Setting MESA_GLSL_CACHE_DIR=" "$log" 2>/dev/null || true)
+  printf '%s\n' "$read_only"
+}
+
+# The G.1 test sources this file to run the parser against a real log; a normal run continues below.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
 set -euo pipefail
 cleanup() {
   local status=$?
@@ -17,6 +44,97 @@ trap 'echo "hf-inner received SIGTERM." >&2; exit 143' TERM
 command -v socat >/dev/null || { echo "need socat" >&2; exit 1; }
 : "${PROTON:?PROTON is not set}" "${INSTALL:?INSTALL is not set}"
 dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# Steam points the GPU driver, Mesa, DXVK and Fossilize at a per-app cache in the library that holds HELLDIVERS 2.
+# Starting Proton directly would otherwise compile into the driver's default cache instead of reusing Steam's.
+set_default() {
+  local name=$1 value=$2
+  [[ -v $name ]] || export "$name=$value"
+}
+
+steam_shader_caches() {
+  local steam=$STEAM_COMPAT_CLIENT_INSTALL_PATH
+  local libraries=("$steam") library library_path shader_dir="" missing_library=""
+  local line read_only data_home layer_manifest layer_library
+  local filter="$steam/fossilize_engine_filters.json"
+
+  if [ -f "$steam/steamapps/libraryfolders.vdf" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=${line%$'\r'}
+      if [[ $line =~ ^[[:space:]]*\"path\"[[:space:]]*\"(.*)\"[[:space:]]*$ ]]; then
+        library_path=${BASH_REMATCH[1]}
+        [ -n "$library_path" ] && libraries+=("$library_path")
+      fi
+    done < "$steam/steamapps/libraryfolders.vdf"
+  fi
+
+  for library in "${libraries[@]}"; do
+    [ -f "$library/steamapps/appmanifest_553850.acf" ] || continue
+    if [ -d "$library/steamapps/shadercache/553850" ]; then
+      shader_dir="$library/steamapps/shadercache/553850"
+      break
+    fi
+    [ -n "$missing_library" ] || missing_library=$library
+  done
+  if [ -z "$shader_dir" ]; then
+    if [ -n "$missing_library" ]; then
+      echo "hf-inner: Steam's HELLDIVERS 2 shader cache is missing under $missing_library; shader pre-caching may be off." >&2
+    else
+      echo "hf-inner: no Steam library has HELLDIVERS 2's appmanifest; Steam's shader caches are not used." >&2
+    fi
+    return 0
+  fi
+  echo "hf-inner: using Steam's HELLDIVERS 2 shader caches at $shader_dir." >&2
+
+  read_only=$(shader_cache_read_only "$shader_dir" "$steam/logs/shader_log.txt")
+
+  set_default STEAM_COMPAT_SHADER_PATH "$shader_dir"
+  set_default __GL_SHADER_DISK_CACHE_PATH "$shader_dir/nvidiav1"
+  set_default __GL_SHADER_DISK_CACHE_APP_NAME steamapp_shader_cache
+  set_default __GL_SHADER_DISK_CACHE_READ_ONLY_APP_NAME 'steam_shader_cache;steamapp_merged_shader_cache'
+  set_default __GL_SHADER_DISK_CACHE_SKIP_CLEANUP 1
+  set_default MESA_SHADER_CACHE_DIR "$shader_dir"
+  set_default MESA_GLSL_CACHE_DIR "$shader_dir"
+  set_default MESA_SHADER_CACHE_MAX_SIZE 5G
+  set_default MESA_GLSL_CACHE_MAX_SIZE 5G
+  set_default MESA_DISK_CACHE_SINGLE_FILE 1
+  set_default MESA_DISK_CACHE_READ_ONLY_FOZ_DBS "$read_only"
+  set_default AMD_VK_PIPELINE_CACHE_PATH "$shader_dir/AMDv1"
+  set_default AMD_VK_PIPELINE_CACHE_FILENAME steamapp_shader_cache
+  set_default DXVK_STATE_CACHE_PATH "$shader_dir/DXVK_state_cache"
+
+  if [[ -v DISABLE_VK_LAYER_VALVE_steam_fossilize_1 ]]; then
+    echo "hf-inner: Fossilize recording is disabled by DISABLE_VK_LAYER_VALVE_steam_fossilize_1." >&2
+    return 0
+  fi
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  layer_manifest="$data_home/vulkan/implicit_layer.d/steamfossilize_x86_64.json"
+  if [ ! -f "$filter" ]; then
+    echo "hf-inner: Fossilize recording is off because Steam's filter $filter was not found." >&2
+    return 0
+  fi
+  if [ ! -f "$layer_manifest" ]; then
+    echo "hf-inner: Fossilize recording is off because the Vulkan layer manifest $layer_manifest was not found." >&2
+    return 0
+  fi
+  layer_library=$(sed -n -E 's/.*"library_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "$layer_manifest" | tail -n 1)
+  if [ -z "$layer_library" ]; then
+    echo "hf-inner: Fossilize recording is off because $layer_manifest does not name a library_path." >&2
+    return 0
+  fi
+  case "$layer_library" in
+    /*) ;;
+    *) layer_library="$(dirname -- "$layer_manifest")/$layer_library" ;;
+  esac
+  if [ ! -f "$layer_library" ]; then
+    echo "hf-inner: Fossilize recording is off because the Vulkan layer library $layer_library was not found." >&2
+    return 0
+  fi
+  set_default ENABLE_VK_LAYER_VALVE_steam_fossilize_1 1
+  set_default STEAM_FOSSILIZE_DUMP_PATH "$shader_dir/fozpipelinesv6/steamapprun_pipeline_cache"
+  set_default STEAM_FOSSILIZE_DUMP_PATH_READ_ONLY '$bucketdir/steam_pipeline_cache.foz;$bucketdir/steamapp_pipeline_cache.foz'
+  set_default FOSSILIZE_APPLICATION_INFO_FILTER_PATH "$filter"
+}
 
 n=0
 echo "hf-inner: setting up Steam port forwarding." >&2
@@ -61,6 +179,7 @@ if [ "$session_run" = 1 ]; then
   previous_run="$(read_run_id)"
 fi
 program="${1:-$INSTALL/HellForge.exe}"
+if [ "$session_run" = 1 ]; then steam_shader_caches; fi
 echo "hf-inner: launching $(basename -- "$program") through Proton." >&2
 proton_status=0
 if [ $# -gt 0 ]; then "$PROTON" run "$@" || proton_status=$?; else "$PROTON" run "$program" || proton_status=$?; fi
