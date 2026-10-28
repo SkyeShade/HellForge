@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
@@ -18,7 +19,8 @@ sealed class LinuxInstallerWindow : Window
     readonly ComboBox protonChoice;
     readonly TextBlock status;
     readonly Button installButton;
-    readonly IReadOnlyList<ProtonVersion> protons;
+    IReadOnlyList<ProtonVersion> protons = [];
+    bool installing;
 
     public LinuxInstallerWindow(string payload)
     {
@@ -35,33 +37,14 @@ sealed class LinuxInstallerWindow : Window
         var defaultPrefix = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "hellforge-prefix");
         prefixPath = new TextBox { Text = defaultPrefix, HorizontalAlignment = HorizontalAlignment.Stretch };
-        string? protonError = null;
-        try { protons = SteamLocator.ProtonVersions(); }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
-        {
-            protons = [];
-            protonError = "Could not read Steam's Proton installations: " + error.Message;
-        }
-        var configuredPath = Environment.GetEnvironmentVariable("PROTON");
-        var configuredProton = !string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)
-            ? LocalInstall.FullPath(configuredPath) : null;
-        var selectedIndex = protons.ToList().FindIndex(proton => proton.ScriptPath == configuredProton);
-        if (selectedIndex < 0) selectedIndex = protons.Count - 1;
-        protonChoice = new ComboBox
-        {
-            ItemsSource = protons.Select(proton => proton.Name).ToArray(),
-            SelectedIndex = selectedIndex,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
+        protonChoice = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
         status = new TextBlock
         {
-            Text = protonError ?? (protons.Count == 0
-                ? "No Proton versions were found. Install Proton in Steam, then restart this installer."
-                : "Choose the Proton version to prepare the prefix with. The same version will be used for setup and game sessions."),
+            Text = "Looking for installed Proton versions...",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.Parse("#B8C0CE"))
         };
-        installButton = new Button { Content = "Install and start setup", HorizontalAlignment = HorizontalAlignment.Right, IsEnabled = protons.Count > 0 };
+        installButton = new Button { Content = "Install and start setup", HorizontalAlignment = HorizontalAlignment.Right, IsEnabled = false };
         installButton.Click += async (_, _) => await InstallAndLaunch();
 
         var browseButton = new Button { Content = "Choose…", Margin = new Thickness(8, 0, 0, 0) };
@@ -93,6 +76,50 @@ sealed class LinuxInstallerWindow : Window
                 installButton
             }
         };
+        // The window is shown before this runs, so a slow Steam library does not hold up the first paint.
+        Opened += (sender, args) => _ = DiscoverProtons();
+    }
+
+    // Steam's libraries and Proton installations are on disk and can take a while (many libraries, a slow disk): find them
+    // after the window is shown, then fill the list on the UI thread. Install stays off until the result is known.
+    async Task DiscoverProtons()
+    {
+        (IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) found;
+        try { found = await Task.Run(FindProtons).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            found = (Array.Empty<ProtonVersion>(), "Could not look up Steam's Proton installations: " + error.Message, null);
+        }
+        Dispatcher.UIThread.Post(() => ApplyProtons(found));
+    }
+
+    static (IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) FindProtons()
+    {
+        IReadOnlyList<ProtonVersion> protons;
+        string? protonError = null;
+        try { protons = SteamLocator.ProtonVersions(); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            protons = [];
+            protonError = "Could not read Steam's Proton installations: " + error.Message;
+        }
+        var configuredPath = Environment.GetEnvironmentVariable("PROTON");
+        var configuredProton = !string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)
+            ? LocalInstall.FullPath(configuredPath) : null;
+        return (Protons: protons, Error: protonError, ConfiguredProton: configuredProton);
+    }
+
+    void ApplyProtons((IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) found)
+    {
+        protons = found.Protons;
+        var selectedIndex = protons.ToList().FindIndex(proton => proton.ScriptPath == found.ConfiguredProton);
+        if (selectedIndex < 0) selectedIndex = protons.Count - 1;
+        protonChoice.ItemsSource = protons.Select(proton => proton.Name).ToArray();
+        protonChoice.SelectedIndex = selectedIndex;
+        status.Text = protons.Count == 0
+            ? found.Error ?? "No Proton versions were found. Install Proton in Steam, then restart this installer."
+            : "Choose the Proton version to prepare the prefix with. The same version will be used for setup and game sessions.";
+        installButton.IsEnabled = !installing && protons.Count > 0;
     }
 
     async Task ChoosePrefix()
@@ -107,13 +134,19 @@ sealed class LinuxInstallerWindow : Window
 
     async Task InstallAndLaunch()
     {
+        if (installing) return;
+        installing = true;
         installButton.IsEnabled = false;
         try
         {
             if (!File.Exists(payload)) throw new InvalidDataException("The HellForge Linux package was not found beside this installer.");
-            ValidatePackage(payload);
-            var steamRoot = SteamLocator.SteamRoot()
-                ?? throw new InvalidDataException("Steam was not found. Install Steam, start it, sign in, and try again.");
+            // Reading the package's index and walking Steam's folders are disk work too; keep both off the UI thread.
+            var steamRoot = await Task.Run(() =>
+            {
+                ValidatePackage(payload);
+                return SteamLocator.SteamRoot()
+                    ?? throw new InvalidDataException("Steam was not found. Install Steam, start it, sign in, and try again.");
+            });
             if (protonChoice.SelectedIndex < 0 || protonChoice.SelectedIndex >= protons.Count)
                 throw new InvalidDataException("Choose an installed Proton version before continuing.");
             var proton = protons[protonChoice.SelectedIndex].ScriptPath;
@@ -133,21 +166,30 @@ sealed class LinuxInstallerWindow : Window
                 await InitializePrefix(proton, prefix, steamRoot);
             }
 
+            // The status above is painted before this yield; extraction then runs without blocking repaints or input.
             Status("Extracting HellForge...");
-            Directory.CreateDirectory(installRoot);
-            ZipFile.ExtractToDirectory(payload, installRoot, overwriteFiles: true);
-            MakeLinuxFilesExecutable(installRoot);
-            SteamLocator.SaveProtonSelection(new InstallLayout(installRoot), proton);
+            await Task.Run(() =>
+            {
+                Directory.CreateDirectory(installRoot);
+                ZipFile.ExtractToDirectory(payload, installRoot, overwriteFiles: true);
+                MakeLinuxFilesExecutable(installRoot);
+                SteamLocator.SaveProtonSelection(new InstallLayout(installRoot), proton);
+            });
             if (!File.Exists(launcher))
                 throw new InvalidDataException("The package did not contain app/launcher-linux/HellForge.Launcher.");
 
             Status("Starting the native launcher and setup wizard...");
             Process.Start(new ProcessStartInfo(launcher) { WorkingDirectory = installRoot, UseShellExecute = true });
+            installing = false;
             Close();
         }
         catch (Exception error)
         {
             Status(error.Message);
+        }
+        finally
+        {
+            installing = false;
             installButton.IsEnabled = protons.Count > 0;
         }
     }
