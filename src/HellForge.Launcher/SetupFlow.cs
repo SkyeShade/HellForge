@@ -1022,9 +1022,8 @@ public partial class MainWindow
     // one of its known folders.
     static void UninstallSafety(string root)
     {
-        root = LocalInstall.FullPath(root);
+        root = LocalInstall.NoLinks(root, root);
         if (!new InstallLayout(root).Exists) throw new InvalidDataException("This folder is not a HellForge installation; nothing was removed.");
-        LocalInstall.NoLinks(root);
         var keep = new[] { Path.GetPathRoot(root), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.Windows) };

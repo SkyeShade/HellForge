@@ -48,7 +48,7 @@ public sealed record SupportedLanguages(int SchemaVersion, string BuildId, IRead
     // Only which ones: the installed files belong to Steam's current build, so setup copies the pinned manifest's instead.
     public IReadOnlyList<SupportedLanguage> InstalledIn(string appManifestPath)
     {
-        LocalInstall.NoLinks(appManifestPath);
+        appManifestPath = LocalInstall.NoLinks(appManifestPath, appManifestPath);
         var app = ValveData.Parse(File.ReadAllText(appManifestPath)).Children["AppState"];
         if (!app.Children.TryGetValue("InstalledDepots", out var installed)) return [];
         var dlc = installed.Children.Values.Where(d => d.Values.ContainsKey("dlcappid"))
@@ -68,8 +68,7 @@ public sealed record SupportedLanguages(int SchemaVersion, string BuildId, IRead
         if (string.IsNullOrWhiteSpace(name) || !name.All(c => c is >= 'a' and <= 'z'))
             throw new ArgumentException("A language name is Steam's, in lowercase letters (german, japanese).");
         if (manifestId.Length == 0 || !manifestId.All(char.IsAsciiDigit)) throw new ArgumentException("--manifest is the depot manifest's number.");
-        depotFolder = LocalInstall.FullPath(depotFolder);
-        LocalInstall.NoLinks(depotFolder);
+        depotFolder = LocalInstall.NoLinks(depotFolder, depotFolder);
         if (!Directory.Exists(depotFolder)) throw new InvalidDataException($"{depotFolder} does not exist; run download_depot first.");
         var cached = depotCache == null ? null : Path.Combine(depotCache, $"{dlcAppId}_{manifestId}.manifest");
         var files = cached != null && File.Exists(cached) ? FilesFromManifest(cached, dlcAppId, manifestId, depotFolder) : FilesFromFolder(depotFolder, dlcAppId);

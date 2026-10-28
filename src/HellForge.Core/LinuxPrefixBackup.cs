@@ -134,41 +134,42 @@ public static class LinuxPrefixBackup
         return total;
     }
 
-    // The prefix itself must exist, be a plain folder with no links on the path to it, not be a place that is never
-    // touched (the same rule uninstall uses), and nothing may be using it.
+    // The prefix itself must exist and must not be a link: a link above it (Fedora Atomic's /home -> /var/home) is
+    // resolved, but a linked prefix would back up some other folder. It must not be a place that is never touched (the
+    // same rule uninstall uses), and nothing may be using it.
     public static void CheckBackupSource(string prefix, LinuxUninstallLocations locations, string? steamRoot,
         string installRoot)
     {
-        prefix = LocalInstall.FullPath(prefix);
+        var configured = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         ForbidLocation(prefix, locations, steamRoot);
         if (!Directory.Exists(prefix)) throw new InvalidDataException("The Proton prefix does not exist: " + prefix);
-        LocalInstall.NoLinks(prefix);
-        RequireIdle(prefix, installRoot);
+        RequireIdle(configured, installRoot);
     }
 
-    // The archive goes outside the prefix: one written inside it would include itself while tar reads the folder.
+    // The archive goes outside the prefix: one written inside it would include itself while tar reads the folder. Both
+    // folders are protected, so a link above either is resolved and the folder itself may not be a link.
     public static void CheckBackupFolder(string prefix, string folder)
     {
-        prefix = LocalInstall.FullPath(prefix);
-        folder = LocalInstall.FullPath(folder);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
+        folder = LocalInstall.NoLinks(folder, folder);
         if (LocalInstall.Within(folder, prefix))
             throw new InvalidDataException("Choose a backup folder outside the Proton prefix: an archive inside it would include itself.");
         if (LinuxUninstall.Exists(folder) && !Directory.Exists(folder))
             throw new InvalidDataException("The backup path is not a folder: " + folder);
         Directory.CreateDirectory(folder);
-        LocalInstall.NoLinks(folder);
     }
 
     public static void CheckRestoreTarget(string prefix, LinuxUninstallLocations locations, string? steamRoot,
         string installRoot)
     {
-        prefix = LocalInstall.FullPath(prefix);
+        var configured = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         ForbidLocation(prefix, locations, steamRoot);
         if (PrefixName(prefix).Length == 0) throw new InvalidDataException("Choose a folder for the Proton prefix.");
         if (LinuxUninstall.Exists(prefix) && !Directory.Exists(prefix))
             throw new InvalidDataException("The Proton prefix path is not a folder: " + prefix);
-        LocalInstall.NoLinks(prefix);
-        RequireIdle(prefix, installRoot);
+        RequireIdle(configured, installRoot);
     }
 
     static void ForbidLocation(string prefix, LinuxUninstallLocations locations, string? steamRoot)
@@ -179,10 +180,14 @@ public static class LinuxPrefixBackup
     }
 
     // RunningInPrefix also sees the launcher, but ignores this process and its parents; another launcher of this
-    // installation, a session, or any process using the prefix refuses both operations.
+    // installation, a session, or any process using the prefix refuses both operations. The prefix may be named with a
+    // link above it (/home -> /var/home) or by its real path, so both are checked.
     public static void RequireIdle(string prefix, string installRoot)
     {
-        var names = LinuxInstallProcesses.RunningInPrefix(prefix)
+        var configured = LocalInstall.FullPath(prefix);
+        var real = LocalInstall.ResolveParentLinks(configured);
+        var names = new[] { configured, real }.Distinct(StringComparer.Ordinal)
+            .SelectMany(candidate => LinuxInstallProcesses.RunningInPrefix(candidate))
             .Concat(LinuxInstallProcesses.Running(installRoot))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         if (names.Length > 0)
@@ -405,8 +410,8 @@ public static class LinuxPrefixBackup
         Action<long>? progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        prefix = LocalInstall.FullPath(prefix);
-        archive = LocalInstall.FullPath(archive);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
+        archive = LocalInstall.NoLinks(archive, archive);
         var folder = Path.GetDirectoryName(archive) ?? throw new InvalidDataException("The archive needs a folder: " + archive);
         Directory.CreateDirectory(folder);
         var part = archive + ".part";
@@ -442,8 +447,9 @@ public static class LinuxPrefixBackup
     public static LinuxPrefixRestorePlan PrepareRestore(string archive, string prefix, string token,
         LinuxUninstallLocations locations, string? steamRoot, string installRoot)
     {
-        archive = LocalInstall.FullPath(archive);
-        prefix = LocalInstall.FullPath(prefix);
+        archive = LocalInstall.NoLinks(archive, archive);
+        var configuredPrefix = LocalInstall.FullPath(prefix);
+        prefix = LocalInstall.NoLinks(prefix, prefix);
         if (!File.Exists(archive)) throw new InvalidDataException("The backup was not found: " + archive);
         if (!TryCompression(archive, out var compression))
             throw new InvalidDataException("Not a prefix backup (.tar.zst or .tar.gz): " + archive);
@@ -460,13 +466,13 @@ public static class LinuxPrefixBackup
         Directory.CreateDirectory(staging);
         try
         {
-            LocalInstall.NoLinks(staging);
+            staging = LocalInstall.NoLinks(staging, staging);
             Extract(archive, compression, staging);
             var staged = Path.Combine(staging, check.TopLevel);
             if (!Directory.Exists(staged))
                 throw new InvalidDataException("The backup has no top-level folder after unpacking: " + check.TopLevel);
-            LocalInstall.NoLinks(staged);
-            RequireIdle(prefix, installRoot);
+            staged = LocalInstall.NoLinks(staged, staged);
+            RequireIdle(configuredPrefix, installRoot);
             return new(archive, prefix, staged, staging, old, check.UncompressedBytes, check.TopLevel);
         }
         catch

@@ -73,6 +73,8 @@ public static class LinuxUninstall
             ? Path.Combine(locations.Home, ".local", "share") : locations.DataHome, "applications", "hellforge-linux.desktop");
 
     // The old script's settings name the prefix it served; they are this installation's only when that is its prefix.
+    // The prefix may have been saved as chosen, with a link above it (Fedora Atomic's /home -> /var/home), so both paths
+    // are resolved before they are compared.
     public static bool OldConfigBelongs(string text, string prefix)
     {
         var config = Normalize(text);
@@ -80,7 +82,11 @@ public static class LinuxUninstall
             !config.StartsWith(OldConfigHeader + "\n", StringComparison.Ordinal)) return false;
         var line = config.Split('\n').FirstOrDefault(value => value.StartsWith("PFX=", StringComparison.Ordinal));
         if (line == null) return false;
-        try { return LocalInstall.FullPath(Unquote(line[4..])).Equals(LocalInstall.FullPath(prefix), StringComparison.Ordinal); }
+        try
+        {
+            return LocalInstall.ResolveLinks(LocalInstall.FullPath(Unquote(line[4..])))
+                .Equals(LocalInstall.ResolveLinks(LocalInstall.FullPath(prefix)), StringComparison.Ordinal);
+        }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
 
@@ -128,8 +134,8 @@ public static class LinuxUninstall
     {
         try
         {
-            return ResolveLinks(LocalInstall.FullPath(text.TrimEnd('\r', '\n')))
-                .Equals(ResolveLinks(LocalInstall.FullPath(prefix)), StringComparison.Ordinal);
+            return LocalInstall.ResolveLinks(LocalInstall.FullPath(text.TrimEnd('\r', '\n')))
+                .Equals(LocalInstall.ResolveLinks(LocalInstall.FullPath(prefix)), StringComparison.Ordinal);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
@@ -141,8 +147,8 @@ public static class LinuxUninstall
     {
         try
         {
-            var driveC = Path.Combine(ResolveLinks(LocalInstall.FullPath(prefix)), "pfx", "drive_c");
-            return LocalInstall.Within(ResolveLinks(LocalInstall.FullPath(installRoot)), driveC);
+            var driveC = Path.Combine(LocalInstall.ResolveLinks(LocalInstall.FullPath(prefix)), "pfx", "drive_c");
+            return LocalInstall.Within(LocalInstall.ResolveLinks(LocalInstall.FullPath(installRoot)), driveC);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return false; }
     }
@@ -155,14 +161,14 @@ public static class LinuxUninstall
     {
         try
         {
-            var path = ResolveLinks(LocalInstall.FullPath(prefix));
+            var path = LocalInstall.ResolveLinks(LocalInstall.FullPath(prefix));
             var pathRoot = Path.GetPathRoot(path);
             if (pathRoot != null && path.Equals(LocalInstall.FullPath(pathRoot), StringComparison.Ordinal)) return true;
             if (!string.IsNullOrWhiteSpace(home) &&
-                path.Equals(ResolveLinks(LocalInstall.FullPath(home)), StringComparison.Ordinal)) return true;
+                path.Equals(LocalInstall.ResolveLinks(LocalInstall.FullPath(home)), StringComparison.Ordinal)) return true;
             if (UnderCompatData(path)) return true;
             if (string.IsNullOrWhiteSpace(steamRoot)) return false;
-            return path.Equals(ResolveLinks(LocalInstall.FullPath(steamRoot)), StringComparison.Ordinal);
+            return path.Equals(LocalInstall.ResolveLinks(LocalInstall.FullPath(steamRoot)), StringComparison.Ordinal);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return true; }
     }
@@ -206,8 +212,9 @@ public static class LinuxUninstall
     public static LinuxPrefixOffer CheckPrefixDeletion(InstallLayout install, string prefix,
         LinuxUninstallLocations locations, string? steamRoot)
     {
+        // The prefix is protected: a link above it is resolved, but the prefix itself may not be a link.
         var configured = LocalInstall.FullPath(prefix);
-        prefix = ResolvePrefix(configured);
+        prefix = LocalInstall.ResolveParentLinks(configured);
         var markerPath = PrefixMarkerPath(prefix);
         var exists = Directory.Exists(prefix) || File.Exists(prefix);
         var prefixLink = IsLink(configured);
@@ -218,8 +225,8 @@ public static class LinuxUninstall
         {
             try
             {
-                LocalInstall.NoLinks(markerPath);
-                if (File.Exists(markerPath)) { markerText = File.ReadAllText(markerPath); markerPlain = true; }
+                var marker = LocalInstall.NoLinks(markerPath, prefix);
+                if (File.Exists(marker)) { markerText = File.ReadAllText(marker); markerPlain = true; }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         }
@@ -241,45 +248,6 @@ public static class LinuxUninstall
         if (!PrefixWasCreated(existed, empty)) return false;
         File.WriteAllText(PrefixMarkerPath(prefix), PrefixMarkerText(prefix) + "\n");
         return true;
-    }
-
-    // The prefix is named as the player chose it, which may use a link above it (Fedora Atomic's /home -> /var/home).
-    // Resolve the parent to its real path so the offer and the helper name the folder that will be deleted, and leave the
-    // last component unresolved so a prefix that is itself a link is still seen.
-    static string ResolvePrefix(string prefix)
-    {
-        var full = LocalInstall.FullPath(prefix);
-        var name = Path.GetFileName(full);
-        var parent = Path.GetDirectoryName(full);
-        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(parent)) return full;
-        return Path.Combine(ResolveLinks(parent), name);
-    }
-
-    // Resolves every link component of a path from the filesystem root down, following each link to its final target. A
-    // missing or unreadable component is left as it is; the caller's existence and marker checks decide what that means.
-    static string ResolveLinks(string path)
-    {
-        var full = LocalInstall.FullPath(path);
-        var root = Path.GetPathRoot(full);
-        if (string.IsNullOrEmpty(root)) return full;
-        var current = root;
-        foreach (var name in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
-        {
-            current = Path.Combine(current, name);
-            try
-            {
-                var target = Directory.ResolveLinkTarget(current, returnFinalTarget: true);
-                if (target != null)
-                {
-                    var resolved = target.FullName;
-                    if (!Path.IsPathRooted(resolved))
-                        resolved = Path.Combine(Path.GetDirectoryName(current) ?? root, resolved);
-                    current = LocalInstall.FullPath(resolved);
-                }
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
-        }
-        return current;
     }
 
     // Steam's state files are named state_<app>_<something>.patch (the old script's state_553850_*.patch).
@@ -420,8 +388,8 @@ public static class LinuxUninstall
     static LinuxUninstallSteam? SteamFiles(string? steamRoot, SupportedBuild build, List<string> left)
     {
         if (steamRoot == null) return null;
+        if (!TryReadable(steamRoot, left, out steamRoot)) return new(build, steamRoot, [], [], []);
         var scan = new SteamScan(build, steamRoot, [], [], [], new(StringComparer.Ordinal), left);
-        if (!TryReadable(steamRoot, left)) return new(build, steamRoot, scan.Depots, scan.AppFolders, scan.Patches);
 
         var apps = SteamDepotDownload.ContentFolders(steamRoot, build);
         // Only the depot download's own place: the state files in content/app_<app> and directly next to it. Steam's own
@@ -494,9 +462,15 @@ public static class LinuxUninstall
             scan.Patches.Add(new(path, LinuxUninstallKind.File, "download state file", scan.Root));
     }
 
-    static bool TryReadable(string path, List<string> left)
+    static bool TryReadable(string path, List<string> left, out string resolved)
     {
-        try { LocalInstall.NoLinks(path); return true; }
+        resolved = path;
+        try
+        {
+            resolved = LocalInstall.ResolveLinks(path);
+            LocalInstall.NoLinks(resolved, resolved);
+            return true;
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             left.Add($"{path} ({error.Message})");
@@ -521,7 +495,7 @@ public static class LinuxUninstall
         if (!Exists(path)) return null;
         try
         {
-            LocalInstall.NoLinks(path);
+            path = LocalInstall.NoLinks(path, path);
             if (!File.Exists(path)) { left.Add($"{path} (not a regular file)"); return null; }
             var bytes = File.ReadAllBytes(path);
             return new(path, bytes, Encoding.UTF8.GetString(bytes));
@@ -539,31 +513,29 @@ public static class LinuxUninstall
         {
             if (item.Root != null && !Within(item.Root, item.Path))
                 throw new InvalidDataException("It is outside " + item.Root + ".");
-            if (!Exists(item.Path)) return;
+            var path = LocalInstall.NoLinks(item.Path, item.Root ?? item.Path);
+            if (!Exists(path)) return;
             if (item.Sha256 is { } expected &&
-                !Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Path))).Equals(expected, StringComparison.OrdinalIgnoreCase))
+                !Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).Equals(expected, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("It changed since the confirmation.");
             switch (item.Kind)
             {
                 case LinuxUninstallKind.File:
-                    LocalInstall.NoLinks(item.Path);
-                    File.Delete(item.Path);
-                    if (Exists(item.Path)) throw new IOException("The file is still there.");
-                    removed.Add(item.Path);
+                    File.Delete(path);
+                    if (Exists(path)) throw new IOException("The file is still there.");
+                    removed.Add(path);
                     break;
                 case LinuxUninstallKind.Directory:
                     // Only the folder's own path is checked: the folder is deleted, not copied or read through, and
                     // Directory.Delete(recursive: true) on Linux unlinks a link inside it without following it.
-                    LocalInstall.NoLinks(item.Path);
-                    Directory.Delete(item.Path, recursive: true);
-                    if (Directory.Exists(item.Path)) throw new IOException("The folder is still there.");
-                    removed.Add(item.Path);
+                    Directory.Delete(path, recursive: true);
+                    if (Directory.Exists(path)) throw new IOException("The folder is still there.");
+                    removed.Add(path);
                     break;
                 case LinuxUninstallKind.EmptyDirectory:
-                    LocalInstall.NoLinks(item.Path);
-                    if (Directory.EnumerateFileSystemEntries(item.Path).Any()) { left.Add($"{item.Path} (not empty)"); return; }
-                    Directory.Delete(item.Path);
-                    removed.Add(item.Path);
+                    if (Directory.EnumerateFileSystemEntries(path).Any()) { left.Add($"{path} (not empty)"); return; }
+                    Directory.Delete(path);
+                    removed.Add(path);
                     break;
             }
         }

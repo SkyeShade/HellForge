@@ -64,14 +64,15 @@ public static class Migration
         : [];
 
     // Profile lock files only mark a profile as in use by a running backend.
-    static void CopyTree(string from, string to)
+    static void CopyTree(string from, string to, string? protectedRoot = null)
     {
-        LocalInstall.NoLinks(from);
+        protectedRoot ??= from;
+        from = LocalInstall.NoLinks(from, protectedRoot);
         Directory.CreateDirectory(to);
         foreach (var file in Directory.EnumerateFiles(from))
             if (!Path.GetFileName(file).Equals("profile.lock", StringComparison.OrdinalIgnoreCase))
                 File.Copy(file, Path.Combine(to, Path.GetFileName(file)));
         foreach (var folder in Directory.EnumerateDirectories(from))
-            CopyTree(folder, Path.Combine(to, Path.GetFileName(folder)));
+            CopyTree(folder, Path.Combine(to, Path.GetFileName(folder)), protectedRoot);
     }
 }

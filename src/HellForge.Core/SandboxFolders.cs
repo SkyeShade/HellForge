@@ -24,6 +24,13 @@ public static class SandboxFolders
         foreach (var part in parts)
         {
             var from = Path.Combine(fromRoot, part);
+            // On Linux the game can plant a link in a folder between fromRoot and the part; NoLinks refuses it like the
+            // reparse entries below. Windows keeps its old skip of linked parts and entries.
+            if (OperatingSystem.IsLinux())
+            {
+                try { from = LocalInstall.NoLinks(from, fromRoot); }
+                catch (InvalidDataException) { skipped++; continue; }
+            }
             if (Linked(from)) { skipped++; continue; }
             if (File.Exists(from)) Take(from, Path.Combine(toRoot, part));
             else if (Directory.Exists(from)) Walk(from, Path.Combine(toRoot, part));

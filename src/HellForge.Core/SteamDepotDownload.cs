@@ -66,20 +66,21 @@ public static class SteamDepotDownload
     public static void Delete(string steamRoot, SupportedBuild build, Action<string, Exception>? failed = null,
         Action<string>? removed = null)
     {
+        if (OperatingSystem.IsLinux()) steamRoot = LocalInstall.ResolveLinks(steamRoot);
         foreach (var app in ContentFolders(steamRoot, build))
         {
             foreach (var depot in build.Depots)
-                DeleteFolder(Path.Combine(app, "depot_" + depot.Id), failed, removed);
-            DeleteEmptyApp(app, failed, removed);
+                DeleteFolder(steamRoot, Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteEmptyApp(steamRoot, app, failed, removed);
         }
     }
 
-    static void DeleteFolder(string folder, Action<string, Exception>? failed, Action<string>? removed)
+    static void DeleteFolder(string steamRoot, string folder, Action<string, Exception>? failed, Action<string>? removed)
     {
         if (!Directory.Exists(folder)) return;
         try
         {
-            RefuseLinks(folder);
+            RefuseLinks(folder, steamRoot);
             Directory.Delete(folder, recursive: true);
             removed?.Invoke(folder);
         }
@@ -90,12 +91,12 @@ public static class SteamDepotDownload
         }
     }
 
-    static void DeleteEmptyApp(string app, Action<string, Exception>? failed, Action<string>? removed)
+    static void DeleteEmptyApp(string steamRoot, string app, Action<string, Exception>? failed, Action<string>? removed)
     {
         if (!Directory.Exists(app)) return;
         try
         {
-            RefuseLinks(app);
+            RefuseLinks(app, steamRoot);
             if (Directory.EnumerateFileSystemEntries(app).Any()) return;
             Directory.Delete(app);
             removed?.Invoke(app);
@@ -107,10 +108,10 @@ public static class SteamDepotDownload
         }
     }
 
-    // Linux uninstall refuses links so a depot download can never lead outside Steam's folders. Windows keeps its old
-    // behaviour.
-    static void RefuseLinks(string path)
+    // Linux uninstall refuses links inside Steam so a depot download can never lead outside Steam's folders; a link above
+    // Steam's folder (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
+    static void RefuseLinks(string path, string steamRoot)
     {
-        if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path);
+        if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path, steamRoot);
     }
 }
