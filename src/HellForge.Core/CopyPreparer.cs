@@ -27,8 +27,8 @@ public static class CopyPreparer
         if (Directory.Exists(destination) || File.Exists(destination))
             throw new InvalidDataException("Destination must not already exist. A failed copy must be reviewed separately.");
         var files = LocalInstall.Inventory(report.Source);
-        var drive = new DriveInfo(Path.GetPathRoot(destination)!);
-        if (drive.AvailableFreeSpace < files.Sum(x => x.Length) + 64L * 1024 * 1024)
+        // An unreadable file system is unknown, not full: let the copy try and fail on the first write if it is.
+        if (DiskSpace.ForFolder(destination).FreeBytes is { } free && free < files.Sum(x => x.Length) + 64L * 1024 * 1024)
             throw new IOException("Insufficient free space for a full copy and its receipt.");
 
         Directory.CreateDirectory(destination);

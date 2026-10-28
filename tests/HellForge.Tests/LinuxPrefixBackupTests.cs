@@ -44,6 +44,8 @@ static class LinuxPrefixBackupTests
             check(LinuxPrefixBackup.RestoreRequiredBytes(bytes) == restoreNeeded, "The restore estimate is wrong.");
             check(LinuxPrefixBackup.RestoreSpaceProblem(restoreNeeded, bytes) == null, "Enough restore space was refused.");
             check(LinuxPrefixBackup.RestoreSpaceProblem(restoreNeeded - 1, bytes) != null, "Too little restore space was accepted.");
+            check(LinuxPrefixBackup.BackupSpaceProblem(null, bytes) == null, "An unreadable file system refused a backup.");
+            check(LinuxPrefixBackup.RestoreSpaceProblem(null, bytes) == null, "An unreadable file system refused a restore.");
             check(LinuxPrefixBackup.BackupRequiredBytes(-1) == DiskSpace.Margin, "A negative size was not clamped.");
         });
 
