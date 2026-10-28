@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using HellForge.Core;
 
 // Profile > Account sync (InventorySync, SnapshotSeal, ProfileBackups, AccountImportSettings): where snapshots live, how a
@@ -38,16 +39,16 @@ static class InventorySyncTests
         test("The capture's hosts line never joins the player's last entry, and cleanup removes only the capture's lines", () => Hosts(root, check));
 
         test("A snapshot seal holds only for its files, its Steam account and this installation's key", () =>
-        {
-            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
-            Seals(root, check);
-        });
+            Seals(root, check));
 
         test("A capture becomes the snapshot only sealed and with an inventory list; a capture without progression never replaces one with it", () =>
-        {
-            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
-            Finalize(root, check);
-        });
+            Finalize(root, check));
+
+        test("A Linux seal is bound to the machine id, and a changed key or another machine id fails", () =>
+            LinuxMachineBinding(root, check));
+
+        test("A Linux seal fails closed without a valid machine id and refuses a DPAPI-marked key", () =>
+            LinuxMachineIdRefusals(root, check));
 
         test("The capture's state says when it listens and when its files are sealed, for the launcher to take while the game plays on", () =>
             State(root, check));
@@ -115,6 +116,110 @@ static class InventorySyncTests
         check(SnapshotSeal.Verify(folder, Path.Combine(root, "seal", "missing.key")) == null, "A seal verifies without a key.");
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.FileName), "{");
         check(SnapshotSeal.Verify(folder, key) == null, "A broken seal verifies.");
+    }
+
+    static void LinuxMachineBinding(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux machine-id seal)"); return; }
+        if (SnapshotSeal.MachineData.MachineIdPathForTests is not { } machineId)
+        {
+            Console.WriteLine("  (skipped: no synthetic machine id is set)");
+            return;
+        }
+        var other = MachineIdFile(root, "other", "fedcba9876543210fedcba9876543210\n");
+        try
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(root, "seal-linux-machine", "account-snapshot", "player")).FullName;
+            var key = InventorySync.SealKeyFor(folder);
+            File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
+            File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
+            var captured = new DateTime(2026, 10, 25, 9, 30, 0, DateTimeKind.Utc);
+            SnapshotSeal.Write(folder, key, Account, captured);
+            check(SnapshotSeal.Verify(folder, key) is { SteamAccount: Account } info && info.CapturedUtc == captured,
+                "A fresh Linux seal does not verify.");
+            check(File.ReadAllBytes(key).AsSpan().StartsWith("HFL1"u8), "The Linux seal key has no Linux marker.");
+
+            SnapshotSeal.MachineData.MachineIdPathForTests = other;
+            check(SnapshotSeal.Verify(folder, key) == null, "A seal verified under another machine id.");
+            SnapshotSeal.Write(folder, key, Account, captured);
+            check(SnapshotSeal.Verify(folder, key) is { SteamAccount: Account }, "A key from another machine id was not replaced on Write.");
+
+            var blob = File.ReadAllBytes(key);
+            blob[^1] ^= 0x80;
+            File.WriteAllBytes(key, blob);
+            check(SnapshotSeal.Verify(folder, key) == null, "A tampered Linux seal key verified.");
+        }
+        finally { SnapshotSeal.MachineData.MachineIdPathForTests = machineId; }
+    }
+
+    static void LinuxMachineIdRefusals(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux machine-id seal)"); return; }
+        if (SnapshotSeal.MachineData.MachineIdPathForTests is not { } machineId)
+        {
+            Console.WriteLine("  (skipped: no synthetic machine id is set)");
+            return;
+        }
+        const string OtherSystem = "This snapshot was sealed on another system: sync again";
+        try
+        {
+            foreach (var (name, id) in new (string Name, string? Id)[] { ("missing", null), ("short", "abc\n") })
+            {
+                var badId = MachineIdFile(root, name, id);
+                SnapshotSeal.MachineData.MachineIdPathForTests = badId;
+                var folder = Directory.CreateDirectory(Path.Combine(root, "seal-no-machine", name)).FullName;
+                var key = Path.Combine(folder, SnapshotSeal.KeyFileName);
+                File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
+                var reason = "";
+                try { SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow); }
+                catch (CryptographicException error) { reason = error.Message; }
+                check(reason.Contains("machine id", StringComparison.OrdinalIgnoreCase) && !File.Exists(key),
+                    name + ": a missing or short machine id did not fail closed with its reason.");
+
+                SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
+                SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow);
+                SnapshotSeal.MachineData.MachineIdPathForTests = badId;
+                check(SnapshotSeal.Verify(folder, key, out var verifyProblem) == null && verifyProblem is { } &&
+                    verifyProblem.Contains("machine id", StringComparison.OrdinalIgnoreCase),
+                    name + ": verification did not fail closed with the machine-id reason.");
+
+                var before = File.ReadAllBytes(key);
+                var blocked = "";
+                try { SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow); }
+                catch (CryptographicException error) { blocked = error.Message; }
+                check(blocked.Contains("machine id", StringComparison.OrdinalIgnoreCase) && File.ReadAllBytes(key).SequenceEqual(before),
+                    name + ": Write replaced a key without a usable machine id.");
+            }
+
+            SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
+            var sync = Directory.CreateDirectory(Path.Combine(root, "seal-dpapi", "sync")).FullName;
+            var snapshot = Path.Combine(root, "seal-dpapi", "account-snapshot", "player");
+            var keyPath = InventorySync.SealKeyFor(snapshot);
+            File.WriteAllText(Path.Combine(sync, SnapshotSeal.InventoryFile), Inventory);
+            File.WriteAllText(Path.Combine(sync, SnapshotSeal.ProgressionFile), Progression);
+            SnapshotSeal.Write(sync, keyPath, Account, DateTime.UtcNow);
+
+            var dpapi = new byte[64];
+            dpapi[0] = 1; // DPAPI blobs start 01 00 00 00, never the Linux HFL1 marker.
+            File.WriteAllBytes(keyPath, dpapi);
+            check(SnapshotSeal.Verify(sync, keyPath, out var problem) == null && problem == OtherSystem,
+                "A DPAPI-marked key was not refused on Linux with the foreign-seal reason.");
+            check(InventorySync.FinalizeCapture(sync, snapshot) == OtherSystem,
+                "FinalizeCapture did not pass on the foreign-seal reason.");
+
+            SnapshotSeal.Write(sync, keyPath, Account, DateTime.UtcNow);
+            check(File.ReadAllBytes(keyPath).AsSpan().StartsWith("HFL1"u8) && SnapshotSeal.Verify(sync, keyPath) is { SteamAccount: Account },
+                "A DPAPI-marked key was not replaced on Write.");
+        }
+        finally { SnapshotSeal.MachineData.MachineIdPathForTests = machineId; }
+    }
+
+    static string MachineIdFile(string root, string name, string? id)
+    {
+        var path = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-ids")).FullName, name);
+        if (id == null) File.Delete(path);
+        else File.WriteAllText(path, id);
+        return path;
     }
 
     static void Finalize(string root, Action<bool, string> check)

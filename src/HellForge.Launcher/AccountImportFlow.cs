@@ -247,6 +247,22 @@ public partial class MainWindow
     {
         var start = new ProcessStartInfo(paths.Backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        var needsAccount = arguments.Length >= 2 && arguments[0] == "profile" && arguments[1] is "import-preview" or "import";
+        if (needsAccount && OperatingSystem.IsLinux() && paths.InstallRoot is { } installRoot)
+        {
+            ulong? account;
+            try { account = await Task.Run(() => SteamAccount.Current(new InstallLayout(installRoot))); }
+            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException
+                or System.ComponentModel.Win32Exception)
+            {
+                return (-1, "", "HellForge local backend: " + error.Message);
+            }
+            if (account is { } signedIn)
+                start.Environment[SteamAccount.EnvironmentVariable] = SteamAccount.AccountId(signedIn)
+                    .ToString(CultureInfo.InvariantCulture);
+            else
+                start.Environment.Remove(SteamAccount.EnvironmentVariable);
+        }
         try
         {
             using var process = Process.Start(start) ?? throw new IOException("The local backend did not start.");

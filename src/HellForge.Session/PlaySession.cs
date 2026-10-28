@@ -516,13 +516,23 @@ sealed partial class PlaySession(PlayOptions options)
         if (File.Exists(evidence)) File.Delete(evidence);
         if (LinuxNetworkBlock.UnderWine)
         {
+            // Reusing the ownership record needs the account first. The launcher passes one only when it has a fresh
+            // probe result; without one this full check asks Steam, and adopts the account from that same answer before
+            // the backend or game starts. It does not run a second probe just to find the account.
+            var privateAccount = SteamAccount.Current() == null
+                ? Path.Combine(install.Temp, "ownership", Guid.NewGuid().ToString("N") + ".account.json")
+                : null;
             int exit;
             try
             {
                 exit = SteamOwnershipCheck.RunProbe(Path.Combine(app, "steamprobe", "HellForge.SteamProbe.exe"), steamApi,
-                    Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(15));
+                    Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(15), privateAccount);
             }
             catch (InvalidDataException error) { throw new SessionFailure("Steam ownership was not confirmed: " + error.Message); }
+            finally
+            {
+                if (privateAccount != null) AdoptSessionAccount(privateAccount);
+            }
             if (exit != 0) throw new SessionFailure("Steam ownership was not confirmed (the probe exited with " + exit + ").");
         }
         else
@@ -533,6 +543,15 @@ sealed partial class PlaySession(PlayOptions options)
             if (exit != 0) throw new SessionFailure("Steam ownership was not confirmed: " + error.Trim());
         }
         if (SteamOwnershipCheck.Problem(evidence, started) is { } problem) throw new SessionFailure("Steam ownership was not confirmed: " + problem + ".");
+    }
+
+    // The account from this session's own ownership probe: read and delete the private handoff, then put its low 32 bits
+    // in this process's environment for the backend, the game and the session's later SteamAccount calls.
+    static void AdoptSessionAccount(string privateAccount)
+    {
+        if (SteamAccount.TakeProbeResult(privateAccount) is not { } account) return;
+        Environment.SetEnvironmentVariable(SteamAccount.EnvironmentVariable,
+            SteamAccount.AccountId(account).ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     void Play()
@@ -621,13 +640,8 @@ sealed partial class PlaySession(PlayOptions options)
         if (!Directory.Exists(cloudDirectory))
         {
             Directory.CreateDirectory(cloudDirectory);
-            var steamRoot = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
-            var steamUser = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null);
-            if (steamRoot != null && steamUser != null)
-            {
-                var controls = Path.Combine(steamRoot, "userdata", steamUser.ToString()!, "553850", "remote", "input_settings.config");
-                if (File.Exists(controls)) { File.Copy(controls, Path.Combine(cloudDirectory, "input_settings.config")); cloudSeeded = true; }
-            }
+            var controls = GameSettings.SteamControls();
+            if (controls != null) { File.Copy(controls, Path.Combine(cloudDirectory, "input_settings.config")); cloudSeeded = true; }
         }
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_DIR", Path.GetFullPath(cloudDirectory));
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(gameOut, "steam-cloud.log"));

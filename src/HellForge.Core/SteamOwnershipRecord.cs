@@ -162,17 +162,18 @@ public static class SteamOwnershipRecord
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
-    // The Steam client's signed-in account (HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser, as GameSettings reads it),
-    // or null when no Steam process runs or no account is signed in (0).
+    // The Steam client's signed-in account, through SteamAccount so native Linux (the probe) and a Windows session under
+    // Wine (the environment) answer it too; null when no account is signed in or Steam is not running. Windows keeps the
+    // process check it had, because its ActiveUser value can outlive the client.
     public static uint? ActiveAccount()
     {
-        if (!OperatingSystem.IsWindows()) return null;
-        var running = Process.GetProcessesByName("steam");
-        foreach (var process in running) process.Dispose();
-        if (running.Length == 0) return null;
-        return Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null) is int account && account != 0
-            ? unchecked((uint)account)
-            : null;
+        if (OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine)
+        {
+            var running = Process.GetProcessesByName("steam");
+            foreach (var process in running) process.Dispose();
+            if (running.Length == 0) return null;
+        }
+        return SteamAccount.Current() is { } account ? SteamAccount.AccountId(account) : null;
     }
 
     static byte[]? Seal(byte[] data) => Crypt(data, protect: true);

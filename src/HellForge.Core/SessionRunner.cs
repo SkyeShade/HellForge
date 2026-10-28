@@ -143,6 +143,10 @@ public sealed class SessionRunner
         var arguments = Arguments(paths, profile, options, prefix);
         LinuxNetworkBlock.GuardSession(paths.InstallRoot!);
         CheckLinuxSteamUdp(linux, options);
+        // The Windows programs in the session cannot read the Linux client's account. Use only a fresh result the
+        // launcher already has: probing here would start Proton a second time, and its wineserver would hold up the
+        // session wrapper. On a cache miss PlaySession's own ownership probe gets the account under Wine.
+        var steamAccount = linux ? SteamAccount.Current() : null;
         var wrapper = Path.Combine(paths.InstallRoot!, "app", "linux", "hellforge-linux.sh");
         var start = new ProcessStartInfo(linux ? "bash" : paths.Session)
         {
@@ -154,16 +158,7 @@ public sealed class SessionRunner
         {
             start.ArgumentList.Add(wrapper);
             start.ArgumentList.Add(paths.Session);
-            ConfigureLinuxSteamUdp(start, options);
-            start.Environment["INSTALL"] = paths.InstallRoot!;
-            start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix!;
-            // The wrapper has no terminal here: keep its output in logs/linux-session-wrapper.log.
-            start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
-            if (SteamLocator.SelectedProtonScript(new InstallLayout(paths.InstallRoot!)) is { } proton)
-            {
-                if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");
-                start.Environment["PROTON"] = proton;
-            }
+            ConfigureLinuxStart(start, paths, options, prefix!, steamAccount);
         }
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         // The mod loader has HellForge.Cli write a full dump at the game's first crash (WriteCrashDump); the game inherits
@@ -181,6 +176,26 @@ public sealed class SessionRunner
         start.Environment["TEMP"] = start.Environment["TMP"] = temp;
         exitCode = null;
         controller = Process.Start(start) ?? throw new InvalidOperationException("The session runner did not start.");
+    }
+
+    // The wrapper's environment: the installation and prefix, the native account handoff, its log, and the selected
+    // Proton version. The Windows programs the wrapper starts through Proton inherit all of it.
+    static void ConfigureLinuxStart(ProcessStartInfo start, ISessionPaths paths, SessionOptions options, string prefix, ulong? steamAccount)
+    {
+        ConfigureLinuxSteamUdp(start, options);
+        start.Environment["INSTALL"] = paths.InstallRoot!;
+        start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
+        if (steamAccount is { } account)
+            start.Environment[SteamAccount.EnvironmentVariable] = SteamAccount.AccountId(account).ToString(CultureInfo.InvariantCulture);
+        else
+            start.Environment.Remove(SteamAccount.EnvironmentVariable);
+        // The wrapper has no terminal here: keep its output in logs/linux-session-wrapper.log.
+        start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
+        if (SteamLocator.SelectedProtonScript(new InstallLayout(paths.InstallRoot!)) is { } proton)
+        {
+            if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");
+            start.Environment["PROTON"] = proton;
+        }
     }
 
     // The ID of the run currently named in logs/play-session.json, or null before the first run.

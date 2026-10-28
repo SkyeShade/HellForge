@@ -39,7 +39,6 @@ static class PremiumModsTests
 
         test("Ownership comes only from a snapshot sealed on this PC for the Steam account signed in", () =>
         {
-            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
             var data = ProgressionData(root);
             var snapshot = Directory.CreateDirectory(Path.Combine(root, "premium-install", InventorySync.SnapshotFolder, "player")).FullName;
             File.WriteAllText(Path.Combine(snapshot, InventorySync.InventoryFile), "{\"items\":[{\"mixId\":" + Knight + ",\"amount\":1,\"isDiscovered\":true}]}");

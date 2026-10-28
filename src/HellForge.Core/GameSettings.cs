@@ -130,29 +130,23 @@ public static partial class GameSettings
     private static partial Regex LibraryPath();
 
     // The key bindings the signed-in Steam account keeps for HELLDIVERS 2 in its Steam Cloud folder
-    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. Under Wine the
-    // registry has no Steam account, so the Linux Steam client's userdata is searched: the most recently changed file.
+    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. The account comes
+    // from SteamAccount: under Wine the native side passes it, never from the most recently changed userdata folder.
     public static string? SteamControls()
     {
+        if (SteamAccount.Current() is not { } steamId) return null;
+        var account = SteamAccount.AccountId(steamId).ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (LinuxNetworkBlock.UnderWine)
         {
-            var found = new List<string>();
             foreach (var library in LinuxSteamLibraries())
             {
-                var userdata = WineZ(library + "/userdata");
-                if (!Directory.Exists(userdata)) continue;
-                foreach (var accountFolder in Directory.EnumerateDirectories(userdata).Where(a => Path.GetFileName(a) != "0"))
-                {
-                    var bindings = Path.Combine(accountFolder, "553850", "remote", ControlsFile);
-                    if (File.Exists(bindings)) found.Add(bindings);
-                }
+                var bindings = Path.Combine(WineZ(library), "userdata", account, "553850", "remote", ControlsFile);
+                if (File.Exists(bindings)) return bindings;
             }
-            return found.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
-        }
-        if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam ||
-            Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null) is not int account || account == 0)
             return null;
-        var file = Path.Combine(steam, "userdata", account.ToString(System.Globalization.CultureInfo.InvariantCulture), "553850", "remote", ControlsFile);
+        }
+        if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam) return null;
+        var file = Path.Combine(steam, "userdata", account, "553850", "remote", ControlsFile);
         return File.Exists(file) ? file : null;
     }
 
