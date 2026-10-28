@@ -316,7 +316,7 @@ public partial class MainWindow
             : "Steam confirmed ownership. Optional mod tools could not be downloaded; see logs/linux-session-wrapper.log.");
 
         SetStep(SetupStep.Copy);
-        await CopyLinuxGame(install, game, token);
+        await CopyLinuxGame(install, game);
 
         SetStep(SetupStep.NetworkBlock);
         await CheckLinuxNetworkBlock(install);
@@ -396,7 +396,7 @@ public partial class MainWindow
 
     // Copies the game into the installation from the source FindLinuxGame chose, or keeps the verified copy, and
     // deletes Steam's download when asked. The copy row shows the result.
-    async Task CopyLinuxGame(InstallLayout install, LinuxSetupSource game, CancellationToken token)
+    async Task CopyLinuxGame(InstallLayout install, LinuxSetupSource game)
     {
         var build = game.Build;
         string copied;
@@ -406,13 +406,14 @@ public partial class MainWindow
         {
             SetRow(SetupStep.Copy, null, "Copying and verifying game files...", running: true);
             await CopyGame(game.Source, game.SteamRoot, install);
-            token.ThrowIfCancellationRequested();
+            // CopyGame started the copy with a new token source; the Pause button cancels that one.
+            setupCancel!.Token.ThrowIfCancellationRequested();
             copied = $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), each verified against Steam's hashes.";
         }
         if (game.FromDepots && DeleteDownloadBox.IsChecked == true)
         {
             SetRow(SetupStep.Copy, null, copied + " Deleting Steam's download...", running: true);
-            await Task.Run(() => SteamDepotDownload.Delete(game.SteamRoot, build), token);
+            await Task.Run(() => SteamDepotDownload.Delete(game.SteamRoot, build), setupCancel!.Token);
             copied += " Steam's download was deleted.";
         }
         DownloadCard.IsVisible = false;
