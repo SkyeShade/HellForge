@@ -41,11 +41,11 @@ generate the manifest:
 
 ```fish
 set steam_api "$HOME/.local/share/Steam/steamapps/common/HELLDIVERS 2/bin/steam_api64.dll"
-dotnet run --project src/HellForge.SdkShimGen -- manifest "$steam_api" steam-export-manifest.json
+dotnet run --project src/HellForge.SdkShimGen -- manifest "$steam_api" data/steam-export-manifest.json
 ```
 
 Use the actual path if Steam or the game is installed elsewhere. The command writes only export names, ordinals, data
-export flags, and the source DLL's SHA-256. **Commit and push `steam-export-manifest.json` only; never add or upload
+export flags, and the source DLL's SHA-256. **Commit and push `data/steam-export-manifest.json` only; never add or upload
 `steam_api64.dll`.**
 
 On GitHub, open **Actions → Build Linux package → Run workflow** on the branch containing that JSON. The Windows runner
