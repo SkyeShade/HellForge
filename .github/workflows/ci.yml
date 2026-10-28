@@ -1,12 +1,12 @@
 # The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
-# structure lint (scripts/lint/README.md), the engine version check, the build (warnings are errors) and the checks
-# that need no game, as scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
-# game's files, the Steamworks SDK and a GPU.
+# structure lint (scripts/lint/README.md), the engine version check, the Windows build (warnings are errors) and the
+# checks that need no game, as scripts/Test.ps1 runs them, and the Linux launcher, CLI and tests. The engine and the
+# in-game editor build and test on a maintainer's PC: they need the game's files, the Steamworks SDK and a GPU.
 name: CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, linux-native]
   push:
     branches: [dev]
   workflow_dispatch:
@@ -80,6 +80,45 @@ jobs:
           # Test.ps1 throws on any failure; its last checks expect the CLI to refuse (exit code 1), which the step's own
           # "exit $LASTEXITCODE" would otherwise report
           exit 0
+
+  # The Linux launcher, CLI and synthetic tests, on the same .NET as the Windows job. They need no game, GPU or Windows.
+  # libarchive-tools provides bsdtar, which the .7z test skips without.
+  linux:
+    name: Linux build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: bash -n linux/*.sh
+        run: for f in linux/*.sh; do bash -n "$f"; done
+      - name: Install libarchive-tools (bsdtar)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+          bsdtar --version
+      - name: Build the launcher, CLI and tests
+        env:
+          TMPDIR: ${{ github.workspace }}/artifacts/tmp
+        run: |
+          # the tests' temporary files inside the workspace, as on a developer's PC (artifacts/ is ignored)
+          mkdir -p "$TMPDIR"
+          dotnet build src/HellForge.Launcher -c Release
+          dotnet build src/HellForge.Cli -c Release
+          dotnet build tests/HellForge.Tests -c Release
+      - name: HellForge.Tests
+        env:
+          TMPDIR: ${{ github.workspace }}/artifacts/tmp
+        run: dotnet run --project tests/HellForge.Tests -c Release --no-build
+      - name: HellForge.LocalBackend.Tests
+        env:
+          # Unix socket paths are limited to 108 characters; runner.temp is short (/home/runner/work/_temp).
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          dotnet build tests/HellForge.LocalBackend.Tests -c Release
+          dotnet run --project tests/HellForge.LocalBackend.Tests -c Release --no-build
 
   # The native code: the mod loader and its tests, the PlayFab stand-ins, the steam_api64.dll stand-in and its census
   # build, the network gate, the broker's channel and local lobby, the WFP tool, the example code mods, the smokes, the

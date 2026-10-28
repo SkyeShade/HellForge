@@ -6,9 +6,9 @@
 # installation (game, user data, profiles, logs) is left alone. The new app is staged in the installation's temp folder
 # and swapped in at the end.
 # -PayloadFolder instead writes the same files (app\ and the top-level program) into a folder for scripts/Package-HellForge.ps1.
-# The engine is built first (scripts/Build-Engine.ps1, with -SteamApi passed on); -EnginePackage uses a package built
+# The engine is built first (scripts/Build-Engine.ps1, with -SteamApi or -SteamExports passed on); -EnginePackage uses a package built
 # already (artifacts/engine-package/hellforge-engine-<version>.zip) instead.
-param([string]$InstallRoot,[string]$PayloadFolder,[string]$EnginePackage,[string]$SteamApi)
+param([string]$InstallRoot,[string]$PayloadFolder,[string]$EnginePackage,[string]$SteamApi,[string]$SteamExports)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $project=Split-Path -Parent $PSScriptRoot
@@ -32,7 +32,9 @@ if($InstallRoot){
 # engine.json below.
 if(-not $EnginePackage){
     # its own PowerShell process: the engine build does not run reliably inside another script's session
-    $engineArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Build-Engine.ps1'));if($SteamApi){$engineArgs+=@('-SteamApi',$SteamApi)}
+    $engineArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Build-Engine.ps1'))
+    if($SteamApi){$engineArgs+=@('-SteamApi',$SteamApi)}
+    if($SteamExports){$engineArgs+=@('-SteamExports',$SteamExports)}
     & powershell @engineArgs
     if($LASTEXITCODE){throw 'Building the engine failed (scripts/Build-Engine.ps1).'}
     $engineVersion=([xml](Get-Content -LiteralPath (Join-Path $project 'Directory.Build.props') -Raw)).Project.PropertyGroup.EngineVersion
@@ -53,6 +55,9 @@ foreach($app in @(
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}
 }
+Write-Output 'Publishing launcher-linux'
+dotnet publish (Join-Path $project 'src/HellForge.Launcher/HellForge.Launcher.csproj') -c Release -r linux-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'launcher-linux')
+if($LASTEXITCODE){throw 'Publishing launcher-linux failed.'}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -69,6 +74,7 @@ foreach($entry in $engine.files.PSObject.Properties){
 foreach($folder in @('session','backend','sdk-shims','scripts')){Move-Item -LiteralPath (Join-Path $engineFolder $folder) -Destination $staging}
 Copy-Item -LiteralPath (Join-Path $engineFolder 'engine.json') -Destination $staging
 Remove-Item -LiteralPath $engineFolder -Recurse -Force
+Copy-Item -LiteralPath $EnginePackage -Destination (Join-Path $staging 'engine-package.zip')
 # The mod SDK (docs/modding/first-mod.md): the headers, CMake helpers and tool pins, the mod template, and the docs a modder needs.
 # Its tools (Zig, CMake, Ninja) are fetched into <installation>/tools on request (HellForge.Cli mod-tools), outside app/.
 $sdkTarget=New-Item -ItemType Directory (Join-Path $staging 'sdk')

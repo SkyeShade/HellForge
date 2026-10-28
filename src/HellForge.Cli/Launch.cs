@@ -73,13 +73,14 @@ static class Launch
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         var runner = new SessionRunner();
         var startedUtc = DateTime.UtcNow;
+        var previousRunId = SessionRunner.LatestRunId(paths);
         try { runner.Start(paths, profile, session); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
             throw new InvalidDataException("Could not start the session runner: " + error.Message);
         }
         string? run;
-        while ((run = SessionRunner.RunSince(paths, startedUtc)) == null)
+        while ((run = SessionRunner.RunSince(paths, previousRunId)) == null)
         {
             if (!runner.IsRunning) throw new InvalidDataException("The session runner exited before starting: " + RunnerLog(install, startedUtc));
             Thread.Sleep(250);

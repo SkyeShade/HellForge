@@ -1,0 +1,60 @@
+name: Build Linux package
+
+on:
+  # Every merge into linux-native gets a test build: workflow_dispatch can only be started once this file is on main.
+  push:
+    branches: [linux-native]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Require the text-only Steam export manifest
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'data/steam-export-manifest.json')) {
+            throw 'Missing data/steam-export-manifest.json. Generate it from the supported game DLL with the documented local command, commit only the JSON, and push it first.'
+          }
+      - name: Build package
+        shell: pwsh
+        run: ./scripts/Package-HellForge.ps1 -SteamExports data/steam-export-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HellForge-Linux-package
+          path: |
+            artifacts/package/HellForge-Linux.zip
+            artifacts/engine-package/hellforge-engine-*.zip
+            artifacts/package/HellForge-Setup.exe
+          if-no-files-found: error
+
+  linux-installer:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: HellForge-Linux-package
+          path: downloaded
+      - name: Build click-to-install archive
+        run: |
+          set -euo pipefail
+          mkdir -p installer
+          unzip -q downloaded/package/HellForge-Linux.zip -d payload
+          cp -a payload/app/launcher-linux/. installer/
+          cp downloaded/package/HellForge-Linux.zip installer/
+          chmod +x installer/HellForge.Launcher
+          mkdir -p artifacts
+          tar -czf artifacts/HellForge-Linux-Installer.tar.gz -C installer .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HellForge-Linux-Installer
+          path: artifacts/HellForge-Linux-Installer.tar.gz
+          if-no-files-found: error

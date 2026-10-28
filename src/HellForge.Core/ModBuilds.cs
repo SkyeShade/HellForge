@@ -98,10 +98,11 @@ public static class ModBuilds
                 {
                     if (!installTools) throw new InvalidDataException("the mod tools are not installed (the launcher's Mods page: Install mod tools).");
                     // Linux: the session is in a network namespace with no way out, where the download is refused (issue
-                    // 20); hellforge-linux.sh fetches them before it enters the namespace.
+                    // 20); hellforge-linux.sh fetches them before it enters the namespace, and the launcher's Mods page can
+                    // install them too.
                     if (LinuxNetworkBlock.Requested)
-                        throw new InvalidDataException("the mod tools (Zig) are not installed, and the session has no network to fetch them: start HellForge " +
-                            "with app/linux/hellforge-linux.sh, which fetches them first.");
+                        throw new InvalidDataException("the mod tools (Zig) are not installed, and the session has no network to fetch them: they could not be fetched " +
+                            "before the session; install them from the launcher's Mods page (Install mod tools), then start the session again.");
                     log?.Invoke("Installing the mod tools (HellForge's pinned Zig) to build source mods...");
                     progress?.Invoke(new("tools", done, total, mod.Name));
                     ModKit.InstallToolsAsync(sdk, ide: false, line => log?.Invoke(line)).GetAwaiter().GetResult();

@@ -62,6 +62,23 @@ static class DownpatchTests
                     "A broken list was used or saved.");
         });
 
+        test("The patch tool runs through Proton with waitforexitandrun and Wine paths", () =>
+        {
+            var folder = Path.Combine(root, "downpatch-proton");
+            var prefix = Path.Combine(folder, "prefix");
+            var hpatchz = Path.Combine(prefix, "pfx", "drive_c", "HellForge", "temp", "tools", "hpatchz.exe");
+            var from = Path.Combine(folder, "steam", "bin", "helldivers2.exe");
+            var patch = Path.Combine(prefix, "pfx", "drive_c", "HellForge", "temp", "hpatch.hdiff");
+            var output = Path.Combine(prefix, "pfx", "drive_c", "HellForge", "game", "bin", "helldivers2.exe.partial");
+            var arguments = Downpatcher.ProtonToolArguments(hpatchz, prefix, from, patch, output);
+            var expected = new[] { "waitforexitandrun", hpatchz, "-f", WinePath.ToWinePath(from, prefix),
+                WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix) };
+            check(arguments.SequenceEqual(expected), "Proton arguments: " + string.Join(" | ", arguments));
+            check(arguments[0] == "waitforexitandrun" && arguments[3].StartsWith("Z:\\", StringComparison.Ordinal) &&
+                arguments[4].StartsWith("C:\\", StringComparison.Ordinal) && arguments[5].StartsWith("C:\\", StringComparison.Ordinal),
+                "Proton did not wait or did not map the files: " + string.Join(" | ", arguments));
+        });
+
         test("A build patch writes only the build's files, each with the build's hash, or nothing past the bad one", () =>
         {
             var folder = Path.Combine(root, "downpatch-apply");

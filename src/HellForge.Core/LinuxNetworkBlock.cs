@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -7,8 +8,8 @@ namespace HellForge.Core;
 
 // Linux (Wine/Proton) stand-in for the Windows Filtering Platform block, which Wine cannot provide (docs/linux.md; by
 // DreamyBranch and joshua-software-dev, SkyeShade/HellForge issue 1).
-// The block itself is a network namespace made OUTSIDE this program by hellforge-offline.sh, which starts the
-// launcher inside it (so the session runner, backend and game all inherit it) and sets HELLFORGE_LINUX_NETNS=1.
+// The block itself is a network namespace made OUTSIDE this program by hellforge-offline.sh, which starts the requested
+// program inside it and sets HELLFORGE_LINUX_NETNS=1. The native launcher instead delegates session startup to the wrapper.
 // This class never trusts that variable alone: it proves the isolation by probing, at setup and again before
 // every session, and refuses to continue when an outside connection succeeds.
 public static class LinuxNetworkBlock
@@ -30,12 +31,13 @@ public static class LinuxNetworkBlock
 
     // The installation's network block is set up for this system: the Windows block (its marker and probe), or, inside
     // the Linux namespace, the marker Install left. Setup installs it; the session runner checks it again before the game.
-    // A Windows block must permit this installation's backend port alone: a marker without that port is a block from
-    // before it was narrowed (all of loopback permitted), which setup places again.
-    public static bool InPlace(string installRoot) =>
-        File.Exists(MarkerPath(installRoot)) && (Requested ? MarkerIsEmulated(installRoot)
-            : !MarkerIsEmulated(installRoot) && File.Exists(Path.Combine(installRoot, "network-block", "NetworkProbe.exe")) &&
-              new InstallLayout(installRoot) is var install && install.BlockedBackendPort() == install.ComputedBackendPort);
+    public static bool InPlace(string installRoot)
+    {
+        if (!File.Exists(MarkerPath(installRoot))) return false;
+        if (Requested || OperatingSystem.IsLinux()) return MarkerIsEmulated(installRoot);
+        return !MarkerIsEmulated(installRoot) && File.Exists(Path.Combine(installRoot, "network-block", "NetworkProbe.exe")) &&
+            new InstallLayout(installRoot) is var install && install.BlockedBackendPort() == install.ComputedBackendPort;
+    }
 
     // True when the marker on disk was written by this class (not by the Windows script).
     public static bool MarkerIsEmulated(string installRoot)
@@ -59,7 +61,7 @@ public static class LinuxNetworkBlock
         catch (Exception error) when (error is SocketException or OperationCanceledException or IOException)
         {
             return (false, "Loopback does not work in this environment (the local backend needs it). " +
-                "linux/hellforge-linux.sh brings it up; are you starting HellForge through it?");
+                "linux/hellforge-offline.sh brings it up; are sessions being started through hellforge-linux.sh?");
         }
         foreach (var target in new[] { "1.1.1.1", "8.8.8.8", "2606:4700:4700::1111" })
         {
@@ -78,8 +80,27 @@ public static class LinuxNetworkBlock
     // Setup: prove the isolation, then leave the marker the rest of setup (and, we hope, the session runner) looks for.
     public static async Task Install(InstallLayout install)
     {
+        if (OperatingSystem.IsLinux() && !Requested)
+        {
+            var wrapper = Path.Combine(install.App, "linux", "hellforge-offline.sh");
+            if (!File.Exists(wrapper)) throw new InvalidOperationException("The Linux network-namespace wrapper is missing.");
+            var start = new ProcessStartInfo("bash") { WorkingDirectory = install.Root, UseShellExecute = false };
+            start.ArgumentList.Add(wrapper);
+            start.ArgumentList.Add("true");
+            start.Environment["STEAM_COMPAT_DATA_PATH"] = WinePath.PrefixFromInstallRoot(install.Root);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("The Linux network-namespace self-test did not start.");
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0) throw new InvalidOperationException("The network block was not installed: the offline namespace self-test failed.");
+            WriteLinuxMarker(install);
+            return;
+        }
         var (ok, detail) = await Probe();
         if (!ok) throw new InvalidOperationException("The network block was not installed: " + detail);
+        WriteLinuxMarker(install);
+    }
+
+    static void WriteLinuxMarker(InstallLayout install)
+    {
         var path = MarkerPath(install.Root);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         // Same shape as the Windows marker (block, provider, filters, programs, installedUtc) plus "emulated", which
@@ -91,10 +112,19 @@ public static class LinuxNetworkBlock
         }));
     }
 
-    // Before every session on Linux (in the namespace, under Wine, or an installation whose block is the namespace): the
-    // namespace must be there, right now. Windows: nothing.
+    // On native Linux this checks only the wrapper and the marker. The live checks are linux/hellforge-offline.sh's
+    // self-test before it enters the namespace and the session runner's in-Wine probe (PlaySession.NetworkProbeInProcess)
+    // before the game starts. Under Wine, this process still proves the live isolation itself. Windows: nothing.
     public static void GuardSession(string installRoot)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            if (!File.Exists(Path.Combine(installRoot, "app", "linux", "hellforge-linux.sh")))
+                throw new InvalidOperationException("The Linux session wrapper is missing. Reinstall HellForge.");
+            if (!InPlace(installRoot))
+                throw new InvalidOperationException("The network block is not set up. Run setup from the launcher (Settings, Check and repair) first.");
+            return;
+        }
         if (!Requested)
         {
             if (UnderWine || MarkerIsEmulated(installRoot))

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Runs a command (hf-inner.sh: HellForge's launcher under Proton) inside a network namespace with no route out, without
-# root: loopback for the local backend and Steam's bridge, a veth adapter so Wine sees a network, and "prohibit" default
-# routes so every outside connection is refused at once (WSAEACCES, as the Windows block's probe expects). The launcher,
-# the session runner, the backend and the game all inherit it; a self-test refuses to start if 1.1.1.1 is reachable.
+# Runs a command (normally hf-inner.sh) inside a network namespace with no route out, without root: loopback for the local
+# backend and Steam's bridge, a veth adapter so Wine sees a network, and "prohibit" default routes so every outside
+# connection is refused at once (WSAEACCES, as the Windows block's probe expects). A self-test refuses to start if
+# 1.1.1.1 is reachable.
 # HELLFORGE_STEAM_UDP=1 (co-op on Linux): the namespace is made by pasta instead, so UDP leaves it (Steam's networking, which
 # co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP), while TCP stays refused by a
 # policy rule ("ip rule ... ipproto tcp prohibit", the same WSAEACCES). The block is then looser than the default one, but

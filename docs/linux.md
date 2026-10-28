@@ -1,90 +1,218 @@
 # HellForge on Linux (Proton)
 
-For players on Linux: how to set up and start HellForge under Proton, how it keeps the game off the internet there, and
-what is still untested. Linux support is experimental.
+For players on Linux: the graphical installer, the launcher and the setup wizard run natively, while the Windows session
+runner, backend, and game run through Proton inside the offline network namespace. This page covers installing,
+updating, setup, sessions, Settings, isolation and what is untested. Linux support is experimental. The native launcher
+is the normal route; running the Windows launcher through Proton is the fallback.
 
 Linux support is the work of DreamyBranch and joshua-software-dev, who worked it out and shared it in
 [issue 1](https://github.com/SkyeShade/HellForge/issues/1). Thank you both. The setup steps below, and the dependency
-check, Steam folder search and depot move in `hellforge-linux.sh`, follow DreamyBranch's guided install script in
-[issue 11](https://github.com/SkyeShade/HellForge/issues/11). The scripts are in `linux/` (in an installation:
-`app/linux/`).
+check and Steam folder search in `hellforge-linux.sh`, came from DreamyBranch's guided install script in
+[issue 11](https://github.com/SkyeShade/HellForge/issues/11); HellForge's own scripts and the native launcher have taken
+over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 
 ## What you need
 
 - Steam for Linux, running and signed in to an account that owns HELLDIVERS 2, with at least one Proton installed.
-  HELLDIVERS 2 itself does not need to be installed: setup on Linux gets the supported build through Steam's console.
+  HELLDIVERS 2 itself does not need to be installed: setup gets the supported build from Steam's installed copy, its
+  depot download, or a build patch applied to a newer installed copy.
 - About 50 GB of free space while setting up: Steam's download of the supported build and HellForge's copy of the game
-  are about 24 GB each. Setup deletes the download after copying unless you untick that.
-- `HellForge-Setup.exe`.
-- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` (from util-linux) and `pgrep` (from procps).
+  are about 24 GB each. Setup deletes the download after copying unless you untick that. A build patch needs about 2 GB
+  more while it is applied.
+- The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
+  launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
+  artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
+- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from
+  procps) and `bsdtar`. `bsdtar` is needed only to add `.7z` or `.rar` mods.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
   |---|---|---|
-  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 socat util-linux procps-ng` |
-  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 socat util-linux procps` |
-  | `dnf` | Fedora, Nobara | `sudo dnf install iproute socat util-linux procps-ng` |
-  | `zypper` | openSUSE | `sudo zypper install iproute2 socat util-linux procps` |
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 socat util-linux procps-ng libarchive` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 socat util-linux procps libarchive-tools` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install iproute socat util-linux procps-ng bsdtar` |
+  | `zypper` | openSUSE | `sudo zypper install iproute2 socat util-linux procps bsdtar` |
 
   On other systems, install the same packages with your package manager.
 
+## Building the Linux package without a Windows PC
+
+The engine's session runner and backend are Windows NativeAOT programs, so the complete package must be built on a
+Windows runner. You can prepare and trigger that build from Linux; the runner uses only the repository and a small
+text-only manifest, not your game files.
+
+From the repository root, point `steam_api` at the supported game's `bin/steam_api64.dll` in your Steam library and
+generate the manifest:
+
+```fish
+set steam_api "$HOME/.local/share/Steam/steamapps/common/HELLDIVERS 2/bin/steam_api64.dll"
+dotnet run --project src/HellForge.SdkShimGen -- manifest "$steam_api" data/steam-export-manifest.json
+```
+
+Use the actual path if Steam or the game is installed elsewhere. The command writes only export names, ordinals, data
+export flags, and the source DLL's SHA-256. **Commit and push `data/steam-export-manifest.json` only; never add or upload
+`steam_api64.dll`.**
+
+On GitHub, open **Actions → Build Linux package → Run workflow** on the branch containing that JSON. The Windows runner
+checks the manifest's recorded source hash against the supported-build pin, builds the engine and package, and publishes
+`HellForge-Linux-package` (the app zip, engine package, and Windows setup executable) plus the separate
+`HellForge-Linux-Installer` graphical installer artifact. Download the latter from that workflow run's Artifacts section,
+then follow [the graphical installer](#graphical-installer). The run will stop with a clear error if the manifest is
+missing or does not match the supported build.
+
 ## Setting it up
 
-The commands use `~/.local/share/hellforge-prefix` as HellForge's own Wine prefix and `~/.local/share/Steam` as the
-Steam folder. Any empty folder works as the prefix. If your Steam is elsewhere (`~/.steam/debian-installation` on some
-Debian and Ubuntu installs), use that folder.
+### Graphical installer
 
-1. Install the programs from [What you need](#what-you-need).
-2. Run `HellForge-Setup.exe` with Proton in a new prefix. Put the name of a Proton folder from
-   `~/.local/share/Steam/steamapps/common/` (or `compatibilitytools.d/`) in place of `<Proton>`:
+Download the `HellForge-Linux-Installer` artifact from the successful Actions run and extract its downloaded ZIP with
+your desktop's archive manager. Extract the resulting `HellForge-Linux-Installer.tar.gz` with the archive manager too,
+then open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow
+executing file as program**.
 
-   ```sh
-   mkdir -p ~/.local/share/hellforge-prefix
-   STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.local/share/Steam" \
-   STEAM_COMPAT_DATA_PATH="$HOME/.local/share/hellforge-prefix" \
-   "$HOME/.local/share/Steam/steamapps/common/<Proton>/proton" run ~/Downloads/HellForge-Setup.exe
-   ```
+The installer reads Steam's folders and lists the Proton versions installed there. Choose one and a prefix folder; the
+default is `~/.local/share/hellforge-prefix`. When the prefix has no HellForge launcher yet, it runs
+`proton run wineboot -u` (three minutes at most) and, only when the folder did not exist or was empty, writes a
+`.hellforge-created` marker that uninstall later uses for its prefix offer. It extracts the app into
+`<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs the engine package from
+`app/engine-package.zip`, saves the Proton choice and starts the native launcher. The setup wizard starts automatically
+while the game copy is incomplete. The installer checks the package's required entries before it prepares the prefix,
+and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher or
+`app/linux/hellforge-linux.sh`.
 
-   Click Install and keep the folder it suggests, normally `Documents\HellForge`. On Linux that is
-   `~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge`. Keep the installation inside the
-   prefix's C: drive (`pfx/drive_c`). Wine shows your Linux folders as its Z: drive, and HellForge refuses that drive as
-   a linked path ("Linked/reparse paths are not supported: Z:\").
+On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
+allowed programs may make the namespace. Run this once, from your own account:
 
-   Setup then opens HellForge. Close it: started this way, outside its network namespace, its setup stops with "On
-   Linux, setup runs inside HellForge's network namespace".
-3. On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1,
-   only allowed programs may make the namespace. Run this once, from your own account:
+```fish
+sudo bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge/app/linux/allow-namespace.sh
+```
 
-   ```sh
-   sudo bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge/app/linux/allow-namespace.sh
-   ```
+It installs a copy of `unshare` that only root and members of your account's primary group can run, and an AppArmor
+profile that lets that copy make namespaces, as Ubuntu does for Steam. For you this lifts Ubuntu's restriction, for any
+namespace, not only HellForge's; accounts outside that group keep it. `--remove` undoes it. Run it again after a
+util-linux update. `hellforge-linux.sh` tells you when it is needed.
 
-   It installs a copy of `unshare` that only you (and root) can run, and an AppArmor profile that lets that copy make
-   namespaces, as Ubuntu does for Steam. For you this lifts Ubuntu's restriction, for any namespace, not only
-   HellForge's; other accounts keep it. `--remove` undoes it. Run it again after a util-linux update.
-   `hellforge-linux.sh` tells you when it is needed.
-4. Start Steam and sign in. Then start HellForge with `hellforge-linux.sh`:
+### Setup wizard
 
-   ```sh
-   bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge/app/linux/hellforge-linux.sh
-   ```
+The wizard runs natively. At its start, choose the Proton version; the installer's choice is already selected. Setup
+saves the choice in `proton-selection.json` and uses it for setup and later game sessions. Settings > Installation >
+Check and repair can change it.
 
-   It finds the prefix from where the installation is, finds Steam, and picks a Proton. When there are several, it
-   prints which one it uses and the others. To choose one, put `PROTON=<path to its proton script>` before the command.
-   Started with `bash`, the scripts do not need to be made executable.
-5. In HellForge, press Start setup. Setup cannot read Steam's own HELLDIVERS 2 from inside Wine, so it shows the card
-   for downloading the supported build through Steam, with three `download_depot` commands
-   ([troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) describes it). Open Steam's console with
-   `xdg-open steam://open/console` in a terminal (or start Steam with `steam -console`), paste each command and press
-   Enter, one at a time. The wizard's progress bar stays empty on Linux. Wait until the console says "Depot download
-   complete" for all three.
-6. Close HellForge and start it again with the command from step 4, in a terminal. It finds the download in Steam's
-   folder and asks to move it into the prefix, where setup reads it. Answer `y`. Then press Start setup again: setup
-   copies the game from the download, verifies every file, and places the network block, which on Linux is the
-   namespace.
+Setup first checks Steam, the chosen Proton and its own files, and installs the engine package from
+`app/engine-package.zip`. It then looks for the game in this order:
 
-From then on, start HellForge with the command from step 4. Started any other way, it runs outside the network namespace
-and refuses to start a session.
+1. the installation's own copy, if every file matches the supported build;
+2. Steam's installed copy, if it is the supported build;
+3. Steam's completed `download_depot` download;
+4. a published build patch for the build Steam has installed;
+5. otherwise, Steam's download of the supported build (see below).
+
+A build patch is about 1.7 GB. Setup applies it to a copy of Steam's installed game before the ownership check, because
+the check needs the supported build's `steam_api64.dll`. The patch tool is a Windows program, so the selected Proton
+runs `hpatchz.exe` with `waitforexitandrun`; Steam's installation is only read. Every patched file is checked against
+the supported build's hash. If the patch fails or the drive is full, setup keeps the files it already patched, remembers
+the failed patch for this launcher run and offers Steam's download instead; starting the launcher again tries the patch
+again. A complete depot download is used before a patch, as on Windows.
+
+Setup then confirms ownership through the selected Proton. Steam must be running and signed in to an account that owns
+HELLDIVERS 2 (or has it through Steam Family Sharing). The launcher starts its Steam probe through
+`app/linux/hellforge-linux.sh`, so the check runs inside the same namespace as a session. The probe writes
+`logs/setup-ownership.json`, and that report decides. A failure stops setup with `The ownership check did not pass: ...`
+followed by the probe's reason or exit code, `The wrapper log says: "..."` when the wrapper stopped before writing the
+report (missing programs, AppArmor, no Steam bridge, and so on), and `Make sure Steam is running and signed in to an
+account that owns HELLDIVERS 2.`
+
+After the ownership check, setup prepares the optional mod tools through the wrapper: HellForge's pinned Zig, about
+90 MB from ziglang.org. A failure is reported in the row but does not stop setup. Setup then copies
+the game from the source it chose, or keeps the installation's own copy after verifying it, and checks every file
+against Steam's hashes. When the copy came from Steam's depot download and **Delete Steam's download after copying** is
+ticked, the download is deleted afterwards. Setup installs the namespace marker only after `hellforge-linux.sh`'s
+offline self-test passes. It then creates `~/Desktop/HellForge.desktop`, syncs the bundled mods and shows Ready to play;
+your desktop may ask you to allow launching the shortcut.
+
+### Steam's download of the supported build
+
+The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`, or in the same
+path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because it downloads relative to the
+folder its program runs from. The native setup reads these locations directly and does not move the depot folders:
+
+```text
+<Steam>/steamapps/content/app_553850/depot_553851/
+<Steam>/steamapps/content/app_553850/depot_553853/
+<Steam>/steamapps/content/app_553850/depot_553854/
+```
+
+When setup needs the download, it shows a card with one `download_depot 553850 <depot> <manifest>` command per depot.
+Press **Open the Steam console** (or run `xdg-open steam://open/console`), paste each command into the console and press
+Enter, one at a time. The wizard checks the folders every two seconds, shows the progress it can read, and continues by
+itself when every depot is complete. When five or fewer files remain, it names them; a file larger than this build's is
+another build's file, so delete it and run that depot's command again.
+
+The download can remain in Steam's folder, or the setup option can delete it: **Delete Steam's download after copying**
+is ticked by default and removes the build's depot folders from the content locations, and each `app_553850` folder
+when it becomes empty.
+
+### Proton-only fallback
+
+The native launcher is the normal route. If it cannot start, the Windows launcher can still run through Proton, but
+only inside the network namespace. After the graphical installer has made an installation, run:
+
+```fish
+bash "<installation>/app/linux/hellforge-linux.sh"
+```
+
+With no program argument the wrapper starts the installation's `HellForge.exe` through Proton inside the namespace.
+Setup then runs under Wine and refuses to run outside the namespace with `On Linux, setup runs inside HellForge's
+network namespace. Close HellForge and start it with app/linux/hellforge-linux.sh (docs/linux.md), then start setup
+there.` Uninstall under Wine says to use the native launcher. `HellForge-Setup.exe` is not used on Linux.
+
+An installation set up on Windows already has the game copy, so it needs no download. Copy the whole installation folder
+into a prefix's C: drive, for example to `~/.local/share/hellforge-prefix/pfx/drive_c/HellForge` (the prefix directory
+is created by Proton), run that installation's `app/linux/allow-namespace.sh` once if the system needs it, then start
+its native launcher. If the native launcher will not run there either, use the wrapper command above. Keep an
+installation inside the prefix's C: drive (`pfx/drive_c`): Wine shows your Linux folders as its Z: drive, and HellForge
+refuses that drive as a linked path (`Linked/reparse paths are not supported: Z:\`).
+
+## Updating
+
+Run a newer `HellForge-Linux-Installer` the same way as in [the graphical installer](#graphical-installer), with the
+same prefix. Close HellForge and any session first: the installer refuses while a process from that installation is
+running and names the processes. It finds the existing launcher at `app/launcher-linux/HellForge.Launcher`, checks the
+package, unpacks it into `<installation>/temp/app-staging`, moves the old `app` to `temp/app-previous`, puts the new
+`app` and the top-level `HellForge.exe` in place, and installs the new engine package. The old app stays until the new
+launcher starts; if replacing the app or installing the engine fails, or the new launcher cannot start, the previous
+app and engine are put back. After the new launcher starts, the old app is deleted. Because the whole `app` folder is
+replaced, files a release no longer ships do not stay behind.
+
+The installer does not compare versions, so pick the package you mean to install. On an existing installation it does
+not run `wineboot` again; the Proton you choose is saved for setup and sessions.
+
+A release that pins another HELLDIVERS 2 build normally reopens setup, and that can need another large download or a
+build patch (see [the setup wizard](#setup-wizard)). Settings > Installation > Check and repair also installs the engine
+package again, verifies the game copy and repeats ownership and the namespace check. Back up the prefix before a big
+update if you want a way back ([prefix backup and restore](#prefix-backup-and-restore)).
+
+## Sessions
+
+Press PLAY: the native launcher starts `app/linux/hellforge-linux.sh` with the existing
+`app/session/HellForge.Session.exe play ...` command. The launcher itself stays outside the namespace and reads and
+writes only HellForge's local files.
+
+The wrapper checks the programs listed above, finds Steam, the prefix and Proton, and refuses with the exact command
+when AppArmor restricts user namespaces. Before entering the namespace it fetches the live galactic war
+(`HellForge.LocalBackend.exe fetch-live-war`, with a 60-second timeout) and, once per Zig pin, the pinned mod tools
+(about 90 MB). A failure is logged and the session continues without that data or those tools.
+
+The wrapper starts a shared bridge to Steam when none is running. The bridge exposes Steam's loopback ports as
+`hf-steam-*.sock` files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}`, and `hf-inner.sh` recreates the same loopback ports
+inside the namespace. Sessions that run at the same time share the bridge: each wrapper holds the users lock
+(`hf-bridge-users.lock`) shared, and the last one to close takes it exclusively and stops a bridge the wrapper started.
+A bridge started by hand with `hf-bridge-host.sh` has no PID file, is used as it is, and HellForge never stops it. The
+wrapper serializes checking, starting and stopping the bridge with `flock` on `hf-bridge.lock` and `hf-bridge-users.lock`.
+
+The wrapper then runs `hellforge-offline.sh`, which makes the namespace without root, waits up to 20 seconds for a
+wineserver of the prefix still running outside it, and refuses to start while one runs. Inside, `hf-inner.sh` forwards
+the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the
+game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
 `hellforge-linux.sh` reads these settings from the environment. Each one has a default it finds by itself:
 
@@ -94,70 +222,112 @@ and refuses to start a session.
 | `INSTALL` | the installation the script is in |
 | `STEAM_COMPAT_CLIENT_INSTALL_PATH` | the first of `~/.local/share/Steam`, `~/.steam/debian-installation`, `~/.steam/steam` and Flatpak's and Snap's Steam folders that has a `steamapps` folder |
 | `STEAM_COMPAT_DATA_PATH` | the prefix the installation is in (the part of its path before `/pfx/drive_c/`); for an installation outside a prefix, HELLDIVERS 2's prefix, `steamapps/compatdata/553850` |
-
-It starts the bridge to Steam itself and stops it when HellForge closes. A bridge already running (`hf-bridge-host.sh`)
-is used as it is.
+| `STEAM_COMPAT_APP_ID` | `553850` (HELLDIVERS 2), unless explicitly set otherwise |
 
 Another launcher (a mod manager, [external-launchers.md](external-launchers.md)) starts sessions through the same
 script. It passes the Windows program to run in place of HellForge.exe, for example
 `hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes`, and keeps the Steam bridge, the war fetch and
 the namespace.
 
-### From an installation made on Windows
-
-An installation set up on Windows already has the game copy, so it needs no download. Copy the whole installation folder
-into a prefix's C: drive, for example to `~/.local/share/hellforge-prefix/pfx/drive_c/HellForge` (a prefix exists once
-Proton has run a program in it, such as `HellForge-Setup.exe` in step 2). Then follow steps 3 and 4 with that
-installation's `app/linux` folder.
-
 Sharing HELLDIVERS 2's prefix (553850) works too, but then nothing else may run in that prefix while HellForge runs. A
 Windows program of the prefix running outside would share its network with HellForge's
 ([one prefix, one network](#one-prefix-one-network)), and the real game, started while HellForge runs, would have no
 network.
 
-### Steam's download of the supported build
+## Settings
 
-The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`, or in the same
-path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because it downloads relative to the
-folder its program runs from. Setup runs under Wine and cannot read any of these (they are on the Z: drive). It reads
-the download from Steam's folder inside the prefix:
+### Check and repair
 
-```text
-<prefix>/pfx/drive_c/Program Files (x86)/Steam/steamapps/content/app_553850/
+Settings > Installation > Check and repair reruns the native setup: choose the Proton version, install the engine
+package again, confirm Steam ownership, verify the game copy (copying missing or damaged files from Steam, a complete
+depot download or a build patch), and check the namespace marker (installing it, with the self-test, when it is
+missing). It also renews the desktop shortcut and the bundled mods. Use it after changing Proton, when the game copy is
+damaged, or after replacing `app` by hand.
+
+### Prefix backup and restore
+
+Settings > Installation > Prefix backup saves the whole Proton prefix, including the game copy, profiles, mods and
+Steam's depot download, to one archive. The default folder is `~/hellforge-backups`; choose another with **Choose
+folder**. The archive is named `hellforge-prefix-<date>-<time>.tar.zst` when `zstd` is on `PATH`, otherwise `.tar.gz`.
+Both are ordinary tar streams that standard tools can read. The launcher writes to a `.part` file and moves it into
+place when tar exits; cancel deletes the partial file.
+
+Backup refuses while a session or setup runs, while another launcher or any process uses the prefix, when the archive
+folder is inside the prefix, and when the backup folder lacks room for the estimated prefix size plus a margin. It also
+refuses a prefix that is the home folder, the filesystem root, Steam's folder or under `steamapps/compatdata`, or that
+has a link on its path.
+
+**Restore prefix...** lists the archive with tar first and refuses an archive that is not one top-level folder, has an
+absolute path or `..`, contains a device or special entry, or has a link that would leave the prefix (Wine's own
+`pfx/dosdevices` links are allowed). Restore refuses the same prefix locations and needs the archive's decompressor
+(`zstd` or `gzip`) on `PATH`. It unpacks the archive beside the prefix and refuses when there is not room for the
+unpacked prefix while the current one is kept. The launcher then closes; a helper waits for the prefix to be free,
+moves the current prefix aside, moves the restored one into place, removes the old one, and starts the launcher again.
+If the move fails, the old prefix is put back. The current prefix is not touched until the restored copy is complete.
+
+### Removing HellForge
+
+Settings > Installation > Uninstall HellForge... (the confirmation button says **Uninstall this installation**) shows
+exactly what will be removed. After you confirm, it first removes what HellForge put outside the installation:
+
+- Steam's depot download of the supported build: the `depot_<id>` folders under
+  `<Steam>/steamapps/content/app_553850`, also looked for under `ubuntu12_32`, `ubuntu12_64` and `steamrt64`, plus the
+  `state_553850_*.patch` download-state files in or next to that folder.
+- The removed shell installer's app-menu entry, `~/.local/bin/hellforge-linux` command and
+  `~/.config/hellforge-linux/config` saved settings, when the saved settings name this prefix.
+
+Then the launcher closes and a helper deletes the installation folder (`game`, `profiles`, `mods`, `userdata`, `logs`,
+`temp`, `app` and the namespace marker) and `~/Desktop/HellForge.desktop` when it still has HellForge's exact `Exec=`
+line. It leaves Steam, HELLDIVERS 2, your Proton versions, anything that does not prove it belongs to this installation,
+backups in `~/hellforge-backups`, Steam's own update and download state elsewhere under `steamapps`, and the bridge's
+lock files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}` (empty and harmless).
+
+If `/etc/apparmor.d/hellforge-unshare` or `/usr/local/lib/hellforge/unshare` exists, the confirmation lists them and
+plain commands to remove them. The launcher cannot run sudo; **Copy sudo commands** copies them. When both exist they
+are:
+
+```fish
+sudo apparmor_parser -R /etc/apparmor.d/hellforge-unshare 2>/dev/null || true
+sudo rm -f -- /etc/apparmor.d/hellforge-unshare /usr/local/lib/hellforge/unshare
+sudo rmdir /usr/local/lib/hellforge 2>/dev/null || true
 ```
 
-Until the game is copied, `hellforge-linux.sh` looks for the download in all four places and offers to move it there.
-Moving takes a moment and no extra space when the prefix and Steam are on the same filesystem; on another filesystem it
-copies about 24 GB. It leaves a download alone while its size still changes, since Steam is then still writing it. It
-also sets the prefix's Steam folder in the registry (`SteamPath`) to `C:\Program Files (x86)\Steam`, where setup looks
-for Steam.
+They work after the installation is gone. `sudo bash <installation>/app/linux/allow-namespace.sh --remove` does the same
+before uninstall.
 
-To move it yourself, move the three `depot_*` folders from `app_553850` in Steam's folder to that `app_553850` folder in
-the prefix. Links do not work: HellForge refuses linked paths.
+The Proton prefix is left unless the native installer made it. The installer writes `.hellforge-created` into a prefix
+that did not exist or was empty before, and the marker names the prefix. Uninstall offers the prefix only when that
+marker matches, the prefix still contains this installation, it is not the home folder, the filesystem root, Steam's
+folder or under Steam's `compatdata`, it has no links (other than Wine's own drive entries) and no process is using it.
+The checkbox is off by default; ticking it deletes the whole prefix, including the game copy, every profile and every
+mod. A prefix made by HELLDIVERS 2, one you chose as an existing non-empty folder, or one from an earlier HellForge
+version has no marker and is never offered; delete it by hand if you want it gone.
 
-## Updating
+## Building mods with native Zig
 
-Run the newer `HellForge-Setup.exe` with the command from step 2, with the same prefix. It finds the installation, its
-button says Update, and it keeps the game copy, profiles and settings. Close the HellForge it opens, then start
-HellForge with `hellforge-linux.sh` as before.
+On Linux, a source mod's **Build now** compiles with a native Linux Zig, not the pinned Windows Zig sessions use.
+HellForge looks for Zig at `$ZIG`, `~/.local/share/zig-native/zig`, then `zig` on `PATH`; without one, Build now is
+disabled and its tooltip says how to install it. Build now runs `app/linux/hf-build-mod.sh <mod folder>`:
 
-## Removing HellForge
+- it reads `CMakeLists.txt` for the first `hellforge_add_mod(...)` call, for the language and the source list;
+- without one, it uses the `dll` name in `hellforge-mod.json` and `src/*.cpp` or `src/*.c`;
+- it compiles an `x86_64-windows-gnu` DLL with the SDK headers from `app/sdk`, `-Wall -Werror`, C++17 or C11, and copies
+  `hellforge-mod.json`, the DLL and `data/` into `<installation>/mods/<mod-folder-name>/`.
 
-HellForge's Uninstall button does not work on Linux; remove it by hand:
+The script can be run by hand with `INSTALL` set to the installation and `ZIG` to the native zig:
 
-1. If you ran `allow-namespace.sh`, undo it first, while the script is still there:
-   `sudo bash <installation>/app/linux/allow-namespace.sh --remove`.
-2. Delete the prefix, if it is HellForge's own: `rm -rf ~/.local/share/hellforge-prefix`. That deletes the
-   installation with the game copy, your HellForge profiles and progress, and every mod in its mods folder, your own
-   too. Copy anything you want to keep first. In a shared prefix, delete only the installation folder.
-3. If Steam's download of the supported build is still in Steam's folder (it was never moved), delete its `app_553850`
-   folder there.
+```fish
+bash "$INSTALL/app/linux/hf-build-mod.sh" <mod-folder>
+```
+
+It needs a native Linux Zig: `$ZIG`, else `~/.local/share/zig-native/zig`, else `zig` on `PATH`. Sessions still build
+source mods with the pinned Windows Zig inside the namespace.
 
 ## How it keeps the game off the internet
 
 On Windows the copied game is kept off the internet by a network block in the Windows Filtering Platform. Wine has
-none, so on Linux HellForge runs inside a network namespace: a private network with no route out.
-`linux/hellforge-offline.sh` makes it without root, with:
+none, so on Linux the session runner, backend and game run inside a network namespace: a private network with no route
+out. `linux/hellforge-offline.sh` makes it without root, with:
 
 - loopback, for the local backend and the bridge to Steam;
 - a virtual network adapter (`veth`), so Wine and the game see an ordinary network;
@@ -165,9 +335,10 @@ none, so on Linux HellForge runs inside a network namespace: a private network w
   the Windows block gives, which the session's network probe checks before every session;
 - a self-test that refuses to start if a connection to 1.1.1.1 gets through.
 
-The launcher, the session runner, the local backend and the game all run inside it. Under Wine, the launcher checks the
-isolation before each session (`src/HellForge.Core/LinuxNetworkBlock.cs`), and both it and the session runner refuse to
-start a session outside the namespace, an installation copied from Windows included.
+The native launcher stays outside the namespace. The session runner, local backend and game run inside it. The launcher
+starts each session through the wrapper and checks that the wrapper and network-block marker exist. The wrapper enforces
+the namespace and its self-test, and the session runner checks the isolation before starting the game
+(`src/HellForge.Core/LinuxNetworkBlock.cs`), including for installations copied from Windows.
 
 The game still needs the Steam client, which runs outside with its normal network. `linux/hf-bridge-host.sh` exposes
 Steam's local ports as files (unix sockets, which cross into the namespace), and `linux/hf-inner.sh` turns them back into
@@ -238,14 +409,14 @@ In an Ubuntu 26.04 VM with plain Wine 10 (no Steam, no GPU; 2026-10-21):
 - the refusal while a wineserver of the prefix runs outside;
 - the Steam bridge (against a stand-in for Steam), started and stopped by `hellforge-linux.sh`.
 
-The game itself, Proton and the Steam client were tested by the testers in issue 1. Running `HellForge-Setup.exe` under
-Proton in a prefix of HellForge's own, moving the depot download into it and the launcher's setup there were tested with
-DreamyBranch's guided script (on CachyOS).
+The native launcher UI was started successfully on CachyOS. The game itself, Proton and the Steam client were tested by
+the testers in issue 1. This environment has no game files or live Steam client, so native setup, the Proton ownership
+probe, and a real game session have not been tested here.
 
 ## Not known yet
 
-- The depot move and the other steps `hellforge-linux.sh` took over from the guided script have not been tried on Linux
-  in HellForge's own scripts yet.
+- Native setup's direct depot reads, engine-package extraction, and the Proton ownership probe still need a full test on
+  a Linux machine with Steam and the game depot download.
 - Co-op on Linux. Friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace, but the one test so far did not connect (see [above](#problems-players-have-reported)).
 - Steam as a Flatpak or Snap (its own `/tmp` and paths), and the Steam Deck (no `socat` by default), are untested.
@@ -255,6 +426,9 @@ DreamyBranch's guided script (on CachyOS).
   The probe must confirm the game on the signed-in Steam account, or setup and the session stop. It has not yet been
   run on a Linux machine, so if setup or a session stops at "The ownership check did not pass", please report it with
   the logs.
+- The graphical installer's install and update path (the staged app swap, rollback and new engine install), build
+  patches applied through Proton, prefix backup and restore, and uninstall's outside cleanup (including the AppArmor
+  commands) and prefix deletion offer have not been tried with a real game and Steam on a Linux machine.
 
 ## Helping with Linux
 

@@ -121,6 +121,7 @@ public sealed record SupportedBuild(int SchemaVersion, string AppId, string Buil
         {
             cancellation.ThrowIfCancellationRequested();
             var path = Path.Combine(gameRoot, file.Path);
+            if (File.Exists(path + GameSettings.OriginalSuffix)) path += GameSettings.OriginalSuffix;
             var info = new FileInfo(path);
             if (!info.Exists) problems.Add("missing: " + file.Path);
             else if (IsReplaceable(file.Path)) { }

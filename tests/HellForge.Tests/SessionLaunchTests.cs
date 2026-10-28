@@ -94,19 +94,20 @@ static class SessionLaunchTests
         test("A session's run folder is the one the session runner named after it started, not an earlier one", () =>
         {
             var paths = Install("launch-run");
-            var started = DateTime.UtcNow;
-            check(SessionRunner.RunSince(paths, started) == null && SessionRunner.LatestRun(paths) == null, "No run yet.");
+            check(SessionRunner.RunSince(paths, null) == null && SessionRunner.LatestRun(paths) == null, "No run yet.");
             var earlier = Path.Combine(paths.RunsFolder, "earlier");
             Directory.CreateDirectory(paths.Install.Logs);
-            File.WriteAllText(paths.SessionFile, $$"""{"runId": "earlier", "run": {{System.Text.Json.JsonSerializer.Serialize(earlier)}}, "startedUtc": "{{started.AddMinutes(-3):o}}"}""");
-            check(SessionRunner.RunSince(paths, started) == null && SessionRunner.LatestRun(paths) == earlier, "An earlier run is not this session's.");
+            File.WriteAllText(paths.SessionFile, $$"""{"runId": "earlier", "run": {{System.Text.Json.JsonSerializer.Serialize(earlier)}}}""");
+            check(SessionRunner.RunSince(paths, "earlier") == null && SessionRunner.LatestRun(paths) == earlier, "An earlier run is not this session's.");
             var run = Path.Combine(paths.RunsFolder, "now");
-            File.WriteAllText(paths.SessionFile, $$"""{"runId": "now", "run": {{System.Text.Json.JsonSerializer.Serialize(run)}}, "startedUtc": "{{DateTime.UtcNow:o}}"}""");
-            check(SessionRunner.RunSince(paths, started) == run, "This session's run.");
+            File.WriteAllText(paths.SessionFile, $$"""{"runId": "now", "run": {{System.Text.Json.JsonSerializer.Serialize(run)}}, "startedUtc": "not a timestamp"}""");
+            check(SessionRunner.RunSince(paths, "earlier") == run, "The run ID changed even though its clock timestamp was unusable.");
+            check(SessionRunner.RunSince(paths, "now") == null, "The same run ID is not a new run.");
         });
 
         test("A PC without the Visual C++ 2012 or 2015-2022 x64 runtime is told which to install before the game starts", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: Windows system runtimes)"); return; }
             var system = Directory.CreateDirectory(Path.Combine(root, "vc-runtimes")).FullName;
             var none = VisualCppRuntimes.Problem(system, "press Play again.");
             check(none != null && none.Contains("2012") && none.Contains("2015-2022") && none.EndsWith("press Play again."), "Both missing: " + none);

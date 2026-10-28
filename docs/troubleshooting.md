@@ -50,6 +50,9 @@ Setup found no Steam installation. Install Steam and HELLDIVERS 2, then start se
 Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is not code-signed; choose More info > Run
 anyway.
 
+On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
+[linux.md](linux.md#setting-it-up).
+
 ### Setup cannot find the supported build
 
 Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, setup finds the
@@ -67,7 +70,7 @@ build through Steam, with one `download_depot 553850 <depot> <manifest>` command
    command, one at a time.
 3. Watch the wizard's progress bar: Steam shows no progress in its library for this download. Steam puts it in
    `<Steam>/steamapps/content/app_553850/` (about 24 GB). On Linux the bar stays empty, and setup reads the download
-   only once `hellforge-linux.sh` has moved it into the prefix: see
+   directly from Steam's content folder; do not move it into the prefix: see
    [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.
@@ -124,7 +127,8 @@ Windows Firewall does not need to be on.
 
 Antivirus programs sometimes flag or quarantine HellForge's files. That is a false positive. Add an exclusion for the
 HellForge installation folder in your antivirus, then restore anything it quarantined. Running `HellForge-Setup.exe`
-again over the installation puts the app back and keeps your game copy, profiles and settings.
+again over the installation puts the app back and keeps your game copy, profiles and settings. On Linux, run the
+graphical installer again over the same prefix instead; see [linux.md](linux.md#updating).
 
 Cases HellForge already recognises:
 
@@ -160,7 +164,7 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
-| "The session runner exited before starting." | The launcher points to `logs\session-runner.log`, which says why. |
+| "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
 | "Mod left out of this session: ..." (in the Console) | The session still runs without that mod. The Mods page shows why on the mod's row ([using mods](mods.md)). |
 | "HellForge's file ... could not be held read-only for the session ..." | Another program has that file of the installation's `app` folder open for writing. Close it (or restart the PC), then press PLAY. |
 | "Mod file ... could not be held read-only for the session ..." | Another program (an editor, an archive tool) has that file in `mods` open for writing. Close it, then press PLAY. |
@@ -170,6 +174,9 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
+
+On Linux, a message ending in "reinstall HellForge" means running the graphical installer again over the same prefix;
+see [linux.md](linux.md#updating).
 
 ### The game could not be prepared or connected
 

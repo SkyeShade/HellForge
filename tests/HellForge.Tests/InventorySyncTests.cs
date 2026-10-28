@@ -37,10 +37,17 @@ static class InventorySyncTests
 
         test("The capture's hosts line never joins the player's last entry, and cleanup removes only the capture's lines", () => Hosts(root, check));
 
-        test("A snapshot seal holds only for its files, its Steam account and this installation's key", () => Seals(root, check));
+        test("A snapshot seal holds only for its files, its Steam account and this installation's key", () =>
+        {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
+            Seals(root, check);
+        });
 
         test("A capture becomes the snapshot only sealed and with an inventory list; a capture without progression never replaces one with it", () =>
-            Finalize(root, check));
+        {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: snapshot seals use Windows DPAPI)"); return; }
+            Finalize(root, check);
+        });
 
         test("The capture's state says when it listens and when its files are sealed, for the launcher to take while the game plays on", () =>
             State(root, check));
