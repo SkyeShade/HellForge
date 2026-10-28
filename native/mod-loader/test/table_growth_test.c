@@ -22,7 +22,7 @@ static const struct { uint8_t at, length, immOffset, immSize, formula; } kGrowth
     {0x27, 6, 2, 4, GROW_S},               /* imul eax, edx, 0x182 */
     {0x64, 5, 1, 4, GROW_S_MINUS_1},       /* cmp eax, 0x181 */
     {0x6D, 7, 3, 4, GROW_S},               /* cmp r9d, 0x182 */
-    {0x81, 6, 2, 4, GROW_INDEX_RECORDS}};  /* add rax, 0xc1 (16 * 386 / 32) */
+    {0x81, 6, 2, 4, GROW_INDEX_SCALED}};   /* add rax, 0xc1 (16 * 386 / 32) */
 
 typedef uint8_t* (*GrowthLookupFn)(uint64_t entity);
 
@@ -124,7 +124,7 @@ static void GrowthLookupFixture(void)
     {
         int ok;
         patches[i] = (GrowthPatch){(uintptr_t)region + kGrowthLookupSites[i].at, kGrowthLookupSites[i].length, kGrowthLookupSites[i].immOffset,
-            kGrowthLookupSites[i].immSize, {0}, GrowthValue(kGrowthLookupSites[i].formula, slots, stride, records, &ok)};
+            kGrowthLookupSites[i].immSize, {0}, GrowthValue(kGrowthLookupSites[i].formula, slots, stride, records, kGrowthLookupSites[i].formula == GROW_INDEX_SCALED ? stride : 0, &ok)};
         assert(ok);
         memcpy(patches[i].original, kGrowthLookup + kGrowthLookupSites[i].at, kGrowthLookupSites[i].length);
     }
@@ -182,4 +182,49 @@ static void GrowthLookupFixture(void)
     free(block);
     VirtualFree(state, 0, MEM_RELEASE);
     VirtualFree(region, 0, MEM_RELEASE);
+}
+
+/* The generated sites (table_growth_sites.h): every constant's immediate, read from its reviewed bytes, is what its
+ * formula gives at the table's own size; table 29's are the lookup's six above; and each table has a size for 200 more
+ * rows (but 62, whose one-byte bounds stop at 127), whose rewrites all have values that fit. */
+static void GrowthSitesFixture(void)
+{
+    int checked = 0;
+    for (size_t t = 0; t < sizeof kGrowthTables / sizeof kGrowthTables[0]; t++)
+    {
+        const GrowthTable* table = &kGrowthTables[t];
+        for (int i = 0; i < table->count; i++)
+        {
+            const GrowthConstant* c = &kGrowthConstants[table->first + i];
+            uint64_t stored = 0;
+            memcpy(&stored, c->bytes + c->immOffset, c->immSize);
+            int ok;
+            uint64_t value = GrowthValue(c->formula, table->slots, table->stride, table->records, c->divisor, &ok);
+            uint64_t mask = c->immSize == 8 ? ~0ull : (1ull << (8 * c->immSize)) - 1;
+            assert(ok && (value & mask) == stored);
+            checked++;
+        }
+        uint32_t used = table->slots / 2, more = table->component == 62 ? 40 : 200;
+        uint32_t slots = GrowthSlots(used + more, &table->rules);
+        assert(slots >= 2 * (used + more) && slots <= table->rules.maxSlots);
+        static GrowthPatch patches[64];
+        assert(table->count <= 64 && GrowthPatchesFor(table, slots, 0x180000000ull, patches) == table->count);
+        for (int i = 0; i < table->count; i++) assert(ImmediateFits(patches[i].value, patches[i].immSize));
+        if (table->component == 62) assert(GrowthSlots(used + 200, &table->rules) == 0); /* past its one-byte bounds */
+    }
+    assert(checked == (int)(sizeof kGrowthConstants / sizeof kGrowthConstants[0]));
+    /* table 29's constants are the six the lookup fixture rewrites, byte for byte */
+    const GrowthTable* loadout = NULL;
+    for (size_t t = 0; t < sizeof kGrowthTables / sizeof kGrowthTables[0]; t++) if (kGrowthTables[t].component == 29) loadout = &kGrowthTables[t];
+    assert(loadout != NULL && loadout->count == 6 && (loadout->flags & GROWTH_NEEDS_ARMORY));
+    for (int i = 0; i < 6; i++)
+    {
+        const GrowthConstant* c = &kGrowthConstants[loadout->first + i];
+        int found = 0;
+        for (int k = 0; k < 6; k++)
+            if (c->rva - 0x4F5C10u == kGrowthLookupSites[k].at)
+                found = c->length == kGrowthLookupSites[k].length && c->formula == kGrowthLookupSites[k].formula &&
+                    !memcmp(c->bytes, kGrowthLookup + kGrowthLookupSites[k].at, c->length);
+        assert(found);
+    }
 }

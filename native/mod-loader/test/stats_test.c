@@ -3414,6 +3414,7 @@ int main(int argc, char** argv)
     NetworkWidthFixture();
     GrowthMagicFixture();
     GrowthLookupFixture();
+    GrowthSitesFixture();
     {
         /* game.dll mapped at the top of the address space (a tester's PC: level 11 refused, "no memory within 2 GB"):
          * nothing fits above it, so the moved tables go below it, still within a signed 32-bit offset */

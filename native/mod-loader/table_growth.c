@@ -16,8 +16,8 @@ enum
     GROW_S = 1,              /* the probe bound */
     GROW_S_MINUS_1,          /* the wrap compare */
     GROW_MASK,               /* S - 1 as an and-mask (S a power of two) */
-    GROW_INDEX_BYTES,        /* 16 * S: where the records start, in bytes */
-    GROW_INDEX_RECORDS,      /* 16 * S / stride: where the records start, in records */
+    GROW_INDEX_SCALED,       /* 16 * S / m: where the records start, as the code scales it (m 1: bytes; the stride: records;
+                             * the scale of a lea chain), m the constant's divisor */
     GROW_DEFAULT_OFFSET,     /* 16 * S + (R - 1) * stride: the default record (the last vanilla one) */
     GROW_RECORDS,            /* a record count, unchanged */
     GROW_MAGIC,              /* the u64 magic of x / S (mul-high, then shift): Magic64 */
@@ -66,7 +66,7 @@ static uint64_t Divide65(uint64_t x, uint64_t magic, uint32_t shift)
 }
 
 /* The value a constant takes for a table of `slots` slots; 0 when the formula has none (stated by *ok). */
-static uint64_t GrowthValue(uint8_t formula, uint32_t slots, uint32_t stride, uint32_t records, int* ok)
+static uint64_t GrowthValue(uint8_t formula, uint32_t slots, uint32_t stride, uint32_t records, uint32_t divisor, int* ok)
 {
     uint64_t magic = 0;
     uint32_t shift = 0;
@@ -76,8 +76,7 @@ static uint64_t GrowthValue(uint8_t formula, uint32_t slots, uint32_t stride, ui
     case GROW_S: return slots;
     case GROW_S_MINUS_1: return slots - 1u;
     case GROW_MASK: *ok = slots != 0 && (slots & (slots - 1)) == 0; return slots - 1u;
-    case GROW_INDEX_BYTES: return 16ull * slots;
-    case GROW_INDEX_RECORDS: *ok = stride != 0 && 16ull * slots % stride == 0; return stride != 0 ? 16ull * slots / stride : 0;
+    case GROW_INDEX_SCALED: *ok = divisor != 0 && 16ull * slots % divisor == 0; return divisor != 0 ? 16ull * slots / divisor : 0;
     case GROW_DEFAULT_OFFSET: *ok = records != 0; return 16ull * slots + (uint64_t)(records - 1u) * stride;
     case GROW_RECORDS: return records;
     case GROW_MAGIC: *ok = Magic64(slots, &magic, &shift); return magic;
@@ -257,4 +256,45 @@ static uint32_t GrowthSlots(uint32_t rows, const GrowthRules* rules)
         return (uint32_t)s;
     }
     return 0;
+}
+
+/* A constant that encodes a table's slot count (table_growth_sites.h): its instruction's address and reviewed bytes,
+ * where its immediate is, and how its new value follows (GrowthValue; divisor for GROW_INDEX_SCALED). */
+typedef struct GrowthConstant
+{
+    uint32_t rva;
+    uint8_t length, immOffset, immSize, formula;
+    uint32_t divisor;
+    uint8_t bytes[15];
+} GrowthConstant;
+
+#define GROWTH_NEEDS_ARMORY 1u    /* its armory builder holds its size too: only while HellForge's replaces it */
+#define GROWTH_PROTECTED_MATCH 2u /* its slot offset appears as data in helldivers2.exe's protected code, not analysed */
+
+/* A table HellForge may grow (table_growth_sites.h): its vanilla shape, its rules, its constants. */
+typedef struct GrowthTable
+{
+    uint16_t component;
+    uint8_t flags;
+    uint32_t slots, records, stride;
+    GrowthRules rules;
+    uint16_t first, count; /* its constants in kGrowthConstants */
+} GrowthTable;
+
+#include "table_growth_sites.h"
+
+/* A table's rewrites for `slots` slots (into `patches`, its count of them), at game.dll's base `game`; -1 when a formula
+ * has no value for that size. */
+static int GrowthPatchesFor(const GrowthTable* t, uint32_t slots, uintptr_t game, GrowthPatch* patches)
+{
+    for (int i = 0; i < t->count; i++)
+    {
+        const GrowthConstant* c = &kGrowthConstants[t->first + i];
+        int ok;
+        uint64_t value = GrowthValue(c->formula, slots, t->stride, t->records, c->divisor, &ok);
+        if (!ok) return -1;
+        patches[i] = (GrowthPatch){game + c->rva, c->length, c->immOffset, c->immSize, {0}, value};
+        memcpy(patches[i].original, c->bytes, c->length);
+    }
+    return t->count;
 }
