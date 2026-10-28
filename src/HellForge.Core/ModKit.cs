@@ -145,7 +145,7 @@ public static partial class ModKit
     public static bool ToolsReady(ModSdk sdk, bool ide = false) =>
         Tools(sdk).Where(t => ide || !t.Ide).All(t => File.Exists(Path.Combine(sdk.Tools, t.Name, t.Exe)));
 
-    // The native Linux Zig the install script's build command uses: ZIG (else ~/.local/share/zig-native/zig), then zig on
+    // The native Linux Zig hf-build-mod.sh uses: ZIG (else ~/.local/share/zig-native/zig), then zig on
     // PATH; each candidate must be executable.
     public static string? FindNativeLinuxZig(string? zig, string? home, string? path, Func<string, bool> isExecutable)
     {

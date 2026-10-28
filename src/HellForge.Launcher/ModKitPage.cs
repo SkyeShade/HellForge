@@ -47,7 +47,7 @@ public partial class MainWindow
     {
         var sdk = Sdk;
         var linux = OperatingSystem.IsLinux();
-        var linuxBuilder = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "linux", "hellforge-linux-install.sh");
+        var linuxBuilder = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "linux", "hf-build-mod.sh");
         var linuxBuilderExists = linux && linuxBuilder != null && File.Exists(linuxBuilder);
         var nativeZig = linuxBuilderExists ? ModKit.FindNativeLinuxZig(Environment.GetEnvironmentVariable("ZIG"),
             Environment.GetEnvironmentVariable("HOME"), Environment.GetEnvironmentVariable("PATH"), LinuxExecutable) : null;
@@ -61,13 +61,13 @@ public partial class MainWindow
         ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
             : linux && !linuxBuilderExists ? "The Linux mod-build helper is missing; reinstall HellForge."
             : linux && nativeZig == null ? NativeZigTip
-            : linux ? "Compiles src/ with native Linux Zig via app/linux/hellforge-linux-install.sh."
+            : linux ? "Compiles src/ with native Linux Zig via app/linux/hf-build-mod.sh."
             : "Compiles src/ with HellForge's pinned Zig now, as a session would (sessions build it anyway; this shows errors early).");
         build.Click += (_, _) => BuildMod(mod);
         return build;
     }
 
-    // The install script's [ -x ]: any execute bit.
+    // The build script's [ -x ]: any execute bit.
     static bool LinuxExecutable(string path)
     {
         if (!OperatingSystem.IsLinux() || !File.Exists(path)) return false;
@@ -94,7 +94,7 @@ public partial class MainWindow
             {
                 if (OperatingSystem.IsLinux())
                 {
-                    var helper = Path.Combine(install.App, "linux", "hellforge-linux-install.sh");
+                    var helper = Path.Combine(install.App, "linux", "hf-build-mod.sh");
                     if (!File.Exists(helper)) throw new InvalidDataException("the Linux mod-build helper is missing; reinstall HellForge.");
                     var start = new ProcessStartInfo("bash")
                     {
@@ -104,9 +104,8 @@ public partial class MainWindow
                         RedirectStandardError = true
                     };
                     start.ArgumentList.Add(helper);
-                    start.ArgumentList.Add("build");
                     start.ArgumentList.Add(mod.Folder);
-                    start.Environment["PFX"] = WinePath.PrefixFromInstallRoot(install.Root);
+                    start.Environment["INSTALL"] = install.Root;
                     using var process = Process.Start(start) ?? throw new InvalidDataException("the Linux mod-build helper did not start.");
                     void ReportLine(object? _, DataReceivedEventArgs e)
                     {

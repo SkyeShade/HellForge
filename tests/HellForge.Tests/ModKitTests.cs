@@ -21,22 +21,24 @@ static class ModKitTests
                 installed.Template == Path.Combine(sdk, "templates", "c-mod"), "Installation SDK: app/sdk, tools beside app.");
         });
 
-        test("Linux Build now uses the native helper while Windows keeps the pinned build", () =>
+        test("Linux Build now uses hf-build-mod.sh while Windows keeps the pinned build", () =>
         {
             var page = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "HellForge.Launcher", "ModKitPage.cs"));
-            var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hellforge-linux-install.sh"));
+            var helper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hf-build-mod.sh"));
             var linuxBuild = page.IndexOf("if (OperatingSystem.IsLinux())", StringComparison.Ordinal);
             var scriptArg = linuxBuild < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(helper);", linuxBuild, StringComparison.Ordinal);
-            var buildArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(\"build\");", scriptArg, StringComparison.Ordinal);
-            var modArg = buildArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", buildArg, StringComparison.Ordinal);
+            var modArg = scriptArg < 0 ? -1 : page.IndexOf("start.ArgumentList.Add(mod.Folder);", scriptArg, StringComparison.Ordinal);
             var windowsBuild = modArg < 0 ? -1 : page.IndexOf("ModBuilds.Ensure(install, sdk, mod", modArg, StringComparison.Ordinal);
-            check(linuxBuild >= 0 && scriptArg > linuxBuild && buildArg > scriptArg && modArg > buildArg &&
-                windowsBuild > modArg && page.Contains("start.Environment[\"PFX\"] = WinePath.PrefixFromInstallRoot(install.Root);", StringComparison.Ordinal) &&
-                helper.Contains("build <mod-folder>", StringComparison.Ordinal),
-                "Linux invokes the bundled helper with this installation's prefix and mod folder; Windows retains ModBuilds.");
+            check(linuxBuild >= 0 && scriptArg > linuxBuild && modArg > scriptArg && windowsBuild > modArg &&
+                page.Contains("start.Environment[\"INSTALL\"] = install.Root;", StringComparison.Ordinal) &&
+                !page.Contains("start.Environment[\"PFX\"]", StringComparison.Ordinal) &&
+                page.Contains("app/linux/hf-build-mod.sh", StringComparison.Ordinal) &&
+                !page.Contains("start.ArgumentList.Add(\"build\");", StringComparison.Ordinal) &&
+                helper.Contains("usage: $(basename \"$0\") <mod-folder>", StringComparison.Ordinal),
+                "Linux invokes the bundled hf-build-mod.sh with this installation and mod folder only; Windows retains ModBuilds.");
         });
 
-        test("Native Linux Zig is found where the install script finds it", () =>
+        test("Native Linux Zig is found where hf-build-mod.sh finds it", () =>
         {
             var home = Path.Combine(root, "zig-home");
             var configured = Path.Combine(root, "zig-configured");
