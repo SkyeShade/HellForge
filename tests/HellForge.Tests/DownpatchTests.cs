@@ -62,7 +62,7 @@ static class DownpatchTests
                     "A broken list was used or saved.");
         });
 
-        test("The patch tool runs through Proton with waitforexitandrun and Wine paths", () =>
+        test("The patch tool runs natively on Linux and through Proton without a console in the fallback", () =>
         {
             var folder = Path.Combine(root, "downpatch-proton");
             var prefix = Path.Combine(folder, "prefix");
@@ -70,13 +70,22 @@ static class DownpatchTests
             var from = Path.Combine(folder, "steam", "bin", "helldivers2.exe");
             var patch = Path.Combine(prefix, "pfx", "drive_c", "HellForge", "temp", "hpatch.hdiff");
             var output = Path.Combine(prefix, "pfx", "drive_c", "HellForge", "game", "bin", "helldivers2.exe.partial");
+            var native = Downpatcher.NativeToolArguments(from, patch, output);
+            check(native.SequenceEqual(["-f", from, patch, output]), "Native arguments: " + string.Join(" | ", native));
+
             var arguments = Downpatcher.ProtonToolArguments(hpatchz, prefix, from, patch, output);
-            var expected = new[] { "waitforexitandrun", hpatchz, "-f", WinePath.ToWinePath(from, prefix),
+            var expected = new[] { "waitforexitandrun", "C:\\windows\\system32\\start.exe", "/wait", "/b",
+                WinePath.ToWinePath(hpatchz, prefix), "-f", WinePath.ToWinePath(from, prefix),
                 WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix) };
             check(arguments.SequenceEqual(expected), "Proton arguments: " + string.Join(" | ", arguments));
-            check(arguments[0] == "waitforexitandrun" && arguments[3].StartsWith("Z:\\", StringComparison.Ordinal) &&
-                arguments[4].StartsWith("C:\\", StringComparison.Ordinal) && arguments[5].StartsWith("C:\\", StringComparison.Ordinal),
-                "Proton did not wait or did not map the files: " + string.Join(" | ", arguments));
+            check(arguments[0] == "waitforexitandrun" && arguments[2] == "/wait" && arguments[3] == "/b" &&
+                arguments[4].StartsWith("C:\\", StringComparison.Ordinal) && arguments[6].StartsWith("Z:\\", StringComparison.Ordinal) &&
+                arguments[7].StartsWith("C:\\", StringComparison.Ordinal) && arguments[8].StartsWith("C:\\", StringComparison.Ordinal),
+                "Proton did not wait, hide the console or map the files: " + string.Join(" | ", arguments));
+            check(Downpatcher.PatchFailed("data/bundles.00.nxa", 24, output) is NotEnoughSpaceException,
+                "Exit code 24 was not treated as no space.");
+            check(Downpatcher.PatchFailed("data/bundles.00.nxa", 11, output) is InvalidDataException,
+                "Another exit code was not treated as a bad patch.");
         });
 
         test("A build patch writes only the build's files, each with the build's hash, or nothing past the bad one", () =>

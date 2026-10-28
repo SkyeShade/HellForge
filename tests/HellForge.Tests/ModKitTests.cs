@@ -13,12 +13,17 @@ static class ModKitTests
             check(repository != null && repository.Folder.EndsWith(Path.Combine("native", "mod-sdk"), StringComparison.Ordinal) &&
                 Directory.Exists(repository.Template) && File.Exists(Path.Combine(repository.Template, "hellforge-mod.json")), "Repository SDK.");
             var tools = ModKit.Tools(repository!);
-            check(tools.Count == 4 && tools.All(t => t.Platform is "windows-x64" or "linux-x64") &&
+            check(tools.Count == 5 && tools.All(t => t.Platform is "windows-x64" or "linux-x64") &&
                 tools.Single(t => t.Name == "zig") is { Ide: false, Version: "0.17.0", Platform: "windows-x64" } &&
                 tools.Single(t => t.Name == "zig-linux") is { Ide: false, Version: "0.17.0", Platform: "linux-x64", Exe: "zig", Bytes: 57332648L,
                     Sha256: "1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026",
                     Url: "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz" } &&
-                tools.All(t => t.Sha256.Length == 64), "Tool pins, including the pinned native Linux Zig.");
+                tools.Single(t => t.Name == "hpatchz-linux") is { Ide: false, Version: "5.1.3", Platform: "linux-x64", Exe: "linux64/hpatchz" } &&
+                tools.All(t => t.Sha256.Length == 64), "Tool pins, including the native Linux Zig and hpatchz.");
+            var placeholder = new ModTool("native-patch", "5.1.3", "https://example.invalid/tool.tar.gz", new string('0', 64),
+                "hpatchz", false, "linux-x64");
+            check(!ModKit.HasPinnedArchive(placeholder) && !ModKit.HasCompletePin(placeholder),
+                "A zero-filled placeholder must not be downloaded or run.");
 
             var install = Path.Combine(root, "mdk-install");
             var sdk = Directory.CreateDirectory(Path.Combine(install, "app", "sdk")).FullName;

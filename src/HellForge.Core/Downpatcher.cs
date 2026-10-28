@@ -22,8 +22,8 @@ public sealed record DownpatchProgress(Action<long, long>? Download = null, Acti
 public sealed record DownpatchJob(string SteamGame, string GameDestination, string PackPath, DownpatchPack Pack, SupportedBuild Build,
     string Hpatchz, HttpClient? Http)
 {
-    // Linux setup's launcher is native and hpatchz is a Windows program: the selected Proton runs it. Null starts it
-    // directly (Windows, and the tests).
+    // Linux runs the native hpatchz directly. When it cannot be fetched, the selected Proton runs hpatchz.exe instead;
+    // this is null on Windows and for the native tool.
     public string? Proton { get; init; }
 }
 
@@ -140,20 +140,58 @@ public static partial class Downpatcher
         DiskSpace.Require((gameDestination, build.Files.Where(f => !GameCopier.Present(Path.Combine(gameDestination, f.Path), f)).Sum(f => f.Size)),
             (tempFolder, packThere.Exists && packThere.Length == pack.Size ? 0 : pack.Size));
 
-        var hpatchz = await EnsureHpatchz(tempFolder, http, cancellation);
+        var (hpatchz, native) = await EnsurePatchTool(tempFolder, http, cancellation);
         var packPath = await DownloadPack(tempFolder, pack, http, progress?.Download, cancellation);
         var job = new DownpatchJob(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http);
-        if (LinuxProton(gameDestination) is { } proton) job = job with { Proton = proton };
+        if (!native && OperatingSystem.IsLinux())
+            job = job with { Proton = LinuxProton(gameDestination) ?? throw new InvalidDataException(
+                "The native Linux patch tool could not be fetched, and the Proton needed to run the Windows fallback was not found.") };
         ApplyPack(job, progress?.Apply, cancellation);
     }
 
-    // The Proton that runs the Windows hpatchz when setup's launcher is native (Linux): the installation's setup choice,
-    // else Steam's default. Null on Windows, where hpatchz starts directly.
+    // The Proton that runs the Windows hpatchz fallback when setup's launcher is native (Linux): the installation's setup
+    // choice, else Steam's default. Null on Windows, where hpatchz starts directly.
     static string? LinuxProton(string gameDestination)
     {
         if (!OperatingSystem.IsLinux()) return null;
         var root = Path.GetDirectoryName(Path.GetFullPath(gameDestination));
         return root == null ? null : SteamLocator.SelectedProtonScript(new InstallLayout(root)) ?? SteamLocator.ProtonScript();
+    }
+
+    // Prefer the pinned native Linux tool. If its pin is still a placeholder, its download fails, or its archive is not
+    // intact, say why and use the pinned Windows tool through Proton; a failed native attempt never leaves a file that is
+    // later run without the archive checksum and marker.
+    static async Task<(string Path, bool Native)> EnsurePatchTool(string tempFolder, HttpClient http, CancellationToken cancellation)
+    {
+        if (!OperatingSystem.IsLinux()) return (await EnsureHpatchz(tempFolder, http, cancellation), false);
+        try { return (await EnsureNativeHpatchz(tempFolder, http, cancellation), true); }
+        catch (Exception error) when (CanFallBack(error, cancellation))
+        {
+            Console.Error.WriteLine($"The native Linux hpatchz is unavailable ({error.Message}); using the Windows tool through Proton instead.");
+            return (await EnsureHpatchz(tempFolder, http, cancellation), false);
+        }
+    }
+
+    static bool CanFallBack(Exception error, CancellationToken cancellation) =>
+        error is HttpRequestException or InvalidDataException or JsonException or IOException or UnauthorizedAccessException or
+            KeyNotFoundException or InvalidOperationException or FormatException or NotSupportedException or
+            System.ComponentModel.Win32Exception ||
+        error is OperationCanceledException && !cancellation.IsCancellationRequested;
+
+    // The installation's app/sdk/tools.json pin, installed and verified by the same code as the mod tools. The tool stays
+    // in <installation>/tools/hpatchz-linux so later patch runs reuse it.
+    static async Task<string> EnsureNativeHpatchz(string tempFolder, HttpClient http, CancellationToken cancellation)
+    {
+        var install = InstallLayout.Find(tempFolder) ?? throw new InvalidDataException("The build patch is not running in a HellForge installation.");
+        var sdk = ModSdk.Find(install.Root) ?? throw new InvalidDataException("The installation's mod SDK is missing (app/sdk).");
+        var tool = ModKit.Tools(sdk).FirstOrDefault(t => t.Name == "hpatchz-linux")
+            ?? throw new InvalidDataException("tools.json has no hpatchz-linux pin.");
+        if (tool.Version != "5.1.3") throw new InvalidDataException($"The native hpatchz pin is {tool.Version}, not HDiffPatch 5.1.3.");
+        if (!ModKit.HasCompletePin(tool)) throw new InvalidDataException("The native hpatchz release is not pinned yet.");
+        await ModKit.InstallToolAsync(http, sdk, tool, _ => { }, cancellation);
+        var path = ModKit.ToolPath(sdk, tool);
+        if (!File.Exists(path)) throw new InvalidDataException("The native hpatchz is missing after installation.");
+        return path;
     }
 
     static string Sha256(string path)
@@ -393,13 +431,17 @@ public static partial class Downpatcher
         }
     }
 
-    // Without Proton, hpatchz starts directly (Windows). On Linux its selected Proton runs the Windows tool in the
-    // installation's prefix, with the files as Windows paths, like the Linux wrapper runs HellForge's other Windows
-    // programs; ProtonToolArguments uses waitforexitandrun so this process's exit code is hpatchz's.
+    // Without Proton, hpatchz starts directly: the native Linux tool, or hpatchz.exe on Windows. The Linux fallback runs
+    // the Windows tool in the installation's prefix. ProtonToolArguments starts it through Wine's start.exe with /wait and
+    // /b: /wait gives this process hpatchz's exit code, and /b asks Wine not to allocate a console window.
     static ProcessStartInfo ToolStart(DownpatchJob job, string from, string patchTemp, string partial)
     {
         if (job.Proton == null)
-            return new ProcessStartInfo(job.Hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
+        {
+            var direct = new ProcessStartInfo(job.Hpatchz) { UseShellExecute = false, CreateNoWindow = true };
+            foreach (var argument in NativeToolArguments(from, patchTemp, partial)) direct.ArgumentList.Add(argument);
+            return direct;
+        }
         var prefix = WinePath.PrefixFromInstallRoot(job.GameDestination);
         var steamRoot = SteamLocator.SteamRoot() ?? throw new InvalidDataException("Steam was not found to run the build patch.");
         var start = new ProcessStartInfo(job.Proton) { UseShellExecute = false, CreateNoWindow = true };
@@ -411,12 +453,17 @@ public static partial class Downpatcher
         return start;
     }
 
-    // The arguments for Proton running hpatchz: waitforexitandrun is the verb Steam uses for games; it waits for the
-    // prefix's wineserver and returns the program's exit code. "run" can return as soon as the Windows program starts
+    // hpatchz's arguments are the same natively, on Windows and in the Wine fallback.
+    public static IReadOnlyList<string> NativeToolArguments(string from, string patch, string output) => ["-f", from, patch, output];
+
+    // The fallback under Proton. waitforexitandrun is the verb Steam uses for games; it waits for the prefix's wineserver
+    // and returns the program's exit code. start.exe /wait /b then starts hpatchz.exe without a separate Wine console
+    // window; /wait makes start.exe return hpatchz's exit code (24 included). "run" can return as soon as a program starts
     // (linux/hellforge-linux.sh and hf-inner.sh wait for processes for the same reason), which would leave ApplyPack
     // reading a partly written file or a wrong exit code.
     public static IReadOnlyList<string> ProtonToolArguments(string hpatchz, string prefix, string from, string patch, string output) =>
-        ["waitforexitandrun", hpatchz, "-f", WinePath.ToWinePath(from, prefix), WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix)];
+        ["waitforexitandrun", "C:\\windows\\system32\\start.exe", "/wait", "/b", WinePath.ToWinePath(hpatchz, prefix),
+            .. NativeToolArguments(WinePath.ToWinePath(from, prefix), WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix))];
 
     static bool Matches(string path, SupportedFile file) => SupportedBuild.Accepts(path, file);
 

@@ -120,11 +120,13 @@ Setup first checks Steam, the chosen Proton and its own files, and installs the 
 5. otherwise, Steam's download of the supported build (see below).
 
 A build patch is about 1.7 GB. Setup applies it to a copy of Steam's installed game before the ownership check, because
-the check needs the supported build's `steam_api64.dll`. The patch tool is a Windows program, so the selected Proton
-runs `hpatchz.exe` with `waitforexitandrun`; Steam's installation is only read. Every patched file is checked against
-the supported build's hash. If the patch fails or the drive is full, setup keeps the files it already patched, remembers
-the failed patch for this launcher run and offers Steam's download instead; starting the launcher again tries the patch
-again. A complete depot download is used before a patch, as on Windows.
+the check needs the supported build's `steam_api64.dll`. The pinned native Linux `hpatchz` runs directly, with the same
+arguments as the Windows tool and exit code 24 for a full drive; Steam's installation is only read. If the native tool
+cannot be fetched or checked, setup falls back to the pinned Windows `hpatchz.exe` through the selected Proton, with
+Wine's `start /wait /b` so no console window opens per file. Every patched file is checked against the supported build's
+hash. If the patch fails or the drive is full, setup keeps the files it already patched, remembers the failed patch for
+this launcher run and offers Steam's download instead; starting the launcher again tries the patch again. A complete depot
+download is used before a patch, as on Windows.
 
 Setup then confirms ownership through the selected Proton. Steam must be running and signed in to an account that owns
 HELLDIVERS 2 (or has it through Steam Family Sharing). The launcher starts its Steam probe through
