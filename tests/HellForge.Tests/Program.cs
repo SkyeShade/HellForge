@@ -648,6 +648,7 @@ CrashReportTests.Register(Test, Check, Reject, root);
 DownpatchTests.Register(Test, Check, Reject, root);
 SetupSourceTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
+DiskSpaceTests.Register(Test, Check, Reject, root);
 SessionJobTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);

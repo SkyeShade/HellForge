@@ -34,13 +34,17 @@ static class ReportedIssuesTests
             var output = Path.Combine(root, "space", "bundles.00.nxa.partial");
             var full = Downpatcher.PatchFailed("data/bundles.00.nxa", 24, output);
             check(full is NotEnoughSpaceException && full.Message.Contains("ran out of space", StringComparison.Ordinal) &&
-                full.Message.Contains(Path.GetPathRoot(Path.GetFullPath(output))!, StringComparison.OrdinalIgnoreCase), "Exit code 24: " + full.Message);
+                full.Message.Contains(DiskSpace.ForFolder(output).Name, StringComparison.OrdinalIgnoreCase), "Exit code 24: " + full.Message);
             var bad = Downpatcher.PatchFailed("data/bundles.00.nxa", 11, output);
             check(bad is InvalidDataException && bad.Message.Contains("validate the game in Steam", StringComparison.Ordinal), "Another exit code: " + bad.Message);
             // the check before writing: a drive's free space, with folders on one drive added up
             DiskSpace.Require((root, 1), (root, 1));
             try { DiskSpace.Require((root, long.MaxValue / 4), (root, 1)); check(false, "An impossible amount of space was granted."); }
-            catch (NotEnoughSpaceException error) { check(error.Message.Contains("more is needed", StringComparison.Ordinal), error.Message); }
+            catch (NotEnoughSpaceException error)
+            {
+                check(error.Message.Contains("more is needed", StringComparison.Ordinal) &&
+                    error.Message.Contains(DiskSpace.ForFolder(root).Name, StringComparison.OrdinalIgnoreCase), error.Message);
+            }
         });
 
         test("A spreadsheet open in Excel beside a mod leaves the modlist code and the source hash readable (issue 18)", () =>

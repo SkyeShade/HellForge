@@ -418,7 +418,7 @@ public static partial class Downpatcher
     // hpatchz's failure (HDiffPatch 5.1.3, hpatchz.c THPatchResult): 24 is HPATCH_FILEWRITE_NO_SPACE_ERROR, the drive it
     // wrote `output` to filled up; anything else is Steam's copy or the patch.
     public static Exception PatchFailed(string file, int exitCode, string output) => exitCode == 24
-        ? new NotEnoughSpaceException($"{new DriveInfo(Path.GetPathRoot(Path.GetFullPath(output))!).Name} ran out of space while patching {file} " +
+        ? new NotEnoughSpaceException($"{DiskSpace.ForFolder(output).Name} ran out of space while patching {file} " +
             $"(hpatchz exit code 24).")
         : new InvalidDataException($"Patching {file} failed (hpatchz exit code {exitCode}): validate the game in Steam and start setup again.");
 

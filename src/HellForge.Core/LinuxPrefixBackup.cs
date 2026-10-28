@@ -91,23 +91,20 @@ public static class LinuxPrefixBackup
     public static long BackupRequiredBytes(long prefixBytes) => Math.Max(prefixBytes, 0) + DiskSpace.Margin;
     public static long RestoreRequiredBytes(long uncompressedBytes) => Math.Max(uncompressedBytes, 0) + DiskSpace.Margin;
 
-    public static string? BackupSpaceProblem(long free, long prefixBytes) =>
+    public static string? BackupSpaceProblem(long? free, long prefixBytes) =>
         SpaceProblem("backup", free, BackupRequiredBytes(prefixBytes));
 
-    public static string? RestoreSpaceProblem(long free, long uncompressedBytes) =>
+    public static string? RestoreSpaceProblem(long? free, long uncompressedBytes) =>
         SpaceProblem("restore", free, RestoreRequiredBytes(uncompressedBytes));
 
-    static string? SpaceProblem(string action, long free, long needed) =>
-        free >= needed ? null
-        : $"Not enough free space for the {action}: {DiskSpace.GB(needed - free)} more is needed " +
-          $"({DiskSpace.GB(needed)} to write, {DiskSpace.GB(free)} free).";
-
-    public static long FreeBytes(string folder)
+    static string? SpaceProblem(string action, long? free, long needed)
     {
-        var full = LocalInstall.FullPath(folder);
-        var root = Path.GetPathRoot(full) ?? throw new InvalidDataException("The folder has no file system root: " + folder);
-        return new DriveInfo(root).AvailableFreeSpace;
+        if (free is not { } available || available >= needed) return null;
+        return $"Not enough free space for the {action}: {DiskSpace.GB(needed - available)} more is needed " +
+            $"({DiskSpace.GB(needed)} to write, {DiskSpace.GB(available)} free).";
     }
+
+    public static long? FreeBytes(string folder) => DiskSpace.ForFolder(folder).FreeBytes;
 
     public static bool ZstdInstalled() => OnPath("zstd");
 
