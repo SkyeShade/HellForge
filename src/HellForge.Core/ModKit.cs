@@ -160,8 +160,21 @@ public static partial class ModKit
             t.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0)).ToList();
     }
 
+    public static string ToolPath(ModSdk sdk, ModTool tool) => Path.Combine(sdk.Tools, tool.Name, tool.Exe);
+
+    // What a pinned tool needs before its archive may be downloaded: HTTPS, a real 64-digit SHA-256 (not a zero-filled
+    // placeholder), and a file name. An entry without a size can still be installed (CMake and Ninja have none).
+    public static bool HasPinnedArchive(ModTool tool) =>
+        Uri.TryCreate(tool.Url, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps &&
+        !string.IsNullOrEmpty(Path.GetFileName(url.AbsolutePath)) && tool.Sha256.Length == 64 && tool.Sha256.All(c => char.IsAsciiHexDigit(c)) &&
+        tool.Sha256.Any(c => c != '0');
+
+    // A complete pin names the archive and its exact size. New native tools use this so an unfilled placeholder falls back
+    // instead of downloading something the release did not pin.
+    public static bool HasCompletePin(ModTool tool) => tool.Bytes > 0 && HasPinnedArchive(tool);
+
     // The host whose tools an installation needs: Windows sessions and IDEs keep zig.exe, CMake and Ninja; a Linux host
-    // installs only zig-linux, which builds its source mods natively before a session.
+    // installs zig-linux, which builds its source mods natively before a session, and hpatchz-linux for build patches.
     public static string HostPlatform => OperatingSystem.IsLinux() ? "linux-x64" : "windows-x64";
 
     public static IReadOnlyList<ModTool> ToolsForThisPlatform(ModSdk sdk, bool ide = false) =>
@@ -170,7 +183,7 @@ public static partial class ModKit
     public static bool ToolsReady(ModSdk sdk, bool ide = false)
     {
         var tools = ToolsForThisPlatform(sdk, ide);
-        return tools.Count > 0 && tools.All(t => File.Exists(Path.Combine(sdk.Tools, t.Name, t.Exe)));
+        return tools.Count > 0 && tools.All(t => File.Exists(ToolPath(sdk, t)));
     }
 
     // The compiler a cache key identifies: the Zig version and target, deliberately not the host, URL or archive hash.
@@ -227,35 +240,61 @@ public static partial class ModKit
         return null;
     }
 
-    // Downloads the pinned tools into the SDK's tools folder (Zig; CMake and Ninja too with ide), each checked against
-    // its SHA-256 before it is unpacked. Tools already there at their pinned archive are kept.
+    // Downloads the pinned tools into the SDK's tools folder (Zig; CMake and Ninja too with ide; hpatchz-linux on Linux),
+    // each checked against its SHA-256 before it is unpacked. Tools already there at their pinned archive are kept.
     public static async Task InstallToolsAsync(ModSdk sdk, bool ide, Action<string> progress, CancellationToken cancel = default)
     {
-        var downloads = Directory.CreateDirectory(Path.Combine(sdk.Tools, "downloads")).FullName;
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
         foreach (var tool in ToolsForThisPlatform(sdk, ide))
-        {
-            var destination = Path.Combine(sdk.Tools, tool.Name);
-            var marker = Path.Combine(destination, ".hellforge-archive-sha256");
-            if (File.Exists(marker) && File.ReadAllText(marker).Trim() == tool.Sha256 && File.Exists(Path.Combine(destination, tool.Exe)))
-            { progress($"{tool.Name} {tool.Version}: installed"); continue; }
-            var archive = Path.Combine(downloads, Path.GetFileName(new Uri(tool.Url).AbsolutePath));
-            await DownloadAsync(http, tool, archive, progress, cancel);
-            progress($"{tool.Name} {tool.Version}: unpacking");
-            await UnpackAsync(archive, destination, progress, cancel);
-            File.WriteAllText(marker, tool.Sha256);
-            progress($"{tool.Name} {tool.Version}: installed");
-        }
+            await InstallToolAsync(http, sdk, tool, progress, cancel);
     }
 
-    // The tool's archive in downloads: fetched unless it is there with its pinned checksum, and kept only with it.
+    // One pinned tool, by the same path and checks as InstallToolsAsync; the build-patch setup uses this for hpatchz-linux
+    // without fetching the mod compiler.
+    public static async Task InstallToolAsync(ModSdk sdk, ModTool tool, Action<string> progress, CancellationToken cancel = default)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+        await InstallToolAsync(http, sdk, tool, progress, cancel);
+    }
+
+    internal static async Task InstallToolAsync(HttpClient http, ModSdk sdk, ModTool tool, Action<string> progress, CancellationToken cancel)
+    {
+        if (!HasPinnedArchive(tool)) throw new InvalidDataException($"{tool.Name}'s release is not pinned in tools.json yet.");
+        var downloads = Directory.CreateDirectory(Path.Combine(sdk.Tools, "downloads")).FullName;
+        var destination = Path.Combine(sdk.Tools, tool.Name);
+        var marker = Path.Combine(destination, ".hellforge-archive-sha256");
+        var executable = ToolPath(sdk, tool);
+        if (File.Exists(marker) && File.ReadAllText(marker).Trim() == tool.Sha256 && File.Exists(executable))
+        { EnsureExecutable(executable); progress($"{tool.Name} {tool.Version}: installed"); return; }
+        var archive = Path.Combine(downloads, Path.GetFileName(new Uri(tool.Url).AbsolutePath));
+        await DownloadAsync(http, tool, archive, progress, cancel);
+        progress($"{tool.Name} {tool.Version}: unpacking");
+        await UnpackAsync(archive, destination, progress, cancel);
+        if (!File.Exists(executable)) throw new InvalidDataException($"{tool.Name}'s archive has no {tool.Exe}.");
+        EnsureExecutable(executable);
+        File.WriteAllText(marker, tool.Sha256);
+        progress($"{tool.Name} {tool.Version}: installed");
+    }
+
+    // tar keeps the executable bit, but an installation copied from Windows or unpacked with another program may not.
+    static void EnsureExecutable(string path)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        const UnixFileMode execute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+        File.SetUnixFileMode(path, File.GetUnixFileMode(path) | execute);
+    }
+
+    // The tool's archive in downloads: fetched unless it is there with its pinned size and checksum, and kept only with
+    // both. An entry without a size (CMake and Ninja) is checked by checksum alone.
     static async Task DownloadAsync(HttpClient http, ModTool tool, string archive, Action<string> progress, CancellationToken cancel)
     {
-        if (File.Exists(archive) && Hash(archive) == tool.Sha256) return;
+        if (File.Exists(archive) && (tool.Bytes <= 0 || new FileInfo(archive).Length == tool.Bytes) && Hash(archive) == tool.Sha256) return;
         progress($"{tool.Name} {tool.Version}: downloading {tool.Url}");
         var partial = archive + ".partial";
         await using (var source = await http.GetStreamAsync(tool.Url, cancel))
         await using (var file = File.Create(partial)) await source.CopyToAsync(file, cancel);
+        if (tool.Bytes > 0 && new FileInfo(partial).Length != tool.Bytes)
+        { File.Delete(partial); throw new InvalidDataException($"{tool.Url} does not match its pinned size."); }
         if (Hash(partial) != tool.Sha256) { File.Delete(partial); throw new InvalidDataException($"{tool.Url} does not match its pinned checksum."); }
         File.Move(partial, archive, true);
     }
@@ -265,7 +304,8 @@ public static partial class ModKit
     {
         var staging = destination + "-staging";
         foreach (var folder in new[] { staging, destination }) if (Directory.Exists(folder)) await RetryWhileHeld(() => Directory.Delete(folder, true), progress, cancel);
-        if (archive.EndsWith(".tar.xz", StringComparison.OrdinalIgnoreCase)) ExtractTar(archive, staging);
+        var lower = archive.ToLowerInvariant();
+        if (lower.EndsWith(".tar.xz") || lower.EndsWith(".tar.gz") || lower.EndsWith(".tgz")) ExtractTar(archive, staging);
         else ZipFile.ExtractToDirectory(archive, staging);
         var entries = Directory.GetFileSystemEntries(staging);
         if (entries.Length == 1 && Directory.Exists(entries[0]))
@@ -276,17 +316,17 @@ public static partial class ModKit
         else await RetryWhileHeld(() => Directory.Move(staging, destination), progress, cancel);
     }
 
-    // Zig's Linux archive is a .tar.xz, which only the system tar unpacks (with xz support). No fallback: a missing tar
-    // is reported clearly instead of leaving a half-installed compiler or reaching for the Windows Zig under Wine.
+    // Zig's Linux archive is .tar.xz and HDiffPatch's is .tar.gz; the system tar, with the matching decompressor, unpacks
+    // both. No managed fallback: a missing tar is reported clearly instead of leaving a half-installed tool.
     static void ExtractTar(string archive, string staging)
     {
         Directory.CreateDirectory(staging);
         var start = new ProcessStartInfo("tar") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        start.ArgumentList.Add("-xJf"); start.ArgumentList.Add(archive);
+        start.ArgumentList.Add("-xf"); start.ArgumentList.Add(archive);
         start.ArgumentList.Add("-C"); start.ArgumentList.Add(staging);
         Process process;
         try { process = Process.Start(start) ?? throw new IOException("tar did not start."); }
-        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException("tar is needed to unpack " + Path.GetFileName(archive) + " and was not found; install tar with xz support, then try again."); }
+        catch (System.ComponentModel.Win32Exception) { throw new InvalidDataException("tar is needed to unpack " + Path.GetFileName(archive) + " and was not found; install tar with xz and gzip support, then try again."); }
         using (process)
         {
             var output = process.StandardOutput.ReadToEndAsync();
