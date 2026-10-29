@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HellForge.Cli;
 using HellForge.Core;
 using HellForge.Core.GameData;
 
@@ -85,6 +86,10 @@ try
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
             issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
+            sandbox-copy-back --install <folder> --run <session folder> --profile <name>
+            The sandbox commands are native Linux only: hf-inner.sh starts the supervisor, which builds the game domain and
+            performs the hardened copy-back after the domain is gone. They never run a shell or start an unsandboxed game.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
@@ -92,6 +97,7 @@ try
     }
     // Before the --option parser: host and inner take a subcommand, not options.
     if (args[0] == "steam-bridge") return SteamBridgeCommand.Run(args);
+    if (SandboxCommands.TryRun(args, out var sandboxExit)) return sandboxExit;
     var allowed = args[0] switch
     {
         "discover" => new[] { "--steam-root" },

@@ -54,6 +54,18 @@ public static class WinePath
         return fromRoot == "." ? @"Z:\" : @"Z:\" + WineRelative(fromRoot);
     }
 
+    // A host path as Wine's Z: path, even when it is inside the prefix. The sandbox uses this for gameOut: the overlay
+    // masks the installation through C:, and only Z: exposes the session's one writable folder.
+    public static string ToZPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath)!;
+        var fromRoot = Path.GetRelativePath(root, fullPath);
+        return fromRoot == "." ? @"Z:\" : @"Z:\" + WineRelative(fromRoot);
+    }
+
+    public static bool IsWindowsPath(string? path) => WindowsDrive(path) != null;
+
     // The drive letter of a path that starts with one (C:, D:\folder, Z:/folder), or null.
     static char? WindowsDrive(string? path)
     {

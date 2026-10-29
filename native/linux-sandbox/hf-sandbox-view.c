@@ -438,6 +438,57 @@ static int bind_vulkan_layers(struct hf_sandbox *sandbox)
     return bind_readonly(sandbox, sandbox->vulkan_layers, target);
 }
 
+static bool extra_bind_protected(const struct hf_sandbox *sandbox, const char *path)
+{
+    return path_covers(path, sandbox->install) || path_covers(path, sandbox->prefix) ||
+        path_covers(path, sandbox->session) ||
+        (sandbox->host_home[0] != '\0' && path_covers(path, sandbox->host_home));
+}
+
+static bool extra_bind_location(const struct hf_sandbox *sandbox, const char *path, mode_t mode)
+{
+    char mods[PATH_MAX], builds[PATH_MAX], session_host[PATH_MAX], loader[PATH_MAX];
+    if (hf_join(mods, sizeof(mods), sandbox->install, "mods") != 0 ||
+        hf_join(builds, sizeof(builds), sandbox->install, "temp/mod-builds") != 0 ||
+        hf_join(session_host, sizeof(session_host), sandbox->install, "app/session") != 0 ||
+        hf_join(loader, sizeof(loader), sandbox->install, "app/sdk-shims/hellforge_modloader.dll") != 0)
+        return false;
+    if (path_covers(mods, path) || path_covers(builds, path)) return true;
+    if (strcmp(path, session_host) == 0) return S_ISDIR(mode);
+    if (strcmp(path, loader) == 0) return S_ISREG(mode);
+    return false;
+}
+
+// This allow list mirrors SandboxWire.AllowedBind in src/HellForge.Core/SandboxWire.cs. Change both together: the native
+// side must reject a request the supervisor's validator would reject even if a caller bypasses that validator.
+bool hf_extra_bind_allowed(const struct hf_sandbox *sandbox, const char *path)
+{
+    if (path == NULL || path[0] != '/') return false;
+    char resolved[PATH_MAX];
+    if (realpath(path, resolved) == NULL) return false;
+    // realpath resolves every link, so a difference means a link in the given path (or a non-canonical spelling).
+    if (strcmp(resolved, path) != 0) return false;
+    struct stat info;
+    if (lstat(path, &info) != 0) return false;
+    if (S_ISLNK(info.st_mode)) return false;
+    if (!S_ISDIR(info.st_mode) && !S_ISREG(info.st_mode)) return false;
+    // Refuse the installation, prefix, session and real home themselves, and any folder above them.
+    if (extra_bind_protected(sandbox, path)) return false;
+    // Outside the installation is never an allowed input.
+    if (!path_covers(sandbox->install, path)) return false;
+    return extra_bind_location(sandbox, path, info.st_mode);
+}
+
+static int bind_extra_readonly(struct hf_sandbox *sandbox, const char *path)
+{
+    if (path == NULL) return hf_fail_msg("an extra read-only bind is missing its path");
+    if (path[0] != '/') return hf_fail_msg("an extra read-only bind is not absolute: %s", path);
+    if (sandbox->extra_bind_count > HF_MAX_EXTRA_BINDS) return hf_fail_msg("too many extra read-only binds");
+    if (!hf_extra_bind_allowed(sandbox, path))
+        return hf_fail_msg("an extra read-only bind is not an allowed link-free file or folder: %s", path);
+    return bind_readonly(sandbox, path, path);
+}
+
 static int mount_payload(struct hf_sandbox *sandbox)
 {
     if (sandbox->proton_root[0] != '\0' && bind_readonly(sandbox, sandbox->proton_root, sandbox->proton_root) != 0) return 1;
@@ -446,6 +497,10 @@ static int mount_payload(struct hf_sandbox *sandbox)
     if (sandbox->shader_cache[0] != '\0' && bind_writable_dir(sandbox, sandbox->shader_cache, sandbox->shader_cache) != 0) return 1;
     if (bind_readonly(sandbox, sandbox->game, sandbox->game) != 0) return 1;
     if (bind_writable_dir(sandbox, sandbox->game_out, sandbox->game_out) != 0) return 1;
+    // The validated request's exact mod folders, source-built DLLs, loader and session host. They are mounted at their
+    // real host paths, which are also the Z: paths the loader plan and the domain-host command use.
+    for (int index = 0; index < sandbox->extra_bind_count; index++)
+        if (bind_extra_readonly(sandbox, sandbox->extra_binds[index]) != 0) return 1;
     // Vulkan's implicit layer manifests live under XDG_DATA_HOME. Bind the host's folder read-only over the session's
     // data home; the manifest's libraries are under the Steam runtime paths bound above.
     if (bind_vulkan_layers(sandbox) != 0) return 1;

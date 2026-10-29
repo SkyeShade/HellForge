@@ -168,7 +168,8 @@ static class SessionLaunchTests
             File.WriteAllText(Path.Combine(shims, "build.json"), """{"standIns": {}, "steamBridge": "AB12"}""");
             check(SessionRunner.HasSteamBridge(paths), "Built with it.");
             if (OperatingSystem.IsLinux())
-                check(!SessionRunner.CanSandbox(paths) && !SessionRunner.SandboxByDefault(paths), "On Linux, the sandbox is Windows-only.");
+                check(!SessionRunner.CanSandbox(paths) && !SessionRunner.SandboxByDefault(paths),
+                    "On Linux a Steam bridge alone is not enough: the sandbox needs hf-sandbox and a current passing self-test.");
             else
                 check(SessionRunner.CanSandbox(paths) && SessionRunner.SandboxByDefault(paths), "With the bridge, a session is sandboxed by default.");
             ProfileStore.SaveSandbox(paths, false);

@@ -144,9 +144,10 @@ saves the choice in `proton-selection.json` and uses it for setup and later game
 Check and repair can change it. If Steam is not found, setup asks for the folder that holds `steamapps`, checks it and
 saves it in `steam-selection.json`.
 
-Before those checks, setup runs the informational [sandbox probe](#sandbox-probe) and shows its one-line result. That
-result never stops setup in phase 1. Setup then checks Steam, the chosen Proton and its own files, and installs the
-engine package from `app/engine-package.zip`. It then looks for the game in this order:
+Before those checks, setup runs the [sandbox self-test](#phase-2-the-filesystem-sandbox). Its result decides whether
+Settings > Sandbox can be offered; a failure leaves the switch off and does not stop the rest of setup. Setup then checks
+Steam, the chosen Proton and its own files, and installs the engine package from `app/engine-package.zip`. It then looks
+for the game in this order:
 
 1. the installation's own copy, if every file matches the supported build;
 2. Steam's installed copy, if it is the supported build;
@@ -275,9 +276,12 @@ the bridge ports and runs the requested program through Proton. The session runn
 game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
 Proton is bounded by `HELLFORGE_PROTON_TIMEOUT` (default `HELLFORGE_WAIT_TIMEOUT`, 12 hours). When that expires,
-`hf-inner.sh` runs the session Proton's `wineserver -k` for the session's prefix and then ends any game or backend
-process of the installation it finds, with a bounded TERM-then-KILL scan, so a game that outlived Proton's script does
-not keep running in the namespace.
+`hf-inner.sh` first asks a sandboxed session's native supervisor to stop its domain through the same
+`stop-observation.signal` STOP uses, and waits up to 30 seconds for it. The domain runs in the overlay prefix's own
+wineserver, so the supervisor's domain stop file and process-group TERM/KILL are the only way to end it. Then
+`hf-inner.sh` runs the session Proton's `wineserver -k` for the real prefix and ends any game or backend process of the
+installation it finds, with a bounded TERM-then-KILL scan, so a game that outlived Proton's script does not keep running
+in the namespace.
 
 For a session, `hf-inner.sh` also gives the game the shader caches Steam gives it: the folder
 `steamapps/shadercache/553850` in the Steam library that has HELLDIVERS 2, with the same NVIDIA, Mesa, AMD and DXVK
@@ -430,41 +434,60 @@ The design claims that need the game rather than this probe are items 8-18. They
 
 ### Phase 2: the filesystem sandbox
 
-Phase 2 adds `app/linux/hf-sandbox`, the program that will start the game in its own domain. Sessions do not use it yet:
-the session runner prepares the game copy, the backend and the mods, and the game only runs after that, so the game is
-started through `hf-sandbox` once the session wiring lands. Until then a Linux session is not sandboxed, as
-Settings > Sandbox says.
+Phase 2 ships `app/linux/hf-sandbox`, the program that starts the game in its own domain. With Settings > Sandbox on, a
+session runs the copied game through it. The trusted session runner still prepares the copy, the mods, the backend and
+the stand-in DLLs in the real prefix. It then writes a validated start request; `hf-inner.sh` starts the native supervisor
+in `app/cli-linux/HellForge.Cli`, and the supervisor starts `hf-sandbox`. A second `HellForge.Session.exe` in the overlay
+prefix, the domain host, starts the game and applies the memory-only launch edits. The trusted runner never opens the game
+process.
 
 `hf-sandbox --session <run folder> --prefix <prefix> -- <command>` makes a new user and mount namespace and runs the
 command in a view built for it. Each step fails closed: if one fails, it prints the reason and the command does not run.
+The supervisor passes the exact active mod folders, source-built DLLs, the mod loader and `app/session` as read-only
+`--bind-ro` inputs. The native side repeats the allow list, refuses any link in a bind path, and refuses the installation,
+real prefix, session folder, real home or any folder above them. There is no command string and no shell: the request
+names fixed paths and an environment allowlist.
 
 - **Prefix:** the command gets a per-session overlay of the Wine prefix. The real prefix is its read-only lower layer,
   and everything written to `C:` lands in the run folder's `sandbox/upper`, outside the view. An installation inside
   the prefix is hidden in the overlay too: through `C:` only its `game` folder is visible, read-only.
 - **Read-only:** the system folders, Proton, the parts of Steam that Proton needs (`ubuntu12_32`, `ubuntu12_64`,
-  `linux32`, `linux64`, the Steam runtimes) and the game copy. Steam's own folder is not in the view, so its `config`
-  folder, which holds the login data, is absent.
-- **Writable:** the session's `game` folder, a private `/tmp` and `/dev/shm`, Steam's HELLDIVERS 2 shader cache, and
-  Proton's `dist.lock` file only.
+  `linux32`, `linux64`, the Steam runtimes), the game copy, the exact active mod inputs and `app/session`. Steam's own
+  folder is not in the view, so its `config` folder, which holds the login data, is absent.
+- **Writable:** the session's `game` folder (`gameOut`, reached through `Z:`), a private `/tmp` and `/dev/shm`, Steam's
+  HELLDIVERS 2 shader cache, and Proton's `dist.lock` file only.
 - **Session services:** the display and audio sockets (Wayland, X11, PipeWire, PulseAudio) are passed in. D-Bus is not.
-- **Absent:** the home folder, the rest of the installation (profiles, mods, user data, the account snapshot), the
-  real prefix's path, and every device except null, zero, full, random, urandom, tty, the GPU nodes and `/dev/shm`.
+- **Absent:** the home folder, the rest of the installation (profiles, user data, the account snapshot and the real
+  mods folder except the exact active inputs), the real prefix's path, and every device except null, zero, full, random,
+  urandom, tty, the GPU nodes and `/dev/shm`.
 - **Kernel locks:** Landlock enforces the same read and write sets again. A seccomp filter denies mounting, namespace
   changes (including `clone` with new-namespace flags), `clone3`, the x32 system calls, eBPF, io_uring and the kernel
   keyring. All capabilities are dropped and `no_new_privs` is set.
 
-When a session's game files are copied back, only regular files with one link are read. Links, FIFOs, devices and hard
-links are refused.
+The game's user data and environment are copied into `gameOut` before the domain is built. When it exits, the native
+`HellForge.Cli sandbox-copy-back` command stages only regular files with one link: links, FIFOs, devices and hard links are
+skipped, and a kernel without `openat2` is an error rather than a fallback. The trusted runner merges that staging folder
+and applies the editor's saves. The overlay's `upper/` and `work/` are removed afterwards.
 
-Check that the sandbox works on this PC with:
+Named pipes exist only inside their own Wine server. Until the F.4e relay lands, a sandboxed session refuses co-op, mod
+sync and the live editor with a message instead of silently breaking them. Steam itself still uses the wrapper's loopback
+bridge and the forwarding stand-in; this phase does not claim the broker guarantee G4. G2 and G3 are phase 3.
+
+The self-test is also the default switch. Settings > Sandbox is on when this PC passes it for this HellForge build and
+kernel; an update of either reruns it. A failure leaves the switch off and shows the reason. Every session reruns the
+self-test before Proton, and a sandboxed session that cannot build its domain stops without an unsandboxed retry.
+
+Check the sandbox on this PC with:
 
 ```fish
 bash "<installation>/app/linux/hellforge-linux.sh" --sandbox-self-test
 ```
 
 It builds the same view as a real run from a throwaway tree in the installation's `temp/` folder, with the default
-layout (the installation inside the prefix). It checks every boundary listed above, then removes the tree. Every check
-prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass.
+layout (the installation inside the prefix). It checks every boundary listed above, including that a linked bind, the
+installation root and `profiles/` are refused and that an allowed `mods/` input is readable but not writable, then removes
+the tree. Every check prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass. The launcher stores the result with the app build
+and kernel and shows the first reason on failure.
 
 ## Account sync
 
