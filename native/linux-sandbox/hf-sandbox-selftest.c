@@ -7,9 +7,26 @@
 #include "hf-sandbox.h"
 
 #include <stdarg.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #define HOST_INSTALL "prefix/pfx/drive_c/users/steamuser/Documents/HellForge"
+#define DELETED_CREDENTIAL_TEXT "deleted-credential-bytes"
 
+// The self-test's scratch paths. The runtime fixture lives under /tmp because an AF_UNIX socket path is limited to
+// sockaddr_un.sun_path (108 bytes); a worktree or installation path under it can be longer.
+struct selftest_paths
+{
+    char temporary[PATH_MAX];
+    char runtime[PATH_MAX];
+    char escape_socket[PATH_MAX];
+    char deleted_source[PATH_MAX];
+    char deleted_target[PATH_MAX];
+    char host_tmp[PATH_MAX];
+    char host_shm[PATH_MAX];
+};
+
+static bool under(const char *ancestor, const char *path);
 static int failures;
 
 static void report(const char *name, bool passed, const char *format, ...)
@@ -128,6 +145,139 @@ static void check_private_mount(const char *name, const char *host_canary, const
     if (lstat(host_canary, &info) == 0) report(name, false, "the host canary is visible at %s", host_canary);
     else if (try_write(private_file, "private")) report(name, true, "the host canary is absent and %s is writable", private_file);
     else report(name, false, "writing %s: %s", private_file, strerror(errno));
+}
+
+static bool host_target_excluded(const char *path)
+{
+    static const char *const excluded[] =
+        { "/run/host/user-share", "/run/host/user-fonts-cache", "/run/host/etc" };
+    for (size_t index = 0; index < sizeof(excluded) / sizeof(excluded[0]); index++)
+        if (under(excluded[index], path)) return true;
+    return false;
+}
+
+static void check_host_link(const char *path, int *checked, int *excluded, int *missing)
+{
+    char target[PATH_MAX], resolved[PATH_MAX];
+    ssize_t length = readlink(path, target, sizeof(target) - 1);
+    if (length < 0) return;
+    target[length] = '\0';
+    const char *absolute = target;
+    if (target[0] != '/')
+    {
+        if (realpath(path, resolved) == NULL) return;
+        absolute = resolved;
+    }
+    if (!under("/run/host", absolute)) return;
+    if (host_target_excluded(absolute))
+    {
+        (*excluded)++;
+        printf("EXCLUDED %s -> %s\n", path, absolute);
+        return;
+    }
+    (*checked)++;
+    if (access(absolute, F_OK) != 0)
+    {
+        (*missing)++;
+        printf("MISSING %s -> %s\n", path, absolute);
+    }
+}
+
+static void walk_host_links(const char *root, int depth, int *checked, int *excluded, int *missing)
+{
+    if (depth > 8) return;
+    DIR *directory = opendir(root);
+    if (directory == NULL) return;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char path[PATH_MAX];
+        if (hf_join(path, sizeof(path), root, entry->d_name) != 0) continue;
+        struct stat info;
+        if (lstat(path, &info) != 0) continue;
+        if (S_ISDIR(info.st_mode))
+        {
+            walk_host_links(path, depth + 1, checked, excluded, missing);
+            continue;
+        }
+        if (S_ISLNK(info.st_mode)) check_host_link(path, checked, excluded, missing);
+    }
+    closedir(directory);
+}
+
+// Every link in the container's loader/override folders must point at a /run/host target that the view either binds
+// or deliberately excludes. The excluded paths are printed, never silently ignored.
+static void check_run_host_links(void)
+{
+    if (access("/run/host", F_OK) != 0)
+    {
+        report("runtime /run/host links", true, "host mode: no /run/host");
+        return;
+    }
+    static const char *const roots[] =
+        { "/usr/lib/pressure-vessel", "/lib64", "/usr/lib64", "/usr/lib/x86_64-linux-gnu" };
+    int checked = 0, excluded = 0, missing = 0;
+    for (size_t index = 0; index < sizeof(roots) / sizeof(roots[0]); index++)
+        walk_host_links(roots[index], 0, &checked, &excluded, &missing);
+    if (missing == 0)
+        report("runtime /run/host links", true, "%d target(s) bound, %d deliberately excluded", checked, excluded);
+    else
+        report("runtime /run/host links", false, "%d target(s) missing (%d bound, %d excluded)", missing, checked, excluded);
+}
+
+static void check_dynamic_program(void)
+{
+    pid_t child = fork();
+    if (child < 0)
+    {
+        report("dynamic program", false, "fork: %s", strerror(errno));
+        return;
+    }
+    if (child == 0)
+    {
+        execl("/bin/sh", "sh", "-c", "exit 0", (char *)NULL);
+        _exit(127);
+    }
+    int status = 0;
+    bool finished = wait_bounded(child, 10, &status) == 1;
+    if (!finished)
+    {
+        kill(child, SIGKILL);
+        waitpid(child, &status, 0);
+    }
+    bool passed = finished && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    report("dynamic program", passed, "/bin/sh %s", passed ? "ran" : finished ? "failed" : "timed out");
+}
+
+static void check_runtime_sockets(const struct hf_sandbox *sandbox)
+{
+    static const char *const sockets[] = { "wayland-0", "pipewire-0", "pulse/native" };
+    char path[PATH_MAX];
+    struct stat info;
+    for (size_t index = 0; index < sizeof(sockets) / sizeof(sockets[0]); index++)
+    {
+        char label[96];
+        snprintf(label, sizeof(label), "runtime socket %s", sockets[index]);
+        if (hf_join(path, sizeof(path), sandbox->runtime, sockets[index]) == 0 &&
+            lstat(path, &info) == 0 && S_ISSOCK(info.st_mode))
+            report(label, true, "%s is a socket", path);
+        else report(label, false, "%s is missing or not a socket", path);
+    }
+    if (hf_join(path, sizeof(path), sandbox->runtime, "escape-0") == 0 && lstat(path, &info) != 0 && errno == ENOENT)
+        report("runtime socket escape", true, "%s is absent", path);
+    else report("runtime socket escape", false, "%s is present", path);
+}
+
+static void check_copied_credential(const struct hf_sandbox *sandbox)
+{
+    char path[PATH_MAX], text[64];
+    struct stat info;
+    if (hf_join(path, sizeof(path), sandbox->runtime, ".Xauthority") == 0 && stat(path, &info) == 0 &&
+        S_ISREG(info.st_mode) && (info.st_mode & 0777) == 0400 && read_text(path, text, sizeof(text)) == 0 &&
+        strcmp(text, DELETED_CREDENTIAL_TEXT) == 0)
+        report("deleted credential copy", true, "%s has the copied bytes and mode 0400", path);
+    else report("deleted credential copy", false, "%s did not hold the copied credential", path);
 }
 
 static void check_devices(void)
@@ -269,6 +419,10 @@ static void run_canaries(const struct hf_sandbox *sandbox)
 
     check_private_mount("private /tmp", sandbox->selftest_tmp_canary, "/tmp/hf-sandbox-selftest-private");
     check_private_mount("private /dev/shm", sandbox->selftest_shm_canary, "/dev/shm/hf-sandbox-selftest-private");
+    check_runtime_sockets(sandbox);
+    check_copied_credential(sandbox);
+    check_run_host_links();
+    check_dynamic_program();
     check_devices();
 
     char text[64];
@@ -363,21 +517,106 @@ static int self_test_base(const char *directory, char *out, size_t size)
     return check_forbidden_base(out);
 }
 
-static int prepare_tree(const char *directory, char *temporary, size_t size, char *host_tmp, size_t host_tmp_size,
-    char *host_shm, size_t host_shm_size)
+static int make_socket_node(const char *path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return hf_fail("creating a self-test socket");
+    struct sockaddr_un address;
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    if (snprintf(address.sun_path, sizeof(address.sun_path), "%s", path) >= (int)sizeof(address.sun_path))
+    {
+        close(fd);
+        return hf_fail_msg("a self-test socket path is too long: %s", path);
+    }
+    int result = bind(fd, (struct sockaddr *)&address, sizeof(address));
+    int saved = errno;
+    close(fd);
+    if (result != 0) { errno = saved; return hf_fail(path); }
+    return 0;
+}
+
+static int make_runtime_socket(struct selftest_paths *paths, const char *relative)
+{
+    char socket[PATH_MAX];
+    if (hf_join(socket, sizeof(socket), paths->runtime, relative) != 0) return 1;
+    return make_socket_node(socket);
+}
+
+static int make_runtime_link(struct selftest_paths *paths, const char *name, const char *target)
+{
+    char link[PATH_MAX];
+    if (hf_join(link, sizeof(link), paths->runtime, name) != 0) return 1;
+    if (symlink(target, link) != 0) return hf_fail_msg("creating the self-test link %s", name);
+    return 0;
+}
+
+// A runtime folder with the pressure-vessel shape: wayland-0 and pulse are links to sockets in another folder inside
+// the same runtime, pipewire-0 is a direct socket, and escape-0 is a link to a socket outside every allowed root.
+static int prepare_runtime_sockets(struct selftest_paths *paths)
+{
+    if (make_tree_dir(paths->runtime, "real/pulse") != 0) return 1;
+    if (make_runtime_socket(paths, "real/wayland-0") != 0) return 1;
+    if (make_runtime_socket(paths, "pipewire-0") != 0) return 1;
+    if (make_runtime_socket(paths, "real/pulse/native") != 0) return 1;
+    if (snprintf(paths->escape_socket, sizeof(paths->escape_socket), "/tmp/hf-sandbox-selftest-escape-%ld",
+        (long)getpid()) >= (int)sizeof(paths->escape_socket))
+        return hf_fail_msg("the self-test escape socket path is too long");
+    return make_socket_node(paths->escape_socket);
+}
+
+static int prepare_runtime_links(struct selftest_paths *paths)
+{
+    if (make_runtime_link(paths, "wayland-0", "real/wayland-0") != 0) return 1;
+    if (make_runtime_link(paths, "pulse", "real/pulse") != 0) return 1;
+    return make_runtime_link(paths, "escape-0", paths->escape_socket);
+}
+
+// The reviewer measured pressure-vessel's Xauthority as a bind mount of a deleted temp file: the path stays, the link
+// count is 0, and mount(2) refuses it. The self-test leaves the same shape for the credential-copy path to read.
+static int prepare_deleted_credential(struct selftest_paths *paths)
+{
+    if (hf_join(paths->deleted_source, sizeof(paths->deleted_source), paths->runtime, "deleted-source") != 0 ||
+        hf_join(paths->deleted_target, sizeof(paths->deleted_target), paths->runtime, "deleted-target") != 0)
+        return hf_fail("a self-test deleted-credential path");
+    if (write_file(paths->deleted_source, DELETED_CREDENTIAL_TEXT) != 0 ||
+        write_file(paths->deleted_target, "placeholder") != 0)
+        return hf_fail("creating the self-test deleted-credential fixture");
+    if (setenv("XAUTHORITY", paths->deleted_target, 1) != 0) return hf_fail("setting XAUTHORITY");
+    return 0;
+}
+
+static int prepare_runtime_fixture(struct selftest_paths *paths)
+{
+    if (snprintf(paths->runtime, sizeof(paths->runtime), "/tmp/hf-sandbox-selftest-runtime.XXXXXX") >=
+        (int)sizeof(paths->runtime))
+        return hf_fail_msg("the self-test runtime path is too long");
+    if (mkdtemp(paths->runtime) == NULL) return hf_fail("creating the self-test runtime folder");
+    if (prepare_runtime_sockets(paths) != 0) return 1;
+    if (prepare_runtime_links(paths) != 0) return 1;
+    if (prepare_deleted_credential(paths) != 0) return 1;
+    if (setenv("XDG_RUNTIME_DIR", paths->runtime, 1) != 0 || setenv("WAYLAND_DISPLAY", "wayland-0", 1) != 0)
+        return hf_fail("setting the self-test runtime environment");
+    unsetenv("PULSE_SERVER");
+    unsetenv("DISPLAY");
+    return 0;
+}
+
+static int prepare_tree(const char *directory, struct selftest_paths *paths)
 {
     char base[PATH_MAX];
     if (self_test_base(directory, base, sizeof(base)) != 0) return 1;
-    if (snprintf(temporary, size, "%s/.hf-sandbox-selftest.XXXXXX", base) >= (int)size)
+    if (snprintf(paths->temporary, sizeof(paths->temporary), "%s/.hf-sandbox-selftest.XXXXXX", base) >=
+        (int)sizeof(paths->temporary))
         return hf_fail_msg("the self-test temporary path is too long");
-    if (mkdtemp(temporary) == NULL) return hf_fail("creating the self-test temporary folder");
+    if (mkdtemp(paths->temporary) == NULL) return hf_fail("creating the self-test temporary folder");
     const char *dirs[] =
     {
         HOST_INSTALL "/game/data", HOST_INSTALL "/profiles/default", HOST_INSTALL "/mods",
         HOST_INSTALL "/mods/allowed", HOST_INSTALL "/mods/x", HOST_INSTALL "/userdata", HOST_INSTALL "/account-snapshot", "outside",
     };
     for (size_t index = 0; index < sizeof(dirs) / sizeof(dirs[0]); index++)
-        if (make_tree_dir(temporary, dirs[index]) != 0) return 1;
+        if (make_tree_dir(paths->temporary, dirs[index]) != 0) return 1;
     const struct { const char *name; const char *text; } files[] =
     {
         { HOST_INSTALL "/game/data/keep.txt", "game-copy" },
@@ -393,18 +632,18 @@ static int prepare_tree(const char *directory, char *temporary, size_t size, cha
         { "outside/protected.txt", "outside-protected" },
     };
     for (size_t index = 0; index < sizeof(files) / sizeof(files[0]); index++)
-        if (write_tree_file(temporary, files[index].name, files[index].text) != 0) return 1;
+        if (write_tree_file(paths->temporary, files[index].name, files[index].text) != 0) return 1;
     char mod_link[PATH_MAX];
-    if (hf_join(mod_link, sizeof(mod_link), temporary, "mod-link") != 0 ||
+    if (hf_join(mod_link, sizeof(mod_link), paths->temporary, "mod-link") != 0 ||
         symlink(HOST_INSTALL "/mods", mod_link) != 0)
         return hf_fail("creating the self-test bind link");
-    snprintf(host_tmp, host_tmp_size, "/tmp/hf-sandbox-selftest-host-%ld", (long)getpid());
-    snprintf(host_shm, host_shm_size, "/dev/shm/hf-sandbox-selftest-host-%ld", (long)getpid());
+    snprintf(paths->host_tmp, sizeof(paths->host_tmp), "/tmp/hf-sandbox-selftest-host-%ld", (long)getpid());
+    snprintf(paths->host_shm, sizeof(paths->host_shm), "/dev/shm/hf-sandbox-selftest-host-%ld", (long)getpid());
     // The host canaries make the private-mount checks meaningful. A host without /dev/shm can still run the self-test;
     // its private /dev/shm tmpfs is made by the view regardless.
-    if (write_file(host_tmp, "host-tmp") != 0) host_tmp[0] = '\0';
-    if (write_file(host_shm, "host-shm") != 0) host_shm[0] = '\0';
-    return 0;
+    if (write_file(paths->host_tmp, "host-tmp") != 0) paths->host_tmp[0] = '\0';
+    if (write_file(paths->host_shm, "host-shm") != 0) paths->host_shm[0] = '\0';
+    return prepare_runtime_fixture(paths);
 }
 
 // Every expected denial must exist on the host before the view is built. This is the parent's check, before the fork.
@@ -463,7 +702,7 @@ static void check_extra_bind_rules(const char *temporary, const struct hf_sandbo
     check_bind_rule("extra bind nested file", sandbox, nested_file, true);
 }
 
-static int verify_after(const char *temporary, const struct hf_sandbox *sandbox)
+static bool verify_lower_tree(const char *temporary)
 {
     char path[PATH_MAX], text[64];
     bool passed = true;
@@ -497,6 +736,13 @@ static int verify_after(const char *temporary, const struct hf_sandbox *sandbox)
             passed = false;
         }
     }
+    return passed;
+}
+
+static bool verify_canary_writes(const struct hf_sandbox *sandbox)
+{
+    char path[PATH_MAX], text[64];
+    bool passed = true;
     if (hf_join(path, sizeof(path), sandbox->upper, "pfx/drive_c/overlay-write") != 0 ||
         read_text(path, text, sizeof(text)) != 0 || strcmp(text, "overlay") != 0)
     {
@@ -509,20 +755,70 @@ static int verify_after(const char *temporary, const struct hf_sandbox *sandbox)
         printf("FAIL session write: the allowed file did not survive\n");
         passed = false;
     }
-    if (passed) printf("PASS overlay: lower unchanged; the upper layer and the session folder hold the writes\n");
+    return passed;
+}
+
+static int verify_after(const char *temporary, const struct hf_sandbox *sandbox, bool canaries_ran)
+{
+    bool passed = verify_lower_tree(temporary);
+    // A child that refused before the canaries has made no overlay or session writes, so those absences are not defects.
+    if (canaries_ran && !verify_canary_writes(sandbox)) passed = false;
+    if (passed && canaries_ran)
+        printf("PASS overlay: lower unchanged; the upper layer and the session folder hold the writes\n");
     return passed ? 0 : 1;
 }
 
-static void clean_up(const char *temporary, const char *host_tmp, const char *host_shm)
+static void clean_up(struct selftest_paths *paths)
 {
-    remove_tree(temporary);
-    unlink(host_tmp);
-    unlink(host_shm);
+    remove_tree(paths->temporary);
+    remove_tree(paths->runtime);
+    unlink(paths->escape_socket);
+    unlink(paths->host_tmp);
+    unlink(paths->host_shm);
+}
+
+// The parent resolves the fixture's links before the view exists: a link inside the runtime is accepted through its
+// real path (the runtime socket fix), and a link that resolves outside every allowed root is dropped.
+static void check_runtime_resolution(struct hf_sandbox *sandbox, const struct selftest_paths *paths)
+{
+    char expected[PATH_MAX], resolved[PATH_MAX];
+    if (hf_join(expected, sizeof(expected), paths->runtime, "real/wayland-0") != 0 ||
+        realpath(expected, resolved) == NULL)
+    {
+        report("runtime socket link", false, "the Wayland fixture is missing");
+        return;
+    }
+    if (setenv("WAYLAND_DISPLAY", "escape-0", 1) != 0 || hf_discover_runtime_sockets(sandbox) != 0)
+    {
+        report("runtime socket escape link", false, "socket discovery failed");
+        return;
+    }
+    report("runtime socket escape link", sandbox->wayland_socket[0] == '\0',
+        "%s was %s", paths->escape_socket, sandbox->wayland_socket[0] == '\0' ? "dropped" : "bound");
+    if (setenv("WAYLAND_DISPLAY", "wayland-0", 1) != 0 || hf_discover_runtime_sockets(sandbox) != 0)
+    {
+        report("runtime socket link", false, "socket discovery failed");
+        return;
+    }
+    report("runtime socket link",
+        strcmp(sandbox->wayland_socket, resolved) == 0 && strcmp(sandbox->wayland_name, "wayland-0") == 0,
+        "%s -> %s as %s", paths->runtime, sandbox->wayland_socket, sandbox->wayland_name);
+}
+
+static int bind_deleted_source(const struct hf_sandbox *sandbox)
+{
+    if (sandbox->selftest_deleted_source[0] == '\0') return 0;
+    if (mount(sandbox->selftest_deleted_source, sandbox->selftest_deleted_target, NULL, MS_BIND, NULL) != 0)
+        return hf_fail("binding the self-test deleted-file fixture");
+    if (unlink(sandbox->selftest_deleted_source) != 0)
+        return hf_fail("unlinking the self-test deleted-file fixture");
+    return 0;
 }
 
 static bool enter_selftest_view(struct hf_sandbox *sandbox)
 {
-    if (hf_enter_namespaces(sandbox) != 0 || hf_mount_overlay(sandbox) != 0 ||
+    if (hf_enter_namespaces(sandbox) != 0 || bind_deleted_source(sandbox) != 0 ||
+        hf_mount_overlay(sandbox) != 0 ||
         hf_mask_overlay_install(sandbox) != 0 || hf_build_root_view(sandbox) != 0 ||
         hf_pivot_into_root(sandbox) != 0 || hf_apply_environment(sandbox) != 0 ||
         hf_apply_landlock(sandbox) != 0 || hf_apply_seccomp() != 0 || hf_drop_capabilities() != 0)
@@ -565,10 +861,11 @@ static bool report_selftest(bool finished, int status, int after)
 
 int hf_run_self_test(const char *directory)
 {
-    char temporary[PATH_MAX] = "", host_tmp[PATH_MAX] = "", host_shm[PATH_MAX] = "";
-    if (prepare_tree(directory, temporary, sizeof(temporary), host_tmp, sizeof(host_tmp), host_shm, sizeof(host_shm)) != 0)
+    struct selftest_paths paths;
+    memset(&paths, 0, sizeof(paths));
+    if (prepare_tree(directory, &paths) != 0)
     {
-        clean_up(temporary, host_tmp, host_shm);
+        clean_up(&paths);
         return 1;
     }
     struct hf_sandbox sandbox;
@@ -577,25 +874,28 @@ int hf_run_self_test(const char *directory)
     char nested_folder_bind[PATH_MAX] = "";
     char nested_file_bind[PATH_MAX] = "";
     char *extra_binds[] = { nested_file_bind, allowed_bind, nested_folder_bind };
-    snprintf(sandbox.selftest_tmp_canary, sizeof(sandbox.selftest_tmp_canary), "%s", host_tmp);
-    snprintf(sandbox.selftest_shm_canary, sizeof(sandbox.selftest_shm_canary), "%s", host_shm);
-    if (hf_prepare_selftest_paths(&sandbox, temporary) != 0 || hf_create_session_dirs(&sandbox) != 0 ||
+    snprintf(sandbox.selftest_tmp_canary, sizeof(sandbox.selftest_tmp_canary), "%s", paths.host_tmp);
+    snprintf(sandbox.selftest_shm_canary, sizeof(sandbox.selftest_shm_canary), "%s", paths.host_shm);
+    snprintf(sandbox.selftest_deleted_source, sizeof(sandbox.selftest_deleted_source), "%s", paths.deleted_source);
+    snprintf(sandbox.selftest_deleted_target, sizeof(sandbox.selftest_deleted_target), "%s", paths.deleted_target);
+    if (hf_prepare_selftest_paths(&sandbox, paths.temporary) != 0 || hf_create_session_dirs(&sandbox) != 0 ||
         hf_prepare_session_home(&sandbox) != 0 ||
         hf_join3(allowed_bind, sizeof(allowed_bind), sandbox.install, "mods", "allowed") != 0 ||
         hf_join3(nested_folder_bind, sizeof(nested_folder_bind), sandbox.install, "mods", "x") != 0 ||
         hf_join(nested_file_bind, sizeof(nested_file_bind), nested_folder_bind, "x.dll") != 0)
     {
-        clean_up(temporary, host_tmp, host_shm);
+        clean_up(&paths);
         return 1;
     }
     sandbox.extra_binds = extra_binds;
     sandbox.extra_bind_count = 3;
     failures = 0;
-    check_host_tree(temporary);
-    check_extra_bind_rules(temporary, &sandbox);
+    check_host_tree(paths.temporary);
+    check_extra_bind_rules(paths.temporary, &sandbox);
+    check_runtime_resolution(&sandbox, &paths);
     if (failures != 0)
     {
-        clean_up(temporary, host_tmp, host_shm);
+        clean_up(&paths);
         return 1;
     }
 
@@ -603,13 +903,14 @@ int hf_run_self_test(const char *directory)
     if (child < 0)
     {
         hf_fail("forking the self-test");
-        clean_up(temporary, host_tmp, host_shm);
+        clean_up(&paths);
         return 1;
     }
     int status = 0;
     bool finished;
     wait_selftest_child(child, &status, &finished);
-    int after = verify_after(temporary, &sandbox);
-    clean_up(temporary, host_tmp, host_shm);
+    bool canaries_ran = finished && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    int after = verify_after(paths.temporary, &sandbox, canaries_ran);
+    clean_up(&paths);
     return report_selftest(finished, status, after) ? 0 : 1;
 }

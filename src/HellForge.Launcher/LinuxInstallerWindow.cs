@@ -324,12 +324,9 @@ sealed class LinuxInstallerWindow : Window
         var existed = Directory.Exists(prefix);
         var empty = !existed || !Directory.EnumerateFileSystemEntries(prefix).Any();
         Directory.CreateDirectory(prefix);
-        var start = new ProcessStartInfo(proton) { WorkingDirectory = Path.GetDirectoryName(proton)!, UseShellExecute = false };
-        foreach (var argument in new[] { "run", "wineboot", "-u" }) start.ArgumentList.Add(argument);
-        start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
-        start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
-        start.Environment["STEAM_COMPAT_APP_ID"] = SteamOwnershipCheck.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        using var process = Process.Start(start) ?? throw new InvalidDataException("Proton did not start.");
+        var invocation = LinuxProtonInvocation.Create(proton, steamRoot, prefix, "run", ["wineboot", "-u"]);
+        using var process = Process.Start(invocation.StartInfo(Path.GetDirectoryName(proton)!)) ??
+            throw new InvalidDataException("Proton did not start.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         try { await process.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException)

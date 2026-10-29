@@ -301,6 +301,7 @@ off, and when Steam has no shader cache for the game the wrapper says so and lea
 | `STEAM_COMPAT_CLIENT_INSTALL_PATH` | the folder saved in the installation (`steam-selection.json`), else the first of `~/.local/share/Steam`, `~/.steam/debian-installation`, `~/.steam/steam`, `~/.steam/root` and Flatpak's and Snap's Steam folders that has a `steamapps` folder |
 | `STEAM_COMPAT_DATA_PATH` | the prefix the installation is in (the part of its path before `/pfx/drive_c/`); for an installation outside a prefix, HELLDIVERS 2's prefix, `steamapps/compatdata/553850` |
 | `STEAM_COMPAT_APP_ID` | `553850` (HELLDIVERS 2), unless explicitly set otherwise |
+| `HELLFORGE_STEAM_RUNTIME` | unset: Proton runs inside the Steam Linux Runtime its manifest requires, when installed (see [Proton in the Steam Linux Runtime](#proton-in-the-steam-linux-runtime)). `off` runs Proton on the host instead, for diagnosis only; it changes neither the sandbox nor the offline namespace |
 
 Another launcher (a mod manager, [external-launchers.md](external-launchers.md)) starts sessions through the same
 script. It passes the Windows program to run in place of HellForge.exe, for example
@@ -311,6 +312,32 @@ Sharing HELLDIVERS 2's prefix (553850) works too, but then nothing else may run 
 Windows program of the prefix running outside would share its network with HellForge's
 ([one prefix, one network](#one-prefix-one-network)), and the real game, started while HellForge runs, would have no
 network.
+
+### Proton in the Steam Linux Runtime
+
+Steam never runs a current Proton directly: Proton's `toolmanifest.vdf` names a Steam Linux Runtime
+(`require_tool_appid`; Proton - Experimental and GE-Proton name SteamLinuxRuntime_4 or sniper), and Steam starts Proton
+inside that container (pressure-vessel). HellForge does the same. `SteamRuntimeLocator` (and `hf_runtime_*` in
+`hf-steam.sh`, the same rules) reads the manifest beside the chosen Proton, finds the runtime app in any Steam library
+(`libraryfolders.vdf`, `appmanifest_<appid>.acf`), and builds the command Steam would:
+`<runtime>/_v2-entry-point --verb=<verb> -- <proton> <verb> ...`. Every session prints one line saying which it chose:
+
+```
+HellForge: Steam Linux Runtime: container "steamrt4" 4.0.20261021.265997 at <folder>; Proton runs inside it.
+HellForge: Steam Linux Runtime: host mode: <reason>; Proton runs on the host.
+```
+
+Host mode is used when the Proton names no runtime, when the runtime is not installed or its manifest cannot be
+reproduced, or with `HELLFORGE_STEAM_RUNTIME=off`; the reason is always printed. A runtime that is present but fails to
+start is not retried on the host. The session, the sandboxed domain, the live-war fetch, the Windows mod tools, setup's
+`wineboot` and the build-patch fallback all use the chosen mode. HellForge's own steps (`ip`, `unshare`, the Steam
+bridge, the native CLI) stay outside the container, which does not have those programs.
+
+The order is fixed: the offline network namespace, then the runtime container (it keeps that namespace: only loopback,
+measured), then `hf-sandbox`, then Proton. The reverse is impossible by design, because `hf-sandbox`'s seccomp refuses
+new namespaces and pressure-vessel needs them. A helper Proton call (a `reg` command, `wineboot`) never carries both
+`SteamAppId` and `SteamGameId`: that pair makes Steam count the call as a HELLDIVERS 2 session, with its post-session
+shader processing.
 
 ### Started from inside a container
 
@@ -464,6 +491,21 @@ the stand-in DLLs in the real prefix. It then writes a validated start request; 
 in `app/cli-linux/HellForge.Cli`, and the supervisor starts `hf-sandbox`. A second `HellForge.Session.exe` in the overlay
 prefix, the domain host, starts the game and applies the memory-only launch edits. The trusted runner never opens the game
 process.
+
+In container mode the supervisor resolves the runtime itself (from `PROTON` and Steam's folder, never from the session
+request) and starts `setsid <entry point> --verb=waitforexitandrun -- hf-sandbox ... --steam-runtime <runtime folder>
+... -- <proton> waitforexitandrun <domain host>`. Inside the container `hf-sandbox` builds the same view as on the host,
+plus what pressure-vessel moved: the runtime sockets are resolved before binding and accepted only under the runtime
+folder, `/run/pressure-vessel` or `/tmp/.X11-unix`; Xauthority and the PulseAudio cookie, which pressure-vessel
+bind-mounts from deleted files, are copied (mode 0400); and the container's `/run/host` system folders (the host's loader
+and GPU drivers) and `/var/pressure-vessel/ldso` are bound read-only. `/run/host/user-share`, `user-fonts-cache` and
+`etc` are never bound. The supervisor starts the chain from the runtime's folder and without `TEMP`/`TMP`, because
+pressure-vessel shares the working and temporary folders as binds, and one inside the prefix stops the overlay
+("failed to clone lowerpath", measured). For the same reason a path inside another shared path is not passed to the
+container again. A stop signals the domain's process group and then every process below the supervisor, which is a
+child subreaper: pressure-vessel's processes start new sessions, so the group alone does not reach them. The readiness
+record (schema 2) states the mode and the runtime (its folder and `VERSIONS.txt` SHA-256); a self-test from the other
+mode, or from an older runtime, does not count.
 
 `hf-sandbox --session <run folder> --prefix <prefix> -- <command>` makes a new user and mount namespace and runs the
 command in a view built for it. Each step fails closed: if one fails, it prints the reason and the command does not run.
@@ -894,12 +936,15 @@ probe, and a real game session have not been tested here.
 - The graphical installer's install and update path (the staged app swap, rollback and new engine install), build
   patches applied through Proton, prefix backup and restore, and uninstall's outside cleanup (including the AppArmor
   commands) and prefix deletion offer have not been tried with a real game and Steam on a Linux machine.
-- A real Account Sync on Linux has been run once (2026-10-29, issue #112) and stopped at the CA check before the game
-  opened: the proxy listened and wrote its CA, `reg import` exited 0, but the old code parsed `proton run reg query`
-  stdout, which is empty even for a known key. The offline reproduction now shows the import reaches HELLDIVERS 2's
-  prefix `Root` store with both Proton - Experimental and the tester's `-slr` Proton, on the host and inside
-  SteamLinuxRuntime_4. The open checks are whether the game uses that store, and whether the root helper's 443 relay and
-  `/etc/hosts` lines carry the login. Treat Account Sync on Linux as experimental until those are recorded.
+- Account Sync on Linux worked end to end on one PC (2026-10-29: Fedora 44, Proton - Experimental): the launcher found
+  the game's Proton from the prefix, installed the helper through pkexec, the CA reached the prefix's `Root` store, the
+  game logged in through the capture (732 items and progression), and Review import and the import ran in the native
+  backend. A tester's earlier run (issue #112) stopped at the old CA check, which is fixed. It has not been tried on
+  other distributions or on SteamOS yet.
+- Proton inside the Steam Linux Runtime has been tested on one PC (Fedora 44, SteamLinuxRuntime_4): a sandboxed session
+  reached the ship with co-op, the live editor and STOP working, and no domain process outlived STOP. Ubuntu's AppArmor
+  user-namespace restriction with the runtime container is untested: if a sandboxed session there cannot start the
+  container, it fails closed. Please report the result with the logs.
 
 ## Helping with Linux
 

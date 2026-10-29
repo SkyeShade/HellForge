@@ -112,15 +112,41 @@ if [ "${1:-}" = "--sandbox-self-test" ]; then
   [ -x "$sandbox" ] || chmod +x "$sandbox" 2>/dev/null || true
   [ -x "$sandbox" ] || { echo "The Linux sandbox is not executable: $sandbox" >&2; exit 1; }
   mkdir -p "$INSTALL/temp"
-  runner=("$sandbox")
+  # The self-test must use the same layering as a session. Resolve the runtime when the Proton/Steam choices are known;
+  # without them this is host mode and the direct hf-sandbox run remains valid.
+  self_proton="${PROTON:-}"
+  [ -n "$self_proton" ] || self_proton="$(hf_saved_proton "$INSTALL" 2>/dev/null || true)"
+  self_steam="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}"
+  [ -n "$self_steam" ] || self_steam="$(hf_saved_steam_root "$INSTALL" 2>/dev/null || true)"
+  [ -n "$self_steam" ] || self_steam="$(hf_steam_root "$HOME" 2>/dev/null || true)"
+  if [ -z "$self_proton" ] && [ -n "$self_steam" ]; then
+    self_proton="$(hf_default_proton "$self_steam" 2>/dev/null || true)"
+  fi
+  if [ -n "$self_proton" ] && [ -n "$self_steam" ]; then
+    hf_runtime_resolve "$self_proton" "$self_steam"
+  else
+    hf_runtime_reset
+    HF_RUNTIME_MODE=host
+    HF_RUNTIME_REASON="Proton or Steam was not found for the self-test"
+  fi
+  if [ -n "$self_proton" ]; then export PROTON="$self_proton"; fi
+  if [ -n "$self_steam" ]; then export STEAM_COMPAT_CLIENT_INSTALL_PATH="$self_steam"; fi
+  hf_runtime_export
+  hf_runtime_mode_line >&2
+  hf_runtime_entrypoint_arguments run "$sandbox" --self-test --self-test-dir "$INSTALL/temp"
+  runner=("${HF_RUNTIME_ARGV[@]}")
   if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ] &&
      [ -x /usr/local/lib/hellforge/unshare ] && [ -f /etc/apparmor.d/hellforge-unshare ]; then
-    runner=(/usr/local/lib/hellforge/unshare --user --map-user="$(id -u)" --map-group="$(id -g)" -- "$sandbox")
+    runner=(/usr/local/lib/hellforge/unshare --user --map-user="$(id -u)" --map-group="$(id -g)" -- "${runner[@]}")
   fi
   set +e
-  "${runner[@]}" --self-test --self-test-dir "$INSTALL/temp"
+  "${runner[@]}"
   status=$?
   set -e
+  if ! hf_runtime_write_mode_file "$INSTALL/temp"; then
+    echo "The Linux sandbox self-test did not report its runtime mode." >&2
+    status=1
+  fi
   exit "$status"
 fi
 
@@ -235,6 +261,13 @@ export PROTON
 export STEAM_COMPAT_APP_ID
 echo "HellForge: $INSTALL with $PROTON (prefix $STEAM_COMPAT_DATA_PATH)" >&2
 echo "Steam compatibility app ID: $STEAM_COMPAT_APP_ID" >&2
+
+# J.3: one resolution after Proton selection, one mode line every launch, and the same values passed to hf-inner and the
+# readiness writer. A resolution-time fallback is host mode; a container that is selected but fails to start is not
+# retried on the host.
+hf_runtime_resolve "$PROTON" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
+hf_runtime_export
+hf_runtime_mode_line >&2
 
 # Where only allowed programs may make a user namespace (Ubuntu 24.04 and later), say so now rather than after the war
 # fetch; hellforge-offline.sh checks the same.
@@ -356,7 +389,8 @@ state_lock=0
 if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   backend="$INSTALL/app/backend/HellForge.LocalBackend.exe"
   cache="Z:$(printf '%s' "$INSTALL/live-war.json" | tr '/' '\\')"
-  if timeout -k 10 60 "$PROTON" run "$backend" fetch-live-war "$cache" 9>&- 1>&2; then echo "Fetched the live galactic war." >&2
+  hf_runtime_arguments run "$backend" fetch-live-war "$cache"
+  if timeout -k 10 60 "${HF_RUNTIME_ARGV[@]}" 9>&- 1>&2; then echo "Fetched the live galactic war." >&2
   else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
   # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
@@ -376,7 +410,8 @@ if [ -n "$pin" ] && ! zigReady; then
   else
     echo "Fetching the mod tools (Zig, about 90 MB, once) to build source mods..." >&2
     root="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
-    timeout -k 10 900 "$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no >/dev/null 9>&- || true
+    hf_runtime_arguments run "$INSTALL/app/cli/HellForge.Cli.exe" mod-tools --install "$root" --ide no
+    timeout -k 10 900 "${HF_RUNTIME_ARGV[@]}" >/dev/null 9>&- || true
     for _ in $(seq 1 900); do pgrep -f "HellForge.Cli.exe mod-tools" >/dev/null || break; sleep 1; done
     if zigReady; then echo "Fetched the mod tools." >&2
     else echo "Could not fetch the mod tools; source mods stay off until they are (start HellForge again to retry)." >&2; fi

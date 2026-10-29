@@ -66,7 +66,7 @@ public partial class MainWindow
     async Task CheckLinuxSandboxOnStartup(InstallLayout install)
     {
         if (linuxSandboxCheckRunning || setupRunning || runner.IsRunning || !ProfileStore.LoadSandbox(paths)) return;
-        if (LinuxSandboxReadiness.IsCurrent(LinuxSandboxReadiness.Read(install))) return;
+        if (LinuxSandboxReadiness.IsCurrent(install, LinuxSandboxReadiness.Read(install))) return;
         linuxSandboxCheckRunning = true;
         try { await RunLinuxSandboxProbe(install); }
         finally { linuxSandboxCheckRunning = false; }

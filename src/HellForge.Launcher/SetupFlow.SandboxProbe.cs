@@ -37,21 +37,21 @@ public partial class MainWindow
         row.Detail.Foreground = success == false ? Red : Grey;
     }
 
-    async Task RunLinuxSandboxProbe(InstallLayout install)
+    async Task RunLinuxSandboxProbe(InstallLayout install, string? proton = null)
     {
         SetLinuxSandboxRow(null, "Running the Linux sandbox self-test...", running: true);
-        var wrapper = Path.Combine(install.App, "linux", "hellforge-linux.sh");
+        var cli = Path.Combine(install.App, "cli-linux", "HellForge.Cli");
         var report = Path.Combine(install.Logs, "sandbox-self-test.txt");
-        if (!File.Exists(wrapper))
+        if (!File.Exists(cli))
         {
-            RecordLinuxSandboxTest(install, false, "app/linux/hellforge-linux.sh is missing");
-            SetLinuxSandboxRow(false, "app/linux/hellforge-linux.sh is missing, so the sandbox stays off.");
+            InvalidateLinuxSandboxTest(install);
+            SetLinuxSandboxRow(false, "The native Linux readiness command is missing, so the sandbox stays off.");
             ApplyLinuxSandboxSettings(install);
             return;
         }
         try
         {
-            var start = new ProcessStartInfo("bash")
+            var start = new ProcessStartInfo(cli)
             {
                 WorkingDirectory = install.Root,
                 UseShellExecute = false,
@@ -59,11 +59,14 @@ public partial class MainWindow
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            start.ArgumentList.Add(wrapper);
-            start.ArgumentList.Add("--sandbox-self-test");
-            start.Environment["INSTALL"] = install.Root;
+            start.ArgumentList.Add("sandbox-readiness");
+            start.ArgumentList.Add("--install");
+            start.ArgumentList.Add(install.Root);
+            if (!string.IsNullOrWhiteSpace(proton)) start.Environment["PROTON"] = proton;
+            if (SteamLocator.SteamRoot(install) is { Length: > 0 } steamRoot)
+                start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
             start.Environment.Remove("HELLFORGE_WRAPPER_LOG");
-            using var process = Process.Start(start) ?? throw new IOException("The Linux sandbox self-test did not start.");
+            using var process = Process.Start(start) ?? throw new IOException("The Linux readiness command did not start.");
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
@@ -75,8 +78,8 @@ public partial class MainWindow
             {
                 try { process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException) { }
+                InvalidateLinuxSandboxTest(install);
                 var reason = "the Linux sandbox self-test did not finish in 3 minutes";
-                RecordLinuxSandboxTest(install, false, reason);
                 SetLinuxSandboxRow(false, char.ToUpperInvariant(reason[0]) + reason[1..] + "; the sandbox stays off.");
                 ApplyLinuxSandboxSettings(install);
                 return;
@@ -85,34 +88,42 @@ public partial class MainWindow
             var outputText = await outputTask;
             Directory.CreateDirectory(install.Logs);
             File.WriteAllText(report, errorText + outputText);
-            var passed = process.ExitCode == 0;
-            // A container refusal stops the wrapper before hf-sandbox runs, so its written reason is the result: the
-            // readiness record and Settings > Sandbox then say why, not a generic self-test failure.
-            var result = (passed ? null : SessionRunner.LinuxContainerRefusal(install.Root))
+            var readiness = LinuxSandboxReadiness.Read(install);
+            var passed = process.ExitCode == 0 && readiness is { Passed: true };
+            // The readiness command is the one writer of the record. A container refusal that stopped it before the
+            // self-test still writes its reason to the refusal file, so Settings > Sandbox can say why.
+            var recordedReason = readiness is { Passed: false } failed && !string.IsNullOrWhiteSpace(failed.Reason)
+                ? failed.Reason : null;
+            var result = (passed ? null : recordedReason)
+                ?? (readiness == null ? "the readiness command did not record a result" : null)
+                ?? SessionRunner.LinuxContainerRefusal(install.Root)
                 ?? LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
-            RecordLinuxSandboxTest(install, passed, passed ? "" : result);
             SetLinuxSandboxRow(passed, (passed ? "The Linux sandbox self-test passed. " : "The sandbox stays off: ") +
                 Privacy.Scrub(result) + " Report: " + Privacy.Scrub(report));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
+            InvalidateLinuxSandboxTest(install);
             var reason = "the Linux sandbox self-test could not run: " + error.Message;
-            RecordLinuxSandboxTest(install, false, reason);
             SetLinuxSandboxRow(false, Privacy.Scrub(char.ToUpperInvariant(reason[0]) + reason[1..] + "; the sandbox stays off."));
         }
         ApplyLinuxSandboxSettings(install);
     }
 
-    static void RecordLinuxSandboxTest(InstallLayout install, bool passed, string reason)
+    static void InvalidateLinuxSandboxTest(InstallLayout install)
     {
-        try { LinuxSandboxReadiness.Save(install, passed, reason); }
+        try
+        {
+            File.Delete(LinuxSandboxReadiness.FileFor(install));
+            File.Delete(LinuxSandboxReadiness.ModeFileFor(install));
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     // The self-test runs before, and never blocks, the normal Linux setup-file checks.
     async Task<(string SteamRoot, string Wrapper, string Probe)> CheckLinuxSetupFilesWithProbe(InstallLayout install, string proton)
     {
-        await RunLinuxSandboxProbe(install);
+        await RunLinuxSandboxProbe(install, proton);
         return await CheckLinuxSetupFiles(install, proton);
     }
 }
