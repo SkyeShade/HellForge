@@ -235,6 +235,8 @@ try
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
             // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
+            // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
+            bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
             var (mods, modProblems) = ModCatalog.Load(Path.Combine(modInstall.Root, "mods"));
             modProblems.InsertRange(0, bundledProblems);
             var loadOrder = ModCatalog.LoadOrder(ModCatalog.Active(mods)); // bottom of the Mods page first
