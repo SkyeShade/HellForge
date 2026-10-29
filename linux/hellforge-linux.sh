@@ -259,6 +259,12 @@ fi
 export PROTON
 : "${STEAM_COMPAT_APP_ID:=553850}"
 export STEAM_COMPAT_APP_ID
+# The Windows .NET programs in the Wine session (HellForge.Cli, which the session runner and the mod loader's crash dump
+# start) use Windows' NLS locale functions, which Wine implements itself, instead of ICU. Proton's icu.dll forwards every
+# call to icuuc68.dll, which Proton links into the prefix from its own folder; when that DLL does not load, .NET stops the
+# program at its first culture-aware call ("Cannot get symbol u_charsToUChars from libicuuc", error 127), and the session
+# ends with "Mods could not be loaded". The session runner itself is built with invariant globalization.
+export DOTNET_SYSTEM_GLOBALIZATION_USENLS=1
 echo "HellForge: $INSTALL with $PROTON (prefix $STEAM_COMPAT_DATA_PATH)" >&2
 echo "Steam compatibility app ID: $STEAM_COMPAT_APP_ID" >&2
 
