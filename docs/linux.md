@@ -275,6 +275,14 @@ wineserver of the prefix still running outside it, and refuses to start while on
 the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the
 game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
+The wrapper runs every Windows program with `DOTNET_SYSTEM_GLOBALIZATION_USENLS=1`, so `HellForge.Cli.exe` (which the
+session runner starts for each step, the mod loader starts for a crash dump, and another launcher may start in place of
+HellForge.exe) uses Windows' NLS locale functions, which Wine implements itself, rather than ICU. Proton's `icu.dll`
+forwards every call to `icuuc68.dll`, which Proton links into the prefix from its own folder. When that DLL does not
+load, .NET ends the program at its first culture-aware call (`Cannot get symbol u_charsToUChars from libicuuc`, error
+127 in `cli-output.txt`), and the session stops with "Mods could not be loaded". The session runner is built with
+invariant globalization and uses neither.
+
 Proton is bounded by `HELLFORGE_PROTON_TIMEOUT` (default `HELLFORGE_WAIT_TIMEOUT`, 12 hours). When that expires,
 `hf-inner.sh` first asks a sandboxed session's native supervisor to stop its domain through the same
 `stop-observation.signal` STOP uses, and waits up to 30 seconds for it. The domain runs in the overlay prefix's own

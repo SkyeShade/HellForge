@@ -146,6 +146,16 @@ static class SessionLaunchTests
             finally { Environment.SetEnvironmentVariable("PATH", previousPath); }
         });
 
+        test("The Linux wrapper runs the Windows .NET programs under Wine with NLS globalization, not Proton's ICU", () =>
+        {
+            var wrapper = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "linux", "hellforge-linux.sh"));
+            var proton = wrapper.IndexOf("\nexport PROTON\n", StringComparison.Ordinal);
+            var nls = proton < 0 ? -1 : wrapper.IndexOf("\nexport DOTNET_SYSTEM_GLOBALIZATION_USENLS=1\n", proton, StringComparison.Ordinal);
+            var space = nls < 0 ? -1 : wrapper.IndexOf("Entering the offline network namespace.", nls, StringComparison.Ordinal);
+            check(proton >= 0 && nls > proton && space > nls,
+                "Every Wine session must get DOTNET_SYSTEM_GLOBALIZATION_USENLS=1 (a top-level export with Proton's) before the namespace.");
+        });
+
         test("The sandbox is on unless turned off, and offered only by an engine built with the Steam bridge on Windows", () =>
         {
             var paths = Install("launch-sandbox");
