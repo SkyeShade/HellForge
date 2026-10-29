@@ -51,6 +51,19 @@ On `dev`, since 0.3.0-beta.
 
 - Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
   #149).
+### Added
+
+- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
+  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
+  taken off between releases.
+
+### For launcher developers
+
+- `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
+  list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
+  installation's saved list.
+- A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
+  and why a published list was not taken.
 
 ## 0.3.0-beta (2026-10-26)
 

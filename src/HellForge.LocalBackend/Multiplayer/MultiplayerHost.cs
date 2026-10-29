@@ -152,6 +152,9 @@ public sealed class MultiplayerHost : IAsyncDisposable
         try { if (modSetFile != null) own = ModSet.Parse(File.ReadAllText(modSetFile), local: true); }
         catch (Exception error) when (error is InvalidDataException or IOException) { Log("Mod sync: this session's mod set could not be read, so joiners cannot download it: " + error.Message); }
         var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
+        // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
+        var verifiedSource = VerifiedMods.UseInstallation(install);
+        Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
         Sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
             ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
         Lobby.ModsRefused = Sync.OfferMods;

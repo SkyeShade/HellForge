@@ -28,7 +28,10 @@ try
             new-mod --id <owner.mod-name> --name <name> (--install <folder> | --out <folder>)
             build-mod --mod <mod folder>
             package-mod --mod <mod folder> [--out <folder>]
-            mod-hash --mod <mod folder or .zip>
+            mod-hash --mod <mod folder or .zip> [--install <folder>]
+            verified-list-keygen --out <private key file>
+            verified-list-sign --list <verified-mods.json> --key <private key file>
+            verified-list-check --list <verified-mods.json> [--signature <file>]
             mod-tools --install <installation or source folder> [--ide yes]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
@@ -106,7 +109,10 @@ try
         "new-mod" => ["--id", "--name", "--install", "--out"],
         "build-mod" => ["--mod"],
         "package-mod" => ["--mod", "--out"],
-        "mod-hash" => ["--mod"],
+        "mod-hash" => ["--mod", "--install"],
+        "verified-list-keygen" => ["--out"],
+        "verified-list-sign" => ["--list", "--key"],
+        "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait"],
@@ -233,6 +239,8 @@ try
             // The installation's mods: data mods are staged into the copy, and the plan and modlist digest are printed.
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
+            // the published verified list this session's runner fetched (VerifiedMods), for the synced mods' checks
+            VerifiedMods.UseInstallation(modInstall);
             // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
             // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
@@ -381,12 +389,50 @@ try
         case "mod-hash":
         {
             var hashed = ModHash.Of(Path.GetFullPath(Required("--mod")));
+            // --install: against that installation's saved published list (VerifiedMods), not only the embedded one
+            if (options.TryGetValue("--install", out var hashInstall)) VerifiedMods.UseInstallation(new InstallLayout(hashInstall));
             result = new
             {
                 hashed.Id, hashed.Name, hashed.Version, hashed.Hash, @class = ModSets.ClassName(hashed.Class), hashed.Files, hashed.Url,
-                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash),
+                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash), verifiedSerial = VerifiedMods.Current.Serial,
                 entry = new { id = hashed.Id, name = hashed.Name, version = hashed.Version, hash = hashed.Hash, reviewed = "YYYY-MM-DD, reviewer: what was reviewed" }
             };
+            break;
+        }
+        // The published verified list (docs/verified-list.md), for maintainers: a signing key pair, a list's signature, and
+        // a check of a list and signature against the key this HellForge carries (VerifiedMods.PublicKey).
+        case "verified-list-keygen":
+        {
+            var keyFile = Path.GetFullPath(Required("--out"));
+            if (File.Exists(keyFile)) throw new IOException($"{keyFile} exists already; a key is never overwritten.");
+            var (privateKey, publicKey) = VerifiedMods.NewKey();
+            File.WriteAllText(keyFile, privateKey);
+            result = new { privateKey = keyFile, publicKey, next = "Put publicKey in VerifiedMods.PublicKey; keep the private key off the server and out of the repository." };
+            break;
+        }
+        case "verified-list-sign":
+        {
+            var listFile = Path.GetFullPath(Required("--list"));
+            var list = File.ReadAllBytes(listFile);
+            var pem = File.ReadAllText(Path.GetFullPath(Required("--key")));
+            var signature = VerifiedMods.Sign(list, pem);
+            var publicKey = VerifiedMods.PublicKeyOf(pem);
+            var listing = VerifiedMods.Checked(list, signature, publicKey);
+            File.WriteAllText(listFile + VerifiedMods.SignatureSuffix, signature);
+            result = new
+            {
+                listing.Serial, mods = listing.Mods.Count, signature = listFile + VerifiedMods.SignatureSuffix, publicKey,
+                hellForgeKey = publicKey == VerifiedMods.PublicKey, embeddedSerial = VerifiedMods.Embedded.Serial
+            };
+            break;
+        }
+        case "verified-list-check":
+        {
+            var listFile = Path.GetFullPath(Required("--list"));
+            if (VerifiedMods.PublicKey.Length == 0) throw new InvalidDataException("This HellForge carries no key for the published list (VerifiedMods.PublicKey).");
+            var listing = VerifiedMods.Checked(File.ReadAllBytes(listFile),
+                File.ReadAllText(Path.GetFullPath(options.GetValueOrDefault("--signature") ?? listFile + VerifiedMods.SignatureSuffix)), VerifiedMods.PublicKey);
+            result = new { listing.Serial, mods = listing.Mods.Select(m => $"{m.Id} {m.Version}"), embeddedSerial = VerifiedMods.Embedded.Serial };
             break;
         }
         case "mod-tools":
