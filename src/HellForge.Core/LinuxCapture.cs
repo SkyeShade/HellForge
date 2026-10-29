@@ -894,6 +894,9 @@ public static partial class LinuxCapture
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = record.SteamRoot;
         start.Environment["STEAM_COMPAT_APP_ID"] = LocalInstall.AppId;
         start.Environment["SteamGameId"] = LocalInstall.AppId;
+        // Measured: an inherited SteamAppId (a launcher started from a Steam shortcut) together with SteamGameId makes
+        // Steam count each reg call as a HELLDIVERS 2 session.
+        start.Environment.Remove("SteamAppId");
         try
         {
             using var process = Process.Start(start);
