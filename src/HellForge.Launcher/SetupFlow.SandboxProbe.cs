@@ -83,7 +83,11 @@ public partial class MainWindow
             var errorText = await errorTask;
             var outputText = await outputTask;
             var lines = (errorText + "\n" + outputText).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var result = lines.LastOrDefault(line => line.StartsWith("hf-sandbox-probe:", StringComparison.Ordinal))
+            // A container refusal stops the wrapper before the native probe, so its written reason is the result; the
+            // probe report has the same firstReason.
+            var refusal = process.ExitCode != 0 ? SessionRunner.LinuxContainerRefusal(install.Root) : null;
+            var result = refusal
+                ?? lines.LastOrDefault(line => line.StartsWith("hf-sandbox-probe:", StringComparison.Ordinal))
                 ?? lines.LastOrDefault()
                 ?? $"exit code {process.ExitCode}";
             SetLinuxSandboxRow(process.ExitCode == 0,

@@ -3,7 +3,8 @@
 # signed in: bash hellforge-linux.sh (or ./hellforge-linux.sh once it is executable)
 # Another launcher (docs/external-launchers.md) passes the Windows program to run in place of HellForge.exe, with its
 # arguments, e.g. ./hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes
-# What it does: checks the programs it needs, finds Steam, the prefix and Proton, then bridges Steam's local ports
+# What it does: refuses inside Flatpak, a Snap or Steam's runtime container (they cannot make the offline namespace),
+# checks the programs it needs, finds Steam, the prefix and Proton, then bridges Steam's local ports
 # (hf-bridge-host.sh, unless one is running already), fetches the live galactic war while this PC still has its network
 # (the session that follows has none and serves this copy), and starts the requested program inside a network namespace
 # with loopback only (hellforge-offline.sh), where hf-inner.sh forwards Steam's ports and runs it through Proton.
@@ -29,6 +30,40 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$here/hf-steam.sh"
+. "$here/hf-container.sh"
+
+# A native GUI launcher has no terminal to show wrapper/Proton output. Keep the latest launch diagnostics in the
+# installation so failures before HellForge.Session creates its own run folder are still visible to the player. Only
+# the native launcher asks for this (HELLFORGE_WRAPPER_LOG=1, set by SessionRunner, the Steam ownership check and the
+# setup's mod-tools step): an external launcher needs the command's own stdout and stderr, so they stay with the caller.
+if [ "${HELLFORGE_WRAPPER_LOG:-}" = 1 ] && [ -n "${INSTALL:-}" ] && [ -f "$INSTALL/hellforge-install.json" ]; then
+  if mkdir -p "$INSTALL/logs"; then
+    : > "$INSTALL/logs/linux-session-wrapper.log"
+    exec >> "$INSTALL/logs/linux-session-wrapper.log" 2>&1
+  else
+    echo "Could not create the Linux session log folder: $INSTALL/logs" >&2
+  fi
+fi
+
+# Every mode (a session, --sandbox-self-test, --sandbox-probe) asks the same question here, before Steam, Proton or any
+# namespace step. Flatpak, Snap and Steam's runtime container stop HellForge from making the offline namespace, so a
+# session cannot work inside them. A refusal is written where the native launcher reads it; --sandbox-probe also writes
+# it to the probe's readiness report. A stale reason is removed first, so it is never shown for another failure.
+record_install="${INSTALL:-}"
+if [ -z "$record_install" ] && [ -f "$here/../../hellforge-install.json" ]; then record_install="$(cd "$here/../.." && pwd)"; fi
+if [ -n "$record_install" ] && [ -f "$record_install/hellforge-install.json" ]; then
+  rm -f -- "$record_install/logs/linux-container-refusal.txt" 2>/dev/null || true
+fi
+if problem="$(hf_container_problem)"; then
+  echo "$problem" >&2
+  if [ -n "$record_install" ] && [ -f "$record_install/hellforge-install.json" ]; then
+    hf_container_write_refusal "$record_install" "$problem"
+    if [ "${1:-}" = "--sandbox-probe" ]; then
+      hf_container_write_probe_report "$record_install/logs/sandbox-probe.json" "$problem"
+    fi
+  fi
+  exit 1
+fi
 
 # The phase-1 sandbox probe is information only. It runs before Steam, Proton and the normal dependency checks because it
 # needs none of them: it only asks the kernel for the mechanisms a Linux sandbox would use, then runs its canaries.
@@ -87,19 +122,6 @@ if [ "${1:-}" = "--sandbox-self-test" ]; then
   status=$?
   set -e
   exit "$status"
-fi
-
-# A native GUI launcher has no terminal to show wrapper/Proton output. Keep the latest launch diagnostics in the
-# installation so failures before HellForge.Session creates its own run folder are still visible to the player. Only
-# the native launcher asks for this (HELLFORGE_WRAPPER_LOG=1, set by SessionRunner, the Steam ownership check and the
-# setup's mod-tools step): an external launcher needs the command's own stdout and stderr, so they stay with the caller.
-if [ "${HELLFORGE_WRAPPER_LOG:-}" = 1 ] && [ -n "${INSTALL:-}" ] && [ -f "$INSTALL/hellforge-install.json" ]; then
-  if mkdir -p "$INSTALL/logs"; then
-    : > "$INSTALL/logs/linux-session-wrapper.log"
-    exec >> "$INSTALL/logs/linux-session-wrapper.log" 2>&1
-  else
-    echo "Could not create the Linux session log folder: $INSTALL/logs" >&2
-  fi
 fi
 
 # SteamOS 3.x has a read-only system image: the package-manager hints below are not a fix there, and changes made
@@ -422,5 +444,8 @@ if bash "$here/hellforge-offline.sh" bash "$here/hf-inner.sh" "$@" 9>&-; then
 else
   status=$?
   echo "Offline namespace command exited with code $status." >&2
+  # Another container (podman, docker, oci, toolbox, distrobox) is not refused above: those can have the user namespaces
+  # a session needs, but when the namespace step fails the message names the container.
+  hf_container_note >&2 || true
   exit "$status"
 fi

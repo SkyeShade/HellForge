@@ -469,16 +469,29 @@ public partial class MainWindow : Window
         else
         {
             FailCurrentStep();
-            var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
-                : OperatingSystem.IsLinux()
-                    ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
-                        " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
-                        " for errors after the Windows session runner starts."
-                    : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
-            SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
-                exitCode is { } code ? $"The launch process exited with code {code}." : null);
+            ShowEarlyFailure(exitCode);
         }
         runLookupPending = false;
+    }
+
+    void ShowEarlyFailure(int? exitCode)
+    {
+        // The wrapper refuses before Steam and Proton when HellForge was started inside Flatpak, Snap or Steam's
+        // runtime container. It writes the reason for this line; without it, keep the generic early-exit advice.
+        var containerRefusal = paths.InstallRoot == null ? null : SessionRunner.LinuxContainerRefusal(paths.InstallRoot);
+        if (containerRefusal != null)
+        {
+            SetStatus("HellForge cannot start inside this container.", Phase.Failed, failure: containerRefusal);
+            return;
+        }
+        var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
+            : OperatingSystem.IsLinux()
+                ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
+                    " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
+                    " for errors after the Windows session runner starts."
+                : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
+        SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
+            exitCode is { } code ? $"The launch process exited with code {code}." : null);
     }
 
     void FindRun()

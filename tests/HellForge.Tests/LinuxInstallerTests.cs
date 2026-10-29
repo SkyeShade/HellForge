@@ -230,6 +230,8 @@ static class LinuxInstallerTests
         Add("app/launcher-linux/HellForge.Launcher", launcher);
         Add("app/capture-linux/HellForge.CaptureProxy", "proxy");
         Add("app/linux/hellforge-linux.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-steam.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-container.sh", "#!/bin/sh\n");
         Add("app/linux/hf-sandbox-probe", "probe");
         Add("app/linux/allow-capture.sh", "#!/bin/sh\n");
         Add("app/linux/capture-helper.sh", "#!/bin/sh\n");

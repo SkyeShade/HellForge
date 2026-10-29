@@ -670,6 +670,7 @@ SandboxCopyBackTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);
 SteamAccountTests.Register(Test, Check, Reject, root);
 SteamPathTests.Register(Test, Check, Reject, root);
+ContainerCheckTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);

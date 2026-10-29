@@ -99,8 +99,8 @@ starts automatically while the game copy is incomplete. The installer checks the
 prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
 `app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`,
-`app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`, `app/linux/allow-capture.sh`, `app/linux/capture-helper.sh` or
-`app/linux/capture-relay`.
+`app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`, `app/linux/allow-capture.sh`,
+`app/linux/capture-helper.sh` or `app/linux/capture-relay`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -307,6 +307,29 @@ Sharing HELLDIVERS 2's prefix (553850) works too, but then nothing else may run 
 Windows program of the prefix running outside would share its network with HellForge's
 ([one prefix, one network](#one-prefix-one-network)), and the real game, started while HellForge runs, would have no
 network.
+
+### Started from inside a container
+
+`hellforge-linux.sh` asks one question before it finds Steam or Proton and before any namespace step, in every mode
+(a session, `--sandbox-probe` and `--sandbox-self-test`). If HellForge itself was started inside Flatpak
+(`/.flatpak-info`), a Snap (`SNAP_NAME`) or Steam's runtime container (`container=pressure-vessel`, or
+`/run/host/container-manager` naming it), it refuses with the exact action:
+
+- Flatpak or Snap: start HellForge from its own shortcut, or `app/launcher-linux/HellForge.Launcher`, on the host.
+  HellForge already finds Flatpak's and Snap's Steam folders from outside; it does not need to run inside Steam's
+  sandbox.
+- Steam's runtime container: the Steam entry that started HellForge has a compatibility tool. Open its
+  Properties > Compatibility and untick "Force the use of a specific Steam Play compatibility tool". HellForge's
+  launcher is a native program and runs on the host.
+
+HellForge must start on the host because it makes the network namespace that keeps the game offline with the host's
+programs. Flatpak's seccomp filter blocks the user namespace it needs, a Snap's confinement can block it and lacks the
+host's programs, and Steam's runtime container lacks `ip` and `pgrep`. HellForge never offers to bypass a container (no `flatpak-spawn --host`), and every
+session keeps the namespace. The native launcher shows the same reason; `hellforge-linux.sh`
+writes it to `logs/linux-container-refusal.txt`, and `--sandbox-probe` also writes it as `firstReason` in
+`logs/sandbox-probe.json`. Other containers (`container=podman`, `docker`, `oci`, toolbox and distrobox) are not
+refused, because they can have the user namespaces a session needs; if a later namespace step fails, the message names
+the container.
 
 ## SteamOS 3.x
 
@@ -761,7 +784,9 @@ probe, and a real game session have not been tested here.
 - Co-op on Linux. Friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace, but the one test so far did not connect (see [above](#problems-players-have-reported)).
 - Steam as a Flatpak or Snap (its own `/tmp` and paths), and SteamOS 3.x (see [SteamOS 3.x](#steamos-3x)), including the
-  Steam Deck and Game Mode, are untested.
+  Steam Deck and Game Mode, are untested. Starting HellForge itself inside Flatpak, Snap or Steam's runtime container is
+  refused with the action in [Started from inside a container](#started-from-inside-a-container); that path has not
+  been tried on a real Flatpak or Snap either.
 - The Steam ownership check under Proton. Setup and sessions run it, as on Windows (a session reuses a check that passed
   within 7 days for the same installation, account and build, where it can see Steam's signed-in account): under Wine, HellForge starts
   its Steam probe (`app\steamprobe\HellForge.SteamProbe.exe`) directly, because Wine's `powershell.exe` runs nothing.

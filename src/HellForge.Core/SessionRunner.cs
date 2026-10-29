@@ -227,6 +227,23 @@ public sealed class SessionRunner
                 : run
             : null;
 
+    // hellforge-linux.sh writes the reason when it refuses to start inside Flatpak, Snap or Steam's runtime container,
+    // before Steam, Proton or any namespace step. The launcher and the setup probe show this line, not a generic failure.
+    public const string LinuxContainerRefusalFile = "linux-container-refusal.txt";
+
+    public static string? LinuxContainerRefusal(string installRoot)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        try
+        {
+            var path = Path.Combine(installRoot, "logs", LinuxContainerRefusalFile);
+            if (!File.Exists(path)) return null;
+            var reason = File.ReadAllText(path).Trim();
+            return reason.Length > 0 ? reason : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
     static bool IsWineDrivePath(string path) => path.Length >= 3 &&
         char.ToUpperInvariant(path[0]) is 'C' or 'Z' && path[1] == ':' && path[2] is '\\' or '/';
 

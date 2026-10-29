@@ -165,6 +165,7 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
 | "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
+| "HellForge was started inside the Flatpak application ...", "... the Snap ..." or "... Steam's runtime container ..." | Start HellForge on the host: from its own shortcut, or `app/launcher-linux/HellForge.Launcher`. For Steam's runtime container, untick **Force the use of a specific Steam Play compatibility tool** in the Steam entry's Properties > Compatibility. See [linux.md](linux.md#started-from-inside-a-container). |
 | "Mod left out of this session: ..." (in the Console) | The session still runs without that mod. The Mods page shows why on the mod's row ([using mods](mods.md)). |
 | "HellForge's file ... could not be held read-only for the session ..." | Another program has that file of the installation's `app` folder open for writing. Close it (or restart the PC), then press PLAY. |
 | "Mod file ... could not be held read-only for the session ..." | Another program (an editor, an archive tool) has that file in `mods` open for writing. Close it, then press PLAY. |
@@ -174,6 +175,11 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
+
+On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
+Steam's runtime container. The launcher shows the reason the wrapper wrote; setup's sandbox probe shows the same
+`firstReason` from `logs/sandbox-probe.json`. See
+[linux.md](linux.md#started-from-inside-a-container).
 
 On Linux, a message ending in "reinstall HellForge" means running the graphical installer again over the same prefix;
 see [linux.md](linux.md#updating).
