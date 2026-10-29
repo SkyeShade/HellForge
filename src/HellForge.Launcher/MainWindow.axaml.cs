@@ -1020,7 +1020,12 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (!closeConfirmed && runner.IsRunning)
+        if (!closeConfirmed && NativeLinux && (syncClosing || syncProxy != null || syncWorkingFolder != null))
+        {
+            e.Cancel = true;
+            if (!syncClosing) _ = StopSyncForCloseAsync();
+        }
+        else if (!closeConfirmed && runner.IsRunning)
         {
             e.Cancel = true;
             _ = ConfirmCloseAsync();

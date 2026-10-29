@@ -1,10 +1,9 @@
 # Publishes HellForge into an installation's app folder: the launcher, command-line tool, Steam ownership probe and
-# Sync Inventory's capture proxy as
-# self-contained Windows builds (no .NET installation needed), the HellForge engine (its session runner, local backend,
-# mod loader and stand-ins, and the network block and ownership scripts: the package scripts/Build-Engine.ps1 builds from
-# this repository), the mod SDK, the bundled mods and the profile templates. Everything else in the
-# installation (game, user data, profiles, logs) is left alone. The new app is staged in the installation's temp folder
-# and swapped in at the end.
+# Sync Inventory's capture proxy as self-contained Windows builds (no .NET installation needed), the native Linux
+# launcher, command-line tool and capture proxy, the HellForge engine (its session runner, local backend, mod loader and
+# stand-ins, and the network block and ownership scripts: the package scripts/Build-Engine.ps1 builds from this
+# repository), the mod SDK, the bundled mods and the profile templates. Everything else in the installation (game, user
+# data, profiles, logs) is left alone. The new app is staged in the installation's temp folder and swapped in at the end.
 # -PayloadFolder instead writes the same files (app\ and the top-level program) into a folder for scripts/Package-HellForge.ps1.
 # The engine is built first (scripts/Build-Engine.ps1, with -SteamApi or -SteamExports passed on); -EnginePackage uses a package built
 # already (artifacts/engine-package/hellforge-engine-<version>.zip) instead.
@@ -49,15 +48,23 @@ New-Item -ItemType Directory $staging|Out-Null
 foreach($app in @(
     @{folder='launcher';project='src/HellForge.Launcher/HellForge.Launcher.csproj'},
     @{folder='cli';project='src/HellForge.Cli/HellForge.Cli.csproj'},
-    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'},
-    @{folder='capture';project='src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj'})){
+    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'})){
     Write-Output ('Publishing '+$app.folder)
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}
 }
+Write-Output 'Publishing capture'
+dotnet publish (Join-Path $project 'src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj') -c Release -f net10.0-windows -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'capture')
+if($LASTEXITCODE){throw 'Publishing capture failed.'}
 Write-Output 'Publishing launcher-linux'
 dotnet publish (Join-Path $project 'src/HellForge.Launcher/HellForge.Launcher.csproj') -c Release -r linux-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'launcher-linux')
 if($LASTEXITCODE){throw 'Publishing launcher-linux failed.'}
+# app/capture-linux: the same capture logic as a native Linux program. It runs unprivileged; the installed
+# linux/capture-helper.sh owns /etc/hosts and the 127.0.0.1:443 relay, and the supervisor uses Wine's reg.exe only for the
+# game prefix's Root store.
+Write-Output 'Publishing capture-linux'
+dotnet publish (Join-Path $project 'src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj') -c Release -f net10.0 -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'capture-linux')
+if($LASTEXITCODE){throw 'Publishing capture-linux failed.'}
 # app/cli-linux: the native Linux build agent hellforge-linux.sh runs before a session to compile source mods, and the
 # launcher's Build now runs for one mod. Self-contained, like the launcher.
 Write-Output 'Publishing cli-linux'

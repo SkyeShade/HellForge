@@ -232,7 +232,7 @@
           <Border x:Name="SyncCard" Classes="card" Margin="0,0,0,16">
             <StackPanel Spacing="10">
               <TextBlock Text="ACCOUNT SYNC" Classes="h2" Margin="0" />
-              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+              <TextBlock x:Name="SyncDescription" Classes="muted" FontSize="12" TextWrapping="Wrap"
                          Text="Brings your own HELLDIVERS 2 account into this profile. Warbonds, Superstore items and DLC gear you bought always follow your latest sync; everything else is imported only as you choose, and the profile is backed up first. Super Credits are never imported or usable. Sync opens the normal game through Steam; log in and pass the title screen. Each sync asks for administrator access: until the normal game exits, the game's server name points at this PC and a temporary certificate is trusted. Both are removed when it exits." />
               <TextBlock x:Name="SyncWarning" Foreground="#FFA235" FontSize="12" TextWrapping="Wrap"
                          Text="Experimental. During a sync the normal game shows &quot;Could not connect to Easy Anti Cheat network&quot; after the login and closes itself. The sync is finished by then, so this does not stop it; close the game if it stays open. We are looking into the cause." />

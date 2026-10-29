@@ -299,12 +299,14 @@ public static class LinuxAppInstaller
     {
         if (!OperatingSystem.IsLinux()) return;
         MakeExecutable(launcher);
-        // The native source-mod build agent; optional, so a package from before it still installs.
-        var agent = Path.Combine(Path.GetDirectoryName(launcher)!, "..", "cli-linux", "HellForge.Cli");
+        // The native source-mod build agent is optional; the native Account Sync capture is part of the package.
+        var app = Path.GetDirectoryName(launcher)!;
+        var agent = Path.Combine(app, "..", "cli-linux", "HellForge.Cli");
         if (File.Exists(agent)) MakeExecutable(agent);
         // The native Linux sandbox probe. New packages require it; this keeps a hand-extracted file usable too.
         var sandboxProbe = Path.Combine(scripts, "hf-sandbox-probe");
         if (File.Exists(sandboxProbe)) MakeExecutable(sandboxProbe);
+        MakeExecutable(Path.Combine(app, "..", "capture-linux", "HellForge.CaptureProxy"));
         foreach (var script in Directory.EnumerateFiles(scripts, "*.sh")) MakeExecutable(script);
     }
 
