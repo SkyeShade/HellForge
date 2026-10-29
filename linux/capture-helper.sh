@@ -1,22 +1,22 @@
 #!/bin/bash
-# HellForge's Sync Inventory helper on Linux (docs/linux.md, "Account sync"). allow-capture.sh installs this file
-# root-owned at /usr/local/lib/hellforge/capture-helper and gives the player's account a sudoers rule for this exact
+# HellForge's Sync Inventory helper on Linux (docs/linux.md, "Account sync"). allow-capture.sh installs this file and
+# capture-relay root-owned at /usr/local/lib/hellforge and gives the player's account a sudoers rule for this exact
 # program. The launcher then starts and stops it without another password prompt.
 #
 #   capture-helper.sh check
 #   capture-helper.sh start              (root; reads the capture proxy pid from stdin)
 #   capture-helper.sh stop
 #   capture-helper.sh cleanup
-#   capture-helper.sh relay --listen-port <1024-65535> --target-port <1024-65535>   (self-test, unprivileged)
 #   capture-helper.sh hosts-add --hosts-file <path> [--state-dir <dir>]             (test only, unprivileged)
 #   capture-helper.sh hosts-remove --hosts-file <path> [--state-dir <dir>]          (test only, unprivileged)
 #   capture-helper.sh watch --pid <pid> --hosts-file <path> [--state-dir <dir>] [--seconds <n>]  (test only)
 #
-# start adds exactly CaptureHosts.Marker and "127.0.0.1 api.live.prod.thehelldiversgame.com" to /etc/hosts, then runs a
-# 443 -> fixed 18443 relay bound to 127.0.0.1 only. The EXIT/TERM/INT/HUP trap removes both. The helper watches the native
-# proxy's pid and also ends itself at the proxy's timeout plus a margin, so killing HellForge does not leave the redirect
-# behind. cleanup does the same after a killed run. Wine is never started here and this helper never becomes root for the
-# game. The test-only host and state arguments are not in the sudoers rule.
+# start adds exactly CaptureHosts.Marker and "127.0.0.1 api.live.prod.thehelldiversgame.com" to /etc/hosts, then runs the
+# installed root-owned capture-relay (never a file from the installation, which any Wine program can write): it binds
+# 127.0.0.1:443 as root, drops to nobody, and forwards to 127.0.0.1:18443 only. The EXIT/TERM/INT/HUP trap removes both.
+# The helper watches the native proxy's pid and also ends itself at the proxy's timeout plus a margin, so killing
+# HellForge does not leave the redirect behind. cleanup does the same after a killed run. Wine is never started here and
+# this helper never becomes root for the game. The test-only host and state arguments are not in the sudoers rule.
 set -euo pipefail
 # sudo starts this root-owned helper; use only the root-owned system paths even if the caller's PATH differs.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -24,7 +24,6 @@ umask 077
 
 marker='# HellForge-CaptureProxy'
 api='api.live.prod.thehelldiversgame.com'
-proxy_port=18443
 # The proxy's own timeout is 10 minutes; two minutes of margin, and never more than an hour.
 max_lifetime=720
 state_dir='/run/hellforge'
@@ -32,6 +31,7 @@ hosts_file='/etc/hosts'
 pid_file="$state_dir/capture-helper.pid"
 lock_file="$state_dir/capture-helper.lock"
 helper_path='/usr/local/lib/hellforge/capture-helper'
+relay_path='/usr/local/lib/hellforge/capture-relay'
 relay_pid=''
 watch_pid=''
 cleanup_done=''
@@ -45,21 +45,30 @@ require_root() {
   [ "$(id -u)" = 0 ] || die "run it through sudo: sudo $helper_path $*"
 }
 
-require_socat() {
-  command -v socat >/dev/null || die "socat is missing (it is one of HellForge's Linux dependencies)."
+# The relay is installed root-owned beside this helper and is the only relay this root process runs. Refuse a missing,
+# non-executable or writable copy instead of falling back to anything in the installation.
+require_relay() {
+  local owner mode
+  [ -f "$relay_path" ] || die "the relay is missing ($relay_path): run allow-capture.sh again."
+  [ -x "$relay_path" ] || die "the relay is not executable ($relay_path): run allow-capture.sh again."
+  owner="$(stat -c %u "$relay_path" 2>/dev/null || true)"
+  mode="$(stat -c %a "$relay_path" 2>/dev/null || true)"
+  [ "$owner" = 0 ] || die "the relay is not root-owned ($relay_path): run allow-capture.sh again."
+  [[ "$mode" =~ ^[0-7]+$ ]] && (( (8#$mode & 8#022) == 0 )) ||
+    die "the relay is writable by another account ($relay_path): run allow-capture.sh again."
   id -u nobody >/dev/null 2>&1 || die "the unprivileged 'nobody' account is missing (the relay drops to it after binding)."
 }
 
 require_commands() {
   local name
-  for name in flock awk mktemp cmp chmod chown mv tail date sleep; do
+  for name in flock awk mktemp cmp chmod chown mv tail date sleep stat; do
     command -v "$name" >/dev/null || die "$name is missing."
   done
 }
 
 read_pid_file() {
   [ -f "$pid_file" ] || return 0
-  # Three numeric pids: the helper first, its socat relay second, the capture proxy third. A two-pid file from an older
+  # Three numeric pids: the helper first, its capture-relay second, the capture proxy third. A two-pid file from an older
   # helper is still readable; a malformed file is treated as stale.
   local helper_pid old_relay_pid old_proxy_pid extra
   if read -r helper_pid old_relay_pid old_proxy_pid extra < "$pid_file" &&
@@ -78,7 +87,8 @@ pid_matches() {
 
 pid_is_helper() { pid_matches "$1" "$helper_path"; }
 pid_is_proxy() { pid_matches "$1" "HellForge.CaptureProxy"; }
-pid_is_relay() { pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"; }
+# The native relay, and the socat listener an older helper may have left behind.
+pid_is_relay() { pid_matches "$1" "$relay_path" || pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"; }
 
 kill_pid() {
   local pid="$1"
@@ -192,9 +202,9 @@ cleanup_once() {
   cleanup_locked
 }
 
-# The helper is root but the relay process that handles game connections runs as nobody; the listener stays on loopback.
+# The relay itself binds as root, drops to nobody (checked) and keeps the listener on loopback. It inherits no lock fd.
 start_relay() {
-  socat "TCP-LISTEN:443,bind=127.0.0.1,su=nobody,fork,reuseaddr" "TCP:127.0.0.1:$proxy_port" &
+  "$relay_path" 9>&- &
   relay_pid=$!
 }
 
@@ -247,15 +257,15 @@ command="${1:-}"
 case "$command" in
   check)
     require_root check
-    require_socat
     require_commands
+    require_relay
     [ -w /etc/hosts ] || die "/etc/hosts is not writable"
     exit 0
     ;;
   start)
     require_root start
-    require_socat
     require_commands
+    require_relay
     [ $# -eq 0 ] || die "start takes no arguments; its proxy pid is read from stdin"
     proxy_pid=''
     IFS= read -r proxy_pid || true
@@ -290,25 +300,6 @@ case "$command" in
     stop_and_cleanup
     exit 0
     ;;
-  relay)
-    # The automated relay test uses this on high ports, with no hosts changes. It is not used by the root start mode.
-    require_socat
-    listen_port=''
-    target_port=''
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --listen-port) [ $# -ge 2 ] || die "--listen-port needs a value"; listen_port="$2"; shift 2 ;;
-        --target-port) [ $# -ge 2 ] || die "--target-port needs a value"; target_port="$2"; shift 2 ;;
-        *) die "unknown relay argument: $1" ;;
-      esac
-    done
-    [ -n "$listen_port" ] && [ -n "$target_port" ] || die "relay needs --listen-port and --target-port"
-    [[ "$listen_port" =~ ^[0-9]+$ ]] && [ "$listen_port" -ge 1024 ] && [ "$listen_port" -le 65535 ] ||
-      die "--listen-port needs a port from 1024 to 65535: $listen_port"
-    [[ "$target_port" =~ ^[0-9]+$ ]] && [ "$target_port" -ge 1024 ] && [ "$target_port" -le 65535 ] ||
-      die "--target-port needs a port from 1024 to 65535: $target_port"
-    exec socat "TCP-LISTEN:$listen_port,bind=127.0.0.1,reuseaddr" "TCP:127.0.0.1:$target_port"
-    ;;
   hosts-add|hosts-remove)
     watch_target=''
     parse_test_args "$@"
@@ -337,6 +328,6 @@ case "$command" in
     exit 0
     ;;
   *)
-    die "usage: $0 check | start | stop | cleanup | relay --listen-port <n> --target-port <n>"
+    die "usage: $0 check | start | stop | cleanup"
     ;;
 esac

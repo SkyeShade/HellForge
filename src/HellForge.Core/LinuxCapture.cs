@@ -11,10 +11,11 @@ using System.Text.Json;
 namespace HellForge.Core;
 
 // The native Linux side of Sync Inventory. The proxy runs unprivileged and speaks TLS on the unprivileged loopback port
-// 18443; the installed root helper owns the marked /etc/hosts lines and the 127.0.0.1:443 relay. The supervisor writes the
-// proxy's public CA into HELLDIVERS 2's Proton prefix through Wine's reg.exe: the Windows certificate store serialises a
-// Root certificate as the registry value HKLM\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>\Blob.
-// Nothing here runs Wine as root or changes the Windows path.
+// 18443; the installed root helper owns the marked /etc/hosts lines and runs the installed root-owned relay for
+// 127.0.0.1:443. The supervisor writes the proxy's public CA into HELLDIVERS 2's Proton prefix through Wine's reg.exe: the
+// Windows certificate store serialises a Root certificate as the registry value
+// HKLM\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>\Blob. Nothing here runs Wine as root or changes the
+// Windows path.
 public static class LinuxCapture
 {
     public const string ApiHost = "api.live.prod.thehelldiversgame.com";
@@ -22,8 +23,11 @@ public static class LinuxCapture
     public const int ProxyPort = 18443;
     public const string HelperPath = "/usr/local/lib/hellforge/capture-helper";
     public const string HelperHashPath = "/usr/local/lib/hellforge/capture-helper.sha256";
+    public const string RelayPath = "/usr/local/lib/hellforge/capture-relay";
+    public const string RelayHashPath = "/usr/local/lib/hellforge/capture-relay.sha256";
     public const string HelperPidFile = "/run/hellforge/capture-helper.pid";
     public const string HelperScript = "capture-helper.sh";
+    public const string RelayBinary = "capture-relay";
     public const string HelperInstaller = "allow-capture.sh";
     const string CertificateFile = "capture-ca.cer";
     const string CertificateRecordFile = "capture-ca.json";
@@ -373,34 +377,46 @@ public static class LinuxCapture
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    // The installed root copy must still be the helper this installation ships. A package update changes the shipped
-    // file, and allow-capture.sh is then needed again; a stale root copy must never run against the new launcher.
+    // The installed root copies must still be the helper and relay this installation ships. A package update changes the
+    // shipped files, and allow-capture.sh is then needed again; a stale root copy must never run against the new launcher.
     public static string? HelperProblem(string installRoot)
     {
         if (!File.Exists(HelperPath))
             return "The Linux capture helper is not installed. Run this once, then sync again: " + HelperInstallCommand(installRoot);
+        if (!File.Exists(RelayPath))
+            return "The Linux capture relay is not installed. Run this once, then sync again: " + HelperInstallCommand(installRoot);
         try
         {
-            var shipped = Path.Combine(new InstallLayout(installRoot).App, "linux", HelperScript);
-            if (!File.Exists(shipped))
-                return "This installation's " + HelperScript + " is missing. Reinstall HellForge, then sync again.";
-            var installedHash = FileSha256(HelperPath);
-            if (!installedHash.Equals(FileSha256(shipped), StringComparison.OrdinalIgnoreCase))
-                return "The installed Linux capture helper does not match this HellForge version. Run this once, then sync again: " +
-                    HelperInstallCommand(installRoot);
-            if (File.Exists(HelperHashPath))
-            {
-                var recorded = File.ReadAllText(HelperHashPath).Trim();
-                if (!recorded.Equals(installedHash, StringComparison.OrdinalIgnoreCase))
-                    return "The installed Linux capture helper does not match its recorded SHA-256. Run this once, then sync again: " +
-                        HelperInstallCommand(installRoot);
-            }
-            return null;
+            var shippedFolder = Path.Combine(new InstallLayout(installRoot).App, "linux");
+            if (InstalledCopyProblem(HelperPath, HelperHashPath, Path.Combine(shippedFolder, HelperScript), "capture helper",
+                    installRoot) is { } helperProblem) return helperProblem;
+            return InstalledCopyProblem(RelayPath, RelayHashPath, Path.Combine(shippedFolder, RelayBinary), "capture relay",
+                installRoot);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return "The installed Linux capture helper could not be checked: " + error.Message;
+            return "The installed Linux capture helper or relay could not be checked: " + error.Message;
         }
+    }
+
+    // One installed root copy against the shipped file and its recorded SHA-256. Internal so tests can use temporary files;
+    // HelperProblem applies it to both the helper and the relay.
+    internal static string? InstalledCopyProblem(string installed, string hashPath, string shipped, string name, string installRoot)
+    {
+        if (!File.Exists(shipped))
+            return "This installation's " + Path.GetFileName(shipped) + " is missing. Reinstall HellForge, then sync again.";
+        var installedHash = FileSha256(installed);
+        if (!installedHash.Equals(FileSha256(shipped), StringComparison.OrdinalIgnoreCase))
+            return "The installed Linux " + name + " does not match this HellForge version. Run this once, then sync again: " +
+                HelperInstallCommand(installRoot);
+        if (File.Exists(hashPath))
+        {
+            var recorded = File.ReadAllText(hashPath).Trim();
+            if (!recorded.Equals(installedHash, StringComparison.OrdinalIgnoreCase))
+                return "The installed Linux " + name + " does not match its recorded SHA-256. Run this once, then sync again: " +
+                    HelperInstallCommand(installRoot);
+        }
+        return null;
     }
 
     // Why a capture cannot start. The caller supplies the real game and session checks; the helper checks are skipped in
