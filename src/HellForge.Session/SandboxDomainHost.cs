@@ -137,15 +137,40 @@ static class SandboxDomainHost
         var exited = job.Process.HasExited;
         int? code = null;
         if (exited) code = job.Process.ExitCode;
-        bool empty;
-        try { empty = job.ActiveProcesses == 0; }
-        catch (System.ComponentModel.Win32Exception) { empty = false; }
+        var empty = JobEmptyAfterGame(job);
         clean = clean with
         {
             State = stopped ? "stopped" : "exited", ExitCode = code, JobEmpty = empty,
             Matchmaking = clean.Matchmaking, PlayFabOutcome = playFab?.Outcome, Windows = windows
         };
         SandboxDomainStatus.Write(statusPath, clean);
+    }
+
+    // Copy-back runs only once the game's job reports no process left. When the player quits the game, its own helpers
+    // (crs-handler.exe, the crash reporter that watches it) can still be running at that moment, so an immediate check
+    // failed and every normally ended session skipped its copy-back (measured 2026-10-29: settings and the cloud save
+    // were lost, and the game showed its first-time setup each session). Give them a bounded time to end, then end what
+    // is left (the game has quit; nothing in its job belongs to the player any more) and check again.
+    static bool JobEmptyAfterGame(HostBoundedProcess job)
+    {
+        try
+        {
+            if (WaitJobEmpty(job, TimeSpan.FromSeconds(10))) return true;
+            job.Stop();
+            return WaitJobEmpty(job, TimeSpan.FromSeconds(5));
+        }
+        catch (System.ComponentModel.Win32Exception) { return false; }
+    }
+
+    static bool WaitJobEmpty(HostBoundedProcess job, TimeSpan bound)
+    {
+        var clock = Stopwatch.StartNew();
+        while (job.ActiveProcesses != 0)
+        {
+            if (clock.Elapsed >= bound) return false;
+            Thread.Sleep(250);
+        }
+        return true;
     }
 
     static void ApplyEnvironment(Dictionary<string, string> values)
