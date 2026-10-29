@@ -131,7 +131,7 @@ static class SteamAccountTests
                 Path.Combine("src", "HellForge.Core", "GameSettings.cs"),
                 Path.Combine("src", "HellForge.Session", "PlaySession.cs"),
                 Path.Combine("src", "HellForge.Launcher", "InventorySyncFlow.cs"),
-                Path.Combine("src", "HellForge.LocalBackend", "Program.cs"),
+                Path.Combine("src", "HellForge.LocalBackend", "AccountCommands.cs"),
                 Path.Combine("src", "HellForge.Cli", "Program.cs"),
                 Path.Combine("src", "HellForge.Launcher", "ModsPage.cs")
             };
@@ -144,10 +144,15 @@ static class SteamAccountTests
                     relative + " still reads the account registry directly.");
             }
 
+            // Native Linux trusts only a probe a process ran itself: the launcher passes no account to its backend commands,
+            // and the native backend runs its own probe for the installation.
             var accountImport = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "AccountImportFlow.cs"));
-            check(accountImport.Contains("SteamAccount.Current(new InstallLayout", StringComparison.Ordinal) &&
-                  accountImport.Contains("start.Environment[SteamAccount.EnvironmentVariable]", StringComparison.Ordinal),
-                "The launcher's direct backend commands do not receive the account.");
+            var accountCommands = File.ReadAllText(Path.Combine(repository, "src", "HellForge.LocalBackend", "AccountCommands.cs"));
+            check(accountImport.Contains("start.Environment.Remove(SteamAccount.EnvironmentVariable)", StringComparison.Ordinal) &&
+                  !accountImport.Contains("start.Environment[SteamAccount.EnvironmentVariable]", StringComparison.Ordinal) &&
+                  accountImport.Contains("\"backend-linux\"", StringComparison.Ordinal) &&
+                  accountCommands.Contains("SteamAccount.Current(new InstallLayout(root))", StringComparison.Ordinal),
+                "The launcher's backend commands pass the account, or the native backend does not probe for itself.");
             var ownership = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Core", "SteamOwnershipCheck.cs"));
             check(ownership.Contains("request.PrivateResult", StringComparison.Ordinal) &&
                   ownership.Contains("SteamAccount.RememberProbe(privateResult)", StringComparison.Ordinal) &&

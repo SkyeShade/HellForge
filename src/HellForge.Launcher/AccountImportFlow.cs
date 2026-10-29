@@ -243,26 +243,24 @@ public partial class MainWindow
         return line == null ? fallback : line.Replace("HellForge local backend: ", "", StringComparison.Ordinal);
     }
 
+    // The profile commands are plain file work. On native Linux they run in the native backend
+    // (app/backend-linux), which finds the signed-in Steam account with its own probe; the Windows backend is for Windows.
     async Task<(int Code, string Output, string Error)> RunBackendAsync(params string[] arguments)
     {
-        var start = new ProcessStartInfo(paths.Backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        var needsAccount = arguments.Length >= 2 && arguments[0] == "profile" && arguments[1] is "import-preview" or "import";
-        if (needsAccount && OperatingSystem.IsLinux() && paths.InstallRoot is { } installRoot)
+        string backend;
+        if (NativeLinux)
         {
-            ulong? account;
-            try { account = await Task.Run(() => SteamAccount.Current(new InstallLayout(installRoot))); }
-            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException
-                or System.ComponentModel.Win32Exception)
-            {
-                return (-1, "", "HellForge local backend: " + error.Message);
-            }
-            if (account is { } signedIn)
-                start.Environment[SteamAccount.EnvironmentVariable] = SteamAccount.AccountId(signedIn)
-                    .ToString(CultureInfo.InvariantCulture);
-            else
-                start.Environment.Remove(SteamAccount.EnvironmentVariable);
+            if (paths.InstallRoot is not { } installRoot)
+                return (-1, "", "HellForge local backend: account import runs in installations made with HellForge-Setup.");
+            backend = Path.Combine(new InstallLayout(installRoot).App, "backend-linux", "HellForge.LocalBackend");
+            if (!File.Exists(backend))
+                return (-1, "", "HellForge local backend: app/backend-linux/HellForge.LocalBackend is missing; update HellForge.");
         }
+        else backend = paths.Backend;
+        var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        // A value inherited from elsewhere is never passed on; only a backend under Wine reads it.
+        start.Environment.Remove(SteamAccount.EnvironmentVariable);
         try
         {
             using var process = Process.Start(start) ?? throw new IOException("The local backend did not start.");

@@ -50,4 +50,4 @@ Write-Output ('Built {0} ({1:N0} MB, app archive {2:N0} MB). SHA-256 {3}' -f $fi
 $linuxZip=Join-Path $package 'HellForge-Linux.zip'
 if(Test-Path -LiteralPath $linuxZip){Remove-Item -LiteralPath $linuxZip}
 [IO.Compression.ZipFile]::CreateFromDirectory($payload,$linuxZip,[IO.Compression.CompressionLevel]::Optimal,$false)
-Write-Output ('Built {0} ({1:N0} MB). Extract into the prefix''s C: drive, then chmod +x app/launcher-linux/HellForge.Launcher app/cli-linux/HellForge.Cli app/capture-linux/HellForge.CaptureProxy.' -f $linuxZip,((Get-Item -LiteralPath $linuxZip).Length/1MB))
+Write-Output ('Built {0} ({1:N0} MB). Extract into the prefix''s C: drive, then chmod +x app/launcher-linux/HellForge.Launcher app/cli-linux/HellForge.Cli app/capture-linux/HellForge.CaptureProxy app/backend-linux/HellForge.LocalBackend.' -f $linuxZip,((Get-Item -LiteralPath $linuxZip).Length/1MB))

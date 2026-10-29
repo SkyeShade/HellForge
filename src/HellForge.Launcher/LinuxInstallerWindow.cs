@@ -351,6 +351,7 @@ sealed class LinuxInstallerWindow : Window
             "app/engine-package.zip",
             "app/launcher-linux/HellForge.Launcher",
             "app/capture-linux/HellForge.CaptureProxy",
+            "app/backend-linux/HellForge.LocalBackend",
             "app/linux/hellforge-linux.sh",
             "app/linux/hf-steam.sh",
             "app/linux/hf-container.sh",
