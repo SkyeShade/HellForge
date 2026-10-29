@@ -54,9 +54,9 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | Call | SDK | Adds or changes | Returns | Room across all mods |
 |---|---|---|---|---|
 | `edit_entity`, `hf_set`, `hf_copy`, `hf_tag`, `hf_mount` | 6 | fields of an existing entity | 0 queued, 1 refused | |
-| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 64, shared with weapons |
-| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 64 |
-| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 64 |
+| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 192, shared with weapons |
+| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 192 |
+| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
 | `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 64 |
 | `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 64 |
 | `add_stratagem` | 4 | a stratagem | its type (150 and up), or 0 | 48 |
@@ -68,6 +68,14 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 When a call returns 0 (or 1 for the edit calls), your mod's log says why; `hf->last_log(mod)` gives you that line in
 code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call added after the version you require
 ([compatibility](concepts.md#compatibility)).
+
+Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
+the game's item catalogue (57 items for an AR-23 Liberator copy), and the game keeps only the first 4,096 catalogue
+items (vanilla has 2,925), the first 4,096 inventory entries and 256 progression packages (vanilla has 56; each new
+weapon takes one). That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new
+stratagems (2 items each), then each weapon whole, and leaves out what does not fit, with a line in the session's
+backend log for each. So past the limit it is the last weapons that are missing, never half of one, and not a mod's
+stratagems.
 
 ## Changing existing content
 

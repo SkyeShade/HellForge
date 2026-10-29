@@ -64,6 +64,10 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
+  some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
+  a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
+  out with a line in the log.
 
 ## 0.3.0-beta (2026-10-26)
 
