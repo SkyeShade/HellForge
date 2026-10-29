@@ -24,15 +24,17 @@ static class VerifiedListTests
         {
             var (privateKey, publicKey) = VerifiedMods.NewKey();
             var (otherKey, _) = VerifiedMods.NewKey();
-            var two = Published(2, Other);
-            var signature = VerifiedMods.Sign(two, privateKey);
-            check(VerifiedMods.PublicKeyOf(privateKey) == publicKey && VerifiedMods.Checked(two, signature, publicKey) is { Serial: 2, Mods.Count: 1 },
+            // Serials above the embedded list's, which goes up with each published list.
+            var e = VerifiedMods.Embedded.Serial;
+            var first = Published(e + 1, Other);
+            var signature = VerifiedMods.Sign(first, privateKey);
+            check(VerifiedMods.PublicKeyOf(privateKey) == publicKey && VerifiedMods.Checked(first, signature, publicKey) is { Mods.Count: 1 } listing && listing.Serial == e + 1,
                 "A list signed by the key is taken.");
-            var tampered = (byte[])two.Clone();
+            var tampered = (byte[])first.Clone();
             tampered[^5] ^= 1;
             reject(() => VerifiedMods.Checked(tampered, signature, publicKey));
-            reject(() => VerifiedMods.Checked(two, VerifiedMods.Sign(two, otherKey), publicKey));
-            reject(() => VerifiedMods.Checked(two, "not base64!", publicKey));
+            reject(() => VerifiedMods.Checked(first, VerifiedMods.Sign(first, otherKey), publicKey));
+            reject(() => VerifiedMods.Checked(first, "not base64!", publicKey));
             var noSerial = Encoding.UTF8.GetBytes($$"""{"format":1,"mods":[]}""");
             reject(() => VerifiedMods.Checked(noSerial, VerifiedMods.Sign(noSerial, privateKey), publicKey));
             reject(() => VerifiedMods.ParseListing("""{"format":1,"serial":-1,"mods":[]}"""));
@@ -40,7 +42,7 @@ static class VerifiedListTests
 
             // Fetched, saved and read again by the installation's other processes; offline, the saved copy.
             var install = new InstallLayout(Path.Combine(root, "verified-list"));
-            var served = (List: two, Signature: signature);
+            var served = (List: first, Signature: signature);
             var requests = 0;
             HttpClient Http() => new(new Respond(request =>
             {
@@ -57,31 +59,31 @@ static class VerifiedListTests
                 var fetched = Refresh(publicKey);
                 check(fetched.Source == VerifiedMods.Source.Published && fetched.Problem == null && VerifiedMods.Contains("a.b", Other) &&
                     File.Exists(VerifiedMods.SavedPath(install)), "Fetched, the published list is used and saved: " + fetched.Problem);
-                check(VerifiedMods.UseInstallation(install, publicKey) == VerifiedMods.Source.Saved && VerifiedMods.Current.Serial == 2, "Another process reads the saved copy.");
+                check(VerifiedMods.UseInstallation(install, publicKey) == VerifiedMods.Source.Saved && VerifiedMods.Current.Serial == e + 1, "Another process reads the saved copy.");
                 check(VerifiedMods.UseInstallation(install, VerifiedMods.NewKey().PublicKey) == VerifiedMods.Source.Embedded && !VerifiedMods.Contains("a.b", Other),
                     "Read with another key, the saved copy is not taken.");
 
                 // An older signed list (a mod taken off since) is not taken over the saved one.
-                served = (Published(1, new string('e', 64)), VerifiedMods.Sign(Published(1, new string('e', 64)), privateKey));
+                served = (Published(e, new string('e', 64)), VerifiedMods.Sign(Published(e, new string('e', 64)), privateKey));
                 var older = Refresh(publicKey);
                 check(older.Source == VerifiedMods.Source.Saved && older.Problem!.Contains("serial") && VerifiedMods.Contains("a.b", Other), "An older list is refused: " + older.Problem);
                 // A newer one replaces it, taking a mod off.
-                var three = Published(3, new string('f', 64));
-                served = (three, VerifiedMods.Sign(three, privateKey));
+                var next = Published(e + 2, new string('f', 64));
+                served = (next, VerifiedMods.Sign(next, privateKey));
                 check(Refresh(publicKey).Source == VerifiedMods.Source.Published && !VerifiedMods.Contains("a.b", Other) && VerifiedMods.Contains("a.b", new string('f', 64)),
                     "A newer list takes a mod off.");
                 // Signed by another key, or unreachable: the saved copy stays.
-                served = (Published(4, Other), VerifiedMods.Sign(Published(4, Other), otherKey));
+                served = (Published(e + 3, Other), VerifiedMods.Sign(Published(e + 3, Other), otherKey));
                 var forged = Refresh(publicKey);
-                check(forged.Source == VerifiedMods.Source.Saved && forged.Problem!.Contains("not signed") && VerifiedMods.Current.Serial == 3, "A forged list is refused: " + forged.Problem);
+                check(forged.Source == VerifiedMods.Source.Saved && forged.Problem!.Contains("not signed") && VerifiedMods.Current.Serial == e + 2, "A forged list is refused: " + forged.Problem);
                 var offline = VerifiedMods.RefreshAsync(new HttpClient(new Respond(_ => throw new HttpRequestException("offline"))), install, TimeSpan.FromSeconds(5), Url, publicKey)
                     .GetAwaiter().GetResult();
-                check(offline.Source == VerifiedMods.Source.Saved && VerifiedMods.Current.Serial == 3, "Offline, the saved copy.");
+                check(offline.Source == VerifiedMods.Source.Saved && VerifiedMods.Current.Serial == e + 2, "Offline, the saved copy.");
 
                 // A saved copy changed on disk is not taken.
                 var savedFile = VerifiedMods.SavedPath(install);
-                File.WriteAllText(savedFile, File.ReadAllText(savedFile).Replace(Convert.ToBase64String(three),
-                    Convert.ToBase64String(Published(3, Other))));
+                File.WriteAllText(savedFile, File.ReadAllText(savedFile).Replace(Convert.ToBase64String(next),
+                    Convert.ToBase64String(Published(e + 2, Other))));
                 check(VerifiedMods.UseInstallation(install, publicKey) == VerifiedMods.Source.Embedded && !VerifiedMods.Contains("a.b", Other), "An edited saved copy is not taken.");
 
                 // Without a key in this HellForge, nothing is fetched or taken.
