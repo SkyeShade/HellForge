@@ -352,6 +352,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
     memcpy(game + DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
+    memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
+    for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1270,7 +1272,7 @@ typedef int (*TownIntFn)(uintptr_t a, uint32_t b, uintptr_t c);
 static uintptr_t TownGame(void)
 {
     uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1400000, MEM_RESERVE, PAGE_NOACCESS);
-    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF37000, 0xF4C000, 0xF68000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
+    static const uint32_t pages[] = {0xF31000, 0xF33000, 0xF34000, 0xF35000, 0xF37000, 0xF4C000, 0xF68000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
     for (size_t i = 0; i < sizeof pages / sizeof pages[0]; i++)
         assert(VirtualAlloc((void*)(game + pages[i]), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
     return game;
@@ -1299,6 +1301,8 @@ static void TownsFixtureOnce(int border)
     TownPut(game, DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
     TownPut(game, DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
     for (int i = 0; i < 2; i++) TownPut(game, kTownRingSites[i].site, kTownRingSites[i].pin, 8);
+    TownPut(game, DIF_TOWN_REACH_SITE, kTownReachPin, 8);
+    for (int i = 0; i < 2; i++) TownPut(game, kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
     assert(TownPinsFailed(game) == NULL);
     /* the placers' harnesses (0x13F0000 + 0x40 i): push rsi; mov rsi, rcx; sub rsp, 0x28; keep xmmN; xmmN = value; the
      * site; at its back: xmm0 = xmmN, restore, return. {save, set, out, restore} for xmm8, 9, 9, 6, 7 */
@@ -1372,6 +1376,17 @@ static void TownsFixtureOnce(int border)
         TownHarness(game, 0x13F0700u + 0x40u * (uint32_t)i, ringIn, sizeof ringIn, kTownRingSites[i].site);
         TownPut(game, kTownRingSites[i].back, ringOn[i], sizeof ringOn[i]);
     }
+    /* the walls' reach: push rbp; rbp = rcx (its [0] the pass); the site; back: pop rbp, return (xmm0). The edge
+     * refusals: cmp ecx, edx; the site; on: eax 1, the next rule: eax 2 */
+    static const uint8_t reachIn[] = {0x55, 0x48, 0x89, 0xCD}, reachOn[] = {0x5D, 0xC3};
+    TownHarness(game, 0x13F0800u, reachIn, sizeof reachIn, DIF_TOWN_REACH_SITE);
+    TownPut(game, DIF_TOWN_REACH_BACK, reachOn, sizeof reachOn);
+    for (int i = 0; i < 2; i++)
+    {
+        TownHarness(game, 0x13F0840u + 0x20u * (uint32_t)i, compare, sizeof compare, kTownEdgeRefusals[i].site);
+        TownPut(game, kTownEdgeRefusals[i].site + 6, one, sizeof one);
+    }
+    TownPut(game, kTownEdgeRefusals[0].target, two, sizeof two);
 
     float savedScale = g_difficulty.mapScale;
     g_difficulty.mapScale = 2.0f;
@@ -1468,6 +1483,21 @@ static void TownsFixtureOnce(int border)
         assert(ringFn(zoneType, ringPass) == 100.0f);
         memcpy(ringLevel + 0x2D7C, &other, 4);
         assert(ringFn(zoneType, ringPass) == 64.0f);
+    }
+    /* the walls' reach: 25 m x 1.5623 on a larger map, counted; 25 m on another; the edge refusals counted where they go */
+    typedef float (*TownReachFn)(const uintptr_t* frame);
+    TownReachFn reachFn = (TownReachFn)(void*)(game + 0x13F0800u);
+    uintptr_t reachPass[2] = {0, (uintptr_t)settings}, reachFrame[1] = {(uintptr_t)reachPass};
+    memcpy(settings + 0x5C, &disk, 4);
+    float reached = reachFn(reachFrame);
+    assert(fabsf(reached - 25.0f * cellFactor[0] * 0.25f) < 1e-4f && reached > 39.0f && g_townCounters[7] == 1);
+    memcpy(settings + 0x5C, &other, 4);
+    assert(reachFn(reachFrame) == 25.0f && g_townCounters[7] == 1);
+    for (int i = 0; i < 2; i++)
+    {
+        TownIntFn edge = (TownIntFn)(void*)(game + 0x13F0840u + 0x20u * (uint32_t)i);
+        assert(edge(1, 2, 0) == 1 && edge(3, 3, 0) == 2 && edge(4, 4, 0) == 2);
+        assert(g_townCounters[kTownEdgeRefusals[i].counter] == 2);
     }
     SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", NULL);
     g_difficulty.mapScale = savedScale;

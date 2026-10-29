@@ -472,8 +472,10 @@ static void WatchTowns(void)
     memcpy(seen, now, sizeof now);
     if (moving || !fresh) return;
     Note("difficulty: towns: %ld building(s) placed; %ld position(s) refused past the playable radius and their rule's reach, "
-        "%ld with the location list full; the subregion merge dropped %ld; %ld destructible(s) left without a record (map full)",
-        now[0] - logged[0], now[1] - logged[1], now[2] - logged[2], now[3] - logged[3], now[4] - logged[4]);
+        "%ld with the location list full; the subregion merge dropped %ld; %ld destructible(s) left without a record (map full); "
+        "town walls: %ld edge rule(s) tried, %ld with no edge in reach, %ld on the wrong side",
+        now[0] - logged[0], now[1] - logged[1], now[2] - logged[2], now[3] - logged[3], now[4] - logged[4], now[7] - logged[7],
+        now[5] - logged[5], now[6] - logged[6]);
     memcpy(logged, now, sizeof now);
 }
 

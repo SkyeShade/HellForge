@@ -20,7 +20,8 @@
  *     city map fills its 32768 slots) wrote the record through a null slot (0x13E036A): that destructible is now left
  *     without a record and counted, as the shared insert's guard does (DIF_HASH_INSERT_END). */
 
-#define DIF_TOWN_COUNTERS 5 /* placed, refused past R, refused locations full, merge dropped, records skipped */
+#define DIF_TOWN_COUNTERS 8 /* placed, refused past R, refused locations full, merge dropped, records skipped; town walls:
+                             * no edge in reach, the wrong side, tried */
 static volatile LONG* g_townCounters;
 
 /* The five placers' R: {site, length, the instruction (R at +0x50; its last byte 0x50 becomes 0x54, the border), cmp
@@ -205,6 +206,28 @@ static const uint8_t kTownRingStub[56] = {
     0xF3, 0x0F, 0x59, 0, 0, 0, 0, 0,                                  /* 43 mulss xmmN, [rip+0.25] (modrm at 46, rel32 at 47) */
     0xE9, 0, 0, 0, 0};                                                /* 51 jmp back (rel32 at 52) */
 
+/* A zone town's outer wall is its edge rules (types 29-31, rules 0-6, 32 x 16 m, rule +0x24 & 0x3C) in the subregion
+ * stamps (op 0x2B): 0xF31BD0 keeps a slot's area edges that border another type (the town's ring) within a reach of
+ * 25 m of the slot (0xF337DB), and the rule places only on its side code (0xF33839). At level 10 an area is 32 m, its
+ * slot 16 m from the edge; a larger map's areas are 50 m with 2 x 2 slots, so few slots reached an edge and the towns
+ * lost most of their walls (research d11-sparse-cities §10). On a larger map the reach is 25 m x the cell factor (39 m
+ * at 2 x); the walls stay 32 m pieces. Counted: edge rules tried, no edge in reach (0xF33802), the wrong side. Off with
+ * HELLFORGE_D11_TOWN_WALLS=0, for comparing (the counters stay). */
+#define DIF_TOWN_REACH_SITE 0xF337DBu /* movss xmm0, [rip+25.0] (8), the edge test's reach argument */
+#define DIF_TOWN_REACH_BACK 0xF337E3u
+static const uint8_t kTownReachPin[8] = {0xF3, 0x0F, 0x10, 0x05, 0x31, 0x3E, 0x49, 0x01};
+/* The counted branches: je to the next rule (0F 84 rel32), {site, its target, counter}. */
+static const struct { uint32_t site; uint8_t pin[6]; uint32_t target; uint8_t counter; } kTownEdgeRefusals[2] = {
+    {0xF33802u, {0x0F, 0x84, 0x44, 0x13, 0x00, 0x00}, 0xF34B4Cu, 5},  /* no edge of another type in reach */
+    {0xF33839u, {0x0F, 0x84, 0x0D, 0x13, 0x00, 0x00}, 0xF34B4Cu, 6}}; /* the edge on the rule's wrong side */
+
+static int TownWallsWanted(void)
+{
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_WALLS", value, 8);
+    return !(length == 1 && value[0] == L'0');
+}
+
 static int TownRingWanted(void)
 {
     wchar_t value[8];
@@ -250,6 +273,11 @@ static const char* TownPinsFailed(uintptr_t game)
     for (int i = 0; i < 2; i++)
         if (SafeRead(game + kTownRingSites[i].site, zone, 8) || memcmp(zone, kTownRingSites[i].pin, 8) != 0)
             return "the town cells' ring is not the reviewed one (a map_scale above 1 needs it)";
+    if (SafeRead(game + DIF_TOWN_REACH_SITE, zone, 8) || memcmp(zone, kTownReachPin, 8) != 0)
+        return "the town walls' edge test is not the reviewed one (a map_scale above 1 needs it)";
+    for (int i = 0; i < 2; i++)
+        if (SafeRead(game + kTownEdgeRefusals[i].site, zone, 6) || memcmp(zone, kTownEdgeRefusals[i].pin, 6) != 0)
+            return "the town walls' edge test is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
 
@@ -341,6 +369,31 @@ static const char* InstallTowns(DifficultyInstall* d)
         TownRel32(p + 52, game + kTownRingSites[i].back);
         p += 64;
     }
+    /* the walls' reach: mov r11, [rbp] (the pass); mov r11, [r11+8] (lg+0x2D20); xmm0 = 25; on a larger map's disk xmm0 =
+     * the reach, counted; back. Its constants after it, then the two counted refusals (je counted; jmp on; counted:
+     * lock inc; jmp the next rule). */
+    int walls = TownWallsWanted();
+    uint8_t* reachStub = p;
+    static const uint8_t reach[] = {0x4C, 0x8B, 0x5D, 0x00, 0x4D, 0x8B, 0x5B, 0x08, 0xF3, 0x0F, 0x10, 0x05, 0, 0, 0, 0,
+        0x41, 0x81, 0x7B, 0x5C, 0, 0, 0, 0, 0x75, 0x0F, 0xF3, 0x0F, 0x10, 0x05, 0, 0, 0, 0};
+    memcpy(p, reach, sizeof reach);
+    float reachValues[2] = {25.0f, walls && d->cellFactor != NULL ? 25.0f * d->cellFactor[0] * d->cellFactor[1] : 25.0f};
+    memcpy(p + 48, reachValues, 8);
+    TownRel32(p + 12, (uintptr_t)(p + 48));
+    memcpy(p + 20, &diskBits, 4);
+    TownRel32(p + 30, (uintptr_t)(p + 52));
+    TownCount(p + 34, 7);
+    TownJump(p + 41, game + DIF_TOWN_REACH_BACK);
+    p += 64;
+    uintptr_t edgeStubs[2];
+    for (int i = 0; i < 2; i++)
+    {
+        edgeStubs[i] = (uintptr_t)p;
+        *p++ = 0x0F; *p++ = kTownEdgeRefusals[i].pin[1]; uint32_t five = 5; memcpy(p, &five, 4); p += 4;
+        p = TownJump(p, game + kTownEdgeRefusals[i].site + 6);
+        p = TownCount(p, kTownEdgeRefusals[i].counter);
+        p = TownJump(p, game + kTownEdgeRefusals[i].target);
+    }
     DWORD protect;
     if (p - code > 0x1000 || !VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the towns' stubs could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
@@ -354,6 +407,15 @@ static const char* InstallTowns(DifficultyInstall* d)
         int32_t rel = (int32_t)(int64_t)(stubs[i] - (game + sites[i].site + 5));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + sites[i].site, jump, sites[i].length)) return "the towns could not be patched";
+    }
+    const struct { uint32_t site; uint8_t length; uintptr_t stub; } edgeSites[3] = {
+        {DIF_TOWN_REACH_SITE, 8, (uintptr_t)reachStub}, {kTownEdgeRefusals[0].site, 6, edgeStubs[0]}, {kTownEdgeRefusals[1].site, 6, edgeStubs[1]}};
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        int32_t rel = (int32_t)(int64_t)(edgeSites[i].stub - (game + edgeSites[i].site + 5));
+        memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + edgeSites[i].site, jump, edgeSites[i].length)) return "the towns could not be patched";
     }
     int ring = TownRingWanted() && d->cellFactor != NULL;
     for (int i = 0; ring && i < 2; i++)
@@ -377,5 +439,6 @@ static const char* InstallTowns(DifficultyInstall* d)
     else Note("difficulty: towns on larger maps keep their noise in metres (HELLFORGE_D11_TOWN_NOISE=0)");
     Note("difficulty: town cells on larger maps %s (HELLFORGE_D11_TOWN_RING=0 keeps level 10's)",
         ring ? "keep their ring at the refill's spacing, so they touch" : "keep level 10's ring spacing");
+    Note("difficulty: town walls on larger maps reach their edge within %.1f m (HELLFORGE_D11_TOWN_WALLS=0 keeps 25 m)", reachValues[1]);
     return NULL;
 }
