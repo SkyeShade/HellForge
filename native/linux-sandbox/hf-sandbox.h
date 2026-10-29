@@ -58,6 +58,7 @@
 #define HF_MAX_COMMAND 256
 #define HF_MAX_EXTRA_BINDS 64
 #define HF_RUNTIME_SOCKETS 8
+#define HF_MAX_CREDENTIAL_BYTES 65536
 #define HF_SANDBOX_UID 0
 
 #define HF_ACCESS_RO (LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_EXECUTE)
@@ -104,14 +105,18 @@ struct hf_sandbox
     char vulkan_layers[PATH_MAX]; // the host's XDG_DATA_HOME/vulkan/implicit_layer.d, read-only
     char shader_cache[PATH_MAX];  // Steam's per-game shader cache, writable (G.1's reviewed exception)
     char command_path[PATH_MAX];  // the resolved Linux executable
-    char x11_socket[PATH_MAX];    // host /tmp/.X11-unix/X<n>, when DISPLAY names a local display
-    char wayland_socket[PATH_MAX];
+    char x11_socket[PATH_MAX];    // resolved host /tmp/.X11-unix/X<n>, when DISPLAY names a local display
+    char x11_name[64];            // the socket name the game expects (X<n>), not a link's target name
+    char wayland_socket[PATH_MAX]; // the resolved service path, never the $XDG_RUNTIME_DIR link
+    char wayland_name[256];       // the socket name the game expects from WAYLAND_DISPLAY
     char pipewire_socket[PATH_MAX];
     char pulse_socket[PATH_MAX];
     char pulse_cookie[PATH_MAX];
     char xauthority[PATH_MAX];
     char selftest_tmp_canary[PATH_MAX];   // the self-test's host-side /tmp canary
     char selftest_shm_canary[PATH_MAX];   // and its /dev/shm canary
+    char selftest_deleted_source[PATH_MAX]; // a temp file the self-test binds and then unlinks
+    char selftest_deleted_target[PATH_MAX]; // the path left pointing at the unlinked file
     char **extra_binds;                   // existing files/folders exposed read-only at their own paths
     int extra_bind_count;
     char **command;               // argv after --
@@ -133,6 +138,7 @@ void hf_note(const char *format, ...);
 int hf_prepare_paths(struct hf_sandbox *sandbox, const char *session, const char *prefix);
 int hf_prepare_selftest_paths(struct hf_sandbox *sandbox, const char *temporary);
 int hf_discover_environment(struct hf_sandbox *sandbox, char **argv, int argc);
+int hf_discover_runtime_sockets(struct hf_sandbox *sandbox);
 int hf_resolve_command(struct hf_sandbox *sandbox, const char *command);
 int hf_add_rule(struct hf_sandbox *sandbox, const char *path, uint64_t access);
 

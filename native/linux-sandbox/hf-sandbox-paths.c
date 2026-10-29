@@ -82,10 +82,60 @@ static bool is_regular(const char *path)
     return stat(path, &info) == 0 && S_ISREG(info.st_mode);
 }
 
-static bool is_socket(const char *path)
+// A service root may be a link itself (/run/user/1000 can be reached through one); compare the real folder too.
+static bool service_root_covers(const char *root, const char *path)
 {
+    if (root[0] == '\0') return false;
+    if (path_within(root, path)) return true;
+    char resolved[PATH_MAX];
+    if (realpath(root, resolved) == NULL) return false;
+    return path_within(resolved, path);
+}
+
+static bool runtime_service_allowed(const struct hf_sandbox *sandbox, const char *path)
+{
+    return service_root_covers(sandbox->host_runtime, path) ||
+        service_root_covers("/run/pressure-vessel", path) ||
+        service_root_covers("/tmp/.X11-unix", path);
+}
+
+// A pressure-vessel runtime folder holds relative links (wayland-0 -> ../../pressure-vessel/wayland-0,
+// pulse -> ../../pressure-vessel/pulse). The link name is not a mount source: resolve it here, require the resolved
+// object to be the type the service needs, and keep a socket only inside the runtime folders. A link that resolves
+// elsewhere is dropped with a note; it is never followed into another folder.
+static int resolve_runtime_source(const struct hf_sandbox *sandbox, const char *what, const char *source,
+    bool want_socket, char *out, size_t size)
+{
+    out[0] = '\0';
+    if (source == NULL || source[0] == '\0') return 0;
+    char *resolved = realpath(source, NULL);
+    if (resolved == NULL)
+    {
+        hf_note("%s %s is gone; not binding it", what, source);
+        return 0;
+    }
     struct stat info;
-    return lstat(path, &info) == 0 && S_ISSOCK(info.st_mode);
+    if (lstat(resolved, &info) != 0)
+    {
+        hf_note("%s %s is gone; not binding it", what, resolved);
+        free(resolved);
+        return 0;
+    }
+    if (want_socket ? !S_ISSOCK(info.st_mode) : !S_ISREG(info.st_mode))
+    {
+        hf_note("%s %s is not a %s; not binding it", what, resolved, want_socket ? "socket" : "regular file");
+        free(resolved);
+        return 0;
+    }
+    if (want_socket && !runtime_service_allowed(sandbox, resolved))
+    {
+        hf_note("%s %s resolves outside the runtime folders to %s; not binding it", what, source, resolved);
+        free(resolved);
+        return 0;
+    }
+    int result = copy_path(out, size, resolved, what);
+    free(resolved);
+    return result;
 }
 
 int hf_add_rule(struct hf_sandbox *sandbox, const char *path, uint64_t access)
@@ -270,6 +320,8 @@ int hf_prepare_selftest_paths(struct hf_sandbox *sandbox, const char *temporary)
         return hf_fail_msg("the self-test installation path is too long");
     if (hf_join3(sandbox->session, sizeof(sandbox->session), sandbox->install, "logs/sessions", "self-test") != 0)
         return hf_fail("the self-test session path");
+    // The self-test uses the same runtime path source as a session: its fixture sockets live under XDG_RUNTIME_DIR.
+    if (find_host_runtime(sandbox) != 0) return 1;
     if (prepare_common_paths(sandbox) != 0) return 1;
     return discover_host_home(sandbox);
 }
@@ -281,26 +333,49 @@ static int env_path(const char *name, char *out, size_t size)
     return copy_path(out, size, value, name);
 }
 
-static int discover_display_sockets(struct hf_sandbox *sandbox)
+static int discover_wayland_socket(struct hf_sandbox *sandbox)
 {
     const char *wayland = getenv("WAYLAND_DISPLAY");
-    if (wayland != NULL && wayland[0] != '\0')
+    if (wayland == NULL || wayland[0] == '\0') return 0;
+    char source[PATH_MAX];
+    const char *name = strrchr(wayland, '/');
+    name = name == NULL ? wayland : name + 1;
+    if (copy_path(sandbox->wayland_name, sizeof(sandbox->wayland_name), name, "Wayland socket name") != 0) return 1;
+    if (wayland[0] == '/')
     {
-        if (wayland[0] == '/')
-        {
-            if (copy_path(sandbox->wayland_socket, sizeof(sandbox->wayland_socket), wayland, "Wayland socket") != 0) return 1;
-        }
-        else if (hf_join(sandbox->wayland_socket, sizeof(sandbox->wayland_socket), sandbox->host_runtime, wayland) != 0)
-            return hf_fail("the Wayland socket path");
-        if (!is_socket(sandbox->wayland_socket)) sandbox->wayland_socket[0] = '\0';
+        if (copy_path(source, sizeof(source), wayland, "Wayland socket") != 0) return 1;
     }
-    if (hf_join(sandbox->pipewire_socket, sizeof(sandbox->pipewire_socket), sandbox->host_runtime, "pipewire-0") != 0)
-        return hf_fail("the PipeWire socket path");
-    if (!is_socket(sandbox->pipewire_socket)) sandbox->pipewire_socket[0] = '\0';
-    if (hf_join(sandbox->pulse_socket, sizeof(sandbox->pulse_socket), sandbox->host_runtime, "pulse/native") != 0)
-        return hf_fail("the PulseAudio socket path");
-    if (!is_socket(sandbox->pulse_socket)) sandbox->pulse_socket[0] = '\0';
+    else if (hf_join(source, sizeof(source), sandbox->host_runtime, wayland) != 0)
+        return hf_fail("the Wayland socket path");
+    if (resolve_runtime_source(sandbox, "the Wayland socket", source, true,
+        sandbox->wayland_socket, sizeof(sandbox->wayland_socket)) != 0) return 1;
+    if (sandbox->wayland_socket[0] == '\0') sandbox->wayland_name[0] = '\0';
     return 0;
+}
+
+static int discover_pipewire_socket(struct hf_sandbox *sandbox)
+{
+    char source[PATH_MAX];
+    if (hf_join(source, sizeof(source), sandbox->host_runtime, "pipewire-0") != 0)
+        return hf_fail("the PipeWire socket path");
+    return resolve_runtime_source(sandbox, "the PipeWire socket", source, true,
+        sandbox->pipewire_socket, sizeof(sandbox->pipewire_socket));
+}
+
+static int discover_pulse_socket(struct hf_sandbox *sandbox)
+{
+    char source[PATH_MAX];
+    if (hf_join(source, sizeof(source), sandbox->host_runtime, "pulse/native") != 0)
+        return hf_fail("the PulseAudio socket path");
+    return resolve_runtime_source(sandbox, "the PulseAudio socket", source, true,
+        sandbox->pulse_socket, sizeof(sandbox->pulse_socket));
+}
+
+static int discover_display_sockets(struct hf_sandbox *sandbox)
+{
+    if (discover_wayland_socket(sandbox) != 0) return 1;
+    if (discover_pipewire_socket(sandbox) != 0) return 1;
+    return discover_pulse_socket(sandbox);
 }
 
 static int discover_x11_socket(struct hf_sandbox *sandbox)
@@ -309,9 +384,14 @@ static int discover_x11_socket(struct hf_sandbox *sandbox)
     if (display == NULL || display[0] != ':') return 0;
     int number = 0;
     if (sscanf(display + 1, "%d", &number) != 1) return 0;
-    if (snprintf(sandbox->x11_socket, sizeof(sandbox->x11_socket), "/tmp/.X11-unix/X%d", number) >= (int)sizeof(sandbox->x11_socket))
+    char source[PATH_MAX];
+    if (snprintf(source, sizeof(source), "/tmp/.X11-unix/X%d", number) >= (int)sizeof(source))
         return hf_fail_msg("the X11 socket path is too long");
-    if (!is_socket(sandbox->x11_socket)) sandbox->x11_socket[0] = '\0';
+    if (snprintf(sandbox->x11_name, sizeof(sandbox->x11_name), "X%d", number) >= (int)sizeof(sandbox->x11_name))
+        return hf_fail_msg("the X11 socket name is too long");
+    if (resolve_runtime_source(sandbox, "the X11 socket", source, true,
+        sandbox->x11_socket, sizeof(sandbox->x11_socket)) != 0) return 1;
+    if (sandbox->x11_socket[0] == '\0') sandbox->x11_name[0] = '\0';
     return 0;
 }
 
@@ -331,25 +411,34 @@ static int discover_pulse_cookie(struct hf_sandbox *sandbox)
             return hf_fail("the PulseAudio cookie path");
     }
     else return 0;
-    if (is_regular(candidate)) return copy_path(sandbox->pulse_cookie, sizeof(sandbox->pulse_cookie), candidate, "PulseAudio cookie");
-    return 0;
+    return resolve_runtime_source(sandbox, "the PulseAudio cookie", candidate, false,
+        sandbox->pulse_cookie, sizeof(sandbox->pulse_cookie));
 }
 
 static int discover_authority(struct hf_sandbox *sandbox)
 {
     const char *authority = getenv("XAUTHORITY");
-    if (authority != NULL && authority[0] != '\0' && is_regular(authority))
-        return copy_path(sandbox->xauthority, sizeof(sandbox->xauthority), authority, "Xauthority");
+    if (authority != NULL && authority[0] != '\0')
+        return resolve_runtime_source(sandbox, "the Xauthority file", authority, false,
+            sandbox->xauthority, sizeof(sandbox->xauthority));
     const char *home = getenv("HOME");
     if (home == NULL || home[0] == '\0') return 0;
     char candidate[PATH_MAX];
     if (hf_join(candidate, sizeof(candidate), home, ".Xauthority") != 0) return hf_fail("the Xauthority path");
-    if (is_regular(candidate)) return copy_path(sandbox->xauthority, sizeof(sandbox->xauthority), candidate, "Xauthority");
-    return 0;
+    return resolve_runtime_source(sandbox, "the Xauthority file", candidate, false,
+        sandbox->xauthority, sizeof(sandbox->xauthority));
 }
 
-static int discover_runtime_sockets(struct hf_sandbox *sandbox)
+int hf_discover_runtime_sockets(struct hf_sandbox *sandbox)
 {
+    sandbox->wayland_socket[0] = '\0';
+    sandbox->wayland_name[0] = '\0';
+    sandbox->pipewire_socket[0] = '\0';
+    sandbox->pulse_socket[0] = '\0';
+    sandbox->pulse_cookie[0] = '\0';
+    sandbox->xauthority[0] = '\0';
+    sandbox->x11_socket[0] = '\0';
+    sandbox->x11_name[0] = '\0';
     if (sandbox->host_runtime[0] == '\0') return 0;
     if (discover_display_sockets(sandbox) != 0) return 1;
     if (discover_x11_socket(sandbox) != 0) return 1;
@@ -566,7 +655,7 @@ int hf_discover_environment(struct hf_sandbox *sandbox, char **argv, int argc)
     if (discover_steam(sandbox) != 0) return 1;
     if (discover_vulkan_layers(sandbox) != 0) return 1;
     if (discover_proton(sandbox) != 0) return 1;
-    return discover_runtime_sockets(sandbox);
+    return hf_discover_runtime_sockets(sandbox);
 }
 
 static int resolve_in_path(const char *command, char *out, size_t size)

@@ -286,31 +286,117 @@ static int mount_dev(struct hf_sandbox *sandbox)
     return 0;
 }
 
-static int bind_runtime_file(struct hf_sandbox *sandbox, const char *source, const char *target_absolute, uint64_t access)
+static int bind_runtime_socket(struct hf_sandbox *sandbox, const char *source, const char *target_absolute)
 {
     struct stat info;
     if (lstat(source, &info) != 0) return hf_fail(source);
+    if (!S_ISSOCK(info.st_mode)) return hf_fail_msg("a runtime bind source is not a socket: %s", source);
     char target[PATH_MAX];
     if (target_path(sandbox, target_absolute, target, sizeof(target)) != 0) return 1;
     if (ensure_target(target, false) != 0) return 1;
-    if (mount(source, target, NULL, MS_BIND, NULL) != 0) return hf_fail("bind-mounting a runtime socket");
-    // A socket inode cannot be opened for writing; leaving its bind writable avoids a mount-attribute corner case while
-    // the runtime folder stays private.
-    if (!S_ISSOCK(info.st_mode) && set_readonly(target, false) != 0) return 1;
-    // Socket inodes are covered by the runtime folder's rule; only a regular file needs a rule of its own.
-    if (access == 0) return 0;
-    return hf_add_rule(sandbox, target_absolute, access);
+    if (mount(source, target, NULL, MS_BIND, NULL) != 0)
+    {
+        int saved = errno;
+        return hf_fail_msg("bind-mounting a runtime socket: %s at %s: %s (errno %d)",
+            source, target_absolute, strerror(saved), saved);
+    }
+    // A socket inode cannot be opened for writing; the runtime folder's Landlock rule covers it.
+    return 0;
+}
+
+// Xauthority and the PulseAudio cookie can be unlinked while still open: pressure-vessel bind-mounts a temporary file
+// and deletes it, leaving a path with link count 0 that the kernel refuses to bind-mount again. These small credential
+// files are copied into the private runtime folder from an fd opened with O_NOFOLLOW instead.
+static int open_credential(const char *source)
+{
+    int input = open(source, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (input < 0)
+    {
+        hf_note("%s could not be opened (%s); not exposing it", source, strerror(errno));
+        return -1;
+    }
+    struct stat info;
+    if (fstat(input, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        info.st_size > HF_MAX_CREDENTIAL_BYTES)
+    {
+        hf_note("%s is not a regular file of at most %d bytes; not exposing it", source, HF_MAX_CREDENTIAL_BYTES);
+        close(input);
+        return -1;
+    }
+    return input;
+}
+
+// 0: copied; 1: read/write error; 2: the source grew beyond the cap.
+static int copy_credential_bytes(int input, int output)
+{
+    char buffer[4096];
+    size_t total = 0;
+    ssize_t got;
+    while ((got = read(input, buffer, sizeof(buffer))) > 0)
+    {
+        if (total + (size_t)got > HF_MAX_CREDENTIAL_BYTES) return 2;
+        if (write_all(output, buffer, (size_t)got) != 0) return 1;
+        total += (size_t)got;
+    }
+    return got < 0 ? 1 : 0;
+}
+
+static int copy_runtime_file(struct hf_sandbox *sandbox, const char *source, const char *target_absolute,
+    uint64_t access, bool *copied)
+{
+    *copied = false;
+    int input = open_credential(source);
+    if (input < 0) return 0;
+    char target[PATH_MAX];
+    if (target_path(sandbox, target_absolute, target, sizeof(target)) != 0)
+    {
+        close(input);
+        return 1;
+    }
+    if (make_parent_dirs(target) != 0)
+    {
+        close(input);
+        return hf_fail("creating a credential target folder");
+    }
+    int output = open(target, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0400);
+    if (output < 0)
+    {
+        close(input);
+        return hf_fail("creating a credential file");
+    }
+    int result = copy_credential_bytes(input, output);
+    int saved = errno;
+    close(input);
+    if (result == 2)
+    {
+        close(output);
+        unlink(target);
+        hf_note("%s grew beyond %d bytes; not exposing it", source, HF_MAX_CREDENTIAL_BYTES);
+        return 0;
+    }
+    if (result != 0)
+    {
+        close(output);
+        errno = saved;
+        return hf_fail("copying a credential file");
+    }
+    if (fchmod(output, 0400) != 0) return hf_fail("restricting a credential file");
+    if (close(output) != 0) return hf_fail("finishing a credential file");
+    if (hf_add_rule(sandbox, target_absolute, access) != 0) return 1;
+    *copied = true;
+    return 0;
 }
 
 static int bind_wayland(struct hf_sandbox *sandbox)
 {
     if (sandbox->wayland_socket[0] == '\0') return 0;
-    const char *name = strrchr(sandbox->wayland_socket, '/');
-    name = name == NULL ? sandbox->wayland_socket : name + 1;
+    // Bind at the name WAYLAND_DISPLAY names, not at the resolved target's name: a link may point anywhere inside
+    // the runtime folders, while the game opens the name it was given.
+    const char *name = sandbox->wayland_name[0] == '\0' ? "wayland-0" : sandbox->wayland_name;
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "%s/%s", sandbox->runtime, name) >= (int)sizeof(target))
         return hf_fail_msg("the Wayland socket path is too long");
-    if (bind_runtime_file(sandbox, sandbox->wayland_socket, target, 0) != 0) return 1;
+    if (bind_runtime_socket(sandbox, sandbox->wayland_socket, target) != 0) return 1;
     if (setenv("WAYLAND_DISPLAY", name, 1) != 0) return hf_fail("setting WAYLAND_DISPLAY");
     return 0;
 }
@@ -321,20 +407,22 @@ static int bind_pulse_socket(struct hf_sandbox *sandbox)
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "%s/pulse/native", sandbox->runtime) >= (int)sizeof(target))
         return hf_fail_msg("the PulseAudio socket path is too long");
-    if (bind_runtime_file(sandbox, sandbox->pulse_socket, target, 0) != 0) return 1;
+    if (bind_runtime_socket(sandbox, sandbox->pulse_socket, target) != 0) return 1;
     if (snprintf(target, sizeof(target), "unix:%s/pulse/native", sandbox->runtime) >= (int)sizeof(target))
         return hf_fail_msg("the PulseAudio server path is too long");
     if (setenv("PULSE_SERVER", target, 1) != 0) return hf_fail("setting PULSE_SERVER");
     return 0;
 }
 
-static int bind_pulse_cookie(struct hf_sandbox *sandbox)
+static int copy_pulse_cookie(struct hf_sandbox *sandbox)
 {
     if (sandbox->pulse_cookie[0] == '\0') return 0;
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "%s/pulse/cookie", sandbox->runtime) >= (int)sizeof(target))
         return hf_fail_msg("the PulseAudio cookie path is too long");
-    if (bind_runtime_file(sandbox, sandbox->pulse_cookie, target, HF_ACCESS_FILE_RO) != 0) return 1;
+    bool copied;
+    if (copy_runtime_file(sandbox, sandbox->pulse_cookie, target, HF_ACCESS_FILE_RO, &copied) != 0) return 1;
+    if (!copied) return 0;
     if (setenv("PULSE_COOKIE", target, 1) != 0) return hf_fail("setting PULSE_COOKIE");
     return 0;
 }
@@ -342,18 +430,17 @@ static int bind_pulse_cookie(struct hf_sandbox *sandbox)
 static int bind_pulse(struct hf_sandbox *sandbox)
 {
     if (bind_pulse_socket(sandbox) != 0) return 1;
-    return bind_pulse_cookie(sandbox);
+    return copy_pulse_cookie(sandbox);
 }
 
 static int bind_x11(struct hf_sandbox *sandbox)
 {
     if (sandbox->x11_socket[0] == '\0') return 0;
-    const char *name = strrchr(sandbox->x11_socket, '/');
-    name = name == NULL ? sandbox->x11_socket : name + 1;
+    const char *name = sandbox->x11_name[0] == '\0' ? "X0" : sandbox->x11_name;
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "/tmp/.X11-unix/%s", name) >= (int)sizeof(target))
         return hf_fail_msg("the X11 socket path is too long");
-    if (bind_runtime_file(sandbox, sandbox->x11_socket, target, 0) != 0) return 1;
+    if (bind_runtime_socket(sandbox, sandbox->x11_socket, target) != 0) return 1;
     return 0;
 }
 
@@ -375,18 +462,20 @@ static int bind_pipewire(struct hf_sandbox *sandbox)
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "%s/pipewire-0", sandbox->runtime) >= (int)sizeof(target))
         return hf_fail_msg("the PipeWire socket path is too long");
-    if (bind_runtime_file(sandbox, sandbox->pipewire_socket, target, 0) != 0) return 1;
+    if (bind_runtime_socket(sandbox, sandbox->pipewire_socket, target) != 0) return 1;
     if (setenv("PIPEWIRE_REMOTE", "pipewire-0", 1) != 0) return hf_fail("setting PIPEWIRE_REMOTE");
     return 0;
 }
 
-static int bind_xauthority(struct hf_sandbox *sandbox)
+static int copy_xauthority(struct hf_sandbox *sandbox)
 {
     if (sandbox->xauthority[0] == '\0') return 0;
     char target[PATH_MAX];
     if (snprintf(target, sizeof(target), "%s/.Xauthority", sandbox->runtime) >= (int)sizeof(target))
         return hf_fail_msg("the Xauthority path is too long");
-    if (bind_runtime_file(sandbox, sandbox->xauthority, target, HF_ACCESS_FILE_RO) != 0) return 1;
+    bool copied;
+    if (copy_runtime_file(sandbox, sandbox->xauthority, target, HF_ACCESS_FILE_RO, &copied) != 0) return 1;
+    if (!copied) return 0;
     if (setenv("XAUTHORITY", target, 1) != 0) return hf_fail("setting XAUTHORITY");
     return 0;
 }
@@ -396,14 +485,63 @@ static int bind_runtime_services(struct hf_sandbox *sandbox)
     if (bind_wayland(sandbox) != 0) return 1;
     if (bind_pipewire(sandbox) != 0) return 1;
     if (bind_pulse(sandbox) != 0) return 1;
-    if (bind_xauthority(sandbox) != 0) return 1;
+    if (copy_xauthority(sandbox) != 0) return 1;
     return bind_x11(sandbox);
+}
+
+// J.1's container detection: pressure-vessel sets container=pressure-vessel and records the manager under
+// /run/host/container-manager. Other container managers must not get /run/host exposed.
+static bool container_runtime(void)
+{
+    const char *container = getenv("container");
+    if (container != NULL && strcmp(container, "pressure-vessel") == 0) return true;
+    char text[128];
+    if (read_text("/run/host/container-manager", text, sizeof(text)) != 0) return false;
+    return strstr(text, "pressure-vessel") != NULL;
+}
+
+static int bind_host_part(struct hf_sandbox *sandbox, const char *part)
+{
+    char source[PATH_MAX], target[PATH_MAX];
+    if (snprintf(source, sizeof(source), "/run/host/%s", part) >= (int)sizeof(source) ||
+        snprintf(target, sizeof(target), "/run/host/%s", part) >= (int)sizeof(target))
+        return hf_fail_msg("a /run/host path is too long");
+    struct stat info;
+    if (stat(source, &info) != 0) return 0;
+    if (!S_ISDIR(info.st_mode) && !S_ISREG(info.st_mode)) return 0;
+    if (bind_readonly(sandbox, source, target) != 0) return 1;
+    hf_note("binding the container's %s read-only", source);
+    return 0;
+}
+
+// The container's /etc/ld.so.cache and ld.so.conf are links into pressure-vessel's generated loader folder. Without it
+// the host loader finds no libc. Only that folder is bound, read-only; the rest of /var stays out of the view.
+static int bind_container_ldso(struct hf_sandbox *sandbox)
+{
+    static const char ldso[] = "/var/pressure-vessel/ldso";
+    struct stat info;
+    if (lstat(ldso, &info) != 0 || !S_ISDIR(info.st_mode)) return 0;
+    if (bind_readonly(sandbox, ldso, ldso) != 0) return 1;
+    hf_note("binding the container's %s read-only", ldso);
+    return 0;
+}
+
+// The container's loader and pressure-vessel overrides are links into /run/host. Bind the system parts read-only at
+// their own paths; user-share, user-fonts-cache and etc are deliberately never bound whole.
+static int bind_run_host(struct hf_sandbox *sandbox)
+{
+    static const char *const parts[] = { "usr", "lib", "lib64", "bin", "sbin", "share", "fonts", "os-release" };
+    if (!container_runtime()) return 0;
+    for (size_t index = 0; index < sizeof(parts) / sizeof(parts[0]); index++)
+        if (bind_host_part(sandbox, parts[index]) != 0) return 1;
+    return bind_container_ldso(sandbox);
 }
 
 static int mount_runtime(struct hf_sandbox *sandbox)
 {
     if (mount_tmpfs(sandbox, "/run", "mode=0755,size=64m", HF_ACCESS_RO) != 0) return 1;
     if (create_runtime_dir(sandbox) != 0) return 1;
+    if (bind_run_host(sandbox) != 0) return 1;
     if (bind_runtime_services(sandbox) != 0) return 1;
     char run[PATH_MAX];
     if (target_path(sandbox, "/run", run, sizeof(run)) != 0) return 1;
