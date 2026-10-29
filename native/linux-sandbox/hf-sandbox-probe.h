@@ -4,7 +4,7 @@
 #ifndef HF_SANDBOX_PROBE_H
 #define HF_SANDBOX_PROBE_H
 
-#define _GNU_SOURCE 1
+#include "hf-sandbox-common.h"
 
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -191,24 +191,13 @@ extern char shm_canary[PATH_MAX];
 extern volatile unsigned char *victim_buffer;
 
 void set_result(struct shared_result *shared, int item, int status, const char *format, ...);
-void joinf(char *out, size_t size, const char *base, const char *name);
-int make_dir(const char *path);
-int make_parent_dirs(const char *path);
-int write_all(int fd, const void *data, size_t length);
-int write_file(const char *path, const char *text);
-int read_text(const char *path, char *out, size_t size);
-int path_exists(const char *path);
-void remove_tree(const char *path);
-int enter_user_namespace(void);
-int private_mount_tree(void);
-int make_root_readonly(const char *writable);
-int wait_bounded(pid_t pid, int seconds, int *status_out);
-void child_failure(struct shared_result *shared, int item, int code, const char *what);
-int run_child(struct shared_result *shared, int item, int seconds, int (*probe)(struct shared_result *));
-int run_probe_child(struct shared_result *shared, int item, int (*probe)(struct shared_result *));
 bool make_shared_result(struct shared_result **shared_out);
 bool make_victim_page(void);
 void make_host_canaries(bool *have_tmp, bool *have_shm);
+void child_failure(struct shared_result *shared, int item, int code, const char *what);
+int run_child(struct shared_result *shared, int item, int seconds, int (*probe)(struct shared_result *));
+int run_probe_child(struct shared_result *shared, int item, int (*probe)(struct shared_result *));
+int make_root_readonly(const char *writable);
 
 int probe_landlock(struct shared_result *shared);
 int probe_seccomp_filter_child(struct shared_result *shared);

@@ -288,8 +288,8 @@ sealed partial class PlaySession
             Try("sandboxCopyBackError", () =>
             {
                 // the game's data back where the next session reads it (written by the game: files only, bounded)
-                var back = SandboxFolders.Copy(SandboxUserData, install.UserData, SandboxFolders.UserDataParts(profileName));
-                var environment = SandboxFolders.Copy(gameOut, install.UserData, ["environment"]);
+                var back = SandboxFolders.Copy(SandboxUserData, install.UserData, SandboxFolders.UserDataParts(profileName), fromSession: true);
+                var environment = SandboxFolders.Copy(gameOut, install.UserData, ["environment"], fromSession: true);
                 result["sandboxCopiedBack"] = new JsonObject
                 {
                     ["files"] = back.Files + environment.Files, ["bytes"] = back.Bytes + environment.Bytes, ["skipped"] = back.Skipped + environment.Skipped
@@ -308,5 +308,8 @@ sealed partial class PlaySession
                 };
                 if (applied?.Refused > 0) Say($"{applied.Refused} in-game editor change(s) were left out: the stats file would not accept them.");
             });
+        // The overlay upper/work are outside gameOut and no longer read: remove <run>/sandbox, including work/work.
+        if (options.Sandbox && !string.IsNullOrEmpty(run))
+            Try("sandboxStateCleanupError", () => SandboxFolders.RemoveSessionState(run));
     }
 }

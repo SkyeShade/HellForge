@@ -16,16 +16,23 @@ public static class SandboxFolders
     // the game's ImGui settings. Logs, dumps and crash data stay in the session's folder.
     public static IEnumerable<string> UserDataParts(string profile) => [Path.Combine("profiles", profile), "shader_cache", "dearimgui.ini"];
 
-    // Copies the parts that exist from one root to the other, overwriting; files only, nothing deleted.
-    public static Copied Copy(string fromRoot, string toRoot, IEnumerable<string> parts, long maxBytes = MaxBytes)
+    // Copies the parts that exist from one root to the other, overwriting; files only, nothing deleted. fromSession is
+    // true for the copy back, whose source the game wrote: on Linux that path opens every entry with openat2 and reads
+    // only one regular, singly linked file (SandboxFiles). The copy in reads the installation, which the player owns;
+    // it keeps the link checks below, as on Windows.
+    public static Copied Copy(string fromRoot, string toRoot, IEnumerable<string> parts, long maxBytes = MaxBytes,
+        bool fromSession = false)
     {
+        if (OperatingSystem.IsLinux() && fromSession)
+        {
+            var (linuxFiles, linuxBytes, linuxSkipped) = SandboxFiles.CopyTree(fromRoot, toRoot, parts, maxBytes, MaxFiles);
+            return new(linuxFiles, linuxBytes, linuxSkipped);
+        }
         int files = 0, skipped = 0;
         long bytes = 0;
         foreach (var part in parts)
         {
             var from = Path.Combine(fromRoot, part);
-            // On Linux the game can plant a link in a folder between fromRoot and the part; NoLinks refuses it like the
-            // reparse entries below. Windows keeps its old skip of linked parts and entries.
             if (OperatingSystem.IsLinux())
             {
                 try { from = LocalInstall.NoLinks(from, fromRoot); }
@@ -57,6 +64,29 @@ public static class SandboxFolders
             File.Copy(from, to, overwrite: true);
             files++;
             bytes += length;
+        }
+    }
+
+    // The overlay's upper/work live in <run>/sandbox, outside gameOut and never bound into the view. After the copy-back
+    // and stats they are dead state: remove them, including overlayfs's mode-000 work/work. The game never writes this
+    // folder (it is not in gameOut), so this is trusted session cleanup, but a link there is still refused.
+    public static void RemoveSessionState(string sessionRoot)
+    {
+        if (string.IsNullOrEmpty(sessionRoot)) return;
+        var sandbox = LocalInstall.NoLinks(Path.Combine(sessionRoot, "sandbox"), sessionRoot);
+        if (!Directory.Exists(sandbox)) return;
+        if (OperatingSystem.IsLinux()) MakeWritable(sandbox);
+        Directory.Delete(sandbox, recursive: true);
+    }
+
+    static void MakeWritable(string folder)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos())
+        {
+            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            if ((entry.Attributes & FileAttributes.Directory) != 0) MakeWritable(entry.FullName);
         }
     }
 

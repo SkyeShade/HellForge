@@ -35,6 +35,8 @@ static class LinuxInstallerTests
                 "The Linux sandbox probe is not executable.");
             check((File.GetUnixFileMode(Path.Combine(install.App, "capture-linux", "HellForge.CaptureProxy")) & UnixFileMode.UserExecute) != 0,
                 "The native Account Sync capture is not executable.");
+            check((File.GetUnixFileMode(Path.Combine(install.App, "linux", "hf-sandbox")) & UnixFileMode.UserExecute) != 0,
+                "The Linux sandbox program is not executable.");
             LinuxAppInstaller.Commit(install, previous);
             check(!Directory.Exists(previous) && !Directory.Exists(LinuxAppInstaller.PreviousRoot(install)) &&
                 !Directory.Exists(LinuxAppInstaller.Staging(install)), "The old app or the staging folder stayed after commit.");
@@ -229,6 +231,7 @@ static class LinuxInstallerTests
         Add("app/linux/hf-sandbox-probe", "probe");
         Add("app/linux/allow-capture.sh", "#!/bin/sh\n");
         Add("app/linux/capture-helper.sh", "#!/bin/sh\n");
+        Add("app/linux/hf-sandbox", "sandbox");
         Add("app/new-only.txt", "new file");
         if (topLevelProgram != null) Add("HellForge.exe", topLevelProgram);
         if (extraRootFolder != null) Add(extraRootFolder + "/payload.txt", "payload");

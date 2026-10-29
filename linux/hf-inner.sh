@@ -228,9 +228,9 @@ if [ "${HELLFORGE_WAIT_FOR_PROCESSES:-1}" != 0 ]; then
   of_this_install() {
     local pid=$1 text
     case " $wrapper_pids " in *" $pid "*) return 1 ;; esac
-    text="$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    text="$({ tr '\0' '\n' < "/proc/$pid/cmdline"; } 2>/dev/null || true)"
     case "$text" in *"$INSTALL"*|*"$windows_install"*) return 0 ;; esac
-    text="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null || true)"
+    text="$({ tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null || true)"
     case $'\n'"$text"$'\n' in *$'\n'"INSTALL=$INSTALL"$'\n'*) return 0 ;; esac
     case "$(readlink "/proc/$pid/cwd" 2>/dev/null || true)" in "$INSTALL"|"$INSTALL"/*) return 0 ;; esac
     return 1

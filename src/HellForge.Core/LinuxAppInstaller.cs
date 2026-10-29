@@ -303,9 +303,12 @@ public static class LinuxAppInstaller
         var app = Path.GetDirectoryName(launcher)!;
         var agent = Path.Combine(app, "..", "cli-linux", "HellForge.Cli");
         if (File.Exists(agent)) MakeExecutable(agent);
-        // The native Linux sandbox probe. New packages require it; this keeps a hand-extracted file usable too.
-        var sandboxProbe = Path.Combine(scripts, "hf-sandbox-probe");
-        if (File.Exists(sandboxProbe)) MakeExecutable(sandboxProbe);
+        // The native Linux sandbox programs. New packages require them; this keeps a hand-extracted file usable too.
+        foreach (var sandbox in new[] { "hf-sandbox-probe", "hf-sandbox" })
+        {
+            var path = Path.Combine(scripts, sandbox);
+            if (File.Exists(path)) MakeExecutable(path);
+        }
         MakeExecutable(Path.Combine(app, "..", "capture-linux", "HellForge.CaptureProxy"));
         foreach (var script in Directory.EnumerateFiles(scripts, "*.sh")) MakeExecutable(script);
     }

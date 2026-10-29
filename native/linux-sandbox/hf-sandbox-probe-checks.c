@@ -23,121 +23,6 @@ void set_result(struct shared_result *shared, int item, int status, const char *
     va_end(arguments);
 }
 
-void joinf(char *out, size_t size, const char *base, const char *name)
-{
-    snprintf(out, size, "%s/%s", base, name);
-}
-
-int make_dir(const char *path)
-{
-    if (mkdir(path, 0700) == 0 || errno == EEXIST) return 0;
-    return -1;
-}
-
-int make_parent_dirs(const char *path)
-{
-    char copy[PATH_MAX];
-    if (strlen(path) >= sizeof(copy)) { errno = ENAMETOOLONG; return -1; }
-    strcpy(copy, path);
-    char *slash = strrchr(copy, '/');
-    if (slash == NULL || slash == copy) return 0;
-    *slash = '\0';
-    for (char *at = copy + 1; *at != '\0'; at++)
-    {
-        if (*at != '/') continue;
-        *at = '\0';
-        if (mkdir(copy, 0755) != 0 && errno != EEXIST) return -1;
-        *at = '/';
-    }
-    if (mkdir(copy, 0755) != 0 && errno != EEXIST) return -1;
-    return 0;
-}
-
-int write_all(int fd, const void *data, size_t length)
-{
-    const unsigned char *at = data;
-    while (length > 0)
-    {
-        ssize_t written = write(fd, at, length);
-        if (written < 0)
-        {
-            if (errno == EINTR) continue;
-            return -1;
-        }
-        at += (size_t)written;
-        length -= (size_t)written;
-    }
-    return 0;
-}
-
-static int write_proc(const char *path, const char *text)
-{
-    int fd = open(path, O_WRONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
-    int result = write_all(fd, text, strlen(text));
-    int saved = errno;
-    close(fd);
-    errno = saved;
-    return result;
-}
-
-int write_file(const char *path, const char *text)
-{
-    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    if (fd < 0) return -1;
-    int result = write_all(fd, text, strlen(text));
-    int saved = errno;
-    close(fd);
-    errno = saved;
-    return result;
-}
-
-int read_text(const char *path, char *out, size_t size)
-{
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
-    ssize_t got = read(fd, out, size - 1);
-    int saved = errno;
-    close(fd);
-    if (got < 0) { errno = saved; return -1; }
-    out[got] = '\0';
-    return 0;
-}
-
-int path_exists(const char *path)
-{
-    struct stat info;
-    return lstat(path, &info) == 0;
-}
-
-void remove_tree(const char *path)
-{
-    struct stat info;
-    if (lstat(path, &info) != 0) return;
-    if (!S_ISDIR(info.st_mode) || S_ISLNK(info.st_mode))
-    {
-        unlink(path);
-        return;
-    }
-    // The overlay check leaves its lower folder read-only (0500) and overlayfs leaves its work folder with no
-    // permissions; both are the probe's own, so give them back to the owner before emptying them.
-    chmod(path, 0700);
-    DIR *directory = opendir(path);
-    if (directory != NULL)
-    {
-        struct dirent *entry;
-        while ((entry = readdir(directory)) != NULL)
-        {
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-            char child[PATH_MAX];
-            snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-            remove_tree(child);
-        }
-        closedir(directory);
-    }
-    rmdir(path);
-}
-
 bool make_shared_result(struct shared_result **shared_out)
 {
     struct shared_result *shared = mmap(NULL, sizeof(*shared), PROT_READ | PROT_WRITE,
@@ -179,28 +64,6 @@ void make_host_canaries(bool *have_tmp, bool *have_shm)
     }
 }
 
-int enter_user_namespace(void)
-{
-    if (syscall(SYS_unshare, CLONE_NEWUSER) != 0) return -errno;
-
-    // A single-threaded unprivileged process may map itself. No setuid helper, subuid or root is involved.
-    if (write_proc("/proc/self/setgroups", "deny\n") != 0 && errno != ENOENT) return -errno;
-
-    char map[96];
-    snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)host_uid);
-    if (write_proc("/proc/self/uid_map", map) != 0) return -errno;
-    snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)host_gid);
-    if (write_proc("/proc/self/gid_map", map) != 0) return -errno;
-    if (getuid() != 0) return -EINVAL;
-    return 0;
-}
-
-int private_mount_tree(void)
-{
-    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) return -errno;
-    return 0;
-}
-
 // A bind of / is not read-only recursively by MS_REMOUNT alone: existing submounts (including /tmp or /home on many
 // systems) keep their flags. mount_setattr(AT_RECURSIVE) closes that hole. The writable bind is made first, before the
 // read-only lock; a bind made afterwards inherits a locked read-only mount in a user namespace and cannot be made
@@ -219,19 +82,6 @@ int make_root_readonly(const char *writable)
     attributes.attr_clr = MOUNT_ATTR_RDONLY;
     if (syscall(SYS_mount_setattr, AT_FDCWD, writable, 0, &attributes, sizeof(attributes)) != 0)
         return -errno;
-    return 0;
-}
-
-int wait_bounded(pid_t pid, int seconds, int *status_out)
-{
-    for (int tick = 0; tick < seconds * 100; tick++)
-    {
-        pid_t got = waitpid(pid, status_out, WNOHANG);
-        if (got == pid) return 1;
-        if (got < 0 && errno != EINTR) return -1;
-        struct timespec pause = { 0, 10000000L };
-        nanosleep(&pause, NULL);
-    }
     return 0;
 }
 

@@ -277,7 +277,8 @@ sealed class LinuxInstallerWindow : Window
             "app/linux/hellforge-linux.sh",
             "app/linux/hf-sandbox-probe",
             "app/linux/allow-capture.sh",
-            "app/linux/capture-helper.sh"
+            "app/linux/capture-helper.sh",
+            "app/linux/hf-sandbox"
         })
             if (!entries.Contains(required)) throw new InvalidDataException("The Linux package is incomplete; missing " + required + ".");
     }

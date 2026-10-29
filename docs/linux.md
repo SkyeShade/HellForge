@@ -323,6 +323,44 @@ The design claims that need the game rather than this probe are items 8-18. They
 - **Phase 4:** 10-13 (the broker's named pipe flags, client pid and ring, Valve's DLL through `lsteamclient`, and
   Proton's DLL overrides in the game).
 
+### Phase 2: the filesystem sandbox
+
+Phase 2 adds `app/linux/hf-sandbox`, the program that will start the game in its own domain. Sessions do not use it yet:
+the session runner prepares the game copy, the backend and the mods, and the game only runs after that, so the game is
+started through `hf-sandbox` once the session wiring lands. Until then a Linux session is not sandboxed, as
+Settings > Sandbox says.
+
+`hf-sandbox --session <run folder> --prefix <prefix> -- <command>` makes a new user and mount namespace and runs the
+command in a view built for it. Each step fails closed: if one fails, it prints the reason and the command does not run.
+
+- **Prefix:** the command gets a per-session overlay of the Wine prefix. The real prefix is its read-only lower layer,
+  and everything written to `C:` lands in the run folder's `sandbox/upper`, outside the view. An installation inside
+  the prefix is hidden in the overlay too: through `C:` only its `game` folder is visible, read-only.
+- **Read-only:** the system folders, Proton, the parts of Steam that Proton needs (`ubuntu12_32`, `ubuntu12_64`,
+  `linux32`, `linux64`, the Steam runtimes) and the game copy. Steam's own folder is not in the view, so its `config`
+  folder, which holds the login data, is absent.
+- **Writable:** the session's `game` folder, a private `/tmp` and `/dev/shm`, Steam's HELLDIVERS 2 shader cache, and
+  Proton's `dist.lock` file only.
+- **Session services:** the display and audio sockets (Wayland, X11, PipeWire, PulseAudio) are passed in. D-Bus is not.
+- **Absent:** the home folder, the rest of the installation (profiles, mods, user data, the account snapshot), the
+  real prefix's path, and every device except null, zero, full, random, urandom, tty, the GPU nodes and `/dev/shm`.
+- **Kernel locks:** Landlock enforces the same read and write sets again. A seccomp filter denies mounting, namespace
+  changes (including `clone` with new-namespace flags), `clone3`, the x32 system calls, eBPF, io_uring and the kernel
+  keyring. All capabilities are dropped and `no_new_privs` is set.
+
+When a session's game files are copied back, only regular files with one link are read. Links, FIFOs, devices and hard
+links are refused.
+
+Check that the sandbox works on this PC with:
+
+```fish
+bash "<installation>/app/linux/hellforge-linux.sh" --sandbox-self-test
+```
+
+It builds the same view as a real run from a throwaway tree in the installation's `temp/` folder, with the default
+layout (the installation inside the prefix). It checks every boundary listed above, then removes the tree. Every check
+prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass.
+
 ## Account sync
 
 The profile page's **Sync Inventory** button opens the normal game through Steam and copies the signed-in account's
