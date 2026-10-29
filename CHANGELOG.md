@@ -8,6 +8,11 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
+### Changed
+
+- Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
+  #149).
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.
