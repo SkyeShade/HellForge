@@ -106,7 +106,7 @@ public static class SteamAccount
         var probe = Path.Combine(install.App, "steamprobe", "HellForge.SteamProbe.exe");
         var steamApi = Path.Combine(install.Game, "bin", "steam_api64.dll");
         var proton = SteamLocator.SelectedProtonScript(install) ?? SteamLocator.ProtonScript();
-        var steamRoot = SteamLocator.SteamRoot();
+        var steamRoot = SteamLocator.SteamRoot(install);
         if (!File.Exists(wrapper) || !File.Exists(probe))
             throw new InvalidOperationException("The Steam account probe is missing: reinstall HellForge.");
         if (!File.Exists(steamApi))

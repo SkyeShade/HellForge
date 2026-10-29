@@ -24,10 +24,11 @@ public sealed record LinuxPrefixBackupResult(string Archive, long Bytes, LinuxPr
 public sealed record LinuxPrefixRestorePlan(string Archive, string Prefix, string StagedFolder, string StagingRoot,
     string OldFolder, long UncompressedBytes, string TopLevel);
 
-// Prefix backups on Linux: the old shell installer's hellforge-prefix-<date>.tar.zst or .tar.gz in ~/hellforge-backups,
-// written with the system's GNU tar relative to the prefix's parent. Restores are listed and checked before anything is
-// unpacked, then unpacked beside the prefix; the launcher cannot replace the prefix it runs from, so a helper does the
-// swap after it exits. The decisions are pure so they can be tested without a prefix or an archive.
+// Prefix backups on Linux: the old shell installer's hellforge-prefix-<date>.tar.zst or .tar.gz, by default in
+// hellforge-backups beside the prefix (on the same drive, not in the home), written with the system's GNU tar relative to
+// the prefix's parent. Restores are listed and checked before anything is unpacked, then unpacked beside the prefix; the
+// launcher cannot replace the prefix it runs from, so a helper does the swap after it exits. The decisions are pure so
+// they can be tested without a prefix or an archive.
 public static class LinuxPrefixBackup
 {
     public const string DefaultFolderName = "hellforge-backups";
@@ -37,7 +38,10 @@ public static class LinuxPrefixBackup
         @"^(?<kind>[-dlhcbpsD])\S{9}\s+\S+\s+(?<size>[0-9]+)(?:,\s*[0-9]+)?\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s(?<name>.*)$",
         RegexOptions.CultureInvariant);
 
-    public static string DefaultFolder(string home) => Path.Combine(home, DefaultFolderName);
+    // <prefix's parent>/hellforge-backups: on a small home partition and a prefix on another drive, that drive holds the
+    // backup too, not the home.
+    public static string DefaultFolder(string prefix) =>
+        Path.Combine(Path.GetDirectoryName(LocalInstall.FullPath(prefix))!, DefaultFolderName);
 
     public static LinuxPrefixCompression ChooseCompression(bool zstdInstalled) =>
         zstdInstalled ? LinuxPrefixCompression.Zstd : LinuxPrefixCompression.Gzip;

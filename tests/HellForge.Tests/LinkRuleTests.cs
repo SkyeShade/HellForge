@@ -116,6 +116,57 @@ static class LinkRuleTests
             var plain = Directory.CreateDirectory(Path.Combine(real, "plain")).FullName;
             check(LocalInstall.NoLinks(plain, plain) == plain, "A plain Windows path was refused.");
         });
+
+        test("Linux installs and backs up a prefix reached through a linked parent and still refuses a link at or inside it", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux link rule)"); return; }
+            var (sandbox, linkedHome, realHome) = Home(root, "linux-install-on-linked-drive");
+            var linkedPrefix = Path.Combine(linkedHome, "hellforge-prefix");
+            var realPrefix = Path.Combine(realHome, "hellforge-prefix");
+            Directory.CreateDirectory(linkedPrefix);
+
+            // Install through the linked parent: the installation is written at the resolved folder.
+            var install = new InstallLayout(Path.Combine(linkedPrefix, "pfx", "drive_c", "HellForge"));
+            install.Create("12345");
+            var realInstall = Path.Combine(realPrefix, "pfx", "drive_c", "HellForge");
+            check(install.Root == realInstall, "The installation was not resolved through the linked parent: " + install.Root);
+            Directory.CreateDirectory(Path.Combine(install.Game, "data"));
+            File.WriteAllText(Path.Combine(install.Game, "data", "asset"), "installed");
+            check(File.ReadAllText(Path.Combine(linkedHome, "hellforge-prefix", "pfx", "drive_c", "HellForge", "game", "data", "asset")) ==
+                "installed", "The linked path did not read the installation's file.");
+            var verified = Build("data/asset", "installed");
+            check(verified.IsComplete(install.Game) && verified.Verify(install.Game).Count == 0,
+                "The installation's game files did not verify through the linked parent.");
+
+            // The default backup folder is beside the prefix, which here is beside the linked home.
+            var backupFolder = LinuxPrefixBackup.DefaultFolder(linkedPrefix);
+            check(LocalInstall.ResolveLinks(backupFolder) == Path.Combine(realHome, "hellforge-backups"),
+                "The default backup folder is not beside the prefix: " + backupFolder);
+            var locations = new LinuxUninstallLocations(realHome);
+            LinuxPrefixBackup.CheckBackupSource(linkedPrefix, locations, null, install.Root);
+            LinuxPrefixBackup.CheckBackupFolder(linkedPrefix, backupFolder);
+            var compression = LinuxPrefixBackup.ChooseCompression(LinuxPrefixBackup.ZstdInstalled());
+            var archive = Path.Combine(backupFolder, LinuxPrefixBackup.ArchiveName(new DateTime(2026, 10, 28, 12, 0, 0), compression));
+            LinuxPrefixBackup.Backup(linkedPrefix, archive, compression, null, CancellationToken.None);
+            var listing = LinuxPrefixBackup.ListArchive(archive, compression);
+            check(listing.Safe, "The backup of the linked prefix was refused: " + listing.Reason);
+
+            // A link inside the installation is still refused with the shared message, as is the installation itself.
+            var outside = Directory.CreateDirectory(Path.Combine(sandbox, "outside")).FullName;
+            Directory.CreateSymbolicLink(Path.Combine(install.Root, "linked"), outside);
+            string? inside = null;
+            try { LocalInstall.NoLinks(Path.Combine(install.Root, "linked", "asset"), install.Root); }
+            catch (InvalidDataException error) { inside = error.Message; }
+            check(inside != null && inside.Contains("Linked/reparse paths are not supported:", StringComparison.Ordinal),
+                "A link inside the installation was not refused with the shared message: " + inside);
+            var linkedInstall = Path.Combine(realHome, "linked-install");
+            Directory.CreateSymbolicLink(linkedInstall, outside);
+            string? atInstall = null;
+            try { new InstallLayout(linkedInstall).Create("12345"); }
+            catch (InvalidDataException error) { atInstall = error.Message; }
+            check(atInstall != null && atInstall.Contains("Linked/reparse paths are not supported:", StringComparison.Ordinal),
+                "A linked installation folder was not refused with the shared message: " + atInstall);
+        });
     }
 
     static (string Sandbox, string LinkedHome, string RealHome) Home(string root, string name)

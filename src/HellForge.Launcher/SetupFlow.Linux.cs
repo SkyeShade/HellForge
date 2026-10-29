@@ -1,3 +1,4 @@
+using Avalonia.Platform.Storage;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
@@ -26,6 +27,52 @@ public partial class MainWindow
             EnterSetup(repair: true, reason: $"Setup finished {receipt.FinishedUtc.ToLocalTime():g}, but {problem}. " +
                 "Check and repair the game copy; completed files are kept.");
         else EnterSetup(repair: false);
+    }
+
+    // The Proton chooser's Other... entry: ProtonPicker asks for and validates the script, adds it to the list and shows
+    // it; this records the setup page's selection and puts the previous one back when the picker is cancelled or refused.
+    async Task ProtonChoiceChanged()
+    {
+        if (applyingProtons || ProtonCombo.SelectedItem is not ProtonVersion selected) return;
+        if (selected.ScriptPath.Length > 0)
+        {
+            lastProton = selected;
+            return;
+        }
+        applyingProtons = true;
+        try
+        {
+            var picked = await ProtonPicker.PickAndShow(this, ProtonCombo, protonVersions, proton => proton,
+                problem => ProtonChoiceHint.Text = problem);
+            if (picked is not { } result)
+            {
+                ProtonCombo.SelectedItem = lastProton;
+                return;
+            }
+            protonVersions = result.Versions;
+            var proton = protonVersions[result.Selected];
+            lastProton = proton;
+            ProtonChoiceHint.Text = ProtonPicker.Using(proton);
+            SetupStartButton.IsEnabled = protonVersions.Count > 0;
+        }
+        finally { applyingProtons = false; }
+    }
+
+    // Steam was not found in its usual folders: ask for the folder that holds steamapps, check it and save it in the
+    // installation so sessions and external launches use it too. Null when the player closes the picker.
+    async Task<string?> ChooseSteamFolder(InstallLayout install)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose Steam's folder (the one that holds steamapps)",
+            AllowMultiple = false
+        });
+        var chosen = folders.Select(folder => folder.Path.LocalPath).FirstOrDefault();
+        if (chosen == null) return null;
+        if (SteamLocator.SteamFolderProblem(chosen) is { } problem) throw new SetupStopped(problem);
+        var steamRoot = SteamLocator.SteamFolder(chosen);
+        SteamLocator.SaveSteamSelection(install, steamRoot);
+        return steamRoot;
     }
 
     // Setup is done: the highlighted button on the right always moves forward, which here is Continue. Checking again
