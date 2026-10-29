@@ -30,14 +30,30 @@ public partial class MainWindow
 
     void InitializeAccountImport()
     {
-        ReviewImportButton.Click += async (_, _) => await ShowReviewAsync(Selected);
-        ImportApplyButton.Click += async (_, _) => await ApplyReviewAsync();
+        ReviewImportButton.Click += async (_, _) => await WhileBusy(ReviewImportButton, "Reviewing...", () => ShowReviewAsync(Selected));
+        ImportApplyButton.Click += async (_, _) => await WhileBusy(ImportApplyButton, "Importing...", ApplyReviewAsync);
         ImportCancelButton.Click += (_, _) =>
         {
             ImportPanel.IsVisible = false;
             SetSyncStatus("Nothing imported. Premium items you own still follow the sync.", Light);
         };
-        RestoreBackupButton.Click += async (_, _) => await RestoreBackupAsync();
+        RestoreBackupButton.Click += async (_, _) => await WhileBusy(RestoreBackupButton, "Restoring...", RestoreBackupAsync);
+    }
+
+    // A button that starts slow work shows it at once: disabled, with its label saying what it is doing, until the work
+    // ends. A second click meanwhile does nothing.
+    static async Task WhileBusy(Button button, string busyLabel, Func<Task> work)
+    {
+        if (!button.IsEnabled) return;
+        var label = button.Content;
+        button.IsEnabled = false;
+        button.Content = busyLabel;
+        try { await work(); }
+        finally
+        {
+            button.Content = label;
+            button.IsEnabled = true;
+        }
     }
 
     // The review button when the selected profile has a snapshot; the backups it has.
@@ -74,6 +90,7 @@ public partial class MainWindow
             return;
         }
         importBusy = true;
+        SetSyncStatus("Reading the snapshot" + AccountCheckNote() + "...", Gold);
         var (code, output, error) = await RunBackendAsync("profile", "import-preview", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -85,6 +102,7 @@ public partial class MainWindow
         {
             using var preview = JsonDocument.Parse(output);
             BuildReview(profile, preview.RootElement);
+            SetSyncStatus("Choose what to import below.", Green);
         }
         catch (Exception problem) when (problem is JsonException or KeyNotFoundException or InvalidOperationException)
         {
@@ -196,7 +214,7 @@ public partial class MainWindow
             return false;
         }
         importBusy = true;
-        SetSyncStatus("Importing...", Gold);
+        SetSyncStatus("Importing" + AccountCheckNote() + "...", Gold);
         var (code, _, error) = await RunBackendAsync("profile", "import", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -233,6 +251,10 @@ public partial class MainWindow
         ShowProfile();
         UpdateImportControls();
     }
+
+    // On native Linux the backend confirms the signed-in Steam account with its own probe through Proton first, which
+    // takes a while; say so, so the click does not look ignored.
+    static string AccountCheckNote() => NativeLinux ? " (checking the signed-in Steam account first takes about 20 seconds)" : "";
 
     // The profile is in use while a session runs; the backend would refuse anyway.
     string? ImportRefusal() => runner.IsRunning ? "Stop the HellForge session first: it holds the profile." : SyncBusy ? "Wait for the sync to finish." : null;
