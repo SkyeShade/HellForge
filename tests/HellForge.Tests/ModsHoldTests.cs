@@ -132,10 +132,10 @@ static class ModsHoldTests
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
                 made.WaitForExit();
             check(Directory.Exists(junction), "The junction was made.");
-            var back = SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"));
+            var back = SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), fromSession: true);
             check(File.ReadAllText(Path.Combine(install, "profiles", "default", "saves", "save.dat")) == "save 2" && back.Skipped == 1 &&
                 !File.Exists(Path.Combine(install, "profiles", "default", "link", "secret.txt")), "Back: the new save; the junction is not followed: " + back);
-            check(SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), maxBytes: 10) is { Skipped: > 0 }, "A copy stops at its byte limit.");
+            check(SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), maxBytes: 10, fromSession: true) is { Skipped: > 0 }, "A copy stops at its byte limit.");
             Directory.Delete(junction);
         });
 

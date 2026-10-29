@@ -58,6 +58,33 @@ if [ "${1:-}" = "--sandbox-probe" ]; then
   exit "$status"
 fi
 
+# The phase-2 sandbox self-test. The working folder is the installation's temp/, not the caller's cwd: the native launcher
+# can start this from anywhere. hf-sandbox refuses /tmp, /dev/shm, /run and /usr itself, so a package under one of them
+# still fails closed.
+if [ "${1:-}" = "--sandbox-self-test" ]; then
+  [ "$#" -eq 1 ] || { echo "Usage: $0 --sandbox-self-test" >&2; exit 2; }
+  if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then INSTALL="$(cd "$here/../.." && pwd)"; fi
+  : "${INSTALL:?INSTALL is not set: the HellForge installation folder (the one with hellforge-install.json)}"
+  [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }
+  INSTALL="$(cd "$INSTALL" && pwd)"
+  export INSTALL
+  sandbox="$here/hf-sandbox"
+  [ -f "$sandbox" ] || { echo "The Linux sandbox is missing: $sandbox. Update HellForge so app/linux/hf-sandbox is installed." >&2; exit 1; }
+  [ -x "$sandbox" ] || chmod +x "$sandbox" 2>/dev/null || true
+  [ -x "$sandbox" ] || { echo "The Linux sandbox is not executable: $sandbox" >&2; exit 1; }
+  mkdir -p "$INSTALL/temp"
+  runner=("$sandbox")
+  if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ] &&
+     [ -x /usr/local/lib/hellforge/unshare ] && [ -f /etc/apparmor.d/hellforge-unshare ]; then
+    runner=(/usr/local/lib/hellforge/unshare --user --map-user="$(id -u)" --map-group="$(id -g)" -- "$sandbox")
+  fi
+  set +e
+  "${runner[@]}" --self-test --self-test-dir "$INSTALL/temp"
+  status=$?
+  set -e
+  exit "$status"
+fi
+
 # A native GUI launcher has no terminal to show wrapper/Proton output. Keep the latest launch diagnostics in the
 # installation so failures before HellForge.Session creates its own run folder are still visible to the player. Only
 # the native launcher asks for this (HELLFORGE_WRAPPER_LOG=1, set by SessionRunner, the Steam ownership check and the

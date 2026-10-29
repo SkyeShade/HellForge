@@ -143,26 +143,6 @@ static void self_signal_handler(int signal_number)
     self_signal_seen = 1;
 }
 
-static void filter_stmt(struct sock_filter *filter, size_t *length, unsigned short code, unsigned int value)
-{
-    filter[*length].code = code;
-    filter[*length].jt = 0;
-    filter[*length].jf = 0;
-    filter[*length].k = value;
-    (*length)++;
-}
-
-static size_t filter_jump(struct sock_filter *filter, size_t *length, unsigned short code, unsigned int value)
-{
-    size_t at = *length;
-    filter[*length].code = code;
-    filter[*length].jt = 0;
-    filter[*length].jf = 0;
-    filter[*length].k = value;
-    (*length)++;
-    return at;
-}
-
 static void filter_jump_to(struct sock_filter *filter, size_t jump, size_t target, bool on_true)
 {
     int offset = (int)target - (int)jump - 1;
@@ -173,21 +153,14 @@ static void filter_jump_to(struct sock_filter *filter, size_t jump, size_t targe
 static int install_canary_seccomp(pid_t self_pid, pid_t self_tid)
 {
     struct sock_filter filter[MAX_FILTER];
-    size_t length = 0;
+    size_t length = hf_filter_begin(filter, MAX_FILTER);
+    // The shared prelude denies x32 and clone3 with ENOSYS. This shared block denies clone with any CLONE_NEW* bit and
+    // restores A=nr, so the phase-3 clone/thread and kill rules below are unchanged.
+    if (hf_filter_deny_clone_namespaces(filter, &length, MAX_FILTER) != 0) return -1;
 
-    filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, arch));
-    size_t arch_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64);
-    filter[arch_jump].jt = 1;
-    filter[arch_jump].jf = 0;
-    filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS);
-    filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr));
+#define DENY_SYSCALL(number) hf_filter_deny(filter, &length, (unsigned int)(number))
 
-#define DENY_SYSCALL(number) do { \
-        size_t jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)(number)); \
-        filter[jump].jt = 0; filter[jump].jf = 1; \
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)); \
-    } while (0)
-
+    // The phase-3 process and memory denials, on top of the mount/namespace set hf_filter_begin already added.
     DENY_SYSCALL(SYS_ptrace);
     DENY_SYSCALL(SYS_process_vm_readv);
     DENY_SYSCALL(SYS_process_vm_writev);
@@ -196,31 +169,11 @@ static int install_canary_seccomp(pid_t self_pid, pid_t self_tid)
     DENY_SYSCALL(SYS_process_madvise);
     DENY_SYSCALL(SYS_perf_event_open);
     DENY_SYSCALL(SYS_userfaultfd);
-    DENY_SYSCALL(SYS_bpf);
-    DENY_SYSCALL(SYS_io_uring_setup);
-    DENY_SYSCALL(SYS_open_by_handle_at);
-    DENY_SYSCALL(SYS_name_to_handle_at);
-    DENY_SYSCALL(SYS_mount);
-    DENY_SYSCALL(SYS_umount2);
-    DENY_SYSCALL(SYS_pivot_root);
-    DENY_SYSCALL(SYS_chroot);
-    DENY_SYSCALL(SYS_setns);
-    DENY_SYSCALL(SYS_unshare);
-    DENY_SYSCALL(SYS_open_tree);
-    DENY_SYSCALL(SYS_move_mount);
-    DENY_SYSCALL(SYS_fsopen);
-    DENY_SYSCALL(SYS_fsmount);
-    DENY_SYSCALL(SYS_fspick);
-    DENY_SYSCALL(SYS_mount_setattr);
-    DENY_SYSCALL(SYS_add_key);
-    DENY_SYSCALL(SYS_request_key);
-    DENY_SYSCALL(SYS_keyctl);
     DENY_SYSCALL(SYS_pidfd_send_signal);
     DENY_SYSCALL(SYS_rt_sigqueueinfo);
     DENY_SYSCALL(SYS_rt_tgsigqueueinfo);
     DENY_SYSCALL(SYS_fork);
     DENY_SYSCALL(SYS_vfork);
-    DENY_SYSCALL(SYS_clone3);
     DENY_SYSCALL(SYS_execve);
     DENY_SYSCALL(SYS_execveat);
 
@@ -228,27 +181,27 @@ static int install_canary_seccomp(pid_t self_pid, pid_t self_tid)
 
     // clone is allowed only with CLONE_THREAD, so pthread_create works and a new process cannot be made.
     {
-        size_t header = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_clone);
+        size_t header = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_clone);
         filter[header].jt = 0;
-        filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
-        size_t thread_jump = filter_jump(filter, &length, BPF_JMP | BPF_JSET | BPF_K, CLONE_THREAD);
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+        hf_filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        size_t thread_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JSET | BPF_K, CLONE_THREAD);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
         size_t allow = length;
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
         filter[header].jf = (unsigned char)(length - header - 1);
         filter_jump_to(filter, thread_jump, allow, true);
     }
 
     // kill(pid, ...) is allowed only for this process (or pid 0, which is this PID namespace's group).
     {
-        size_t header = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_kill);
+        size_t header = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_kill);
         filter[header].jt = 0;
-        filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
-        size_t zero_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, 0);
-        size_t self_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_pid);
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+        hf_filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        size_t zero_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, 0);
+        size_t self_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_pid);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
         size_t allow = length;
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
         filter[header].jf = (unsigned char)(length - header - 1);
         filter_jump_to(filter, zero_jump, allow, true);
         filter_jump_to(filter, self_jump, allow, true);
@@ -256,44 +209,36 @@ static int install_canary_seccomp(pid_t self_pid, pid_t self_tid)
 
     // tkill(tid, ...) is allowed only for the main thread.
     {
-        size_t header = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_tkill);
+        size_t header = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_tkill);
         filter[header].jt = 0;
-        filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
-        size_t self_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_tid);
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+        hf_filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        size_t self_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_tid);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
         size_t allow = length;
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
         filter[header].jf = (unsigned char)(length - header - 1);
         filter_jump_to(filter, self_jump, allow, true);
     }
 
     // tgkill(tgid, tid, ...) is allowed only for this main thread.
     {
-        size_t header = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_tgkill);
+        size_t header = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, SYS_tgkill);
         filter[header].jt = 0;
-        filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
-        size_t group_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_pid);
-        filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[1]));
-        size_t thread_jump = filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_tid);
+        hf_filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        size_t group_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_pid);
+        hf_filter_stmt(filter, &length, BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[1]));
+        size_t thread_jump = hf_filter_jump(filter, &length, BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)self_tid);
         size_t deny = length;
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
         size_t allow = length;
-        filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+        hf_filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
         filter[header].jf = (unsigned char)(length - header - 1);
         filter[group_jump].jt = 0;
         filter[group_jump].jf = (unsigned char)(deny - group_jump - 1);
         filter_jump_to(filter, thread_jump, allow, true);
     }
 
-    filter_stmt(filter, &length, BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
-    if (length > MAX_FILTER)
-    {
-        errno = E2BIG;
-        return -1;
-    }
-    struct sock_fprog program = { .len = (unsigned short)length, .filter = filter };
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) return -1;
-    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &program) != 0) return -1;
+    if (hf_filter_end(filter, length, MAX_FILTER) != 0) return -1;
     return 0;
 }
 
@@ -523,17 +468,28 @@ static int canary_g3(struct shared_result *shared)
     if (!g3_denied(syscall(SYS_clone, SIGCHLD, 0, 0, 0, 0), "clone without CLONE_THREAD",
         "clone without CLONE_THREAD was not denied with EPERM", false, &failure))
         return g3_report_failure(shared, &failure);
+    if (!g3_denied(syscall(SYS_clone, CLONE_NEWUSER | SIGCHLD, 0, 0, 0, 0), "clone with CLONE_NEWUSER",
+        "clone with CLONE_NEWUSER was not denied with EPERM", false, &failure))
+        return g3_report_failure(shared, &failure);
+    if (!g3_denied(syscall(SYS_getpid | __X32_SYSCALL_BIT), "x32-numbered syscall",
+        "an x32-numbered syscall was not denied with EPERM", false, &failure))
+        return g3_report_failure(shared, &failure);
 
     struct clone_args arguments;
     memset(&arguments, 0, sizeof(arguments));
     arguments.exit_signal = SIGCHLD;
-    if (!g3_denied(syscall(SYS_clone3, &arguments, sizeof(arguments)), "clone3",
-        "clone3 was not denied with EPERM (or ENOSYS)", true, &failure))
-        return g3_report_failure(shared, &failure);
+    errno = 0;
+    long clone3_result = syscall(SYS_clone3, &arguments, sizeof(arguments));
+    if (clone3_result != -1 || errno != ENOSYS)
+    {
+        set_result(shared, ITEM_G3, STATUS_FAIL, "clone3 was not denied with ENOSYS: %s", strerror(errno));
+        return -1;
+    }
 
     // This is last: if the filter were absent, a successful exec replaces this process before it can report.
     if (g3_exec_denied(shared) != 0) return -1;
-    set_result(shared, ITEM_G3, STATUS_PASS, "fork, vfork, clone without CLONE_THREAD, clone3 and execve were denied");
+    set_result(shared, ITEM_G3, STATUS_PASS,
+        "fork, vfork, clone without CLONE_THREAD, clone(CLONE_NEWUSER), x32, clone3 (ENOSYS) and execve were denied");
     return 0;
 }
 

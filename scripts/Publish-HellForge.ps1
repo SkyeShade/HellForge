@@ -154,13 +154,22 @@ $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
 Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
-# The unprivileged Linux sandbox probe: the same pinned Zig, a static x86_64 Linux program. The package workflow builds it
-# with every package; the installer makes it executable after extraction (LinuxAppInstaller.MakeExecutable). -s strips
-# the debug information, as the other native builds do: it names the build PC's folders, which the payload must not.
+# The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and
+# shipped beside the Linux scripts. The installer makes both executable after extraction
+# (LinuxAppInstaller.MakeExecutable). -s strips the debug information, as the other native builds do: it names the build
+# PC's folders, which the payload must not.
+$sandboxFolder=Join-Path $project 'native/linux-sandbox'
+$sandboxCommon=Join-Path $sandboxFolder 'hf-sandbox-common.c'
 $sandboxProbe=Join-Path $linuxTarget 'hf-sandbox-probe'
-$sandboxProbeSources=@(Get-ChildItem -LiteralPath (Join-Path $project 'native/linux-sandbox') -Filter '*.c'|Sort-Object Name|ForEach-Object FullName)
-& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s @sandboxProbeSources -o $sandboxProbe
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s $sandboxCommon `
+    (Join-Path $sandboxFolder 'hf-sandbox-probe-checks.c') (Join-Path $sandboxFolder 'hf-sandbox-probe.c') -o $sandboxProbe
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandboxProbe)){throw 'Building the Linux sandbox probe failed.'}
+$sandbox=Join-Path $linuxTarget 'hf-sandbox'
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s $sandboxCommon `
+    (Join-Path $sandboxFolder 'hf-sandbox.c') (Join-Path $sandboxFolder 'hf-sandbox-paths.c') `
+    (Join-Path $sandboxFolder 'hf-sandbox-domain.c') (Join-Path $sandboxFolder 'hf-sandbox-view.c') `
+    (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
+if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
 # "HellForge.exe" at the top of the installation starts app\launcher\HellForge.Launcher.exe (native/launcher-stub).
 $stub=Join-Path $staging 'HellForge.exe'
 & $zig cc -target x86_64-windows-gnu -O2 -Wall -Werror -Wno-unused-parameter -municode '-Wl,--subsystem,windows' -s (Join-Path $project 'native/launcher-stub/launcher_stub.c') `

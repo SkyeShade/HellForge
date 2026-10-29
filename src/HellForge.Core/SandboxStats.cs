@@ -211,6 +211,10 @@ public static partial class SandboxStats
 
     static string Text(string path, long limit, string protectedRoot)
     {
+        // Linux: openat2 with O_PATH|O_NOFOLLOW, then statx says whether it is one regular, singly linked file of the
+        // recorded size. A FIFO cannot block and a link cannot redirect the read (SandboxFiles). Windows keeps the
+        // NoLinks and FileInfo checks.
+        if (OperatingSystem.IsLinux()) return SandboxFiles.ReadText(path, protectedRoot, limit);
         path = LocalInstall.NoLinks(path, protectedRoot);
         if (new FileInfo(path).Length > limit) throw new InvalidDataException($"{Path.GetFileName(path)} from the session is too large.");
         return File.ReadAllText(path);
