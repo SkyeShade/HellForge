@@ -27,9 +27,9 @@ public static class VerifiedMods
     public enum Source { Published, Saved, Embedded }
 
     public const string Url = "https://files.hf-mod.com/verified-mods/verified-mods.json", SignatureSuffix = ".sig", SavedName = "verified-mods.json";
-    // The maintainers' signing key: SubjectPublicKeyInfo, base64 (HellForge.Cli verified-mods keygen prints it). Empty: no
+    // The maintainers' signing key: SubjectPublicKeyInfo, base64 (HellForge.Cli verified-list-keygen prints it). Empty: no
     // published list is taken, only the embedded one.
-    public const string PublicKey = "";
+    public const string PublicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEPKFM/rEQndmPss7AdCuP52PJOxSPTAmJwX5fqP/+ZAeqbL88bGQhX1CtWXf+Lo3W6PVVpxXY5xTNwPUx0/eyg==";
     public const int MaxBytes = 1 << 20;
 
     static readonly Lazy<Listing> embedded = new(() =>
