@@ -353,6 +353,7 @@ sealed class LinuxInstallerWindow : Window
             "app/capture-linux/HellForge.CaptureProxy",
             "app/linux/hellforge-linux.sh",
             "app/linux/hf-steam.sh",
+            "app/linux/hf-container.sh",
             "app/linux/hf-sandbox-probe",
             "app/linux/allow-capture.sh",
             "app/linux/capture-helper.sh",

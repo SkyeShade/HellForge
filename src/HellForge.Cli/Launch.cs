@@ -102,7 +102,9 @@ static class Launch
         string? run;
         while ((run = SessionRunner.RunSince(paths, previousRunId)) == null)
         {
-            if (!runner.IsRunning) throw new InvalidDataException("The session runner exited before starting: " + RunnerLog(install, startedUtc));
+            if (!runner.IsRunning)
+                throw new InvalidDataException(SessionRunner.LinuxContainerRefusal(install.Root)
+                    ?? "The session runner exited before starting: " + RunnerLog(install, startedUtc));
             Thread.Sleep(250);
         }
         Emit(new { @event = "started", runId = Path.GetFileName(run), run, pid = runner.ProcessId, profile = profile.Name, war, arguments });
