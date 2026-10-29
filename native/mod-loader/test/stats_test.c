@@ -349,6 +349,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_TOWN_PLACED, kTownPlacedPin, 5);
     memcpy(game + DIF_TOWN_MERGE, kTownMergePin, 7);
     memcpy(game + DIF_RECORD_STORE, kRecordStorePin, 7);
+    memcpy(game + DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1267,7 +1268,7 @@ typedef int (*TownIntFn)(uintptr_t a, uint32_t b, uintptr_t c);
 static uintptr_t TownGame(void)
 {
     uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1400000, MEM_RESERVE, PAGE_NOACCESS);
-    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
+    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF4C000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
     for (size_t i = 0; i < sizeof pages / sizeof pages[0]; i++)
         assert(VirtualAlloc((void*)(game + pages[i]), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
     return game;
@@ -1293,6 +1294,7 @@ static void TownsFixtureOnce(int border)
     TownPut(game, DIF_TOWN_PLACED, kTownPlacedPin, 5);
     TownPut(game, DIF_TOWN_MERGE, kTownMergePin, 7);
     TownPut(game, DIF_RECORD_STORE, kRecordStorePin, 7);
+    TownPut(game, DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
     assert(TownPinsFailed(game) == NULL);
     /* the placers' harnesses (0x13F0000 + 0x40 i): push rsi; mov rsi, rcx; sub rsp, 0x28; keep xmmN; xmmN = value; the
      * site; at its back: xmm0 = xmmN, restore, return. {save, set, out, restore} for xmm8, 9, 9, 6, 7 */
@@ -1341,6 +1343,14 @@ static void TownsFixtureOnce(int border)
     static const uint8_t storeIn[] = {0x57, 0x53, 0x44, 0x89, 0xC3, 0x89, 0xD7, 0x49, 0x89, 0xC8}, storeOn[] = {0x5B, 0x5F, 0xC3};
     TownHarness(game, 0x13F0400u, storeIn, sizeof storeIn, DIF_RECORD_STORE);
     TownPut(game, DIF_RECORD_STORE + 7, storeOn, sizeof storeOn);
+    /* the zone groups: push rbp, rsi, rdi, r14; sub rsp, 0x88 (the site's alignment); [rsp+0x68], +0x70, +0x78 = the
+     * markers, the route cells, their info; rbp, rsi, r14d from the block; the site; on: rax = rdi (the markers), back */
+    static const uint8_t groupsIn[] = {0x55, 0x56, 0x57, 0x41, 0x56, 0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,
+        0x48, 0x8B, 0x01, 0x48, 0x89, 0x44, 0x24, 0x68, 0x48, 0x8B, 0x41, 0x08, 0x48, 0x89, 0x44, 0x24, 0x70,
+        0x48, 0x8B, 0x41, 0x10, 0x48, 0x89, 0x44, 0x24, 0x78, 0x48, 0x8B, 0x69, 0x18, 0x48, 0x8B, 0x71, 0x20, 0x44, 0x8B, 0x71, 0x28};
+    static const uint8_t groupsOn[] = {0x48, 0x89, 0xF8, 0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00, 0x41, 0x5E, 0x5F, 0x5E, 0x5D, 0xC3};
+    TownHarness(game, 0x13F0500u, groupsIn, sizeof groupsIn, DIF_ZONE_GROUPS_SITE);
+    TownPut(game, DIF_ZONE_GROUPS_SITE + 5, groupsOn, sizeof groupsOn);
 
     float savedScale = g_difficulty.mapScale;
     g_difficulty.mapScale = 2.0f;
@@ -1381,6 +1391,33 @@ static void TownsFixtureOnce(int border)
     assert(slot[0] == 0xABCD && slot[1] == 77 && g_townCounters[4] == 0);
     store(0, 77, 0xABCD);
     assert(g_townCounters[4] == 1);
+    /* four route cells: 0 and 1 in group 0 (type 30), 2 not a zone cell, 3 in group 1 (type 31) */
+    uint8_t markers[32] = {0}, info[4 * 0x20] = {0}, levelBytes[0x100] = {0}, context[0x20] = {0}, frame[0x70] = {0};
+    float positions[4][2] = {{100, 200}, {300, 200}, {0, 0}, {500, 600}}, table[2][3] = {{10, 50, 30}, {0, 0, 0}};
+    int32_t types[4] = {30, 30, 34, 31};
+    uint32_t groupOf[4] = {0, 0, 0, 1};
+    for (int i = 0; i < 4; i++)
+    {
+        markers[8 * i] = i != 2;
+        memcpy(markers + 8 * i + 4, &groupOf[i], 4);
+        memcpy(info + 0x20 * i + 0xC, &types[i], 4);
+        uintptr_t cell = (uintptr_t)positions[i];
+        memcpy(info + 0x20 * i + 0x18, &cell, 8);
+    }
+    levelBytes[0xF9] = DIF_VANILLA + 1;
+    uintptr_t levelAt = (uintptr_t)levelBytes, tableAt = (uintptr_t)table;
+    memcpy(context + 0x18, &levelAt, 8);
+    memcpy(frame + 0x60, &tableAt, 8); /* rbp+0x60: the table */
+    struct { uintptr_t markers, cells, info, rbp, rsi, groups; } block = {(uintptr_t)markers, 4, (uintptr_t)info, (uintptr_t)frame, (uintptr_t)context, 2};
+    TownIntFn groupsFn = (TownIntFn)(void*)(game + 0x13F0500u);
+    g_zoneCatches = 0;
+    assert((uintptr_t)(uint32_t)groupsFn((uintptr_t)&block, 0, 0) == (uintptr_t)(uint32_t)(uintptr_t)markers);
+    assert(g_zoneCatches == 1 && g_zoneCatch.difficulty == DIF_VANILLA + 1 && g_zoneCatch.cells == 4 && g_zoneCatch.zoneCells == 3);
+    assert(g_zoneCatch.groups == 2 && g_zoneCatch.group[0].type == 30 && g_zoneCatch.group[0].cells == 2);
+    assert(g_zoneCatch.group[0].x == 200.0f && g_zoneCatch.group[0].y == 200.0f && g_zoneCatch.group[0].height == 30.0f);
+    assert(g_zoneCatch.group[0].min == 10.0f && g_zoneCatch.group[0].max == 50.0f);
+    assert(g_zoneCatch.group[1].type == 31 && g_zoneCatch.group[1].cells == 1 && g_zoneCatch.group[1].height == 0.0f);
+    g_zoneCatches = 0;
     SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", NULL);
     g_difficulty.mapScale = savedScale;
     g_townCounters = NULL;

@@ -44,6 +44,118 @@ static const uint8_t kTownMergePin[7] = {0x48, 0x8B, 0x4F, 0x20, 0x45, 0x8B, 0xD
 #define DIF_RECORD_STORE 0x13E036Au      /* mov [r8+4], edi; mov [r8], ebx: r8 the slot, 0 when the map is full */
 static const uint8_t kRecordStorePin[7] = {0x41, 0x89, 0x78, 0x04, 0x41, 0x89, 0x18};
 
+/* Diagnostic (research d11-sparse-cities §7): a type 0/1 map's town is a group of connected zone cells (op 0x3E,
+ * force_flatten_zones), one plateau at min(mid, lowest + raise) of the heights sampled around it, 0 with none sampled.
+ * At the end of the grouping loop (0xF4C34B), while the group table is alive (zones-<n>.tsv read it after a later pass
+ * had reused it), a stub calls ZoneGroupsCaught: per group its zone type, cells, centre, min, max and height, into
+ * zone-groups-<n>.tsv and a line, for the first 8 generations at any level (a level-10 one compares). */
+#define DIF_ZONE_GROUPS_SITE 0xF4C34Bu /* mov rdi, [rsp+0x68] (the cells' markers), then 0xF4C350 */
+static const uint8_t kZoneGroupsPin[5] = {0x48, 0x8B, 0x7C, 0x24, 0x68};
+#define DIF_ZONE_CATCH_GROUPS 64
+typedef struct { int32_t type; uint32_t cells; float x, y, min, max, height; } ZoneGroupCaught;
+typedef struct { uint8_t difficulty; uint32_t cells, zoneCells, groups; ZoneGroupCaught group[DIF_ZONE_CATCH_GROUPS]; } ZoneCatch;
+static ZoneCatch g_zoneCatch; /* the last one, for the fixture */
+static volatile LONG g_zoneCatches;
+/* push the volatile registers; keep xmm0-5; ZoneGroupsCaught(the function's rsp, rbp, r14d = the groups, rsi = the pass
+ * context); restore; the replaced load; jmp 0xF4C350 */
+static const uint8_t kZoneGroupsStub[135] = {
+    0x50, 0x51, 0x52, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53,             /*   0 push rax, rcx, rdx, r8-r11 */
+    0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,                                     /*  11 sub rsp, 0x88 */
+    0x0F, 0x11, 0x44, 0x24, 0x20, 0x0F, 0x11, 0x4C, 0x24, 0x30, 0x0F, 0x11, 0x54, 0x24, 0x40, /* 18 movups [rsp+0x20..], xmm0-5 */
+    0x0F, 0x11, 0x5C, 0x24, 0x50, 0x0F, 0x11, 0x64, 0x24, 0x60, 0x0F, 0x11, 0x6C, 0x24, 0x70,
+    0x48, 0x8D, 0x8C, 0x24, 0xC0, 0x00, 0x00, 0x00,                               /*  48 lea rcx, [rsp+0xc0] */
+    0x48, 0x89, 0xEA, 0x45, 0x89, 0xF0, 0x49, 0x89, 0xF1,                         /*  56 mov rdx, rbp; mov r8d, r14d; mov r9, rsi */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xD0,                               /*  65 mov rax, ZoneGroupsCaught (imm64 at 67); call rax */
+    0x0F, 0x10, 0x44, 0x24, 0x20, 0x0F, 0x10, 0x4C, 0x24, 0x30, 0x0F, 0x10, 0x54, 0x24, 0x40, /* 77 movups xmm0-5, [rsp+0x20..] */
+    0x0F, 0x10, 0x5C, 0x24, 0x50, 0x0F, 0x10, 0x64, 0x24, 0x60, 0x0F, 0x10, 0x6C, 0x24, 0x70,
+    0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00,                                     /* 107 add rsp, 0x88 */
+    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59, 0x58,             /* 114 pop r11-r8, rdx, rcx, rax */
+    0x48, 0x8B, 0x7C, 0x24, 0x68,                                                 /* 125 mov rdi, [rsp+0x68] */
+    0xE9, 0, 0, 0, 0};                                                            /* 130 jmp 0xF4C350 (rel32 at 131) */
+
+static void ZoneGroupsWrite(LONG n, const ZoneCatch* c)
+{
+    wchar_t name[32];
+    swprintf(name, 32, L"zone-groups-%ld.tsv", n);
+    HANDLE file = OpenLog(name);
+    char line[256];
+    DWORD written;
+    int shown = c->groups < DIF_ZONE_CATCH_GROUPS ? (int)c->groups : DIF_ZONE_CATCH_GROUPS, flat = 0, largest = -1;
+    float low = 3.4e38f, high = -3.4e38f;
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        int length = snprintf(line, sizeof line, "level\t%u\troute cells\t%u\tzone cells\t%u\tgroups\t%u\ngroup\ttype\tcells\tx\ty\tmin\tmax\theight\n",
+            c->difficulty, c->cells, c->zoneCells, c->groups);
+        WriteFile(file, line, (DWORD)length, &written, NULL);
+    }
+    for (int g = 0; g < shown; g++)
+    {
+        const ZoneGroupCaught* z = &c->group[g];
+        if (z->min == 0.0f && z->max == 0.0f && z->height == 0.0f) flat++;
+        if (z->height < low) low = z->height;
+        if (z->height > high) high = z->height;
+        if (largest < 0 || z->cells > c->group[largest].cells) largest = g;
+        if (file == INVALID_HANDLE_VALUE) continue;
+        int length = snprintf(line, sizeof line, "%d\t%d\t%u\t%.0f\t%.0f\t%g\t%g\t%g\n", g, z->type, z->cells, z->x, z->y, z->min, z->max, z->height);
+        WriteFile(file, line, (DWORD)length, &written, NULL);
+    }
+    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+    if (largest < 0) { Note("difficulty: zone groups (level %u): none over %u route cells", c->difficulty, c->cells); return; }
+    const ZoneGroupCaught* big = &c->group[largest];
+    Note("difficulty: zone groups (level %u): %u over %u zone cells of %u route cells, %d of the first %d at 0 with no height sampled, "
+        "heights %g..%g; the largest %u cells of type %d at (%.0f, %.0f): min %g, max %g, height %g (zone-groups-%ld.tsv)",
+        c->difficulty, c->groups, c->zoneCells, c->cells, flat, shown, low, high, big->cells, big->type, big->x, big->y, big->min,
+        big->max, big->height, n);
+}
+
+/* Called by kZoneGroupsStub on the generating thread: frame is force_flatten_zones' rsp (+0x68 the markers, 8 bytes a
+ * cell: visited, then the group at +4; +0x70 the route cells; +0x78 their info, 0x20 a cell: the type at +0xC, the
+ * cell at +0x18, its x and y at +0), rbp+0x60 the group table (12 bytes a group: min, max, height), context+0x18 the
+ * level. */
+static void ZoneGroupsCaught(uintptr_t frame, uintptr_t rbp, uint32_t groups, uintptr_t context)
+{
+    uint64_t markers = 0, info = 0, table = 0, level = 0;
+    uint32_t cells = 0;
+    uint8_t difficulty = 0;
+    if (SafeRead(frame + 0x68, &markers, 8) || SafeRead(frame + 0x70, &cells, 4) || SafeRead(frame + 0x78, &info, 8) ||
+        SafeRead(rbp + 0x60, &table, 8) || SafeRead(context + 0x18, &level, 8) || SafeRead(level + 0xF9, &difficulty, 1))
+        return;
+    LONG n = InterlockedIncrement(&g_zoneCatches);
+    if (n > 8) return;
+    ZoneCatch c;
+    memset(&c, 0, sizeof c);
+    c.difficulty = difficulty;
+    c.cells = cells;
+    c.groups = groups;
+    for (uint32_t g = 0; g < groups && g < DIF_ZONE_CATCH_GROUPS; g++)
+    {
+        float entry[3] = {0};
+        SafeRead(table + 12 * (uint64_t)g, entry, 12);
+        c.group[g].type = -1;
+        c.group[g].min = entry[0]; c.group[g].max = entry[1]; c.group[g].height = entry[2];
+    }
+    for (uint32_t i = 0; i < cells && i < 8192; i++)
+    {
+        uint8_t marker[8], entry[0x20];
+        if (SafeRead(markers + 8 * (uint64_t)i, marker, 8) || SafeRead(info + 0x20 * (uint64_t)i, entry, sizeof entry)) break;
+        uint32_t group;
+        memcpy(&group, marker + 4, 4);
+        if (marker[0] == 0) continue;
+        c.zoneCells++;
+        if (group >= groups || group >= DIF_ZONE_CATCH_GROUPS) continue;
+        ZoneGroupCaught* z = &c.group[group];
+        uint64_t cell = 0;
+        float position[2] = {0};
+        memcpy(&z->type, entry + 0xC, 4); memcpy(&cell, entry + 0x18, 8);
+        SafeRead(cell, position, 8);
+        z->x += position[0]; z->y += position[1]; z->cells++;
+    }
+    for (int g = 0; g < DIF_ZONE_CATCH_GROUPS; g++)
+        if (c.group[g].cells) { c.group[g].x /= (float)c.group[g].cells; c.group[g].y /= (float)c.group[g].cells; }
+    g_zoneCatch = c;
+    ZoneGroupsWrite(n, &c);
+}
+
 static int TownBorderWanted(void)
 {
     wchar_t value[8];
@@ -67,6 +179,8 @@ static const char* TownPinsFailed(uintptr_t game)
         return "the town placers are not the reviewed ones (a map_scale above 1 needs them)";
     if (SafeRead(game + DIF_RECORD_STORE, zone, 7) || memcmp(zone, kRecordStorePin, 7) != 0)
         return "the destruction records' registration is not the reviewed one (a map_scale above 1 needs it)";
+    if (SafeRead(game + DIF_ZONE_GROUPS_SITE, zone, 5) || memcmp(zone, kZoneGroupsPin, 5) != 0)
+        return "the height zones' grouping is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
 
@@ -88,7 +202,7 @@ static const char* InstallTowns(DifficultyInstall* d)
     g_townCounters = (volatile LONG*)(code + 0x1000);
     int border = TownBorderWanted();
     float diskBits = d->disk / 1024.0f;
-    uintptr_t stubs[10];
+    uintptr_t stubs[11];
     uint8_t* p = code;
     for (int i = 0; i < 5; i++) /* cmp [base+0x5c], disk; jne vanilla; the border's mulss; jmp back; R's mulss; jmp back */
     {
@@ -128,14 +242,20 @@ static const char* InstallTowns(DifficultyInstall* d)
     p = TownJump(p, game + DIF_RECORD_STORE + 7);
     p = TownCount(p, 4);
     p = TownJump(p, game + DIF_RECORD_STORE + 7);
+    stubs[10] = (uintptr_t)p; /* the zone groups' catch */
+    memcpy(p, kZoneGroupsStub, sizeof kZoneGroupsStub);
+    uint64_t caught = (uint64_t)(uintptr_t)ZoneGroupsCaught;
+    memcpy(p + 67, &caught, 8);
+    TownRel32(p + 131, game + DIF_ZONE_GROUPS_SITE + 5);
+    p += sizeof kZoneGroupsStub;
     DWORD protect;
     if (p - code > 0x1000 || !VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the towns' stubs could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
-    const struct { uint32_t site; uint8_t length; } sites[10] = {
+    const struct { uint32_t site; uint8_t length; } sites[11] = {
         {kTownBorderSites[0].site, 6}, {kTownBorderSites[1].site, 6}, {kTownBorderSites[2].site, 6}, {kTownBorderSites[3].site, 5},
         {kTownBorderSites[4].site, 5}, {kTownRefusals[0].site, 6}, {kTownRefusals[1].site, 6}, {DIF_TOWN_PLACED, 5},
-        {DIF_TOWN_MERGE, 7}, {DIF_RECORD_STORE, 7}};
-    for (int i = border ? 0 : 5; i < 10; i++) /* the border's five only when wanted */
+        {DIF_TOWN_MERGE, 7}, {DIF_RECORD_STORE, 7}, {DIF_ZONE_GROUPS_SITE, 5}};
+    for (int i = border ? 0 : 5; i < 11; i++) /* the border's five only when wanted */
     {
         uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
         int32_t rel = (int32_t)(int64_t)(stubs[i] - (game + sites[i].site + 5));
