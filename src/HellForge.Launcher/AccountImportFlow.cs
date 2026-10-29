@@ -74,6 +74,7 @@ public partial class MainWindow
             return;
         }
         importBusy = true;
+        SetSyncStatus("Reading the snapshot" + AccountCheckNote() + "...", Gold);
         var (code, output, error) = await RunBackendAsync("profile", "import-preview", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -85,6 +86,7 @@ public partial class MainWindow
         {
             using var preview = JsonDocument.Parse(output);
             BuildReview(profile, preview.RootElement);
+            SetSyncStatus("Choose what to import below.", Green);
         }
         catch (Exception problem) when (problem is JsonException or KeyNotFoundException or InvalidOperationException)
         {
@@ -196,7 +198,7 @@ public partial class MainWindow
             return false;
         }
         importBusy = true;
-        SetSyncStatus("Importing...", Gold);
+        SetSyncStatus("Importing" + AccountCheckNote() + "...", Gold);
         var (code, _, error) = await RunBackendAsync("profile", "import", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -233,6 +235,10 @@ public partial class MainWindow
         ShowProfile();
         UpdateImportControls();
     }
+
+    // On native Linux the backend confirms the signed-in Steam account with its own probe through Proton first, which
+    // takes a while; say so, so the click does not look ignored.
+    static string AccountCheckNote() => NativeLinux ? " (checking the signed-in Steam account first takes about 20 seconds)" : "";
 
     // The profile is in use while a session runs; the backend would refuse anyway.
     string? ImportRefusal() => runner.IsRunning ? "Stop the HellForge session first: it holds the profile." : SyncBusy ? "Wait for the sync to finish." : null;
