@@ -8,7 +8,7 @@ static class SandboxWireTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
-        test("Sandbox request validation refuses each changed path, bind, environment key and runner identity", () =>
+        test("Sandbox request validation drops covered binds and refuses changed paths, keys and runner identity", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox request)"); return; }
             var fixture = MakeFixture(Path.Combine(root, "sandbox-request"));
@@ -22,6 +22,15 @@ static class SandboxWireTests
             File.CreateSymbolicLink(linkedBind, fixture.Outside);
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix,
                 Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, linkedBind])));
+            var modFolder = Directory.CreateDirectory(Path.Combine(fixture.Install.Mods, "nested")).FullName;
+            var modFile = Path.Combine(modFolder, "nested.dll");
+            File.WriteAllText(modFile, "mod");
+            var nested = SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix,
+                Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, modFolder, modFile]));
+            check(nested.ReadOnlyBinds.Count == 3 && nested.ReadOnlyBinds.Contains(modFolder, StringComparer.Ordinal) &&
+                !nested.ReadOnlyBinds.Contains(modFile, StringComparer.Ordinal) &&
+                nested.ReadOnlyBinds.SequenceEqual(nested.ReadOnlyBinds.OrderBy(path => path, StringComparer.Ordinal)),
+                "A folder and a file inside it were not reduced to one sorted bind.");
 
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.SchemaVersion = 2)));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.RunId = "not-a-run-id")));
@@ -34,7 +43,10 @@ static class SandboxWireTests
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.RelayToken = "not-a-token")));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.Environment["LD_PRELOAD"] = "/tmp/x")));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.NativeFolders = [fixture.Outside])));
-            reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.SessionHost])));
+            var duplicate = SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix,
+                Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Loader, fixture.SessionHost]));
+            check(duplicate.ReadOnlyBinds.Count == 2 && duplicate.ReadOnlyBinds.Contains(fixture.SessionHost, StringComparer.Ordinal),
+                "A duplicated read-only bind was not dropped.");
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.Loader])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.Outside])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = null!)));

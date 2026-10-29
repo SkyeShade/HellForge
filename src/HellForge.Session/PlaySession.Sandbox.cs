@@ -102,7 +102,7 @@ sealed partial class PlaySession
             SandboxProtocol.Within(Path.Combine(hostInstall, "temp", "mod-builds"), hostPath);
         if (!allowed || !(File.Exists(hostPath) || Directory.Exists(hostPath)))
             throw new SessionFailure("The sandbox request named an input outside the mod, loader and session-host folders: " + hostPath);
-        if (!sandboxBinds.Contains(hostPath, StringComparer.Ordinal)) sandboxBinds.Add(hostPath);
+        SandboxProtocol.AddBind(sandboxBinds, hostPath);
     }
 
     string PrepareProfileFolder()

@@ -32,8 +32,9 @@ static void usage(const char *program)
         "--session is a run folder below <installation>/logs/sessions. --prefix is the Steam compatdata folder that holds\n"
         "pfx/ (STEAM_COMPAT_DATA_PATH), not the Wine prefix itself. --bind-ro exposes an existing link-free file or folder\n"
         "read-only at the same path; it must be below mods/ or temp/mod-builds/, or be the exact app/session folder or mod\n"
-        "loader. The command must be an exposed system or Proton program. --session, --prefix and a command containing /\n"
-        "are resolved against the caller's current folder; the command runs with its working directory set to the session's\n"
+        "loader. A bind covered by an earlier bind is skipped. The command must be an exposed system or Proton program.\n"
+        "--session, --prefix and a command containing / are resolved against the caller's current folder; the command runs\n"
+        "with its working directory set to the session's\n"
         "game folder. --self-test-dir defaults to the current folder and must not be under /tmp, /dev/shm, /run or /usr.\n",
         program, program);
 }

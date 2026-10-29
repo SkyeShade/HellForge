@@ -489,6 +489,60 @@ static int bind_extra_readonly(struct hf_sandbox *sandbox, const char *path)
     return bind_readonly(sandbox, path, path);
 }
 
+// Component-aware sort: '/' ranks below every other byte, so a folder and all its contents are adjacent.
+static int compare_extra_bind_paths(const void *left, const void *right)
+{
+    const char *a = *(const char *const *)left;
+    const char *b = *(const char *const *)right;
+    while (*a != '\0' && *b != '\0')
+    {
+        unsigned char left_char = (unsigned char)*a;
+        unsigned char right_char = (unsigned char)*b;
+        if (left_char == right_char)
+        {
+            a++;
+            b++;
+            continue;
+        }
+        if (left_char == '/') return -1;
+        if (right_char == '/') return 1;
+        return left_char < right_char ? -1 : 1;
+    }
+    if (*a == *b) return 0;
+    return *a == '\0' ? -1 : 1;
+}
+
+// The validated request's exact mod folders, source-built DLLs, loader and session host. Sort so a folder is mounted
+// before its contents; a file already visible through an earlier folder bind is skipped with a note.
+static int mount_extra_binds(struct hf_sandbox *sandbox)
+{
+    if (sandbox->extra_bind_count > HF_MAX_EXTRA_BINDS)
+        return hf_fail_msg("too many extra read-only binds");
+    for (int index = 0; index < sandbox->extra_bind_count; index++)
+    {
+        const char *path = sandbox->extra_binds[index];
+        if (path == NULL) return hf_fail_msg("an extra read-only bind is missing its path");
+        if (!hf_extra_bind_allowed(sandbox, path))
+            return hf_fail_msg("an extra read-only bind is not an allowed link-free file or folder: %s", path);
+    }
+    if (sandbox->extra_bind_count > 1)
+        qsort(sandbox->extra_binds, (size_t)sandbox->extra_bind_count, sizeof(sandbox->extra_binds[0]),
+            compare_extra_bind_paths);
+    const char *covering = NULL;
+    for (int index = 0; index < sandbox->extra_bind_count; index++)
+    {
+        const char *path = sandbox->extra_binds[index];
+        if (covering != NULL && path_covers(covering, path))
+        {
+            hf_note("extra read-only bind %s is covered by %s; skipping it", path, covering);
+            continue;
+        }
+        if (bind_extra_readonly(sandbox, path) != 0) return 1;
+        covering = path;
+    }
+    return 0;
+}
+
 static int mount_payload(struct hf_sandbox *sandbox)
 {
     if (sandbox->proton_root[0] != '\0' && bind_readonly(sandbox, sandbox->proton_root, sandbox->proton_root) != 0) return 1;
@@ -497,10 +551,8 @@ static int mount_payload(struct hf_sandbox *sandbox)
     if (sandbox->shader_cache[0] != '\0' && bind_writable_dir(sandbox, sandbox->shader_cache, sandbox->shader_cache) != 0) return 1;
     if (bind_readonly(sandbox, sandbox->game, sandbox->game) != 0) return 1;
     if (bind_writable_dir(sandbox, sandbox->game_out, sandbox->game_out) != 0) return 1;
-    // The validated request's exact mod folders, source-built DLLs, loader and session host. They are mounted at their
-    // real host paths, which are also the Z: paths the loader plan and the domain-host command use.
-    for (int index = 0; index < sandbox->extra_bind_count; index++)
-        if (bind_extra_readonly(sandbox, sandbox->extra_binds[index]) != 0) return 1;
+    // The validated request's exact mod folders, source-built DLLs, loader and session host, at their real host paths.
+    if (mount_extra_binds(sandbox) != 0) return 1;
     // Vulkan's implicit layer manifests live under XDG_DATA_HOME. Bind the host's folder read-only over the session's
     // data home; the manifest's libraries are under the Steam runtime paths bound above.
     if (bind_vulkan_layers(sandbox) != 0) return 1;

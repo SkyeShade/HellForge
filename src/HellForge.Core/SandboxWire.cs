@@ -208,9 +208,8 @@ public static class SandboxProtocol
         foreach (var value in values)
         {
             var path = HostPath(value, prefix, "read-only bind");
-            if (binds.Contains(path, StringComparer.Ordinal)) throw new InvalidDataException("The sandbox request names a read-only bind twice: " + path);
             if (!AllowedBind(install, path)) throw new InvalidDataException("The sandbox request asks for a read-only bind outside the mod, loader and session-host folders: " + path);
-            binds.Add(path);
+            AddBind(binds, path);
         }
         if (!binds.Contains(Path.Combine(install.App, "session"), StringComparer.Ordinal))
             throw new InvalidDataException("The sandbox request does not expose the installed session host.");
@@ -284,6 +283,16 @@ public static class SandboxProtocol
         var builds = Path.TrimEndingDirectorySeparator(Path.Combine(install.Temp, "mod-builds"));
         if (!Within(mods, path) && !Within(builds, path)) return false;
         return File.Exists(path) || Directory.Exists(path);
+    }
+
+    // A folder already covers its files. Keep one bind per covered path, sorted, so the request is deterministic.
+    public static void AddBind(List<string> binds, string path)
+    {
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (binds.Any(existing => Within(existing, path))) return;
+        binds.RemoveAll(existing => Within(path, existing));
+        binds.Add(path);
+        binds.Sort(StringComparer.Ordinal);
     }
 
     public static bool Within(string root, string path)

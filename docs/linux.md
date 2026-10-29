@@ -444,9 +444,10 @@ process.
 `hf-sandbox --session <run folder> --prefix <prefix> -- <command>` makes a new user and mount namespace and runs the
 command in a view built for it. Each step fails closed: if one fails, it prints the reason and the command does not run.
 The supervisor passes the exact active mod folders, source-built DLLs, the mod loader and `app/session` as read-only
-`--bind-ro` inputs. The native side repeats the allow list, refuses any link in a bind path, and refuses the installation,
-real prefix, session folder, real home or any folder above them. There is no command string and no shell: the request
-names fixed paths and an environment allowlist.
+`--bind-ro` inputs. The supervisor drops a bind equal to or inside an earlier bind; hf-sandbox skips one again if a
+caller bypasses that check, so a mod folder covers the DLLs inside it. The native side repeats the allow list, refuses
+any link in a bind path, and refuses the installation, real prefix, session folder, real home or any folder above them.
+There is no command string and no shell: the request names fixed paths and an environment allowlist.
 
 - **Prefix:** the command gets a per-session overlay of the Wine prefix. The real prefix is its read-only lower layer,
   and everything written to `C:` lands in the run folder's `sandbox/upper`, outside the view. An installation inside

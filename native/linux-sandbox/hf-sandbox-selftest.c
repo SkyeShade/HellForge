@@ -235,15 +235,19 @@ static void check_seccomp_gaps(void)
 
 static void check_extra_bind_view(const struct hf_sandbox *sandbox)
 {
-    char folder[PATH_MAX], file[PATH_MAX];
+    char folder[PATH_MAX], file[PATH_MAX], nested_folder[PATH_MAX], nested_file[PATH_MAX];
     if (hf_join3(folder, sizeof(folder), sandbox->install, "mods", "allowed") != 0 ||
-        hf_join(file, sizeof(file), folder, "allowed.txt") != 0)
+        hf_join(file, sizeof(file), folder, "allowed.txt") != 0 ||
+        hf_join3(nested_folder, sizeof(nested_folder), sandbox->install, "mods", "x") != 0 ||
+        hf_join(nested_file, sizeof(nested_file), nested_folder, "x.dll") != 0)
     {
         report("extra bind", false, "a canary path is too long");
         return;
     }
     expect_read("extra bind read", file, "allowed");
     expect_denied("extra bind write", file);
+    expect_read("extra bind nested read", nested_file, "allowed");
+    expect_denied("extra bind nested write", nested_file);
 }
 
 static void run_canaries(const struct hf_sandbox *sandbox)
@@ -370,7 +374,7 @@ static int prepare_tree(const char *directory, char *temporary, size_t size, cha
     const char *dirs[] =
     {
         HOST_INSTALL "/game/data", HOST_INSTALL "/profiles/default", HOST_INSTALL "/mods",
-        HOST_INSTALL "/mods/allowed", HOST_INSTALL "/userdata", HOST_INSTALL "/account-snapshot", "outside",
+        HOST_INSTALL "/mods/allowed", HOST_INSTALL "/mods/x", HOST_INSTALL "/userdata", HOST_INSTALL "/account-snapshot", "outside",
     };
     for (size_t index = 0; index < sizeof(dirs) / sizeof(dirs[0]); index++)
         if (make_tree_dir(temporary, dirs[index]) != 0) return 1;
@@ -382,6 +386,7 @@ static int prepare_tree(const char *directory, char *temporary, size_t size, cha
         { HOST_INSTALL "/profiles/default/settings.ini", "profile" },
         { HOST_INSTALL "/mods/mod.txt", "mod" },
         { HOST_INSTALL "/mods/allowed/allowed.txt", "allowed" },
+        { HOST_INSTALL "/mods/x/x.dll", "allowed" },
         { HOST_INSTALL "/userdata/save.dat", "save" },
         { HOST_INSTALL "/account-snapshot/seal.key", "seal" },
         { "prefix/pfx/system.reg", "REAL-PREFIX" },
@@ -410,7 +415,7 @@ static void check_host_tree(const char *temporary)
         HOST_INSTALL "/profiles/default/settings.ini", HOST_INSTALL "/mods/mod.txt",
         HOST_INSTALL "/userdata/save.dat", HOST_INSTALL "/account-snapshot/seal.key",
         HOST_INSTALL "/launcher-settings.json", HOST_INSTALL "/game/data/keep.txt",
-        HOST_INSTALL "/hellforge-install.json", HOST_INSTALL "/mods/allowed/allowed.txt",
+        HOST_INSTALL "/hellforge-install.json", HOST_INSTALL "/mods/allowed/allowed.txt", HOST_INSTALL "/mods/x/x.dll",
     };
     bool present = true;
     char path[PATH_MAX];
@@ -435,8 +440,11 @@ static void check_bind_rule(const char *name, const struct hf_sandbox *sandbox, 
 
 static void check_extra_bind_rules(const char *temporary, const struct hf_sandbox *sandbox)
 {
-    char allowed[PATH_MAX], link_path[PATH_MAX], linked[PATH_MAX], profiles[PATH_MAX];
+    char allowed[PATH_MAX], nested_folder[PATH_MAX], nested_file[PATH_MAX];
+    char link_path[PATH_MAX], linked[PATH_MAX], profiles[PATH_MAX];
     if (hf_join3(allowed, sizeof(allowed), sandbox->install, "mods", "allowed") != 0 ||
+        hf_join3(nested_folder, sizeof(nested_folder), sandbox->install, "mods", "x") != 0 ||
+        hf_join(nested_file, sizeof(nested_file), nested_folder, "x.dll") != 0 ||
         hf_join(link_path, sizeof(link_path), temporary, "mod-link") != 0 ||
         hf_join(linked, sizeof(linked), link_path, "allowed") != 0 ||
         hf_join(profiles, sizeof(profiles), sandbox->install, "profiles") != 0)
@@ -451,6 +459,8 @@ static void check_extra_bind_rules(const char *temporary, const struct hf_sandbo
     check_bind_rule("extra bind installation", sandbox, sandbox->install, false);
     check_bind_rule("extra bind profiles", sandbox, profiles, false);
     check_bind_rule("extra bind mods", sandbox, allowed, true);
+    check_bind_rule("extra bind nested mod", sandbox, nested_folder, true);
+    check_bind_rule("extra bind nested file", sandbox, nested_file, true);
 }
 
 static int verify_after(const char *temporary, const struct hf_sandbox *sandbox)
@@ -564,18 +574,22 @@ int hf_run_self_test(const char *directory)
     struct hf_sandbox sandbox;
     memset(&sandbox, 0, sizeof(sandbox));
     char allowed_bind[PATH_MAX] = "";
-    char *extra_binds[] = { allowed_bind };
+    char nested_folder_bind[PATH_MAX] = "";
+    char nested_file_bind[PATH_MAX] = "";
+    char *extra_binds[] = { nested_file_bind, allowed_bind, nested_folder_bind };
     snprintf(sandbox.selftest_tmp_canary, sizeof(sandbox.selftest_tmp_canary), "%s", host_tmp);
     snprintf(sandbox.selftest_shm_canary, sizeof(sandbox.selftest_shm_canary), "%s", host_shm);
     if (hf_prepare_selftest_paths(&sandbox, temporary) != 0 || hf_create_session_dirs(&sandbox) != 0 ||
         hf_prepare_session_home(&sandbox) != 0 ||
-        hf_join3(allowed_bind, sizeof(allowed_bind), sandbox.install, "mods", "allowed") != 0)
+        hf_join3(allowed_bind, sizeof(allowed_bind), sandbox.install, "mods", "allowed") != 0 ||
+        hf_join3(nested_folder_bind, sizeof(nested_folder_bind), sandbox.install, "mods", "x") != 0 ||
+        hf_join(nested_file_bind, sizeof(nested_file_bind), nested_folder_bind, "x.dll") != 0)
     {
         clean_up(temporary, host_tmp, host_shm);
         return 1;
     }
     sandbox.extra_binds = extra_binds;
-    sandbox.extra_bind_count = 1;
+    sandbox.extra_bind_count = 3;
     failures = 0;
     check_host_tree(temporary);
     check_extra_bind_rules(temporary, &sandbox);
