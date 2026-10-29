@@ -14,6 +14,12 @@ On `dev`, since 0.3.0-beta.
   The game puts all its location clusters on one circle at 60-80 % of the map's radius, and the locations stay as
   many and as far apart as on a level-10 map. Every other cluster now goes on an inner circle at level 10's distance,
   so the middle has bases again. Every player still generates the same map from the same seed.
+- Towns on difficulty 11's larger maps were sparse: most of a town's buildings may only stand inside the level's
+  playable radius, and on larger maps many towns sit between it and the border. They now build up to the border, as
+  the enemies there already spawn (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius, for comparing).
+- A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
+  separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
+  does, and the session log counts them.
 
 ## 0.3.0-beta (2026-10-26)
 

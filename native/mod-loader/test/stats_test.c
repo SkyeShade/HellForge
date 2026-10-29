@@ -344,6 +344,11 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CLUSTER_RING, kClusterRingPin, 5);
     memcpy(game + DIF_CLUSTER_X, kClusterXPin, 8);
     memcpy(game + DIF_CLUSTER_Y, kClusterYPin, 8);
+    for (int i = 0; i < 5; i++) memcpy(game + kTownBorderSites[i].site, kTownBorderSites[i].pin, kTownBorderSites[i].length);
+    for (int i = 0; i < 2; i++) memcpy(game + kTownRefusals[i].site, kTownRefusals[i].pin, 6);
+    memcpy(game + DIF_TOWN_PLACED, kTownPlacedPin, 5);
+    memcpy(game + DIF_TOWN_MERGE, kTownMergePin, 7);
+    memcpy(game + DIF_RECORD_STORE, kRecordStorePin, 7);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1250,6 +1255,142 @@ static void ClusterRingsFixture(void)
     assert(flag(pass, 0, 600.0f, 0.7f) == 0);
     g_difficulty.mapScale = savedScale;
     VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* Towns on larger maps (InstallTowns), run as machine code: every site's own bytes at its RVA in a fake game.dll, a
+ * harness jumping in and code at its exits. The five placers multiply by the border on a larger map, by R otherwise
+ * (and always with HELLFORGE_D11_TOWN_BORDER=0); the refusals and placements are counted and go where they went; the
+ * merge drops a job's results past the location list's capacity; a null record slot is skipped and counted. */
+typedef float (*TownPlacerFn)(const uint8_t* base, float value);
+typedef int (*TownIntFn)(uintptr_t a, uint32_t b, uintptr_t c);
+
+static uintptr_t TownGame(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1400000, MEM_RESERVE, PAGE_NOACCESS);
+    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
+    for (size_t i = 0; i < sizeof pages / sizeof pages[0]; i++)
+        assert(VirtualAlloc((void*)(game + pages[i]), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    return game;
+}
+
+static void TownPut(uintptr_t game, uint32_t rva, const uint8_t* code, size_t length) { memcpy((void*)(game + rva), code, length); }
+
+/* A harness at rva: its code, then jmp game+site. */
+static void TownHarness(uintptr_t game, uint32_t rva, const uint8_t* code, size_t length, uint32_t site)
+{
+    uint8_t* h = (uint8_t*)(game + rva);
+    memcpy(h, code, length);
+    h[length] = 0xE9;
+    int32_t rel = (int32_t)(int64_t)(game + site - (uintptr_t)(h + length + 5));
+    memcpy(h + length + 1, &rel, 4);
+}
+
+static void TownsFixtureOnce(int border)
+{
+    uintptr_t game = TownGame();
+    for (int i = 0; i < 5; i++) TownPut(game, kTownBorderSites[i].site, kTownBorderSites[i].pin, kTownBorderSites[i].length);
+    for (int i = 0; i < 2; i++) TownPut(game, kTownRefusals[i].site, kTownRefusals[i].pin, 6);
+    TownPut(game, DIF_TOWN_PLACED, kTownPlacedPin, 5);
+    TownPut(game, DIF_TOWN_MERGE, kTownMergePin, 7);
+    TownPut(game, DIF_RECORD_STORE, kRecordStorePin, 7);
+    assert(TownPinsFailed(game) == NULL);
+    /* the placers' harnesses (0x13F0000 + 0x40 i): push rsi; mov rsi, rcx; sub rsp, 0x28; keep xmmN; xmmN = value; the
+     * site; at its back: xmm0 = xmmN, restore, return. {save, set, out, restore} for xmm8, 9, 9, 6, 7 */
+    static const uint8_t save[5][6] = {{0x44, 0x0F, 0x11, 0x44, 0x24, 0x10}, {0x44, 0x0F, 0x11, 0x4C, 0x24, 0x10}, {0x44, 0x0F, 0x11, 0x4C, 0x24, 0x10},
+        {0x90, 0x0F, 0x11, 0x74, 0x24, 0x10}, {0x90, 0x0F, 0x11, 0x7C, 0x24, 0x10}};
+    static const uint8_t set[5][4] = {{0x44, 0x0F, 0x28, 0xC1}, {0x44, 0x0F, 0x28, 0xC9}, {0x44, 0x0F, 0x28, 0xC9}, {0x90, 0x0F, 0x28, 0xF1}, {0x90, 0x0F, 0x28, 0xF9}};
+    static const uint8_t out[5][4] = {{0x41, 0x0F, 0x28, 0xC0}, {0x41, 0x0F, 0x28, 0xC1}, {0x41, 0x0F, 0x28, 0xC1}, {0x90, 0x0F, 0x28, 0xC6}, {0x90, 0x0F, 0x28, 0xC7}};
+    static const uint8_t restore[5][6] = {{0x44, 0x0F, 0x10, 0x44, 0x24, 0x10}, {0x44, 0x0F, 0x10, 0x4C, 0x24, 0x10}, {0x44, 0x0F, 0x10, 0x4C, 0x24, 0x10},
+        {0x90, 0x0F, 0x10, 0x74, 0x24, 0x10}, {0x90, 0x0F, 0x10, 0x7C, 0x24, 0x10}};
+    for (int i = 0; i < 5; i++)
+    {
+        uint8_t in[20] = {0x56, 0x48, 0x89, 0xCE, 0x48, 0x83, 0xEC, 0x28}, back[20];
+        memcpy(in + 8, save[i], 6);
+        memcpy(in + 14, set[i], 4);
+        TownHarness(game, 0x13F0000u + 0x40u * (uint32_t)i, in, 18, kTownBorderSites[i].site);
+        memcpy(back, out[i], 4);
+        memcpy(back + 4, restore[i], 6);
+        static const uint8_t end[] = {0x48, 0x83, 0xC4, 0x28, 0x5E, 0xC3};
+        memcpy(back + 10, end, sizeof end);
+        TownPut(game, kTownBorderSites[i].back, back, 16);
+    }
+    /* the refusals: cmp ecx, edx; the site; on: eax 1, refused: eax 2. The placed: the site; the placer returns 7 */
+    static const uint8_t compare[] = {0x39, 0xD1}, one[] = {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}, two[] = {0xB8, 0x02, 0x00, 0x00, 0x00, 0xC3};
+    static const uint8_t seven[] = {0xB8, 0x07, 0x00, 0x00, 0x00, 0xC3}, ret[] = {0xC3};
+    for (int i = 0; i < 2; i++)
+    {
+        TownHarness(game, 0x13F0200u + 0x20u * (uint32_t)i, compare, sizeof compare, kTownRefusals[i].site);
+        TownPut(game, kTownRefusals[i].site + 6, one, sizeof one);
+    }
+    TownPut(game, kTownRefusals[0].target, two, sizeof two);
+    TownHarness(game, 0x13F0280u, ret, 0, DIF_TOWN_PLACED);
+    TownPut(game, DIF_TOWN_PLACED_CALL, seven, sizeof seven);
+    TownPut(game, DIF_TOWN_PLACED + 5, ret, 1);
+    /* the merge: push r13; push rdi; sub rsp, 0xa8; [rsp+0xa0] = the record; r13d = the count; rdi = the job; the site;
+     * on: eax 1, dropped: eax 2 */
+    static const uint8_t mergeIn[] = {0x41, 0x55, 0x57, 0x48, 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x48, 0x89, 0x8C, 0x24, 0xA0, 0x00, 0x00, 0x00,
+        0x41, 0x89, 0xD5, 0x4C, 0x89, 0xC7};
+    static const uint8_t mergeOn[] = {0xB8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00, 0x5F, 0x41, 0x5D, 0xC3};
+    uint8_t mergeDrop[sizeof mergeOn];
+    memcpy(mergeDrop, mergeOn, sizeof mergeOn);
+    mergeDrop[1] = 2;
+    TownHarness(game, 0x13F0300u, mergeIn, sizeof mergeIn, DIF_TOWN_MERGE);
+    TownPut(game, DIF_TOWN_MERGE + 7, mergeOn, sizeof mergeOn);
+    TownPut(game, DIF_TOWN_MERGE_DROP, mergeDrop, sizeof mergeDrop);
+    /* the record store: push rdi; push rbx; ebx = r8d; edi = edx; r8 = rcx (the slot); the site; on: pop, pop, ret */
+    static const uint8_t storeIn[] = {0x57, 0x53, 0x44, 0x89, 0xC3, 0x89, 0xD7, 0x49, 0x89, 0xC8}, storeOn[] = {0x5B, 0x5F, 0xC3};
+    TownHarness(game, 0x13F0400u, storeIn, sizeof storeIn, DIF_RECORD_STORE);
+    TownPut(game, DIF_RECORD_STORE + 7, storeOn, sizeof storeOn);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", border ? NULL : L"0");
+    DifficultyInstall d = {game};
+    d.disk = 1022.0f;
+    assert(InstallTowns(&d) == NULL && g_townCounters != NULL);
+    uint8_t base[0x60] = {0};
+    float r = 2.0f, edge = 3.0f, disk = d.disk / 1024.0f, other = 680.0f / 1024.0f;
+    memcpy(base + 0x50, &r, 4);
+    memcpy(base + 0x54, &edge, 4);
+    for (int i = 0; i < 5; i++)
+    {
+        TownPlacerFn placer = (TownPlacerFn)(void*)(game + 0x13F0000u + 0x40u * (uint32_t)i);
+        memcpy(base + 0x5C, &disk, 4);
+        assert(placer(base, 10.0f) == (border ? 30.0f : 20.0f)); /* a larger map: the border (or R when switched off) */
+        memcpy(base + 0x5C, &other, 4);
+        assert(placer(base, 10.0f) == 20.0f);                   /* another map: R */
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        TownIntFn refusal = (TownIntFn)(void*)(game + 0x13F0200u + 0x20u * (uint32_t)i);
+        LONG before = g_townCounters[kTownRefusals[i].counter];
+        assert(refusal(1, 5, 0) == 1 && refusal(5, 1, 0) == 2 && refusal(9, 2, 0) == 2);
+        assert(g_townCounters[kTownRefusals[i].counter] == before + 2);
+    }
+    TownIntFn placed = (TownIntFn)(void*)(game + 0x13F0280u);
+    assert(placed(0, 0, 0) == 7 && placed(0, 0, 0) == 7 && g_townCounters[0] == 2);
+    uint8_t record[0x300] = {0}, job[0x40] = {0};
+    uint32_t capacity = 8192;
+    memcpy(record + 0x278, &capacity, 4);
+    TownIntFn merge = (TownIntFn)(void*)(game + 0x13F0300u);
+    assert(merge((uintptr_t)record, 100, (uintptr_t)job) == 1 && merge((uintptr_t)record, 8191, (uintptr_t)job) == 1);
+    assert(merge((uintptr_t)record, 8192, (uintptr_t)job) == 2 && merge((uintptr_t)record, 9000, (uintptr_t)job) == 2 && g_townCounters[3] == 2);
+    TownIntFn store = (TownIntFn)(void*)(game + 0x13F0400u);
+    uint32_t slot[2] = {0, 0};
+    store((uintptr_t)slot, 77, 0xABCD); /* (slot, edi = the record, ebx = the key) */
+    assert(slot[0] == 0xABCD && slot[1] == 77 && g_townCounters[4] == 0);
+    store(0, 77, 0xABCD);
+    assert(g_townCounters[4] == 1);
+    SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", NULL);
+    g_difficulty.mapScale = savedScale;
+    g_townCounters = NULL;
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+static void TownsFixture(void)
+{
+    TownsFixtureOnce(1);
+    TownsFixtureOnce(0);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -3419,6 +3560,7 @@ int main(int argc, char** argv)
     }
     DifficultyFixture();
     ClusterRingsFixture();
+    TownsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {

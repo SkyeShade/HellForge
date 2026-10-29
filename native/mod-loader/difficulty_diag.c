@@ -461,6 +461,22 @@ static int WatchRestarts(void)
 
 /* Polled by the loader's thread: logs each level generation restart (which pass failed, at which difficulty, how many
  * times for that level). The first 40. */
+/* Towns (difficulty_towns.c): once a generation's counts hold still for a tick, what it added since the last line. */
+static void WatchTowns(void)
+{
+    static LONG logged[DIF_TOWN_COUNTERS], seen[DIF_TOWN_COUNTERS];
+    if (g_townCounters == NULL) return;
+    LONG now[DIF_TOWN_COUNTERS];
+    for (int i = 0; i < DIF_TOWN_COUNTERS; i++) now[i] = g_townCounters[i];
+    int moving = memcmp(now, seen, sizeof now) != 0, fresh = memcmp(now, logged, sizeof now) != 0;
+    memcpy(seen, now, sizeof now);
+    if (moving || !fresh) return;
+    Note("difficulty: towns: %ld building(s) placed; %ld position(s) refused past the playable radius and their rule's reach, "
+        "%ld with the location list full; the subregion merge dropped %ld; %ld destructible(s) left without a record (map full)",
+        now[0] - logged[0], now[1] - logged[1], now[2] - logged[2], now[3] - logged[3], now[4] - logged[4]);
+    memcpy(logged, now, sizeof now);
+}
+
 static void DifficultyWatch(void)
 {
     static int logged;
@@ -470,6 +486,7 @@ static void DifficultyWatch(void)
     WatchMixes();
     WatchOutposts();
     WatchFootprints();
+    WatchTowns();
     WatchNavGrid();
     if (logged >= 40) return;
     logged += WatchLevel();
