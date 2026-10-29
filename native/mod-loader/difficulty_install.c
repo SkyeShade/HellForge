@@ -29,7 +29,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     WidenMissionRanges, InstallBoard, InstallSpreadGuard, InstallHashInsertGuard, MixStep, InstallGrant, InstallRadar,
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
-    InstallClusterGuards, InstallAppendGuards, InstallFootprintWatch, InstallNavGrid,             /* a map_scale above 1 */
+    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
 
