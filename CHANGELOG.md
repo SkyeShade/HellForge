@@ -24,6 +24,9 @@ On `dev`, since 0.3.0-beta.
   town cell still used level 10's size, so two other cells sat between every pair of town cells and each was
   flattened on its own; the ring now uses the larger cells' size, so a town's cells touch and form one flat area
   (`HELLFORGE_D11_TOWN_NOISE=0` and `HELLFORGE_D11_TOWN_RING=0` keep the old behaviour, for comparing).
+- On the war table, a difficulty 11 map's low ground sank into the table at the drop zone view and showed black until
+  zoomed in: the hologram lifts the terrain by its scale, a formula made for level 10's scales only. It now reads the
+  scale a level-10 map would have, so every map sits above the table as at level 10.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.

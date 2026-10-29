@@ -380,6 +380,7 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 5; i++) memcpy(game + kLevelInPlace[i].rva, kLevelInPlace[i].pin, kLevelInPlace[i].length);
     game[DIF_HUD_TARGET_SIB] = 0x8D;
     for (int i = 0; i < 4; i++) memcpy(game + kHoloStubs[i].site, kHoloStubs[i].pin, kHoloStubs[i].length);
+    memcpy(game + DIF_HOLO_LIFT_SITE, kHoloLiftPin, 8);
     for (int i = 0; i < 3; i++) memcpy(game + kIconSites[i].read, kIconSites[i].pin, 20);
     memcpy(game + DIF_MAPVIEW_MIN, kMapViewMinPin, 9); memcpy(game + DIF_MAPVIEW_CAP, kMapViewCapPin, 9);
     for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++) memcpy(game + kLocationRefs[i].rva + kLocationRefs[i].at, &kLocationRefs[i].value, 4);
@@ -757,6 +758,16 @@ static void DifficultyFixture(void)
                 if (kHoloStubs[i].slots[j].target == 4) assert(target == game + kHoloStubs[i].site + kHoloStubs[i].length);
                 else assert(*(float*)target == expect[kHoloStubs[i].slots[j].target]);
             }
+        }
+        /* The hologram's terrain height reads the scale / k: its stub, constants and way back. */
+        {
+            memcpy(&rel, game + DIF_HOLO_LIFT_SITE + 1, 4);
+            uint8_t* lift = game + DIF_HOLO_LIFT_SITE + 5 + rel;
+            assert(game[DIF_HOLO_LIFT_SITE] == 0xE9 && game[DIF_HOLO_LIFT_SITE + 7] == 0x90 && !memcmp(lift, kHoloLiftPin, 8));
+            const uint8_t at[3] = {12, 28, 36};
+            const float expect[3] = {0.19f, 0.45f, 1.0f};
+            for (int j = 0; j < 3; j++) { memcpy(&rel, lift + at[j], 4); assert(*(float*)(lift + at[j] + 4 + rel) == expect[j]); }
+            memcpy(&rel, lift + 45, 4); assert(lift + 49 + rel == game + DIF_HOLO_LIFT_BACK);
         }
         /* Per-level readers: the 15 loads go through stubs (the load, a clamp to 10, back); the in-place clamps. */
         for (int i = 0; i < DIF_LEVEL_LOADS; i++)
