@@ -60,8 +60,8 @@ Write-Output 'Publishing launcher-linux'
 dotnet publish (Join-Path $project 'src/HellForge.Launcher/HellForge.Launcher.csproj') -c Release -r linux-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'launcher-linux')
 if($LASTEXITCODE){throw 'Publishing launcher-linux failed.'}
 # app/capture-linux: the same capture logic as a native Linux program. It runs unprivileged; the installed
-# linux/capture-helper.sh owns /etc/hosts and the 127.0.0.1:443 relay, and the supervisor uses Wine's reg.exe only for the
-# game prefix's Root store.
+# linux/capture-helper.sh owns /etc/hosts and runs the installed root-owned capture-relay for the 127.0.0.1:443 relay, and
+# the supervisor uses Wine's reg.exe only for the game prefix's Root store.
 Write-Output 'Publishing capture-linux'
 dotnet publish (Join-Path $project 'src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj') -c Release -f net10.0 -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'capture-linux')
 if($LASTEXITCODE){throw 'Publishing capture-linux failed.'}
@@ -170,6 +170,11 @@ $sandbox=Join-Path $linuxTarget 'hf-sandbox'
     (Join-Path $sandboxFolder 'hf-sandbox-domain.c') (Join-Path $sandboxFolder 'hf-sandbox-view.c') `
     (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
+# Sync Inventory's 443 relay: one static program built the same way, installed root-owned beside capture-helper.sh by
+# allow-capture.sh and executed only from /usr/local/lib/hellforge, never from the Wine-writable installation.
+$captureRelay=Join-Path $linuxTarget 'capture-relay'
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s (Join-Path $project 'native/linux-capture/capture-relay.c') -o $captureRelay
+if($LASTEXITCODE -or -not(Test-Path -LiteralPath $captureRelay)){throw 'Building the Linux capture relay failed.'}
 # "HellForge.exe" at the top of the installation starts app\launcher\HellForge.Launcher.exe (native/launcher-stub).
 $stub=Join-Path $staging 'HellForge.exe'
 & $zig cc -target x86_64-windows-gnu -O2 -Wall -Werror -Wno-unused-parameter -municode '-Wl,--subsystem,windows' -s (Join-Path $project 'native/launcher-stub/launcher_stub.c') `

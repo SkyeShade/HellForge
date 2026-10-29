@@ -24,8 +24,8 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
 - These programs: `ip` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from procps) and `bsdtar`.
   `bsdtar` is needed only to add `.7z` or `.rar` mods. The Steam bridge is HellForge's own native program
-  (`app/cli-linux/HellForge.Cli steam-bridge`), so `socat` is not needed for setup or a session; the optional
-  [account-sync](#account-sync) helper still uses it.
+  (`app/cli-linux/HellForge.Cli steam-bridge`), and [account sync](#account-sync) uses HellForge's own native relay, so
+  `socat` is not needed for setup, a session or account sync.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
@@ -93,7 +93,7 @@ default is `~/.local/share/hellforge-prefix`. When the prefix has no HellForge l
 while the game copy is incomplete. The installer checks the package's required entries before it prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
 `app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-sandbox-probe`,
-`app/linux/allow-capture.sh` or `app/linux/capture-helper.sh`.
+`app/linux/allow-capture.sh`, `app/linux/capture-helper.sh`, `app/linux/capture-relay` or `app/linux/hf-sandbox`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -243,6 +243,11 @@ wineserver of the prefix still running outside it, and refuses to start while on
 the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the
 game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
+Proton is bounded by `HELLFORGE_PROTON_TIMEOUT` (default `HELLFORGE_WAIT_TIMEOUT`, 12 hours). When that expires,
+`hf-inner.sh` runs the session Proton's `wineserver -k` for the session's prefix and then ends any game or backend
+process of the installation it finds, with a bounded TERM-then-KILL scan, so a game that outlived Proton's script does
+not keep running in the namespace.
+
 For a session, `hf-inner.sh` also gives the game the shader caches Steam gives it: the folder
 `steamapps/shadercache/553850` in the Steam library that has HELLDIVERS 2, with the same NVIDIA, Mesa, AMD and DXVK
 cache variables Steam sets. The game then reuses the shaders Steam has already compiled for it (and, on a Steam Deck, the
@@ -296,7 +301,6 @@ which SteamOS is not expected to have) and the account-sync helper; neither is n
 | `pgrep` (procps-ng) | waits for the live-war fetch and the mod tools | Expected, for the same reasons. |
 | `bsdtar` (libarchive) | adding `.7z` or `.rar` mods, only | Expected; without it the wrapper warns and zip and folder mods still work. |
 | `pasta` (passt), `python3` | co-op over Steam relays, only with the Settings switch on | Expected missing: neither is in Arch's base set. A solo session does not need them. |
-| `socat` | only the optional [account-sync](#account-sync) helper; the Steam bridge is native since E.5 | Not needed. The repository records a Deck without it; the Steam Machine image had it. |
 
 The Steam Machine run's `find` and `ownership` steps passed, so at least that image had the required programs and
 unprivileged user namespaces. It does not prove that a fresh Deck image is the same, or that the tester had not
@@ -444,14 +448,16 @@ sudo bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/
 ```
 
 That is the only password prompt. The installer copies `capture-helper.sh` to
-`/usr/local/lib/hellforge/capture-helper`, records its SHA-256 in `capture-helper.sha256` and adds
+`/usr/local/lib/hellforge/capture-helper` and `capture-relay` to `/usr/local/lib/hellforge/capture-relay`, records each
+installed copy's SHA-256 in `capture-helper.sha256` and `capture-relay.sha256`, and adds
 `/etc/sudoers.d/hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop` and `cleanup`
 commands, so that account needs no other password. There is no wildcard and no port argument; `start` reads the native
-proxy's pid from stdin and the relay port is fixed at 18443. Running `allow-capture.sh --remove` removes the rule, the
-helper and the hash. The helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller.
-The launcher hashes the installed copy against the one in this installation and refuses to sync if an update left the
-root copy stale, telling the player to run `allow-capture.sh` again. The helper's 443 relay uses `socat`; install it
-before the first sync. The Steam bridge no longer needs it.
+proxy's pid from stdin and the relay's ports are fixed. Running `allow-capture.sh --remove` removes the rule, the helper,
+the relay and both hashes. The helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller.
+The launcher hashes both installed copies against the ones in this installation and refuses to sync if an update left
+either root copy stale, telling the player to run `allow-capture.sh` again. `capture-relay` is a tiny static C program
+built from `native/linux-capture`; the helper runs only the installed root-owned copy, never one from the installation,
+which any Wine program can write.
 
 For the length of a sync, until the normal game exits, these change:
 
@@ -459,8 +465,9 @@ For the length of a sync, until the normal game exits, these change:
   `127.0.0.1 api.live.prod.thehelldiversgame.com`. The helper rewrites the file next to itself and moves the new file into
   place, keeping its mode, owner and SELinux label, so a kill during the write cannot leave it empty. It removes only its
   own exact marker and the mapping directly below it; a player's line that merely contains the marker text stays.
-- The helper listens on `127.0.0.1:443` and relays to `127.0.0.1:18443`, where the native proxy listens. Nothing is
-  bound beyond loopback, and the relay handles connections as `nobody` after the root helper binds the port. The relay
+- The installed relay binds `127.0.0.1:443` as root, drops to `nobody` with `setgroups`/`setgid`/`setuid` (each checked),
+  and only then accepts connections. It forwards only to `127.0.0.1:18443`, where the native proxy listens; no argument
+  can change either address or port. Nothing is bound beyond loopback, the table of connections is bounded, and the relay
   stops with the helper.
 - The proxy makes a one-day CA and writes only its public certificate to the sync folder. HellForge starts the Proton
   that Steam's `CompatToolMapping` selects for HELLDIVERS 2, not HellForge's own Proton choice, and refuses if it cannot

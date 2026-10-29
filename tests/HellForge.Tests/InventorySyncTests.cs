@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -59,7 +58,8 @@ static class InventorySyncTests
         test("The Linux supervisor refuses a running game or session, a missing helper, prefix, Proton or API address", () =>
             LinuxRefusals(root, check));
 
-        test("The Linux capture helper relays bytes both ways on loopback", () => LinuxRelay(root, check));
+        test("The Linux helper check compares the installed helper and relay with the shipped copies and their hashes", () =>
+            InstalledCopies(root, check));
 
         test("The Linux CA is the Windows Root store's serialized Blob in a UTF-16 LE registry file", () => CertificateRegistry(root, check));
 
@@ -445,105 +445,39 @@ static class InventorySyncTests
         catch (InvalidOperationException error) { return error.Message; }
     }
 
-    static void LinuxRelay(string root, Action<bool, string> check)
+    // The launcher's HelperProblem checks both root copies: the helper script and the relay it runs. InstalledCopyProblem is
+    // the shared half, exercised here with temporary files (the installed paths themselves need root).
+    static void InstalledCopies(string root, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux capture relay)"); return; }
-        var helperScript = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
-        if (!File.Exists(helperScript)) { Console.WriteLine("  (skipped: linux/capture-helper.sh is not in the test working directory)"); return; }
-        if (!HasSocat()) { Console.WriteLine("  (skipped: socat is not installed)"); return; }
-
-        static int FreePort()
+        var folder = Directory.CreateDirectory(Path.Combine(root, "installed-copies")).FullName;
+        foreach (var name in new[] { "capture helper", "capture relay" })
         {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
-        }
+            var file = name.Replace(' ', '-');
+            var shipped = Path.Combine(folder, file + ".shipped");
+            var installed = Path.Combine(folder, file);
+            var hash = installed + ".sha256";
+            File.WriteAllText(shipped, "current");
+            File.WriteAllText(installed, "current");
+            File.WriteAllText(hash, LinuxCapture.FileSha256(installed));
+            check(LinuxCapture.InstalledCopyProblem(installed, hash, shipped, name, root) == null,
+                name + ": a current installed copy was refused.");
 
-        static void ReadExactly(NetworkStream stream, byte[] buffer)
-        {
-            var read = 0;
-            while (read < buffer.Length)
-            {
-                var count = stream.Read(buffer, read, buffer.Length - read);
-                if (count == 0) throw new IOException("The relay closed before all bytes arrived.");
-                read += count;
-            }
-        }
+            File.WriteAllText(shipped, "new version");
+            check(LinuxCapture.InstalledCopyProblem(installed, hash, shipped, name, root)?.Contains(
+                "does not match this HellForge version", StringComparison.Ordinal) == true,
+                name + ": a stale installed copy was accepted.");
 
-        var target = new TcpListener(IPAddress.Loopback, 0);
-        target.Start();
-        var targetPort = ((IPEndPoint)target.LocalEndpoint).Port;
-        var listenPort = FreePort();
-        System.Diagnostics.Process? helper = null;
-        try
-        {
-            var start = new System.Diagnostics.ProcessStartInfo("bash") { UseShellExecute = false, CreateNoWindow = true };
-            start.ArgumentList.Add(helperScript);
-            start.ArgumentList.Add("relay");
-            start.ArgumentList.Add("--listen-port");
-            start.ArgumentList.Add(listenPort.ToString());
-            start.ArgumentList.Add("--target-port");
-            start.ArgumentList.Add(targetPort.ToString());
-            helper = System.Diagnostics.Process.Start(start);
-            if (helper == null) throw new Exception("The relay helper did not start.");
+            File.WriteAllText(shipped, "current");
+            File.WriteAllText(hash, new string('0', 64));
+            check(LinuxCapture.InstalledCopyProblem(installed, hash, shipped, name, root)?.Contains(
+                "recorded SHA-256", StringComparison.Ordinal) == true,
+                name + ": a wrong recorded hash was accepted.");
 
-            var accepted = target.AcceptTcpClientAsync();
-            TcpClient? client = null;
-            for (var i = 0; i < 50 && client == null; i++)
-            {
-                try { client = new TcpClient(); client.Connect(IPAddress.Loopback, listenPort); }
-                catch (SocketException)
-                {
-                    client?.Dispose();
-                    client = null;
-                    Thread.Sleep(100);
-                }
-            }
-            if (client == null) throw new Exception("No connection reached the relay.");
-            if (!accepted.Wait(5000)) throw new Exception("The relay did not connect to its target.");
-            using (client)
-            using (var server = accepted.Result)
-            {
-                client.ReceiveTimeout = 5000;
-                server.ReceiveTimeout = 5000;
-                var network = client.GetStream();
-                var targetStream = server.GetStream();
-                var ping = "ping"u8.ToArray();
-                network.Write(ping);
-                var received = new byte[ping.Length];
-                ReadExactly(targetStream, received);
-                check(received.SequenceEqual(ping), "The relay did not carry bytes to its target.");
-
-                var pong = "pong"u8.ToArray();
-                targetStream.Write(pong);
-                var returned = new byte[pong.Length];
-                ReadExactly(network, returned);
-                check(returned.SequenceEqual(pong), "The relay did not carry bytes back.");
-            }
+            File.Delete(shipped);
+            check(LinuxCapture.InstalledCopyProblem(installed, hash, shipped, name, root)?.Contains(
+                "is missing", StringComparison.Ordinal) == true,
+                name + ": a missing shipped file was accepted.");
         }
-        finally
-        {
-            target.Stop();
-            if (helper is { HasExited: false }) { try { helper.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
-            helper?.Dispose();
-        }
-    }
-
-    static bool HasSocat()
-    {
-        try
-        {
-            var start = new System.Diagnostics.ProcessStartInfo("bash") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            start.ArgumentList.Add("-c");
-            start.ArgumentList.Add("command -v socat");
-            using var process = System.Diagnostics.Process.Start(start);
-            if (process == null) return false;
-            process.WaitForExit();
-            return process.ExitCode == 0;
-        }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
     }
 
     static void HelperHosts(string root, Action<bool, string> check)

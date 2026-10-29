@@ -48,6 +48,95 @@ cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
 [ -f "$cliNative" ] || { echo "hf-inner: the native Linux build agent is missing ($cliNative): reinstall HellForge." >&2; exit 1; }
 [ -x "$cliNative" ] || chmod +x "$cliNative" 2>/dev/null || true
 [ -x "$cliNative" ] || { echo "hf-inner: the native Linux build agent is not executable: $cliNative" >&2; exit 1; }
+# Resolve before HELLFORGE_WORKING_DIRECTORY can change the working directory, so a relative PROTON still finds its
+# wineserver after a timeout.
+proton_dir="$(cd "$(dirname -- "$PROTON")" && pwd)"
+
+# Processes of this installation only. The wrapper and its parents have the Windows exe path in their arguments, so leave
+# them out. Wine shows Windows paths (with backslashes) in command lines; the environment works for both forms. This is
+# also the scan a Proton timeout uses to end what timeout(1) left behind (H.9).
+wrapper_pids=" $$"
+parent=$PPID
+while [[ "$parent" =~ ^[0-9]+$ ]] && [ "$parent" -gt 1 ]; do
+  wrapper_pids+=" $parent"
+  parent="$(ps -o ppid= -p "$parent" 2>/dev/null | tr -d '[:space:]')"
+done
+windows_install="Z:${INSTALL//\//\\}"
+case "$INSTALL" in
+  */pfx/drive_c/*)
+    windows_install="C:\\${INSTALL#*/pfx/drive_c/}"
+    windows_install="${windows_install//\//\\}"
+    ;;
+esac
+of_this_install() {
+  local pid=$1 text
+  case " $wrapper_pids " in *" $pid "*) return 1 ;; esac
+  text="$({ tr '\0' '\n' < "/proc/$pid/cmdline"; } 2>/dev/null || true)"
+  case "$text" in *"$INSTALL"*|*"$windows_install"*) return 0 ;; esac
+  text="$({ tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null || true)"
+  case $'\n'"$text"$'\n' in *$'\n'"INSTALL=$INSTALL"$'\n'*) return 0 ;; esac
+  case "$(readlink "/proc/$pid/cwd" 2>/dev/null || true)" in "$INSTALL"|"$INSTALL"/*) return 0 ;; esac
+  return 1
+}
+matching_pids() {
+  local pattern=$1 pid
+  while IFS= read -r pid; do
+    [ -n "$pid" ] && of_this_install "$pid" && printf '%s\n' "$pid"
+  done < <(pgrep -u "$(id -u)" -f "$pattern" 2>/dev/null || true)
+  return 0
+}
+matching_process() {
+  local found
+  found="$(matching_pids "$1")"
+  [ -n "$found" ]
+}
+
+# Proton uses $STEAM_COMPAT_DATA_PATH/pfx; WINEPREFIX is only the fallback (as in hellforge-offline.sh).
+if [ -n "${STEAM_COMPAT_DATA_PATH:-}" ]; then wineprefix="$STEAM_COMPAT_DATA_PATH/pfx"; else wineprefix="${WINEPREFIX:-}"; fi
+
+find_wineserver() {
+  local candidate
+  for candidate in "$proton_dir/files/bin/wineserver" "$proton_dir/dist/bin/wineserver" "$proton_dir/bin/wineserver"; do
+    [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+# timeout(1) ends Proton's script; a game that script started can outlive it in the prefix's wineserver. TERM the matching
+# process, give it five seconds, then KILL and wait five more. The whole scan is bounded to ten seconds.
+kill_leftovers() {
+  local pattern=$1 round
+  local -a victims=()
+  for round in 1 2; do
+    mapfile -t victims < <(matching_pids "$pattern")
+    [ "${#victims[@]}" -gt 0 ] || return 0
+    if [ "$round" = 1 ]; then
+      kill -TERM "${victims[@]}" 2>/dev/null || true
+    else
+      kill -KILL "${victims[@]}" 2>/dev/null || true
+    fi
+    for _ in $(seq 1 50); do
+      mapfile -t victims < <(matching_pids "$pattern")
+      [ "${#victims[@]}" -gt 0 ] || return 0
+      sleep 0.1
+    done
+  done
+  echo "hf-inner: these session processes did not end after the Proton timeout: ${victims[*]}" >&2
+  return 0
+}
+
+end_timed_out_session() {
+  local wineserver
+  echo "hf-inner: ending the session's Wine processes after the Proton timeout." >&2
+  if [ -n "$wineprefix" ] && [ -d "$wineprefix" ]; then
+    if wineserver="$(find_wineserver)"; then
+      WINEPREFIX="$wineprefix" timeout -k 2 10 "$wineserver" -k >/dev/null 2>&1 || true
+    else
+      echo "hf-inner: Proton's wineserver was not found; ending the session's leftover processes instead." >&2
+    fi
+  fi
+  kill_leftovers 'HellForge\.(Session|Cli|SteamProbe)|LocalBackend|helldivers2'
+}
 
 # Steam points the GPU driver, Mesa, DXVK and Fossilize at a per-app cache in the library that holds HELLDIVERS 2.
 # Starting Proton directly would otherwise compile into the driver's default cache instead of reusing Steam's.
@@ -193,8 +282,11 @@ proton_timeout="${HELLFORGE_PROTON_TIMEOUT:-$wait_timeout}"
 echo "hf-inner: launching $(basename -- "$program") through Proton." >&2
 proton_status=0
 if [ $# -gt 0 ]; then timeout -k 10 "$proton_timeout" "$PROTON" run "$@" || proton_status=$?; else timeout -k 10 "$proton_timeout" "$PROTON" run "$program" || proton_status=$?; fi
-if [ "$proton_status" = 124 ]; then
+# timeout(1) returns 124 when its own deadline fired. 137 means its -k then had to KILL the script; the game may still be
+# in the prefix either way, so end the prefix's wineserver and then the installation's leftovers.
+if [ "$proton_status" = 124 ] || [ "$proton_status" = 137 ]; then
   echo "hf-inner: Proton did not return within ${proton_timeout} seconds; timeout ended it." >&2
+  end_timed_out_session
 fi
 echo "Proton returned exit code $proton_status." >&2
 
@@ -214,38 +306,6 @@ fi
 # HELLFORGE_WAIT_TIMEOUT seconds (default 12 hours).
 if [ "${HELLFORGE_WAIT_FOR_PROCESSES:-1}" != 0 ]; then
   wait_started=$SECONDS
-  # Processes of this installation only. The wrapper and its parents have the Windows exe path in their arguments, so
-  # leave them out. Wine shows Windows paths (with backslashes) in command lines; the environment works for both forms.
-  wrapper_pids=" $$"
-  parent=$PPID
-  while [[ "$parent" =~ ^[0-9]+$ ]] && [ "$parent" -gt 1 ]; do
-    wrapper_pids+=" $parent"
-    parent="$(ps -o ppid= -p "$parent" 2>/dev/null | tr -d '[:space:]')"
-  done
-  windows_install="Z:${INSTALL//\//\\}"
-  case "$INSTALL" in
-    */pfx/drive_c/*)
-      windows_install="C:\\${INSTALL#*/pfx/drive_c/}"
-      windows_install="${windows_install//\//\\}"
-      ;;
-  esac
-  of_this_install() {
-    local pid=$1 text
-    case " $wrapper_pids " in *" $pid "*) return 1 ;; esac
-    text="$({ tr '\0' '\n' < "/proc/$pid/cmdline"; } 2>/dev/null || true)"
-    case "$text" in *"$INSTALL"*|*"$windows_install"*) return 0 ;; esac
-    text="$({ tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null || true)"
-    case $'\n'"$text"$'\n' in *$'\n'"INSTALL=$INSTALL"$'\n'*) return 0 ;; esac
-    case "$(readlink "/proc/$pid/cwd" 2>/dev/null || true)" in "$INSTALL"|"$INSTALL"/*) return 0 ;; esac
-    return 1
-  }
-  matching_process() {
-    local pattern=$1 pid
-    while IFS= read -r pid; do
-      [ -n "$pid" ] && of_this_install "$pid" && return 0
-    done < <(pgrep -u "$(id -u)" -f "$pattern" 2>/dev/null || true)
-    return 1
-  }
   timed_out() { [ $((SECONDS - wait_started)) -ge "$wait_timeout" ]; }
 
   if [ "$session_run" = 1 ]; then
