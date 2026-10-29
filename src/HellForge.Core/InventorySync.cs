@@ -147,7 +147,7 @@ public static class InventorySync
         gameRunning ??= IsGameRunning;
         if (LinuxCapture.RunRefusal(gameRunning(), sessionRunning) is { } running)
             throw new InvalidOperationException(running);
-        var steamRoot = SteamLocator.SteamRoot();
+        var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
         var prefix = LinuxCapture.FindPrefix(steamRoot);
         var proton = LinuxCapture.ProtonForGame(steamRoot);
         var address = LinuxCapture.CurrentAddress();

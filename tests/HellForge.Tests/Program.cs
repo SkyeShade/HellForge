@@ -170,25 +170,29 @@ Test("Linux Proton discovery chooses the newest numbered version before Experime
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "proton"), "");
     }
+    File.WriteAllText(Path.Combine(custom, "compatibilitytool.vdf"), "\"compatibilitytools\" { \"compat_tools\" { } }");
     File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
         "\"libraryfolders\" { \"0\" { \"path\" \"" + steamRoot.Replace("\\", "\\\\") + "\" } \"1\" { \"path\" \"" +
         secondary.Replace("\\", "\\\\") + "\" } }");
     var configured = Environment.GetEnvironmentVariable("PROTON");
     try
     {
+        Environment.SetEnvironmentVariable("PROTON", Path.Combine(custom, "proton"));
+        Check(SteamLocator.ProtonScript(steamRoot) == Path.Combine(custom, "proton"), "PROTON did not override the search.");
         Environment.SetEnvironmentVariable("PROTON", null);
-        Check(SteamLocator.ProtonScript(steamRoot) == Path.Combine(experimental, "proton"), "Experimental was not selected.");
-        var versions = SteamLocator.ProtonVersions(steamRoot);
+        var versions = SteamLocator.ProtonVersionsFrom(steamRoot, [], [], null);
         Check(versions.Select(version => version.ScriptPath).SequenceEqual(new[]
             { Path.Combine(custom, "proton"), Path.Combine(secondaryProton, "proton"), Path.Combine(old, "proton"),
                 Path.Combine(newest, "proton"), Path.Combine(experimental, "proton") }),
             "The chooser did not list Steam's Proton versions in sorting order: " + string.Join(", ", versions.Select(version => version.Name)));
+        Check(versions.Last().ScriptPath == Path.Combine(experimental, "proton"), "Experimental was not selected.");
         var install = new InstallLayout(Path.Combine(root, "proton-selection"));
         Directory.CreateDirectory(install.Root);
         SteamLocator.SaveProtonSelection(install, Path.Combine(old, "proton"));
         Check(SteamLocator.SelectedProtonScript(install) == Path.Combine(old, "proton"), "The selected Proton was not saved for later sessions.");
         Directory.Delete(experimental, recursive: true);
-        Check(SteamLocator.ProtonScript(steamRoot) == Path.Combine(newest, "proton"), "Version 10 did not sort after version 9.");
+        Check(SteamLocator.ProtonVersionsFrom(steamRoot, [], [], null).Last().ScriptPath == Path.Combine(newest, "proton"),
+            "Version 10 did not sort after version 9.");
     }
     finally { Environment.SetEnvironmentVariable("PROTON", configured); }
 });
@@ -665,6 +669,7 @@ LinkRuleTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);
 SteamAccountTests.Register(Test, Check, Reject, root);
+SteamPathTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);

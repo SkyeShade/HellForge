@@ -21,7 +21,7 @@ public partial class MainWindow
     void InitializeLinuxPrefixBackup(InstallLayout install)
     {
         LinuxBackupCard.IsVisible = true;
-        LinuxBackupFolder.Text = LinuxPrefixBackup.DefaultFolder(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        LinuxBackupFolder.Text = DefaultLinuxBackupFolder(install);
         LinuxBackupText.Text = "";
         LinuxBackupFolderButton.Click += async (_, _) => await ChooseLinuxBackupFolder();
         LinuxBackupButton.Click += async (_, _) => await BackupLinuxPrefix(install);
@@ -35,11 +35,21 @@ public partial class MainWindow
         };
     }
 
+    // Beside the prefix, on the drive the prefix is on; the home only when the installation is not inside a prefix.
+    static string DefaultLinuxBackupFolder(InstallLayout install)
+    {
+        try { return LinuxPrefixBackup.DefaultFolder(WinePath.PrefixFromInstallRoot(install.Root)); }
+        catch (InvalidOperationException)
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), LinuxPrefixBackup.DefaultFolderName);
+        }
+    }
+
     async Task ChooseLinuxBackupFolder()
     {
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose where prefix backups are saved (default ~/hellforge-backups)",
+            Title = "Choose where prefix backups are saved (default beside the prefix)",
             AllowMultiple = false
         });
         if (folders.Count > 0) LinuxBackupFolder.Text = folders[0].Path.LocalPath;
@@ -72,7 +82,7 @@ public partial class MainWindow
             var prepared = await Task.Run(() =>
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                LinuxPrefixBackup.CheckBackupSource(prefix, locations, SteamLocator.SteamRoot(), install.Root);
+                LinuxPrefixBackup.CheckBackupSource(prefix, locations, SteamLocator.SteamRoot(install), install.Root);
                 LinuxPrefixBackup.CheckBackupFolder(prefix, folder);
                 var bytes = LinuxPrefixBackup.EstimateBytes(prefix);
                 cancellation.Token.ThrowIfCancellationRequested();
@@ -169,7 +179,7 @@ public partial class MainWindow
         try
         {
             var plan = await Task.Run(() => LinuxPrefixBackup.PrepareRestore(archive, prefix, token, locations,
-                SteamLocator.SteamRoot(), install.Root));
+                SteamLocator.SteamRoot(install), install.Root));
             LinuxBackupText.Text = $"Unpacked {DiskSpace.GB(plan.UncompressedBytes)}. HellForge closes, replaces the " +
                 "prefix, and starts again...";
             StartLinuxRestoreHelper(install, plan);

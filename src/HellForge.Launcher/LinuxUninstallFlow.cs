@@ -40,7 +40,7 @@ public partial class MainWindow
                 // The player may have started the game, changed the marker, or made a link since the confirmation appeared.
                 // Check the path as it was chosen so a WINEPREFIX that uses a link above the prefix still matches.
                 var fresh = await Task.Run(() => LinuxUninstall.CheckPrefixDeletion(install, plan.Prefix ?? offered.Prefix,
-                    UninstallLocations(), SteamLocator.SteamRoot()));
+                    UninstallLocations(), SteamLocator.SteamRoot(install)));
                 if (!fresh.Offered)
                 {
                     UninstallText.Text = Privacy.Scrub("The Proton prefix was not deleted: " + fresh.Reason + " Nothing was removed.");
@@ -81,7 +81,7 @@ public partial class MainWindow
     {
         var locations = UninstallLocations();
         var log = Path.Combine(Path.GetTempPath(), $"hellforge-uninstall-{Environment.ProcessId}-{Guid.NewGuid():N}.log");
-        var plan = LinuxUninstall.Plan(install, SupportedBuild.Current, locations, SteamLocator.SteamRoot(), log);
+        var plan = LinuxUninstall.Plan(install, SupportedBuild.Current, locations, SteamLocator.SteamRoot(install), log);
         var launcher = LocalInstall.FullPath(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher"));
         var shortcut = LinuxDesktopShortcutPath();
         var expected = LinuxDesktopExecLine(launcher);
