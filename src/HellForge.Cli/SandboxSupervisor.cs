@@ -11,7 +11,7 @@ namespace HellForge.Cli;
 // trusted runner's heartbeat, and performs the native copy-back only after the domain is gone. It never invokes a shell.
 sealed class SandboxSupervisor
 {
-    const int PrSetPdeathsig = 1, SigTerm = 15, SigKill = 9;
+    const int PrSetPdeathsig = 1, PrSetChildSubreaper = 36, SigTerm = 15, SigKill = 9;
     const string AppArmorHelper = "/usr/local/lib/hellforge/unshare";
     const string AppArmorProfile = "/etc/apparmor.d/hellforge-unshare";
     readonly InstallLayout install;
@@ -180,7 +180,7 @@ sealed class SandboxSupervisor
     static string FinishDomainStopReason(Process process, string stopReason, SandboxDomainStatus? status)
     {
         if (stopReason.Length != 0 || status is not { State: "starting" or "running" or "stopping" }) return stopReason;
-        KillGroup(process.Id);
+        KillDomain(process.Id);
         return "hf-sandbox ended while the domain was still running";
     }
 
@@ -191,29 +191,11 @@ sealed class SandboxSupervisor
         var heartbeat = Path.Combine(control, "runner.heartbeat");
         var stopSignal = Path.Combine(Path.GetDirectoryName(control)!, "stop-observation.signal");
         var stopDomain = Path.Combine(plan.GameOut, "domain", "stop");
-        var specWine = WinePath.ToZPath(plan.LaunchSpec);
-        var start = new ProcessStartInfo(shell)
-        {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            WorkingDirectory = install.Root
-        };
-        SandboxCommand(start, plan.HfSandbox);
-        start.ArgumentList.Add("--session");
-        start.ArgumentList.Add(plan.Run);
-        start.ArgumentList.Add("--prefix");
-        start.ArgumentList.Add(prefix);
-        foreach (var bind in plan.ReadOnlyBinds)
-        {
-            start.ArgumentList.Add("--bind-ro");
-            start.ArgumentList.Add(bind);
-        }
-        start.ArgumentList.Add("--");
-        start.ArgumentList.Add(protonPath);
-        start.ArgumentList.Add("waitforexitandrun");
-        start.ArgumentList.Add(plan.DomainHost);
-        start.ArgumentList.Add("host");
-        start.ArgumentList.Add("--spec");
-        start.ArgumentList.Add(specWine);
+        var runtime = DomainRuntime(protonPath);
+        Say(runtime.Mode == SteamRuntimeMode.Container
+            ? $"Steam Linux Runtime: container \"{runtime.Name}\" {runtime.Version} at {runtime.Folder}; the domain runs inside it"
+            : $"Steam Linux Runtime: host mode: {runtime.Reason}");
+        var start = DomainStartInfo(plan, runtime, protonPath, shell);
         WriteJson(Path.Combine(control, "domain.json"), new JsonObject
         {
             ["state"] = "starting", ["supervisorPid"] = Environment.ProcessId, ["startedUtc"] = DateTime.UtcNow.ToString("o")
@@ -266,8 +248,8 @@ sealed class SandboxSupervisor
         {
             if (!process.HasExited)
             {
-                KillGroup(process.Id);
-                if (!process.WaitForExit(5000)) KillGroup(process.Id, SigKill);
+                KillDomain(process.Id);
+                if (!process.WaitForExit(5000)) KillDomain(process.Id, SigKill);
                 process.WaitForExit(5000);
             }
             process.Dispose();
@@ -398,7 +380,60 @@ sealed class SandboxSupervisor
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
     }
 
-    static void SandboxCommand(ProcessStartInfo start, string hfSandbox)
+    // The supervisor resolves the runtime itself from PROTON and Steam's folder, never from the session request.
+    static SteamRuntime DomainRuntime(string protonPath)
+    {
+        var steam = Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH");
+        return string.IsNullOrWhiteSpace(steam)
+            ? new(SteamRuntimeMode.Host, "STEAM_COMPAT_CLIENT_INSTALL_PATH is not set", null, null, null, [], [], null, null, null, false)
+            : SteamRuntimeLocator.Resolve(protonPath, steam!);
+    }
+
+    // setsid, [Ubuntu's allowed unshare], [the runtime's entry point], hf-sandbox ... -- <proton> waitforexitandrun <domain
+    // host>. The entry point stays outside hf-sandbox: hf-sandbox's seccomp refuses new namespaces, and pressure-vessel
+    // needs them. In container mode the runtime's tool and mount variables make the installation, prefix and shader cache
+    // visible inside it; hf-sandbox then builds the same view as on the host.
+    ProcessStartInfo DomainStartInfo(SandboxStartPlan plan, SteamRuntime runtime, string protonPath, string shell)
+    {
+        var start = new ProcessStartInfo(shell)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            WorkingDirectory = install.Root
+        };
+        AppArmorPrefix(start);
+        foreach (var part in SteamRuntimeLocator.EntryPointArguments(runtime, "waitforexitandrun")) start.ArgumentList.Add(part);
+        start.ArgumentList.Add(plan.HfSandbox);
+        foreach (var (option, value) in new[] { ("--session", plan.Run), ("--prefix", prefix) })
+        {
+            start.ArgumentList.Add(option);
+            start.ArgumentList.Add(value);
+        }
+        if (runtime.Mode == SteamRuntimeMode.Container && runtime.Folder is { } folder)
+        {
+            start.ArgumentList.Add("--steam-runtime");
+            start.ArgumentList.Add(folder);
+        }
+        foreach (var bind in plan.ReadOnlyBinds)
+        {
+            start.ArgumentList.Add("--bind-ro");
+            start.ArgumentList.Add(bind);
+        }
+        start.ArgumentList.Add("--");
+        foreach (var part in SteamRuntimeLocator.ProtonArguments(runtime, protonPath, "waitforexitandrun")) start.ArgumentList.Add(part);
+        foreach (var part in new[] { plan.DomainHost, "host", "--spec", WinePath.ToZPath(plan.LaunchSpec) }) start.ArgumentList.Add(part);
+        if (runtime.Mode == SteamRuntimeMode.Container)
+        {
+            var shader = Environment.GetEnvironmentVariable("STEAM_COMPAT_SHADER_PATH");
+            var invocation = LinuxProtonInvocation.From(runtime, (protonPath, Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH")!, prefix),
+                "waitforexitandrun", [], new(InstallPath: install.Game, Mounts: [install.Root], ShaderPath: string.IsNullOrWhiteSpace(shader) ? null : shader));
+            foreach (var pair in invocation.Environment) start.Environment[pair.Key] = pair.Value;
+        }
+        return start;
+    }
+
+    // Ubuntu's AppArmor user-namespace restriction: HellForge's allowed unshare goes first, so hf-sandbox (and in container
+    // mode pressure-vessel's bwrap below it) runs in a user namespace that profile allows.
+    static void AppArmorPrefix(ProcessStartInfo start)
     {
         var restricted = "";
         try { restricted = File.ReadAllText("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").Trim(); }
@@ -411,7 +446,6 @@ sealed class SandboxSupervisor
             start.ArgumentList.Add("--map-group=" + getgid());
             start.ArgumentList.Add("--");
         }
-        start.ArgumentList.Add(hfSandbox);
     }
 
     static TimeSpan ProtonTimeout()
@@ -430,9 +464,56 @@ sealed class SandboxSupervisor
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         if (process.WaitForExit(final ? 5000 : 10000)) return;
-        KillGroup(process.Id, SigTerm);
+        KillDomain(process.Id, SigTerm);
         if (process.WaitForExit(5000)) return;
-        KillGroup(process.Id, SigKill);
+        KillDomain(process.Id, SigKill);
+    }
+
+    // The domain is hf-sandbox's process group and, measured with Steam's runtime container, processes in new sessions
+    // under it. Signal the group, then every descendant of this supervisor (the domain is its only child tree).
+    static void KillDomain(int pid, int signal = SigTerm)
+    {
+        KillGroup(pid, signal);
+        foreach (var descendant in Descendants(Environment.ProcessId)) KillPid(descendant, signal);
+    }
+
+    static IReadOnlyList<int> Descendants(int root)
+    {
+        var children = new Dictionary<int, List<int>>();
+        foreach (var folder in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(folder), NumberStyles.None, CultureInfo.InvariantCulture, out var pid)) continue;
+            if (ParentOf(pid) is not { } parent) continue;
+            if (!children.TryGetValue(parent, out var list)) children[parent] = list = [];
+            list.Add(pid);
+        }
+        var found = new List<int>();
+        var queue = new Queue<int>([root]);
+        while (queue.Count > 0)
+            foreach (var child in children.GetValueOrDefault(queue.Dequeue()) ?? [])
+            {
+                found.Add(child);
+                queue.Enqueue(child);
+            }
+        return found;
+    }
+
+    // The PPid of /proc/<pid>/stat: the field after the command, which is in parentheses and may contain spaces.
+    static int? ParentOf(int pid)
+    {
+        try
+        {
+            var stat = File.ReadAllText("/proc/" + pid.ToString(CultureInfo.InvariantCulture) + "/stat");
+            var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+            return fields.Length > 1 && int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out var parent) ? parent : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException) { return null; }
+    }
+
+    static void KillPid(int pid, int signal)
+    {
+        try { kill(pid, signal); }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
     }
 
     static void KillGroup(int pid, int signal = SigTerm)
@@ -462,9 +543,15 @@ sealed class SandboxSupervisor
         File.Move(partial, path, overwrite: true);
     }
 
+    // Also a child subreaper: a domain process whose parent exits (pressure-vessel's own processes start new sessions,
+    // and Wine's daemonize) is re-parented here instead of to init, so the stop below still finds it as a descendant.
     static void Pdeathsig()
     {
-        try { prctl(PrSetPdeathsig, SigTerm); }
+        try
+        {
+            prctl(PrSetPdeathsig, SigTerm);
+            prctl(PrSetChildSubreaper, 1);
+        }
         catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
     }
 

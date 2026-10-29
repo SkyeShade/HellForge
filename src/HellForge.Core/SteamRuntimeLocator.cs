@@ -60,25 +60,33 @@ public static class SteamRuntimeLocator
         return ResolveRuntime(folder, appId, protonCommandLine);
     }
 
+    // The entry point's own part of a container-mode argv (<entry point> --verb=<verb> --), for a caller that puts a
+    // program of its own (hf-sandbox) between it and Proton. Empty in host mode.
+    public static IReadOnlyList<string> EntryPointArguments(SteamRuntime runtime, string verb)
+    {
+        var result = new List<string>();
+        if (runtime.Mode == SteamRuntimeMode.Container)
+            AppendCommandLine(result, runtime.RuntimeCommandLine, runtime.EntryPoint ?? "", verb);
+        return result;
+    }
+
+    // Proton's own part (<proton> <verb>), from its manifest when usable, else the direct form.
+    public static IReadOnlyList<string> ProtonArguments(SteamRuntime runtime, string protonScript, string verb)
+    {
+        var proton = LocalInstall.ResolveLinks(LocalInstall.FullPath(protonScript));
+        var result = new List<string>();
+        if (runtime.ProtonCommandLine.Count > 0) AppendCommandLine(result, runtime.ProtonCommandLine, proton, verb);
+        else result.AddRange([proton, verb]);
+        return result;
+    }
+
     // argv for one Proton invocation. Container mode is <entry point> --verb=<verb> -- <proton> <verb> <args>; host
     // mode uses a usable Proton manifest commandline, else the direct proton <verb> form the wrapper uses today.
     public static IReadOnlyList<string> Arguments(SteamRuntime runtime, string protonScript, string verb,
         IEnumerable<string> arguments)
     {
-        var proton = LocalInstall.ResolveLinks(LocalInstall.FullPath(protonScript));
-        var result = new List<string>();
-        if (runtime.Mode == SteamRuntimeMode.Container)
-        {
-            AppendCommandLine(result, runtime.RuntimeCommandLine, runtime.EntryPoint ?? "", verb);
-            AppendCommandLine(result, runtime.ProtonCommandLine, proton, verb);
-        }
-        else if (runtime.ProtonCommandLine.Count > 0)
-            AppendCommandLine(result, runtime.ProtonCommandLine, proton, verb);
-        else
-        {
-            result.Add(proton);
-            result.Add(verb);
-        }
+        var result = new List<string>(EntryPointArguments(runtime, verb));
+        result.AddRange(ProtonArguments(runtime, protonScript, verb));
         result.AddRange(arguments);
         return result;
     }

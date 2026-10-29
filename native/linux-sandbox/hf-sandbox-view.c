@@ -549,21 +549,46 @@ static int mount_runtime(struct hf_sandbox *sandbox)
     return 0;
 }
 
-static int bind_steam_runtime(struct hf_sandbox *sandbox)
+// The Steam client pieces Proton and lsteamclient load, under the Steam root, when present.
+static int bind_steam_client(struct hf_sandbox *sandbox)
 {
-    static const char *const parts[] = { "linux64", "linux32", "ubuntu12_32", "ubuntu12_64", "steamrt64",
-        "steamapps/common/SteamLinuxRuntime_sniper", "steamapps/common/SteamLinuxRuntime_soldier",
-        "steamapps/common/SteamLinuxRuntime_steamrt" };
+    static const char *const parts[] = { "linux64", "linux32", "ubuntu12_32", "ubuntu12_64", "steamrt64" };
     if (sandbox->steam_root[0] == '\0') return 0;
     for (size_t index = 0; index < sizeof(parts) / sizeof(parts[0]); index++)
     {
         char source[PATH_MAX];
         struct stat info;
         if (snprintf(source, sizeof(source), "%s/%s", sandbox->steam_root, parts[index]) >= (int)sizeof(source))
-            return hf_fail_msg("a Steam runtime path is too long");
+            return hf_fail_msg("a Steam client path is too long");
         if (stat(source, &info) != 0 || !S_ISDIR(info.st_mode)) continue;
         if (bind_readonly(sandbox, source, source) != 0) return 1;
     }
+    return 0;
+}
+
+static bool extra_bind_protected(const struct hf_sandbox *sandbox, const char *path);
+
+// One --steam-runtime folder: the tool app the Proton's toolmanifest requires, resolved by the supervisor. It is bound
+// read-only at its real path, and refused (fail closed) when it is /, covers the home, or overlaps the installation,
+// the prefix or the session.
+static int bind_one_steam_runtime(struct hf_sandbox *sandbox, const char *given)
+{
+    char resolved[PATH_MAX];
+    struct stat info;
+    if (realpath(given, resolved) == NULL || stat(resolved, &info) != 0 || !S_ISDIR(info.st_mode))
+        return hf_fail_msg("the Steam runtime folder is missing: %s", given);
+    if (strcmp(resolved, "/") == 0 || extra_bind_protected(sandbox, resolved) ||
+        path_covers(sandbox->install, resolved) || path_covers(sandbox->prefix, resolved) ||
+        path_covers(sandbox->session, resolved))
+        return hf_fail_msg("the Steam runtime folder is not a separate tool folder: %s", resolved);
+    return bind_readonly(sandbox, resolved, resolved);
+}
+
+static int bind_steam_runtime(struct hf_sandbox *sandbox)
+{
+    if (bind_steam_client(sandbox) != 0) return 1;
+    for (int index = 0; index < sandbox->steam_runtime_count; index++)
+        if (bind_one_steam_runtime(sandbox, sandbox->steam_runtimes[index]) != 0) return 1;
     return 0;
 }
 

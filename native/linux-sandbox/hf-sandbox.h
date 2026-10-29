@@ -57,6 +57,7 @@
 #define HF_MAX_FILTER 128
 #define HF_MAX_COMMAND 256
 #define HF_MAX_EXTRA_BINDS 64
+#define HF_MAX_STEAM_RUNTIMES 4
 #define HF_RUNTIME_SOCKETS 8
 #define HF_MAX_CREDENTIAL_BYTES 65536
 #define HF_SANDBOX_UID 0
@@ -119,6 +120,8 @@ struct hf_sandbox
     char selftest_deleted_target[PATH_MAX]; // the path left pointing at the unlinked file
     char **extra_binds;                   // existing files/folders exposed read-only at their own paths
     int extra_bind_count;
+    char **steam_runtimes;                // the Steam tool folders Proton's manifest requires (--steam-runtime), read-only
+    int steam_runtime_count;
     char **command;               // argv after --
     int command_count;
     uid_t host_uid;
