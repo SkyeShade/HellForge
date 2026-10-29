@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -16,7 +17,7 @@ namespace HellForge.Core;
 // Windows certificate store serialises a Root certificate as the registry value
 // HKLM\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>\Blob. Nothing here runs Wine as root or changes the
 // Windows path.
-public static class LinuxCapture
+public static partial class LinuxCapture
 {
     public const string ApiHost = "api.live.prod.thehelldiversgame.com";
     public const int CapturePort = 443;
@@ -33,11 +34,23 @@ public static class LinuxCapture
     const string CertificateRecordFile = "capture-ca.json";
     const string HelperLogFile = "linux-capture-helper.log";
     const string RegistryCertificateRoot = @"HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates";
+    const string SystemRegFile = "system.reg";
+    const string SystemRegExpected = "the key is in system.reg with the expected Blob";
+    const string SystemRegKeyAbsent = "the key is not in system.reg";
     static readonly TimeSpan WineTimeout = TimeSpan.FromSeconds(60);
+    static readonly TimeSpan WineserverTimeout = TimeSpan.FromSeconds(10);
     static readonly TimeSpan HelperCommandTimeout = TimeSpan.FromSeconds(20);
+    static readonly string[] ProtonNoise = ["OpenXR-Loader", "xrizer", "fsync", "Proton: Upgrading prefix"];
 
     public sealed record CertificateRecord(string Prefix, string Proton, string SteamRoot, string CaFile, string Thumbprint);
-    public sealed record WineResult(int ExitCode, string Output);
+    // stdout and stderr stay apart for the log. Registry verdicts come from reg export files and system.reg, never stdout.
+    public sealed record WineResult(int ExitCode, string Stdout, string Stderr)
+    {
+        // For a command whose streams have no separate verdict (the capture helper).
+        public string AllText => string.Join(Environment.NewLine, new[] { Stdout, Stderr }.Where(text => text.Length != 0));
+    }
+    // What Wine's own system.reg text says about one certificate key.
+    public sealed record SystemRegCertificate(bool KeyFound, string? BlobHex);
     public sealed record HelperState(bool Installed, bool Current);
 
     // A running root helper started by sudo. The Process is sudo's, so stopping is a privileged helper command, never a
@@ -110,21 +123,115 @@ public static class LinuxCapture
 
     public static string WinePrefix(string compatibilityData) => Path.Combine(compatibilityData, "pfx");
 
-    // Steam's CompatToolMapping is the only authority for the Proton that opens HELLDIVERS 2's own prefix. HellForge's
-    // own selected Proton may differ, and running it on Steam's compatdata/553850 would upgrade or downgrade the prefix
-    // behind Steam's back.
-    public static string? ProtonForGame(string? steamRoot)
+    [DllImport("libc", SetLastError = true, EntryPoint = "stat")]
+    static extern int StatPath([MarshalAs(UnmanagedType.LPUTF8Str)] string path, IntPtr buffer);
+
+    [DllImport("libc", EntryPoint = "getuid")]
+    static extern uint GetUid();
+
+    // Wine names its wineserver socket after the prefix folder's device and inode, exactly as hellforge-offline.sh does
+    // with `stat -L -c %D` (hex) and `stat -L -c %i` (hex). x86_64 Linux struct stat puts st_dev at 0 and st_ino at 8.
+    public static string? WineserverServer(string prefix)
     {
-        if (steamRoot == null) return null;
-        string? toolName;
+        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64 || !Directory.Exists(prefix))
+            return null;
+        nint buffer = Marshal.AllocHGlobal(256);
         try
         {
-            var config = Path.Combine(steamRoot, "config", "config.vdf");
-            if (!File.Exists(config)) return null;
-            toolName = CompatToolName(File.ReadAllText(config));
+            Marshal.Copy(new byte[256], 0, buffer, 256);
+            if (StatPath(prefix, buffer) != 0) return null;
+            var device = (ulong)Marshal.ReadInt64(buffer, 0);
+            var inode = (ulong)Marshal.ReadInt64(buffer, 8);
+            return "server-" + device.ToString("x", CultureInfo.InvariantCulture) + "-" +
+                inode.ToString("x", CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    // Wine 10 keeps the server's socket in $XDG_RUNTIME_DIR/wine; older Wine and Proton in /tmp/.wine-<uid>.
+    public static IReadOnlyList<string> WineserverSocketPaths(string server, string runtimeDirectory, uint uid) =>
+    [
+        Path.Combine(runtimeDirectory, "wine", server, "socket"),
+        Path.Combine("/tmp", ".wine-" + uid.ToString(CultureInfo.InvariantCulture), server, "socket")
+    ];
+
+    // A wineserver of this prefix still running outside the capture is a Windows program (Steam's game or a tool) that
+    // would share the imported registry and sockets. The check fails closed: "cannot tell" is not "not running".
+    public static string? WineserverProblem(string compatibilityData, Func<string, LinuxSteamBridge.SocketState>? check = null)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        var prefix = WinePrefix(compatibilityData);
+        if (!Directory.Exists(prefix)) return null;
+        var server = WineserverServer(prefix);
+        if (server == null)
+            return "Cannot tell whether a Windows program is still running in HELLDIVERS 2's Proton prefix (" + prefix +
+                "): its device and inode could not be read. Close Steam's game/tools in that prefix first, then sync again.";
+        check ??= path => LinuxSteamBridge.Check(path, out _);
+        foreach (var socket in WineserverSocketPaths(server, LinuxSteamBridge.SocketDirectory(), GetUid()))
+        {
+            switch (check(socket))
+            {
+                case LinuxSteamBridge.SocketState.Listening:
+                    return "A Windows program is still running in HELLDIVERS 2's Proton prefix (" + socket +
+                        "): close Steam's game/tools in that prefix first, then sync again.";
+                case LinuxSteamBridge.SocketState.CannotTell:
+                    return "Cannot tell whether a Windows program is still running in HELLDIVERS 2's Proton prefix (" + socket +
+                        "): close Steam's game/tools in that prefix first, then sync again.";
+            }
+        }
+        return null;
+    }
+
+    // The Proton version file records which tool last opened the prefix; a change during the import is evidence that
+    // another Proton may be upgrading it.
+    public static string? PrefixVersion(string compatibilityData)
+    {
+        try
+        {
+            var path = Path.Combine(compatibilityData, PrefixVersionFile);
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
-        return toolName == null ? null : ResolveCompatTool(steamRoot, toolName);
+    }
+
+    // The prefix the game library actually opens (steamapps/compatdata/553850) can differ from a record made in a second
+    // library or before the game moved. Importing the CA into the wrong prefix would never be seen by the game.
+    public static string? PrefixMismatchProblem(CertificateRecord record)
+    {
+        try
+        {
+            if (!IsGamePrefix(record.Prefix))
+                return "The capture CA record's prefix is not HELLDIVERS 2's steamapps/compatdata/553850: " + record.Prefix + ".";
+            var gamePrefix = FindPrefix(record.SteamRoot, null);
+            if (gamePrefix == null || PathsEqual(gamePrefix, record.Prefix)) return null;
+            return "The capture CA record names the Steam prefix " + record.Prefix + ", but the HELLDIVERS 2 library's prefix is " +
+                gamePrefix + " (a second Steam library?): start the game once from Steam, then sync again.";
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            return "The capture CA record's prefix could not be compared with HELLDIVERS 2's library prefix: " + error.Message;
+        }
+    }
+
+    static bool PathsEqual(string left, string right) => string.Equals(
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+        StringComparison.Ordinal);
+
+    // The prefix's own wineserver, from the Proton that will run reg.exe (the same search as hf-inner.sh).
+    public static string? WineserverPath(string proton)
+    {
+        var root = Path.GetDirectoryName(proton);
+        if (root == null) return null;
+        foreach (var relative in new[] { Path.Combine("files", "bin", "wineserver"), Path.Combine("dist", "bin", "wineserver"),
+            Path.Combine("bin", "wineserver") })
+        {
+            var path = Path.Combine(root, relative);
+            if (File.Exists(path)) return path;
+        }
+        return null;
     }
 
     // The tool Steam maps to HELLDIVERS 2, else its default tool (the "0" entry). Null when neither entry names a tool;
@@ -320,53 +427,86 @@ public static class LinuxCapture
 
     public static IReadOnlyList<string> ImportRegistryArguments(string wineRegPath) => ["run", "reg", "import", wineRegPath];
 
-    public static IReadOnlyList<string> QueryBlobArguments(string thumbprint) =>
-        ["run", "reg", "query", RegistryKey(thumbprint), "/v", "Blob"];
+    // `proton run` can drop reg.exe's console output entirely, so the proof is the UTF-16 LE file reg export writes.
+    public static IReadOnlyList<string> ExportKeyArguments(string thumbprint, string winePath) =>
+        ["run", "reg", "export", RegistryKey(thumbprint), winePath, "/y"];
 
-    public static IReadOnlyList<string> QueryKeyArguments(string thumbprint) =>
-        ["run", "reg", "query", RegistryKey(thumbprint)];
-
-    // The value data reg query prints after REG_BINARY, folded back into one hex string. Continuation lines are accepted;
-    // the key line itself (which carries the thumbprint) is never read as data.
-    public static string? QueryBlobHex(string output)
+    // A reg export file is UTF-16 LE with a BOM. Its Blob is the same comma-separated, backslash-continued hex form as
+    // system.reg. Null means no readable export or no Blob for this key; stdout is never read.
+    public static string? ReadRegistryExportBlob(string path, string thumbprint)
     {
-        var lines = output.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var hex = new StringBuilder();
-        var started = false;
-        foreach (var line in lines)
+        try
         {
-            if (!started)
-            {
-                var at = line.IndexOf("REG_BINARY", StringComparison.OrdinalIgnoreCase);
-                if (at < 0) continue;
-                AppendHex(line[(at + "REG_BINARY".Length)..]);
-                started = true;
-                continue;
-            }
-            var compact = new string(line.Where(c => !char.IsWhiteSpace(c)).ToArray());
-            if (compact.Length == 0) continue;
-            if (!compact.All(Uri.IsHexDigit)) break;
-            hex.Append(compact);
+            var bytes = File.ReadAllBytes(path);
+            if (bytes.Length < 2 || bytes[0] != 0xFF || bytes[1] != 0xFE) return null;
+            return ReadExportBlobHex(Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2), thumbprint);
         }
-        return hex.Length == 0 ? null : hex.ToString();
-
-        void AppendHex(string text)
-        {
-            var compact = new string(text.Where(c => !char.IsWhiteSpace(c)).ToArray());
-            if (compact.Length != 0 && compact.All(Uri.IsHexDigit)) hex.Append(compact);
-        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
     }
 
-    public static bool BlobMatches(string queryOutput, byte[] blob) =>
-        string.Equals(QueryBlobHex(queryOutput), Convert.ToHexString(blob), StringComparison.OrdinalIgnoreCase);
+    public static string? ReadExportBlobHex(string text, string thumbprint)
+    {
+        var normalized = NormalizeThumbprint(thumbprint) ??
+            throw new ArgumentException("A certificate thumbprint is exactly 40 hexadecimal characters.", nameof(thumbprint));
+        return ReadRegistryCertificate(text, RegistryKey(normalized)).BlobHex;
+    }
 
-    // reg query exits non-zero for a missing key; the message says so. A Proton failure or an empty/odd answer is not
-    // proof that the key is gone.
-    public static bool QuerySaysAbsent(WineResult result) =>
-        result.ExitCode > 0 && (result.Output.Contains("unable to find", StringComparison.OrdinalIgnoreCase) ||
-            result.Output.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
-            result.Output.Contains("cannot find", StringComparison.OrdinalIgnoreCase) ||
-            result.Output.Contains("does not exist", StringComparison.OrdinalIgnoreCase));
+    // Wine's system.reg text: the section line, then "Blob"=hex: with CRLF-comma-separated bytes and optional backslash
+    // continuation lines. KeyFound is separate from BlobHex so a key without a value is not called a missing import.
+    public static SystemRegCertificate ReadSystemRegCertificate(string text, string thumbprint)
+    {
+        var normalized = NormalizeThumbprint(thumbprint) ??
+            throw new ArgumentException("A certificate thumbprint is exactly 40 hexadecimal characters.", nameof(thumbprint));
+        return ReadRegistryCertificate(text, @"Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + normalized);
+    }
+
+    static SystemRegCertificate ReadRegistryCertificate(string text, string key)
+    {
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var start = SystemRegSection(lines, key);
+        if (start < 0) return new(false, null);
+        for (var index = start + 1; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (line.StartsWith('[')) return new(true, null);
+            var value = line.TrimStart();
+            if (!value.StartsWith("\"Blob\"", StringComparison.OrdinalIgnoreCase)) continue;
+            var at = value.IndexOf("=hex:", StringComparison.OrdinalIgnoreCase);
+            if (at < 0) continue;
+            return new(true, ReadContinuedHex(lines, index, line.Length - value.Length + at + "=hex:".Length));
+        }
+        return new(true, null);
+    }
+
+    static int SystemRegSection(string[] lines, string key)
+    {
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!lines[index].StartsWith('[')) continue;
+            var end = lines[index].IndexOf(']');
+            if (end < 0) continue;
+            if (string.Equals(lines[index][1..end], key, StringComparison.OrdinalIgnoreCase)) return index;
+        }
+        return -1;
+    }
+
+    static string? ReadContinuedHex(string[] lines, int start, int valueStart)
+    {
+        var hex = new StringBuilder();
+        for (var index = start; index < lines.Length; index++)
+        {
+            var text = (index == start ? lines[index][valueStart..] : lines[index]).Trim();
+            var continued = text.EndsWith('\\');
+            if (continued) text = text[..^1].TrimEnd();
+            foreach (var character in text)
+            {
+                if (Uri.IsHexDigit(character)) hex.Append(character);
+                else if (!char.IsWhiteSpace(character) && character != ',') return null;
+            }
+            if (!continued) break;
+        }
+        return hex.Length == 0 ? null : hex.ToString().ToUpperInvariant();
+    }
 
     public static string HelperInstallCommand(string installRoot) =>
         "sudo bash " + Path.Combine(installRoot, "app", "linux", HelperInstaller);
@@ -378,13 +518,11 @@ public static class LinuxCapture
     }
 
     // The installed root copies must still be the helper and relay this installation ships. A package update changes the
-    // shipped files, and allow-capture.sh is then needed again; a stale root copy must never run against the new launcher.
+    // shipped files, so the launcher installs the new copies through pkexec before the next sync. Null means ready.
     public static string? HelperProblem(string installRoot)
     {
-        if (!File.Exists(HelperPath))
-            return "The Linux capture helper is not installed. Run this once, then sync again: " + HelperInstallCommand(installRoot);
-        if (!File.Exists(RelayPath))
-            return "The Linux capture relay is not installed. Run this once, then sync again: " + HelperInstallCommand(installRoot);
+        if (!File.Exists(HelperPath)) return "The Linux capture helper is not installed.";
+        if (!File.Exists(RelayPath)) return "The Linux capture relay is not installed.";
         try
         {
             var shippedFolder = Path.Combine(new InstallLayout(installRoot).App, "linux");
@@ -400,21 +538,19 @@ public static class LinuxCapture
     }
 
     // One installed root copy against the shipped file and its recorded SHA-256. Internal so tests can use temporary files;
-    // HelperProblem applies it to both the helper and the relay.
+    // HelperProblem applies it to both the helper and the relay. The launcher offers to reinstall when this is not null.
     internal static string? InstalledCopyProblem(string installed, string hashPath, string shipped, string name, string installRoot)
     {
         if (!File.Exists(shipped))
             return "This installation's " + Path.GetFileName(shipped) + " is missing. Reinstall HellForge, then sync again.";
         var installedHash = FileSha256(installed);
         if (!installedHash.Equals(FileSha256(shipped), StringComparison.OrdinalIgnoreCase))
-            return "The installed Linux " + name + " does not match this HellForge version. Run this once, then sync again: " +
-                HelperInstallCommand(installRoot);
+            return "The installed Linux " + name + " does not match this HellForge version.";
         if (File.Exists(hashPath))
         {
             var recorded = File.ReadAllText(hashPath).Trim();
             if (!recorded.Equals(installedHash, StringComparison.OrdinalIgnoreCase))
-                return "The installed Linux " + name + " does not match its recorded SHA-256. Run this once, then sync again: " +
-                    HelperInstallCommand(installRoot);
+                return "The installed Linux " + name + " does not match its recorded SHA-256.";
         }
         return null;
     }
@@ -433,16 +569,23 @@ public static class LinuxCapture
     {
         if (RunRefusal(gameRunning, sessionRunning) is { } running) return running;
         var state = helper ?? new HelperState(File.Exists(HelperPath), HelperProblem(installRoot) == null);
-        if (!state.Installed)
-            return "The Linux capture helper is not installed. Run this once, then sync again: " + HelperInstallCommand(installRoot);
-        if (!state.Current)
-            return HelperProblem(installRoot) ?? ("The installed Linux capture helper is out of date. Run this once, then sync again: " +
-                HelperInstallCommand(installRoot));
+        if (!state.Installed || !state.Current)
+        {
+            var helperProblem = HelperProblem(installRoot) ?? (state.Installed
+                ? "The installed Linux capture helper is out of date."
+                : "The Linux capture helper is not installed.");
+            return helperProblem + " The launcher could not install it; run this once, then sync again: " +
+                HelperInstallCommand(installRoot);
+        }
         if (prefix == null || !Directory.Exists(Path.Combine(prefix, "pfx")))
             return "HELLDIVERS 2's Proton prefix was not found: start the game once from Steam, then sync again.";
+        if (WineserverProblem(prefix) is { } wineserver)
+            return wineserver;
         if (proton == null || !File.Exists(proton))
-            return "The Proton that Steam maps to HELLDIVERS 2 could not be resolved, or its files are missing: choose HELLDIVERS 2's " +
-                "compatibility tool in Steam > Properties > Compatibility, then sync again.";
+            return "The Proton that opens HELLDIVERS 2's prefix could not be resolved. Looked for Steam's CompatToolMapping " +
+                "for 553850 or its \"0\" default first, then the prefix's compatdata/553850/config_info and version: neither " +
+                "named an installed Proton whose CURRENT_PREFIX_VERSION matches the prefix. Start HELLDIVERS 2 once through " +
+                "Steam (that writes config_info), then sync again.";
         if (address == null)
             return "The HELLDIVERS 2 API address could not be resolved to a public IPv4 address: check this PC's network " +
                 "(and any /etc/hosts entry for the API), then sync again.";
@@ -505,27 +648,151 @@ public static class LinuxCapture
                 .Where(folder => File.Exists(CertificateRecordPath(folder))).Order(StringComparer.Ordinal).ToArray()
             : [];
 
-    // Import the serialised Root certificate and ask reg.exe for the value. The import is not accepted merely because
-    // reg exited 0: the query must return exactly the blob that was written.
+    // Import the serialised Root certificate and prove it with a reg export file. `proton run` can drop reg.exe's
+    // stdout entirely, so no console answer is parsed: the export file and the prefix's system.reg must both hold the
+    // Blob. stdout and stderr stay apart in launcher.log only.
     public static void InstallCertificate(CertificateRecord record)
     {
         if (InventorySync.IsGameRunning())
             throw new InvalidOperationException("Close HELLDIVERS 2 first: its prefix is not changed while the game runs.");
+        if (PrefixMismatchProblem(record) is { } mismatch)
+            throw new InvalidOperationException(mismatch);
+        if (WineserverProblem(record.Prefix) is { } running)
+            throw new InvalidOperationException(running);
         var thumbprint = NormalizeThumbprint(record.Thumbprint) ??
             throw new InvalidOperationException("The capture CA record has no valid SHA-1 thumbprint.");
         var der = File.ReadAllBytes(record.CaFile);
         if (!string.Equals(CertificateThumbprint(der), thumbprint, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The capture CA file does not match the recorded thumbprint.");
         var blob = CertificateBlob(der);
-        WithRegistryFile("capture-add.reg", AddRegistryText(thumbprint, der), reg =>
+        WithRegistryFile("capture-add.reg", AddRegistryText(thumbprint, der), (reg, folder) =>
+            InstallCertificateThroughWine(record, thumbprint, blob, reg, Path.Combine(folder, "capture-export.reg")));
+    }
+
+    // One import, one bounded wait for the prefix's wineserver, then reg export to a private file and system.reg. Both
+    // checks must hold the Blob; the failure message says which one disagreed.
+    static void InstallCertificateThroughWine(CertificateRecord record, string thumbprint, byte[] blob, string reg,
+        string exportPath)
+    {
+        var versionBefore = PrefixVersion(record.Prefix);
+        var imported = RunWine(record, ImportRegistryArguments(WinePath(reg, record.Prefix)));
+        LogWine(record, "reg import", imported);
+        if (imported.ExitCode != 0)
+            throw new InvalidOperationException("Wine reg import could not add the capture CA to HELLDIVERS 2's prefix (exit " +
+                imported.ExitCode.ToString(CultureInfo.InvariantCulture) + "; see launcher.log).");
+        FlushWineserver(record);
+        var exported = RunWine(record, ExportKeyArguments(thumbprint, WinePath(exportPath, record.Prefix)));
+        LogWine(record, "reg export Blob", exported);
+        RestrictPrivateFile(exportPath);
+        var exportProblem = ExportBlobProblem(exported, exportPath, thumbprint, blob);
+        Note(record, "reg export check: " + (exportProblem ?? "the export file holds the expected Blob"));
+        var evidence = SystemRegEvidence(record, thumbprint, blob);
+        Note(record, "system.reg check: " + evidence);
+        var versionAfter = PrefixVersion(record.Prefix);
+        Note(record, PrefixVersionEvidence(versionBefore, versionAfter));
+        if (exportProblem != null || evidence != SystemRegExpected)
+            throw new InvalidOperationException(ExportFailure(exported, exportProblem, evidence, versionBefore, versionAfter));
+    }
+
+    static string? ExportBlobProblem(WineResult exported, string exportPath, string thumbprint, byte[] blob)
+    {
+        if (exported.ExitCode != 0)
+            return "reg export exited " + exported.ExitCode.ToString(CultureInfo.InvariantCulture);
+        if (!File.Exists(exportPath)) return "reg export wrote no file";
+        var hex = ReadRegistryExportBlob(exportPath, thumbprint);
+        if (hex == null) return "the export file has no Blob for the key";
+        return string.Equals(hex, Convert.ToHexString(blob), StringComparison.OrdinalIgnoreCase)
+            ? null : "the export file's Blob does not match the certificate";
+    }
+
+    static void FlushWineserver(CertificateRecord record)
+    {
+        var wineserver = WineserverPath(record.Proton);
+        if (wineserver == null)
         {
-            var imported = RunWine(record, ImportRegistryArguments(WinePath(reg, record.Prefix)));
-            if (imported.ExitCode != 0)
-                throw new InvalidOperationException("Wine reg import could not add the capture CA to HELLDIVERS 2's prefix: " + Tail(imported.Output));
-            var seen = RunWine(record, QueryBlobArguments(thumbprint));
-            if (seen.ExitCode != 0 || !BlobMatches(seen.Output, blob))
-                throw new InvalidOperationException("Wine's registry does not hold the capture CA blob in HELLDIVERS 2's prefix: " + Tail(seen.Output));
-        });
+            Note(record, "wineserver -w: not found beside " + record.Proton + "; system.reg is read without waiting for a flush.");
+            return;
+        }
+        var flushed = RunProcess(record, wineserver, ["-w"], WineserverTimeout);
+        LogWine(record, "wineserver -w", flushed);
+    }
+
+    static string SystemRegEvidence(CertificateRecord record, string thumbprint, byte[] blob)
+    {
+        var path = Path.Combine(WinePrefix(record.Prefix), SystemRegFile);
+        string text;
+        try { text = File.ReadAllText(path); }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return "the key is not in system.reg: the import did not land";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return "system.reg could not be read (" + path + "): " + error.Message;
+        }
+        var found = ReadSystemRegCertificate(text, thumbprint);
+        if (!found.KeyFound) return "the key is not in system.reg: the import did not land";
+        if (found.BlobHex == null) return "the key is in system.reg but its Blob value is missing";
+        if (!found.BlobHex.Equals(Convert.ToHexString(blob), StringComparison.OrdinalIgnoreCase))
+            return "the key is in system.reg but its Blob value does not match the certificate";
+        return SystemRegExpected;
+    }
+
+    static string ExportFailure(WineResult exported, string? exportProblem, string evidence, string? versionBefore,
+        string? versionAfter)
+    {
+        var exportText = exportProblem == null
+            ? "reg export holds the expected Blob"
+            : "Wine reg export did not confirm the capture CA (exit " +
+                exported.ExitCode.ToString(CultureInfo.InvariantCulture) + "): " + exportProblem;
+        var systemText = evidence == SystemRegExpected ? "system.reg holds the expected Blob" : evidence;
+        var text = "Wine could not confirm the capture CA in HELLDIVERS 2's prefix: " + exportText + "; " + systemText + ".";
+        if (!string.Equals(versionBefore, versionAfter, StringComparison.Ordinal))
+            text += " The prefix version changed from " + (versionBefore ?? "none") + " to " + (versionAfter ?? "none") +
+                " during the import; if another Proton is upgrading this prefix, close Steam's game/tools in that prefix first, then sync again.";
+        return text;
+    }
+
+    static string PrefixVersionEvidence(string? before, string? after) =>
+        string.Equals(before, after, StringComparison.Ordinal)
+            ? "prefix version unchanged: " + (before ?? "none")
+            : "prefix version changed during the import: " + (before ?? "none") + " -> " + (after ?? "none");
+
+    // Both streams, in full, in launcher.log beside the proxy's log; known Proton noise stays but is marked.
+    static void LogWine(CertificateRecord record, string step, WineResult result)
+    {
+        var text = new StringBuilder("Wine ").Append(step).Append(": exit ")
+            .Append(result.ExitCode.ToString(CultureInfo.InvariantCulture)).Append('.');
+        AppendStream(text, "stdout", result.Stdout);
+        AppendStream(text, "stderr", result.Stderr);
+        Note(record, text.ToString());
+    }
+
+    static void AppendStream(StringBuilder text, string name, string value)
+    {
+        text.Append(' ').Append(name).Append(':');
+        if (value.Length == 0)
+        {
+            text.Append(" (empty)");
+            return;
+        }
+        foreach (var line in value.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+            text.Append("\n  ").Append(MarkProtonNoise(line));
+    }
+
+    public static string MarkProtonNoise(string line) =>
+        ProtonNoise.Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            ? "[known Proton noise] " + line
+            : line;
+
+    static void Note(CertificateRecord record, string message)
+    {
+        try
+        {
+            var syncDir = Path.GetDirectoryName(Path.GetFullPath(record.CaFile));
+            if (syncDir != null) InventorySync.Note(syncDir, message);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { }
     }
 
     public static string? RemoveCertificate(CertificateRecord record)
@@ -537,26 +804,53 @@ public static class LinuxCapture
         string? problem = null;
         try
         {
-            WithRegistryFile("capture-delete.reg", DeleteRegistryText(thumbprint), reg =>
+            WithRegistryFile("capture-delete.reg", DeleteRegistryText(thumbprint), (reg, folder) =>
             {
                 var imported = RunWine(record, ImportRegistryArguments(WinePath(reg, record.Prefix)));
+                LogWine(record, "reg import (remove)", imported);
                 if (imported.ExitCode != 0)
                 {
-                    problem = "Wine reg import could not remove the capture CA: " + Tail(imported.Output);
+                    problem = "Wine reg import could not remove the capture CA (exit " +
+                        imported.ExitCode.ToString(CultureInfo.InvariantCulture) + "; see launcher.log).";
                     return;
                 }
-                var seen = RunWine(record, QueryKeyArguments(thumbprint));
-                if (seen.ExitCode == 0)
-                    problem = "The capture CA key is still in HELLDIVERS 2's prefix after reg import removed it.";
-                else if (!QuerySaysAbsent(seen))
-                    problem = "Wine reg query could not prove the capture CA key is gone: " + Tail(seen.Output);
+                FlushWineserver(record);
+                var exportPath = Path.Combine(folder, "capture-remove-export.reg");
+                var exported = RunWine(record, ExportKeyArguments(thumbprint, WinePath(exportPath, record.Prefix)));
+                LogWine(record, "reg export (remove)", exported);
+                RestrictPrivateFile(exportPath);
+                var evidence = SystemRegKeyEvidence(record, thumbprint);
+                Note(record, "reg export (remove): exit " + exported.ExitCode.ToString(CultureInfo.InvariantCulture) +
+                    (File.Exists(exportPath) ? ", wrote a file" : ", wrote no file") + "; system.reg: " + evidence);
+                if (exported.ExitCode == 0 || File.Exists(exportPath))
+                    problem = "The capture CA removal is not proven: reg export " +
+                        (exported.ExitCode == 0 ? "exited 0" : "wrote a file") + "; " + evidence + ".";
+                else if (evidence != SystemRegKeyAbsent)
+                    problem = "Wine reg export did not find the capture CA key, but " + evidence +
+                        " after the flush; the key is not proven gone.";
             });
         }
         catch (InvalidOperationException error) { return error.Message; }
         return problem;
     }
 
-    static void WithRegistryFile(string name, string text, Action<string> action)
+    static string SystemRegKeyEvidence(CertificateRecord record, string thumbprint)
+    {
+        var path = Path.Combine(WinePrefix(record.Prefix), SystemRegFile);
+        string text;
+        try { text = File.ReadAllText(path); }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return SystemRegKeyAbsent;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return "system.reg could not be read (" + path + "): " + error.Message;
+        }
+        return ReadSystemRegCertificate(text, thumbprint).KeyFound ? "the key is in system.reg" : SystemRegKeyAbsent;
+    }
+
+    static void WithRegistryFile(string name, string text, Action<string, string> action)
     {
         DirectoryInfo? folder = null;
         try
@@ -565,7 +859,7 @@ public static class LinuxCapture
             RestrictPrivateDirectory(folder.FullName);
             var path = Path.Combine(folder.FullName, name);
             WriteRegistryFile(path, text);
-            action(path);
+            action(path, folder.FullName);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -580,10 +874,15 @@ public static class LinuxCapture
 
     public static WineResult RunWine(CertificateRecord record, IReadOnlyList<string> arguments)
     {
-        if (!File.Exists(record.Proton)) return new(-1, "Proton was not found: " + record.Proton);
-        var start = new ProcessStartInfo(record.Proton)
+        if (!File.Exists(record.Proton)) return new(-1, "", "Proton was not found: " + record.Proton);
+        return RunProcess(record, record.Proton, arguments, WineTimeout);
+    }
+
+    static WineResult RunProcess(CertificateRecord record, string executable, IReadOnlyList<string> arguments, TimeSpan timeout)
+    {
+        var start = new ProcessStartInfo(executable)
         {
-            WorkingDirectory = Path.GetDirectoryName(record.Proton)!,
+            WorkingDirectory = Path.GetDirectoryName(executable)!,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -595,33 +894,37 @@ public static class LinuxCapture
         start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = record.SteamRoot;
         start.Environment["STEAM_COMPAT_APP_ID"] = LocalInstall.AppId;
         start.Environment["SteamGameId"] = LocalInstall.AppId;
+        // Measured: an inherited SteamAppId (a launcher started from a Steam shortcut) together with SteamGameId makes
+        // Steam count each reg call as a HELLDIVERS 2 session.
+        start.Environment.Remove("SteamAppId");
         try
         {
             using var process = Process.Start(start);
-            if (process == null) return new(-1, "Proton did not start.");
+            if (process == null) return new(-1, "", Path.GetFileName(executable) + " did not start.");
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit((int)WineTimeout.TotalMilliseconds))
+            if (!process.WaitForExit((int)timeout.TotalMilliseconds))
             {
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-                return new(-1, "Proton timed out.");
+                return new(-1, "", Path.GetFileName(executable) + " timed out.");
             }
-            return new(process.ExitCode, (output.GetAwaiter().GetResult() + error.GetAwaiter().GetResult()).Trim());
+            return new(process.ExitCode, output.GetAwaiter().GetResult().Trim(), error.GetAwaiter().GetResult().Trim());
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            return new(-1, exception.Message);
+            return new(-1, "", exception.Message);
         }
     }
 
     public static HelperRun StartHelper(string installRoot, int proxyPid, string syncDir)
     {
         if (!File.Exists(HelperPath))
-            throw new InvalidOperationException("The Linux capture helper is not installed. Run this once: " + HelperInstallCommand(installRoot));
+            throw new InvalidOperationException((HelperProblem(installRoot) ?? "The Linux capture helper is not installed.") +
+                " The launcher could not install it; run this once, then sync again: " + HelperInstallCommand(installRoot));
         var check = RunSudo(["check"], TimeSpan.FromSeconds(10));
         if (check.ExitCode != 0)
-            throw new InvalidOperationException("The Linux capture helper is not ready: " + Tail(check.Output) +
-                ". Run this once, then sync again: " + HelperInstallCommand(installRoot));
+            throw new InvalidOperationException("The Linux capture helper is not ready: " + Tail(check.AllText) +
+                ". The launcher could not install it; run this once, then sync again: " + HelperInstallCommand(installRoot));
 
         var start = SudoStartInfo(["start"]);
         start.RedirectStandardInput = true;
@@ -678,14 +981,14 @@ public static class LinuxCapture
         if (!File.Exists(HelperPath))
             return "The Linux capture helper is not installed. Run this once: sudo bash app/linux/" + HelperInstaller + ".";
         var result = RunSudo(["cleanup"], HelperCommandTimeout);
-        return result.ExitCode == 0 ? null : "The Linux capture helper could not clean up: " + Tail(result.Output);
+        return result.ExitCode == 0 ? null : "The Linux capture helper could not clean up: " + Tail(result.AllText);
     }
 
     public static string? StopHelper()
     {
         if (!File.Exists(HelperPath)) return null;
         var result = RunSudo(["stop"], HelperCommandTimeout);
-        return result.ExitCode == 0 ? null : "The Linux capture helper did not stop: " + Tail(result.Output);
+        return result.ExitCode == 0 ? null : "The Linux capture helper did not stop: " + Tail(result.AllText);
     }
 
     // Normal proxy exit: stop the relay, remove the marked hosts lines, then remove the CA by thumbprint and forget its
@@ -742,19 +1045,19 @@ public static class LinuxCapture
         try
         {
             using var process = Process.Start(start);
-            if (process == null) return new(-1, "sudo did not start.");
+            if (process == null) return new(-1, "", "sudo did not start.");
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit((int)timeout.TotalMilliseconds))
             {
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-                return new(-1, "The capture helper command timed out.");
+                return new(-1, "", "The capture helper command timed out.");
             }
-            return new(process.ExitCode, (output.GetAwaiter().GetResult() + error.GetAwaiter().GetResult()).Trim());
+            return new(process.ExitCode, output.GetAwaiter().GetResult().Trim(), error.GetAwaiter().GetResult().Trim());
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            return new(-1, exception.Message);
+            return new(-1, "", exception.Message);
         }
     }
 

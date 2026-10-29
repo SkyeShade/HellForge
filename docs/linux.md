@@ -98,9 +98,9 @@ app into `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs th
 starts automatically while the game copy is incomplete. The installer checks the package's required entries before it
 prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
-`app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`,
-`app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`, `app/linux/allow-capture.sh`,
-`app/linux/capture-helper.sh` or `app/linux/capture-relay`.
+`app/capture-linux/HellForge.CaptureProxy`, `app/backend-linux/HellForge.LocalBackend`, `app/linux/hellforge-linux.sh`,
+`app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`,
+`app/linux/allow-capture.sh`, `app/linux/capture-helper.sh` or `app/linux/capture-relay`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -536,25 +536,43 @@ native readiness command store the result with the app build and kernel and show
 
 The profile page's **Sync Inventory** button opens the normal game through Steam and copies the signed-in account's
 inventory and progression into a sealed snapshot. It is the same capture as on Windows, but on Linux the proxy is a
-native program and the two system changes are made by one root-owned helper.
+native program and the two system changes are made by one root-owned helper. **Review import**, the import and a backup
+restore run in `app/backend-linux/HellForge.LocalBackend`, the local backend's profile commands built for Linux. It
+finds the signed-in Steam account with its own probe through the wrapper, because a native Linux program trusts only a
+probe it ran itself (`HELLFORGE_STEAM_ACCOUNT` is read only by the Windows backend under Wine).
 
-Install the helper once, from the account that plays HellForge:
+The capture usually ends while the game is still open. The prefix is not changed while the game runs, so the launcher
+waits for HELLDIVERS 2 to close and then removes the one-day CA from its prefix. If the launcher is closed first, its
+next start removes it. The CA's private key exists only in the capture proxy's memory, so a leftover CA cannot be used
+to intercept the game.
 
-```fish
-sudo bash ~/.local/share/hellforge-prefix/pfx/drive_c/users/steamuser/Documents/HellForge/app/linux/allow-capture.sh
-```
+The first sync asks once to install the helper. Choosing **Install** runs the shipped
+`app/linux/allow-capture.sh` through `pkexec /usr/bin/bash ...`, so the desktop's own polkit dialog asks for the
+password. The launcher never keeps root or a password, writes no polkit rule that skips the password, and only that
+absolute, link-checked shipped script is elevated. The confirmation says what it does: the installer copies
+`capture-helper.sh` to `/usr/local/lib/hellforge/capture-helper` and `capture-relay` to
+`/usr/local/lib/hellforge/capture-relay`, records each installed copy's SHA-256 in `capture-helper.sha256` and
+`capture-relay.sha256`, and adds `/etc/sudoers.d/hellforge-capture`, a rule for that one root-owned helper's exact
+`check`, `start`, `stop` and `cleanup` commands. There is no wildcard and no port argument; `start` reads the native
+proxy's pid from stdin and the relay's ports are fixed. The account comes from `SUDO_USER` or, under pkexec, from
+`PKEXEC_UID`. After the installer exits, the launcher checks both installed hashes again and continues the same sync
+without another click; a package update that changes either shipped file makes the next sync offer the same install
+again. A cancelled or denied password dialog means "not installed; nothing changed". If `pkexec` is missing or no polkit
+authentication agent is running (Game Mode on a Deck, a bare window manager), the launcher shows the terminal command
+instead. SteamOS 3.x users without a password are told to run `passwd` first. Running `allow-capture.sh --remove`
+removes the rule, the helper, the relay and both hashes, and uninstall offers the same `--remove` through pkexec. The
+helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller. `capture-relay` is a tiny
+static C program built from `native/linux-capture`; the helper runs only the installed root-owned copy, never one from
+the installation, which any Wine program can write.
 
-That is the only password prompt. The installer copies `capture-helper.sh` to
-`/usr/local/lib/hellforge/capture-helper` and `capture-relay` to `/usr/local/lib/hellforge/capture-relay`, records each
-installed copy's SHA-256 in `capture-helper.sha256` and `capture-relay.sha256`, and adds
-`/etc/sudoers.d/hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop` and `cleanup`
-commands, so that account needs no other password. There is no wildcard and no port argument; `start` reads the native
-proxy's pid from stdin and the relay's ports are fixed. Running `allow-capture.sh --remove` removes the rule, the helper,
-the relay and both hashes. The helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller.
-The launcher hashes both installed copies against the ones in this installation and refuses to sync if an update left
-either root copy stale, telling the player to run `allow-capture.sh` again. `capture-relay` is a tiny static C program
-built from `native/linux-capture`; the helper runs only the installed root-owned copy, never one from the installation,
-which any Wine program can write.
+HellForge asks Steam's `CompatToolMapping` for the Proton that opens HELLDIVERS 2's own prefix first. Current Steam
+often writes no mapping at all, and a mapping can name a tool that is no longer installed; then the prefix's own
+`compatdata/553850/config_info` decides. Its first line is the
+prefix version and its paths point inside the Proton that wrote it, so HellForge strips the trailing `files/...` or
+`dist/...` part, requires the `proton` script beside that root, and requires its `CURRENT_PREFIX_VERSION` to equal the
+prefix's `version`. Proton's install `version` file is a build id and is not compared with it. If neither source gives a
+Proton, the message says both were looked for and that HELLDIVERS 2 must have been started once through Steam, which is
+what writes `config_info`.
 
 For the length of a sync, until the normal game exits, these change:
 
@@ -567,15 +585,26 @@ For the length of a sync, until the normal game exits, these change:
   can change either address or port. Nothing is bound beyond loopback, the table of connections is bounded, and the relay
   stops with the helper.
 - The proxy makes a one-day CA and writes only its public certificate to the sync folder. HellForge starts the Proton
-  that Steam's `CompatToolMapping` selects for HELLDIVERS 2, not HellForge's own Proton choice, and refuses if it cannot
-  resolve that exact tool. The supervisor imports the certificate into HELLDIVERS 2's own Proton prefix,
+  that Steam's `CompatToolMapping` selects for HELLDIVERS 2, not HellForge's own Proton choice; when the mapping names
+  no tool, the prefix's `config_info` decides as described above. It refuses if neither gives a matching Proton. The
+  supervisor imports the certificate into HELLDIVERS 2's own Proton prefix,
   `steamapps/compatdata/553850/pfx`, as the Windows Root store's serialized `Blob`
   (`HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>`), using
-  `proton run reg import` with a UTF-16 LE `.reg` file. It reads the value back with `proton run reg query` and
-  requires the returned hex to equal the blob it wrote before the game opens. Removal imports a delete `.reg` and
-  requires the key to be gone;
-  a failed check is a failure, never "removed". Wine runs only while the game is closed. The private key stays in the
-  proxy process.
+  `proton run reg import` with a UTF-16 LE `.reg` file. Import and export stdout and stderr are kept apart and written
+  in full to `logs/sync-<utc>/launcher.log`; Proton's OpenXR-Loader, xrizer, fsync and "Proton: Upgrading prefix" lines
+  stay but are marked `[known Proton noise]`. The supervisor then waits (bounded) for that prefix's own `wineserver -w`,
+  exports the key with `proton run reg export <key> <Z: path in a fresh private temp folder> /y`, parses that UTF-16 LE
+  file's `"Blob"=hex:` value, and reads `pfx/system.reg` as a second, independent check. Both must hold the byte-exact
+  Blob before the game opens; the failure message says which check disagreed. `proton run reg query` is not used for
+  the verdict: the measured Proton gives it 0 bytes of stdout even for a known key. Import/export stdout and stderr stay
+  as log evidence only. Removal imports
+  a delete `.reg`, then requires `reg export` to exit non-zero and write no file **and** `system.reg` to no longer have
+  the key after the flush; empty output is never read as "gone". A failed check is a failure, never "removed". A running
+  wineserver for that prefix (Steam's game or a tool) is refused
+  with "close Steam's game/tools in that prefix first"; a record whose prefix differs from the game library's
+  `steamapps/compatdata/553850` (for example a second Steam library) is refused before the import. The prefix's
+  `version` file is read before and after the import, so a version change is recorded as evidence. Wine runs only while
+  the game is closed. The private key stays in the proxy process.
 - `logs/sync-<utc>/` is mode `0700`; the inventory, progression, state, certificate and seal files are mode `0600`. The
   snapshot is sealed natively with the machine-id transform; the account is the one the Steam probe confirmed. Captured
   JSON is never put in a log.
@@ -583,6 +612,29 @@ For the length of a sync, until the normal game exits, these change:
 The normal host CA bundle, the prefix's `hosts` file, nftables/iptables and Steam launch options are not changed, and Wine
 is never started as root. During the sync, the game may still show "Could not connect to Easy Anti Cheat network" after
 the login and close itself; the capture is finished by then, as on Windows.
+
+The first real Sync Inventory on Linux (2026-10-29; CachyOS, KDE Wayland, RX 7600, issue #112) stopped at this CA check
+before the game opened. The native proxy had written and served its CA ("CA written for the game prefix", "listening on
+port 18443"), and Steam mapped HELLDIVERS 2 to `proton-cachyos-11.0-20260506-slr`. The launcher then reported that
+Wine's registry did not hold the Blob, although `reg import` had exited 0; the report kept only Proton's
+OpenXR-Loader/xrizer stderr.
+
+The reviewer's offline reproduction (`.deepcode/c6/repro.out`, 2026-10-29) found the cause. In all three combinations
+(Proton - Experimental on the host, `proton-cachyos-11.0-20260506-slr` on the host, and the same Proton inside
+SteamLinuxRuntime_4), `reg import` exited 0 and `system.reg` held the key with a byte-exact Blob, but
+`proton run reg query <key> /v Blob` exited 0 with **0 bytes of stdout**. A known key behaved the same; Proton's own
+`files/bin/wine reg query` prints it, and `proton run reg export <key> Z:\...\out.reg /y` writes the value. So the CA
+import reaches the root store in every combination, and the old check failed on every machine because it parsed console
+output that `proton run` does not deliver. The fix above uses the export file and `system.reg`. That answers the
+registry-import question; the remaining open check is whether the game trusts that root store during a real sync. Treat
+Account Sync on Linux as experimental until that is recorded.
+
+The maintainer's own sync on 2026-10-29 hit the other open case: `config.vdf` had no `CompatToolMapping` at all, neither
+for 553850 nor a `0` default, and no `userdata` file had one either. The prefix did record its Proton:
+`compatdata/553850/version` and the first line of `compatdata/553850/config_info` were both `11.0-100`, and
+`config_info` pointed into `steamapps/common/Proton - Experimental/files/`; that Proton script has
+`CURRENT_PREFIX_VERSION="11.0-100"`. The `config_info` fallback above is for that case. Steam's install `version` file
+inside the Proton is a build id such as `1791989105 experimental-11.0-20261014-x86_64`, not the prefix version.
 
 If a sync was killed before it could clean up, start HellForge and press **Clean up**, or run:
 
@@ -648,6 +700,9 @@ removes what HellForge put outside the installation:
   too. While the box is unticked, they are left where they are.
 - The removed shell installer's app-menu entry, `~/.local/bin/hellforge-linux` command and
   `~/.config/hellforge-linux/config` saved settings, when the saved settings name this prefix.
+- The Account Sync helper, relay, their hashes and `/etc/sudoers.d/hellforge-capture`, through the same pkexec
+  confirmation and password dialog. If no polkit agent is available, the uninstall text shows the terminal `--remove`
+  command and the helper files are left for it.
 
 Then the launcher closes and a helper deletes the installation folder (`game`, `profiles`, `mods`, `userdata`, `logs`,
 `temp`, `app` and the namespace marker) and `~/Desktop/HellForge.desktop` when it still has HellForge's exact `Exec=`
@@ -839,10 +894,12 @@ probe, and a real game session have not been tested here.
 - The graphical installer's install and update path (the staged app swap, rollback and new engine install), build
   patches applied through Proton, prefix backup and restore, and uninstall's outside cleanup (including the AppArmor
   commands) and prefix deletion offer have not been tried with a real game and Steam on a Linux machine.
-- A real Account Sync on Linux has not been run yet. The open checks are whether the registry `Blob` import puts the
-  native proxy's CA in HELLDIVERS 2's prefix `Root` store, whether the game uses that store, and whether the root
-  helper's 443 relay and `/etc/hosts` lines carry the login. Treat Account Sync on Linux as experimental until those are
-  recorded.
+- A real Account Sync on Linux has been run once (2026-10-29, issue #112) and stopped at the CA check before the game
+  opened: the proxy listened and wrote its CA, `reg import` exited 0, but the old code parsed `proton run reg query`
+  stdout, which is empty even for a known key. The offline reproduction now shows the import reaches HELLDIVERS 2's
+  prefix `Root` store with both Proton - Experimental and the tester's `-slr` Proton, on the host and inside
+  SteamLinuxRuntime_4. The open checks are whether the game uses that store, and whether the root helper's 443 relay and
+  `/etc/hosts` lines carry the login. Treat Account Sync on Linux as experimental until those are recorded.
 
 ## Helping with Linux
 

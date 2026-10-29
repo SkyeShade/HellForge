@@ -311,6 +311,9 @@ public static class LinuxAppInstaller
             if (File.Exists(path)) MakeExecutable(path);
         }
         MakeExecutable(Path.Combine(app, "..", "capture-linux", "HellForge.CaptureProxy"));
+        // Account import's profile commands on native Linux; the installer's package check requires it.
+        var backend = Path.Combine(app, "..", "backend-linux", "HellForge.LocalBackend");
+        if (File.Exists(backend)) MakeExecutable(backend);
         foreach (var script in Directory.EnumerateFiles(scripts, "*.sh")) MakeExecutable(script);
     }
 

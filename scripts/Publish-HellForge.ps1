@@ -70,6 +70,11 @@ if($LASTEXITCODE){throw 'Publishing capture-linux failed.'}
 Write-Output 'Publishing cli-linux'
 dotnet publish (Join-Path $project 'src/HellForge.Cli/HellForge.Cli.csproj') -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'cli-linux')
 if($LASTEXITCODE){throw 'Publishing cli-linux failed.'}
+# app/backend-linux: the local backend's profile commands (account import preview, import, restore) for the native
+# launcher. Self-contained like cli-linux; NativeAOT does not cross-compile to Linux, so it is a normal .NET publish.
+Write-Output 'Publishing backend-linux'
+dotnet publish (Join-Path $project 'src/HellForge.LocalBackend/HellForge.LocalBackend.csproj') -c Release -r linux-x64 --self-contained true -p:PublishAot=false -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'backend-linux')
+if($LASTEXITCODE){throw 'Publishing backend-linux failed.'}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem

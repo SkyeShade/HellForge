@@ -149,10 +149,13 @@ public static class InventorySync
             throw new InvalidOperationException(running);
         var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
         var prefix = LinuxCapture.FindPrefix(steamRoot);
-        var proton = LinuxCapture.ProtonForGame(steamRoot);
+        var resolution = LinuxCapture.FindProtonForGame(steamRoot);
+        var proton = resolution.Proton;
         var address = LinuxCapture.CurrentAddress();
         if (steamRoot == null)
             throw new InvalidOperationException("Steam was not found: start Steam and sign in, then sync again.");
+        InventorySync.Note(syncDir, "HELLDIVERS 2's Proton: " + resolution.Source +
+            (proton == null ? "" : " -> " + proton));
         if (LinuxCapture.StartRefusal(installRoot, prefix, proton, address, gameRunning(), sessionRunning) is { } refusal)
             throw new InvalidOperationException(refusal);
 
@@ -270,12 +273,32 @@ public static class InventorySync
             helper?.Dispose();
             helper = null;
             var folder = syncDir;
-            _ = Task.Run(() =>
+            _ = Task.Run(async () =>
             {
+                // The capture usually ends while the game is still open, and the prefix is not changed then. Wait for it
+                // to close so the CA leaves the prefix as the sync card promises; the next launcher start removes it if
+                // this launcher closes first.
+                if (IsGameRunning()) Note(folder, "waiting for HELLDIVERS 2 to close before removing the capture CA");
+                await WaitForGameExit(GameExitPoll, GameExitWait);
                 var problem = stop == null ? LinuxCapture.RemoveRecordedCertificate(folder) : LinuxCapture.Finish(folder);
-                if (problem != null) Note(folder, "Linux capture cleanup: " + problem);
+                Note(folder, problem == null ? "capture CA removed from HELLDIVERS 2's prefix" : "Linux capture cleanup: " + problem);
             });
         }
+    }
+
+    static readonly TimeSpan GameExitPoll = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan GameExitWait = TimeSpan.FromHours(12);
+
+    // True once the game is closed; false when it is still running after the bound.
+    public static async Task<bool> WaitForGameExit(TimeSpan poll, TimeSpan bound)
+    {
+        var deadline = DateTime.UtcNow + bound;
+        while (IsGameRunning())
+        {
+            if (DateTime.UtcNow >= deadline) return false;
+            await Task.Delay(poll);
+        }
+        return true;
     }
 
     // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
