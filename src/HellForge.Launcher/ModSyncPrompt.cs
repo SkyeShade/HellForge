@@ -87,12 +87,19 @@ public partial class MainWindow
     }
 
     // The in-game prompt's TRUST warning (app.cpp DrawTrust), in the card's place; its button takes a click only after a
-    // second, so a click meant for the card underneath never trusts a mod.
+    // second, so a click meant for the card underneath never trusts a mod. A stranger's (offered only to a sandboxed game)
+    // says what the sandbox does not stop.
     void RenderTrust(string runDirectory, ModSyncOffer offer, ModSyncOffer.Mod mod)
     {
         var name = (mod.Name.Length > 0 ? mod.Name : mod.Id) + " " + mod.Version;
         var host = offer.Host.Length > 0 ? offer.Host : "the host";
-        var warning = (mod.Class == "raw"
+        var warning = offer.Stranger ? (mod.Class == "raw"
+            ? name + " carries game data HellForge cannot check, and " + host + " is not your Steam friend. Through a flaw in the game, data " +
+              "like this can run code on your PC."
+            : name + " runs its own code on your PC, and " + host + " is not your Steam friend.") +
+              " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send what it " +
+              "reads to " + host + " through the game. Only trust it if you know where the mod comes from. It will run only while the sandbox is on."
+            : (mod.Class == "raw"
             ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or " +
               "through a flaw in the game run code on your PC that can do anything your Windows account can."
             : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your " +

@@ -818,8 +818,12 @@ typedef struct HfSyncState
 #define HF_SYNC_MOD_BLOCKED 3u  /* on the player's blocklist */
 #define HF_SYNC_MOD_UPDATE 4u   /* part of HellForge, another version: both players need the same HellForge */
 #define HF_SYNC_MOD_OFF 5u      /* one of this machine's own, off for the synced session (the host does not run it) */
-#define HF_SYNC_MOD_TRUST 6u    /* code or unchecked data HellForge has not verified, from a Steam friend who shares:
-                                 * downloads once the player trusts it (HF_SYNC_TRUST), or the player installs it by hand */
+#define HF_SYNC_MOD_TRUST 6u    /* code or unchecked data HellForge has not verified, from a Steam friend who shares (or,
+                                 * in a sandboxed game, a stranger: HF_SYNC_FLAG_STRANGER): downloads once the player trusts
+                                 * it (HF_SYNC_TRUST), or the player installs it by hand */
+#define HF_SYNC_FLAG_STRANGER 1u /* flags: the host is not the player's Steam friend. Warn harder before HF_SYNC_TRUST:
+                                  * the sandbox stops the mod's writes and network, not its reads, and the host gets the
+                                  * game's traffic. Never set by a backend before it */
 #define HF_SYNC_CLASS_CONTENT 0u /* what HellForge checks: data specs, schema stats, network field types */
 #define HF_SYNC_CLASS_CODE 1u    /* a DLL, sources HellForge builds, or Lua */
 #define HF_SYNC_CLASS_BUNDLED 2u /* shipped with HellForge (the in-game editor) */
@@ -829,7 +833,7 @@ typedef struct HfSyncMod
     uint32_t size;      /* sizeof(HfSyncMod): set by the caller */
     uint32_t action;    /* HF_SYNC_MOD_... */
     uint32_t kind;      /* HF_SYNC_CLASS_... */
-    uint32_t reserved;
+    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER */
     uint64_t bytes;     /* its size */
     char id[65];
     char name[81];      /* UTF-8 */

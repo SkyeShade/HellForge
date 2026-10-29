@@ -12,6 +12,30 @@ On `dev`, since 0.3.0-beta.
 
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+### Changed
+
+- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
+  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
+  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
+  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
+  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
+  Map when you're sandboxed.
+- Mods on HellForge's verified list download from any host, not just Steam friends.
+- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
+  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
+  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
+
+### For mod makers
+
+- `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
+  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+
+### For launcher developers
+
+- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
+  `--sandbox yes`.
+- The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
+  `"stranger": true`.
 
 ## 0.3.0-beta (2026-10-26)
 

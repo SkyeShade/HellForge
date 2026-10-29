@@ -21,7 +21,7 @@ try
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
-            mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>]
+            mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--sandbox yes|no]
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
             sdk-headers --repo <HellForge source folder> [--mode write | check]
@@ -98,7 +98,7 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--premium-snapshot", "--premium-locked"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
@@ -239,14 +239,17 @@ try
             modProblems.InsertRange(0, bundledProblems);
             var loadOrder = ModCatalog.LoadOrder(ModCatalog.Active(mods)); // bottom of the Mods page first
             // --sync: the session after a mod sync plays the host's gameplay mods (ModSyncSession); if they are not all here
-            // as the host has them, the player's own mods, and the problem is reported.
+            // as the host has them, the player's own mods, and the problem is reported. --sandbox yes: the session's game is
+            // sandboxed, which a mod trusted from a stranger needs.
             string? syncedWith = null;
+            var stageSandboxed = options.GetValueOrDefault("--sandbox") is { } sandboxFlag
+                ? sandboxFlag == "yes" ? true : sandboxFlag == "no" ? false : throw new ArgumentException("--sandbox is yes or no.") : false;
             if (options.TryGetValue("--sync", out var syncFile))
             {
                 try
                 {
                     var sync = ModSyncSession.Read(syncFile);
-                    var (synced, syncProblem) = sync.Resolve(modInstall.Mods, mods);
+                    var (synced, syncProblem) = sync.Resolve(modInstall.Mods, mods, sandboxed: stageSandboxed);
                     if (synced != null) (loadOrder, syncedWith) = (synced, sync.HostName.Length > 0 ? sync.HostName : sync.Host);
                     else modProblems.Add("Mod sync: playing your own mods, because " + syncProblem);
                     foreach (var mod in loadOrder.Where(m => m.Folder.StartsWith(SyncedStore.Root(modInstall.Mods), StringComparison.OrdinalIgnoreCase)))

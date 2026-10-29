@@ -234,7 +234,7 @@ sealed partial class PlaySession(PlayOptions options)
         // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
             "--modset", ModSetFile, .. PremiumStageArguments(profileDirectory)];
-        if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync)];
+        if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync), "--sandbox", options.Sandbox ? "yes" : "no"];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
         if ((bool?)plan["loaderRequired"] == true)
