@@ -47,6 +47,14 @@ sealed class SandboxSupervisor
 
     int Execute()
     {
+        var status = 1;
+        try { status = ExecuteCore(); return status; }
+        finally { Say($"exiting with code {status}"); }
+    }
+
+    int ExecuteCore()
+    {
+        Say("starting");
         if (!OperatingSystem.IsLinux()) throw new InvalidDataException("The native sandbox supervisor must run on native Linux.");
         Pdeathsig();
         using var term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => { stopping = true; });
@@ -55,24 +63,38 @@ sealed class SandboxSupervisor
         try
         {
             var wait = ProtonTimeout();
-            var run = WaitForRun(wait);
-            if (run == null) return StopRefusal(null, "the session runner did not publish a run within the Proton timeout");
+            var previousRun = PublishedRunId();
+            Say($"previous run {(previousRun.Length == 0 ? "none" : previousRun)}; waiting for a new run in {sessionFile}");
+            var run = WaitForRun(previousRun, wait);
+            if (run == null)
+                return StopRefusal(null, $"the session runner did not publish a new run within {wait.TotalSeconds:0} seconds in {sessionFile} (previous run {(previousRun.Length == 0 ? "none" : previousRun)})");
             var (runId, runFolder) = run.Value;
+            Say($"serving run {runId} in {runFolder}");
             var control = Path.Combine(runFolder, "control");
             Directory.CreateDirectory(control);
             var requestPath = Path.Combine(control, "start.json");
+            Say($"waiting for the start request for run {runId} at {requestPath}");
             SandboxStartRequest? request;
             try { request = WaitForRequest(requestPath, runId, DateTime.UtcNow + wait); }
-            catch (InvalidDataException error) { return StopRefusal(control, error.Message); }
-            if (request == null) return StopRefusal(control, "the session runner did not write a valid start request");
+            catch (InvalidDataException error)
+            {
+                return StopRefusal(control, $"the start request for run {runId} at {requestPath} was refused: {error.Message}");
+            }
+            if (request == null)
+                return StopRefusal(control, $"timed out waiting for the start request for run {runId} at {requestPath}");
+            Say($"read start request for run {runId} from {requestPath}");
             SandboxStartPlan plan;
-            try { plan = SandboxProtocol.Validate(install, runFolder, prefix, request); }
+            try
+            {
+                plan = SandboxProtocol.Validate(install, runFolder, prefix, request);
+                Say($"start request validation passed for run {runId}");
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
             {
-                return StopRefusal(control, error.Message);
+                return StopRefusal(control, $"start request validation refused for run {runId}: {error.Message}");
             }
             if (!string.Equals(request.RunId.ToLowerInvariant(), runId, StringComparison.Ordinal))
-                return StopRefusal(control, "the start request's run id is not the published run");
+                return StopRefusal(control, $"start request refused for run {runId}: it names {request.RunId}");
             Directory.CreateDirectory(Path.Combine(plan.GameOut, "domain"));
             WriteText(plan.LaunchSpec, JsonSerializer.Serialize(plan.Launch, SandboxJson.Default.SandboxLaunchSpec) + "\n");
             return StartDomain(control, plan, request);
@@ -80,29 +102,41 @@ sealed class SandboxSupervisor
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or
                                          InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
         {
-            Console.Error.WriteLine("hf-supervisor: " + error.Message);
+            Say("failed: " + error.Message);
             return 1;
         }
     }
 
-    (string RunId, string Run)? WaitForRun(TimeSpan timeout)
+    string PublishedRunId()
+    {
+        var state = SessionFiles.ReadJson(sessionFile);
+        return state is { } value ? SessionFiles.Text(value, "runId") : "";
+    }
+
+    (string RunId, string Run)? WaitForRun(string previousRunId, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (!stopping && DateTime.UtcNow < deadline)
         {
             if (!LinuxProcessIdentity.Alive(parentPid)) return null;
-            var state = SessionFiles.ReadJson(sessionFile);
-            var runId = state is { } value ? SessionFiles.Text(value, "runId") : "";
-            var run = state is { } value2 ? SessionFiles.Text(value2, "run") : "";
-            if (runId.Length == 32 && runId.All(char.IsAsciiHexDigit) && run.Length > 0)
-            {
-                var host = SandboxProtocol.HostPath(run, prefix, "published run");
-                var expected = Path.TrimEndingDirectorySeparator(Path.Combine(install.Sessions, runId.ToLowerInvariant()));
-                if (string.Equals(host, expected, StringComparison.Ordinal) && Directory.Exists(host)) return (runId.ToLowerInvariant(), host);
-            }
+            if (PublishedRun(previousRunId) is { } published) return published;
             Thread.Sleep(200);
         }
         return null;
+    }
+
+    // The run play-session.json names now, when it is a valid run folder of this installation other than previousRunId.
+    (string RunId, string Run)? PublishedRun(string previousRunId)
+    {
+        var state = SessionFiles.ReadJson(sessionFile);
+        var runId = state is { } value ? SessionFiles.Text(value, "runId") : "";
+        var run = state is { } value2 ? SessionFiles.Text(value2, "run") : "";
+        if (runId.Length != 32 || !runId.All(char.IsAsciiHexDigit) || run.Length == 0) return null;
+        var nextRunId = runId.ToLowerInvariant();
+        if (previousRunId.Length > 0 && string.Equals(nextRunId, previousRunId, StringComparison.OrdinalIgnoreCase)) return null;
+        var host = SandboxProtocol.HostPath(run, prefix, "published run");
+        var expected = Path.TrimEndingDirectorySeparator(Path.Combine(install.Sessions, nextRunId));
+        return string.Equals(host, expected, StringComparison.Ordinal) && Directory.Exists(host) ? (nextRunId, host) : null;
     }
 
     SandboxStartRequest? WaitForRequest(string path, string runId, DateTime deadline)
@@ -188,8 +222,9 @@ sealed class SandboxSupervisor
         try { process = Process.Start(start) ?? throw new InvalidDataException("hf-sandbox did not start"); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return StopRefusal(control, error.Message);
+            return StopRefusal(control, "hf-sandbox could not start: " + error.Message);
         }
+        Say($"domain started for run {request.RunId}: hf-sandbox pid {process.Id}");
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         var timeout = ProtonTimeout();
@@ -222,7 +257,8 @@ sealed class SandboxSupervisor
                 ["elapsedSeconds"] = Math.Round(clock.Elapsed.TotalSeconds, 2),
                 ["sandboxRefused"] = status == null && exitCode != 0, ["completedUtc"] = DateTime.UtcNow.ToString("o")
             });
-            Console.Error.WriteLine($"hf-supervisor: domain ended with exit code {exitCode}{(stopReason.Length > 0 ? " (" + stopReason + ")" : "")}.");
+            Say($"domain ended for run {request.RunId}: exit code {exitCode}" +
+                (stopReason.Length > 0 ? "; stop reason " + stopReason : "") + ".");
             DoCopyBack(control, plan, request);
             return exitCode == 0 || stopReason.Length > 0 ? 0 : 1;
         }
@@ -265,12 +301,15 @@ sealed class SandboxSupervisor
 
     void DoCopyBack(string control, SandboxStartPlan plan, SandboxStartRequest request)
     {
+        Say($"copy-back: waiting for run {request.RunId}'s request");
         var status = SandboxDomainStatus.Read(Path.Combine(plan.GameOut, "domain", "status.json"));
         if (status is not { GamePid: > 0, State: "exited" or "stopped" })
         {
+            const string reason = "the domain did not report a finished game process";
+            Say("copy-back abandoned: " + reason);
             WriteJson(Path.Combine(control, "abandoned.json"), new JsonObject
             {
-                ["reason"] = "the domain did not report a finished game process", ["utc"] = DateTime.UtcNow.ToString("o")
+                ["reason"] = reason, ["utc"] = DateTime.UtcNow.ToString("o")
             });
             return;
         }
@@ -280,12 +319,15 @@ sealed class SandboxSupervisor
             Thread.Sleep(200);
         if (!File.Exists(path))
         {
+            const string reason = "the trusted runner ended without asking for the copy-back";
+            Say("copy-back abandoned: " + reason);
             WriteJson(Path.Combine(control, "abandoned.json"), new JsonObject
             {
-                ["reason"] = "the trusted runner ended without asking for the copy-back", ["utc"] = DateTime.UtcNow.ToString("o")
+                ["reason"] = reason, ["utc"] = DateTime.UtcNow.ToString("o")
             });
             return;
         }
+        Say($"copy-back: request read for run {request.RunId}");
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(path));
@@ -302,22 +344,27 @@ sealed class SandboxSupervisor
                 ["ok"] = true, ["files"] = result.Files, ["bytes"] = result.Bytes, ["skipped"] = result.Skipped,
                 ["staging"] = result.Staging
             });
+            Say($"copy-back finished: {result.Files} files, {result.Bytes} bytes");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
         {
+            Say("copy-back failed: " + error.Message);
             WriteJson(Path.Combine(control, "copy-back.json"), new JsonObject { ["ok"] = false, ["error"] = error.Message });
         }
     }
 
     int StopRefusal(string? control, string reason)
     {
-        Console.Error.WriteLine("hf-supervisor: " + reason);
+        Say("refused: " + reason);
         try
         {
             if (control != null) WriteJson(Path.Combine(control, "refused.json"),
                 new JsonObject { ["reason"] = reason, ["utc"] = DateTime.UtcNow.ToString("o") });
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Say("could not write the refusal: " + error.Message);
+        }
         return 1;
     }
 
@@ -375,6 +422,8 @@ sealed class SandboxSupervisor
         try { return task.Wait(TimeSpan.FromSeconds(5)) ? task.Result : ""; }
         catch (AggregateException) { return ""; }
     }
+
+    static void Say(string message) => Console.Error.WriteLine("hf-supervisor: " + message);
 
     static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
