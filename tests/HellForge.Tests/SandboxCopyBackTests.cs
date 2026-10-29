@@ -80,12 +80,13 @@ static class SandboxCopyBackTests
                 "The device node reached the native staging folder.");
         });
 
-        test("Linux sandbox state cleanup removes mode-000 work/work and the empty mount point", () => {
+        test("Linux sandbox state cleanup removes mode-000 work/work and the empty mount points", () => {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox state cleanup)"); return; }
             var session = Path.Combine(root, "sandbox-state-cleanup", "run");
             var sandbox = Path.Combine(session, "sandbox");
             var gameOut = Path.Combine(session, "game");
             var merged = Directory.CreateDirectory(Path.Combine(gameOut, "prefix", "merged")).FullName;
+            var newRoot = Directory.CreateDirectory(Path.Combine(session, "root")).FullName;
             Directory.CreateDirectory(Path.Combine(sandbox, "upper", "pfx"));
             File.WriteAllText(Path.Combine(sandbox, "upper", "pfx", "overlay-write"), "overlay");
             var work = Directory.CreateDirectory(Path.Combine(sandbox, "work", "work")).FullName;
@@ -93,7 +94,12 @@ static class SandboxCopyBackTests
             SandboxFolders.RemoveSessionState(session, gameOut);
             check(!Directory.Exists(sandbox), "The sandbox upper/work folder survived session cleanup.");
             check(!Directory.Exists(merged), "The empty overlay mount point survived session cleanup.");
+            check(!Directory.Exists(newRoot), "hf-sandbox's empty new-root mount point survived session cleanup.");
             check(Directory.Exists(session), "Session cleanup removed the run folder itself.");
+            // A new-root folder that still holds something (a mount that did not detach) is left for the evidence.
+            var busy = Directory.CreateDirectory(Path.Combine(session, "root", "tmp")).FullName;
+            SandboxFolders.RemoveSessionState(session, gameOut);
+            check(Directory.Exists(busy), "Session cleanup removed a new-root folder that was not empty.");
         });
 
         test("Linux sandbox cleanup removes .steam links but not their Steam targets", () => {

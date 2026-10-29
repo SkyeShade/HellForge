@@ -86,7 +86,10 @@ public partial class MainWindow
             Directory.CreateDirectory(install.Logs);
             File.WriteAllText(report, errorText + outputText);
             var passed = process.ExitCode == 0;
-            var result = LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
+            // A container refusal stops the wrapper before hf-sandbox runs, so its written reason is the result: the
+            // readiness record and Settings > Sandbox then say why, not a generic self-test failure.
+            var result = (passed ? null : SessionRunner.LinuxContainerRefusal(install.Root))
+                ?? LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
             RecordLinuxSandboxTest(install, passed, passed ? "" : result);
             SetLinuxSandboxRow(passed, (passed ? "The Linux sandbox self-test passed. " : "The sandbox stays off: ") +
                 Privacy.Scrub(result) + " Report: " + Privacy.Scrub(report));
