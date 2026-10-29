@@ -47,6 +47,10 @@ On `dev`, since 0.3.0-beta.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
   folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
   `tar` for them.
+### Changed
+
+- Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
+  #149).
 
 ## 0.3.0-beta (2026-10-26)
 
