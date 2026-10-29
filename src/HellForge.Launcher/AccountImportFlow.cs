@@ -30,14 +30,30 @@ public partial class MainWindow
 
     void InitializeAccountImport()
     {
-        ReviewImportButton.Click += async (_, _) => await ShowReviewAsync(Selected);
-        ImportApplyButton.Click += async (_, _) => await ApplyReviewAsync();
+        ReviewImportButton.Click += async (_, _) => await WhileBusy(ReviewImportButton, "Reviewing...", () => ShowReviewAsync(Selected));
+        ImportApplyButton.Click += async (_, _) => await WhileBusy(ImportApplyButton, "Importing...", ApplyReviewAsync);
         ImportCancelButton.Click += (_, _) =>
         {
             ImportPanel.IsVisible = false;
             SetSyncStatus("Nothing imported. Premium items you own still follow the sync.", Light);
         };
-        RestoreBackupButton.Click += async (_, _) => await RestoreBackupAsync();
+        RestoreBackupButton.Click += async (_, _) => await WhileBusy(RestoreBackupButton, "Restoring...", RestoreBackupAsync);
+    }
+
+    // A button that starts slow work shows it at once: disabled, with its label saying what it is doing, until the work
+    // ends. A second click meanwhile does nothing.
+    static async Task WhileBusy(Button button, string busyLabel, Func<Task> work)
+    {
+        if (!button.IsEnabled) return;
+        var label = button.Content;
+        button.IsEnabled = false;
+        button.Content = busyLabel;
+        try { await work(); }
+        finally
+        {
+            button.Content = label;
+            button.IsEnabled = true;
+        }
     }
 
     // The review button when the selected profile has a snapshot; the backups it has.
