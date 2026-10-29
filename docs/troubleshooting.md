@@ -176,6 +176,26 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
 
+On Linux, **Sync Inventory** can stop before the game opens with these messages. `logs/sync-*/launcher.log` now holds
+`reg.exe`'s stdout and stderr separately, with Proton's OpenXR-Loader/xrizer/fsync/pfx-upgrade lines marked
+`[known Proton noise]`:
+
+| Message | What it means |
+|---|---|
+| "A Windows program is still running in HELLDIVERS 2's Proton prefix (...)" or "Cannot tell whether ..." | Steam's game or a tool still has that prefix's wineserver open, and the capture will not change the prefix under it. Close the game and any Steam tool using that prefix, then sync again. |
+| "Wine reg import could not add the capture CA to HELLDIVERS 2's prefix (exit ..., see launcher.log)" | The import itself failed. Both streams are in `launcher.log`; `reg query` output is not used as proof. |
+| "Wine could not confirm the capture CA ...: Wine reg export did not confirm the capture CA (exit ...): ...; system.reg holds the expected Blob" | The import exited 0 and `system.reg` has the key, but `reg export` produced no readable export file or Blob. That is the added check; send `launcher.log`. |
+| "Wine could not confirm the capture CA ...: reg export holds the expected Blob; the key is not in system.reg: the import did not land" | The export file has the Blob but the prefix's `system.reg` does not. The import did not reach the store. |
+| "Wine could not confirm the capture CA ...: ... the export file's Blob does not match the certificate ..." | The export succeeded but its Blob differs from the one written. Close Steam's game/tools in that prefix, then sync again; send `launcher.log`. |
+| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam actually uses, then sync again. |
+| "The prefix version changed from ... to ... during the import" | Evidence that a Proton upgraded the prefix while the CA was being imported. If the sync failed, close Steam's game/tools in that prefix and sync again. |
+| "Wine reg import could not remove the capture CA (exit ..., see launcher.log)", "The capture CA removal is not proven: reg export ...", or "Wine reg export did not find the capture CA key, but the key is in system.reg after the flush; the key is not proven gone." | Cleanup kept the `capture-ca.json` record so the next launcher start retries. Empty `reg export` output alone is never "removed"; close the game/tools in that prefix, then use **Clean up** again. |
+| "The Proton that opens HELLDIVERS 2's prefix could not be resolved..." | HellForge looked for Steam's `CompatToolMapping` for 553850 or its `0` default, then the prefix's `compatdata/553850/config_info` and `version`. Start HELLDIVERS 2 once through Steam: running it writes `config_info`, and the next sync can follow it. |
+| "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
+| "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
+| "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
+| "The helper installer finished, but the installed copies still do not match..." | The install ran but the helper/relay hashes still differ. The message includes the terminal installer command; run it, then sync again. |
+
 On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
 Steam's runtime container. The launcher shows the reason the wrapper wrote, and setup's "Check the Linux sandbox" row
 records it as the reason the sandbox stays off, so Settings > Sandbox shows it too. See

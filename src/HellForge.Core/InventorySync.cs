@@ -149,10 +149,13 @@ public static class InventorySync
             throw new InvalidOperationException(running);
         var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
         var prefix = LinuxCapture.FindPrefix(steamRoot);
-        var proton = LinuxCapture.ProtonForGame(steamRoot);
+        var resolution = LinuxCapture.FindProtonForGame(steamRoot);
+        var proton = resolution.Proton;
         var address = LinuxCapture.CurrentAddress();
         if (steamRoot == null)
             throw new InvalidOperationException("Steam was not found: start Steam and sign in, then sync again.");
+        InventorySync.Note(syncDir, "HELLDIVERS 2's Proton: " + resolution.Source +
+            (proton == null ? "" : " -> " + proton));
         if (LinuxCapture.StartRefusal(installRoot, prefix, proton, address, gameRunning(), sessionRunning) is { } refusal)
             throw new InvalidOperationException(refusal);
 
