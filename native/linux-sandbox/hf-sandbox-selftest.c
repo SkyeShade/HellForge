@@ -147,6 +147,32 @@ static void check_private_mount(const char *name, const char *host_canary, const
     else report(name, false, "writing %s: %s", private_file, strerror(errno));
 }
 
+// Wine finds a path given in another letter case (the game's lowercased user_settings.config) by listing each parent
+// folder, so the view's bare folders must be listable. The listing must show only the view's own entries: the
+// installation folder lists its logs folder (the way to the session) and never the host file planted beside it.
+static void check_view_listing(const struct hf_sandbox *sandbox)
+{
+    DIR *directory = opendir(sandbox->install);
+    if (directory == NULL)
+    {
+        report("view listing", false, "listing %s: %s", sandbox->install, strerror(errno));
+        return;
+    }
+    const char *canary = strrchr(sandbox->selftest_listing_canary, '/');
+    canary = canary == NULL ? sandbox->selftest_listing_canary : canary + 1;
+    bool logs = false, leaked = false;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL)
+    {
+        if (strcmp(entry->d_name, "logs") == 0) logs = true;
+        if (strcmp(entry->d_name, canary) == 0) leaked = true;
+    }
+    closedir(directory);
+    if (leaked) report("view listing", false, "the host file %s is listed in the view", sandbox->selftest_listing_canary);
+    else if (!logs) report("view listing", false, "%s was listed without its logs folder", sandbox->install);
+    else report("view listing", true, "%s lists its own logs folder and not the host file %s", sandbox->install, canary);
+}
+
 static bool host_target_excluded(const char *path)
 {
     static const char *const excluded[] =
@@ -417,6 +443,7 @@ static void run_canaries(const struct hf_sandbox *sandbox)
     if (hf_join(path, sizeof(path), sandbox->merged, "pfx/drive_c/overlay-write") == 0)
         expect_allowed("overlay write", path, "overlay");
 
+    check_view_listing(sandbox);
     check_private_mount("private /tmp", sandbox->selftest_tmp_canary, "/tmp/hf-sandbox-selftest-private");
     check_private_mount("private /dev/shm", sandbox->selftest_shm_canary, "/dev/shm/hf-sandbox-selftest-private");
     check_runtime_sockets(sandbox);
@@ -884,6 +911,13 @@ int hf_run_self_test(const char *directory)
         hf_join3(nested_folder_bind, sizeof(nested_folder_bind), sandbox.install, "mods", "x") != 0 ||
         hf_join(nested_file_bind, sizeof(nested_file_bind), nested_folder_bind, "x.dll") != 0)
     {
+        clean_up(&paths);
+        return 1;
+    }
+    if (hf_join(sandbox.selftest_listing_canary, sizeof(sandbox.selftest_listing_canary), sandbox.install,
+            ".hf-sandbox-listing-canary") != 0 || !try_write(sandbox.selftest_listing_canary, "host"))
+    {
+        hf_fail("the self-test's listing canary");
         clean_up(&paths);
         return 1;
     }

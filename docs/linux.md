@@ -527,6 +527,12 @@ There is no command string and no shell: the request names fixed paths and an en
 - **Absent:** the home folder, the rest of the installation (profiles, user data, the account snapshot and the real
   mods folder except the exact active inputs), the real prefix's path, and every device except null, zero, full, random,
   urandom, tty, the GPU nodes and `/dev/shm`.
+- **Folder listings:** every folder of the view can be listed (Landlock `READ_DIR` on its root, nothing else). Wine
+  finds a path given in another letter case by listing each parent folder, and HELLDIVERS 2 opens its
+  `user_settings.config` lowercased; without this the bare folders between the view's mounts refused the listing, the
+  settings did not load, and the game showed its first-time setup in every sandboxed session. The view's root is
+  `hf-sandbox`'s own tmpfs, so a listing shows only what the sandbox mounted and the folders leading to it; the
+  self-test checks that a host file planted in the installation folder is not listed.
 - **Kernel locks:** Landlock enforces the same read and write sets again. A seccomp filter denies mounting, namespace
   changes (including `clone` with new-namespace flags), `clone3`, the x32 system calls, eBPF, io_uring and the kernel
   keyring. All capabilities are dropped and `no_new_privs` is set.

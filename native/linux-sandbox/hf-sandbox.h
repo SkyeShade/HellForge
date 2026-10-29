@@ -118,6 +118,7 @@ struct hf_sandbox
     char selftest_shm_canary[PATH_MAX];   // and its /dev/shm canary
     char selftest_deleted_source[PATH_MAX]; // a temp file the self-test binds and then unlinks
     char selftest_deleted_target[PATH_MAX]; // the path left pointing at the unlinked file
+    char selftest_listing_canary[PATH_MAX]; // a host file beside the installation's bare folders, never listed in the view
     char **extra_binds;                   // existing files/folders exposed read-only at their own paths
     int extra_bind_count;
     char **steam_runtimes;                // the Steam tool folders Proton's manifest requires (--steam-runtime), read-only
