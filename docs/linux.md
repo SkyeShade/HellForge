@@ -468,7 +468,14 @@ There is no command string and no shell: the request names fixed paths and an en
 The game's user data and environment are copied into `gameOut` before the domain is built. When it exits, the native
 `HellForge.Cli sandbox-copy-back` command stages only regular files with one link: links, FIFOs, devices and hard links are
 skipped, and a kernel without `openat2` is an error rather than a fallback. The trusted runner merges that staging folder
-and applies the editor's saves. The overlay's `upper/` and `work/` are removed afterwards.
+and applies the editor's saves. The session home holds only `.steam/sdk32` and `.steam/sdk64` links to Steam's runtimes;
+there are no `.steam/root` or `.steam/steam` aliases. The supervisor removes `.steam` in its after-domain cleanup. The
+overlay's `<run>/sandbox/` (including mode-000 `work/work`) is removed last, whether or not the copy-back ran, and an empty
+`gameOut/prefix/merged` is removed too.
+
+Every recursive walk over a run folder (`SessionLogs.ExportFiles`, the retention size count, `CrashReport`, `SandboxStats`
+and the engine-log scan) skips reparse points, so a link is never followed into Steam's `config` or library. A sandboxed
+`result.json` records `gameExitCode`, `gameCrashed` and the loader's first crash line as `loaderCrash`.
 
 Named pipes exist only inside their own Wine server, so in a multiplayer session the domain host serves the backend's
 `hellforge-<run>` pipe and the live editor's `hellforge-live-<run>` pipe in the overlay. It relays each connection to the

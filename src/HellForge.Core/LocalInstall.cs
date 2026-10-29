@@ -63,6 +63,32 @@ public static class LocalInstall
         return current;
     }
 
+    // Files under a folder whose entries may be untrusted: a link is skipped, never followed or returned. The root itself
+    // must not be a link. Linux resolves links in its parents (the normal Fedora Atomic case); Windows and Wine leave
+    // parent links to the OS but this walk never enumerates them. Names returned keep the caller's root spelling.
+    public static IEnumerable<string> FilesNoLinks(string root, string pattern = "*", bool recursive = true)
+    {
+        string? fullRoot = null, safeRoot = null;
+        try
+        {
+            fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            if (OperatingSystem.IsLinux()) safeRoot = NoLinks(fullRoot, fullRoot);
+            else { RefuseLink(fullRoot); safeRoot = fullRoot; }
+        }
+        catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+        {
+        }
+        if (fullRoot is null || safeRoot is null || !Directory.Exists(safeRoot)) yield break;
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = recursive,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            IgnoreInaccessible = true
+        };
+        foreach (var file in Directory.EnumerateFiles(safeRoot, pattern, options))
+            yield return Path.Combine(fullRoot, Path.GetRelativePath(safeRoot, file));
+    }
+
     // GetAttributes also checks dangling links, which File.Exists may report as missing.
     static void RefuseLink(string current)
     {

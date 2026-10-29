@@ -543,7 +543,7 @@ static class Launch
         return new
         {
             runs = runs.Select(Describe),
-            files = picked == null ? null : Directory.EnumerateFiles(picked.Folder, "*", SearchOption.AllDirectories)
+            files = picked == null ? null : LocalInstall.FilesNoLinks(picked.Folder)
                 .Select(f => new { path = Path.GetRelativePath(picked.Folder, f).Replace('\\', '/'), bytes = new FileInfo(f).Length }),
             sessionRunnerLog = File.Exists(runnerLog) ? runnerLog : null,
             gameLogs = Path.Combine(install.UserData, "logs")

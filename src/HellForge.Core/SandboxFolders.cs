@@ -67,16 +67,49 @@ public static class SandboxFolders
         }
     }
 
-    // The overlay's upper/work live in <run>/sandbox, outside gameOut and never bound into the view. After the copy-back
-    // and stats they are dead state: remove them, including overlayfs's mode-000 work/work. The game never writes this
-    // folder (it is not in gameOut), so this is trusted session cleanup, but a link there is still refused.
-    public static void RemoveSessionState(string sessionRoot)
+    // The overlay's upper/work live in <run>/sandbox, outside gameOut and never bound into the view. After the copy-back,
+    // stats and evidence copy they are dead state: remove them, including overlayfs's mode-000 work/work, then the empty
+    // overlay mount point. The game never writes this folder (it is not in gameOut), so this is trusted cleanup, but a
+    // link there is still refused.
+    public static void RemoveSessionState(string sessionRoot, string? gameOut = null)
     {
-        if (string.IsNullOrEmpty(sessionRoot)) return;
-        var sandbox = LocalInstall.NoLinks(Path.Combine(sessionRoot, "sandbox"), sessionRoot);
-        if (!Directory.Exists(sandbox)) return;
-        if (OperatingSystem.IsLinux()) MakeWritable(sandbox);
-        Directory.Delete(sandbox, recursive: true);
+        try
+        {
+            if (string.IsNullOrEmpty(sessionRoot)) return;
+            var candidate = Path.Combine(sessionRoot, "sandbox");
+            if (!Directory.Exists(candidate)) return;
+            var sandbox = LocalInstall.NoLinks(candidate, sessionRoot);
+            if (!Directory.Exists(sandbox)) return;
+            if (OperatingSystem.IsLinux()) MakeWritable(sandbox);
+            Directory.Delete(sandbox, recursive: true);
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(gameOut)) RemoveEmptyOverlayMount(gameOut);
+        }
+    }
+
+    // Remove the session's .steam links after the domain ended. The sdk32/sdk64 links are all that remain there; recursive
+    // deletion removes links themselves and never their Steam targets (measured on Linux).
+    public static void RemoveSteamHome(string gameOut)
+    {
+        if (string.IsNullOrEmpty(gameOut)) return;
+        var steam = Path.Combine(gameOut, "home", ".steam");
+        if (File.Exists(steam)) { File.Delete(steam); return; }
+        if (!Directory.Exists(steam)) return;
+        var folder = new DirectoryInfo(steam);
+        if ((folder.Attributes & FileAttributes.ReparsePoint) != 0) { File.Delete(steam); return; }
+        folder.Delete(recursive: true);
+    }
+
+    static void RemoveEmptyOverlayMount(string gameOut)
+    {
+        var merged = Path.Combine(gameOut, "prefix", "merged");
+        if (File.Exists(merged)) { File.Delete(merged); return; }
+        if (!Directory.Exists(merged)) return;
+        var folder = new DirectoryInfo(merged);
+        if ((folder.Attributes & FileAttributes.ReparsePoint) != 0) { File.Delete(merged); return; }
+        if (!folder.EnumerateFileSystemInfos().Any()) folder.Delete();
     }
 
     static void MakeWritable(string folder)

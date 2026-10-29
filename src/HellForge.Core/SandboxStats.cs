@@ -190,7 +190,7 @@ public static partial class SandboxStats
     {
         if (OperatingSystem.IsLinux()) from = LocalInstall.NoLinks(from, protectedRoot);
         var copied = 0;
-        foreach (var file in Directory.EnumerateFiles(from).Take(MaxPresets))
+        foreach (var file in LocalInstall.FilesNoLinks(from, recursive: false).Take(MaxPresets))
         {
             var name = Path.GetFileName(file);
             if (!PresetName().IsMatch(name)) continue;

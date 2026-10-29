@@ -351,7 +351,15 @@ sealed partial class PlaySession
         result["jobEmpty"] = status.JobEmpty;
         result["gamePid"] = status.GamePid;
         result["sandboxDomainPid"] = status.DomainPid;
-        if (status.ExitCode is { } code) result["exitCode"] = code;
+        var crashLine = CrashReport.FirstCrashLine(run);
+        var crashed = status.ExitCode is { } exited && exited != 0 || crashLine is { Length: > 0 } || CrashReport.Dump(run) != null;
+        result["gameCrashed"] = crashed;
+        if (status.ExitCode is { } code)
+        {
+            result["exitCode"] = code;
+            result["gameExitCode"] = $"0x{code:X8}";
+        }
+        if (crashLine is { Length: > 0 }) result["loaderCrash"] = Privacy.Current.Apply(crashLine);
         if (status.PlayFabOutcome is { Length: > 0 } playFab) result["playFabRedirect"] = playFab;
         result["sandboxDomainState"] = status.State;
         result["observedSeconds"] = Math.Round(clock.Elapsed.TotalSeconds, 2);

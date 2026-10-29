@@ -30,7 +30,7 @@ public static partial class SessionLogs
             long size = 0;
             try
             {
-                size = run.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+                size = LocalInstall.FilesNoLinks(run.FullName).Sum(file => new FileInfo(file).Length);
                 run.Delete(recursive: true);
                 removed++;
                 bytes += size;
@@ -50,7 +50,8 @@ public static partial class SessionLogs
     {
         if (!Directory.Exists(sessionsFolder)) return [];
         var runs = new List<Run>();
-        foreach (var folder in new DirectoryInfo(sessionsFolder).GetDirectories().Where(d => RunId().IsMatch(d.Name)))
+        foreach (var folder in new DirectoryInfo(sessionsFolder).GetDirectories()
+                     .Where(d => RunId().IsMatch(d.Name) && (d.Attributes & FileAttributes.ReparsePoint) == 0))
         {
             string? Text(System.Text.Json.JsonElement root, string name) =>
                 root.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
@@ -137,18 +138,21 @@ public static partial class SessionLogs
 
     static List<(string File, string Name)> ExportFiles(string run, string? gameLogs)
     {
-        // programs are left out (the run's steam-link folder holds a copy of Valve's steam_api64.dll, which is no log), and
-        // so is what a sandboxed game kept of the player's (InExport)
-        var files = Directory.EnumerateFiles(run, "*", SearchOption.AllDirectories)
+        // programs are left out, and so is what a sandboxed game kept of the player's (InExport). Links are skipped, never
+        // followed: a session folder can hold the game's .steam links or a link it planted itself.
+        var files = LocalInstall.FilesNoLinks(run)
             .Where(file => !Path.GetExtension(file).Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
                            !Path.GetExtension(file).Equals(".exe", StringComparison.OrdinalIgnoreCase) && InExport(Path.GetRelativePath(run, file)))
             .Select(file => (file, name: Path.Combine(Path.GetFileName(run), Path.GetRelativePath(run, file)))).ToList();
         if (!Directory.Exists(Path.Combine(run, "engine-logs")) && gameLogs != null && Directory.Exists(gameLogs))
         {
             var started = Directory.GetCreationTimeUtc(run);
-            files.AddRange(new DirectoryInfo(gameLogs).GetFiles("console_*.txt")
-                .Where(f => f.LastWriteTimeUtc >= started && f.Length < 200L * 1024 * 1024)
-                .Select(f => (f.FullName, Path.Combine(Path.GetFileName(run), "engine-logs", "logs-" + f.Name))));
+            foreach (var file in LocalInstall.FilesNoLinks(gameLogs, "console_*.txt", recursive: false))
+            {
+                var info = new FileInfo(file);
+                if (info.LastWriteTimeUtc >= started && info.Length < 200L * 1024 * 1024)
+                    files.Add((file, Path.Combine(Path.GetFileName(run), "engine-logs", "logs-" + info.Name)));
+            }
         }
         return files;
     }

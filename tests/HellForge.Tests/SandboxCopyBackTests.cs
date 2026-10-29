@@ -80,17 +80,34 @@ static class SandboxCopyBackTests
                 "The device node reached the native staging folder.");
         });
 
-        test("Linux sandbox state cleanup removes mode-000 work/work", () => {
+        test("Linux sandbox state cleanup removes mode-000 work/work and the empty mount point", () => {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox state cleanup)"); return; }
             var session = Path.Combine(root, "sandbox-state-cleanup", "run");
             var sandbox = Path.Combine(session, "sandbox");
+            var gameOut = Path.Combine(session, "game");
+            var merged = Directory.CreateDirectory(Path.Combine(gameOut, "prefix", "merged")).FullName;
             Directory.CreateDirectory(Path.Combine(sandbox, "upper", "pfx"));
             File.WriteAllText(Path.Combine(sandbox, "upper", "pfx", "overlay-write"), "overlay");
             var work = Directory.CreateDirectory(Path.Combine(sandbox, "work", "work")).FullName;
             File.SetUnixFileMode(work, UnixFileMode.None);
-            SandboxFolders.RemoveSessionState(session);
+            SandboxFolders.RemoveSessionState(session, gameOut);
             check(!Directory.Exists(sandbox), "The sandbox upper/work folder survived session cleanup.");
+            check(!Directory.Exists(merged), "The empty overlay mount point survived session cleanup.");
             check(Directory.Exists(session), "Session cleanup removed the run folder itself.");
+        });
+
+        test("Linux sandbox cleanup removes .steam links but not their Steam targets", () => {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox Steam-link cleanup)"); return; }
+            var baseFolder = Path.Combine(root, "sandbox-steam-cleanup");
+            var gameOut = Path.Combine(baseFolder, "game");
+            var steam = Directory.CreateDirectory(Path.Combine(gameOut, "home", ".steam")).FullName;
+            var target = Directory.CreateDirectory(Path.Combine(baseFolder, "steam", "linux64")).FullName;
+            var client = Path.Combine(target, "steamclient.so");
+            File.WriteAllText(client, "synthetic Steam client");
+            Directory.CreateSymbolicLink(Path.Combine(steam, "sdk64"), target);
+            SandboxFolders.RemoveSteamHome(gameOut);
+            check(!Directory.Exists(steam), "The session .steam folder survived cleanup.");
+            check(File.Exists(client), "Cleanup deleted the Steam target through the .steam link.");
         });
 
         test("Linux sandbox stats refuse a linked changes file and a FIFO without hanging", () =>

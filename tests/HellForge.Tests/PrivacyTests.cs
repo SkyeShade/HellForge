@@ -73,6 +73,15 @@ static class PrivacyTests
             Put(Path.Combine("game", "userdata", "profiles", "actual", "saves", "user_settings.config"));
             Put(Path.Combine("game", "userdata", "shader_cache", "pipeline_library.cache"));
             Put(Path.Combine("game", "environment", "Roaming", "Some Browser", "Default", "Local Storage", "leveldb", "000003.log"));
+            if (OperatingSystem.IsLinux())
+            {
+                // Exactly the round-7 shape: a link in the run folder to a folder of Steam-like files. The export must skip
+                // the link, not read or list anything behind it.
+                var linked = Directory.CreateDirectory(Path.Combine(root, "logs-export", "steam-config")).FullName;
+                File.WriteAllText(Path.Combine(linked, "config.vdf"), "login token");
+                for (var i = 0; i < 50; i++) File.WriteAllText(Path.Combine(linked, $"config-{i}.vdf"), "token");
+                Directory.CreateSymbolicLink(Path.Combine(newest, "steam-root"), linked);
+            }
             var runs = SessionLogs.Runs(sessions);
             check(runs.Count == 3 && runs.All(r => r.Id.Length == 32), "Runs: " + string.Join(", ", runs.Select(r => r.Id)));
             check(runs.Single(r => r.Id == new string('b', 32)).Status == "failed" && runs.Single(r => r.Id == new string('c', 32)).Status == null,
@@ -83,6 +92,11 @@ static class PrivacyTests
             var exported = SessionLogs.Export(newest, null, zip);
             using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
             var names = archive.Entries.Select(e => e.FullName).ToList();
+            check(exported.Files == names.Count && exported.Files < 20,
+                $"The export's file count was not bounded ({exported.Files}): " + string.Join(", ", names));
+            if (OperatingSystem.IsLinux())
+                check(!names.Any(n => n.EndsWith("config.vdf", StringComparison.OrdinalIgnoreCase) || n.Contains("config-", StringComparison.OrdinalIgnoreCase)),
+                    "The export followed a link into the Steam-like folder: " + string.Join(", ", names));
             check(exported.Skipped == 0 && names.All(n => !n.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) && names.Any(n => n.EndsWith("session.log")),
                 "Export entries: " + string.Join(", ", names));
             check(names.Any(n => n.EndsWith("game/modloader.log")) && names.Any(n => n.EndsWith("userdata/logs/console_1.txt")) &&

@@ -170,7 +170,7 @@ sealed partial class PlaySession
         foreach (var place in places)
         {
             if (place == null || !Directory.Exists(place)) continue;
-            foreach (var file in Directory.EnumerateFiles(place, "*", SearchOption.AllDirectories))
+            foreach (var file in LocalInstall.FilesNoLinks(place))
             {
                 var full = ReadableLogFile(file, place);
                 if (full == null) continue;
@@ -339,7 +339,7 @@ sealed partial class PlaySession
         {
             LinuxSandboxCopyBack();
             if (!string.IsNullOrEmpty(run))
-                Try("sandboxStateCleanupError", () => SandboxFolders.RemoveSessionState(run));
+                Try("sandboxStateCleanupError", () => SandboxFolders.RemoveSessionState(run, gameOut));
             return;
         }
         if (options.Sandbox && (bool?)result["jobEmpty"] == true && gameStarted != null)

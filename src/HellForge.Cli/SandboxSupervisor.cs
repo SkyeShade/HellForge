@@ -264,8 +264,32 @@ sealed class SandboxSupervisor
         }
         finally
         {
-            if (!process.HasExited) KillGroup(process.Id);
+            if (!process.HasExited)
+            {
+                KillGroup(process.Id);
+                if (!process.WaitForExit(5000)) KillGroup(process.Id, SigKill);
+                process.WaitForExit(5000);
+            }
             process.Dispose();
+            CleanupSandbox(plan);
+        }
+    }
+
+    // Runs last, after any copy-back/evidence: remove the session's Steam links, then the overlay state and empty mount
+    // point. This is native Linux, so the mode-000 overlay work folder can be made writable before deletion.
+    void CleanupSandbox(SandboxStartPlan plan)
+    {
+        try { SandboxFolders.RemoveSteamHome(plan.GameOut); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or
+                                         InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            Say("steam links cleanup: " + error.Message);
+        }
+        try { SandboxFolders.RemoveSessionState(plan.Run, plan.GameOut); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or
+                                         InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            Say("sandbox cleanup: " + error.Message);
         }
     }
 
