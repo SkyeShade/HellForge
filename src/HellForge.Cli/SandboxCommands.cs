@@ -63,24 +63,28 @@ static class SandboxCommands
         {
             // Keep a reason for the session even when the package's build file is too old to identify it; the failure
             // record uses the CLI's own build only in this error path, never for a pass.
-            LinuxSandboxReadiness.Save(install, false, error.Message);
+            LinuxSandboxReadiness.Save(install, false, error.Message,
+                mode: LinuxSandboxReadiness.ExpectedMode(install));
             Console.Error.WriteLine("HellForge: " + error.Message);
             return 1;
         }
         var kernel = LinuxSandboxReadiness.KernelRelease();
+        var expected = LinuxSandboxReadiness.ExpectedMode(install);
         var current = LinuxSandboxReadiness.Read(install);
-        if (LinuxSandboxReadiness.IsCurrent(current, appBuild, kernel))
+        if (LinuxSandboxReadiness.IsCurrent(current, appBuild, kernel, expected.Mode, expected.RuntimeIdentity))
         {
-            if (current is { Passed: true }) return 0;
-            var currentReason = string.IsNullOrWhiteSpace(current?.Reason)
-                ? "the Linux sandbox self-test failed" : current!.Reason;
-            Console.Error.WriteLine("HellForge: " + currentReason);
+            var problem = LinuxSandboxReadiness.Problem(current, expected, appBuild, kernel);
+            if (problem == null) return 0;
+            Console.Error.WriteLine("HellForge: " + problem);
             return 1;
         }
+        try { File.Delete(LinuxSandboxReadiness.ModeFileFor(install)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         var (passed, reason) = RunSelfTest(install);
-        LinuxSandboxReadiness.Save(install, passed, reason, appBuild: appBuild, kernelRelease: kernel);
-        if (passed) return 0;
-        Console.Error.WriteLine("HellForge: " + reason);
+        var (mode, recorded, recordedReason) = LinuxSandboxReadiness.EvaluateSelfTest(install, passed ? 0 : 1, reason);
+        LinuxSandboxReadiness.Save(install, recorded, recordedReason, appBuild: appBuild, kernelRelease: kernel, mode: mode);
+        if (recorded) return 0;
+        Console.Error.WriteLine("HellForge: " + recordedReason);
         return 1;
     }
 

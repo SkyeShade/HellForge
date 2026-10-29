@@ -432,8 +432,9 @@ public static partial class Downpatcher
     }
 
     // Without Proton, hpatchz starts directly: the native Linux tool, or hpatchz.exe on Windows. The Linux fallback runs
-    // the Windows tool in the installation's prefix. ProtonToolArguments starts it through Wine's start.exe with /wait and
-    // /b: /wait gives this process hpatchz's exit code, and /b asks Wine not to allocate a console window.
+    // the Windows tool in the installation's prefix. ProtonToolArguments returns the tail after waitforexitandrun; the
+    // one invocation helper adds that verb, the host/container chain and the environment. start.exe uses /wait so this
+    // process gets hpatchz's exit code, and /b so Wine does not allocate a console window.
     static ProcessStartInfo ToolStart(DownpatchJob job, string from, string patchTemp, string partial)
     {
         if (job.Proton == null)
@@ -444,13 +445,9 @@ public static partial class Downpatcher
         }
         var prefix = WinePath.PrefixFromInstallRoot(job.GameDestination);
         var steamRoot = SteamLocator.SteamRoot() ?? throw new InvalidDataException("Steam was not found to run the build patch.");
-        var start = new ProcessStartInfo(job.Proton) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var argument in ProtonToolArguments(job.Hpatchz, prefix, from, patchTemp, partial)) start.ArgumentList.Add(argument);
-        start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
-        start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
-        start.Environment["STEAM_COMPAT_APP_ID"] = LocalInstall.AppId;
-        start.Environment["SteamGameId"] = LocalInstall.AppId;
-        return start;
+        var invocation = LinuxProtonInvocation.Create(job.Proton, steamRoot, prefix, "waitforexitandrun",
+            ProtonToolArguments(job.Hpatchz, prefix, from, patchTemp, partial), new(InstallPath: job.GameDestination));
+        return invocation.StartInfo(Path.GetDirectoryName(job.Proton)!);
     }
 
     // hpatchz's arguments are the same natively, on Windows and in the Wine fallback.
@@ -462,7 +459,7 @@ public static partial class Downpatcher
     // (linux/hellforge-linux.sh and hf-inner.sh wait for processes for the same reason), which would leave ApplyPack
     // reading a partly written file or a wrong exit code.
     public static IReadOnlyList<string> ProtonToolArguments(string hpatchz, string prefix, string from, string patch, string output) =>
-        ["waitforexitandrun", "C:\\windows\\system32\\start.exe", "/wait", "/b", WinePath.ToWinePath(hpatchz, prefix),
+        ["C:\\windows\\system32\\start.exe", "/wait", "/b", WinePath.ToWinePath(hpatchz, prefix),
             .. NativeToolArguments(WinePath.ToWinePath(from, prefix), WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix))];
 
     static bool Matches(string path, SupportedFile file) => SupportedBuild.Accepts(path, file);

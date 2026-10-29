@@ -12,4 +12,5 @@ namespace HellForge.Core;
 [JsonSerializable(typeof(SandboxWindowSample))]
 [JsonSerializable(typeof(SandboxCopyBackReceipt))]
 [JsonSerializable(typeof(LinuxSandboxSelfTest))]
+[JsonSerializable(typeof(LinuxSandboxSelfTestMode))]
 public partial class SandboxJson : JsonSerializerContext;

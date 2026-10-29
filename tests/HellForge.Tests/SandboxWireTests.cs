@@ -58,7 +58,7 @@ static class SandboxWireTests
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, valid));
         });
 
-        test("The Linux self-test record is bound to the app build and kernel and only a current pass offers the sandbox", () =>
+        test("The Linux self-test record is bound to the app build, kernel, mode and runtime and only a current pass offers the sandbox", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox readiness)"); return; }
             var install = new InstallLayout(Path.Combine(root, "sandbox-readiness"));
@@ -68,22 +68,95 @@ static class SandboxWireTests
             File.WriteAllText(sandbox, "synthetic");
             File.SetUnixFileMode(sandbox, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             var paths = new InstallSessionPaths(install);
-            check(!SessionRunner.CanSandbox(paths), "A missing self-test result offered the sandbox.");
-            LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(), kernelRelease: LinuxSandboxReadiness.KernelRelease());
-            check(LinuxSandboxReadiness.Problem(install) == null && SessionRunner.CanSandbox(paths), "A current pass did not offer the sandbox.");
-            check(SessionRunner.SandboxByDefault(paths), "A current pass did not make the default session sandboxed.");
-            var current = LinuxSandboxReadiness.Read(install)!;
-            check(LinuxSandboxReadiness.IsCurrent(current), "The current self-test record is stale.");
-            LinuxSandboxReadiness.Save(install, false, "Landlock ABI 1 is too old", appBuild: LinuxSandboxReadiness.AppBuild(),
-                kernelRelease: LinuxSandboxReadiness.KernelRelease());
-            check(LinuxSandboxReadiness.Problem(install) == "Landlock ABI 1 is too old" && !SessionRunner.CanSandbox(paths),
-                "A current failure was offered or lost its reason.");
-            LinuxSandboxReadiness.Save(install, true, "", appBuild: "another build", kernelRelease: LinuxSandboxReadiness.KernelRelease());
-            check(LinuxSandboxReadiness.Problem(install)!.Contains("another HellForge build", StringComparison.Ordinal) && !SessionRunner.CanSandbox(paths),
-                "A pass from another build was accepted.");
-            LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(), kernelRelease: "another kernel");
-            check(LinuxSandboxReadiness.Problem(install)!.Contains("another HellForge build or kernel", StringComparison.Ordinal) && !SessionRunner.CanSandbox(paths),
-                "A pass from another kernel was accepted.");
+            var host = new LinuxSandboxSelfTestMode(LinuxSandboxReadiness.ModeSchemaVersion, "host", "", "", "host");
+            var container = new LinuxSandboxSelfTestMode(LinuxSandboxReadiness.ModeSchemaVersion, "container",
+                "steamrt4", "4.0.20261021.265997", "/runtime|ABC");
+            var previousMode = Environment.GetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE");
+            var previousIdentity = Environment.GetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY");
+            try
+            {
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE", "host");
+                check(!SessionRunner.CanSandbox(paths), "A missing self-test result offered the sandbox.");
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: host);
+                check(LinuxSandboxReadiness.Problem(install, host) == null && SessionRunner.CanSandbox(paths),
+                    "A current pass did not offer the sandbox.");
+                check(SessionRunner.SandboxByDefault(paths), "A current pass did not make the default session sandboxed.");
+                var current = LinuxSandboxReadiness.Read(install)!;
+                check(LinuxSandboxReadiness.IsCurrent(install, current), "The current self-test record is stale.");
+                LinuxSandboxReadiness.Save(install, false, "Landlock ABI 1 is too old", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: host);
+                check(LinuxSandboxReadiness.Problem(install, host) == "Landlock ABI 1 is too old" && !SessionRunner.CanSandbox(paths),
+                    "A current failure was offered or lost its reason.");
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: "another build",
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: host);
+                check(LinuxSandboxReadiness.Problem(install, host)!.Contains("another HellForge build", StringComparison.Ordinal) &&
+                    !SessionRunner.CanSandbox(paths), "A pass from another build was accepted.");
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: "another kernel", mode: host);
+                check(LinuxSandboxReadiness.Problem(install, host)!.Contains("another HellForge build or kernel", StringComparison.Ordinal) &&
+                    !SessionRunner.CanSandbox(paths), "A pass from another kernel was accepted.");
+
+                // A host pass is stale in container mode, a runtime hash change is stale, a version that did not parse still
+                // counts (the hash identifies the runtime), and a runtime with no readable VERSIONS.txt is a failure.
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: host);
+                check(LinuxSandboxReadiness.Problem(install, container)!.Contains("host mode", StringComparison.Ordinal),
+                    "A host pass was accepted for a container session.");
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: container);
+                check(LinuxSandboxReadiness.Problem(install, container) == null, "A current container pass was refused.");
+                var stored = LinuxSandboxReadiness.Read(install)!;
+                check(stored.Mode == "container" && stored.RuntimeName == "steamrt4" &&
+                    stored.RuntimeVersion == "4.0.20261021.265997" && stored.RuntimeIdentity == "/runtime|ABC",
+                    "The container mode, name, version or identity was not stored.");
+                var changed = container with { RuntimeIdentity = "/runtime|DEF" };
+                check(LinuxSandboxReadiness.Problem(install, changed)!.Contains("another Steam Linux Runtime", StringComparison.Ordinal),
+                    "A changed runtime hash was accepted.");
+                var unknown = container with { RuntimeVersion = "unknown" };
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: unknown);
+                check(LinuxSandboxReadiness.Problem(install, unknown) == null,
+                    "A container pass whose VERSIONS.txt version did not parse was refused although its hash identifies it.");
+                var noHash = container with { RuntimeVersion = "unknown", RuntimeIdentity = "/runtime|no-hash" };
+                LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(),
+                    kernelRelease: LinuxSandboxReadiness.KernelRelease(), mode: noHash);
+                check(LinuxSandboxReadiness.Problem(install, noHash)!.Contains("could not identify", StringComparison.Ordinal),
+                    "A container pass without a readable VERSIONS.txt was accepted.");
+
+                File.WriteAllText(LinuxSandboxReadiness.ModeFileFor(install),
+                    JsonSerializer.Serialize(host, SandboxJson.Default.LinuxSandboxSelfTestMode));
+                var evaluatedHost = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
+                check(evaluatedHost.Passed && evaluatedHost.Mode.Mode == "host", "A valid host mode file was not a pass.");
+                File.Delete(LinuxSandboxReadiness.ModeFileFor(install));
+                var missingMode = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
+                check(!missingMode.Passed && missingMode.Reason.Contains("did not report", StringComparison.Ordinal),
+                    "A self-test that exited 0 without a mode file was recorded as a pass.");
+
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE", "container");
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", "/runtime|ABC");
+                var unknownMetadata = unknown with { RuntimeName = "steamrt4", RuntimeIdentity = "/runtime|ABC" };
+                File.WriteAllText(LinuxSandboxReadiness.ModeFileFor(install),
+                    JsonSerializer.Serialize(unknownMetadata, SandboxJson.Default.LinuxSandboxSelfTestMode));
+                check(LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "").Passed,
+                    "A container self-test whose version did not parse was refused although its hash identifies it.");
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", "/runtime|no-hash");
+                File.WriteAllText(LinuxSandboxReadiness.ModeFileFor(install),
+                    JsonSerializer.Serialize(noHash, SandboxJson.Default.LinuxSandboxSelfTestMode));
+                var unnamed = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
+                check(!unnamed.Passed && unnamed.Reason.Contains("could not identify", StringComparison.Ordinal),
+                    "A container self-test without a readable VERSIONS.txt was recorded as a pass.");
+
+                File.WriteAllText(LinuxSandboxReadiness.FileFor(install),
+                    $"{{\"schemaVersion\":1,\"appBuild\":\"{LinuxSandboxReadiness.AppBuild()}\",\"kernelRelease\":\"{LinuxSandboxReadiness.KernelRelease()}\",\"passed\":true,\"reason\":\"\",\"checkedUtc\":\"{DateTime.UtcNow:O}\"}}");
+                check(LinuxSandboxReadiness.Problem(install, host)!.Contains("old schema", StringComparison.Ordinal),
+                    "A schema-1 record was accepted.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE", previousMode);
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", previousIdentity);
+            }
         });
 
         test("The installed app build matches AppVersion.Text and a known publish", () =>

@@ -56,6 +56,60 @@ cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
 # wineserver after a timeout.
 proton_dir="$(cd "$(dirname -- "$PROTON")" && pwd)"
 
+# The wrapper resolved the runtime and exported its fields. hf-inner reports the same mode for its own log and, in
+# container mode, builds the entry-point argv from those exported commandlines instead of starting Proton on the host.
+runtime_helper="$INSTALL/app/linux/hf-steam.sh"
+if [ -f "$runtime_helper" ]; then . "$runtime_helper"; fi
+
+hf_inner_runtime_report() {
+  case "${HELLFORGE_STEAM_RUNTIME_MODE:-}" in
+    container)
+      printf 'hf-inner: Steam Linux Runtime: container "%s" %s at %s.\n' \
+        "${HELLFORGE_STEAM_RUNTIME_NAME:-}" "${HELLFORGE_STEAM_RUNTIME_VERSION:-}" \
+        "${HELLFORGE_STEAM_RUNTIME_FOLDER:-}" >&2
+      ;;
+    host)
+      printf 'hf-inner: Steam Linux Runtime: host mode: %s.\n' \
+        "${HELLFORGE_STEAM_RUNTIME_REASON:-unknown}" >&2
+      ;;
+  esac
+}
+
+hf_inner_proton_command() {
+  local -a tail_args=("$@")
+  HF_INNER_COMMAND=()
+  if [ "${HELLFORGE_STEAM_RUNTIME_MODE:-}" != container ]; then
+    if [ "${HELLFORGE_STEAM_RUNTIME_MODE:-}" = host ] && [ -f "$runtime_helper" ]; then
+      HF_RUNTIME_MODE=host
+      HF_RUNTIME_PROTON="${HELLFORGE_STEAM_RUNTIME_PROTON:-$PROTON}"
+      HF_RUNTIME_PROTON_COMMANDLINE="${HELLFORGE_STEAM_RUNTIME_PROTON_COMMANDLINE:-}"
+      hf_runtime_arguments run "${tail_args[@]}"
+      HF_INNER_COMMAND=("${HF_RUNTIME_ARGV[@]}")
+    else
+      HF_INNER_COMMAND=("$PROTON" run "${tail_args[@]}")
+    fi
+    return 0
+  fi
+  if [ ! -f "$runtime_helper" ]; then
+    echo "hf-inner: the Steam Linux Runtime commandline helper is missing ($runtime_helper); the session cannot start." >&2
+    return 1
+  fi
+  HF_RUNTIME_MODE=container
+  HF_RUNTIME_ENTRYPOINT="${HELLFORGE_STEAM_RUNTIME_ENTRYPOINT:-}"
+  HF_RUNTIME_COMMANDLINE="${HELLFORGE_STEAM_RUNTIME_COMMANDLINE:-}"
+  HF_RUNTIME_PROTON="${HELLFORGE_STEAM_RUNTIME_PROTON:-$PROTON}"
+  HF_RUNTIME_PROTON_COMMANDLINE="${HELLFORGE_STEAM_RUNTIME_PROTON_COMMANDLINE:-}"
+  if [ -z "$HF_RUNTIME_ENTRYPOINT" ] || [ -z "$HF_RUNTIME_COMMANDLINE" ] ||
+     [ -z "$HF_RUNTIME_PROTON_COMMANDLINE" ]; then
+    echo "hf-inner: the Steam Linux Runtime mode was selected without its commandlines; the session cannot start." >&2
+    return 1
+  fi
+  hf_runtime_arguments run "${tail_args[@]}"
+  HF_INNER_COMMAND=("${HF_RUNTIME_ARGV[@]}")
+}
+
+hf_inner_runtime_report
+
 # Processes of this installation only. The wrapper and its parents have the Windows exe path in their arguments, so leave
 # them out. Wine shows Windows paths (with backslashes) in command lines; the environment works for both forms. This is
 # also the scan a Proton timeout uses to end what timeout(1) left behind (H.9).
@@ -352,7 +406,9 @@ if [ "$session_run" = 1 ] && [ "$sandbox_requested" = 1 ]; then
 fi
 echo "hf-inner: launching $(basename -- "$program") through Proton." >&2
 proton_status=0
-if [ $# -gt 0 ]; then timeout -k 10 "$proton_timeout" "$PROTON" run "$@" || proton_status=$?; else timeout -k 10 "$proton_timeout" "$PROTON" run "$program" || proton_status=$?; fi
+if [ $# -gt 0 ]; then launch_args=("$@"); else launch_args=("$program"); fi
+hf_inner_proton_command "${launch_args[@]}" || exit 1
+timeout -k 10 "$proton_timeout" "${HF_INNER_COMMAND[@]}" || proton_status=$?
 # timeout(1) returns 124 when its own deadline fired. 137 means its -k then had to KILL the script; the game may still be
 # in the prefix either way, so first stop a sandboxed domain through its supervisor, then end the real prefix's
 # wineserver and the installation's leftovers.

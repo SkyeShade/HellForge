@@ -418,3 +418,64 @@ hf_runtime_mode_line() {
     printf 'HellForge: Steam Linux Runtime: host mode: %s; Proton runs on the host.\n' "${HF_RUNTIME_REASON:-unknown}"
   fi
 }
+
+# A command that runs through the runtime wrapper but not through Proton (the sandbox self-test): the entry point and
+# its runtime commandline, then the caller's tail. Host mode runs the tail directly.
+hf_runtime_entrypoint_arguments() {
+  local verb=${1:-}
+  [ $# -gt 0 ] && shift
+  HF_RUNTIME_ARGV=()
+  if [ "$HF_RUNTIME_MODE" = "container" ]; then
+    hf_runtime_append_commandline "$HF_RUNTIME_ENTRYPOINT" "$HF_RUNTIME_COMMANDLINE" "$verb"
+  fi
+  HF_RUNTIME_ARGV+=("$@")
+}
+
+# The mode and identity the wrapper resolved. hf-inner and the readiness metadata read these names, so there is one
+# spelling of the selected chain outside hf-steam.sh too.
+hf_runtime_export() {
+  export HELLFORGE_STEAM_RUNTIME_MODE="$HF_RUNTIME_MODE"
+  export HELLFORGE_STEAM_RUNTIME_REASON="$HF_RUNTIME_REASON"
+  export HELLFORGE_STEAM_RUNTIME_APPID="$HF_RUNTIME_APPID"
+  export HELLFORGE_STEAM_RUNTIME_FOLDER="$HF_RUNTIME_FOLDER"
+  export HELLFORGE_STEAM_RUNTIME_ENTRYPOINT="$HF_RUNTIME_ENTRYPOINT"
+  export HELLFORGE_STEAM_RUNTIME_COMMANDLINE="$HF_RUNTIME_COMMANDLINE"
+  export HELLFORGE_STEAM_RUNTIME_PROTON_COMMANDLINE="$HF_RUNTIME_PROTON_COMMANDLINE"
+  export HELLFORGE_STEAM_RUNTIME_PROTON="$HF_RUNTIME_PROTON"
+  export HELLFORGE_STEAM_RUNTIME_NAME="$HF_RUNTIME_NAME"
+  export HELLFORGE_STEAM_RUNTIME_VERSION="$HF_RUNTIME_VERSION"
+  export HELLFORGE_STEAM_RUNTIME_IDENTITY="${HF_RUNTIME_IDENTITY:-host}"
+}
+
+hf_runtime_json_escape() {
+  local value=${1-}
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+# Written after the self-test ends, partial then rename. A missing file is a readiness failure, never a pass.
+hf_runtime_write_mode_file() {
+  local folder=$1 path partial mode identity name version
+  mkdir -p -- "$folder" || return 1
+  path="$folder/sandbox-self-test-mode.json"
+  partial="$path.partial"
+  if [ "$HF_RUNTIME_MODE" = "container" ]; then
+    mode=container
+    identity=$HF_RUNTIME_IDENTITY
+    name=$HF_RUNTIME_NAME
+    version=$HF_RUNTIME_VERSION
+  else
+    mode=host
+    identity=host
+    name=""
+    version=""
+  fi
+  printf '{"schemaVersion":1,"mode":"%s","runtimeName":"%s","runtimeVersion":"%s","runtimeIdentity":"%s"}\n' \
+    "$(hf_runtime_json_escape "$mode")" "$(hf_runtime_json_escape "$name")" \
+    "$(hf_runtime_json_escape "$version")" "$(hf_runtime_json_escape "$identity")" >"$partial" || return 1
+  mv -f -- "$partial" "$path"
+}
