@@ -182,6 +182,36 @@ static const uint8_t kTownNoiseStub[76] = {
     0x48, 0x8D, 0x4D, 0x90,                                           /* 67 lea rcx, [rbp-0x70] */
     0xE9, 0, 0, 0, 0};                                                /* 71 jmp 0xF37BB6 (rel32 at 72) */
 
+/* FinalizeVoronoi type 1 (0xF68050) refills each route cell with points at its type's size (+0x18C; HellForge scales
+ * that read, kFinalizeSpacingStub, so zone cells are 100 m), then reads the size twice more, unscaled: each zone point
+ * clears the other points within 2 x size (0xF686FC) and proposes a ring of four at x, y +- size (0xF688C3), kept where
+ * no point sits exactly. At level 10 the ring of a town's inner cells lands on the next zone point (64 m), so only its
+ * edge gets one and the zone cells touch: one group, one plateau. With a 100 m lattice and a 64 m ring every pair of
+ * zone cells got two other cells between them (+64, +36 m), so each was flattened alone, the terrain between left as
+ * it was (research d11-sparse-cities §9). On a larger map both reads are scaled as the refill's (x the cell factor,
+ * rounded up to a quarter metre: 64 -> 100). Off with HELLFORGE_D11_TOWN_RING=0, for comparing. */
+static const struct { uint32_t site; uint8_t pin[8]; uint8_t rip; uint8_t round; uint32_t back; } kTownRingSites[2] = {
+    {0xF686FCu, {0xF3, 0x0F, 0x10, 0x91, 0x8C, 0x01, 0x00, 0x00}, 0x15, 0xD2, 0xF68704u},  /* the clear: movss xmm2, [rcx+0x18c] */
+    {0xF688C3u, {0xF3, 0x0F, 0x10, 0xA9, 0x8C, 0x01, 0x00, 0x00}, 0x2D, 0xED, 0xF688CBu}}; /* the ring: movss xmm5, [rcx+0x18c] */
+/* the replaced movss; the level ([rsp+0x70] the pass, +0x18); cmp its disk; jne back; x factor x 4, ceil, x 0.25; back */
+static const uint8_t kTownRingStub[56] = {
+    0, 0, 0, 0, 0, 0, 0, 0,                                           /*  0 movss xmmN, [rcx+0x18c] (the pin) */
+    0x48, 0x8B, 0x44, 0x24, 0x70,                                     /*  8 mov rax, [rsp+0x70] */
+    0x48, 0x8B, 0x40, 0x18,                                           /* 13 mov rax, [rax+0x18] */
+    0x81, 0xB8, 0x7C, 0x2D, 0x00, 0x00, 0, 0, 0, 0,                   /* 17 cmp dword [rax+0x2d7c], disk / 1024 (at 23) */
+    0x75, 0x16,                                                       /* 27 jne 51 */
+    0xF3, 0x0F, 0x59, 0, 0, 0, 0, 0,                                  /* 29 mulss xmmN, [rip+factor x 4] (modrm at 32, rel32 at 33) */
+    0x66, 0x0F, 0x3A, 0x0A, 0, 0x02,                                  /* 37 roundss xmmN, xmmN, ceil (modrm at 41) */
+    0xF3, 0x0F, 0x59, 0, 0, 0, 0, 0,                                  /* 43 mulss xmmN, [rip+0.25] (modrm at 46, rel32 at 47) */
+    0xE9, 0, 0, 0, 0};                                                /* 51 jmp back (rel32 at 52) */
+
+static int TownRingWanted(void)
+{
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_RING", value, 8);
+    return !(length == 1 && value[0] == L'0');
+}
+
 static int TownNoiseWanted(void)
 {
     wchar_t value[8];
@@ -217,6 +247,9 @@ static const char* TownPinsFailed(uintptr_t game)
     uint8_t noise[13];
     if (SafeRead(game + DIF_TOWN_NOISE_SITE, noise, 13) || memcmp(noise, kTownNoisePin, 13) != 0)
         return "the subregion noise is not the reviewed one (a map_scale above 1 needs it)";
+    for (int i = 0; i < 2; i++)
+        if (SafeRead(game + kTownRingSites[i].site, zone, 8) || memcmp(zone, kTownRingSites[i].pin, 8) != 0)
+            return "the town cells' ring is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
 
@@ -292,6 +325,22 @@ static const char* InstallTowns(DifficultyInstall* d)
     TownRel32(p + 72, game + DIF_TOWN_NOISE_CALL);
     memcpy(p + 80, noiseScale, 8);
     p += 88;
+    uint8_t* ringStubs[2];
+    for (int i = 0; i < 2; i++) /* the ring and its clear at the refill's size (d->cellFactor: x 4, then 0.25) */
+    {
+        ringStubs[i] = p;
+        memcpy(p, kTownRingStub, sizeof kTownRingStub);
+        memcpy(p, kTownRingSites[i].pin, 8);
+        memcpy(p + 23, &diskBits, 4);
+        p[32] = kTownRingSites[i].rip; p[41] = kTownRingSites[i].round; p[46] = kTownRingSites[i].rip;
+        if (d->cellFactor != NULL)
+        {
+            TownRel32(p + 33, (uintptr_t)&d->cellFactor[0]);
+            TownRel32(p + 47, (uintptr_t)&d->cellFactor[1]);
+        }
+        TownRel32(p + 52, game + kTownRingSites[i].back);
+        p += 64;
+    }
     DWORD protect;
     if (p - code > 0x1000 || !VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the towns' stubs could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
@@ -306,6 +355,14 @@ static const char* InstallTowns(DifficultyInstall* d)
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + sites[i].site, jump, sites[i].length)) return "the towns could not be patched";
     }
+    int ring = TownRingWanted() && d->cellFactor != NULL;
+    for (int i = 0; ring && i < 2; i++)
+    {
+        uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        int32_t rel = (int32_t)(int64_t)((uintptr_t)ringStubs[i] - (game + kTownRingSites[i].site + 5));
+        memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + kTownRingSites[i].site, jump, 8)) return "the towns could not be patched";
+    }
     int noise = TownNoiseWanted();
     if (noise)
     {
@@ -318,5 +375,7 @@ static const char* InstallTowns(DifficultyInstall* d)
         border ? "are built up to the border" : "keep level 10's radius");
     if (noise) Note("difficulty: towns on larger maps keep level 10's cells (their noise at x %.4f; HELLFORGE_D11_TOWN_NOISE=0 keeps it in metres)", noiseScale[1]);
     else Note("difficulty: towns on larger maps keep their noise in metres (HELLFORGE_D11_TOWN_NOISE=0)");
+    Note("difficulty: town cells on larger maps %s (HELLFORGE_D11_TOWN_RING=0 keeps level 10's)",
+        ring ? "keep their ring at the refill's spacing, so they touch" : "keep level 10's ring spacing");
     return NULL;
 }
