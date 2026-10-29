@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using HellForge.Core;
 
 // F.4d's native seam: request validation, the self-test record and process identity. The native copy-back is covered by
@@ -71,6 +72,29 @@ static class SandboxWireTests
             LinuxSandboxReadiness.Save(install, true, "", appBuild: LinuxSandboxReadiness.AppBuild(), kernelRelease: "another kernel");
             check(LinuxSandboxReadiness.Problem(install)!.Contains("another HellForge build or kernel", StringComparison.Ordinal) && !SessionRunner.CanSandbox(paths),
                 "A pass from another kernel was accepted.");
+        });
+
+        test("The installed app build matches AppVersion.Text and a known publish", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "installed-app-build"));
+            install.Create(SupportedBuild.Current.BuildId);
+            var text = AppVersion.Text;
+            var split = text.LastIndexOf(" (", StringComparison.Ordinal);
+            var version = split < 0 ? text : text[..split];
+            var commit = split < 0 ? "" : text[(split + 2)..^1];
+            File.WriteAllText(Path.Combine(install.App, "app-build.json"),
+                JsonSerializer.Serialize(new { version, commit }));
+            check(LinuxSandboxReadiness.InstalledAppBuild(install) == AppVersion.Text,
+                "The installed app-build.json did not produce the runner's AppVersion.Text.");
+            File.WriteAllText(Path.Combine(install.App, "app-build.json"),
+                JsonSerializer.Serialize(new { version = "0.3.0-beta", commit = "c4a1506deadbeef" }));
+            check(LinuxSandboxReadiness.InstalledAppBuild(install) == "0.3.0-beta (c4a1506)",
+                "The installed app build did not use the version and first seven commit characters.");
+            check(LinuxSandboxReadiness.SelfTestReason("first\nhf-sandbox: Landlock is too old\n", 1) == "hf-sandbox: Landlock is too old" &&
+                LinuxSandboxReadiness.SelfTestReason("last line\n", 7) == "last line",
+                "The self-test reason did not match the launcher's wording.");
+            File.WriteAllText(Path.Combine(install.App, "app-build.json"), "{}");
+            reject(() => LinuxSandboxReadiness.InstalledAppBuild(install));
         });
 
         test("Supervisor process identity: a current stand-in is alive, a dead pid is not, and a changed start time is refused", () =>

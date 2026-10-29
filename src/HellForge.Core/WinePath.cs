@@ -55,13 +55,44 @@ public static class WinePath
     }
 
     // A host path as Wine's Z: path, even when it is inside the prefix. The sandbox uses this for gameOut: the overlay
-    // masks the installation through C:, and only Z: exposes the session's one writable folder.
+    // masks the installation through C:, and only Z: exposes the session's one writable folder. This is textual, never
+    // Path.GetFullPath: under Wine, GetFullPath turns a host path inside drive_c into a C: path and loses the prefix.
     public static string ToZPath(string path)
     {
-        var fullPath = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(fullPath)!;
-        var fromRoot = Path.GetRelativePath(root, fullPath);
-        return fromRoot == "." ? @"Z:\" : @"Z:\" + WineRelative(fromRoot);
+        var segments = NormalizedSegments(ZRelative(path), path);
+        return segments.Count == 0 ? @"Z:\" : @"Z:\" + string.Join('\\', segments);
+    }
+
+    // The part of a host path or a Z: path after its root.
+    static string ZRelative(string path)
+    {
+        if (string.IsNullOrEmpty(path)) throw new InvalidDataException("The Z: path is empty.");
+        if (WindowsDrive(path) is { } drive)
+        {
+            if (drive != 'Z')
+                throw new InvalidDataException($"The host path is on drive {drive}:, not Z: ({path})");
+            return path.Length <= 3 ? "" : path[3..];
+        }
+        if (path[0] == '/') return path[1..];
+        throw new InvalidDataException("The Z: path must be an absolute host path or a Z: path: " + path);
+    }
+
+    // The path's folders with "." dropped and ".." applied; rising above the root is refused.
+    static List<string> NormalizedSegments(string relative, string path)
+    {
+        var segments = new List<string>();
+        foreach (var segment in relative.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment != "..")
+            {
+                segments.Add(segment);
+                continue;
+            }
+            if (segments.Count == 0) throw new InvalidDataException("The Z: path rises above the host filesystem root: " + path);
+            segments.RemoveAt(segments.Count - 1);
+        }
+        return segments;
     }
 
     public static bool IsWindowsPath(string? path) => WindowsDrive(path) != null;

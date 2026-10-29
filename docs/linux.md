@@ -480,8 +480,13 @@ before. Steam itself still uses the wrapper's loopback bridge and the forwarding
 broker guarantee G4. G2 and G3 are phase 3.
 
 The self-test is also the default switch. Settings > Sandbox is on when this PC passes it for this HellForge build and
-kernel; an update of either reruns it. A failure leaves the switch off and shows the reason. Every session reruns the
-self-test before Proton, and a sandboxed session that cannot build its domain stops without an unsandboxed retry.
+kernel; an update of either reruns it. A failure leaves the switch off and shows the reason. The graphical launcher
+records the result, and before every session-starting command the wrapper asks
+`HellForge.Cli sandbox-readiness --install <installation>` to refresh a missing or stale record using the installed
+app's `app-build.json` and the kernel. That command runs the same self-test; a failure is recorded with its reason, so
+an external launcher, CLI `play` or harness session runs unsandboxed and reports it instead of staying silently off.
+A sandboxed session still reruns the self-test before Proton, and one that cannot build its domain stops without an
+unsandboxed retry.
 
 Check the sandbox on this PC with:
 
@@ -492,8 +497,8 @@ bash "<installation>/app/linux/hellforge-linux.sh" --sandbox-self-test
 It builds the same view as a real run from a throwaway tree in the installation's `temp/` folder, with the default
 layout (the installation inside the prefix). It checks every boundary listed above, including that a linked bind, the
 installation root and `profiles/` are refused and that an allowed `mods/` input is readable but not writable, then removes
-the tree. Every check prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass. The launcher stores the result with the app build
-and kernel and shows the first reason on failure.
+the tree. Every check prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass. The launcher and the
+native readiness command store the result with the app build and kernel and show the first reason on failure.
 
 ## Account sync
 

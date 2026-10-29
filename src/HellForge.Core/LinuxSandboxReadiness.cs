@@ -30,10 +30,43 @@ public static class LinuxSandboxReadiness
 
     public static string AppBuild() => AppVersion.Text;
 
-    public static bool IsCurrent(LinuxSandboxSelfTest? test)
+    // The build string the installed app itself reports: version and commit from the package's app-build.json. The
+    // native CLI can be from a different publish than the Wine runner, so LinuxSandboxReadiness.AppBuild() is not used
+    // here.
+    public static string InstalledAppBuild(InstallLayout install)
     {
-        if (test is not { SchemaVersion: LinuxSandboxSelfTest.CurrentSchemaVersion } current) return false;
-        return current.AppBuild == AppBuild() && current.KernelRelease == KernelRelease();
+        var path = Path.Combine(install.App, "app-build.json");
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            var version = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("version", out var value) &&
+                value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
+            if (string.IsNullOrEmpty(version))
+                throw new InvalidDataException("The installed app-build.json has no version; reinstall HellForge.");
+            var commit = root.TryGetProperty("commit", out var revision) && revision.ValueKind == JsonValueKind.String
+                ? revision.GetString() ?? "" : "";
+            return AppVersion.FromParts(version!, commit);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            throw new InvalidDataException("The installed app-build.json could not be read: " + error.Message, error);
+        }
+    }
+
+    public static bool IsCurrent(LinuxSandboxSelfTest? test) => IsCurrent(test, AppBuild(), KernelRelease());
+
+    public static bool IsCurrent(LinuxSandboxSelfTest? test, string appBuild, string kernelRelease) =>
+        test is { SchemaVersion: LinuxSandboxSelfTest.CurrentSchemaVersion } current &&
+        current.AppBuild == appBuild && current.KernelRelease == kernelRelease;
+
+    // The launcher and the native readiness command show the same first reason: the last hf-sandbox line, else the last
+    // output line, else the exit code.
+    public static string SelfTestReason(string output, int exitCode)
+    {
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return lines.LastOrDefault(line => line.StartsWith("hf-sandbox:", StringComparison.Ordinal))
+            ?? lines.LastOrDefault() ?? $"exit code {exitCode}";
     }
 
     public static LinuxSandboxSelfTest? Read(InstallLayout install)

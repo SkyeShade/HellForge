@@ -85,10 +85,8 @@ public partial class MainWindow
             var outputText = await outputTask;
             Directory.CreateDirectory(install.Logs);
             File.WriteAllText(report, errorText + outputText);
-            var lines = (errorText + "\n" + outputText).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var passed = process.ExitCode == 0;
-            var result = lines.LastOrDefault(line => line.StartsWith("hf-sandbox:", StringComparison.Ordinal))
-                ?? lines.LastOrDefault() ?? $"exit code {process.ExitCode}";
+            var result = LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
             RecordLinuxSandboxTest(install, passed, passed ? "" : result);
             SetLinuxSandboxRow(passed, (passed ? "The Linux sandbox self-test passed. " : "The sandbox stays off: ") +
                 Privacy.Scrub(result) + " Report: " + Privacy.Scrub(report));

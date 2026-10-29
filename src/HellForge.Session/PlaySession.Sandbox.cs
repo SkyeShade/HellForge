@@ -60,22 +60,22 @@ sealed partial class PlaySession
     // those two fields to their Z: host paths, copy the plan into gameOut, and expose each exact input read-only.
     void PrepareSandboxModInputs(string loaderPlan, string loader)
     {
-        var hostLoader = WinePath.ToHostPath(Path.GetFullPath(loader), hostPrefix);
-        var hostPlan = WinePath.ToHostPath(Path.GetFullPath(loaderPlan), hostPrefix);
+        var hostLoader = SandboxWinePath(loader);
+        var hostPlan = SandboxWinePath(loaderPlan);
         var lines = File.ReadAllLines(hostPlan);
         for (var index = 0; index < lines.Length; index++)
         {
             if (!lines[index].StartsWith("mod\t", StringComparison.Ordinal)) continue;
             var fields = lines[index].Split('\t');
             if (fields.Length != 4) throw new SessionFailure("The mod loader plan has a malformed mod entry.");
-            var folder = WinePath.ToHostPath(fields[2], hostPrefix);
+            var folder = SandboxWinePath(fields[2]);
             SandboxBind(folder);
-            fields[2] = WinePath.ToZPath(folder);
+            fields[2] = folder;
             if (fields[3] != "-")
             {
-                var dll = WinePath.ToHostPath(fields[3], hostPrefix);
+                var dll = SandboxWinePath(fields[3]);
                 SandboxBind(dll);
-                fields[3] = WinePath.ToZPath(dll);
+                fields[3] = dll;
             }
             lines[index] = string.Join('\t', fields);
         }
@@ -92,7 +92,10 @@ sealed partial class PlaySession
     // One exact host input for hf-sandbox's --bind-ro list. The request validator repeats these checks.
     void SandboxBind(string hostPath)
     {
-        hostPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostPath));
+        // A Unix host path is mapped textually before Wine's GetFullPath can turn it into a C: path.
+        hostPath = hostPath.StartsWith("/", StringComparison.Ordinal)
+            ? WinePath.ToZPath(hostPath)
+            : Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostPath));
         var allowed = string.Equals(hostPath, Path.Combine(hostInstall, "app", "session"), StringComparison.Ordinal) ||
             string.Equals(hostPath, Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll"), StringComparison.Ordinal) ||
             SandboxProtocol.Within(Path.Combine(hostInstall, "mods"), hostPath) ||
@@ -135,7 +138,7 @@ sealed partial class PlaySession
         var hostLoader = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll");
         if (File.Exists(hostLoader)) SandboxBind(hostLoader);
         if (nativeFolders != null)
-            foreach (var folder in nativeFolders) SandboxBind(WinePath.ToHostPath(folder, hostPrefix));
+            foreach (var folder in nativeFolders) SandboxBind(SandboxWinePath(folder));
         var relay = StartSandboxPipeRelay((string)result["runId"]!);
         var control = Directory.CreateDirectory(Path.Combine(run, "control")).FullName;
         var heartbeat = Path.Combine(control, "runner.heartbeat");

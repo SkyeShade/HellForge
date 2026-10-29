@@ -181,9 +181,10 @@ $stub=Join-Path $staging 'HellForge.exe'
     (Join-Path $project 'native/launcher-stub/launcher_stub.rc') -o $stub # the .rc: its icon, HellForge's
 if($LASTEXITCODE){throw 'Building the launcher program failed.'}
 Get-ChildItem -LiteralPath $staging -File|Where-Object {$_.Extension -in @('.pdb','.lib')}|Remove-Item
+$version=([xml](Get-Content -LiteralPath (Join-Path $project 'Directory.Build.props') -Raw)).Project.PropertyGroup.Version
 $commit=(git -C $project rev-parse --short HEAD 2>$null)
 $dirty=[bool](git -C $project status --porcelain 2>$null)
-[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|
+[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');version=$version;commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|
     Set-Content -LiteralPath (Join-Path $staging 'app-build.json') -Encoding UTF8
 
 $top=if($InstallRoot){$InstallRoot}else{
