@@ -98,9 +98,9 @@ app into `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs th
 starts automatically while the game copy is incomplete. The installer checks the package's required entries before it
 prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
-`app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`,
-`app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`, `app/linux/allow-capture.sh`,
-`app/linux/capture-helper.sh` or `app/linux/capture-relay`.
+`app/capture-linux/HellForge.CaptureProxy`, `app/backend-linux/HellForge.LocalBackend`, `app/linux/hellforge-linux.sh`,
+`app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`,
+`app/linux/allow-capture.sh`, `app/linux/capture-helper.sh` or `app/linux/capture-relay`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -536,7 +536,15 @@ native readiness command store the result with the app build and kernel and show
 
 The profile page's **Sync Inventory** button opens the normal game through Steam and copies the signed-in account's
 inventory and progression into a sealed snapshot. It is the same capture as on Windows, but on Linux the proxy is a
-native program and the two system changes are made by one root-owned helper.
+native program and the two system changes are made by one root-owned helper. **Review import**, the import and a backup
+restore run in `app/backend-linux/HellForge.LocalBackend`, the local backend's profile commands built for Linux. It
+finds the signed-in Steam account with its own probe through the wrapper, because a native Linux program trusts only a
+probe it ran itself (`HELLFORGE_STEAM_ACCOUNT` is read only by the Windows backend under Wine).
+
+The capture usually ends while the game is still open. The prefix is not changed while the game runs, so the launcher
+waits for HELLDIVERS 2 to close and then removes the one-day CA from its prefix. If the launcher is closed first, its
+next start removes it. The CA's private key exists only in the capture proxy's memory, so a leftover CA cannot be used
+to intercept the game.
 
 The first sync asks once to install the helper. Choosing **Install** runs the shipped
 `app/linux/allow-capture.sh` through `pkexec /usr/bin/bash ...`, so the desktop's own polkit dialog asks for the
