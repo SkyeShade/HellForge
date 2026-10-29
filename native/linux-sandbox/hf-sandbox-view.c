@@ -735,6 +735,13 @@ int hf_build_root_view(struct hf_sandbox *sandbox)
     if (mount_dev(sandbox) != 0) return 1;
     if (mount_runtime(sandbox) != 0) return 1;
     if (mount_payload(sandbox) != 0) return 1;
+    // Wine opens a path whose letter case differs from the disk (HELLDIVERS 2 opens its user_settings.config lowercased:
+    // ".../documents/hellforge/...") by listing each parent folder to find the real name. The folders between the view's
+    // mounts are bare tmpfs folders with no rule, so that listing failed with EACCES and the game started with default
+    // settings, its first-time setup, every sandboxed session (measured 2026-10-29). Listing is the only right this adds:
+    // the view's root is this tmpfs, so a listing shows only what the sandbox mounted and the folders leading to it, and
+    // every bound folder could already be listed. Opening, reading and writing are unchanged.
+    if (hf_add_rule(sandbox, "/", LANDLOCK_ACCESS_FS_READ_DIR) != 0) return 1;
     char old_root[PATH_MAX];
     if (target_path(sandbox, "/.oldroot", old_root, sizeof(old_root)) != 0) return 1;
     if (make_dir(old_root) != 0) return hf_fail("creating the old-root mount point");
