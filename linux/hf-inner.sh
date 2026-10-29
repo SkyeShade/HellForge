@@ -34,6 +34,10 @@ shader_cache_read_only() {
 # The G.1 test sources this file to run the parser against a real log; a normal run continues below.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
 set -euo pipefail
+# The native supervisor compares host paths byte for byte. Resolve parent links (Fedora Atomic's /home -> /var/home)
+# before the publication and request are written; the trusted Windows side already gets these resolved paths.
+INSTALL="$(readlink -f -- "$INSTALL")"
+STEAM_COMPAT_DATA_PATH="$(readlink -f -- "$STEAM_COMPAT_DATA_PATH")"
 cleanup() {
   local status=$?
   echo "hf-inner exiting with code $status." >&2
@@ -262,6 +266,15 @@ if [ "${2:-}" = play ]; then
       ;;
   esac
 fi
+# An explicit --sandbox on either session command, or HELLFORGE_SANDBOX=1 from SessionRunner, asks for the Linux domain.
+# The flag has no value for HellForge.Session.exe and takes yes/no for HellForge.Cli.exe.
+sandbox_requested=0
+if [ "${HELLFORGE_SANDBOX:-}" = 1 ]; then sandbox_requested=1; fi
+for ((i = 1; i <= $#; i++)); do
+  if [ "${!i}" != --sandbox ]; then continue; fi
+  next=$((i + 1))
+  if [ "$next" -le $# ] && [ "${!next}" = no ]; then sandbox_requested=0; else sandbox_requested=1; fi
+done
 session_file="$INSTALL/logs/play-session.json"
 previous_run=""
 read_run_id() {
@@ -271,6 +284,34 @@ read_run_id() {
 if [ "$session_run" = 1 ]; then
   previous_run="$(read_run_id)"
 fi
+# A sandboxed game lives in the overlay prefix's own wineserver, which H.9's real-prefix cleanup cannot reach. The
+# supervisor owns that domain. Ask it through the same stop-observation signal STOP uses (it writes the domain stop file
+# and then TERM/KILLs the domain group), wait for it here, and only then run H.9's real-prefix cleanup.
+stop_sandbox_domain_after_timeout() {
+  [ "$session_run" = 1 ] && [ "$sandbox_requested" = 1 ] && [ -n "$supervisor_pid" ] || return 0
+  local run_id="" signal_file=""
+  for _ in $(seq 1 50); do
+    run_id="$(read_run_id)"
+    if [[ "$run_id" =~ ^[[:xdigit:]]{32}$ ]] && [ "$run_id" != "$previous_run" ]; then break; fi
+    run_id=""
+    sleep 0.1
+  done
+  if [ -z "$run_id" ]; then
+    echo "hf-inner: the sandboxed session did not publish a new run before the Proton timeout; there is no domain stop file to write." >&2
+    return 0
+  fi
+  signal_file="$INSTALL/logs/sessions/$run_id/stop-observation.signal"
+  echo "hf-inner: asking the native sandbox supervisor to stop run $run_id after the Proton timeout." >&2
+  if ! printf 'stop\n' >"$signal_file" 2>/dev/null; then
+    echo "hf-inner: could not write the sandbox domain stop signal at $signal_file." >&2
+    return 0
+  fi
+  for _ in $(seq 1 300); do
+    kill -0 "$supervisor_pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  echo "hf-inner: the native sandbox supervisor did not stop the domain within 30 seconds after the Proton timeout." >&2
+}
 program="${1:-$INSTALL/HellForge.exe}"
 if [ "$session_run" = 1 ]; then steam_shader_caches; fi
 # Proton itself is bounded as well as the session wait: a runner stuck in preparation must not live forever when an
@@ -279,13 +320,45 @@ wait_timeout="${HELLFORGE_WAIT_TIMEOUT:-43200}"
 [[ "$wait_timeout" =~ ^[0-9]+$ ]] || { echo "hf-inner: HELLFORGE_WAIT_TIMEOUT must be a number of seconds." >&2; exit 1; }
 proton_timeout="${HELLFORGE_PROTON_TIMEOUT:-$wait_timeout}"
 [[ "$proton_timeout" =~ ^[0-9]+$ ]] || { echo "hf-inner: HELLFORGE_PROTON_TIMEOUT must be a number of seconds." >&2; exit 1; }
+# The wrapper's self-test is authoritative: a kernel, mount, AppArmor or package change since setup must refuse the
+# session, not surprise it halfway through. It never starts Proton or the game.
+if [ "$session_run" = 1 ] && [ "$sandbox_requested" = 1 ]; then
+  preflight="$INSTALL/logs/sandbox-preflight.txt"
+  mkdir -p "$INSTALL/logs"
+  echo "hf-inner: checking the Linux sandbox before the session." >&2
+  if ! (unset HELLFORGE_WRAPPER_LOG; bash "$INSTALL/app/linux/hellforge-linux.sh" --sandbox-self-test) >"$preflight" 2>&1; then
+    cat "$preflight" >&2
+    echo "hf-inner: the Linux sandbox could not start: the self-test failed. The game was not started. To run without the sandbox, turn off Settings > Sandbox." >&2
+    exit 1
+  fi
+fi
+# The native supervisor is a sibling of Proton and outlives the first wineserver. It validates the runner's request and
+# builds the domain; hf-inner must not wait for it here, because the game can run for hours.
+supervisor_pid=""
+if [ "$session_run" = 1 ] && [ "$sandbox_requested" = 1 ]; then
+  cli_native="$INSTALL/app/cli-linux/HellForge.Cli"
+  [ ! -f "$cli_native" ] || [ -x "$cli_native" ] || chmod +x "$cli_native" 2>/dev/null || true
+  [ -x "$cli_native" ] || { echo "hf-inner: the native Linux agent is missing (app/cli-linux/HellForge.Cli); the sandbox cannot start." >&2; exit 1; }
+  supervisor_log="$INSTALL/logs/sandbox-supervisor.log"
+  HELLFORGE_PROTON_TIMEOUT="$proton_timeout" "$cli_native" sandbox-supervise --install "$INSTALL" --prefix "$STEAM_COMPAT_DATA_PATH" \
+    --session-file "$session_file" --parent-pid "$$" >>"$supervisor_log" 2>&1 &
+  supervisor_pid=$!
+  sleep 0.5
+  if ! kill -0 "$supervisor_pid" 2>/dev/null; then
+    wait "$supervisor_pid" 2>/dev/null || true
+    echo "hf-inner: the native sandbox supervisor could not start; the game was not started. See $supervisor_log." >&2
+    exit 1
+  fi
+fi
 echo "hf-inner: launching $(basename -- "$program") through Proton." >&2
 proton_status=0
 if [ $# -gt 0 ]; then timeout -k 10 "$proton_timeout" "$PROTON" run "$@" || proton_status=$?; else timeout -k 10 "$proton_timeout" "$PROTON" run "$program" || proton_status=$?; fi
 # timeout(1) returns 124 when its own deadline fired. 137 means its -k then had to KILL the script; the game may still be
-# in the prefix either way, so end the prefix's wineserver and then the installation's leftovers.
+# in the prefix either way, so first stop a sandboxed domain through its supervisor, then end the real prefix's
+# wineserver and the installation's leftovers.
 if [ "$proton_status" = 124 ] || [ "$proton_status" = 137 ]; then
   echo "hf-inner: Proton did not return within ${proton_timeout} seconds; timeout ended it." >&2
+  stop_sandbox_domain_after_timeout
   end_timed_out_session
 fi
 echo "Proton returned exit code $proton_status." >&2
@@ -358,5 +431,20 @@ if [ "${HELLFORGE_WAIT_FOR_PROCESSES:-1}" != 0 ]; then
       sleep 2
     done
   fi
+fi
+# The supervisor answers the trusted runner's copy-back request and then exits. Give it the same bounded ending as the
+# bridge; its own parent-death signal handles the path where hf-inner is killed first.
+if [ -n "$supervisor_pid" ]; then
+  for _ in $(seq 1 60); do
+    kill -0 "$supervisor_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$supervisor_pid" 2>/dev/null; then
+    echo "hf-inner: the native sandbox supervisor did not stop within 60 seconds; ending it." >&2
+    kill -TERM "$supervisor_pid" 2>/dev/null || true
+    for _ in $(seq 1 50); do kill -0 "$supervisor_pid" 2>/dev/null || break; sleep 0.1; done
+    kill -KILL "$supervisor_pid" 2>/dev/null || true
+  fi
+  wait "$supervisor_pid" 2>/dev/null || true
 fi
 exit "$proton_status"

@@ -7,11 +7,10 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The Linux sandbox probe's Setup row and its one-line, information-only result. It is a partial of MainWindow (like
-// SetupFlow.cs) so the setup flow can call it without carrying the process and UI code in that already large file.
+// The Linux sandbox self-test's Setup row. It records a pass or the first reason against this app build and kernel; the
+// result is what lets Settings > Sandbox offer the switch. A failure does not stop setup, but it leaves the switch off.
 public partial class MainWindow
 {
-    // The phase-1 sandbox probe is information only, not a SetupStep: it never refuses a session or changes a setting.
     (Border Dot, TextBlock Detail)? linuxSandboxRow;
 
     void InitializeLinuxSandboxProbeRow()
@@ -19,7 +18,7 @@ public partial class MainWindow
         if (!OperatingSystem.IsLinux()) return;
         if (linuxSandboxRow is not null) { SetLinuxSandboxRow(null, ""); return; }
         var dot = new Border { Classes = { "dot" }, Background = Pending, VerticalAlignment = VerticalAlignment.Top, Margin = new(0, 5, 14, 0) };
-        var title = new TextBlock { Text = "Run the Linux sandbox probe (information only)", FontWeight = FontWeight.SemiBold };
+        var title = new TextBlock { Text = "Check the Linux sandbox", FontWeight = FontWeight.SemiBold };
         var detail = new TextBlock { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
         var row = new DockPanel();
         DockPanel.SetDock(dot, Dock.Left);
@@ -38,16 +37,16 @@ public partial class MainWindow
         row.Detail.Foreground = success == false ? Red : Grey;
     }
 
-    // Phase 1 only: run the native probe and show one line. A missing probe, a failed item or a timeout is information,
-    // not a setup failure; no sandbox is enabled and no session is refused from this result.
     async Task RunLinuxSandboxProbe(InstallLayout install)
     {
-        SetLinuxSandboxRow(null, "Running the native Linux sandbox probe (information only)...", running: true);
+        SetLinuxSandboxRow(null, "Running the Linux sandbox self-test...", running: true);
         var wrapper = Path.Combine(install.App, "linux", "hellforge-linux.sh");
-        var report = Path.Combine(install.Logs, "sandbox-probe.json");
+        var report = Path.Combine(install.Logs, "sandbox-self-test.txt");
         if (!File.Exists(wrapper))
         {
-            SetLinuxSandboxRow(false, "Information only: app/linux/hellforge-linux.sh is missing.");
+            RecordLinuxSandboxTest(install, false, "app/linux/hellforge-linux.sh is missing");
+            SetLinuxSandboxRow(false, "app/linux/hellforge-linux.sh is missing, so the sandbox stays off.");
+            ApplyLinuxSandboxSettings(install);
             return;
         }
         try
@@ -61,11 +60,10 @@ public partial class MainWindow
                 RedirectStandardError = true
             };
             start.ArgumentList.Add(wrapper);
-            start.ArgumentList.Add("--sandbox-probe");
+            start.ArgumentList.Add("--sandbox-self-test");
             start.Environment["INSTALL"] = install.Root;
-            // Keep stdout for this row even when the launcher usually sends wrapper output to its log.
             start.Environment.Remove("HELLFORGE_WRAPPER_LOG");
-            using var process = Process.Start(start) ?? throw new IOException("The Linux sandbox probe did not start.");
+            using var process = Process.Start(start) ?? throw new IOException("The Linux sandbox self-test did not start.");
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
@@ -77,29 +75,41 @@ public partial class MainWindow
             {
                 try { process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException) { }
-                SetLinuxSandboxRow(false, "Information only: the Linux sandbox probe did not finish in 3 minutes.");
+                var reason = "the Linux sandbox self-test did not finish in 3 minutes";
+                RecordLinuxSandboxTest(install, false, reason);
+                SetLinuxSandboxRow(false, char.ToUpperInvariant(reason[0]) + reason[1..] + "; the sandbox stays off.");
+                ApplyLinuxSandboxSettings(install);
                 return;
             }
             var errorText = await errorTask;
             var outputText = await outputTask;
-            var lines = (errorText + "\n" + outputText).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            // A container refusal stops the wrapper before the native probe, so its written reason is the result; the
-            // probe report has the same firstReason.
-            var refusal = process.ExitCode != 0 ? SessionRunner.LinuxContainerRefusal(install.Root) : null;
-            var result = refusal
-                ?? lines.LastOrDefault(line => line.StartsWith("hf-sandbox-probe:", StringComparison.Ordinal))
-                ?? lines.LastOrDefault()
-                ?? $"exit code {process.ExitCode}";
-            SetLinuxSandboxRow(process.ExitCode == 0,
-                $"Information only: {Privacy.Scrub(result)} Report: {Privacy.Scrub(report)}");
+            Directory.CreateDirectory(install.Logs);
+            File.WriteAllText(report, errorText + outputText);
+            var passed = process.ExitCode == 0;
+            // A container refusal stops the wrapper before hf-sandbox runs, so its written reason is the result: the
+            // readiness record and Settings > Sandbox then say why, not a generic self-test failure.
+            var result = (passed ? null : SessionRunner.LinuxContainerRefusal(install.Root))
+                ?? LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
+            RecordLinuxSandboxTest(install, passed, passed ? "" : result);
+            SetLinuxSandboxRow(passed, (passed ? "The Linux sandbox self-test passed. " : "The sandbox stays off: ") +
+                Privacy.Scrub(result) + " Report: " + Privacy.Scrub(report));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
-            SetLinuxSandboxRow(false, "Information only: the Linux sandbox probe could not run: " + Privacy.Scrub(error.Message));
+            var reason = "the Linux sandbox self-test could not run: " + error.Message;
+            RecordLinuxSandboxTest(install, false, reason);
+            SetLinuxSandboxRow(false, Privacy.Scrub(char.ToUpperInvariant(reason[0]) + reason[1..] + "; the sandbox stays off."));
         }
+        ApplyLinuxSandboxSettings(install);
     }
 
-    // The probe runs before, and never blocks, the normal Linux setup-file checks.
+    static void RecordLinuxSandboxTest(InstallLayout install, bool passed, string reason)
+    {
+        try { LinuxSandboxReadiness.Save(install, passed, reason); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    // The self-test runs before, and never blocks, the normal Linux setup-file checks.
     async Task<(string SteamRoot, string Wrapper, string Probe)> CheckLinuxSetupFilesWithProbe(InstallLayout install, string proton)
     {
         await RunLinuxSandboxProbe(install);

@@ -143,6 +143,32 @@ static class WinePathTests
                 "Z: paths are normalized against the host root.");
         });
 
+        test("Wine Z: paths map host text without consulting the OS", () =>
+        {
+            check(WinePath.ToZPath("/home/steam/prefix/pfx/drive_c/users/steamuser") ==
+                @"Z:\home\steam\prefix\pfx\drive_c\users\steamuser", "A host path inside a prefix lost its prefix.");
+            check(WinePath.ToZPath("/var/tmp/HellForge") == @"Z:\var\tmp\HellForge",
+                "A host path outside the prefix did not become a Z: path.");
+            check(WinePath.ToZPath("/var/tmp/other/../HellForge") == @"Z:\var\tmp\HellForge",
+                "A host path's .. was not collapsed textually.");
+            check(WinePath.ToZPath("/home//steam/./prefix/") == @"Z:\home\steam\prefix",
+                "A host path's empty and . segments were not collapsed.");
+            check(WinePath.ToZPath("/") == @"Z:\", "The host root did not become Z:\\.");
+            check(WinePath.ToZPath("Z:") == @"Z:\" && WinePath.ToZPath(@"Z:\home\steam\..\tmp") == @"Z:\home\tmp" &&
+                WinePath.ToZPath("z:/home/./steam/../tmp") == @"Z:\home\tmp",
+                "An already-Z: path was not kept and normalized.");
+            RefusesInvalidData(() => WinePath.ToZPath("/.."), "above the host filesystem root",
+                "A host path above / was accepted.");
+            RefusesInvalidData(() => WinePath.ToZPath("/var/../.."), "above the host filesystem root",
+                "A host path whose .. climbed above / was accepted.");
+            RefusesInvalidData(() => WinePath.ToZPath(@"Z:\..\etc"), "above the host filesystem root",
+                "A Z: path above the host root was accepted.");
+            RefusesInvalidData(() => WinePath.ToZPath(@"C:\users\steamuser"), "not Z:",
+                "ToZPath accepted a non-Z: Windows drive.");
+            RefusesInvalidData(() => WinePath.ToZPath("profiles/default"), "absolute host path",
+                "ToZPath accepted a relative path.");
+        });
+
         test("Wine paths pass native paths through and refuse other Windows drives", () =>
         {
             var prefix = Path.Combine(root, "wine-prefix-drives");

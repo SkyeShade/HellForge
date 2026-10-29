@@ -132,15 +132,7 @@ public partial class MainWindow : Window
             try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
         };
-        // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
-        // Windows (SessionRunner.CanSandbox). It is not yet implemented on Linux, where the network namespace is the block.
-        var steamBridge = SessionRunner.HasSteamBridge(paths);
-        var linux = OperatingSystem.IsLinux();
-        SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
-        SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
-        SandboxUnavailable.IsVisible = !linux && !steamBridge;
-        SandboxLinuxNote.IsVisible = linux;
-        SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+        InitializeSandboxSettings();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
@@ -279,7 +271,19 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
-        if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
+        if (SandboxBox.IsChecked == true)
+        {
+            Append(OperatingSystem.IsLinux()
+                ? "Sandboxed (Settings > Sandbox): the game runs in its own Wine prefix and a read-only filesystem view."
+                : "Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            var why = SessionRunner.LinuxSandboxProgramProblem(paths) ??
+                (paths.InstallRoot != null ? LinuxSandboxReadiness.Problem(new InstallLayout(paths.InstallRoot)) : null) ??
+                "Settings > Sandbox is off";
+            Append("This session is not sandboxed (" + why + "). The game, its mods and anything they run can write your files.", Orange);
+        }
         try
         {
             previousRunId = SessionRunner.LatestRunId(paths);

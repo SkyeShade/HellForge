@@ -209,7 +209,7 @@ Only the newest ten are kept. These are the files to show a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; a sandboxed session also records `gameExitCode`, `gameCrashed` and the loader's first crash line as `loaderCrash` |
 | `modloader.log` | the mod loader: which mods loaded, and why one did not |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
@@ -227,7 +227,8 @@ sizes.
 
 `logs --export <file.zip>` makes the zip the launcher's Save logs to Desktop makes, of the newest session or the one
 `--run` names. Text files and file names in it say `%USERPROFILE%` and `PC` instead of the player's user folder and
-computer name, whoever wrote them. Programs are left out, and a crash dump goes in as it is. While a session runs, its
+computer name, whoever wrote them. Programs are left out, links in the run folder are skipped and never followed, and a
+crash dump goes in as it is. While a session runs, its
 logs are read with shared access, and a file it has locked is left out (`skipped` counts them). The zip must not exist
 yet.
 

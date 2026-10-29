@@ -116,6 +116,18 @@ static class CrashReportTests
             var noted = Session(new string('5', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
             File.WriteAllText(Path.Combine(noted, "game", "modloader.log"), "10:00:00.000 crash: fail-fast about to end the game (thread 7, asked from ucrtbase.dll+0x9a1b); stack:\n");
             check(CrashReport.Crashed(noted), "A crash the mod loader noted in a sandboxed session's log.");
+            check(CrashReport.FirstCrashLine(noted)?.Contains("crash: fail-fast", StringComparison.Ordinal) == true,
+                "The first crash note was not returned for result.json.");
+            if (OperatingSystem.IsLinux())
+            {
+                var linked = Session(new string('8', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
+                var outside = Path.Combine(root, "crash-report-links", "modloader.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+                File.WriteAllText(outside, "10:00:00.000 crash: c0000005 on thread 1 at game.dll+0x1\n");
+                File.CreateSymbolicLink(Path.Combine(linked, "game", "modloader.log"), outside);
+                check(CrashReport.LoaderLog(linked) == null && CrashReport.FirstCrashLine(linked) == null && !CrashReport.Crashed(linked),
+                    "CrashReport followed a linked modloader.log.");
+            }
             var dumped = Session(new string('6', 32), "{}");
             File.WriteAllBytes(Path.Combine(dumped, "crash-42.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(CrashReport.Crashed(dumped), "A session that left a dump.");

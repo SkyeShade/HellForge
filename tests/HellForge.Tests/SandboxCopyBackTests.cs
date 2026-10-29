@@ -42,6 +42,22 @@ static class SandboxCopyBackTests
                 check(!File.Exists(Path.Combine(destination, "profiles", "player", skipped)),
                     $"{skipped} from the session reached the destination.");
             check(copied.Skipped >= 4, $"The skipped entries were not counted ({copied.Skipped}).");
+
+            // The native CLI copy-back reads the same session folder through openat2 and stages only regular files.
+            var (install, run) = NativeRun(baseFolder);
+            Directory.Move(gameOut, Path.Combine(run, "game", "userdata"));
+            Directory.CreateDirectory(Path.Combine(run, "game", "environment", "Temp"));
+            File.WriteAllText(Path.Combine(run, "game", "environment", "Temp", "regular.tmp"), "temp");
+            var native = NativeSandboxCopyBack.Run(install, run, "player");
+            var staged = Path.Combine(native.Staging, "userdata", "profiles", "player");
+            check(native.Files == 2 && native.Bytes == "regular".Length + "temp".Length,
+                $"The native copy-back counted {native.Files} files.");
+            check(File.ReadAllText(Path.Combine(staged, "regular.txt")) == "regular", "The native copy-back lost the regular file.");
+            check(File.ReadAllText(Path.Combine(native.Staging, "game", "environment", "Temp", "regular.tmp")) == "temp",
+                "The native copy-back lost the environment file.");
+            foreach (var skipped in new[] { "link.txt", "hard-a.txt", "hard-b.txt", "fifo.txt" })
+                check(!File.Exists(Path.Combine(staged, skipped)), skipped + " reached the native staging folder.");
+            check(native.Skipped >= 4, $"The native copy-back skipped count is {native.Skipped}.");
         });
 
         test("Linux sandbox copy-back skips a device node", () =>
@@ -49,32 +65,55 @@ static class SandboxCopyBackTests
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox copy-back)"); return; }
             var baseFolder = Path.Combine(root, "sandbox-copyback-device");
             var gameOut = Path.Combine(baseFolder, "gameOut");
-            var destination = Path.Combine(baseFolder, "destination");
             Directory.CreateDirectory(Path.Combine(gameOut, "profiles", "player"));
-            Directory.CreateDirectory(destination);
             var device = Path.Combine(gameOut, "profiles", "player", "device");
             if (!Native.TryMakeCharDevice(device))
             {
                 Console.WriteLine("  (skipped: a device node needs CAP_MKNOD; run this test as root to include it)");
                 return;
             }
-            var copied = SandboxFolders.Copy(gameOut, destination, ["profiles/player"], fromSession: true);
-            check(copied.Files == 0 && copied.Skipped >= 1, "A device node from the session was not skipped.");
-            check(!File.Exists(Path.Combine(destination, "profiles", "player", "device")),
-                "The device node reached the destination.");
+            var (install, run) = NativeRun(baseFolder);
+            Directory.Move(gameOut, Path.Combine(run, "game", "userdata"));
+            var native = NativeSandboxCopyBack.Run(install, run, "player");
+            check(native.Files == 0 && native.Skipped >= 1, "A device node from the session was not skipped.");
+            check(!File.Exists(Path.Combine(native.Staging, "userdata", "profiles", "player", "device")),
+                "The device node reached the native staging folder.");
         });
 
-        test("Linux sandbox state cleanup removes mode-000 work/work", () => {
+        test("Linux sandbox state cleanup removes mode-000 work/work and the empty mount points", () => {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox state cleanup)"); return; }
             var session = Path.Combine(root, "sandbox-state-cleanup", "run");
             var sandbox = Path.Combine(session, "sandbox");
+            var gameOut = Path.Combine(session, "game");
+            var merged = Directory.CreateDirectory(Path.Combine(gameOut, "prefix", "merged")).FullName;
+            var newRoot = Directory.CreateDirectory(Path.Combine(session, "root")).FullName;
             Directory.CreateDirectory(Path.Combine(sandbox, "upper", "pfx"));
             File.WriteAllText(Path.Combine(sandbox, "upper", "pfx", "overlay-write"), "overlay");
             var work = Directory.CreateDirectory(Path.Combine(sandbox, "work", "work")).FullName;
             File.SetUnixFileMode(work, UnixFileMode.None);
-            SandboxFolders.RemoveSessionState(session);
+            SandboxFolders.RemoveSessionState(session, gameOut);
             check(!Directory.Exists(sandbox), "The sandbox upper/work folder survived session cleanup.");
+            check(!Directory.Exists(merged), "The empty overlay mount point survived session cleanup.");
+            check(!Directory.Exists(newRoot), "hf-sandbox's empty new-root mount point survived session cleanup.");
             check(Directory.Exists(session), "Session cleanup removed the run folder itself.");
+            // A new-root folder that still holds something (a mount that did not detach) is left for the evidence.
+            var busy = Directory.CreateDirectory(Path.Combine(session, "root", "tmp")).FullName;
+            SandboxFolders.RemoveSessionState(session, gameOut);
+            check(Directory.Exists(busy), "Session cleanup removed a new-root folder that was not empty.");
+        });
+
+        test("Linux sandbox cleanup removes .steam links but not their Steam targets", () => {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux sandbox Steam-link cleanup)"); return; }
+            var baseFolder = Path.Combine(root, "sandbox-steam-cleanup");
+            var gameOut = Path.Combine(baseFolder, "game");
+            var steam = Directory.CreateDirectory(Path.Combine(gameOut, "home", ".steam")).FullName;
+            var target = Directory.CreateDirectory(Path.Combine(baseFolder, "steam", "linux64")).FullName;
+            var client = Path.Combine(target, "steamclient.so");
+            File.WriteAllText(client, "synthetic Steam client");
+            Directory.CreateSymbolicLink(Path.Combine(steam, "sdk64"), target);
+            SandboxFolders.RemoveSteamHome(gameOut);
+            check(!Directory.Exists(steam), "The session .steam folder survived cleanup.");
+            check(File.Exists(client), "Cleanup deleted the Steam target through the .steam link.");
         });
 
         test("Linux sandbox stats refuse a linked changes file and a FIFO without hanging", () =>
@@ -107,7 +146,17 @@ static class SandboxCopyBackTests
         });
     }
 
-    static class Native
+    // A synthetic installation and a 32-hex run folder, with run/game ready to receive a gameOut tree.
+    static (InstallLayout Install, string Run) NativeRun(string baseFolder)
+    {
+        var install = new InstallLayout(Path.Combine(baseFolder, "native-install"));
+        install.Create(SupportedBuild.Current.BuildId);
+        var run = Path.Combine(install.Sessions, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(run, "game"));
+        return (install, run);
+    }
+
+    internal static class Native
     {
         [DllImport("libc", SetLastError = true)]
         static extern int mkfifo([MarshalAs(UnmanagedType.LPUTF8Str)] string path, uint mode);

@@ -93,8 +93,8 @@ static int make_steam_link(const char *target, const char *path)
 }
 
 // lsteamclient opens $HOME/.steam/sdk64/steamclient.so (and the sdk32 sibling); on the host those are links into
-// <Steam>/linux64 and linux32. Recreate them in the session home before the pivot. root/steam name the Steam root, but
-// the view binds only the runtime parts of it, never the Steam root whole (its config/ has the login tokens).
+// <Steam>/linux64 and linux32. Recreate only those two links in the session home before the pivot. Deliberately no
+// root/steam aliases: the view binds only the runtime parts of Steam, never its config/ with the login tokens.
 static int create_steam_dir(const struct hf_sandbox *sandbox, char *steam_dir, size_t size)
 {
     if (hf_join(steam_dir, size, sandbox->home, ".steam") != 0) return hf_fail("the session .steam folder");
@@ -114,13 +114,6 @@ static int make_sdk_link(const struct hf_sandbox *sandbox, const char *steam_dir
     return make_steam_link(source, link);
 }
 
-static int make_root_link(const char *steam_root, const char *steam_dir, const char *link_name, const char *error)
-{
-    char link[PATH_MAX];
-    if (hf_join(link, sizeof(link), steam_dir, link_name) != 0) return hf_fail(error);
-    return make_steam_link(steam_root, link);
-}
-
 int hf_prepare_session_home(struct hf_sandbox *sandbox)
 {
     if (sandbox->steam_root[0] == '\0') return 0;
@@ -128,8 +121,7 @@ int hf_prepare_session_home(struct hf_sandbox *sandbox)
     if (create_steam_dir(sandbox, steam_dir, sizeof(steam_dir)) != 0) return 1;
     if (make_sdk_link(sandbox, steam_dir, "linux64", "sdk64", "the sdk64 link path") != 0) return 1;
     if (make_sdk_link(sandbox, steam_dir, "linux32", "sdk32", "the sdk32 link path") != 0) return 1;
-    if (make_root_link(sandbox->steam_root, steam_dir, "root", "the steam root link path") != 0) return 1;
-    return make_root_link(sandbox->steam_root, steam_dir, "steam", "the steam link path");
+    return 0;
 }
 
 int hf_mount_overlay(struct hf_sandbox *sandbox)

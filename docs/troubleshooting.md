@@ -177,8 +177,8 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "Cleanup failed." | Check the session logs before playing again. |
 
 On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
-Steam's runtime container. The launcher shows the reason the wrapper wrote; setup's sandbox probe shows the same
-`firstReason` from `logs/sandbox-probe.json`. See
+Steam's runtime container. The launcher shows the reason the wrapper wrote, and setup's "Check the Linux sandbox" row
+records it as the reason the sandbox stays off, so Settings > Sandbox shows it too. See
 [linux.md](linux.md#started-from-inside-a-container).
 
 On Linux, a message ending in "reinstall HellForge" means running the graphical installer again over the same prefix;

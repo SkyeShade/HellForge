@@ -610,10 +610,21 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     var sessions = Directory.CreateDirectory(Path.Combine(root, "prune-sessions")).FullName;
     var start = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
     var runs = Enumerable.Range(0, 13).Select(i => Guid.NewGuid().ToString("N")).ToList();
+    string? linkedTarget = null;
     for (var i = 0; i < runs.Count; i++)
     {
         var run = Directory.CreateDirectory(Path.Combine(sessions, runs[i])).FullName;
         File.WriteAllText(Path.Combine(run, "result.json"), new string('x', 1000));
+        if (i == 0 && OperatingSystem.IsLinux())
+        {
+            // The oldest run holds a link to a large "Steam library" file. Counting its size must not enter the link, and
+            // deleting the run must unlink it, not delete the target. The link is made before the run's time is set: on
+            // Linux that time is the folder's last write, which a new entry would move.
+            var targetFolder = Directory.CreateDirectory(Path.Combine(root, "prune-link-target")).FullName;
+            linkedTarget = Path.Combine(targetFolder, "steam-library.bin");
+            File.WriteAllText(linkedTarget, new string('x', 100_000));
+            Directory.CreateSymbolicLink(Path.Combine(run, "steam-root"), targetFolder);
+        }
         Directory.SetCreationTimeUtc(run, start.AddMinutes(i)); /* runs[0] the oldest */
     }
     var other = Directory.CreateDirectory(Path.Combine(sessions, "keep-me")).FullName;
@@ -623,6 +634,7 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     Check(pruned.Removed == 3 && pruned.Bytes == 3000 && pruned.Skipped == 0, $"Three removed: {pruned}");
     Check(runs.Take(3).All(r => !left.Contains(r)) && runs.Skip(3).All(left.Contains) && left.Contains("keep-me"),
         "The three oldest sessions went; the ten newest and the other folder stayed: " + string.Join(", ", left));
+    if (linkedTarget != null) Check(File.Exists(linkedTarget), "Deleting a pruned run followed its link into the target.");
     Check(SessionLogs.Prune(sessions).Removed == 0 && SessionLogs.Prune(Path.Combine(root, "no-such-folder")).Removed == 0, "Nothing more to remove.");
 });
 
@@ -667,6 +679,8 @@ LinuxUninstallTests.Register(Test, Check, Reject, root);
 LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
 LinkRuleTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
+SandboxWireTests.Register(Test, Check, Reject, root);
+SandboxPipeRelayTests.Register(Test, Check);
 ModSyncTests.Register(Test, Check, Reject, root);
 SteamAccountTests.Register(Test, Check, Reject, root);
 SteamPathTests.Register(Test, Check, Reject, root);
