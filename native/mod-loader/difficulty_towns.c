@@ -156,6 +156,37 @@ static void ZoneGroupsCaught(uintptr_t frame, uintptr_t rbp, uint32_t groups, ui
     ZoneGroupsWrite(n, &c);
 }
 
+/* A type 0/1 map's towns are its zone cells: SelectSubRegionCellsFromHeightGroup (0xF37500) gives each route cell a
+ * subregion by a noise value sampled at the cell (0xF3A2E0), in world metres. A larger map keeps level 10's route
+ * cells by spacing them out (65.75 m at 2 x, 40 m at level 10), so each noise blob covered a third of the cells and
+ * FinalizeVoronoi's 100 m zone cells (64 m) fewer again: a town came out as scattered single cells, each flattened to
+ * its own height (research d11-sparse-cities §8; zone-groups-<n>.tsv: 16 zone cells in 11 groups, 10 of one cell). On a
+ * larger map the noise is sampled at 1024 + (p - 1024) x 40 / the spacing, so a town keeps level 10's cells, each
+ * larger: one flattened area. Off with HELLFORGE_D11_TOWN_NOISE=0, for comparing. */
+#define DIF_TOWN_NOISE_SITE 0xF37BA9u /* movss xmm2, [rdi+4]; lea rcx, [rbp-0x70]; movss xmm1, [rdi] (13), then the call */
+#define DIF_TOWN_NOISE_CALL 0xF37BB6u
+static const uint8_t kTownNoisePin[13] = {0xF3, 0x0F, 0x10, 0x57, 0x04, 0x48, 0x8D, 0x4D, 0x90, 0xF3, 0x0F, 0x10, 0x0F};
+static const uint8_t kTownNoiseStub[76] = {
+    0x48, 0x8B, 0x44, 0x24, 0x50,                                     /*  0 mov rax, [rsp+0x50] (the pass context) */
+    0x48, 0x8B, 0x40, 0x08,                                           /*  5 mov rax, [rax+8] (lg+0x2D20) */
+    0xF3, 0x0F, 0x10, 0x0F, 0xF3, 0x0F, 0x10, 0x57, 0x04,             /*  9 movss xmm1, [rdi]; movss xmm2, [rdi+4] (the cell) */
+    0x81, 0x78, 0x5C, 0, 0, 0, 0,                                     /* 18 cmp dword [rax+0x5c], disk / 1024 (at 21) */
+    0x75, 0x28,                                                       /* 25 jne 67 */
+    0xF3, 0x0F, 0x10, 0x05, 0x2D, 0x00, 0x00, 0x00,                   /* 27 movss xmm0, [rip+0x2d] (1024, at 80) */
+    0xF3, 0x0F, 0x10, 0x1D, 0x29, 0x00, 0x00, 0x00,                   /* 35 movss xmm3, [rip+0x29] (40 / the spacing, at 84) */
+    0xF3, 0x0F, 0x5C, 0xC8, 0xF3, 0x0F, 0x5C, 0xD0,                   /* 43 subss xmm1, xmm0; subss xmm2, xmm0 */
+    0xF3, 0x0F, 0x59, 0xCB, 0xF3, 0x0F, 0x59, 0xD3,                   /* 51 mulss xmm1, xmm3; mulss xmm2, xmm3 */
+    0xF3, 0x0F, 0x58, 0xC8, 0xF3, 0x0F, 0x58, 0xD0,                   /* 59 addss xmm1, xmm0; addss xmm2, xmm0 */
+    0x48, 0x8D, 0x4D, 0x90,                                           /* 67 lea rcx, [rbp-0x70] */
+    0xE9, 0, 0, 0, 0};                                                /* 71 jmp 0xF37BB6 (rel32 at 72) */
+
+static int TownNoiseWanted(void)
+{
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_NOISE", value, 8);
+    return !(length == 1 && value[0] == L'0');
+}
+
 static int TownBorderWanted(void)
 {
     wchar_t value[8];
@@ -181,6 +212,9 @@ static const char* TownPinsFailed(uintptr_t game)
         return "the destruction records' registration is not the reviewed one (a map_scale above 1 needs it)";
     if (SafeRead(game + DIF_ZONE_GROUPS_SITE, zone, 5) || memcmp(zone, kZoneGroupsPin, 5) != 0)
         return "the height zones' grouping is not the reviewed one (a map_scale above 1 needs it)";
+    uint8_t noise[13];
+    if (SafeRead(game + DIF_TOWN_NOISE_SITE, noise, 13) || memcmp(noise, kTownNoisePin, 13) != 0)
+        return "the subregion noise is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
 
@@ -248,6 +282,14 @@ static const char* InstallTowns(DifficultyInstall* d)
     memcpy(p + 67, &caught, 8);
     TownRel32(p + 131, game + DIF_ZONE_GROUPS_SITE + 5);
     p += sizeof kZoneGroupsStub;
+    p = (uint8_t*)(((uintptr_t)p + 15) & ~(uintptr_t)15);
+    uint8_t* noiseStub = p; /* the subregion noise at level 10's spacing: the stub, then 1024 and 40 / the spacing */
+    float spacing = d->spacingValue != NULL && *d->spacingValue > 0.0f ? *d->spacingValue : 40.0f, noiseScale[2] = {1024.0f, 40.0f / spacing};
+    memcpy(p, kTownNoiseStub, sizeof kTownNoiseStub);
+    memcpy(p + 21, &diskBits, 4);
+    TownRel32(p + 72, game + DIF_TOWN_NOISE_CALL);
+    memcpy(p + 80, noiseScale, 8);
+    p += 88;
     DWORD protect;
     if (p - code > 0x1000 || !VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the towns' stubs could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
@@ -262,7 +304,17 @@ static const char* InstallTowns(DifficultyInstall* d)
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + sites[i].site, jump, sites[i].length)) return "the towns could not be patched";
     }
+    int noise = TownNoiseWanted();
+    if (noise)
+    {
+        uint8_t jump[13] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+        int32_t rel = (int32_t)(int64_t)((uintptr_t)noiseStub - (game + DIF_TOWN_NOISE_SITE + 5));
+        memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + DIF_TOWN_NOISE_SITE, jump, 13)) return "the towns could not be patched";
+    }
     Note("difficulty: towns on larger maps %s (HELLFORGE_D11_TOWN_BORDER=0 keeps level 10's radius)",
         border ? "are built up to the border" : "keep level 10's radius");
+    if (noise) Note("difficulty: towns on larger maps keep level 10's cells (their noise at x %.4f; HELLFORGE_D11_TOWN_NOISE=0 keeps it in metres)", noiseScale[1]);
+    else Note("difficulty: towns on larger maps keep their noise in metres (HELLFORGE_D11_TOWN_NOISE=0)");
     return NULL;
 }

@@ -350,6 +350,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_TOWN_MERGE, kTownMergePin, 7);
     memcpy(game + DIF_RECORD_STORE, kRecordStorePin, 7);
     memcpy(game + DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
+    memcpy(game + DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1268,7 +1269,7 @@ typedef int (*TownIntFn)(uintptr_t a, uint32_t b, uintptr_t c);
 static uintptr_t TownGame(void)
 {
     uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1400000, MEM_RESERVE, PAGE_NOACCESS);
-    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF4C000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
+    static const uint32_t pages[] = {0xF31000, 0xF34000, 0xF35000, 0xF37000, 0xF4C000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
     for (size_t i = 0; i < sizeof pages / sizeof pages[0]; i++)
         assert(VirtualAlloc((void*)(game + pages[i]), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
     return game;
@@ -1295,6 +1296,7 @@ static void TownsFixtureOnce(int border)
     TownPut(game, DIF_TOWN_MERGE, kTownMergePin, 7);
     TownPut(game, DIF_RECORD_STORE, kRecordStorePin, 7);
     TownPut(game, DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
+    TownPut(game, DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
     assert(TownPinsFailed(game) == NULL);
     /* the placers' harnesses (0x13F0000 + 0x40 i): push rsi; mov rsi, rcx; sub rsp, 0x28; keep xmmN; xmmN = value; the
      * site; at its back: xmm0 = xmmN, restore, return. {save, set, out, restore} for xmm8, 9, 9, 6, 7 */
@@ -1351,12 +1353,21 @@ static void TownsFixtureOnce(int border)
     static const uint8_t groupsOn[] = {0x48, 0x89, 0xF8, 0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00, 0x41, 0x5E, 0x5F, 0x5E, 0x5D, 0xC3};
     TownHarness(game, 0x13F0500u, groupsIn, sizeof groupsIn, DIF_ZONE_GROUPS_SITE);
     TownPut(game, DIF_ZONE_GROUPS_SITE + 5, groupsOn, sizeof groupsOn);
+    /* the subregion noise: push rdi, rbp; sub rsp, 0x68; [rsp+0x50] = the context (rcx); rdi = the cell (r8); rbp = rsp;
+     * the site; at the call: the position (xmm1, xmm2) to rdx's floats, eax = rcx - rbp (-0x70), back */
+    static const uint8_t noiseIn[] = {0x57, 0x55, 0x48, 0x83, 0xEC, 0x68, 0x48, 0x89, 0x4C, 0x24, 0x50, 0x4C, 0x89, 0xC7, 0x48, 0x89, 0xE5};
+    static const uint8_t noiseOn[] = {0xF3, 0x0F, 0x11, 0x0A, 0xF3, 0x0F, 0x11, 0x52, 0x04, 0x48, 0x89, 0xC8, 0x48, 0x29, 0xE8,
+        0x48, 0x83, 0xC4, 0x68, 0x5D, 0x5F, 0xC3};
+    TownHarness(game, 0x13F0600u, noiseIn, sizeof noiseIn, DIF_TOWN_NOISE_SITE);
+    TownPut(game, DIF_TOWN_NOISE_CALL, noiseOn, sizeof noiseOn);
 
     float savedScale = g_difficulty.mapScale;
     g_difficulty.mapScale = 2.0f;
     SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", border ? NULL : L"0");
     DifficultyInstall d = {game};
     d.disk = 1022.0f;
+    float spacing = 65.75f;
+    d.spacingValue = &spacing;
     assert(InstallTowns(&d) == NULL && g_townCounters != NULL);
     uint8_t base[0x60] = {0};
     float r = 2.0f, edge = 3.0f, disk = d.disk / 1024.0f, other = 680.0f / 1024.0f;
@@ -1418,6 +1429,17 @@ static void TownsFixtureOnce(int border)
     assert(g_zoneCatch.group[0].min == 10.0f && g_zoneCatch.group[0].max == 50.0f);
     assert(g_zoneCatch.group[1].type == 31 && g_zoneCatch.group[1].cells == 1 && g_zoneCatch.group[1].height == 0.0f);
     g_zoneCatches = 0;
+    /* the noise: a larger map's cell sampled at 1024 + (p - 1024) x 40 / 65.75, another map's where it is */
+    float cell[2] = {1024.0f + 657.5f, 1024.0f - 131.5f}, sampled[2] = {0};
+    uint8_t settings[0x60] = {0};
+    uintptr_t noiseContext[2] = {0, (uintptr_t)settings};
+    typedef int (*TownNoiseFn)(uintptr_t context, float* out, const float* cell);
+    TownNoiseFn noiseFn = (TownNoiseFn)(void*)(game + 0x13F0600u);
+    memcpy(settings + 0x5C, &disk, 4);
+    assert(noiseFn((uintptr_t)noiseContext, sampled, cell) == -0x70);
+    assert(fabsf(sampled[0] - 1424.0f) < 0.01f && fabsf(sampled[1] - 944.0f) < 0.01f);
+    memcpy(settings + 0x5C, &other, 4);
+    assert(noiseFn((uintptr_t)noiseContext, sampled, cell) == -0x70 && sampled[0] == cell[0] && sampled[1] == cell[1]);
     SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", NULL);
     g_difficulty.mapScale = savedScale;
     g_townCounters = NULL;
