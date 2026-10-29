@@ -69,8 +69,8 @@ public static class SandboxFolders
 
     // The overlay's upper/work live in <run>/sandbox, outside gameOut and never bound into the view. After the copy-back,
     // stats and evidence copy they are dead state: remove them, including overlayfs's mode-000 work/work, then the empty
-    // overlay mount point. The game never writes this folder (it is not in gameOut), so this is trusted cleanup, but a
-    // link there is still refused.
+    // overlay mount point and hf-sandbox's empty new-root mount point (<run>/root). The game never writes this folder (it
+    // is not in gameOut), so this is trusted cleanup, but a link there is still refused.
     public static void RemoveSessionState(string sessionRoot, string? gameOut = null)
     {
         try
@@ -85,7 +85,8 @@ public static class SandboxFolders
         }
         finally
         {
-            if (!string.IsNullOrEmpty(gameOut)) RemoveEmptyOverlayMount(gameOut);
+            if (!string.IsNullOrEmpty(gameOut)) RemoveEmptyMountPoint(Path.Combine(gameOut, "prefix", "merged"));
+            if (!string.IsNullOrEmpty(sessionRoot)) RemoveEmptyMountPoint(Path.Combine(sessionRoot, "root"));
         }
     }
 
@@ -102,13 +103,12 @@ public static class SandboxFolders
         folder.Delete(recursive: true);
     }
 
-    static void RemoveEmptyOverlayMount(string gameOut)
+    static void RemoveEmptyMountPoint(string path)
     {
-        var merged = Path.Combine(gameOut, "prefix", "merged");
-        if (File.Exists(merged)) { File.Delete(merged); return; }
-        if (!Directory.Exists(merged)) return;
-        var folder = new DirectoryInfo(merged);
-        if ((folder.Attributes & FileAttributes.ReparsePoint) != 0) { File.Delete(merged); return; }
+        if (File.Exists(path)) { File.Delete(path); return; }
+        if (!Directory.Exists(path)) return;
+        var folder = new DirectoryInfo(path);
+        if ((folder.Attributes & FileAttributes.ReparsePoint) != 0) { File.Delete(path); return; }
         if (!folder.EnumerateFileSystemInfos().Any()) folder.Delete();
     }
 
