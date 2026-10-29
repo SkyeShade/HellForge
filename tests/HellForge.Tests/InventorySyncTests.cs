@@ -61,11 +61,23 @@ static class InventorySyncTests
         test("The Linux helper check compares the installed helper and relay with the shipped copies and their hashes", () =>
             InstalledCopies(root, check));
 
-        test("The Linux CA is the Windows Root store's serialized Blob in a UTF-16 LE registry file", () => CertificateRegistry(root, check));
+        test("The Linux CA is the Windows Root store's Blob, proved from a UTF-16 LE reg export and system.reg", () =>
+            CertificateRegistry(root, check));
+
+        test("The Linux capture refuses a live prefix wineserver and a record from another game library", () =>
+            LinuxPrefixChecks(root, check));
 
         test("The capture refuses a loopback, unspecified, link-local or private API address", () => Addresses(check));
 
         test("Steam's compatibility-tool mapping chooses HELLDIVERS 2's Proton, or the capture refuses", () => CompatibilityTool(root, check));
+
+        test("Without a CompatToolMapping, the prefix's config_info chooses the Proton that last opened it", () =>
+            ConfigInfoProton(root, check));
+
+        test("The launcher installs the capture helper through pkexec and reports cancel, denial and fallbacks", () =>
+            HelperInstaller(root, check));
+
+        test("allow-capture.sh names the pkexec caller from PKEXEC_UID", () => HelperInstallerUser(check));
 
         test("The capture helper writes and removes only its exact hosts lines against a test file", () => HelperHosts(root, check));
 
@@ -134,7 +146,8 @@ static class InventorySyncTests
         var compatibilityData = Path.GetDirectoryName(prefix)!;
         check(LinuxCapture.FindPrefix(steamRoot, null) == compatibilityData, "The HELLDIVERS 2 prefix was not found from its Steam app manifest.");
 
-        var caFile = Path.Combine(compatibilityData, "capture-ca.cer");
+        var sync = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "sync-1")).FullName;
+        var caFile = Path.Combine(sync, "capture-ca.cer");
         using var key = RSA.Create(2048);
         var request = new CertificateRequest("CN=HellForge Capture CA", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
@@ -150,7 +163,6 @@ static class InventorySyncTests
         check(zCa.StartsWith(@"Z:\", StringComparison.Ordinal) && zCa.EndsWith(@"\logs\capture-ca.cer", StringComparison.Ordinal),
             "A sync-folder certificate was not mapped through Z: for Wine: " + zCa);
 
-        var sync = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "sync-1")).FullName;
         LinuxCapture.WriteCertificateRecord(sync, new(compatibilityData, Path.Combine(steamRoot, "proton"), steamRoot, caFile, thumbprint));
         var record = LinuxCapture.ReadCertificateRecord(sync);
         check(record is { Thumbprint: var saved } && saved == thumbprint && record.Prefix == compatibilityData && record.CaFile == caFile,
@@ -160,37 +172,136 @@ static class InventorySyncTests
             check(File.GetUnixFileMode(LinuxCapture.CertificateRecordPath(sync)) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
                 "The Linux certificate record is not mode 0600.");
 
-            // A stand-in for `proton run reg import/query`: its Root key holds the expected Blob after the add and is gone
-            // after the delete. This checks the supervisor's proof-before-opening and verified-removal flow.
-            var fakeState = Path.Combine(root, "linux-capture-record", "fake-root-store.txt");
-            var fakeProton = Path.Combine(root, "linux-capture-record", "fake-proton");
+            // A stand-in for `proton run reg import/export`: it copies templates of Wine's system.reg and reg export text,
+            // and its reg query prints nothing (the measured behaviour), so only the export file can prove the Blob.
+            var fakeFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-proton-root")).FullName;
+            var fakeState = Path.Combine(fakeFolder, "root-store.txt");
             var expectedHex = Convert.ToHexString(LinuxCapture.CertificateBlob(der));
-            var stateQuoted = fakeState.Replace("'", "'\\''", StringComparison.Ordinal);
-            File.WriteAllText(fakeProton, "#!/bin/sh\nstate='" + stateQuoted + "'\n" +
-                "case \"$*\" in\n" +
-                "  *'reg import'*capture-delete.reg*) : > \"$state\" ;;\n" +
-                "  *'reg import'*) printf '%s\\n' '" + expectedHex + "' > \"$state\" ;;\n" +
-                "  *'reg query'*'/v Blob'*) if [ -s \"$state\" ]; then printf '    Blob    REG_BINARY    %s\\n' \"$(cat \"$state\")\"; else echo 'reg: Unable to find the specified registry value' >&2; exit 1; fi ;;\n" +
-                "  *'reg query'*) if [ -s \"$state\" ]; then cat \"$state\"; else echo 'reg: Unable to find the specified registry key' >&2; exit 1; fi ;;\n" +
-                "esac\n");
-            File.SetUnixFileMode(fakeProton, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var systemKey = @"Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + thumbprint;
+            var template = Path.Combine(fakeFolder, "system.reg.template");
+            File.WriteAllText(template, "WINE REGISTRY Version 2\n\n[" + systemKey + "]\n\"Blob\"=hex:" + expectedHex + "\n");
+            var exportTemplate = Path.Combine(fakeFolder, "export.reg");
+            LinuxCapture.WriteRegistryFile(exportTemplate, "Windows Registry Editor Version 5.00\r\n\r\n[" +
+                LinuxCapture.RegistryKey(thumbprint) + "]\r\n\"Blob\"=hex:" + expectedHex + "\r\n");
+            var fakeProton = WriteFakeProton(fakeFolder, fakeState, template, expectedHex, importLands: true,
+                exportTemplate: exportTemplate);
             var fakeRecord = record! with { Proton = fakeProton };
             LinuxCapture.InstallCertificate(fakeRecord);
             check(File.ReadAllText(fakeState).Contains(expectedHex, StringComparison.OrdinalIgnoreCase),
                 "The certificate add was not confirmed from the prefix registry value.");
+            check(File.ReadAllText(fakeState + ".wineserver").Trim() == "-w",
+                "The prefix's own wineserver was not asked to flush after the import.");
+            var captureLog = File.ReadAllText(Path.Combine(sync, InventorySync.LauncherLogFile));
+            check(captureLog.Contains("Wine reg import: exit 0", StringComparison.Ordinal) &&
+                captureLog.Contains("Wine reg export Blob: exit 0", StringComparison.Ordinal) &&
+                captureLog.Contains("stdout:", StringComparison.Ordinal) && captureLog.Contains("stderr:", StringComparison.Ordinal) &&
+                captureLog.Contains("OpenXR-Loader", StringComparison.Ordinal) &&
+                captureLog.Contains("[known Proton noise]", StringComparison.Ordinal),
+                "The capture log did not keep both reg streams with Proton's noise marked.");
+            check(captureLog.Contains("reg export check: the export file holds the expected Blob", StringComparison.Ordinal) &&
+                captureLog.Contains("system.reg check: the key is in system.reg with the expected Blob", StringComparison.Ordinal),
+                "The capture log did not record both registry checks.");
             check(LinuxCapture.RemoveCertificate(fakeRecord) == null && File.ReadAllText(fakeState).Length == 0,
                 "The certificate key was not verified as removed.");
 
-            var badProton = Path.Combine(root, "linux-capture-record", "fake-bad-proton");
-            File.WriteAllText(badProton, "#!/bin/sh\ncase \"$*\" in *'reg query'*) printf '    Blob    REG_BINARY    00\\n' ;; esac\n");
-            File.SetUnixFileMode(badProton, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            var blocked = false;
-            try { LinuxCapture.InstallCertificate(fakeRecord with { Proton = badProton }); }
-            catch (InvalidOperationException) { blocked = true; }
-            check(blocked, "A mismatching reg query answer was accepted as the capture CA.");
+            // reg import exits 0 but system.reg never gets the key: the message says the import did not land.
+            File.WriteAllText(Path.Combine(prefix, "system.reg"), "WINE REGISTRY Version 2\n\n[Other\\\\Key]\n");
+            var noImportFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-no-import")).FullName;
+            var noImport = WriteFakeProton(noImportFolder, Path.Combine(noImportFolder, "state"), null, expectedHex,
+                importLands: false, exportTemplate: null);
+            var notLanded = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = noImport }));
+            check(notLanded.Contains("the key is not in system.reg: the import did not land", StringComparison.Ordinal) &&
+                notLanded.Contains("reg export exited 1", StringComparison.Ordinal) &&
+                !notLanded.Contains("ERROR: Unable", StringComparison.Ordinal) &&
+                !notLanded.Contains("xrizer", StringComparison.Ordinal),
+                "A missing import was not named from the export file and system.reg: " + notLanded);
+            var missingLog = File.ReadAllText(Path.Combine(sync, InventorySync.LauncherLogFile));
+            check(missingLog.Contains("reg export check: reg export exited 1", StringComparison.Ordinal) &&
+                missingLog.Contains("system.reg check: the key is not in system.reg: the import did not land", StringComparison.Ordinal),
+                "The capture log did not record both checks for a missing import: " + string.Join(" / ", missingLog.Split('\n').TakeLast(8)));
+
+            // system.reg has the key but reg export writes no file: the message says which check failed.
+            var notReadFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-not-read")).FullName;
+            var notRead = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state"), template, expectedHex,
+                importLands: true, exportTemplate: null);
+            var exportLost = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = notRead }));
+            check(exportLost.Contains("reg export exited 1", StringComparison.Ordinal) &&
+                exportLost.Contains("system.reg holds the expected Blob", StringComparison.Ordinal) &&
+                !exportLost.Contains("reg query", StringComparison.Ordinal) &&
+                !exportLost.Contains("xrizer", StringComparison.Ordinal),
+                "A readable system.reg with a failed export was not named: " + exportLost);
+
+            var badFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-bad-proton")).FullName;
+            var badExport = Path.Combine(badFolder, "bad-export.reg");
+            LinuxCapture.WriteRegistryFile(badExport, "Windows Registry Editor Version 5.00\r\n\r\n[" +
+                LinuxCapture.RegistryKey(thumbprint) + "]\r\n\"Blob\"=hex:00" + expectedHex[2..] + "\r\n");
+            var badProton = WriteFakeProton(badFolder, Path.Combine(badFolder, "state"), template, expectedHex,
+                importLands: true, exportTemplate: badExport);
+            var exportMismatch = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = badProton }));
+            check(exportMismatch.Contains("the export file's Blob does not match the certificate", StringComparison.Ordinal) &&
+                exportMismatch.Contains("system.reg holds the expected Blob", StringComparison.Ordinal),
+                "A mismatching export file was accepted as the capture CA: " + exportMismatch);
+
+            // Removal: reg export fails and writes no file, but system.reg still has the key after the flush. Empty stdout
+            // must never be read as gone.
+            var lingeringFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-lingering")).FullName;
+            var lingering = WriteFakeProton(lingeringFolder, Path.Combine(lingeringFolder, "state"), template, expectedHex,
+                importLands: true, exportTemplate: exportTemplate, deleteLands: false);
+            File.WriteAllText(Path.Combine(prefix, "system.reg"), File.ReadAllText(template));
+            var lingeringProblem = LinuxCapture.RemoveCertificate(fakeRecord with { Proton = lingering });
+            check(lingeringProblem != null &&
+                lingeringProblem.Contains("reg export did not find the capture CA key", StringComparison.Ordinal) &&
+                lingeringProblem.Contains("the key is in system.reg", StringComparison.Ordinal) &&
+                lingeringProblem.Contains("not proven gone", StringComparison.Ordinal),
+                "A removal with an empty export and a remaining system.reg key was accepted: " + lingeringProblem);
         }
         LinuxCapture.DeleteCertificateRecord(sync);
         check(LinuxCapture.ReadCertificateRecord(sync) == null, "The removed certificate record still reads.");
+    }
+
+    static void LinuxPrefixChecks(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux prefix checks)"); return; }
+        var steamRoot = Directory.CreateDirectory(Path.Combine(root, "linux-prefix-checks", "Steam")).FullName;
+        var steamApps = Directory.CreateDirectory(Path.Combine(steamRoot, "steamapps")).FullName;
+        File.WriteAllText(Path.Combine(steamApps, "appmanifest_553850.acf"), "\"AppState\" { \"appid\" \"553850\" }");
+        var prefix = Directory.CreateDirectory(Path.Combine(steamApps, "compatdata", "553850", "pfx")).FullName;
+        var compatibilityData = Path.GetDirectoryName(prefix)!;
+
+        var server = LinuxCapture.WineserverServer(prefix);
+        check(server is { } name && name.StartsWith("server-", StringComparison.Ordinal),
+            "The prefix's wineserver socket name was not derived from its device and inode.");
+        var sockets = LinuxCapture.WineserverSocketPaths(server!, "/run/user/1000", 1000);
+        check(sockets.SequenceEqual(["/run/user/1000/wine/" + server + "/socket", "/tmp/.wine-1000/" + server + "/socket"]),
+            "The prefix's wineserver socket paths do not match hellforge-offline.sh.");
+        check(LinuxCapture.WineserverProblem(compatibilityData, _ => LinuxSteamBridge.SocketState.Listening) is { } listening &&
+            listening.Contains("close Steam's game/tools in that prefix first", StringComparison.Ordinal),
+            "A live wineserver was not refused with the required action.");
+        check(LinuxCapture.WineserverProblem(compatibilityData, _ => LinuxSteamBridge.SocketState.NotListening) == null,
+            "A prefix with no wineserver was refused.");
+        check(LinuxCapture.WineserverProblem(compatibilityData, _ => LinuxSteamBridge.SocketState.CannotTell) is { } unknown &&
+            unknown.Contains("close Steam's game/tools in that prefix first", StringComparison.Ordinal),
+            "An unreadable wineserver state did not fail closed.");
+
+        var record = new LinuxCapture.CertificateRecord(compatibilityData, Path.Combine(root, "proton"), steamRoot,
+            Path.Combine(root, "capture-ca.cer"), new string('A', 40));
+        check(LinuxCapture.PrefixMismatchProblem(record) == null, "The library's own prefix was called a mismatch.");
+        var second = Directory.CreateDirectory(Path.Combine(root, "linux-prefix-checks", "second-library", "steamapps",
+            "compatdata", "553850", "pfx")).FullName;
+        var secondData = Path.GetDirectoryName(second)!;
+        check(LinuxCapture.PrefixMismatchProblem(record with { Prefix = secondData }) is { } mismatch &&
+            mismatch.Contains("second Steam library", StringComparison.Ordinal),
+            "A record from another Steam library's prefix was not named.");
+        check(LinuxCapture.PrefixMismatchProblem(record with { Prefix = Path.Combine(root, "not-a-game-prefix") }) is { } shape &&
+            shape.Contains("not HELLDIVERS 2", StringComparison.Ordinal),
+            "A record with a prefix that is not compatdata/553850 was not refused.");
+
+        var version = Path.Combine(compatibilityData, "version");
+        File.WriteAllText(version, "proton-cachyos-11.0-20260506-slr\n");
+        check(LinuxCapture.PrefixVersion(compatibilityData) == "proton-cachyos-11.0-20260506-slr",
+            "The prefix version file was not read as evidence.");
+        check(LinuxCapture.PrefixVersion(Path.Combine(root, "linux-prefix-checks", "missing")) == null,
+            "A missing prefix version was invented.");
     }
 
     static void CertificateRegistry(string root, Action<bool, string> check)
@@ -232,22 +343,44 @@ static class InventorySyncTests
         check(key == @"HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates\" + thumbprint, "The registry key is wrong.");
         check(LinuxCapture.ImportRegistryArguments(@"Z:\tmp\capture.reg").SequenceEqual(["run", "reg", "import", @"Z:\tmp\capture.reg"]),
             "The registry import arguments are wrong.");
-        check(LinuxCapture.QueryBlobArguments(thumbprint).SequenceEqual(["run", "reg", "query", key, "/v", "Blob"]),
-            "The registry Blob query arguments are wrong.");
-        check(LinuxCapture.QueryKeyArguments(thumbprint).SequenceEqual(["run", "reg", "query", key]),
-            "The registry key query arguments are wrong.");
+        check(LinuxCapture.ExportKeyArguments(thumbprint, @"Z:\tmp\capture-export.reg").SequenceEqual(
+            ["run", "reg", "export", key, @"Z:\tmp\capture-export.reg", "/y"]),
+            "The registry export arguments are wrong.");
 
         var expected = Convert.ToHexString(blob);
-        var query = "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + thumbprint +
-            "\r\n    Blob    REG_BINARY    " + expected + "\r\n";
-        check(LinuxCapture.QueryBlobHex(query) == expected && LinuxCapture.BlobMatches(query, blob),
-            "A matching reg query answer was not read as the written Blob.");
-        check(!LinuxCapture.BlobMatches(query.Replace(expected, "00" + expected[2..], StringComparison.Ordinal), blob),
-            "A mismatching reg query answer was accepted.");
-        check(LinuxCapture.QuerySaysAbsent(new(1, "reg: Unable to find the specified registry key")) &&
-            !LinuxCapture.QuerySaysAbsent(new(0, "HKEY_LOCAL_MACHINE")) &&
-            !LinuxCapture.QuerySaysAbsent(new(-1, "Proton timed out.")) &&
-            !LinuxCapture.QuerySaysAbsent(new(1, "")), "A reg query failure was mistaken for an absent key.");
+        var exportText = "Windows Registry Editor Version 5.00\r\n\r\n[" + key + "]\r\n\"Blob\"=hex:" +
+            expected[..24] + ",\\\r\n  " + expected[24..] + "\r\n";
+        var exportPath = Path.Combine(folder, "capture-export.reg");
+        var exportBytes = new byte[] { 0xFF, 0xFE }.Concat(Encoding.Unicode.GetBytes(exportText)).ToArray();
+        File.WriteAllBytes(exportPath, exportBytes);
+        check(LinuxCapture.ReadRegistryExportBlob(exportPath, thumbprint) == expected,
+            "A UTF-16 LE reg export with a continued Blob was not read.");
+        check(LinuxCapture.ReadExportBlobHex(exportText, thumbprint) == expected,
+            "The reg export text parser did not read the Blob.");
+        check(LinuxCapture.ReadRegistryExportBlob(exportPath, new string('B', 40)) == null,
+            "Another certificate's export was reported present.");
+        File.WriteAllBytes(exportPath, Encoding.Unicode.GetBytes(exportText));
+        check(LinuxCapture.ReadRegistryExportBlob(exportPath, thumbprint) == null,
+            "A reg export without a UTF-16 LE BOM was accepted.");
+
+        var systemKey = @"Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\" + thumbprint;
+        var systemReg = "WINE REGISTRY Version 2\n\n[" + systemKey + "]\n\"Blob\"=hex:" + expected + "\n";
+        var fromSystemReg = LinuxCapture.ReadSystemRegCertificate(systemReg, thumbprint);
+        check(fromSystemReg.KeyFound && fromSystemReg.BlobHex == expected,
+            "Wine's system.reg text did not yield the certificate key and Blob.");
+        var continued = LinuxCapture.ReadSystemRegCertificate(
+            "WINE REGISTRY Version 2\n\n[" + systemKey + "]\n\"Blob\"=hex:" + expected[..24] + ",\\\n  " + expected[24..] + "\n\n[Other\\\\Key]\n",
+            thumbprint);
+        check(continued.KeyFound && continued.BlobHex == expected, "A continued system.reg Blob was not read in full.");
+        check(!LinuxCapture.ReadSystemRegCertificate(systemReg, new string('B', 40)).KeyFound,
+            "Another certificate's key was reported present.");
+        check(LinuxCapture.ReadSystemRegCertificate("[" + systemKey + "]\n\"Other\"=hex:00\n", thumbprint) is
+            { KeyFound: true, BlobHex: null }, "A key without a Blob value was called a missing key.");
+        check(LinuxCapture.ReadSystemRegCertificate("[" + systemKey + "]\n\"Blob\"=hex:00\n", thumbprint) is
+            { KeyFound: true, BlobHex: "00" }, "A present key with a Blob was misread.");
+
+        check(LinuxCapture.ReadExportBlobHex("Windows Registry Editor Version 5.00\r\n\r\n[Other\\\\Key]\r\n", thumbprint) == null,
+            "An export without the certificate key was reported present.");
 
         var hashFile = Path.Combine(folder, "hash.txt");
         File.WriteAllText(hashFile, "abc");
@@ -358,6 +491,205 @@ static class InventorySyncTests
             "A compatibilitytools.d Proton was not resolved through its compatibilitytool.vdf.");
     }
 
+    static void ConfigInfoProton(string root, Action<bool, string> check)
+    {
+        var steam = Directory.CreateDirectory(Path.Combine(root, "config-info", "Steam")).FullName;
+        var steamApps = Directory.CreateDirectory(Path.Combine(steam, "steamapps")).FullName;
+        File.WriteAllText(Path.Combine(steamApps, "appmanifest_553850.acf"), "\"AppState\" { \"appid\" \"553850\" }");
+        var pfx = Directory.CreateDirectory(Path.Combine(steamApps, "compatdata", "553850", "pfx")).FullName;
+        var compatibilityData = Path.GetDirectoryName(pfx)!;
+        var common = Directory.CreateDirectory(Path.Combine(steamApps, "common")).FullName;
+        var mapped = Directory.CreateDirectory(Path.Combine(common, "Proton 9.0")).FullName;
+        var info = Directory.CreateDirectory(Path.Combine(common, "Proton - Experimental")).FullName;
+        var mappedScript = Path.Combine(mapped, "proton");
+        var infoScript = Path.Combine(info, "proton");
+        File.WriteAllText(mappedScript, "#!/bin/sh\nexport CURRENT_PREFIX_VERSION=\"11.0-100\"\n");
+        File.WriteAllText(infoScript, "#!/bin/sh\nCURRENT_PREFIX_VERSION=\"11.0-100\"\n");
+        File.WriteAllText(Path.Combine(compatibilityData, "version"), "11.0-100\n");
+        var configInfo = Path.Combine(compatibilityData, "config_info");
+        File.WriteAllText(configInfo, "11.0-100\n" + info + "/files/share/fonts/\n" + info + "/files/lib/\n");
+
+        check(LinuxCapture.PrefixVersion(compatibilityData) == "11.0-100", "The prefix version file was not read.");
+        check(LinuxCapture.CurrentPrefixVersion(infoScript) == "11.0-100",
+            "The Proton script's CURRENT_PREFIX_VERSION was not read.");
+        check(LinuxCapture.ProtonForGame(steam) == infoScript,
+            "A prefix with no CompatToolMapping did not resolve the Proton from config_info.");
+        check(LinuxCapture.FindProtonForGame(steam).Source.Contains("config_info", StringComparison.Ordinal),
+            "The Proton resolution did not say it came from config_info.");
+
+        File.WriteAllText(configInfo, "11.0-100\n" + info + "/dist/lib/\n");
+        check(LinuxCapture.ProtonForGame(steam) == infoScript, "A dist/ config_info path was not resolved.");
+
+        var config = Directory.CreateDirectory(Path.Combine(steam, "config")).FullName;
+        var configPath = Path.Combine(config, "config.vdf");
+        File.WriteAllText(configPath, """
+            "InstallConfigStore"
+            {
+              "Software"
+              {
+                "Valve"
+                {
+                  "Steam"
+                  {
+                    "CompatToolMapping"
+                    {
+                      "553850" { "name" "proton_9" }
+                    }
+                  }
+                }
+              }
+            }
+            """);
+        check(LinuxCapture.ProtonForGame(steam) == mappedScript,
+            "A CompatToolMapping did not win over the prefix's config_info.");
+        File.WriteAllText(configPath, File.ReadAllText(configPath).Replace("proton_9", "proton_missing",
+            StringComparison.Ordinal));
+        check(LinuxCapture.ProtonForGame(steam) == infoScript,
+            "A CompatToolMapping naming a missing tool did not fall back to config_info.");
+
+        File.Delete(configPath);
+        File.WriteAllText(Path.Combine(compatibilityData, "version"), "11.0-101\n");
+        check(LinuxCapture.ProtonForGame(steam) == null,
+            "A config_info Proton whose CURRENT_PREFIX_VERSION differs from the prefix version was accepted.");
+
+        File.WriteAllText(Path.Combine(compatibilityData, "version"), "11.0-100\n");
+        File.WriteAllText(configInfo, "11.0-100\n" + Path.Combine(common, "Missing Proton") + "/files/lib/\n");
+        var missing = LinuxCapture.FindProtonForGame(steam);
+        check(missing.Proton == null && missing.Source.Contains("config_info", StringComparison.Ordinal) &&
+            missing.Source.Contains("CompatToolMapping", StringComparison.Ordinal),
+            "A config_info naming a missing Proton folder did not refuse with both sources named.");
+    }
+
+    static void HelperInstaller(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: pkexec helper install)"); return; }
+        var install = Directory.CreateDirectory(Path.Combine(root, "helper-install", "install")).FullName;
+        var linuxFolder = Directory.CreateDirectory(Path.Combine(install, "app", "linux")).FullName;
+        var installer = Path.Combine(linuxFolder, LinuxCapture.HelperInstaller);
+        File.WriteAllText(installer, "#!/bin/sh\n");
+        File.SetUnixFileMode(installer, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var description = LinuxCapture.HelperInstallDescription(install);
+        check(description.Contains("/usr/local/lib/hellforge", StringComparison.Ordinal) &&
+            description.Contains("/etc/sudoers.d/hellforge-capture", StringComparison.Ordinal) &&
+            description.Contains("--remove", StringComparison.Ordinal) &&
+            description.Contains("pkexec", StringComparison.Ordinal),
+            "The helper confirmation does not say what will be installed and how it is removed.");
+
+        var successFolder = Path.Combine(root, "helper-install", "success");
+        var argsFile = Path.Combine(successFolder, "args.txt");
+        var success = FakePkexec(successFolder, "exit 0", argsFile);
+        var installed = LinuxCapture.InstallHelper(install, success, "/usr/bin/bash", _ => null);
+        check(installed.Succeeded && File.ReadAllLines(argsFile).SequenceEqual(["/usr/bin/bash", installer]),
+            "The launcher did not run the shipped installer with /usr/bin/bash through pkexec: " + installed.Message);
+        var removed = LinuxCapture.RemoveHelper(install, success, "/usr/bin/bash", _ => null);
+        check(removed.Succeeded && File.ReadAllLines(argsFile).SequenceEqual(["/usr/bin/bash", installer, "--remove"]),
+            "The launcher did not run the same installer with --remove through pkexec.");
+
+        var cancel = FakePkexec(Path.Combine(root, "helper-install", "cancel"), "exit 126");
+        var cancelled = LinuxCapture.InstallHelper(install, cancel, "/usr/bin/bash", _ => null);
+        check(!cancelled.Succeeded && cancelled.Cancelled &&
+            cancelled.Message.Contains("not installed; nothing changed", StringComparison.Ordinal),
+            "A dismissed password dialog was not reported as nothing changed.");
+
+        var auth = FakePkexec(Path.Combine(root, "helper-install", "auth"),
+            "printf '%s\\n' 'Error executing command as another user: Not authorized' >&2\nexit 127");
+        var denied = LinuxCapture.InstallHelper(install, auth, "/usr/bin/bash", _ => null);
+        check(!denied.Succeeded && denied.Cancelled && denied.Message.Contains("password was not accepted", StringComparison.Ordinal),
+            "An authentication failure was not reported as a denial.");
+
+        var noAgent = FakePkexec(Path.Combine(root, "helper-install", "no-agent"),
+            "printf '%s\\n' 'Error executing command as another user: No authentication agent found' >&2\nexit 127");
+        var manual = LinuxCapture.InstallHelper(install, noAgent, "/usr/bin/bash", _ => null);
+        check(!manual.Succeeded && manual.NeedsManual && manual.Message.Contains("No polkit authentication agent", StringComparison.Ordinal) &&
+            manual.Message.Contains(installer, StringComparison.Ordinal),
+            "A missing polkit agent did not fall back to the terminal command.");
+
+        var missing = Path.Combine(root, "helper-install", "missing-pkexec");
+        var noPkexec = LinuxCapture.InstallHelper(install, missing, "/usr/bin/bash", _ => null);
+        check(!noPkexec.Succeeded && noPkexec.NeedsManual && noPkexec.Message.Contains("pkexec is not installed", StringComparison.Ordinal) &&
+            noPkexec.Message.Contains(installer, StringComparison.Ordinal),
+            "A missing pkexec did not fall back to the terminal command.");
+
+        // A package update leaves the installed copy stale; the launcher runs the installer again and only continues when
+        // its own re-check passes.
+        var marker = Path.Combine(root, "helper-install", "reinstalled.marker");
+        var reinstall = FakePkexec(Path.Combine(root, "helper-install", "reinstall"),
+            "printf '%s\\n' installed > " + ShQuote(marker) + "\nexit 0");
+        Func<string, string?> staleUntilReinstalled = _ => File.Exists(marker)
+            ? null : "The installed Linux capture helper does not match this HellForge version.";
+        check(staleUntilReinstalled(install) != null, "A stale installed helper was not detected.");
+        var reinstalled = LinuxCapture.InstallHelper(install, reinstall, "/usr/bin/bash", staleUntilReinstalled);
+        check(reinstalled.Succeeded && File.Exists(marker),
+            "The reinstall after an update did not continue after the hashes matched again.");
+
+        var osRelease = Path.Combine(root, "helper-install", "os-release");
+        File.WriteAllText(osRelease, "ID=steamos\n");
+        check(LinuxCapture.IsSteamOs(osRelease) && LinuxCapture.SteamOsPasswordHint(true).Contains("passwd", StringComparison.Ordinal) &&
+            LinuxCapture.SteamOsPasswordHint(false).Length == 0,
+            "The SteamOS no-password hint was not available or leaked onto other systems.");
+    }
+
+    static void HelperInstallerUser(Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: pkexec caller)"); return; }
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperInstaller));
+        if (!File.Exists(script)) { Console.WriteLine("  (skipped: linux/allow-capture.sh is not in the test working directory)"); return; }
+        var uid = RunTestProcess("id", ["-u"]).Output.Trim();
+        var user = RunTestProcess("id", ["-un"]).Output.Trim();
+        check(uid.Length > 0 && user.Length > 0, "The test could not find the current account.");
+        var byPkexec = RunTestProcess("bash", [script, "--test-user"], start =>
+        {
+            start.Environment.Remove("SUDO_USER");
+            start.Environment["PKEXEC_UID"] = uid;
+        });
+        check(byPkexec.ExitCode == 0 && byPkexec.Output.Trim() == user,
+            "allow-capture.sh did not resolve the caller from PKEXEC_UID: " + byPkexec.Output);
+        var bySudo = RunTestProcess("bash", [script, "--test-user"], start =>
+        {
+            start.Environment.Remove("PKEXEC_UID");
+            start.Environment["SUDO_USER"] = user;
+        });
+        check(bySudo.ExitCode == 0 && bySudo.Output.Trim() == user,
+            "allow-capture.sh did not resolve the caller from SUDO_USER: " + bySudo.Output);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    static string FakePkexec(string folder, string body, string? argsFile = null)
+    {
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "pkexec");
+        var script = "#!/bin/sh\n";
+        if (argsFile != null) script += "printf '%s\\n' \"$@\" > " + ShQuote(argsFile) + "\n";
+        script += body + "\n";
+        File.WriteAllText(path, script);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
+    }
+
+    static (int ExitCode, string Output) RunTestProcess(string file, IReadOnlyList<string> arguments,
+        Action<ProcessStartInfo>? configure = null)
+    {
+        var start = new ProcessStartInfo(file)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        configure?.Invoke(start);
+        using var process = Process.Start(start) ?? throw new Exception(file + " did not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(10000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            throw new Exception(file + " did not finish.");
+        }
+        return (process.ExitCode, (output.GetAwaiter().GetResult() + error.GetAwaiter().GetResult()).Trim());
+    }
+
     static void LinuxRefusals(string root, Action<bool, string> check)
     {
         var install = Path.Combine(root, "linux-refusals");
@@ -384,8 +716,13 @@ static class InventorySyncTests
             "A stale helper did not name its installer.");
         check(LinuxCapture.StartRefusal(install, null, proton, "8.8.8.8", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("prefix", StringComparison.Ordinal),
             "A missing game prefix was not refused.");
-        check(LinuxCapture.StartRefusal(install, compatibilityData, null, "8.8.8.8", gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("Proton", StringComparison.Ordinal),
-            "A missing Proton was not refused.");
+        var protonRefusal = LinuxCapture.StartRefusal(install, compatibilityData, null, "8.8.8.8",
+            gameRunning: false, sessionRunning: false, helper: new(true, true))!;
+        check(protonRefusal.Contains("Proton", StringComparison.Ordinal) &&
+            protonRefusal.Contains("CompatToolMapping", StringComparison.Ordinal) &&
+            protonRefusal.Contains("config_info", StringComparison.Ordinal) &&
+            !protonRefusal.Contains("Properties > Compatibility", StringComparison.Ordinal),
+            "A missing Proton did not name both sources and the start-once fix: " + protonRefusal);
         check(LinuxCapture.StartRefusal(install, compatibilityData, Path.Combine(install, "missing-proton"), "8.8.8.8",
                 gameRunning: false, sessionRunning: false, helper: new(true, true))!.Contains("Proton", StringComparison.Ordinal),
             "A missing Proton file was not refused.");
@@ -592,6 +929,42 @@ static class InventorySyncTests
         }
         return Process.Start(start) ?? throw new Exception("The watch helper did not start.");
     }
+
+    // A stand-in `proton`: import copies Wine's system.reg template, reg query prints nothing (the measured behaviour),
+    // and reg export copies a UTF-16 LE template to the path it is given. deleteLands:false leaves system.reg behind so
+    // the removal test can prove that an empty export is not enough. Its sibling files/bin/wineserver records the flush.
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    static string WriteFakeProton(string folder, string state, string? template, string expectedHex, bool importLands,
+        string? exportTemplate, bool deleteLands = true)
+    {
+        Directory.CreateDirectory(folder);
+        var proton = Path.Combine(folder, "proton");
+        var wineserver = Path.Combine(folder, "files", "bin", "wineserver");
+        Directory.CreateDirectory(Path.GetDirectoryName(wineserver)!);
+        File.WriteAllText(wineserver, "#!/bin/sh\nprintf '%s\\n' \"$*\" > " + ShQuote(state + ".wineserver") + "\n");
+        var script = "#!/bin/sh\n" +
+            "state=" + ShQuote(state) + "\n" +
+            (template == null ? "" : "template=" + ShQuote(template) + "\n") +
+            (exportTemplate == null ? "export_template=''\n" : "export_template=" + ShQuote(exportTemplate) + "\n") +
+            "reg=\"$WINEPREFIX/system.reg\"\n" +
+            "case \"$*\" in\n" +
+            (deleteLands
+                ? "  *'reg import'*capture-delete.reg*) : > \"$state\"; rm -f \"$reg\" ;;\n"
+                : "  *'reg import'*capture-delete.reg*) : > \"$state\" ;;\n") +
+            (importLands
+                ? "  *'reg import'*) printf '%s\\n' " + ShQuote(expectedHex) + " > \"$state\"; cp \"$template\" \"$reg\"; printf 'OpenXR-Loader: xrizer noise\\n' >&2 ;;\n"
+                : "  *'reg import'*) printf 'reg import wrote nothing\\n' ;;\n") +
+            "  *'reg export'*) out=\"$5\"; case \"$out\" in Z:*) out=\"${out#Z:}\"; out=$(printf '%s' \"$out\" | tr '\\\\' '/') ;; esac; if [ -s \"$state\" ] && [ -n \"$export_template\" ]; then cp \"$export_template\" \"$out\"; else rm -f \"$out\"; exit 1; fi ;;\n" +
+            "  *'reg query'*) : ;;\n" +
+            "esac\n";
+        File.WriteAllText(proton, script);
+        var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        File.SetUnixFileMode(proton, mode);
+        File.SetUnixFileMode(wineserver, mode);
+        return proton;
+    }
+
+    static string ShQuote(string value) => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
     static (int ExitCode, string Output) RunHelper(string helper, params string[] arguments)
     {

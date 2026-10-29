@@ -27,7 +27,7 @@ public partial class MainWindow
     {
         SyncCard.IsVisible = InventorySync.FindCaptureProxy(paths.InstallRoot) != null;
         if (NativeLinux)
-            SyncDescription.Text = "Brings your own HELLDIVERS 2 account into this profile. Warbonds, Superstore items and DLC gear you bought always follow your latest sync; everything else is imported only as you choose, and the profile is backed up first. Super Credits are never imported or usable. Sync opens the normal game through Steam; log in and pass the title screen. On Linux the first sync needs the capture helper installed once (docs/linux.md); until the normal game exits, two marked /etc/hosts lines point its server name at this PC and a one-day certificate is trusted only in HELLDIVERS 2's Proton prefix. Both are removed when it exits.";
+            SyncDescription.Text = "Brings your own HELLDIVERS 2 account into this profile. Warbonds, Superstore items and DLC gear you bought always follow your latest sync; everything else is imported only as you choose, and the profile is backed up first. Super Credits are never imported or usable. Sync opens the normal game through Steam; log in and pass the title screen. On Linux the first sync asks once to install a small root-owned helper, through the desktop's password dialog; until the normal game exits, two marked /etc/hosts lines point its server name at this PC and a one-day certificate is trusted only in HELLDIVERS 2's Proton prefix. Both are removed when it exits.";
         SyncButton.Click += async (_, _) => await StartSync();
         InitializeAccountImport();
         UpdateSyncStatus();
@@ -105,6 +105,7 @@ public partial class MainWindow
             return;
         }
         var install = new InstallLayout(paths.InstallRoot);
+        if (NativeLinux && !await EnsureLinuxCaptureHelperAsync(install.Root)) return;
         syncStarting = true;
         SyncButton.IsEnabled = false;
         SetSyncStatus("Checking the signed-in Steam account...", Gold);
@@ -156,6 +157,68 @@ public partial class MainWindow
         InventorySync.Note(folder, $"sync started for profile {profile.Name}; capture pid {started.Id}; launcher {Environment.ProcessPath}");
         SetSyncStatus("Starting the capture...", Gold);
         Append("Inventory sync: capture started for profile " + profile.Name + ". HELLDIVERS 2 opens through Steam; take it past the title screen.", LauncherLine);
+    }
+
+    // One confirmation, then pkexec's own password dialog. The helper and relay are root-owned and the launcher never
+    // keeps root or a password. A failed or cancelled install changes nothing and says why.
+    async Task<bool> EnsureLinuxCaptureHelperAsync(string installRoot)
+    {
+        if (LinuxCapture.HelperProblem(installRoot) is not { } need) return true;
+        if (ConfirmOverlay.IsVisible)
+        {
+            SetSyncStatus("Finish the open confirmation first.", Orange);
+            return false;
+        }
+        syncStarting = true;
+        SyncButton.IsEnabled = false;
+        try
+        {
+            ConfirmTitle.Text = "Install Account Sync helper?";
+            ConfirmText.Text = LinuxCapture.HelperInstallDescription(installRoot) + "\n\nIt is needed because: " + need;
+            (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", "Install");
+            ConfirmButtons.IsVisible = true;
+            ConfirmOverlay.IsVisible = true;
+            confirm = new TaskCompletionSource<bool>();
+            var accepted = await confirm.Task;
+            confirm = null;
+            ConfirmOverlay.IsVisible = false;
+            if (!accepted)
+            {
+                SetSyncStatus("The capture helper was not installed; nothing changed.", Orange);
+                return false;
+            }
+            SetSyncStatus("Installing the Account Sync helper...", Gold);
+            LinuxCapture.HelperSetupResult result;
+            try { result = await Task.Run(() => LinuxCapture.InstallHelper(installRoot)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+                or System.ComponentModel.Win32Exception)
+            {
+                var text = "The Account Sync helper could not be installed: " + error.Message;
+                SetSyncStatus(text, Red);
+                Append("Inventory sync: " + text, Red);
+                return false;
+            }
+            if (!result.Succeeded)
+            {
+                SetSyncStatus(result.Message, result.Cancelled ? Orange : Red);
+                Append("Inventory sync: " + result.Message, result.Cancelled ? Orange : Red);
+                return false;
+            }
+            if (LinuxCapture.HelperProblem(installRoot) is { } problem)
+            {
+                var text = "The helper installer finished, but the installed copies still do not match: " + problem;
+                SetSyncStatus(text, Red);
+                Append("Inventory sync: " + text, Red);
+                return false;
+            }
+            Append("Inventory sync: " + result.Message, LauncherLine);
+            return true;
+        }
+        finally
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+        }
     }
 
     static string SyncStartingText() => NativeLinux

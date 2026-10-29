@@ -11,6 +11,25 @@ namespace HellForge.Launcher;
 // it has. Steam's depot download and state files are a separate choice, off by default.
 public partial class MainWindow
 {
+    // The root-owned Account Sync helper goes first, through the desktop's password dialog. A cancelled or failed
+    // removal stops the uninstall with the reason, so the sudoers rule is never left behind silently.
+    async Task<bool> RemoveCaptureHelperForUninstall(string installRoot)
+    {
+        if (!LinuxCapture.HelperInstalled()) return true;
+        UninstallText.Text = "Removing the Account Sync helper through the desktop's password dialog...";
+        LinuxCapture.HelperSetupResult removed;
+        try { removed = await Task.Run(() => LinuxCapture.RemoveHelper(installRoot)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or Win32Exception)
+        {
+            removed = new(false, false, true, error.Message);
+        }
+        if (removed.Succeeded) return true;
+        UninstallText.Text = "Uninstall stopped: " + removed.Message;
+        UninstallButton.IsEnabled = true;
+        return false;
+    }
+
     // Removes what the old shell installer left outside the installation first, and Steam's download when its box is ticked,
     // then starts a small script that deletes the installation, its shortcut and the owned prefix once this launcher has
     // exited. A failed path is reported in the log and never stops the others. AppArmor needs sudo, so the launcher only
@@ -50,6 +69,7 @@ public partial class MainWindow
                 prefix = fresh.Prefix;
             }
             UninstallButton.IsEnabled = false;
+            if (!await RemoveCaptureHelperForUninstall(install.Root)) return;
             UninstallText.Text = deleteSteam
                 ? "Removing Steam's download and the removed installer's files..."
                 : "Removing the removed installer's files (Steam's download is left)...";
@@ -135,6 +155,9 @@ public partial class MainWindow
         else text.AppendLine("  - a desktop shortcut: none found");
         AppendSteamRemovals(text, plan);
         AppendOldScriptRemovals(text, plan.OldScript);
+        if (LinuxCapture.HelperInstalled())
+            text.AppendLine("  - the Account Sync helper, relay, hashes and sudoers rule (/usr/local/lib/hellforge, " +
+                "/etc/sudoers.d/hellforge-capture), through the desktop's password dialog");
         AppendPrefixRemoval(text, plan);
         text.AppendLine();
         text.AppendLine("It leaves:");
