@@ -89,6 +89,21 @@ static class NetworkBlockTests
             check(problem == null, "An emulated marker was refused: " + problem);
         });
 
+        test("Network block: setup reports the offline self-test's own reason", () =>
+        {
+            check(LinuxNetworkBlock.SelfTestProblem(null) == null, "No stderr reported a reason.");
+            check(LinuxNetworkBlock.SelfTestProblem(" \n") == null, "Blank stderr reported a reason.");
+            check(LinuxNetworkBlock.SelfTestProblem("need iproute2 (ip)\n") == "need iproute2 (ip)", "A missing program was not reported.");
+            check(LinuxNetworkBlock.SelfTestProblem("This system only lets allowed programs make the network namespace HellForge runs in.\n" +
+                "Run this once: sudo bash allow-namespace.sh\n")!.StartsWith("This system only lets allowed programs", StringComparison.Ordinal),
+                "The AppArmor refusal was not reported.");
+            check(LinuxNetworkBlock.SelfTestProblem("unshare: unshare failed: Operation not permitted\n") ==
+                "unshare: unshare failed: Operation not permitted", "unshare's refusal was not reported.");
+            check(LinuxNetworkBlock.SelfTestProblem("hellforge-offline: could not fetch Valve's relay list, using the last one\n" +
+                "hellforge-offline: no relay list for UDP; refusing to open it\n") ==
+                "hellforge-offline: no relay list for UDP; refusing to open it", "The last refusal was not reported.");
+        });
+
         test("Network block: the port has one source, setup, which the WFP script takes and records", () =>
         {
             if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder above the test)"); return; }

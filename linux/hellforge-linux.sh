@@ -98,16 +98,25 @@ if [ "${HELLFORGE_WRAPPER_LOG:-}" = 1 ] && [ -n "${INSTALL:-}" ] && [ -f "$INSTA
   fi
 fi
 
+# SteamOS 3.x has a read-only system image: the package-manager hints below are not a fix there, and changes made
+# after `steamos-readonly disable` do not survive an A/B update.
+steamos=0
+if [ -r /etc/os-release ] && grep -Eq '^ID="?steamos"?$' /etc/os-release; then steamos=1; fi
+
 # The programs these scripts run, with the install command for the package manager this system has.
 missing=""
-for program in socat ip ss unshare pgrep flock; do command -v "$program" >/dev/null || missing="$missing $program"; done
+for program in ip unshare pgrep flock; do command -v "$program" >/dev/null || missing="$missing $program"; done
 if [ -n "$missing" ]; then
   echo "HellForge on Linux needs these programs, which were not found:$missing" >&2
-  if command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed iproute2 socat util-linux procps-ng" >&2
-  elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install iproute2 socat util-linux procps" >&2
-  elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install iproute socat util-linux procps-ng" >&2
-  elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install iproute2 socat util-linux procps" >&2
-  else echo "Install them with your package manager: ip and ss are in iproute2 (iproute on Fedora), unshare and flock in util-linux, pgrep in procps, and socat in socat." >&2
+  for program in $missing; do echo "  $program" >&2; done
+  if [ "$steamos" = 1 ]; then
+    echo "SteamOS 3.x keeps its system folders on a read-only image, and packages installed after 'steamos-readonly disable' are lost on an update." >&2
+    echo "Do not change the system image for this: report the programs above at https://github.com/SkyeShade/HellForge/issues/112." >&2
+  elif command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed iproute2 util-linux procps-ng" >&2
+  elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install iproute2 util-linux procps" >&2
+  elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install iproute util-linux procps-ng" >&2
+  elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install iproute2 util-linux procps" >&2
+  else echo "Install them with your package manager: ip is in iproute2 (iproute on Fedora), unshare and flock in util-linux, and pgrep in procps." >&2
   fi
   exit 1
 fi
@@ -115,7 +124,9 @@ fi
 # bsdtar (libarchive) unpacks .7z and .rar mods; zips and folders need no extra program, so this is only a warning.
 if ! command -v bsdtar >/dev/null; then
   echo "Warning: bsdtar was not found; it is needed only to add .7z or .rar mods, so zips and folders still work." >&2
-  if command -v pacman >/dev/null; then echo "Install it with: sudo pacman -S --needed libarchive" >&2
+  if [ "$steamos" = 1 ]; then
+    echo "SteamOS 3.x keeps its system folders read-only; unpack a .7z or .rar mod by hand, or add it as a zip or folder." >&2
+  elif command -v pacman >/dev/null; then echo "Install it with: sudo pacman -S --needed libarchive" >&2
   elif command -v apt-get >/dev/null; then echo "Install it with: sudo apt install libarchive-tools" >&2
   elif command -v dnf >/dev/null; then echo "Install it with: sudo dnf install bsdtar" >&2
   elif command -v zypper >/dev/null; then echo "Install it with: sudo zypper install bsdtar" >&2
@@ -130,7 +141,9 @@ if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
   for program in pasta python3; do command -v "$program" >/dev/null || missing="$missing $program"; done
   if [ -n "$missing" ]; then
     echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. Co-op over Steam relays cannot start without them." >&2
-    if command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2
+    if [ "$steamos" = 1 ]; then
+      echo "SteamOS 3.x is not expected to ship pasta (passt) or python3, and a package installed after 'steamos-readonly disable' is lost on an update. Co-op over Steam relays is not available on a stock image." >&2
+    elif command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2
     elif command -v apt-get >/dev/null; then echo "Install them with: sudo apt install passt python3" >&2
     elif command -v dnf >/dev/null; then echo "Install them with: sudo dnf install passt python3" >&2
     elif command -v zypper >/dev/null; then echo "Install them with: sudo zypper install passt python3" >&2
@@ -143,6 +156,13 @@ if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then IN
 : "${INSTALL:?INSTALL is not set: the HellForge installation folder (the one with hellforge-install.json)}"
 [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }
 export INSTALL
+
+# The native Linux build agent: the Steam bridge relay (steam-bridge) and, for a session, the source-mod build both run
+# from it. An installation unpacked on Windows may have lost its execute bit.
+cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
+[ -f "$cliNative" ] || { echo "The native Linux build agent is missing ($cliNative): reinstall HellForge. The Steam bridge and mod builds need it." >&2; exit 1; }
+[ -x "$cliNative" ] || chmod +x "$cliNative" 2>/dev/null || true
+[ -x "$cliNative" ] || { echo "The native Linux build agent is not executable: $cliNative" >&2; exit 1; }
 
 # The Steam client: the usual native folders first, then Flatpak's and Snap's (those two are untested).
 if [ -z "${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}" ]; then
@@ -197,6 +217,8 @@ fi
 # holds the users lock shared until it exits; only the last user gets it exclusively and may stop the bridge. A bridge
 # started by hand has no PID file and is left alone.
 dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# Inside the user namespace `id -u` is 0, so both sides must use the host's folder explicitly.
+export XDG_RUNTIME_DIR="$dir"
 lock="$dir/hf-bridge.lock"
 users_lock="$dir/hf-bridge-users.lock"
 pidfile="$dir/hf-bridge.pid"
@@ -214,13 +236,18 @@ bridge_pid_running() {
 }
 
 bridge_pid_ok() {
-  local pid=$1 owner arg
+  local pid=$1 owner arg base i
+  local -a args=()
   [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] || return 1
   owner=$(stat -c %u "/proc/$pid" 2>/dev/null 8>&- 9>&- || true)
   [ "$owner" = "$uid" ] || return 1
-  while IFS= read -r -d '' arg; do
-    [ "${arg##*/}" = "hf-bridge-host.sh" ] && return 0
-  done < "/proc/$pid/cmdline" 2>/dev/null
+  while IFS= read -r -d '' arg; do args+=("$arg"); done < "/proc/$pid/cmdline" 2>/dev/null
+  # The hand-started script, or the native host it execs (app/cli-linux/HellForge.Cli steam-bridge host).
+  for ((i = 0; i < ${#args[@]}; i++)); do
+    base=${args[i]##*/}
+    [ "$base" = "hf-bridge-host.sh" ] && return 0
+    if [ "$base" = "HellForge.Cli" ] && [ "${args[i+1]:-}" = "steam-bridge" ] && [ "${args[i+2]:-}" = "host" ]; then return 0; fi
+  done
   return 1
 }
 
@@ -273,7 +300,7 @@ trap cleanup EXIT
 trap 'echo "HellForge wrapper received SIGINT." >&2; exit 130' INT
 trap 'echo "HellForge wrapper received SIGTERM." >&2; exit 143' TERM
 # a bridge answers on its sockets (ones left by a bridge that was killed do not)
-bridged() { local s; for s in "$dir"/hf-steam-*.sock; do [ -S "$s" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null 8>&- 9>&- && return 0; done; return 1; }
+bridged() { "$cliNative" steam-bridge check 8>&- 9>&- >/dev/null 2>&1; }
 flock -x 8
 state_lock=1
 flock -s 9
@@ -312,9 +339,6 @@ pin="$(grep '"name": "zig"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E '
 zigReady() { [ -f "$INSTALL/tools/zig/zig.exe" ] && [ "$(cat "$INSTALL/tools/zig/.hellforge-archive-sha256" 2>/dev/null)" = "$pin" ]; }
 nativePin="$(grep '"name": "zig-linux"' "$INSTALL/app/sdk/tools.json" 2>/dev/null | sed -E 's/.*"sha256": "([0-9A-Fa-f]+)".*/\1/' || true)"
 nativeZigReady() { [ -f "$INSTALL/tools/zig-linux/zig" ] && [ "$(cat "$INSTALL/tools/zig-linux/.hellforge-archive-sha256" 2>/dev/null)" = "$nativePin" ]; }
-cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
-# An installation unpacked on Windows may have lost the agent's execute bit; the package's Linux installer sets it too.
-[ ! -f "$cliNative" ] || [ -x "$cliNative" ] || chmod +x "$cliNative" 2>/dev/null || true
 if [ -n "$pin" ] && ! zigReady; then
   if [ "${HELLFORGE_SKIP_MOD_TOOLS:-}" = 1 ]; then
     echo "Skipping the mod-tools download for the Steam ownership check." >&2

@@ -31,6 +31,7 @@ try
             package-mod --mod <mod folder> [--out <folder>]
             mod-hash --mod <mod folder or .zip>
             mod-tools --install <installation or source folder> [--ide yes]
+            steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
@@ -73,6 +74,9 @@ try
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
+            steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
+            hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a
+            bridge or the named socket answers.
             play starts a session as HellForge.exe's PLAY does, with the launcher's saved choices unless an option
             replaces one; the engine's session runner does every check and cleanup itself. Without --wait it prints the
             run once started and returns; with it, one JSON line per status until the session ends (exit code 0 when it
@@ -86,6 +90,8 @@ try
             """);
         return 0;
     }
+    // Before the --option parser: host and inner take a subcommand, not options.
+    if (args[0] == "steam-bridge") return SteamBridgeCommand.Run(args);
     var allowed = args[0] switch
     {
         "discover" => new[] { "--steam-root" },
