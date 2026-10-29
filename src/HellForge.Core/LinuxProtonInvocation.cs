@@ -35,8 +35,9 @@ public sealed record LinuxProtonInvocation(
         {
             ["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steam,
             ["STEAM_COMPAT_DATA_PATH"] = compatibilityData,
+            // Not SteamAppId: measured, SteamAppId together with SteamGameId makes Steam count this helper as a
+            // HELLDIVERS 2 session (post-session shader processing, "Playing" status). The game itself gets both.
             ["STEAM_COMPAT_APP_ID"] = LocalInstall.AppId,
-            ["SteamAppId"] = LocalInstall.AppId,
             ["SteamGameId"] = LocalInstall.AppId,
             ["WINEPREFIX"] = Path.Combine(compatibilityData, "pfx")
         };
@@ -59,6 +60,8 @@ public sealed record LinuxProtonInvocation(
         };
         foreach (var argument in Arguments.Skip(1)) start.ArgumentList.Add(argument);
         foreach (var pair in Environment) start.Environment[pair.Key] = pair.Value;
+        // An inherited one (a launcher started from a Steam shortcut) would pair with SteamGameId the same way.
+        start.Environment.Remove("SteamAppId");
         return start;
     }
 

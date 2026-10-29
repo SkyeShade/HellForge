@@ -24,6 +24,15 @@ static class LinuxInvocationTests
                 run.Environment["STEAM_COMPAT_DATA_PATH"] == LocalInstall.ResolveLinks(prefix) &&
                 run.Environment["STEAM_COMPAT_APP_ID"] == LocalInstall.AppId,
                 "A host invocation acquired container-only environment.");
+            // Measured: SteamAppId together with SteamGameId makes Steam count a helper call as a HELLDIVERS 2 session.
+            var previous = Environment.GetEnvironmentVariable("SteamAppId");
+            Environment.SetEnvironmentVariable("SteamAppId", "553850");
+            try
+            {
+                check(!run.Environment.ContainsKey("SteamAppId") && !run.StartInfo(root).Environment.ContainsKey("SteamAppId"),
+                    "A helper Proton call carries SteamAppId, so Steam would count it as a game session.");
+            }
+            finally { Environment.SetEnvironmentVariable("SteamAppId", previous); }
 
             var wineboot = LinuxProtonInvocation.Create(proton, steam, prefix, "run", ["wineboot", "-u"]);
             check(wineboot.Arguments.SequenceEqual([proton, "run", "wineboot", "-u"]),
