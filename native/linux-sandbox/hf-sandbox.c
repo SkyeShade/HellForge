@@ -1,12 +1,13 @@
 // hf-sandbox: the phase-2 Wine-domain filesystem sandbox. See hf-sandbox.h and .deepcode/review-F4b.md.
 //
 // Usage:
-//   hf-sandbox --session <run dir> --prefix <real pfx> -- <command...>
+//   hf-sandbox --session <run dir> --prefix <real pfx> [--bind-ro <path>]... -- <command...>
 //   hf-sandbox --self-test
 //
-// The first form builds the game domain and execs the command in it. The second builds the same domain from a temporary
-// tree, applies the same guard and runs the G1 canaries. Both fail closed: a failed step prints one reason and returns
-// non-zero; the command never runs unsandboxed.
+// The first form builds the game domain and execs the command in it. --bind-ro exposes one existing file or folder
+// read-only at the same path; the native supervisor derives each one from the validated session request. The second form
+// builds the same domain from a temporary tree, applies the same guard and runs the G1 canaries. Both fail closed: a
+// failed step prints one reason and returns non-zero; the command never runs unsandboxed.
 
 #include "hf-sandbox.h"
 
@@ -15,6 +16,8 @@ struct hf_cli
     const char *session;
     const char *prefix;
     const char *self_test_dir;
+    char *bind_ro[HF_MAX_EXTRA_BINDS];
+    int bind_ro_count;
     char **command;
     int command_count;
     bool self_test;
@@ -23,14 +26,16 @@ struct hf_cli
 static void usage(const char *program)
 {
     fprintf(stderr,
-        "Usage: %s --session <run dir> --prefix <real pfx> -- <command...>\n"
+        "Usage: %s --session <run dir> --prefix <real pfx> [--bind-ro <path>]... -- <command...>\n"
         "       %s --self-test [--self-test-dir <folder>]\n"
         "\n"
         "--session is a run folder below <installation>/logs/sessions. --prefix is the Steam compatdata folder that holds\n"
-        "pfx/ (STEAM_COMPAT_DATA_PATH), not the Wine prefix itself. The command must be an exposed system or Proton program.\n"
+        "pfx/ (STEAM_COMPAT_DATA_PATH), not the Wine prefix itself. --bind-ro exposes an existing link-free file or folder\n"
+        "read-only at the same path; it must be below mods/ or temp/mod-builds/, or be the exact app/session folder or mod\n"
+        "loader. A bind covered by an earlier bind is skipped. The command must be an exposed system or Proton program.\n"
         "--session, --prefix and a command containing / are resolved against the caller's current folder; the command runs\n"
-        "with its working directory set to the session's game folder. --self-test-dir defaults to the current folder and\n"
-        "must not be under /tmp, /dev/shm, /run or /usr.\n",
+        "with its working directory set to the session's\n"
+        "game folder. --self-test-dir defaults to the current folder and must not be under /tmp, /dev/shm, /run or /usr.\n",
         program, program);
 }
 
@@ -42,6 +47,12 @@ static int parse_option(int argc, char **argv, int *index, struct hf_cli *cli)
     if (strcmp(option, "--self-test-dir") == 0 && *index + 1 < argc) { cli->self_test_dir = argv[++*index]; return 0; }
     if (strcmp(option, "--session") == 0 && *index + 1 < argc) { cli->session = argv[++*index]; return 0; }
     if (strcmp(option, "--prefix") == 0 && *index + 1 < argc) { cli->prefix = argv[++*index]; return 0; }
+    if (strcmp(option, "--bind-ro") == 0 && *index + 1 < argc)
+    {
+        if (cli->bind_ro_count >= HF_MAX_EXTRA_BINDS) { usage(argv[0]); return 2; }
+        cli->bind_ro[cli->bind_ro_count++] = argv[++*index];
+        return 0;
+    }
     if (strcmp(option, "--help") == 0 || strcmp(option, "-h") == 0) { usage(argv[0]); return 1; }
     usage(argv[0]);
     return 2;
@@ -51,7 +62,7 @@ static int validate_cli(char **argv, const struct hf_cli *cli)
 {
     if (cli->self_test)
     {
-        if (cli->session != NULL || cli->prefix != NULL || cli->command_count > 0) { usage(argv[0]); return 2; }
+        if (cli->session != NULL || cli->prefix != NULL || cli->bind_ro_count > 0 || cli->command_count > 0) { usage(argv[0]); return 2; }
         return 0;
     }
     if (cli->self_test_dir != NULL) { usage(argv[0]); return 2; }
@@ -132,6 +143,8 @@ int main(int argc, char **argv)
     memset(&sandbox, 0, sizeof(sandbox));
     sandbox.command = cli.command;
     sandbox.command_count = cli.command_count;
+    sandbox.extra_binds = cli.bind_ro;
+    sandbox.extra_bind_count = cli.bind_ro_count;
     // The paths are filled by hf_prepare_paths; hand it the raw arguments first.
     if (snprintf(sandbox.session, sizeof(sandbox.session), "%s", cli.session) >= (int)sizeof(sandbox.session) ||
         snprintf(sandbox.prefix, sizeof(sandbox.prefix), "%s", cli.prefix) >= (int)sizeof(sandbox.prefix))

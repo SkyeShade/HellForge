@@ -5,8 +5,8 @@ namespace HellForge.Core;
 
 // A session's choices, as the launcher's Settings page keeps them (launcher-settings.json, ProfileStore) or as another
 // launcher passes them (HellForge.Cli play). The game options are already checked (GameLaunchOptions.Parse). ModSync:
-// the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: the game at low
-// integrity (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
+// the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: low integrity on
+// Windows, or the native Linux domain (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
 // (SteamOwnershipRecord), for that one session. SteamUdp: co-op over Steam relays, UDP to Valve's relays only
 // (ProfileStore.LoadSteamUdp, #62).
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
@@ -70,10 +70,30 @@ public sealed class SessionRunner
         SessionFiles.ReadJson(Path.Combine(app, "sdk-shims", "build.json")) is { } build &&
         SessionFiles.Text(build, "steamBridge") is { Length: > 0 };
 
-    // Whether the sandbox can be offered: an engine built with the Steam bridge, on Windows for now (not yet implemented
-    // on Linux, native or under Wine/Proton, where the game's block is the network namespace).
+    // Whether the sandbox can be offered. Windows keeps its Steam-bridge condition. Native Linux offers the domain when
+    // app/linux/hf-sandbox is executable and the self-test passed for this app build and kernel; a stale or failed test is
+    // not a pass. Under Wine this is false: the trusted runner's Windows sandbox path is never used on Linux.
     public static bool CanSandbox(ISessionPaths paths) =>
-        HasSteamBridge(paths) && OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested;
+        OperatingSystem.IsWindows() ? HasSteamBridge(paths) && !LinuxNetworkBlock.UnderWine && !LinuxNetworkBlock.Requested
+        : OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine && paths.InstallRoot != null &&
+          LinuxSandboxProgramProblem(paths) == null && LinuxSandboxReadiness.Problem(new InstallLayout(paths.InstallRoot)) == null;
+
+    // The package-side refusal, before the wrapper runs. The wrapper reruns the real self-test; this only says whether
+    // the sandbox command exists at all.
+    public static string? LinuxSandboxProgramProblem(ISessionPaths paths)
+    {
+        if (paths.InstallRoot == null) return "this launcher is not in a HellForge installation";
+        var problem = LinuxSandboxReadiness.ProgramProblem(new InstallLayout(paths.InstallRoot));
+        return problem.Length > 0 ? problem : null;
+    }
+
+    // Why the Linux switch is off or unavailable, in the wording Settings > Sandbox and a refused session use.
+    public static string LinuxSandboxProblem(ISessionPaths paths)
+    {
+        if (LinuxSandboxProgramProblem(paths) is { } program) return program;
+        return LinuxSandboxReadiness.Problem(new InstallLayout(paths.InstallRoot!)) ??
+            "the Linux sandbox self-test did not pass";
+    }
 
     // Whether a session is sandboxed unless told otherwise: the setting (on unless turned off), where it can be offered.
     public static bool SandboxByDefault(ISessionPaths paths) => CanSandbox(paths) && ProfileStore.LoadSandbox(paths);
@@ -142,6 +162,9 @@ public sealed class SessionRunner
         var prefix = linux ? WinePath.PrefixFromInstallRoot(paths.InstallRoot) : null;
         var arguments = Arguments(paths, profile, options, prefix);
         LinuxNetworkBlock.GuardSession(paths.InstallRoot!);
+        if (linux && options.Sandbox && LinuxSandboxProgramProblem(paths) is { } sandboxProblem)
+            throw new InvalidOperationException("The Linux sandbox could not start: " + sandboxProblem +
+                ". The game was not started. To run without the sandbox, turn off Settings > Sandbox.");
         CheckLinuxSteamUdp(linux, options);
         // The Windows programs in the session cannot read the Linux client's account. Use only a fresh result the
         // launcher already has: probing here would start Proton a second time, and its wineserver would hold up the
@@ -185,6 +208,10 @@ public sealed class SessionRunner
         ConfigureLinuxSteamUdp(start, options);
         start.Environment["INSTALL"] = paths.InstallRoot!;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
+        start.Environment["HELLFORGE_LINUX_INSTALL"] = paths.InstallRoot!;
+        start.Environment["HELLFORGE_LINUX_PREFIX"] = prefix;
+        if (options.Sandbox) start.Environment["HELLFORGE_SANDBOX"] = "1";
+        else start.Environment.Remove("HELLFORGE_SANDBOX");
         if (steamAccount is { } account)
             start.Environment[SteamAccount.EnvironmentVariable] = SteamAccount.AccountId(account).ToString(CultureInfo.InvariantCulture);
         else

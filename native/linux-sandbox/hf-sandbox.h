@@ -56,6 +56,7 @@
 #define HF_MAX_RULES 128
 #define HF_MAX_FILTER 128
 #define HF_MAX_COMMAND 256
+#define HF_MAX_EXTRA_BINDS 64
 #define HF_RUNTIME_SOCKETS 8
 #define HF_SANDBOX_UID 0
 
@@ -111,6 +112,8 @@ struct hf_sandbox
     char xauthority[PATH_MAX];
     char selftest_tmp_canary[PATH_MAX];   // the self-test's host-side /tmp canary
     char selftest_shm_canary[PATH_MAX];   // and its /dev/shm canary
+    char **extra_binds;                   // existing files/folders exposed read-only at their own paths
+    int extra_bind_count;
     char **command;               // argv after --
     int command_count;
     uid_t host_uid;
@@ -141,6 +144,7 @@ int hf_mount_overlay(struct hf_sandbox *sandbox);
 int hf_mask_overlay_install(struct hf_sandbox *sandbox);
 int hf_enter_namespaces(struct hf_sandbox *sandbox);
 int hf_build_root_view(struct hf_sandbox *sandbox);
+bool hf_extra_bind_allowed(const struct hf_sandbox *sandbox, const char *path);
 int hf_pivot_into_root(struct hf_sandbox *sandbox);
 int hf_apply_environment(struct hf_sandbox *sandbox);
 int hf_check_vulkan_layers(const struct hf_sandbox *sandbox);

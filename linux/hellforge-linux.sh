@@ -403,6 +403,12 @@ session_command() {
 # Source mods are compiled here, natively, before the namespace: inside it the session's Wine cannot run the pinned
 # Windows Zig (issue 81). The session then finds the builds in temp/mod-builds and never starts zig.exe.
 if session_command "$@"; then
+  # The graphical launcher records the self-test; an external launcher, CLI play or harness does not. Refresh the record
+  # natively before the namespace when it is missing or stale. A failure is stored with its reason and leaves the
+  # default switch off, so the session runs unsandboxed and reports that reason instead of failing at the sandbox seam.
+  if ! "$cliNative" sandbox-readiness --install "$INSTALL" 9>&- >&2; then
+    echo "HellForge: the Linux sandbox readiness check did not record a pass; the session will report the reason." >&2
+  fi
   if [ "${HELLFORGE_SKIP_MOD_BUILDS:-}" = 1 ]; then
     echo "Skipping the source-mod build." >&2
   elif [ -x "$cliNative" ]; then
