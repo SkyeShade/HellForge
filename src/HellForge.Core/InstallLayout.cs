@@ -35,6 +35,8 @@ public sealed class InstallLayout(string root)
     // The last passed Steam ownership check, which sessions reuse for a while (SteamOwnershipRecord).
     public string OwnershipRecord => Path.Combine(Temp, "steam-ownership.json");
     public string ProtonSelection => Path.Combine(Root, "proton-selection.json");
+    // Steam's folder when the player chose one outside the usual places; sessions and external launches pass it on.
+    public string SteamSelection => Path.Combine(Root, "steam-selection.json");
     // The build's settings.ini, kept unchanged: each session writes data/settings.ini from it.
     public string OriginalSettings => Path.Combine(Game, "data", "settings.ini" + GameSettings.OriginalSuffix);
 

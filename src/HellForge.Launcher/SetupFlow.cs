@@ -79,6 +79,7 @@ public partial class MainWindow
         };
         if (OperatingSystem.IsLinux())
         {
+            ProtonCombo.SelectionChanged += async (_, _) => await ProtonChoiceChanged();
             InitializeLinuxSetup(install);
             return;
         }
@@ -117,50 +118,6 @@ public partial class MainWindow
         for (var i = 0; i < setupRows.Count; i++) SetRow((SetupStep)i, null, "");
         InitializeLinuxSandboxProbeRow();
         if (install != null) _ = DiscoverProtons(install, discovery);
-    }
-
-    // Steam's libraries and Proton installations are on disk and can take a while (many libraries, a slow disk): find them
-    // away from the UI thread, then fill the setup page on it. A later EnterSetup supersedes an earlier lookup.
-    async Task DiscoverProtons(InstallLayout install, int discovery)
-    {
-        (IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) found;
-        try { found = await Task.Run(() => FindProtons(install)).ConfigureAwait(false); }
-        catch (Exception error)
-        {
-            found = (Array.Empty<ProtonVersion>(), "Could not look up Steam's Proton installations: " + error.Message, null, null);
-        }
-        Dispatcher.UIThread.Post(() => ApplyProtons(found, discovery));
-    }
-
-    static (IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) FindProtons(InstallLayout install)
-    {
-        var steamRoot = SteamLocator.SteamRoot();
-        IReadOnlyList<ProtonVersion> protons;
-        string? protonError = null;
-        try { protons = SteamLocator.ProtonVersions(steamRoot); }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
-        {
-            protons = [];
-            protonError = "Could not read Steam's Proton installations: " + error.Message;
-        }
-        var savedProton = SteamLocator.SelectedProtonScript(install);
-        var configuredPath = Environment.GetEnvironmentVariable("PROTON");
-        var configuredProton = !string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)
-            ? LocalInstall.FullPath(configuredPath) : null;
-        return (Protons: protons, Error: protonError, SavedProton: savedProton, ConfiguredProton: configuredProton);
-    }
-
-    void ApplyProtons((IReadOnlyList<ProtonVersion> Protons, string? Error, string? SavedProton, string? ConfiguredProton) found, int discovery)
-    {
-        if (discovery != protonDiscovery) return;
-        var protons = found.Protons;
-        var defaultProton = found.SavedProton ?? found.ConfiguredProton ?? protons.LastOrDefault()?.ScriptPath;
-        ProtonCombo.ItemsSource = protons;
-        ProtonCombo.SelectedItem = protons.FirstOrDefault(proton => proton.ScriptPath == defaultProton);
-        ProtonChoiceHint.Text = protons.Count == 0
-            ? found.Error ?? "No Proton versions were found. Install Proton in Steam, then reopen setup."
-            : "This Proton version will be used for setup and future game sessions.";
-        SetupStartButton.IsEnabled = protons.Count > 0;
     }
 
     void SetBackButtonPrimary(bool primary)
@@ -364,7 +321,10 @@ public partial class MainWindow
     async Task<(string SteamRoot, string Wrapper, string Probe)> CheckLinuxSetupFiles(InstallLayout install, string proton)
     {
         SetRow(SetupStep.Find, null, "Checking Steam, Proton and the engine package...", running: true);
-        var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam was not found. Start Steam and sign in, then try setup again.");
+        var steamRoot = SteamLocator.SteamRoot(install);
+        if (steamRoot == null) steamRoot = await ChooseSteamFolder(install);
+        if (steamRoot == null)
+            throw new SetupStopped("Steam was not found. Choose the folder Steam is installed in (the one that holds steamapps), or start Steam and sign in, then try setup again.");
         if (!File.Exists(proton)) throw new SetupStopped("The selected Proton version is no longer installed. Choose another version and try again.");
         var wrapper = Path.Combine(install.App, "linux", "hellforge-linux.sh");
         var package = Path.Combine(install.App, "engine-package.zip");
@@ -560,7 +520,7 @@ public partial class MainWindow
         if (!LinuxNetworkBlock.Requested) await CheckFilteringEngine(install);
         if (VisualCppRuntimes.Problem("start setup again.") is { } runtimes) throw new SetupStopped(runtimes);
         var build = SupportedBuild.Current;
-        var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
+        var steamRoot = SteamLocator.SteamRoot(install) ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
         // The build patches published since this release (a game update gets one there, not a new HellForge).
         using (var http = new HttpClient()) await Downpatcher.RefreshAsync(http, Path.Combine(install.Temp, "downpatch-index.json"));
         SteamGame? game;

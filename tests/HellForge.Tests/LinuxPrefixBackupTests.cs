@@ -7,10 +7,14 @@ static class LinuxPrefixBackupTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
-        test("Linux prefix backups name the compressor and default to ~/hellforge-backups", () =>
+        test("Linux prefix backups name the compressor and default beside the prefix", () =>
         {
-            check(LinuxPrefixBackup.DefaultFolder("/home/me") == Path.Combine("/home/me", "hellforge-backups"),
-                "The default backup folder changed.");
+            var parent = Path.Combine(root, "linux-prefix-backup-default");
+            var prefix = Path.Combine(parent, "hellforge-prefix");
+            check(LinuxPrefixBackup.DefaultFolder(prefix) == Path.Combine(parent, "hellforge-backups"),
+                "The default backup folder is not the prefix's parent.");
+            check(LinuxPrefixBackup.DefaultFolder(prefix + Path.DirectorySeparatorChar) == Path.Combine(parent, "hellforge-backups"),
+                "A trailing separator changed the default backup folder.");
             check(LinuxPrefixBackup.ChooseCompression(true) == LinuxPrefixCompression.Zstd &&
                 LinuxPrefixBackup.ChooseCompression(false) == LinuxPrefixCompression.Gzip, "The compressor choice is wrong.");
             check(LinuxPrefixBackup.Extension(LinuxPrefixCompression.Zstd) == ".tar.zst" &&

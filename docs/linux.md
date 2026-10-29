@@ -82,16 +82,22 @@ your desktop's archive manager. Extract the resulting `HellForge-Linux-Installer
 then open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow
 executing file as program**.
 
-The installer reads Steam's folders and lists the Proton versions installed there. Choose one and a prefix folder; the
-default is `~/.local/share/hellforge-prefix`. When the prefix has no HellForge launcher yet, it runs
-`proton run wineboot -u` (three minutes at most) and, only when the folder did not exist or was empty, writes a
-`.hellforge-created` marker that uninstall later uses for its prefix offer. It extracts the app into
-`<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs the engine package from
-`app/engine-package.zip`, saves the Proton choice and starts the native launcher. The setup wizard starts automatically
-while the game copy is incomplete. The installer checks the package's required entries before it prepares the prefix,
+The installer reads Steam's folders and lists the Proton versions installed there: every Steam library's
+`steamapps/common/Proton*`, the Steam folder's and the system `compatibilitytools.d` folders, and each folder in
+`STEAM_EXTRA_COMPAT_TOOLS_PATHS`. Choose one and a prefix folder; the default is
+`~/.local/share/hellforge-prefix`. If the version you use is not in the list, choose **Other...** and pick its `proton`
+file: it is accepted only when it is an executable file named `proton` with a `files` or `dist` folder beside it, and the
+installer says why when it is not. If Steam is outside its usual places, the installer asks for the folder that holds
+`steamapps` instead of failing; the choice is saved in the installation and passed to every wrapper run. When the prefix
+has no HellForge launcher yet, it runs `proton run wineboot -u` (three minutes at most) and, only when the folder did not
+exist or was empty, writes a `.hellforge-created` marker that uninstall later uses for its prefix offer. It extracts the
+app into `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`, installs the engine package from
+`app/engine-package.zip`, saves the Proton and Steam folder choices and starts the native launcher. The setup wizard
+starts automatically while the game copy is incomplete. The installer checks the package's required entries before it
+prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
-`app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-sandbox-probe`,
-`app/linux/allow-capture.sh` or `app/linux/capture-helper.sh`.
+`app/capture-linux/HellForge.CaptureProxy`, `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`,
+`app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`, `app/linux/allow-capture.sh` or `app/linux/capture-helper.sh`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
 allowed programs may make the namespace. Run this once, from your own account:
@@ -105,11 +111,35 @@ profile that lets that copy make namespaces, as Ubuntu does for Steam. For you t
 namespace, not only HellForge's; accounts outside that group keep it. `--remove` undoes it. Run it again after a
 util-linux update. `hellforge-linux.sh` tells you when it is needed.
 
+### Installing on another drive
+
+The game copy lives inside the Proton prefix, so a prefix on the drive with room puts the game copy there too. In the
+installer, choose a prefix folder there, for example `/mnt/games/hellforge-prefix`; the launcher, game copy, logs,
+profiles and mods stay in that prefix. A link above the prefix also works, for example
+`ln -s /mnt/games/hellforge-prefix ~/.local/share/hellforge-prefix`: a link above the folder HellForge protects is
+resolved and the real folder is used. A link at the installation folder or inside it is refused with
+`Linked/reparse paths are not supported: <path>`, because a game copy written through it could land somewhere else. The
+same rule covers the game folder and every Steam library HellForge reads.
+
+The supported build's copy is 23.8 GB (about 24 GB). A first setup that copies from Steam's download needs room for that
+download too, about another 24 GB, unless setup can use an installed game or a build patch; a patch needs about 2 GB more
+while it is applied. Allow at least 50 GB free on the prefix's drive for a first setup from Steam's download. A prefix
+backup is about the size of the prefix, and its default folder is `hellforge-backups` beside the prefix, on the same
+drive; choose another folder with **Choose folder**.
+
+What stays in the home is small: `~/Desktop/HellForge.desktop`, the shortcut setup writes (a few hundred bytes). The
+launcher, game copy, logs, profiles, mods, temporary files and backups are in the prefix. HellForge does not write
+`~/.local/share/applications`, and it has no settings folder in the home. A crash report is saved to the Desktop only
+when you choose to. A Steam folder you chose outside the usual places is recorded in
+`<installation>/steam-selection.json`.
+
 ### Setup wizard
 
-The wizard runs natively. At its start, choose the Proton version; the installer's choice is already selected. Setup
+The wizard runs natively. At its start, choose the Proton version; the installer's choice is already selected. The list
+uses the same search as the installer, and **Other...** picks a `proton` outside it. Setup
 saves the choice in `proton-selection.json` and uses it for setup and later game sessions. Settings > Installation >
-Check and repair can change it.
+Check and repair can change it. If Steam is not found, setup asks for the folder that holds `steamapps`, checks it and
+saves it in `steam-selection.json`.
 
 Before those checks, setup runs the informational [sandbox probe](#sandbox-probe) and shows its one-line result. That
 result never stops setup in phase 1. Setup then checks Steam, the chosen Proton and its own files, and installs the
@@ -248,9 +278,9 @@ off, and when Steam has no shader cache for the game the wrapper says so and lea
 
 | Variable | Default |
 |---|---|
-| `PROTON` | a Proton the Steam client has (`steamapps/common/Proton*` or `compatibilitytools.d/*`, the last by version sort, which puts Proton - Experimental after the numbered versions) |
+| `PROTON` | the proton script saved in the installation, else the last of every Steam library's `steamapps/common/Proton*`, the Steam folder's `compatibilitytools.d`, each folder in `STEAM_EXTRA_COMPAT_TOOLS_PATHS`, and `/usr/share/steam/compatibilitytools.d` and `/usr/local/share/steam/compatibilitytools.d` (version sort, which puts Proton - Experimental after the numbered versions) |
 | `INSTALL` | the installation the script is in |
-| `STEAM_COMPAT_CLIENT_INSTALL_PATH` | the first of `~/.local/share/Steam`, `~/.steam/debian-installation`, `~/.steam/steam` and Flatpak's and Snap's Steam folders that has a `steamapps` folder |
+| `STEAM_COMPAT_CLIENT_INSTALL_PATH` | the folder saved in the installation (`steam-selection.json`), else the first of `~/.local/share/Steam`, `~/.steam/debian-installation`, `~/.steam/steam`, `~/.steam/root` and Flatpak's and Snap's Steam folders that has a `steamapps` folder |
 | `STEAM_COMPAT_DATA_PATH` | the prefix the installation is in (the part of its path before `/pfx/drive_c/`); for an installation outside a prefix, HELLDIVERS 2's prefix, `steamapps/compatdata/553850` |
 | `STEAM_COMPAT_APP_ID` | `553850` (HELLDIVERS 2), unless explicitly set otherwise |
 
@@ -440,10 +470,10 @@ bundled mods. Use it after changing Proton, when the game copy is damaged, or af
 ### Prefix backup and restore
 
 Settings > Installation > Prefix backup saves the whole Proton prefix, including the game copy, profiles, mods and
-Steam's depot download, to one archive. The default folder is `~/hellforge-backups`; choose another with **Choose
-folder**. The archive is named `hellforge-prefix-<date>-<time>.tar.zst` when `zstd` is on `PATH`, otherwise `.tar.gz`.
-Both are ordinary tar streams that standard tools can read. The launcher writes to a `.part` file and moves it into
-place when tar exits; cancel deletes the partial file.
+Steam's depot download, to one archive. The default folder is `hellforge-backups` beside the prefix, on the same drive;
+choose another with **Choose folder**. The archive is named `hellforge-prefix-<date>-<time>.tar.zst` when `zstd` is on
+`PATH`, otherwise `.tar.gz`. Both are ordinary tar streams that standard tools can read. The launcher writes to a `.part`
+file and moves it into place when tar exits; cancel deletes the partial file.
 
 Backup refuses while a session or setup runs, while another launcher or any process uses the prefix, when the archive
 folder is inside the prefix, and when the backup folder lacks room for the estimated prefix size plus a margin. It also
@@ -477,8 +507,9 @@ removes what HellForge put outside the installation:
 Then the launcher closes and a helper deletes the installation folder (`game`, `profiles`, `mods`, `userdata`, `logs`,
 `temp`, `app` and the namespace marker) and `~/Desktop/HellForge.desktop` when it still has HellForge's exact `Exec=`
 line. It leaves Steam, HELLDIVERS 2, your Proton versions, anything that does not prove it belongs to this installation,
-backups in `~/hellforge-backups`, Steam's own update and download state elsewhere under `steamapps`, and the bridge's
-lock files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}` (empty and harmless).
+backups in the backup folder (`hellforge-backups` beside the prefix unless you chose another), Steam's own update and
+download state elsewhere under `steamapps`, and the bridge's lock files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}` (empty
+and harmless).
 
 If `/etc/apparmor.d/hellforge-unshare` or `/usr/local/lib/hellforge/unshare` exists, the confirmation lists them and
 plain commands to remove them. The launcher cannot run sudo; **Copy sudo commands** copies them. When both exist they

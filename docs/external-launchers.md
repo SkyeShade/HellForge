@@ -253,6 +253,10 @@ place of HellForge.exe, with its arguments:
 PROTON=<proton> STEAM_COMPAT_DATA_PATH=<prefix> app/linux/hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes
 ```
 
+When `PROTON` or `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not set, the wrapper first uses the Proton and Steam folder saved
+in the installation (`proton-selection.json`, `steam-selection.json`), then its own search
+([linux.md](linux.md#sessions)), so a player's choice outside the usual places carries over.
+
 For `play` that starts a session, the script returns when the session's programs have ended, even when `play` itself
 returned as soon as the session started. Every other command, including `play --dry-run yes`, returns as soon as Proton
 returns, with the command's exit code. The command's standard output is passed through unchanged, so `status` prints

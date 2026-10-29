@@ -191,7 +191,12 @@ public sealed class SessionRunner
             start.Environment.Remove(SteamAccount.EnvironmentVariable);
         // The wrapper has no terminal here: keep its output in logs/linux-session-wrapper.log.
         start.Environment["HELLFORGE_WRAPPER_LOG"] = "1";
-        if (SteamLocator.SelectedProtonScript(new InstallLayout(paths.InstallRoot!)) is { } proton)
+        var install = new InstallLayout(paths.InstallRoot!);
+        // A Steam folder the player chose outside the usual places is saved in the installation; the wrapper and the
+        // Windows programs under Wine see it in the environment even when the shell cannot find Steam by itself.
+        if (SteamLocator.SteamRoot(install) is { } steamRoot)
+            start.Environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
+        if (SteamLocator.SelectedProtonScript(install) is { } proton)
         {
             if (!File.Exists(proton)) throw new InvalidOperationException("The selected Proton version is no longer installed. Choose an installed version in setup.");
             start.Environment["PROTON"] = proton;

@@ -12,11 +12,14 @@
 # request through Proton.
 #
 # Settings (environment variables; each has a default that is found):
-#   PROTON                            the proton script to run HellForge with (default: one the Steam client has, the last
-#                                     by version sort; it says which, and which others it found)
+#   PROTON                            the proton script to run HellForge with (default: the one saved in the installation,
+#                                     else the last Proton the search finds in the Steam libraries, compatibilitytools.d,
+#                                     STEAM_EXTRA_COMPAT_TOOLS_PATHS and the system folders; it says which, and which
+#                                     others it found)
 #   INSTALL                           the HellForge installation (default: the one this script is in, app/linux)
-#   STEAM_COMPAT_CLIENT_INSTALL_PATH  the Steam client (default: the first with a steamapps folder of ~/.local/share/Steam,
-#                                     ~/.steam/debian-installation, ~/.steam/steam, Flatpak's and Snap's)
+#   STEAM_COMPAT_CLIENT_INSTALL_PATH  the Steam client (default: the folder saved in the installation, else the first
+#                                     with a steamapps folder of ~/.local/share/Steam, ~/.steam/debian-installation,
+#                                     ~/.steam/steam, ~/.steam/root, Flatpak's and Snap's)
 #   STEAM_COMPAT_DATA_PATH            the Wine prefix (default: the prefix the installation is in, <prefix>/pfx/drive_c/...;
 #                                     else HELLDIVERS 2's, steamapps/compatdata/553850)
 #
@@ -25,6 +28,7 @@
 # install (issue 11).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$here/hf-steam.sh"
 
 # The phase-1 sandbox probe is information only. It runs before Steam, Proton and the normal dependency checks because it
 # needs none of them: it only asks the kernel for the mechanisms a Linux sandbox would use, then runs its canaries.
@@ -144,12 +148,14 @@ if [ -z "${INSTALL:-}" ] && [ -f "$here/../../hellforge-install.json" ]; then IN
 [ -f "$INSTALL/hellforge-install.json" ] || { echo "$INSTALL is not a HellForge installation (no hellforge-install.json)" >&2; exit 1; }
 export INSTALL
 
-# The Steam client: the usual native folders first, then Flatpak's and Snap's (those two are untested).
+# The Steam client: the folder saved in the installation when the player chose one outside the usual places, else the
+# usual native folders, then Flatpak's and Snap's (those two are untested).
 if [ -z "${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}" ]; then
-  for steam in "$HOME/.local/share/Steam" "$HOME/.steam/debian-installation" "$HOME/.steam/steam" \
-               "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam" "$HOME/snap/steam/common/.local/share/Steam"; do
-    if [ -d "$steam/steamapps" ]; then STEAM_COMPAT_CLIENT_INSTALL_PATH="$(cd "$steam" && pwd -P)"; break; fi
-  done
+  if saved=$(hf_saved_steam_root "$INSTALL"); then
+    STEAM_COMPAT_CLIENT_INSTALL_PATH=$saved
+  else
+    STEAM_COMPAT_CLIENT_INSTALL_PATH=$(hf_steam_root "$HOME" "") || true
+  fi
 fi
 : "${STEAM_COMPAT_CLIENT_INSTALL_PATH:?Steam was not found (no steamapps folder in ~/.local/share/Steam, ~/.steam or Flatpak's or Snap's Steam folder): set STEAM_COMPAT_CLIENT_INSTALL_PATH to the folder that holds steamapps}"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH
@@ -170,14 +176,17 @@ fi
 export STEAM_COMPAT_DATA_PATH SteamGameId="${SteamGameId-553850}"
 
 if [ -z "${PROTON:-}" ]; then
-  mapfile -t protons < <(ls -d "$STEAM_COMPAT_CLIENT_INSTALL_PATH"/steamapps/common/Proton*/proton "$STEAM_COMPAT_CLIENT_INSTALL_PATH"/compatibilitytools.d/*/proton 2>/dev/null | sort -V)
+  if saved=$(hf_saved_proton "$INSTALL"); then PROTON=$saved; fi
+fi
+if [ -z "${PROTON:-}" ]; then
+  mapfile -t protons < <(hf_proton_scripts "$STEAM_COMPAT_CLIENT_INSTALL_PATH")
   if [ "${#protons[@]}" -gt 0 ]; then PROTON="${protons[-1]}"; fi
   if [ "${#protons[@]}" -gt 1 ]; then
     echo "Proton: using $PROTON. Also found (set PROTON to use one of them):" >&2
     printf '  %s\n' "${protons[@]:0:${#protons[@]}-1}" >&2
   fi
 fi
-: "${PROTON:?PROTON is not set and no Proton was found in Steam: install one in Steam, or set PROTON to a proton script, e.g. .../compatibilitytools.d/<name>/proton}"
+: "${PROTON:?PROTON is not set and no Proton was found in Steam, compatibilitytools.d, STEAM_EXTRA_COMPAT_TOOLS_PATHS or the system compatibilitytools.d folders: install one in Steam, or set PROTON to a proton script, e.g. .../compatibilitytools.d/<name>/proton}"
 [ -x "$PROTON" ] || { echo "PROTON is not a proton script that can be run: $PROTON" >&2; exit 1; }
 export PROTON
 : "${STEAM_COMPAT_APP_ID:=553850}"
