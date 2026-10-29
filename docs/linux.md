@@ -469,9 +469,15 @@ The game's user data and environment are copied into `gameOut` before the domain
 skipped, and a kernel without `openat2` is an error rather than a fallback. The trusted runner merges that staging folder
 and applies the editor's saves. The overlay's `upper/` and `work/` are removed afterwards.
 
-Named pipes exist only inside their own Wine server. Until the F.4e relay lands, a sandboxed session refuses co-op, mod
-sync and the live editor with a message instead of silently breaking them. Steam itself still uses the wrapper's loopback
-bridge and the forwarding stand-in; this phase does not claim the broker guarantee G4. G2 and G3 are phase 3.
+Named pipes exist only inside their own Wine server, so in a multiplayer session the domain host serves the backend's
+`hellforge-<run>` pipe and the live editor's `hellforge-live-<run>` pipe in the overlay. It relays each connection to the
+trusted session runner in the real prefix over loopback TCP; the runner connects it to the real pipe. Both ends use a
+per-run token, length-prefixed frames of at most 64 KiB, bounded connection counts and a bounded byte rate. TCP is used
+because the backend's HTTP loopback already works under Wine; a Unix socket from a PE process is still an untested Wine
+contract.
+Co-op, mod sync and the live editor therefore work in a sandboxed session; a solo session has no live-editor pipe, as
+before. Steam itself still uses the wrapper's loopback bridge and the forwarding stand-in; this phase does not claim the
+broker guarantee G4. G2 and G3 are phase 3.
 
 The self-test is also the default switch. Settings > Sandbox is on when this PC passes it for this HellForge build and
 kernel; an update of either reruns it. A failure leaves the switch off and shows the reason. Every session reruns the

@@ -17,6 +17,8 @@ public abstract class SandboxWineSpec
     public string WorkingDirectoryWine { get; init; } = "";
     public string AppRootWine { get; init; } = "";
     public string BackendOrigin { get; init; } = "";
+    public int RelayPort { get; init; }
+    public string RelayToken { get; init; } = "";
     public bool LocalPlayFab { get; init; }
     public bool NativeMods { get; init; }
     public List<string> NativeFolders { get; init; } = [];
@@ -69,7 +71,7 @@ public static class SandboxProtocol
         "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
         "HELLFORGE_MODLOADER", "HELLFORGE_MODLOADER_PLAN", "HELLFORGE_SHIM_LOG_DIR",
         "HELLFORGE_CLOUD_DIR", "HELLFORGE_CLOUD_LOG", "HELLFORGE_NETGATE", "HELLFORGE_NETGATE_LOG",
-        "HELLFORGE_SANDBOX_STATS", "HELLFORGE_DIFFICULTY_FIELDWATCH",
+        "HELLFORGE_SANDBOX_STATS", "HELLFORGE_DIFFICULTY_FIELDWATCH", "HELLFORGE_PIPE",
         "SteamGameId", "SteamAppId"
     };
 
@@ -129,6 +131,7 @@ public static class SandboxProtocol
         if (request.SchemaVersion != SchemaVersion) throw new InvalidDataException("The sandbox request has an unsupported schema version.");
         var runId = RunId(request.RunId);
         Nonce(request.Nonce);
+        ValidateRelay(request, "sandbox request");
         ValidateRunner(request);
         var paths = ValidatePaths(install, run, prefix, request, runId);
         var binds = ValidateBinds(install, prefix, request.ReadOnlyBinds);
@@ -149,6 +152,12 @@ public static class SandboxProtocol
         public required string GameExe { get; init; }
         public required string DomainHost { get; init; }
         public required string HfSandbox { get; init; }
+    }
+
+    static void ValidateRelay(SandboxWineSpec spec, string what)
+    {
+        if (spec.RelayPort is < 1 or > 65535) throw new InvalidDataException("The " + what + " has no valid pipe relay port.");
+        if (!SandboxPipeRelay.IsToken(spec.RelayToken)) throw new InvalidDataException("The " + what + " has no valid pipe relay token.");
     }
 
     static void ValidateRunner(SandboxStartRequest request)
@@ -257,7 +266,8 @@ public static class SandboxProtocol
             SchemaVersion = SchemaVersion, RunId = runId, InstallRootWine = request.InstallRootWine,
             GameOutWine = request.GameOutWine, GameExeWine = request.GameExeWine, GameDllWine = request.GameDllWine,
             BundleDirectoryWine = request.BundleDirectoryWine, WorkingDirectoryWine = request.WorkingDirectoryWine,
-            AppRootWine = request.AppRootWine, BackendOrigin = request.BackendOrigin.TrimEnd('/'), LocalPlayFab = request.LocalPlayFab,
+            AppRootWine = request.AppRootWine, BackendOrigin = request.BackendOrigin.TrimEnd('/'), RelayPort = request.RelayPort,
+            RelayToken = request.RelayToken, LocalPlayFab = request.LocalPlayFab,
             NativeMods = request.NativeMods, NativeFolders = [.. request.NativeFolders], GameArguments = [.. request.GameArguments],
             Environment = new(request.Environment, StringComparer.Ordinal)
         };
@@ -286,10 +296,11 @@ public static class SandboxProtocol
 
     public static SandboxLaunchSpec ReadLaunch(string path)
     {
-        var launch = JsonSerializer.Deserialize<SandboxLaunchSpec>(File.ReadAllText(path), CopyPreparer.JsonOptions)
+        var launch = JsonSerializer.Deserialize(File.ReadAllText(path), SandboxJson.Default.SandboxLaunchSpec)
             ?? throw new InvalidDataException("The sandbox launch spec is empty.");
         if (launch.SchemaVersion != SchemaVersion) throw new InvalidDataException("The sandbox launch spec has an unsupported schema version.");
         RunId(launch.RunId);
+        ValidateRelay(launch, "sandbox launch spec");
         foreach (var (name, value) in new[]
                  {
                      ("installation", launch.InstallRootWine), ("gameOut", launch.GameOutWine), ("game executable", launch.GameExeWine),

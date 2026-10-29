@@ -42,7 +42,7 @@ public static class LinuxSandboxReadiness
         {
             var path = FileFor(install);
             if (!File.Exists(path)) return null;
-            return JsonSerializer.Deserialize<LinuxSandboxSelfTest>(File.ReadAllText(path), CopyPreparer.JsonOptions);
+            return JsonSerializer.Deserialize(File.ReadAllText(path), SandboxJson.Default.LinuxSandboxSelfTest);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
@@ -55,7 +55,7 @@ public static class LinuxSandboxReadiness
             kernelRelease ?? KernelRelease(), passed, reason.Trim(), (checkedUtc ?? DateTime.UtcNow).ToUniversalTime());
         var path = FileFor(install);
         var partial = path + ".partial";
-        File.WriteAllText(partial, JsonSerializer.Serialize(value, CopyPreparer.JsonOptions) + "\n");
+        File.WriteAllText(partial, JsonSerializer.Serialize(value, SandboxJson.Default.LinuxSandboxSelfTest) + "\n");
         File.Move(partial, path, overwrite: true);
     }
 

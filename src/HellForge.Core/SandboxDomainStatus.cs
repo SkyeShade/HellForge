@@ -24,7 +24,7 @@ public sealed record SandboxDomainStatus
         try
         {
             if (!File.Exists(path)) return null;
-            var status = JsonSerializer.Deserialize<SandboxDomainStatus>(File.ReadAllText(path), CopyPreparer.JsonOptions);
+            var status = JsonSerializer.Deserialize(File.ReadAllText(path), SandboxJson.Default.SandboxDomainStatus);
             if (status is not { SchemaVersion: 1 }) return null;
             var windows = status.Windows;
             if (windows == null) return status with { Windows = [] };
@@ -39,7 +39,7 @@ public sealed record SandboxDomainStatus
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var partial = path + ".partial";
-        File.WriteAllText(partial, JsonSerializer.Serialize(status, CopyPreparer.JsonOptions) + "\n");
+        File.WriteAllText(partial, JsonSerializer.Serialize(status, SandboxJson.Default.SandboxDomainStatus) + "\n");
         File.Move(partial, path, overwrite: true);
     }
 }

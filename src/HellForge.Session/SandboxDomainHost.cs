@@ -28,6 +28,7 @@ static class SandboxDomainHost
         HostBoundedProcess? job = null;
         Thread? applier = null;
         HellForgeLocalRoutingPatch.PlayFabRedirect? playFab = null;
+        SandboxPipeRelayDomain? relay = null;
         try
         {
             ApplyEnvironment(spec.Environment);
@@ -40,6 +41,15 @@ static class SandboxDomainHost
             Environment.SetEnvironmentVariable("HELLFORGE_LINUX_INSTALL", null);
             Environment.SetEnvironmentVariable("HELLFORGE_LINUX_PREFIX", null);
 
+            // HELLFORGE_PIPE is set only for a multiplayer session, when the backend serves the lobby/party and live
+            // pipes. Solo sessions leave the loader's live pipe unavailable exactly as they do outside the sandbox;
+            // serving a name with no trusted upstream would only make the loader retry it.
+            if (spec.Environment.ContainsKey("HELLFORGE_PIPE"))
+            {
+                relay = new SandboxPipeRelayDomain(spec.RunId, spec.RelayPort, spec.RelayToken,
+                    line => Console.Error.WriteLine("sandbox pipe relay: " + line));
+                relay.Start();
+            }
             var install = new InstallLayout(spec.InstallRootWine);
             var arguments = GameLaunchOptions.CommandLine(spec.GameArguments);
             job = new HostBoundedProcess(spec.GameExeWine, arguments, spec.WorkingDirectoryWine, Path.Combine(spec.GameOutWine, "environment"),
@@ -84,6 +94,7 @@ static class SandboxDomainHost
         }
         finally
         {
+            relay?.Stop();
             try { job?.Dispose(); }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { }
         }

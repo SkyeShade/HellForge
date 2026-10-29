@@ -16,6 +16,7 @@ sealed partial class PlaySession
     readonly List<string> sandboxBinds = [];
     Timer? sandboxHeartbeat;
     string sandboxNonce = "";
+    SandboxPipeRelayHost? sandboxPipeRelay;
 
     static string HostEnvironment(params string[] names)
     {
@@ -42,10 +43,6 @@ sealed partial class PlaySession
         linuxSandbox = options.Sandbox && LinuxNetworkBlock.UnderWine;
         if (options.Sandbox && OperatingSystem.IsLinux() && !linuxSandbox)
             throw new SessionFailure("The Linux sandbox runs through HellForge's Linux wrapper, not as a native session. Start HellForge with app/linux/hellforge-linux.sh.");
-        if (linuxSandbox && options.Multiplayer)
-            throw new SessionFailure("A sandboxed Linux session cannot use co-op, mod sync or the live editor yet: their named pipes cannot cross the game's Wine server. Turn off Settings > Sandbox for this session (F.4e adds the relay).");
-        if (linuxSandbox && options.ModSync != null)
-            throw new SessionFailure("A sandboxed Linux session cannot use mod sync yet: its named pipes cannot cross the game's Wine server. Turn off Settings > Sandbox for this session (F.4e adds the relay).");
         if (linuxSandbox)
         {
             // Host paths cross the request seam as Z: paths: the supervisor maps them back on native Linux, and the
@@ -139,6 +136,7 @@ sealed partial class PlaySession
         if (File.Exists(hostLoader)) SandboxBind(hostLoader);
         if (nativeFolders != null)
             foreach (var folder in nativeFolders) SandboxBind(WinePath.ToHostPath(folder, hostPrefix));
+        var relay = StartSandboxPipeRelay((string)result["runId"]!);
         var control = Directory.CreateDirectory(Path.Combine(run, "control")).FullName;
         var heartbeat = Path.Combine(control, "runner.heartbeat");
         File.WriteAllText(heartbeat, "1");
@@ -165,6 +163,8 @@ sealed partial class PlaySession
             WorkingDirectoryWine = Path.Combine(copy, "bin"),
             AppRootWine = app,
             BackendOrigin = (string)result["backendOrigin"]!,
+            RelayPort = relay.Port,
+            RelayToken = relay.Token,
             LocalPlayFab = options.LocalPlayFab,
             NativeMods = modNative,
             NativeFolders = nativeFolders?.Select(SandboxWinePath).ToList() ?? [],
@@ -177,10 +177,37 @@ sealed partial class PlaySession
         return (request, control);
     }
 
+    // The trusted end of F.4e stays in this real-prefix process: it opens the real backend/live pipes and accepts only
+    // the overlay host's loopback connections for this run and token.
+    SandboxPipeRelayHost StartSandboxPipeRelay(string runId)
+    {
+        if (sandboxPipeRelay != null) return sandboxPipeRelay;
+        var relay = new SandboxPipeRelayHost(runId, Guid.NewGuid().ToString("N"), Say);
+        try { relay.Start(); }
+        catch (System.Net.Sockets.SocketException error)
+        {
+            throw new SessionFailure("The Linux sandbox's named-pipe relay could not listen on loopback: " + error.Message +
+                ". The game was not started. To run without the sandbox, turn off Settings > Sandbox.");
+        }
+        sandboxPipeRelay = relay;
+        result["sandboxPipeRelay"] = new JsonObject
+        {
+            ["port"] = relay.Port, ["maxConnections"] = SandboxPipeRelay.MaxConnections,
+            ["maxBytesPerSecond"] = SandboxPipeRelay.MaxBytesPerSecond, ["maxChunkBytes"] = SandboxPipeRelay.MaxChunkBytes
+        };
+        return relay;
+    }
+
+    void StopSandboxPipeRelay()
+    {
+        sandboxPipeRelay?.Stop();
+        sandboxPipeRelay = null;
+    }
+
     static void PublishSandboxStart(string control, SandboxStartRequest request)
     {
         var partial = Path.Combine(control, "start.json.partial");
-        File.WriteAllText(partial, JsonSerializer.Serialize(request, CopyPreparer.JsonOptions));
+        File.WriteAllText(partial, JsonSerializer.Serialize(request, SandboxJson.Default.SandboxStartRequest));
         File.Move(partial, Path.Combine(control, "start.json"), overwrite: true);
     }
 
@@ -258,6 +285,8 @@ sealed partial class PlaySession
         };
         foreach (var key in SandboxProtocol.EnvironmentKeys)
             if (!values.ContainsKey(key) && Environment.GetEnvironmentVariable(key) is { Length: > 0 } value) values[key] = value;
+        // No backend pipe exists in a solo session, so never leave a stale value for the stand-ins to chase.
+        if (!options.Multiplayer) values.Remove("HELLFORGE_PIPE");
         return values;
     }
 

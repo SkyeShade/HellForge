@@ -9,14 +9,15 @@ namespace HellForge.Core;
 // The pipes the game opens (the backend's lobby and party pipe, the live pipe): only this user may open them, and on
 // this PC only. A sandboxed session's game runs at low integrity, where "no write up" refuses it a pipe with the usual
 // (medium) label, so LowIntegrityClients gives them a low mandatory label too (docs/steam-bridge.md). The backend sets
-// it from --sandbox; it is one process per session.
+// it from --sandbox; it is one process per session. Wine is not that low-integrity path: the Linux domain reaches these
+// real pipes through F.4e's relay, so Wine keeps the ordinary current-user pipe.
 public static class PipeServer
 {
     public static bool LowIntegrityClients { get; set; }
 
     public static NamedPipeServerStream Create(string name, int maxInstances)
     {
-        if (!LowIntegrityClients || !OperatingSystem.IsWindows())
+        if (!LowIntegrityClients || !OperatingSystem.IsWindows() || LinuxNetworkBlock.UnderWine)
             return new NamedPipeServerStream(name, PipeDirection.InOut, maxInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("No user SID for the pipe.");
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW($"D:P(A;;GA;;;{user.Value})S:(ML;;NW;;;LW)", 1, out var descriptor, out _))

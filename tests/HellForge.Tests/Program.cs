@@ -668,6 +668,7 @@ LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
 LinkRuleTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
 SandboxWireTests.Register(Test, Check, Reject, root);
+SandboxPipeRelayTests.Register(Test, Check);
 ModSyncTests.Register(Test, Check, Reject, root);
 SteamAccountTests.Register(Test, Check, Reject, root);
 SteamPathTests.Register(Test, Check, Reject, root);

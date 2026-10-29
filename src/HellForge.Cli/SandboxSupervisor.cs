@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using HellForge.Core;
 
 namespace HellForge.Cli;
@@ -73,7 +74,7 @@ sealed class SandboxSupervisor
             if (!string.Equals(request.RunId.ToLowerInvariant(), runId, StringComparison.Ordinal))
                 return StopRefusal(control, "the start request's run id is not the published run");
             Directory.CreateDirectory(Path.Combine(plan.GameOut, "domain"));
-            WriteJson(plan.LaunchSpec, plan.Launch);
+            WriteText(plan.LaunchSpec, JsonSerializer.Serialize(plan.Launch, SandboxJson.Default.SandboxLaunchSpec) + "\n");
             return StartDomain(control, plan, request);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or
@@ -112,7 +113,7 @@ sealed class SandboxSupervisor
             {
                 try
                 {
-                    var request = JsonSerializer.Deserialize<SandboxStartRequest>(File.ReadAllText(path), CopyPreparer.JsonOptions);
+                    var request = JsonSerializer.Deserialize(File.ReadAllText(path), SandboxJson.Default.SandboxStartRequest);
                     if (request != null && string.Equals(request.RunId, runId, StringComparison.OrdinalIgnoreCase)) return request;
                     return null;
                 }
@@ -179,7 +180,10 @@ sealed class SandboxSupervisor
         start.ArgumentList.Add("host");
         start.ArgumentList.Add("--spec");
         start.ArgumentList.Add(specWine);
-        WriteJson(Path.Combine(control, "domain.json"), new { state = "starting", supervisorPid = Environment.ProcessId, startedUtc = DateTime.UtcNow });
+        WriteJson(Path.Combine(control, "domain.json"), new JsonObject
+        {
+            ["state"] = "starting", ["supervisorPid"] = Environment.ProcessId, ["startedUtc"] = DateTime.UtcNow.ToString("o")
+        });
         Process process;
         try { process = Process.Start(start) ?? throw new InvalidDataException("hf-sandbox did not start"); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -192,7 +196,11 @@ sealed class SandboxSupervisor
         var clock = Stopwatch.StartNew();
         try
         {
-            WriteJson(Path.Combine(control, "domain.json"), new { state = "running", supervisorPid = Environment.ProcessId, childPid = process.Id, startedUtc = DateTime.UtcNow });
+            WriteJson(Path.Combine(control, "domain.json"), new JsonObject
+            {
+                ["state"] = "running", ["supervisorPid"] = Environment.ProcessId, ["childPid"] = process.Id,
+                ["startedUtc"] = DateTime.UtcNow.ToString("o")
+            });
             var stopReason = WaitDomain(process, heartbeat, stopSignal, stopDomain, clock, timeout);
             var status = SandboxDomainStatus.Read(Path.Combine(plan.GameOut, "domain", "status.json"));
             stopReason = FinishDomainStopReason(process, stopReason, status);
@@ -203,12 +211,16 @@ sealed class SandboxSupervisor
             if (status == null && exitCode != 0)
             {
                 var reason = FirstLine(errors);
-                WriteJson(Path.Combine(control, "refused.json"), new { reason = reason.Length > 0 ? reason : "hf-sandbox refused the domain", exitCode });
+                WriteJson(Path.Combine(control, "refused.json"), new JsonObject
+                {
+                    ["reason"] = reason.Length > 0 ? reason : "hf-sandbox refused the domain", ["exitCode"] = exitCode
+                });
             }
-            WriteJson(Path.Combine(control, "exit.json"), new
+            WriteJson(Path.Combine(control, "exit.json"), new JsonObject
             {
-                state = exitCode == 0 ? "exited" : "failed", exitCode, stopReason, elapsedSeconds = Math.Round(clock.Elapsed.TotalSeconds, 2),
-                sandboxRefused = status == null && exitCode != 0, completedUtc = DateTime.UtcNow
+                ["state"] = exitCode == 0 ? "exited" : "failed", ["exitCode"] = exitCode, ["stopReason"] = stopReason,
+                ["elapsedSeconds"] = Math.Round(clock.Elapsed.TotalSeconds, 2),
+                ["sandboxRefused"] = status == null && exitCode != 0, ["completedUtc"] = DateTime.UtcNow.ToString("o")
             });
             Console.Error.WriteLine($"hf-supervisor: domain ended with exit code {exitCode}{(stopReason.Length > 0 ? " (" + stopReason + ")" : "")}.");
             DoCopyBack(control, plan, request);
@@ -256,7 +268,10 @@ sealed class SandboxSupervisor
         var status = SandboxDomainStatus.Read(Path.Combine(plan.GameOut, "domain", "status.json"));
         if (status is not { GamePid: > 0, State: "exited" or "stopped" })
         {
-            WriteJson(Path.Combine(control, "abandoned.json"), new { reason = "the domain did not report a finished game process", utc = DateTime.UtcNow });
+            WriteJson(Path.Combine(control, "abandoned.json"), new JsonObject
+            {
+                ["reason"] = "the domain did not report a finished game process", ["utc"] = DateTime.UtcNow.ToString("o")
+            });
             return;
         }
         var path = Path.Combine(control, "copy-back.request");
@@ -265,7 +280,10 @@ sealed class SandboxSupervisor
             Thread.Sleep(200);
         if (!File.Exists(path))
         {
-            WriteJson(Path.Combine(control, "abandoned.json"), new { reason = "the trusted runner ended without asking for the copy-back", utc = DateTime.UtcNow });
+            WriteJson(Path.Combine(control, "abandoned.json"), new JsonObject
+            {
+                ["reason"] = "the trusted runner ended without asking for the copy-back", ["utc"] = DateTime.UtcNow.ToString("o")
+            });
             return;
         }
         try
@@ -279,11 +297,15 @@ sealed class SandboxSupervisor
                 !string.Equals(nonce, request.Nonce, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("the copy-back request is not for this run and request");
             var result = NativeSandboxCopyBack.Run(install, plan.Run, profile);
-            WriteJson(Path.Combine(control, "copy-back.json"), new { ok = true, result.Files, result.Bytes, result.Skipped, result.Staging });
+            WriteJson(Path.Combine(control, "copy-back.json"), new JsonObject
+            {
+                ["ok"] = true, ["files"] = result.Files, ["bytes"] = result.Bytes, ["skipped"] = result.Skipped,
+                ["staging"] = result.Staging
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
         {
-            WriteJson(Path.Combine(control, "copy-back.json"), new { ok = false, error = error.Message });
+            WriteJson(Path.Combine(control, "copy-back.json"), new JsonObject { ["ok"] = false, ["error"] = error.Message });
         }
     }
 
@@ -292,7 +314,8 @@ sealed class SandboxSupervisor
         Console.Error.WriteLine("hf-supervisor: " + reason);
         try
         {
-            if (control != null) WriteJson(Path.Combine(control, "refused.json"), new { reason, utc = DateTime.UtcNow });
+            if (control != null) WriteJson(Path.Combine(control, "refused.json"),
+                new JsonObject { ["reason"] = reason, ["utc"] = DateTime.UtcNow.ToString("o") });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return 1;
@@ -356,11 +379,13 @@ sealed class SandboxSupervisor
     static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
 
-    static void WriteJson(string path, object value)
+    static void WriteJson(string path, JsonNode value) => WriteText(path, value.ToJsonString() + "\n");
+
+    static void WriteText(string path, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var partial = path + ".partial";
-        File.WriteAllText(partial, JsonSerializer.Serialize(value, CopyPreparer.JsonOptions) + "\n");
+        File.WriteAllText(partial, text);
         File.Move(partial, path, overwrite: true);
     }
 

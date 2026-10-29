@@ -29,7 +29,7 @@ static class SandboxCommands
                 var install = new InstallLayout(Required(options, "--install"));
                 if (!install.Exists) throw new InvalidDataException(install.Root + " is not a HellForge installation.");
                 var receipt = NativeSandboxCopyBack.Run(install, Required(options, "--run"), Required(options, "--profile"));
-                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(receipt, CopyPreparer.JsonOptions));
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(receipt, SandboxJson.Default.SandboxCopyBackReceipt));
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or

@@ -15,6 +15,7 @@ sealed partial class PlaySession
         try
         {
             StopGameJob();
+            Try("sandboxPipeRelayStopError", StopSandboxPipeRelay);
             CopyEngineLogs();
             StopBrokerAndBackend();
             FinishApplier();

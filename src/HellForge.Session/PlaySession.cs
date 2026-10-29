@@ -131,7 +131,7 @@ sealed partial class PlaySession(PlayOptions options)
         if (linuxSandbox)
         {
             result["sandbox"] = true;
-            if (options.CrashDump)
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HELLFORGE_CRASH_DUMP")))
             {
                 const string unavailable = "Crash dump is unavailable while sandboxed (Settings > Crash dump): the loader may not start a helper in the game's process domain.";
                 result["crashDumpUnavailable"] = unavailable;
@@ -183,7 +183,7 @@ sealed partial class PlaySession(PlayOptions options)
             sandboxHeartbeat = null;
         }
         Say("Session result: " + Path.Combine(run, "result.json"));
-        log.Dispose();
+        log?.Dispose();
         return (string?)result["status"] == "observed" ? 0 : 1;
     }
 

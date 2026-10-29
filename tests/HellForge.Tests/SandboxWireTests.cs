@@ -13,7 +13,8 @@ static class SandboxWireTests
             var fixture = MakeFixture(Path.Combine(root, "sandbox-request"));
             var valid = Request(fixture);
             var plan = SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, valid);
-            check(plan.GameOut == Path.Combine(fixture.Run, "game") && plan.ReadOnlyBinds.Count == 2,
+            check(plan.GameOut == Path.Combine(fixture.Run, "game") && plan.ReadOnlyBinds.Count == 2 &&
+                plan.Launch.RelayPort == valid.RelayPort && plan.Launch.RelayToken == valid.RelayToken,
                 "A valid request was refused or normalized differently.");
             var linkedBind = Path.Combine(fixture.Install.Mods, "linked-mod");
             Directory.CreateDirectory(fixture.Install.Mods);
@@ -28,6 +29,8 @@ static class SandboxWireTests
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.GameExe = Path.Combine(fixture.Install.Root, "other.exe"))));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.DomainHost = Path.Combine(fixture.Install.Root, "other.exe"))));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.Nonce = "00")));
+            reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.RelayPort = 0)));
+            reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.RelayToken = "not-a-token")));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.Environment["LD_PRELOAD"] = "/tmp/x")));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.NativeFolders = [fixture.Outside])));
             reject(() => SandboxProtocol.Validate(fixture.Install, fixture.Run, fixture.Prefix, Change(valid, r => r.ReadOnlyBinds = [fixture.SessionHost, fixture.SessionHost])));
@@ -145,8 +148,13 @@ static class SandboxWireTests
         WorkingDirectoryWine = @"C:\HellForge\game\bin",
         AppRootWine = @"Z:\HellForge\app",
         BackendOrigin = "http://127.0.0.1:40000",
+        RelayPort = 40400,
+        RelayToken = Guid.NewGuid().ToString("N"),
         GameArguments = ["--release"],
-        Environment = new(StringComparer.Ordinal) { ["APPDATA"] = @"Z:\run\game\environment\Roaming" },
+        Environment = new(StringComparer.Ordinal)
+        {
+            ["APPDATA"] = @"Z:\run\game\environment\Roaming", ["HELLFORGE_PIPE"] = "hellforge-test"
+        },
         ReadOnlyBinds = [fixture.SessionHost, fixture.Loader],
         RunnerPid = Environment.ProcessId,
         RunnerStartedUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime().ToString("o")
@@ -161,6 +169,7 @@ static class SandboxWireTests
             DomainHost = request.DomainHost, GameExe = request.GameExe, GameExeWine = request.GameExeWine, GameOut = request.GameOut,
             GameOutWine = request.GameOutWine, GameDllWine = request.GameDllWine, BundleDirectoryWine = request.BundleDirectoryWine,
             WorkingDirectoryWine = request.WorkingDirectoryWine, AppRootWine = request.AppRootWine, BackendOrigin = request.BackendOrigin,
+            RelayPort = request.RelayPort, RelayToken = request.RelayToken,
             GameArguments = [.. request.GameArguments], Environment = new(request.Environment, StringComparer.Ordinal),
             ReadOnlyBinds = [.. request.ReadOnlyBinds],
             NativeFolders = [.. request.NativeFolders], RunnerPid = request.RunnerPid, RunnerStartedUtc = request.RunnerStartedUtc
@@ -173,6 +182,7 @@ static class SandboxWireTests
             DomainHost = mutable.DomainHost, GameExe = mutable.GameExe, GameExeWine = mutable.GameExeWine, GameOut = mutable.GameOut,
             GameOutWine = mutable.GameOutWine, GameDllWine = mutable.GameDllWine, BundleDirectoryWine = mutable.BundleDirectoryWine,
             WorkingDirectoryWine = mutable.WorkingDirectoryWine, AppRootWine = mutable.AppRootWine, BackendOrigin = mutable.BackendOrigin,
+            RelayPort = mutable.RelayPort, RelayToken = mutable.RelayToken,
             GameArguments = mutable.GameArguments, Environment = mutable.Environment, ReadOnlyBinds = mutable.ReadOnlyBinds,
             NativeFolders = mutable.NativeFolders, RunnerPid = mutable.RunnerPid, RunnerStartedUtc = mutable.RunnerStartedUtc
         };
@@ -183,9 +193,9 @@ static class SandboxWireTests
         public int SchemaVersion = 1;
         public string RunId = "", Nonce = "", InstallRoot = "", InstallRootWine = "", DomainHost = "", GameExe = "", GameExeWine = "",
             GameOut = "", GameOutWine = "", GameDllWine = "", BundleDirectoryWine = "", WorkingDirectoryWine = "", AppRootWine = "",
-            BackendOrigin = "", RunnerStartedUtc = "";
+            BackendOrigin = "", RelayToken = "", RunnerStartedUtc = "";
         public List<string> GameArguments = [], ReadOnlyBinds = [], NativeFolders = [];
         public Dictionary<string, string> Environment = new(StringComparer.Ordinal);
-        public int RunnerPid;
+        public int RelayPort, RunnerPid;
     }
 }
