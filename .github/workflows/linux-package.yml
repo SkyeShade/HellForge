@@ -4,10 +4,19 @@ on:
   # Every merge into linux-native gets a test build: workflow_dispatch can only be started once this file is on main.
   push:
     branches: [linux-native]
+  # So does every pull request into linux-native, to test a change in a real session before it merges. The Linux
+  # session runner is a Windows NativeAOT program, so only this Windows job can build it.
+  pull_request:
+    branches: [linux-native]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer push to the same pull request replaces its unfinished build; builds of linux-native itself always finish.
+concurrency:
+  group: linux-package-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   package:
