@@ -48,7 +48,8 @@ static const uint8_t kRecordStorePin[7] = {0x41, 0x89, 0x78, 0x04, 0x41, 0x89, 0
  * force_flatten_zones), one plateau at min(mid, lowest + raise) of the heights sampled around it, 0 with none sampled.
  * At the end of the grouping loop (0xF4C34B), while the group table is alive (zones-<n>.tsv read it after a later pass
  * had reused it), a stub calls ZoneGroupsCaught: per group its zone type, cells, centre, min, max and height, into
- * zone-groups-<n>.tsv and a line, for the first 8 generations at any level (a level-10 one compares). */
+ * zone-groups-<n>.tsv and a line, for the first 16 generations with zone cells at any level (a level-10 one compares;
+ * the war table's previews make many without). */
 #define DIF_ZONE_GROUPS_SITE 0xF4C34Bu /* mov rdi, [rsp+0x68] (the cells' markers), then 0xF4C350 */
 static const uint8_t kZoneGroupsPin[5] = {0x48, 0x8B, 0x7C, 0x24, 0x68};
 #define DIF_ZONE_CATCH_GROUPS 64
@@ -120,8 +121,6 @@ static void ZoneGroupsCaught(uintptr_t frame, uintptr_t rbp, uint32_t groups, ui
     if (SafeRead(frame + 0x68, &markers, 8) || SafeRead(frame + 0x70, &cells, 4) || SafeRead(frame + 0x78, &info, 8) ||
         SafeRead(rbp + 0x60, &table, 8) || SafeRead(context + 0x18, &level, 8) || SafeRead(level + 0xF9, &difficulty, 1))
         return;
-    LONG n = InterlockedIncrement(&g_zoneCatches);
-    if (n > 8) return;
     ZoneCatch c;
     memset(&c, 0, sizeof c);
     c.difficulty = difficulty;
@@ -152,6 +151,9 @@ static void ZoneGroupsCaught(uintptr_t frame, uintptr_t rbp, uint32_t groups, ui
     }
     for (int g = 0; g < DIF_ZONE_CATCH_GROUPS; g++)
         if (c.group[g].cells) { c.group[g].x /= (float)c.group[g].cells; c.group[g].y /= (float)c.group[g].cells; }
+    if (c.zoneCells == 0) return;
+    LONG n = InterlockedIncrement(&g_zoneCatches);
+    if (n > 16) return;
     g_zoneCatch = c;
     ZoneGroupsWrite(n, &c);
 }
