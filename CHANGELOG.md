@@ -8,10 +8,12 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.3.0-beta.
 
-### Fixed
+### Added
 
-- Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
-  wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
+  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
+  taken off between releases.
+
 ### Changed
 
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
@@ -24,6 +26,20 @@ On `dev`, since 0.3.0-beta.
 - When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
   aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
   lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
+- `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
+  on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
+  ignored.
+- Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
+  #149).
+
+### Fixed
+
+- Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
+  wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
+  some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
+  a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
+  out with a line in the log.
 
 ### For mod makers
 
@@ -36,38 +52,14 @@ On `dev`, since 0.3.0-beta.
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
   `"stranger": true`.
-### Changed
-
-- `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
-  on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
-  ignored.
-
-### For launcher developers
-
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
   folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
   `tar` for them.
-### Changed
-
-- Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
-  #149).
-### Added
-
-- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
-  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
-  taken off between releases.
-
-### For launcher developers
-
 - `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
   list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
-- A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
-  some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
-  a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
-  out with a line in the log.
 
 ## 0.3.0-beta (2026-10-26)
 
