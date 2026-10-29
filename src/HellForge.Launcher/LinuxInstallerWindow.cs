@@ -21,6 +21,9 @@ sealed class LinuxInstallerWindow : Window
     readonly TextBlock status;
     readonly Button installButton;
     IReadOnlyList<ProtonVersion> protons = [];
+    string? steamChoice;
+    int lastProtonIndex = -1;
+    bool applyingProtons;
     bool installing;
 
     public LinuxInstallerWindow(string payload)
@@ -39,6 +42,7 @@ sealed class LinuxInstallerWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "hellforge-prefix");
         prefixPath = new TextBox { Text = defaultPrefix, HorizontalAlignment = HorizontalAlignment.Stretch };
         protonChoice = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        protonChoice.SelectionChanged += async (_, _) => await ProtonChoiceChanged();
         status = new TextBlock
         {
             Text = "Looking for installed Proton versions...",
@@ -116,23 +120,48 @@ sealed class LinuxInstallerWindow : Window
     }
 
     // Steam's libraries and Proton installations are on disk and can take a while (many libraries, a slow disk): find them
-    // after the window is shown, then fill the list on the UI thread. Install stays off until the result is known.
+    // after the window is shown, then fill the list on the UI thread. Install stays off until the result is known. When
+    // Steam is in none of the usual folders, ask for it before looking for Proton, so that Steam's own Proton versions
+    // are listed too.
     async Task DiscoverProtons()
     {
+        string? steamProblem = null;
+        if (steamChoice == null)
+        {
+            try { steamChoice = await Task.Run(() => SteamLocator.SteamRoot()); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                steamProblem = "Could not look up Steam's folder: " + error.Message;
+            }
+            if (steamChoice == null)
+            {
+                try { steamChoice = await ChooseSteamFolder(); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    steamProblem = error.Message;
+                }
+            }
+            if (steamProblem == null && steamChoice == null)
+                steamProblem = "Steam was not found in its usual folders. Choose Other... for a Proton outside the list, then Install asks for the folder that holds steamapps.";
+        }
         (IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) found;
-        try { found = await Task.Run(FindProtons).ConfigureAwait(false); }
+        try { found = await Task.Run(() => FindProtons(steamChoice)).ConfigureAwait(false); }
         catch (Exception error)
         {
             found = (Array.Empty<ProtonVersion>(), "Could not look up Steam's Proton installations: " + error.Message, null);
         }
-        Dispatcher.UIThread.Post(() => ApplyProtons(found));
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApplyProtons(found);
+            if (steamProblem != null) status.Text = steamProblem;
+        });
     }
 
-    static (IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) FindProtons()
+    static (IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) FindProtons(string? steamRoot)
     {
         IReadOnlyList<ProtonVersion> protons;
         string? protonError = null;
-        try { protons = SteamLocator.ProtonVersions(); }
+        try { protons = SteamLocator.ProtonVersions(steamRoot); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             protons = [];
@@ -146,15 +175,46 @@ sealed class LinuxInstallerWindow : Window
 
     void ApplyProtons((IReadOnlyList<ProtonVersion> Protons, string? Error, string? ConfiguredProton) found)
     {
-        protons = found.Protons;
+        protons = SteamLocator.IncludingSelected(found.Protons, found.ConfiguredProton);
         var selectedIndex = protons.ToList().FindIndex(proton => proton.ScriptPath == found.ConfiguredProton);
         if (selectedIndex < 0) selectedIndex = protons.Count - 1;
-        protonChoice.ItemsSource = protons.Select(proton => proton.Name).ToArray();
-        protonChoice.SelectedIndex = selectedIndex;
+        applyingProtons = true;
+        try
+        {
+            protonChoice.ItemsSource = ProtonPicker.Items(protons, proton => proton.Name);
+            protonChoice.SelectedIndex = selectedIndex;
+        }
+        finally { applyingProtons = false; }
+        lastProtonIndex = selectedIndex;
         status.Text = protons.Count == 0
             ? found.Error ?? "No Proton versions were found. Install Proton in Steam, then restart this installer."
-            : "Choose the Proton version to prepare the prefix with. The same version will be used for setup and game sessions.";
+            : "Choose the Proton version to prepare the prefix with. The same version will be used for setup and game sessions. Choose Other... to use a proton script outside the list.";
         installButton.IsEnabled = !installing && protons.Count > 0;
+    }
+
+    // The last entry is Other...: ProtonPicker asks for and validates the script, adds it to the list and shows it; this
+    // records the installer's choice and puts the previous one back when the picker is cancelled or refused.
+    async Task ProtonChoiceChanged()
+    {
+        if (applyingProtons) return;
+        var index = protonChoice.SelectedIndex;
+        if (index >= 0 && index < protons.Count) { lastProtonIndex = index; return; }
+        if (index != protons.Count) return;
+        applyingProtons = true;
+        try
+        {
+            var picked = await ProtonPicker.PickAndShow(this, protonChoice, protons, proton => proton.Name, Status);
+            if (picked is not { } result)
+            {
+                protonChoice.SelectedIndex = lastProtonIndex;
+                return;
+            }
+            protons = result.Versions;
+            lastProtonIndex = result.Selected;
+            Status(ProtonPicker.Using(protons[lastProtonIndex]));
+            installButton.IsEnabled = !installing;
+        }
+        finally { applyingProtons = false; }
     }
 
     async Task ChoosePrefix()
@@ -167,6 +227,21 @@ sealed class LinuxInstallerWindow : Window
         if (folders.Count > 0) prefixPath.Text = folders[0].Path.LocalPath;
     }
 
+    // Steam was not found in its usual folders: ask for the folder that holds steamapps and check it. The choice is saved
+    // in the installation after it is unpacked, so setup, sessions and external launches use the same Steam.
+    async Task<string?> ChooseSteamFolder()
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose Steam's folder (the one that holds steamapps)",
+            AllowMultiple = false
+        });
+        var chosen = folders.Select(folder => folder.Path.LocalPath).FirstOrDefault();
+        if (chosen == null) return null;
+        if (SteamLocator.SteamFolderProblem(chosen) is { } problem) throw new InvalidDataException(problem);
+        return SteamLocator.SteamFolder(chosen);
+    }
+
     async Task InstallAndLaunch()
     {
         if (installing) return;
@@ -176,12 +251,13 @@ sealed class LinuxInstallerWindow : Window
         {
             if (!File.Exists(payload)) throw new InvalidDataException("The HellForge Linux package was not found beside this installer.");
             // Reading the package's index and walking Steam's folders are disk work too; keep both off the UI thread.
-            var steamRoot = await Task.Run(() =>
-            {
-                ValidatePackage(payload);
-                return SteamLocator.SteamRoot()
-                    ?? throw new InvalidDataException("Steam was not found. Install Steam, start it, sign in, and try again.");
-            });
+            await Task.Run(() => ValidatePackage(payload));
+            var steamRoot = steamChoice ?? await Task.Run(() => SteamLocator.SteamRoot());
+            if (steamRoot == null) steamRoot = await ChooseSteamFolder();
+            if (steamRoot == null)
+                throw new InvalidDataException("Steam was not found. Install Steam, start it, sign in, and try again.");
+            steamChoice = steamRoot;
+            string steamFolder = steamRoot;
             if (protonChoice.SelectedIndex < 0 || protonChoice.SelectedIndex >= protons.Count)
                 throw new InvalidDataException("Choose an installed Proton version before continuing.");
             var proton = protons[protonChoice.SelectedIndex].ScriptPath;
@@ -199,7 +275,7 @@ sealed class LinuxInstallerWindow : Window
             else
             {
                 Status("Preparing the Proton prefix...");
-                await InitializePrefix(proton, prefix, steamRoot);
+                await InitializePrefix(proton, prefix, steamFolder);
             }
 
             // The status above is painted before this yield; the package is staged and swapped in without blocking repaints.
@@ -208,6 +284,7 @@ sealed class LinuxInstallerWindow : Window
             {
                 EnginePackageInstaller.Install(install);
                 SteamLocator.SaveProtonSelection(install, proton);
+                SteamLocator.SaveSteamSelection(install, steamFolder);
             }));
             var launcher = Path.Combine(install.App, "launcher-linux", "HellForge.Launcher");
             Status("Starting the native launcher and setup wizard...");
@@ -275,6 +352,7 @@ sealed class LinuxInstallerWindow : Window
             "app/launcher-linux/HellForge.Launcher",
             "app/capture-linux/HellForge.CaptureProxy",
             "app/linux/hellforge-linux.sh",
+            "app/linux/hf-steam.sh",
             "app/linux/hf-sandbox-probe",
             "app/linux/allow-capture.sh",
             "app/linux/capture-helper.sh",
