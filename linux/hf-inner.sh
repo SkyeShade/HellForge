@@ -2,8 +2,9 @@
 # From DreamyBranch's LinuxSupport (SkyeShade/HellForge issue 1), with joshua-software-dev; docs/linux.md.
 # Run INSIDE the offline wrapper (hellforge-linux.sh does: hellforge-offline.sh hf-inner.sh).
 # For every socket made by hf-bridge-host.sh it opens the same loopback TCP port inside the
-# namespace and forwards it to Steam. Then it starts HellForge with Proton: HellForge.exe, or the Windows program and
-# arguments it was given (another launcher's HellForge.Cli play, docs/external-launchers.md).
+# namespace and forwards it to Steam with HellForge's native relay (steam-bridge inner). Then it starts HellForge with
+# Proton: HellForge.exe, or the Windows program and arguments it was given (another launcher's HellForge.Cli play,
+# docs/external-launchers.md).
 # Needs PROTON, INSTALL, STEAM_COMPAT_DATA_PATH and STEAM_COMPAT_CLIENT_INSTALL_PATH in the environment.
 
 # Steam's shader log prefixes every message with a timestamp. grep filters the growing log in C; only its Setting
@@ -41,9 +42,12 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "hf-inner received SIGINT." >&2; exit 130' INT
 trap 'echo "hf-inner received SIGTERM." >&2; exit 143' TERM
-command -v socat >/dev/null || { echo "need socat" >&2; exit 1; }
 : "${PROTON:?PROTON is not set}" "${INSTALL:?INSTALL is not set}"
 dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+cliNative="$INSTALL/app/cli-linux/HellForge.Cli"
+[ -f "$cliNative" ] || { echo "hf-inner: the native Linux build agent is missing ($cliNative): reinstall HellForge." >&2; exit 1; }
+[ -x "$cliNative" ] || chmod +x "$cliNative" 2>/dev/null || true
+[ -x "$cliNative" ] || { echo "hf-inner: the native Linux build agent is not executable: $cliNative" >&2; exit 1; }
 
 # Steam points the GPU driver, Mesa, DXVK and Fossilize at a per-app cache in the library that holds HELLDIVERS 2.
 # Starting Proton directly would otherwise compile into the driver's default cache instead of reusing Steam's.
@@ -140,13 +144,13 @@ n=0
 echo "hf-inner: setting up Steam port forwarding." >&2
 for f in "$dir"/hf-steam-*.sock; do
   [ -S "$f" ] || continue
-  p=${f##*hf-steam-}; p=${p%.sock}
-  socat TCP-LISTEN:"$p",bind=127.0.0.1,fork,reuseaddr,nodelay UNIX-CONNECT:"$f" &
-  echo "forwarding 127.0.0.1:$p -> Steam" >&2
   n=$((n+1))
 done
 [ "$n" -gt 0 ] || { echo "no bridge sockets found; start hf-bridge-host.sh first" >&2; exit 1; }
+"$cliNative" steam-bridge inner &
+bridge_pid=$!
 sleep 1
+kill -0 "$bridge_pid" 2>/dev/null || { echo "hf-inner: the Steam bridge relay did not start; Steam's loopback ports are not bridged." >&2; exit 1; }
 if [ -n "${HELLFORGE_WORKING_DIRECTORY:-}" ]; then cd "$HELLFORGE_WORKING_DIRECTORY"; fi
 # Which commands start a session runner: HellForge.Session.exe play, and HellForge.Cli.exe play unless --dry-run yes
 # (src/HellForge.Cli/Launch.cs starts the runner only for play without a dry run). Every other command just passes

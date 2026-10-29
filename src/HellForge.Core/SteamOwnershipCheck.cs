@@ -83,7 +83,8 @@ public static class SteamOwnershipCheck
         "is still running in the Wine prefix",
         "outside connection SUCCEEDED, refusing to start",
         "need iproute2 (ip)",
-        "need socat"
+        "native Linux build agent is missing",
+        "native Linux build agent is not executable"
     ];
 
     // The first line of the wrapper log that explains why it stopped, or null when there is none. The wrapper truncates

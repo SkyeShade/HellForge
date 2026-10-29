@@ -22,16 +22,18 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
-- These programs: `socat`, `ip` and `ss` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from
-  procps) and `bsdtar`. `bsdtar` is needed only to add `.7z` or `.rar` mods.
+- These programs: `ip` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from procps) and `bsdtar`.
+  `bsdtar` is needed only to add `.7z` or `.rar` mods. The Steam bridge is HellForge's own native program
+  (`app/cli-linux/HellForge.Cli steam-bridge`), so `socat` is not needed for setup or a session; the optional
+  [account-sync](#account-sync) helper still uses it.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
   |---|---|---|
-  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 socat util-linux procps-ng libarchive` |
-  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 socat util-linux procps libarchive-tools` |
-  | `dnf` | Fedora, Nobara | `sudo dnf install iproute socat util-linux procps-ng bsdtar` |
-  | `zypper` | openSUSE | `sudo zypper install iproute2 socat util-linux procps bsdtar` |
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 util-linux procps-ng libarchive` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 util-linux procps libarchive-tools` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install iproute util-linux procps-ng bsdtar` |
+  | `zypper` | openSUSE | `sudo zypper install iproute2 util-linux procps bsdtar` |
 
   On other systems, install the same packages with your package manager.
 
@@ -253,15 +255,21 @@ the native Linux Zig into `temp/mod-builds`. The session finds those builds read
 Wine. A failure is logged, and the session continues without that data or those tools (a source mod it could not build
 stays off with the normal mod problem).
 
-The wrapper starts a shared bridge to Steam when none is running. The bridge exposes Steam's loopback ports as
-`hf-steam-*.sock` files in `${XDG_RUNTIME_DIR:-/run/user/<uid>}`, and `hf-inner.sh` recreates the same loopback ports
-inside the namespace. Sessions that run at the same time share the bridge: each wrapper holds the users lock
-(`hf-bridge-users.lock`) shared, and the last one to close takes it exclusively and stops a bridge the wrapper started.
-A bridge started by hand with `hf-bridge-host.sh` has no PID file, is used as it is, and HellForge never stops it. The
-wrapper serializes checking, starting and stopping the bridge with `flock` on `hf-bridge.lock` and `hf-bridge-users.lock`.
+The wrapper starts a shared bridge to Steam when none is running: `hf-bridge-host.sh` execs
+`app/cli-linux/HellForge.Cli steam-bridge host`, which finds the loopback ports that the process named `steam` listens
+on and exposes each as a 0600 `hf-steam-<port>.sock` file in `${XDG_RUNTIME_DIR:-/run/user/<uid>}`. `steam-bridge check`
+tests whether a bridge still answers. `hf-inner.sh` starts `steam-bridge inner`, which recreates the same loopback ports
+inside the namespace and relays each connection to its socket. The relay is HellForge's own native program, so `socat`
+is not needed; only loopback (127.0.0.1) and the socket files are used, and no route is added. Sessions that run at the
+same time share the bridge: each wrapper holds the users lock (`hf-bridge-users.lock`) shared, and the last one to close
+takes it exclusively and stops a bridge the wrapper started. A bridge started by hand with `hf-bridge-host.sh` has no
+PID file, is used as it is, and HellForge never stops it. The wrapper records the host's PID in `hf-bridge.pid` and
+checks its command line before stopping it: the hand-started `hf-bridge-host.sh`, or the native
+`app/cli-linux/HellForge.Cli steam-bridge host` it execs. The wrapper serializes checking, starting and stopping the
+bridge with `flock` on `hf-bridge.lock` and `hf-bridge-users.lock`.
 
 The wrapper then runs `hellforge-offline.sh`, which makes the namespace without root, waits up to 20 seconds for a
-wineserver of the prefix still running outside it, and refuses to start while one runs. Inside, `hf-inner.sh` forwards
+wineserver of the prefix still running outside it, and refuses to start while one runs. Inside, `hf-inner.sh` opens
 the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the
 game starts. Do not start a session runner directly through Proton or run it without the wrapper.
 
@@ -293,6 +301,68 @@ Sharing HELLDIVERS 2's prefix (553850) works too, but then nothing else may run 
 Windows program of the prefix running outside would share its network with HellForge's
 ([one prefix, one network](#one-prefix-one-network)), and the real game, started while HellForge runs, would have no
 network.
+
+## SteamOS 3.x
+
+SteamOS 3.x (on the Steam Deck and Steam Machine) is Arch-based. `hellforge-linux.sh` detects it by `ID=steamos` in
+`/etc/os-release`, so a missing program is reported with SteamOS's own answer instead of a package-manager command.
+
+### Read-only root
+
+`/` is a small read-only A/B system image. `/home` is a separate writable file system, and `/var` and `/run` are the
+other writable places. A normal native installation, its prefix, game copy, logs, desktop shortcut and Steam's shader
+cache all live under `/home` or a Steam library (a microSD card on a Deck), so a normal setup and session do not need
+to write the system image. Do not install HellForge's programs system-wide on SteamOS: `sudo steamos-readonly disable`
+makes the image writable only until the next update, which drops the packages again and can leave an unsupported image.
+The only system changes in this tree are the optional `allow-namespace.sh` (for Ubuntu's user-namespace restriction,
+which SteamOS is not expected to have) and the account-sync helper; neither is needed for a normal session.
+
+### Programs
+
+| Program | Needed for | Stock SteamOS 3.x |
+|---|---|---|
+| `ip` (iproute2) | loopback, the veth adapter and the `prohibit` routes | Expected: `iproute2` is in Arch's base set, and the Steam Machine ownership run passed through the namespace. |
+| `unshare`, `flock` (util-linux) | the user and network namespace, and the bridge's locks | Expected, for the same reasons. |
+| `pgrep` (procps-ng) | waits for the live-war fetch and the mod tools | Expected, for the same reasons. |
+| `bsdtar` (libarchive) | adding `.7z` or `.rar` mods, only | Expected; without it the wrapper warns and zip and folder mods still work. |
+| `pasta` (passt), `python3` | co-op over Steam relays, only with the Settings switch on | Expected missing: neither is in Arch's base set. A solo session does not need them. |
+| `socat` | only the optional [account-sync](#account-sync) helper; the Steam bridge is native since E.5 | Not needed. The repository records a Deck without it; the Steam Machine image had it. |
+
+The Steam Machine run's `find` and `ownership` steps passed, so at least that image had the required programs and
+unprivileged user namespaces. It does not prove that a fresh Deck image is the same, or that the tester had not
+installed anything. Treat "Expected" as unverified here.
+
+### First setup in Desktop Mode
+
+Run the installer and the setup wizard in Desktop Mode, not Game Mode. The wizard needs the desktop (and can need a file
+picker and Steam's console), and the desktop shortcut it creates is not shown in Game Mode. Once setup says Ready to
+play, add the launcher to Steam from Desktop Mode:
+
+1. Steam > Games > **Add a Non-Steam Game to My Library**.
+2. Browse to `<installation>/app/launcher-linux/HellForge.Launcher` and add it.
+3. Set **Start In** to the installation root (the installer starts the launcher with that working directory). Rename it
+   and choose an icon if wanted.
+
+The entry then appears in Game Mode under Library > Non-Steam, and the launcher's PLAY button starts the session as
+usual. `steamos-add-to-steam`, if the image has it, may make these steps a single command; that is not verified. Steam
+sets `SteamGameId` and `SteamAppId` for a non-Steam entry; the wrapper keeps an inherited `SteamGameId` and sets
+`STEAM_COMPAT_APP_ID=553850` itself, but the Game Mode entry has not been tested. The launcher is an Avalonia X11
+application: Game Mode's gamescope normally provides XWayland, which this also needs testing. A controller alone cannot
+navigate the desktop UI.
+
+### Shader cache
+
+For a session, `hf-inner.sh` gives the game the same shader caches Steam gives it: `steamapps/shadercache/553850` in the
+Steam library that has HELLDIVERS 2. Install the game through Steam once (even if HellForge copies its own supported
+build) so the library has `appmanifest_553850.acf` and Valve's pre-compiled shaders. The cache can take several GB; it
+is Steam's, and prefix backup and uninstall do not include it.
+
+### After a SteamOS update
+
+The inventory seal (C.5a) is bound to `/etc/machine-id`. If a SteamOS update changes it, a snapshot is refused with
+"This snapshot was sealed on another system: sync again": run **Sync Inventory** again, which writes a seal for the new
+id. Whether SteamOS keeps `/etc/machine-id` across an A/B update is not established; record it before and after one
+(the E.3 evidence list) and report the result.
 
 ## Sandbox probe
 
@@ -410,7 +480,8 @@ commands, so that account needs no other password. There is no wildcard and no p
 proxy's pid from stdin and the relay port is fixed at 18443. Running `allow-capture.sh --remove` removes the rule, the
 helper and the hash. The helper checks its arguments; it cannot run Wine, a game, or a program chosen by the caller.
 The launcher hashes the installed copy against the one in this installation and refuses to sync if an update left the
-root copy stale, telling the player to run `allow-capture.sh` again.
+root copy stale, telling the player to run `allow-capture.sh` again. The helper's 443 relay uses `socat`; install it
+before the first sync. The Steam bridge no longer needs it.
 
 For the length of a sync, until the normal game exits, these change:
 
@@ -591,10 +662,12 @@ starts each session through the wrapper and checks that the wrapper and network-
 the namespace and its self-test, and the session runner checks the isolation before starting the game
 (`src/HellForge.Core/LinuxNetworkBlock.cs`), including for installations copied from Windows.
 
-The game still needs the Steam client, which runs outside with its normal network. `linux/hf-bridge-host.sh` exposes
-Steam's local ports as files (unix sockets, which cross into the namespace), and `linux/hf-inner.sh` turns them back into
-the same local ports inside. The bridges use `nodelay`: without it the game's many small calls to Steam were held back,
-and the frame rate dropped badly.
+The game still needs the Steam client, which runs outside with its normal network. `linux/hf-bridge-host.sh` runs
+`app/cli-linux/HellForge.Cli steam-bridge host`, which listens on the loopback ports the Steam client listens on and
+exposes each as a 0600 unix socket (files, which cross into the namespace). `linux/hf-inner.sh` runs `steam-bridge
+inner`, which opens the same loopback ports inside and relays each connection to its socket. Both sides use only
+127.0.0.1 and the socket directory; no route is added, and `socat` is not used. The TCP relays use `nodelay`: without
+it the game's many small calls to Steam were held back, and the frame rate dropped badly.
 
 The namespace is a network block, not a sandbox. It holds back the game's own connections, but programs the game asks to
 act for it outside still can: the Steam client through the bridge, the desktop session's services through their
@@ -679,7 +752,8 @@ probe, and a real game session have not been tested here.
   a Linux machine with Steam and the game depot download.
 - Co-op on Linux. Friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace, but the one test so far did not connect (see [above](#problems-players-have-reported)).
-- Steam as a Flatpak or Snap (its own `/tmp` and paths), and the Steam Deck (no `socat` by default), are untested.
+- Steam as a Flatpak or Snap (its own `/tmp` and paths), and SteamOS 3.x (see [SteamOS 3.x](#steamos-3x)), including the
+  Steam Deck and Game Mode, are untested.
 - The Steam ownership check under Proton. Setup and sessions run it, as on Windows (a session reuses a check that passed
   within 7 days for the same installation, account and build, where it can see Steam's signed-in account): under Wine, HellForge starts
   its Steam probe (`app\steamprobe\HellForge.SteamProbe.exe`) directly, because Wine's `powershell.exe` runs nothing.

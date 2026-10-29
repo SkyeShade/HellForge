@@ -21,7 +21,13 @@ fi
 exec "$@"'
 
 command -v ip >/dev/null || { echo "need iproute2 (ip)" >&2; exit 1; }
-command -v socat >/dev/null || { echo "need socat" >&2; exit 1; }
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The installation's native CLI, as hellforge-linux.sh and hf-inner.sh use; beside this script when INSTALL is not set
+# (the bridge started by hand).
+if [ -n "${INSTALL:-}" ]; then cli="$INSTALL/app/cli-linux/HellForge.Cli"; else cli="$here/../cli-linux/HellForge.Cli"; fi
+[ -f "$cli" ] || { echo "The native Linux build agent is missing ($cli): reinstall HellForge." >&2; exit 1; }
+[ -x "$cli" ] || chmod +x "$cli" 2>/dev/null || true
+[ -x "$cli" ] || { echo "The native Linux build agent is not executable: $cli" >&2; exit 1; }
 uid=$(id -u); gid=$(id -g)
 
 # Where only allowed programs may make a user namespace (Ubuntu 24.04 and later), HellForge's own copy of unshare is the
@@ -45,17 +51,42 @@ prefix="${prefix:-$HOME/.wine}"
 if [ -d "$prefix" ]; then
   server="server-$(stat -L -c %D "$prefix")-$(printf %x "$(stat -L -c %i "$prefix")")"
   wineserver_running() {
+    local s status
     for s in "${XDG_RUNTIME_DIR:-/run/user/$uid}/wine/$server/socket" "/tmp/.wine-$uid/$server/socket"; do
-      [ -S "$s" ] && socat -u OPEN:/dev/null UNIX-CONNECT:"$s" 2>/dev/null && return 0
+      if "$cli" steam-bridge check "$s"; then
+        return 0
+      else
+        status=$?
+      fi
+      case "$status" in
+        1) ;;
+        *)
+          echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace: steam-bridge check exited with code $status." >&2
+          return 3
+          ;;
+      esac
     done
     return 1
   }
-  for _ in $(seq 1 20); do wineserver_running || break; sleep 1; done
-  if wineserver_running; then
-    echo "A Windows program is still running in the Wine prefix $prefix outside HellForge's network namespace;" >&2
-    echo "programs started inside would share its network. Close it (or give HellForge a prefix of its own: docs/linux.md)." >&2
-    exit 1
-  fi
+  wineserver_state=0
+  for _ in $(seq 1 20); do
+    wineserver_state=0
+    wineserver_running || wineserver_state=$?
+    [ "$wineserver_state" = 1 ] || break
+    sleep 1
+  done
+  case "$wineserver_state" in
+    0)
+      echo "A Windows program is still running in the Wine prefix $prefix outside HellForge's network namespace;" >&2
+      echo "programs started inside would share its network. Close it (or give HellForge a prefix of its own: docs/linux.md)." >&2
+      exit 1
+      ;;
+    1) ;;
+    *)
+      echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace; refusing to start." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 # Everything below runs as root of a new user + network namespace. Default: nothing but loopback and a dead end.

@@ -84,19 +84,41 @@ public static class LinuxNetworkBlock
         {
             var wrapper = Path.Combine(install.App, "linux", "hellforge-offline.sh");
             if (!File.Exists(wrapper)) throw new InvalidOperationException("The Linux network-namespace wrapper is missing.");
-            var start = new ProcessStartInfo("bash") { WorkingDirectory = install.Root, UseShellExecute = false };
+            var start = new ProcessStartInfo("bash") { WorkingDirectory = install.Root, UseShellExecute = false, RedirectStandardError = true };
             start.ArgumentList.Add(wrapper);
             start.ArgumentList.Add("true");
             start.Environment["STEAM_COMPAT_DATA_PATH"] = WinePath.PrefixFromInstallRoot(install.Root);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Linux network-namespace self-test did not start.");
+            var error = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
-            if (process.ExitCode != 0) throw new InvalidOperationException("The network block was not installed: the offline namespace self-test failed.");
+            var stderr = await error;
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException("The network block was not installed: " +
+                    (SelfTestProblem(stderr) ?? "the offline namespace self-test failed."));
             WriteLinuxMarker(install);
             return;
         }
         var (ok, detail) = await Probe();
         if (!ok) throw new InvalidOperationException("The network block was not installed: " + detail);
         WriteLinuxMarker(install);
+    }
+
+    // The line of hellforge-offline.sh's stderr that explains why it stopped, or null when it said nothing. The
+    // script prefixes its own refusals with "hellforge-offline:"; iproute2 and unshare print theirs unprefixed. Pure,
+    // so setup's message is tested without making a namespace.
+    public static string? SelfTestProblem(string? stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr)) return null;
+        var lines = stderr.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToArray();
+        if (lines.Length == 0) return null;
+        string[] known =
+        [
+            "need ", "only lets allowed programs", "is still running in the Wine prefix", "outside connection SUCCEEDED",
+            "unshare", "refusing", "Permission denied", "Operation not permitted"
+        ];
+        var reason = lines.FirstOrDefault(line => known.Any(word => line.Contains(word, StringComparison.OrdinalIgnoreCase)))
+            ?? lines[^1];
+        return reason.Length <= 500 ? reason : reason[..500];
     }
 
     static void WriteLinuxMarker(InstallLayout install)
