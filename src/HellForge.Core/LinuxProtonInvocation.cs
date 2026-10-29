@@ -80,14 +80,24 @@ public sealed record LinuxProtonInvocation(
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         if (libraries.Count == 0) libraries.Add(steam);
         environment["STEAM_COMPAT_LIBRARY_PATHS"] = string.Join(Path.PathSeparator.ToString(), libraries);
-        if (!string.IsNullOrWhiteSpace(installPath)) environment["STEAM_COMPAT_INSTALL_PATH"] = installPath;
+        // pressure-vessel binds every path it is given separately. A bind nested inside the prefix (an installation or
+        // game copy kept in the prefix) becomes a locked submount there, and hf-sandbox's overlay of the prefix then fails
+        // ("failed to clone lowerpath", measured). So a path already inside another visible path is not listed again.
+        if (!string.IsNullOrWhiteSpace(installPath) && !LocalInstall.Within(installPath, compatibilityData))
+            environment["STEAM_COMPAT_INSTALL_PATH"] = installPath;
         if (!string.IsNullOrWhiteSpace(shaderPath)) environment["STEAM_COMPAT_SHADER_PATH"] = shaderPath;
-        var visible = new List<string>();
+        var visible = new List<string> { compatibilityData };
         if (!string.IsNullOrWhiteSpace(installPath)) visible.Add(installPath);
-        visible.Add(compatibilityData);
         if (mounts != null) visible.AddRange(mounts.Where(path => !string.IsNullOrWhiteSpace(path)));
         if (!string.IsNullOrWhiteSpace(shaderPath)) visible.Add(shaderPath);
-        var distinct = visible.Select(LocalInstall.FullPath).Distinct(StringComparer.Ordinal).ToArray();
-        if (distinct.Length > 0) environment["STEAM_COMPAT_MOUNTS"] = string.Join(Path.PathSeparator.ToString(), distinct);
+        var outermost = Outermost(visible.Select(LocalInstall.FullPath));
+        if (outermost.Count > 0) environment["STEAM_COMPAT_MOUNTS"] = string.Join(Path.PathSeparator.ToString(), outermost);
+    }
+
+    // The paths none of the others contains, in their first order.
+    static List<string> Outermost(IEnumerable<string> paths)
+    {
+        var distinct = paths.Distinct(StringComparer.Ordinal).ToList();
+        return distinct.Where(path => !distinct.Any(other => other != path && LocalInstall.Within(path, other))).ToList();
     }
 }

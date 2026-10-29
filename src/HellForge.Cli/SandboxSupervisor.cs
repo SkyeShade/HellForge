@@ -395,10 +395,14 @@ sealed class SandboxSupervisor
     // visible inside it; hf-sandbox then builds the same view as on the host.
     ProcessStartInfo DomainStartInfo(SandboxStartPlan plan, SteamRuntime runtime, string protonPath, string shell)
     {
+        // pressure-vessel also shares the caller's working folder as a bind. One inside the prefix (the installation
+        // root) locks hf-sandbox's overlay of it just like a nested mount does (measured), so container mode starts from
+        // the runtime's own folder. Every path passed is absolute, and hf-sandbox sets the game's working folder itself.
         var start = new ProcessStartInfo(shell)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            WorkingDirectory = install.Root
+            WorkingDirectory = runtime.Mode == SteamRuntimeMode.Container && runtime.Folder is { } runtimeFolder
+                ? runtimeFolder : install.Root
         };
         AppArmorPrefix(start);
         foreach (var part in SteamRuntimeLocator.EntryPointArguments(runtime, "waitforexitandrun")) start.ArgumentList.Add(part);
@@ -421,14 +425,21 @@ sealed class SandboxSupervisor
         start.ArgumentList.Add("--");
         foreach (var part in SteamRuntimeLocator.ProtonArguments(runtime, protonPath, "waitforexitandrun")) start.ArgumentList.Add(part);
         foreach (var part in new[] { plan.DomainHost, "host", "--spec", WinePath.ToZPath(plan.LaunchSpec) }) start.ArgumentList.Add(part);
-        if (runtime.Mode == SteamRuntimeMode.Container)
-        {
-            var shader = Environment.GetEnvironmentVariable("STEAM_COMPAT_SHADER_PATH");
-            var invocation = LinuxProtonInvocation.From(runtime, (protonPath, Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH")!, prefix),
-                "waitforexitandrun", [], new(InstallPath: install.Game, Mounts: [install.Root], ShaderPath: string.IsNullOrWhiteSpace(shader) ? null : shader));
-            foreach (var pair in invocation.Environment) start.Environment[pair.Key] = pair.Value;
-        }
+        if (runtime.Mode == SteamRuntimeMode.Container) ApplyContainerEnvironment(start, runtime, protonPath);
         return start;
+    }
+
+    // The runtime's tool and mount variables, so pressure-vessel shows the installation, prefix and shader cache.
+    void ApplyContainerEnvironment(ProcessStartInfo start, SteamRuntime runtime, string protonPath)
+    {
+        var shader = Environment.GetEnvironmentVariable("STEAM_COMPAT_SHADER_PATH");
+        var invocation = LinuxProtonInvocation.From(runtime, (protonPath, Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH")!, prefix),
+            "waitforexitandrun", [], new(InstallPath: install.Game, Mounts: [install.Root], ShaderPath: string.IsNullOrWhiteSpace(shader) ? null : shader));
+        foreach (var pair in invocation.Environment) start.Environment[pair.Key] = pair.Value;
+        // pressure-vessel shares the temporary folder too. SessionRunner points TEMP and TMP at <installation>/temp,
+        // inside the prefix, which locks the overlay the same way (measured). The domain host sets the game's own TEMP
+        // inside the domain, so the Linux side needs none.
+        foreach (var name in new[] { "TEMP", "TMP", "TMPDIR" }) start.Environment.Remove(name);
     }
 
     // Ubuntu's AppArmor user-namespace restriction: HellForge's allowed unshare goes first, so hf-sandbox (and in container

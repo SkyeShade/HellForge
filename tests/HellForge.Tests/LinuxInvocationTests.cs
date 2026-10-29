@@ -75,6 +75,14 @@ static class LinuxInvocationTests
                 "STEAM_COMPAT_MOUNTS did not name the game and prefix.");
             check(invocation.Environment["STEAM_COMPAT_SHADER_PATH"] == shader,
                 "STEAM_COMPAT_SHADER_PATH was not passed.");
+            // An installation kept inside the prefix (the normal native setup): pressure-vessel must bind only the prefix,
+            // or the nested binds lock hf-sandbox's overlay of it (measured: "failed to clone lowerpath").
+            var inside = Path.Combine(prefix, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge");
+            var nested = LinuxProtonInvocation.Create(tree.Proton, tree.Steam, prefix, "waitforexitandrun", [],
+                new(InstallPath: Path.Combine(inside, "game"), Mounts: [inside]));
+            check(nested.Environment["STEAM_COMPAT_MOUNTS"] == LocalInstall.FullPath(prefix) &&
+                !nested.Environment.ContainsKey("STEAM_COMPAT_INSTALL_PATH"),
+                "Paths inside the prefix were bound again: " + nested.Environment["STEAM_COMPAT_MOUNTS"]);
 
             var record = Path.Combine(root, "invocation-container.argv");
             var environment = Path.Combine(root, "invocation-container.env");
