@@ -59,7 +59,13 @@ static class AccountImport
                 : Math.Max(experience, Whole(progression, "experience") ?? 0);
         if (settings.Includes("warbondItems")) MergeWarbondUnlocks(progression, vanilla, settings.RuleFor("warbondItems"));
         if (settings.Includes("packages")) MergePackages(progression, vanilla, settings.RuleFor("packages"));
-        if (settings.Includes("ship")) Copy(progression, vanilla, "shipName", "location");
+        if (settings.Includes("ship"))
+        {
+            Copy(progression, vanilla, "shipName");
+            // A ship away from any planet (warId and planetIndex -1) keeps the profile's location instead of failing the import.
+            if (vanilla.TryGetProperty("location", out var location) && ProfileStore.ParseLocation(location) is { } parsed)
+                progression["location"] = parsed;
+        }
         if (settings.Includes("onboarding")) Copy(progression, vanilla, "onboardingState", "onboardingFlags");
     }
 
@@ -189,7 +195,7 @@ static class AccountImport
     static string Ship(JsonObject progression)
     {
         var name = progression["shipName"] is JsonArray words ? "name " + string.Join("-", words.Select(w => w?.ToJsonString())) : "no name";
-        var planet = progression["location"] is JsonObject location && Whole(location, "planetIndex") is { } index ? ", planet " + Format(index) : "";
+        var planet = progression["location"] is JsonObject location && Whole(location, "planetIndex") is { } index and >= 0 ? ", planet " + Format(index) : "";
         return name + planet;
     }
 
