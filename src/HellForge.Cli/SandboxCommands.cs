@@ -14,7 +14,7 @@ static class SandboxCommands
     public static bool TryRun(string[] args, out int exitCode)
     {
         exitCode = 0;
-        if (args.Length == 0 || args[0] is not ("sandbox-supervise" or "sandbox-copy-back" or "sandbox-readiness")) return false;
+        if (args.Length == 0 || args[0] is not ("sandbox-supervise" or "sandbox-copy-back" or "sandbox-readiness" or "sandbox-prefix-case")) return false;
         try
         {
             if (!OperatingSystem.IsLinux() || LinuxNetworkBlock.UnderWine)
@@ -22,6 +22,12 @@ static class SandboxCommands
             if (args[0] == "sandbox-readiness")
             {
                 exitCode = RunReadiness(ExistingInstall(Parse(args, ReadinessOptions)));
+            }
+            else if (args[0] == "sandbox-prefix-case")
+            {
+                var problem = PrefixCaseProblem(ExistingInstall(Parse(args, ReadinessOptions)));
+                if (problem != null) Console.Error.WriteLine("HellForge: " + problem);
+                exitCode = problem == null ? 0 : 1;
             }
             else if (args[0] == "sandbox-supervise")
             {
@@ -70,6 +76,12 @@ static class SandboxCommands
         }
         var kernel = LinuxSandboxReadiness.KernelRelease();
         var expected = LinuxSandboxReadiness.ExpectedMode(install);
+        if (PrefixCaseProblem(install) is { } caseProblem)
+        {
+            LinuxSandboxReadiness.Save(install, false, caseProblem, appBuild: appBuild, kernelRelease: kernel, mode: expected);
+            Console.Error.WriteLine("HellForge: " + caseProblem);
+            return 1;
+        }
         var current = LinuxSandboxReadiness.Read(install);
         if (LinuxSandboxReadiness.IsCurrent(current, appBuild, kernel, expected.Mode, expected.RuntimeIdentity))
         {
@@ -86,6 +98,22 @@ static class SandboxCommands
         if (recorded) return 0;
         Console.Error.WriteLine("HellForge: " + recordedReason);
         return 1;
+    }
+
+    // The sandbox's overlay cannot use a prefix whose drive_c is case-insensitive (LinuxPrefixCase). HellForge's own
+    // prefix, the one holding this installation, is made case-sensitive here; another prefix is only reported.
+    static string? PrefixCaseProblem(InstallLayout install)
+    {
+        var own = LinuxPrefixCase.OwnPrefix(install) is { } found ? LinuxPrefixCase.Normalize(found) : null;
+        var configured = Environment.GetEnvironmentVariable("STEAM_COMPAT_DATA_PATH");
+        var prefix = string.IsNullOrWhiteSpace(configured) ? own : LinuxPrefixCase.Normalize(configured);
+        if (prefix == null || !LinuxPrefixCase.Needed(prefix)) return null;
+        if (own == null || own != prefix)
+            return "the sandbox's prefix (" + prefix + ") has a case-insensitive drive_c, which the kernel's overlay cannot sandbox; HellForge converts only its own prefix";
+        var (converted, problem) = LinuxPrefixCase.Convert(prefix, () => LinuxPrefixCase.WineRunning(prefix));
+        if (problem != null) return "the prefix's drive_c is case-insensitive and could not be made case-sensitive yet: " + problem;
+        Console.Error.WriteLine("HellForge: made the prefix's drive_c case-sensitive for the sandbox (" + converted + " folders).");
+        return null;
     }
 
     static (bool Passed, string Reason) RunSelfTest(InstallLayout install)

@@ -688,6 +688,7 @@ SteamPathTests.Register(Test, Check, Reject, root);
 SteamRuntimeTests.Register(Test, Check, Reject, root);
 LinuxInvocationTests.Register(Test, Check, Reject, root);
 ContainerCheckTests.Register(Test, Check, Reject, root);
+LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
 VerifiedListTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);

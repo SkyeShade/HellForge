@@ -533,6 +533,20 @@ There is no command string and no shell: the request names fixed paths and an en
 - **Prefix:** the command gets a per-session overlay of the Wine prefix. The real prefix is its read-only lower layer,
   and everything written to `C:` lands in the run folder's `sandbox/upper`, outside the view. An installation inside
   the prefix is hidden in the overlay too: through `C:` only its `game` folder is visible, read-only.
+- **Case-insensitive `drive_c` (SteamOS):** Proton 11 sets ext4's casefold flag on a new prefix's `drive_c` where the
+  filesystem supports it, as SteamOS's does. The kernel's overlayfs cannot use that: with the session's layers below
+  `drive_c` (case-insensitive) and the prefix root above it (case-sensitive) the mount is refused ("case-insensitive
+  directory ... is inconsistent", darcien on #112), and even with matching layers every file below `drive_c` fails with
+  "Object is remote" (measured on 7.2.12 with a casefold tmpfs). So `sandbox-readiness` makes HellForge's own prefix,
+  the one holding the installation, case-sensitive before its self-test, as a prefix is on every other filesystem;
+  Wine finds names case-insensitively by itself there. Each case-insensitive folder is rebuilt top-down: a
+  case-sensitive sibling `.hf-cs-<name>`, every entry moved into it with `renameat2(RENAME_NOREPLACE)` (nothing is
+  copied or replaced, links are moved as links), the old folder removed and the new one renamed into its place. A
+  journal file in the prefix (`.hellforge-case-sensitive.journal`) marks a conversion in progress, and the next run
+  finishes a folder a stopped one left half-moved. It is refused while a Windows program runs in the prefix (its
+  wineserver socket answers); the sandbox is then off for that session with the reason, and readiness tries again
+  next time. A prefix other than HellForge's own is never changed, only reported. `HellForge.Cli sandbox-prefix-case
+  --install <folder>` runs the conversion alone.
 - **Read-only:** the system folders, Proton, the parts of Steam that Proton needs (`ubuntu12_32`, `ubuntu12_64`,
   `linux32`, `linux64`, the Steam runtimes), the game copy, the exact active mod inputs and `app/session`. Steam's own
   folder is not in the view, so its `config` folder, which holds the login data, is absent.

@@ -90,10 +90,12 @@ try
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
             issue), with the crash dump only with --dump yes. Nothing is uploaded.
             sandbox-readiness --install <folder>
+            sandbox-prefix-case --install <folder>
             sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
             sandbox-copy-back --install <folder> --run <session folder> --profile <name>
             The sandbox commands are native Linux only: sandbox-readiness runs the wrapper's self-test and records the
-            result for the installed app build and kernel; hf-inner.sh starts the supervisor, which builds the game
+            result for the installed app build and kernel (first making HellForge's prefix case-sensitive, as
+            sandbox-prefix-case does alone, when Proton made its drive_c case-insensitive); hf-inner.sh starts the supervisor, which builds the game
             domain and performs the hardened copy-back after the domain is gone. The supervisor and copy-back never
             invoke a shell or start an unsandboxed game.
             Close Steam and the game before prepare; installations must remain idle.
