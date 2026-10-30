@@ -420,16 +420,37 @@ public static partial class ModCatalog
     // bindings, a cache: each player's own); a zip that cannot be read again is compared by its folder. A bundled mod (the
     // in-game editor) by the files HellForge ships for it, not what the player saved beside them. A source mod by its
     // sources: the DLL in its folder (an IDE's build) is not what loads (ModBuilds).
+    // A mod without code cannot read a file by name, so documentation, pictures and licences are not part of it: only what
+    // HellForge or the game opens (data/, the manifests, the stats file, the data spec and its inputs, src/) is counted.
     internal static IEnumerable<(string Path, string? Sha256)> DigestFiles(ModManifest mod)
     {
         var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
         var shipped = BundledMods.ShippedFiles(mod.Folder);
         var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
+        var specInputs = mod.HasDataSpec ? DataSpecs.Load(mod.Folder)?.Inputs.ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
         return files.Where(f => !IsWorkspaceFile(f))
             .Where(f => shipped == null || shipped.Contains(f))
             .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
+            .Where(f => mod.HasCode || mod.HasSource || !UnloadedFile(f, specInputs))
             .Order(StringComparer.Ordinal)
             .Select(f => (f, zipped?[f]));
+    }
+
+    // Documentation, pictures and licences that HellForge and the game never load. A data spec's own inputs (its PNG and
+    // OBJ files) are read by ModDataBuilder and stay counted, as does everything under data/ and src/ and the files that
+    // make up the mod.
+    static readonly string[] UnloadedExtensions = [".md", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg", ".psd", ".xcf"];
+    static readonly string[] UnloadedNames = ["LICENSE", "COPYING", "README", "CHANGELOG", "NOTICE"];
+
+    static bool UnloadedFile(string relative, IReadOnlySet<string>? specInputs)
+    {
+        if (specInputs?.Contains(relative) == true) return false;
+        if (relative.StartsWith("data/", StringComparison.OrdinalIgnoreCase) || relative.StartsWith("src/", StringComparison.OrdinalIgnoreCase)) return false;
+        var name = Path.GetFileName(relative);
+        if (name.Equals(ManifestName, StringComparison.OrdinalIgnoreCase) || name.Equals(LegacyManifestName, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(StatsData.FileName, StringComparison.OrdinalIgnoreCase) || name.Equals(DataSpecs.FileName, StringComparison.OrdinalIgnoreCase)) return false;
+        if (UnloadedNames.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) return true;
+        return UnloadedExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
     }
 
     internal static bool SourceBuildOutput(ModManifest mod, string relative) =>

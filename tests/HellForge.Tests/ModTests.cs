@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using HellForge.Core;
+using HellForge.Core.GameData;
 
 // Mods: manifests, the modlist digest, data staging and the native applier against a synthetic entity region in this
 // process (the game's real region has the profile's size and framing; here only the bytes HellForge reads are filled in).
@@ -187,6 +188,77 @@ static class ModTests
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) == first, "A cosmetic mod changed the digest.");
             File.WriteAllText(Path.Combine(mods, "ammo", ModCatalog.ManifestName), Example.Replace("\"value\":5000", "\"value\":4000"));
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != first && first.Length == 32, "A gameplay change kept the digest.");
+        });
+
+        test("The modlist code leaves out documentation and pictures for a mod without code, and a synced mod still rehashes", () =>
+        {
+            var mods = Path.Combine(root, "mods-unloaded");
+            var manifest = """
+                {"format":1,"id":"test.docs","name":"Docs","version":"1","native":{"networkFieldTypes":[
+                  {"name":"deposit_value","expect":{"kind":1,"bits":10,"min":0},"bits":14}]}}
+                """;
+            void Write(string folder, bool extras)
+            {
+                Directory.CreateDirectory(Path.Combine(mods, folder, "data"));
+                File.WriteAllText(Path.Combine(mods, folder, ModCatalog.ManifestName), manifest);
+                File.WriteAllText(Path.Combine(mods, folder, "data", "0123456789abcdef.patch_0"), "a unit patch");
+                if (!extras) return;
+                File.WriteAllText(Path.Combine(mods, folder, "README.md"), "read me");
+                File.WriteAllText(Path.Combine(mods, folder, "LICENSE"), "licence");
+                File.WriteAllText(Path.Combine(mods, folder, "CHANGELOG.txt"), "changes");
+                Directory.CreateDirectory(Path.Combine(mods, folder, "docs"));
+                File.WriteAllText(Path.Combine(mods, folder, "docs", "notes.txt"), "notes");
+                File.WriteAllBytes(Path.Combine(mods, folder, "icon.png"), [1, 2, 3]);
+            }
+            Write("with", extras: true);
+            Write("without", extras: false);
+            var with = ModCatalog.Parse(Path.Combine(mods, "with"), EntityProfile.Current);
+            var without = ModCatalog.Parse(Path.Combine(mods, "without"), EntityProfile.Current);
+            check(ModCatalog.Digest([with]) == ModCatalog.Digest([without]), "A README, licence or picture changed the modlist code.");
+            File.WriteAllText(Path.Combine(mods, "with", "data", "0123456789abcdef.patch_0"), "another unit patch");
+            check(ModCatalog.Digest([ModCatalog.Parse(Path.Combine(mods, "with"), EntityProfile.Current)]) != ModCatalog.Digest([without]),
+                "A change under data/ kept the modlist code.");
+            File.WriteAllText(Path.Combine(mods, "with", "data", "0123456789abcdef.patch_0"), "a unit patch");
+            // A data spec's PNG is an input ModDataBuilder reads: it stays in the code even though it is a picture.
+            var spec = Path.Combine(mods, "spec");
+            Directory.CreateDirectory(spec);
+            File.WriteAllText(Path.Combine(spec, ModCatalog.ManifestName), """{"format":1,"id":"test.spec","name":"Spec","version":"1"}""");
+            File.WriteAllText(Path.Combine(spec, DataSpecs.FileName), """
+                {"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"icon":"icon.png","name":"test/mod/icon"}]}]}
+                """);
+            File.WriteAllBytes(Path.Combine(spec, "icon.png"), [1, 2, 3]);
+            var specDigest = ModCatalog.Digest([ModCatalog.Parse(spec, EntityProfile.Current)]);
+            File.WriteAllBytes(Path.Combine(spec, "icon.png"), [4, 5, 6]);
+            check(ModCatalog.Digest([ModCatalog.Parse(spec, EntityProfile.Current)]) != specDigest, "A data spec's own PNG input left the modlist code.");
+            // Code can read any file of its folder: its README counts.
+            var code = Path.Combine(mods, "code");
+            Directory.CreateDirectory(code);
+            File.WriteAllText(Path.Combine(code, ModCatalog.ManifestName), """{"format":1,"id":"test.code-docs","name":"Code","version":"1","code":{"dll":"mod.dll","sdk":1}}""");
+            File.WriteAllText(Path.Combine(code, "mod.dll"), "synthetic dll");
+            File.WriteAllText(Path.Combine(code, "README.md"), "one");
+            var codeDigest = ModCatalog.Digest([ModCatalog.Parse(code, EntityProfile.Current)]);
+            File.WriteAllText(Path.Combine(code, "README.md"), "two");
+            check(ModCatalog.Digest([ModCatalog.Parse(code, EntityProfile.Current)]) != codeDigest, "A code mod's README left the modlist code.");
+            // What a host shares is the counted files only; the joiner's copy rehashes to the host's content hash.
+            Directory.Delete(Path.Combine(mods, "without"), recursive: true);
+            var (loaded, problems) = ModCatalog.Load(mods);
+            check(problems.Count == 0, "The mods load: " + string.Join(" | ", problems));
+            var entry = ModSet.Of(ModCatalog.LoadOrder(loaded.Where(m => m.Id == "test.docs"))).Mods.Single();
+            check(!entry.Files.Any(f => f.Path is "README.md" or "icon.png" or "LICENSE" || f.Path.EndsWith(".txt", StringComparison.Ordinal)) &&
+                entry.Files.Any(f => f.Path == "data/0123456789abcdef.patch_0"), "The shared file list counts the wrong files.");
+            var guestMods = Path.Combine(root, "mods-unloaded-guest");
+            Directory.CreateDirectory(guestMods);
+            var partial = SyncedStore.Partial(guestMods, entry.Id, entry.Hash);
+            foreach (var file in entry.Files)
+            {
+                var target = Path.Combine(partial, file.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(Path.Combine(entry.Folder!, file.Path), target);
+            }
+            var installed = SyncedStore.Install(guestMods, entry, partial, (_, _) => true);
+            check(SyncedStore.Find(guestMods, entry.Id, entry.Hash) == installed &&
+                ModSets.ContentHash(ModCatalog.Parse(installed, EntityProfile.Current)) == entry.Hash,
+                "A synced mod with a README and an icon does not rehash to the host's content hash.");
         });
 
         test("Data mods are staged after existing patches and removed exactly", () =>
