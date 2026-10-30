@@ -49,7 +49,8 @@ static class ModChannelTests
                 using var connected = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                 lock (pipeGate) connection = connected;
                 using var reader = new StreamReader(client, new UTF8Encoding(false));
-                using var writer = new StreamWriter(client, new UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
+                // Disposed by hand below: its final flush meets a pipe the backend may already have closed.
+                var writer = new StreamWriter(client, new UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
                 var writing = new SemaphoreSlim(1, 1);
                 async Task Write(string text)
                 {
@@ -77,6 +78,8 @@ static class ModChannelTests
                 catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
                 connected.Cancel();
                 try { await pushing; } catch (OperationCanceledException) { }
+                try { writer.Dispose(); }
+                catch (Exception error) when (error is IOException or ObjectDisposedException) { }
                 lock (pipeGate) if (connection == connected) connection = null;
             }
         }
