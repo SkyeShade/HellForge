@@ -319,6 +319,13 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
+        if (SyncCaptureId != null)
+        {
+            SetStatus("Account Sync is finishing: it keeps the normal HELLDIVERS 2 connected until you close it.", Phase.Attention,
+                "Close HELLDIVERS 2, then press PLAY again.");
+            return false;
+        }
         if (ShowLeftoverProcesses())
         {
             SetStatus("A game, anti-cheat or session process is still running.", Phase.Attention,
@@ -631,7 +638,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            var names = LinuxInstallProcesses.SessionLeftovers(paths.InstallRoot);
+            var names = LinuxInstallProcesses.SessionLeftovers(paths.InstallRoot, SyncCaptureId);
             if (names.Count == 0)
             {
                 LeftoverProcessesCard.IsVisible = false;
@@ -655,7 +662,7 @@ public partial class MainWindow : Window
         if (paths.InstallRoot == null) return;
         try
         {
-            var ended = LinuxInstallProcesses.EndSessionLeftovers(paths.InstallRoot);
+            var ended = LinuxInstallProcesses.EndSessionLeftovers(paths.InstallRoot, SyncCaptureId);
             Append(ended.Count > 0 ? "Ended " + string.Join(", ", ended) + "." : "No leftover session processes were found.",
                 ended.Count > 0 ? Green : Light);
         }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using HellForge.Core;
 
@@ -212,6 +213,35 @@ static class LinuxInstallerTests
                 [@"Z:" + wrapper.Replace('/', '\\')], [], null), installRoot), "A Z: path argument was not recognised.");
             check(!LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash", [], ["INSTALL=" + installRoot + "-other"], null), installRoot),
                 "A similar installation path was treated as this one.");
+        });
+
+        test("Linux leftover check names a program in full and leaves the launcher's own running sync capture alone", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux processes)"); return; }
+            // A real process the kernel names "HellForge.Captu": a script as the installation's capture proxy. Not a copy of
+            // sleep: uutils' coreutils (Ubuntu 26.04) is one program that picks the tool by its own name.
+            var installRoot = Path.Combine(root, "linux-sync-capture", "HellForge");
+            var program = Path.Combine(installRoot, "app", "capture-linux", InventorySync.LinuxProxyExe);
+            Directory.CreateDirectory(Path.GetDirectoryName(program)!);
+            File.WriteAllText(program, "#!/bin/sh\nsleep 60\n");
+            File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            using var capture = Process.Start(new ProcessStartInfo(program) { UseShellExecute = false })!;
+            try
+            {
+                Thread.Sleep(200);
+                check(LinuxInstallProcesses.SessionLeftovers(installRoot).SequenceEqual([InventorySync.LinuxProxyExe]),
+                    "Another launcher's capture is a leftover, named in full: " + string.Join(", ", LinuxInstallProcesses.SessionLeftovers(installRoot)));
+                check(LinuxInstallProcesses.SessionLeftovers(installRoot, capture.Id).Count == 0 &&
+                    LinuxInstallProcesses.EndSessionLeftovers(installRoot, capture.Id).Count == 0 && !capture.HasExited,
+                    "This launcher's own capture is not listed and End leaves it running.");
+            }
+            finally { try { capture.Kill(entireProcessTree: true); capture.WaitForExit(5000); } catch (InvalidOperationException) { } }
+            check(LinuxInstallProcesses.DisplayName("HellForge.Captu", null, [@"C:\users\steamuser\HellForge\game\bin\HellForge.CaptureProxy.exe"]) == "HellForge.CaptureProxy.exe" &&
+                LinuxInstallProcesses.DisplayName("helldivers2.exe", "/usr/bin/wine64-preloader", []) == "helldivers2.exe" &&
+                LinuxInstallProcesses.DisplayName("abcdefghijklmno", "/opt/zzz/other", ["/opt/zzz/other"]) == "abcdefghijklmno" &&
+                LinuxInstallProcesses.DisplayName("", null, [@"C:\x\y\game.exe"]) == "game.exe" &&
+                LinuxInstallProcesses.DisplayName("HellForge.Captu", "/usr/bin/dash", ["/bin/sh", "/x/HellForge.CaptureProxy"]) == "HellForge.CaptureProxy",
+                "A cut name takes the Windows, host or script name it starts; a whole or unrelated one stays.");
         });
 
         test("Linux leftover check before PLAY leaves the Steam bridge and Steam's reaper for it alone, and nothing else", () =>

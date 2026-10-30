@@ -608,7 +608,10 @@ probe it ran itself (`HELLFORGE_STEAM_ACCOUNT` is read only by the Windows backe
 The capture usually ends while the game is still open. The prefix is not changed while the game runs, so the launcher
 waits for HELLDIVERS 2 to close and then removes the one-day CA from its prefix. If the launcher is closed first, its
 next start removes it. The CA's private key exists only in the capture proxy's memory, so a leftover CA cannot be used
-to intercept the game.
+to intercept the game. Until the game closes, the capture still forwards it: the sync card says to close the game to
+finish, PLAY waits with the same message, and the leftover-process check and its End button leave this launcher's own
+capture alone (a capture another launcher left is still listed). Leftovers are named in full, not as the kernel's
+15-character command name (`HellForge.Captu`).
 
 The first sync asks once to install the helper. Choosing **Install** runs the shipped
 `app/linux/allow-capture.sh` through `pkexec /usr/bin/bash ...`, so the desktop's own polkit dialog asks for the

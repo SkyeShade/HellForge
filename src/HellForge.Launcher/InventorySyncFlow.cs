@@ -22,6 +22,8 @@ public partial class MainWindow
 
     // Busy until the capture is taken; after that the proxy only keeps the game connected, and imports may run.
     bool SyncBusy => syncProxy != null && !syncTaken || syncStarting;
+    // This launcher's running capture: not a session leftover (MainWindow.ShowLeftoverProcesses).
+    int? SyncCaptureId => syncProxy is { HasExited: false } run ? run.Id : null;
 
     void InitializeSync()
     {
