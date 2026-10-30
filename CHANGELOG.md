@@ -31,6 +31,10 @@ On `dev`, since 0.3.0-beta.
   ignored.
 - Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
   #149).
+- Mods together can add 512 weapons and entities, up from 192. Past 2,048 network types, HellForge widens the game's
+  network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
+  Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
+  can still be refused; each refusal is in the mod's log.
 
 ### Fixed
 
