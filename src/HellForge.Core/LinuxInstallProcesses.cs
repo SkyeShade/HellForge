@@ -176,13 +176,14 @@ public static class LinuxInstallProcesses
         return new(name, executable, arguments, ReadList(Path.Combine(folder, "environ")), ReadLink(Path.Combine(folder, "cwd")));
     }
 
-    // The kernel keeps 15 characters of a command name ("HellForge.Captu"). A cut name is replaced by the program's file
-    // name it starts (the executable's, else the first argument's, which is the Windows path for a Wine program).
+    // The kernel keeps 15 characters of a command name ("HellForge.Captu"). A cut name is replaced by the file name it
+    // starts: the executable's, else the first argument's that does (the Windows path for a Wine program, a script's path
+    // after its interpreter).
     internal static string DisplayName(string comm, string? executable, IReadOnlyList<string> arguments)
     {
         if (comm.Length == 0) return arguments.Count > 0 ? FileName(arguments[0]) : "";
         if (comm.Length < CommLength) return comm;
-        foreach (var path in new[] { executable, arguments.Count > 0 ? arguments[0] : null })
+        foreach (var path in arguments.Prepend(executable))
             if (path is { Length: > 0 } && FileName(path) is var file && file.Length > comm.Length &&
                 file.StartsWith(comm, StringComparison.Ordinal)) return file;
         return comm;
