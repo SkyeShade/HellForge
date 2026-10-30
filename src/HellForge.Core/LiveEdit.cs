@@ -33,7 +33,9 @@ public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 // the caller decides (a friend's game would not have the change).
 public sealed class LiveEditServer : IAsyncDisposable
 {
-    public const int Protocol = 1;
+    // Protocol 2 adds the mod channel's lines (native/mod-loader/channel.c); a protocol 1 game gets the older ones only.
+    public const int Protocol = 2;
+    const int OldestProtocol = 1;
     readonly string name, build;
     readonly CancellationTokenSource stop = new();
     readonly SemaphoreSlim sending = new(1, 1);
@@ -45,15 +47,18 @@ public sealed class LiveEditServer : IAsyncDisposable
 
     public static string PipeName(string runId) => "hellforge-live-" + runId;
 
-    // The game's hello: its build and the stats schema it was planned with; empty until a game connects.
+    // The game's hello: its build, the stats schema it was planned with, and its live protocol; empty until a game
+    // connects, and 0 while none does.
     public string GameBuild { get; private set; } = "";
     public string GameSchema { get; private set; } = "";
+    public int GameProtocol { get; private set; }
     public bool Connected { get; private set; }
     // The connected game runs another build or schema than this HellForge: requests are not sent.
     public bool Mismatched => Connected && (GameBuild != build || GameSchema != "-" && GameSchema != StatsSchema.Fingerprint);
     public event Action? StateChanged;
-    // A line the game sent on its own (not a reply), split at its tabs: mod sync's "syncanswer", and "packages" (this
-    // game's own packages, for friends: AssetShare) (native/mod-loader/live.c).
+    // A line the game sent on its own (not a reply), split at its tabs: mod sync's "syncanswer", "packages" (this
+    // game's own packages, for friends: AssetShare), and the mod channel's "send" and "share" (ModChannel)
+    // (native/mod-loader/live.c).
     public event Action<string[]>? Received;
 
     // build: the game build the session must run (the schema's; a test harness passes its own).
@@ -84,6 +89,7 @@ public sealed class LiveEditServer : IAsyncDisposable
             finally
             {
                 Connected = false;
+                GameProtocol = 0;
                 writer = null;
                 pipe = null;
                 lock (pending) { foreach (var waiter in pending.Values) waiter.TrySetResult("-\trefused\tthe game disconnected"); pending.Clear(); }
@@ -97,9 +103,10 @@ public sealed class LiveEditServer : IAsyncDisposable
     void Receive(string line)
     {
         var parts = line.Split('\t');
-        if (parts[0] == "hello" && parts.Length == 4 && parts[1] == Protocol.ToString(CultureInfo.InvariantCulture))
+        if (parts[0] == "hello" && parts.Length == 4 &&
+            int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var protocol) && protocol is >= OldestProtocol and <= Protocol)
         {
-            (GameBuild, GameSchema, Connected) = (parts[2], parts[3], true);
+            (GameBuild, GameSchema, GameProtocol, Connected) = (parts[2], parts[3], protocol, true);
             StateChanged?.Invoke();
         }
         else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var seq))
@@ -141,6 +148,15 @@ public sealed class LiveEditServer : IAsyncDisposable
     // Each player's changes of projectile and damage rows, which the game's copies of their shots fly and hit with
     // (native/mod-loader/rounds.c): "<peer hex>=<entry>;<entry>..." comma separated, "-" none (AssetShare.Rounds).
     public Task<LiveResult> RoundsAsync(string list) => SendAsync("rounds", list);
+
+    // The mod channel (SDK 16, native/mod-loader/channel.c): a message from the same mod on another machine, one row of
+    // the host's shared table (no value: removed), and the lobby changing (every row goes, then its snapshot follows).
+    public Task<LiveResult> MessageAsync(string modId, ulong from, byte[] data) =>
+        SendAsync("message", Field(modId) + "\t" + from.ToString("x16", CultureInfo.InvariantCulture) + "\t" + Convert.ToHexString(data).ToLowerInvariant());
+    public Task<LiveResult> ShareAsync(string modId, ulong key, byte[]? value) =>
+        SendAsync("share", Field(modId) + "\t" + key.ToString("x16", CultureInfo.InvariantCulture) + "\t" +
+            (value is { Length: > 0 } ? Convert.ToHexString(value).ToLowerInvariant() : "-"));
+    public Task<LiveResult> ShareResetAsync() => SendAsync("sharereset", "");
 
     // A "packages" or "preload" list: package ids, 16 hex digits each, comma separated, "-" none. Null when malformed.
     public static SortedSet<ulong>? Packages(string list, int max)

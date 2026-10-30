@@ -590,6 +590,9 @@ try
     await AssetShareTests.Run(root, Check);
     results.Add(new { mode = "asset-share", outcome = "passed" });
     Console.WriteLine("PASS asset share: every game loads the lobby's packages less its own, a joiner's new package reaches the others, malformed lists dropped, each player's projectile swaps reach every game");
+    await ModChannelTests.Run(root, Check);
+    results.Add(new { mode = "mod-channel", outcome = "passed" });
+    Console.WriteLine("PASS mod channel: the host's rows reach joiners and late joiners, messages to all/host/peer, reconnects, caps, the lobby's end and a protocol 1 game");
     RecordGuardTests.Run(root, Check);
     await DirectoryTests.Run(root, Check);
     results.Add(new { mode = "directory", outcome = "passed" });
