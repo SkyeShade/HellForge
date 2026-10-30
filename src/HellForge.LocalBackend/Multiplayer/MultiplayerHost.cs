@@ -26,6 +26,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
     // The host's stats for joiners, and this game's when joined (null without a peer link or the session's mods folder).
     public StatsShare? Stats { get; private set; }
     public AssetShare? Assets { get; private set; }
+    // The mod channel of the lobby (SDK 16): messages between the same mod and the host's shared table.
+    public ModChannel? Channel { get; private set; }
     // Mod sync: joiners download this session's mods, and this machine the mods of a host it could not join (null
     // without a peer link or the session's mods folder).
     public ModSync? Sync { get; private set; }
@@ -100,6 +102,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type.StartsWith("party.", StringComparison.Ordinal)) Party.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("stats.", StringComparison.Ordinal)) Stats?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("assets.", StringComparison.Ordinal)) Assets?.FromPeer(peer, frame);
+                else if (frame.Type is "mods.msg" or "mods.share" or "mods.sharesnap") Channel?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
                 else if (frame.Type == "war.clock" && warClock != null && Lobby.HostsJoinedLobby(peer) && long.TryParse(frame.Text(0), out var seconds))
                 {
@@ -126,6 +129,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
                     new StatsShareOptions(() => ModSettings.Read(modsFolder).HostStats, settings.SandboxStats));
                 var stats = host.Stats;
                 host.Assets = new AssetShare(host.transport, host.Lobby, stats.Live, host.Log, () => stats.LocalStats, () => stats.LobbyPlaysHostStats);
+                host.Channel = new ModChannel(host.transport, host.Lobby, stats.Live, host.Log);
                 host.Log("Stats: every player keeps their own unless the host shares its (the Mods page); the lobby's packages load on every machine; this game's live-edit pipe is served here.");
             }
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
@@ -412,6 +416,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Rejoin?.Dispose();
         if (Directory != null) await Directory.DisposeAsync();
         if (Sync != null) await Sync.DisposeAsync();
+        if (Channel != null) await Channel.DisposeAsync();
         if (Assets != null) await Assets.DisposeAsync();
         if (Stats != null) await Stats.DisposeAsync();
         await pipes.DisposeAsync();

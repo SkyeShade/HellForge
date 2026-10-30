@@ -10,7 +10,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 |---|---|---|
 | Local game copy | Done | Shipped in 0.2.0 |
 | Co-op with friends | Done | Shipped in 0.2.0 |
-| [Mod SDK](sdk-roadmap.md) | Done | SDK 15; some events and registries left |
+| [Mod SDK](sdk-roadmap.md) | Done | SDK 16; some events and registries left |
 | Build patches for newer Steam builds | Done | Each new Steam build needs a new patch |
 | Open source | Done | GPL-3 |
 | In-game editor | Mostly done | Player's kit mostly ported; enemies and structures built; missions left |
@@ -42,7 +42,7 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
 (session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 15.
+Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 16.
 
 ## Done in 0.2.0-beta
 

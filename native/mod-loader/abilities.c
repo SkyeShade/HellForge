@@ -337,13 +337,18 @@ static void GiveLinkBack(HeldLaunch* h)
     if (record != NULL && !shared && !SafeRead((uintptr_t)record + 4, &magic, 4) && magic == 0) *(uint32_t*)(record + 4) = ABL_SILO_LINK;
 }
 
-/* Whether this machine has authority over an entity now (its entity info +0x14 bit 0, as every component manager reads it). */
-static int AblAuthority(uint32_t entity)
+/* Whether this machine has authority over an entity now (its entity info +0x14 bit 0, as every component manager reads
+ * it), and whether the entity exists at all (descriptor NULL): 1 authority, 0 not. */
+static int AblAuthorityAt(uintptr_t game, uint32_t entity, int* exists)
 {
-    const uint8_t* descriptor = entity != 0 ? ((const uint8_t* (*)(uint32_t))BhvFn(F_DESCRIPTOR))(entity) : NULL;
+    if (exists != NULL) *exists = 0;
+    const uint8_t* descriptor = game != 0 && entity != 0 ? ((const uint8_t* (*)(uint32_t))(game + kBhvFunctions[F_DESCRIPTOR].rva))(entity) : NULL;
+    if (descriptor == NULL) return 0;
+    if (exists != NULL) *exists = 1;
     uint32_t flags = 0;
-    return descriptor != NULL && !SafeRead((uintptr_t)descriptor + 0x14, &flags, 4) && (flags & 1) != 0;
+    return !SafeRead((uintptr_t)descriptor + 0x14, &flags, 4) && (flags & 1) != 0;
 }
+static int AblAuthority(uint32_t entity) { return AblAuthorityAt(g_bhvGame, entity, NULL); }
 
 /* The remote a missile names (its SeekingMissile instance +8, a network handle), or none; *instance its instance. */
 static uint32_t MissileRemote(uint32_t missile, uint8_t** instance)
