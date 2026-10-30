@@ -78,37 +78,64 @@ static void close_connections(void)
     for (index = 0; index < MAX_CONNECTIONS; index++) close_connection(&connections[index]);
 }
 
+// The program is static (musl), and musl's getpwnam reads /etc/passwd only. Fedora Atomic systems (Silverblue, Kinoite,
+// Bazzite) keep the system accounts, nobody among them, in /usr/lib/passwd, which glibc reads through nss-altfiles; the
+// helper's `id -u nobody` finds it there. Both files are root-owned. An entry with uid or gid 0 is refused.
+static int find_nobody(uid_t *uid, gid_t *gid)
+{
+    struct passwd *account = getpwnam("nobody");
+    FILE *system_accounts = NULL;
+    if (account == NULL)
+    {
+        system_accounts = fopen("/usr/lib/passwd", "re");
+        while (system_accounts != NULL && (account = fgetpwent(system_accounts)) != NULL)
+            if (strcmp(account->pw_name, "nobody") == 0) break;
+    }
+    if (account != NULL)
+    {
+        *uid = account->pw_uid;
+        *gid = account->pw_gid;
+    }
+    if (system_accounts != NULL) fclose(system_accounts);
+    if (account == NULL)
+    {
+        fputs("capture-relay: the 'nobody' account was not found in /etc/passwd or /usr/lib/passwd.\n", stderr);
+        return -1;
+    }
+    if (*uid == 0 || *gid == 0)
+    {
+        fputs("capture-relay: the 'nobody' account has uid or gid 0.\n", stderr);
+        return -1;
+    }
+    return 0;
+}
+
 // setgroups must run before setgid, and setgid before setuid; each failure is fatal. The second check catches a setuid
 // that "succeeded" without changing the effective credentials, so the relay never handles a game connection as root.
 static int drop_to_nobody(void)
 {
-    struct passwd *account = getpwnam("nobody");
-    uid_t real_uid, effective_uid, saved_uid;
-    gid_t real_gid, effective_gid, saved_gid;
-    if (account == NULL)
-    {
-        fputs("capture-relay: the 'nobody' account was not found.\n", stderr);
-        return -1;
-    }
+    uid_t nobody_uid, real_uid, effective_uid, saved_uid;
+    gid_t nobody_gid, real_gid, effective_gid, saved_gid;
+    if (find_nobody(&nobody_uid, &nobody_gid) != 0) return -1;
     if (setgroups(0, NULL) != 0)
     {
         perror("capture-relay: setgroups");
         return -1;
     }
-    if (setgid(account->pw_gid) != 0)
+    if (setgid(nobody_gid) != 0)
     {
         perror("capture-relay: setgid");
         return -1;
     }
-    if (setuid(account->pw_uid) != 0)
+    if (setuid(nobody_uid) != 0)
     {
         perror("capture-relay: setuid");
         return -1;
     }
     if (getresuid(&real_uid, &effective_uid, &saved_uid) != 0 ||
         getresgid(&real_gid, &effective_gid, &saved_gid) != 0 ||
-        real_uid != account->pw_uid || effective_uid != account->pw_uid || saved_uid != account->pw_uid ||
-        real_gid != account->pw_gid || effective_gid != account->pw_gid || saved_gid != account->pw_gid)
+        real_uid != nobody_uid || effective_uid != nobody_uid || saved_uid != nobody_uid ||
+        real_gid != nobody_gid || effective_gid != nobody_gid || saved_gid != nobody_gid)
     {
         fputs("capture-relay: dropping to nobody did not take effect.\n", stderr);
         return -1;
