@@ -43,7 +43,7 @@ static const char* const kInstallStepNames[] = {
     "WidenMissionRanges", "InstallBoard", "InstallSpreadGuard", "InstallHashInsertGuard", "MixStep", "InstallGrant", "InstallRadar",
     "MoveBandsAndIcons",
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
-    "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid",
+    "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallFootprintWatch", "InstallNavGrid",
     "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
     "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
