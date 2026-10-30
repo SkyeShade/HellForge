@@ -253,6 +253,31 @@ static class DirectoryTests
         await Task.Delay(SameSearchPause);
         await guest.Directory.SearchAsync("u1t", MapFilter, 50);
         lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The same left-out lobby is not logged again by the next search.");
+
+        // The lobby browser's API: every lobby with no game filter, the stranger's with why it cannot be joined; one search
+        // per MinInterval; a join hands the game an invitation, and only to a joinable lobby of a recent list.
+        var browseClock = DateTime.UtcNow;
+        var browse = new BrowseApi(() => browseClock);
+        var unattached = await new BrowseApi().ListAsync();
+        check(unattached["available"]?.GetValue<bool>() == false && new BrowseApi().Join(lobbyId).Status == 503, "Before multiplayer runs the browser is unavailable.");
+        browse.Attach(guest.Directory, guest.Lobby, guest.Presence);
+        await Task.Delay(SameSearchPause);
+        var listTask = browse.ListAsync();
+        check(ReferenceEquals(listTask, browse.ListAsync()), "Two asks within MinInterval share one search.");
+        var browsed = (await listTask)["lobbies"]!.AsArray().OfType<JsonObject>().ToList();
+        var open = browsed.SingleOrDefault(l => (string?)l["lobbyId"] == lobbyId);
+        var closed = browsed.SingleOrDefault(l => (string?)l["lobbyId"] == otherLobby);
+        check(browsed.Count == 2 && open?["joinable"]?.GetValue<bool>() == true && open["host"]?.GetValue<string>() == HostId.ToString(CultureInfo.InvariantCulture),
+            "The browser lists the open lobby: " + string.Join(" | ", browsed.Select(l => l.ToJsonString())));
+        check(closed?["joinable"]?.GetValue<bool>() == false && (string?)closed["verdict"] == "unjoinable" && (string?)closed["reason"] == "It needs mods installed by hand." &&
+            closed["mods"]?.AsArray().OfType<JsonObject>().Any(m => (string?)m["id"] == "test.code" && (string?)m["action"] == "manual" && (string?)m["why"] == "stranger code, not sandboxed") == true,
+            "The browser lists the stranger's lobby with why: " + closed?.ToJsonString());
+        check(browse.Join(otherLobby).Status == 409 && browse.Join(Guid.NewGuid().ToString("D")).Status == 404, "Joining an unjoinable or unknown lobby is refused.");
+        var joined = browse.Join(lobbyId);
+        var invite = guest.Next("lobby.inviteReceived", check);
+        check(joined.Status == 202 && invite.Text(0) == lobbyId && invite.Text(1) == connection, "Joining hands the game an invitation: " + joined.Body.ToJsonString());
+        browseClock += BrowseApi.JoinableFor + TimeSpan.FromSeconds(1);
+        check(browse.Join(lobbyId).Status == 404, "A lobby from an old list must be listed again first.");
         lock (network.Strangers) network.Strangers.Remove(OtherId);
         await Task.Delay(SameSearchPause);
         await host.Directory.SearchAsync("own2", MapFilter, 50);

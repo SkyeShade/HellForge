@@ -357,13 +357,17 @@ public sealed class LobbyService
         lobby.Expected[node] = until;
     }
 
-    // This machine's game invites itself into a lobby (AutoRejoin: the host said it may come back): the lobby stand-in hands
-    // its invitation listeners InviteReceived, as for a friend's invitation.
-    public void InviteLocal(string lobbyId, string connectionString, string inviterId)
+    // This machine's game invites itself into a lobby (AutoRejoin: the host said it may come back; the browse API: the
+    // player chose the lobby): the lobby stand-in hands its invitation listeners InviteReceived, as for a friend's
+    // invitation. The game's own join follows only when the player accepts it.
+    public void InviteLocal(string lobbyId, string connectionString, string inviterId) =>
+        InviteLocal(lobbyId, connectionString, inviterId, "rejoining after a mod sync");
+
+    public void InviteLocal(string lobbyId, string connectionString, string inviterId, string why)
     {
         lock (gate)
         {
-            log($"Passed {inviterId}'s lobby {lobbyId} to this player's game as an invitation (rejoining after a mod sync).");
+            log($"Passed {inviterId}'s lobby {lobbyId} to this player's game as an invitation ({why}).");
             toLocal(new Frame("lobby.inviteReceived").Add(lobbyId).Add(connectionString).Add(inviterId));
         }
     }

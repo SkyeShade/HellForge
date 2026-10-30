@@ -231,6 +231,31 @@ public sealed partial class DirectoryService : IAsyncDisposable
         return answer;
     }
 
+    // The browse API (BrowseApi; docs/external-launchers.md): every listing the directory has (the wire level, a slot free,
+    // worldwide, at most 50), with none of the game's filter, checked as a search checks them (Unambiguous, Valid, the
+    // stranger setting), each with its join check (ModSync.Check). Lobbies a search would leave out for their mods stay
+    // in, with why, so the player can see what keeps them out.
+    public async Task<IReadOnlyList<BrowseLobby>> BrowseAsync()
+    {
+        var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), new Dictionary<string, string>(StringComparer.Ordinal));
+        var listings = await Listings(query);
+        var strangers = strangersAllowed?.Invoke() != false;
+        var friends = presence.Friends.Select(f => f.SteamId).ToHashSet();
+        var lobbies = new List<BrowseLobby>();
+        foreach (var (listing, vouched) in Unambiguous(listings, new Dictionary<string, int>(StringComparer.Ordinal)))
+        {
+            if (listing.Host == localId) continue;
+            if (!strangers && (!friends.Contains(listing.Host) || !vouched)) continue;
+            var check = Check(listing);
+            if (!check.Valid || check.Record is not { } record) continue;
+            var join = sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
+            lobbies.Add(new BrowseLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], listing.Host,
+                friends.Contains(listing.Host), "directory", check.Members, check.Max, check.Locked, check.Props, record, join));
+            Remember(listing);
+        }
+        return lobbies;
+    }
+
     // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
     // every few seconds, and the same lines again say nothing new.
     public const int LeftOutLines = 10, BlockersPerLine = 8;
@@ -428,3 +453,8 @@ public sealed partial class DirectoryService : IAsyncDisposable
 // (ListPublic) and Play with strangers (StrangersAllowed), each on when null.
 public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bool AutoPublish = true, Func<bool>? ListPublic = null,
     Func<bool>? StrangersAllowed = null);
+
+// One lobby the browse API lists: from the directory, or a friend's lobby heard through presence (Source "friend": no
+// listing, so no mod set until a join; Join is then an empty check). Record is the lobby record as the schema rebuilt it.
+public sealed record BrowseLobby(string LobbyId, string ConnectionString, ulong Host, bool Friend, string Source, int Members, int MaxMembers,
+    bool Locked, IReadOnlyDictionary<string, string> SearchProperties, JsonObject Record, JoinCheck Join);

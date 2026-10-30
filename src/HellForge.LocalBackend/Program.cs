@@ -136,12 +136,13 @@ try
             lock (liveWarLog) File.AppendAllText(liveWarLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
+    var browse = new HellForge.LocalBackend.Multiplayer.BrowseApi();
     await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, Browse = browse
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
@@ -156,6 +157,7 @@ try
             SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
         })
         : null;
+    if (multiplayer != null) browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
     var ready = new System.Text.Json.Nodes.JsonObject
     {
         ["scope"] = "synthetic-local-backend", ["urls"] = new System.Text.Json.Nodes.JsonArray(app.Urls.Select(u => (System.Text.Json.Nodes.JsonNode?)u).ToArray()),

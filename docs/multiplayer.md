@@ -531,6 +531,17 @@ shown" was the searching player's own lobby, not the friend's:
 `HELLFORGE_TEST_STRANGERS=1` makes a backend treat friends as strangers, for testing with two friends' PCs. Details and
 open questions: [Step 7](#step-7-public-lobbies-on-the-galactic-map-2026-10-22).
 
+**The lobby browser** (`Multiplayer/BrowseApi.cs`, `DirectoryService.BrowseAsync`). Besides the map's per-planet
+searches, the backend lists every lobby the directory has, with no planet or difficulty filter, and friends' lobbies
+heard through presence. Each comes with the join check a search makes (`ModSync.Check`): lobbies the map would leave
+out for their mods stay in the list, with why, so the player sees what keeps them out. It runs at most one directory
+search every 2 s. Joining a listed lobby hands the game an invitation (`LobbyService.InviteLocal`, as a rejoin after a
+mod sync does), so the game's own join runs only when the player accepts it. The API is
+`GET /hellforge/v1/lobbies` and `POST /hellforge/v1/lobbies/<id>/join` on the loopback HTTP, for programs on this PC
+only ([external-launchers.md](external-launchers.md#the-lobby-browser-api)). The game's own debug lobby browser
+(menu presenter 41, DebugServerBrowser) searches with an empty filter every ~4 s, so the map's search answers it as
+well (seen live on 2026-10-30: a bare list of one row per lobby, or "NO SERVERS").
+
 ### Play with strangers
 
 The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when

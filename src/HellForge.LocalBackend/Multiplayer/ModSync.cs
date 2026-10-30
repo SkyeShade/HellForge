@@ -239,7 +239,7 @@ public sealed class ModSync : IAsyncDisposable
         };
         var blocking = plan.Items.Where(i => i.Action is SyncAction.Manual or SyncAction.Blocked or SyncAction.Update)
             .Select(i => new JoinBlocker(i.Mod, i.Action, JoinCheck.Reason(i, shares))).ToList();
-        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking);
+        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set };
     }
 
     // A machine this one downloads from or lets download (a stranger is let through for that: MultiplayerHost's gate).
@@ -1000,6 +1000,9 @@ public sealed record JoinBlocker(ModSetEntry Mod, SyncAction Action, string Why)
 // that keep it out.
 public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IReadOnlyList<JoinBlocker> Blocking)
 {
+    // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
+    public ModSet? Set { get; init; }
+
     // Why one item stands in the way: the host does not share, a stranger's unchecked mod while this game is not
     // sandboxed, a different bundled mod (another HellForge), or the player's blocklist.
     public static string Reason(SyncItem item, bool hostShares) => item.Action switch
