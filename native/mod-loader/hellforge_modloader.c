@@ -553,7 +553,8 @@ static int InstallReaper(int pinsReady);
 /* SDK 7 events (events.c, after abilities.c: the silo countdowns listen for a mission's end). */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
 #include "registry.c"
-#include "registry_load.c" /* right after registry.c: the registry at work when the entity data loads */
+#include "table_growth.c" /* the component tables the registry grows */
+#include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "projectiles.c"
 #include "stratagems.c"

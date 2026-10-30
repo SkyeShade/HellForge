@@ -35,6 +35,9 @@ On `dev`, since 0.3.0-beta.
   network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
   Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
   can still be refused; each refusal is in the mod's log.
+- The game tables weapons and stratagems use grow when mods would fill them: HellForge builds a full table again at
+  about twice the size and rewrites the game's code that reads it, so large weapon packs are no longer refused for want
+  of rows (the loadout index alone stopped at 193 more weapons). Other tables still refuse what does not fit.
 
 ### Fixed
 
