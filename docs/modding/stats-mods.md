@@ -54,8 +54,9 @@ is a working example.
 
 ## How it applies
 
-- Changes apply when the game loads its data, every session. A stats mod is always a gameplay mod, so friends compare
-  it.
+- Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,
+  network field types or componentWrites) is a per-player gameplay mod, so friends do not compare it and each player
+  plays with their own; adding any of those makes it shared and then friends compare it.
 - Some records are shared by several items. Changing a shared record changes it for every item that uses it, and the
   mod's log warns about it. `"own": true` on an entity's entry gives that entity its own copy of the record first
   (component fields only).

@@ -13,7 +13,7 @@ and the newest ten are kept. The launcher's CONSOLE page has an **Open session l
 | `session.log` | the session's steps: building and staging mods, checks, starting the game. Look here first when a session fails early |
 | `mod-<your id>.log` | everything your mod logs (`hf->log`), and what the SDK did for it or refused, with your source line |
 | `modloader.log` | the loader: which mods loaded and in what order, events, every registry step, conflicts between mods, crash notes |
-| `modlist.txt` | multiplayer sessions: the gameplay mods friends compare (id, name, version, hash), by id |
+| `modlist.txt` | multiplayer sessions: the shared gameplay mods friends compare (id, name, version, hash), by id; per-player mods are left out |
 | `cli-output.txt` | building source mods and data specs, staging |
 | `result.json` | the session's outcome: `mods.loaded` lists the mods in load order, `mods.problems` the mods left out and why |
 | `arsenal.tsv` | every armory item: loadout id, type, entity, name (for choosing a weapon's base); written when a mod adds a weapon or changes component stats |
