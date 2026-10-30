@@ -98,7 +98,7 @@ inner='
   ip link set lo up
   if [ "$HELLFORGE_STEAM_UDP" = 1 ]; then
     for _ in $(seq 1 100); do [ -d /sys/class/net/eth0 ] && ip -4 route show default | grep -q . && break; sleep 0.1; done
-    ip -4 route show default | grep -q . || { echo "hellforge-offline: pasta did not bring the network up" >&2; exit 1; }
+    ip -4 route show default | grep -q . || { echo "hellforge-offline: pasta did not bring the network up (its own message, if any, is above)" >&2; exit 1; }
     ip rule add ipproto tcp prohibit
     ip -6 rule add ipproto tcp prohibit 2>/dev/null || true
     # UDP only to Valve relays (address and port range each), everything else refused; loopback is in the local table.
@@ -144,8 +144,10 @@ for pop in json.load(sys.stdin)["pops"].values():
   holder=$!
   # pasta reads the holder's namespace once: wait until unshare(2) has run, or it would attach to the host's.
   for _ in $(seq 1 50); do [ "$(readlink /proc/$holder/ns/net 2>/dev/null)" != "$(readlink /proc/self/ns/net)" ] && break; sleep 0.05; done
-  # No port forwarding in either direction, TCP or UDP: the relay rules are the only way out.
-  pasta --foreground --quiet --config-net -4 -I eth0 -t none -T none -u none -U none "$holder" &
+  # No port forwarding in either direction, TCP or UDP: the relay rules are the only way out. --no-netns-quit: pasta
+  # otherwise watches the holder's /proc/<pid>/ns folder to quit with it, which Fedora's passt SELinux policy denies
+  # ("netns dir open: Permission denied", so no network and co-op never starts); the EXIT trap below ends it instead.
+  pasta --foreground --quiet --no-netns-quit --config-net -4 -I eth0 -t none -T none -u none -U none "$holder" &
   nat=$!
   trap 'kill "$nat" 2>/dev/null || true' EXIT
   trap 'kill "$holder" 2>/dev/null || true; exit 143' INT TERM

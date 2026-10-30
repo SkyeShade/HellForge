@@ -881,7 +881,10 @@ an external launcher, `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` does
 
 With it on, `hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the
 game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which
-gives it a real route. Two policy rules then close it again: `ip rule add ipproto tcp prohibit` refuses every TCP
+gives it a real route. It runs with `--no-netns-quit`: by default pasta watches the namespace holder's `/proc/<pid>/ns`
+folder so it can quit with it, and Fedora's `passt-selinux` policy (Fedora, Bazzite, Nobara and other SELinux systems)
+denies that with "netns dir open: Permission denied", leaving the namespace without a route. The wrapper ends pasta
+itself when the session ends. Two policy rules then close it again: `ip rule add ipproto tcp prohibit` refuses every TCP
 connection with the same WSAEACCES, so the session's network probe passes as before, and UDP is allowed only to Valve's
 relays, address and port range each, from the list Valve publishes for the game (`ISteamApps/GetSDRConfig/v1`, app
 553850), fetched at launch while this PC still has its network (the last one is kept in
