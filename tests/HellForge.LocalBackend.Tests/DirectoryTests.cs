@@ -94,6 +94,13 @@ static class DirectoryTests
 
     public static async Task Run(string root, Action<bool, string> check)
     {
+        // A left-out lobby's log line: its host, the reason, the mods in the way (at most BlockersPerLine, then a count).
+        var blockers = Enumerable.Range(0, 10).Select(i => new JoinBlocker(new ModSetEntry($"test.m{i}", $"M{i}", "1", new string('a', 64), 1, ModClass.Code, i),
+            SyncAction.Manual, "share off")).ToList();
+        var many = DirectoryService.LeftOutLine(OtherId, "it needs mods installed by hand", new JoinCheck(false, "it needs mods installed by hand", null, blockers));
+        check(many.StartsWith(LobbyService.EntityId(OtherId) + ": it needs mods installed by hand: M0 1 (test.m0): share off, ", StringComparison.Ordinal) &&
+            many.Contains("M7 1 (test.m7)") && !many.Contains("test.m8") && many.EndsWith(", and 2 more.", StringComparison.Ordinal), "The left-out line: " + many);
+        check(DirectoryService.LeftOutLine(OtherId, "the game's filter", null) == LobbyService.EntityId(OtherId) + ": the game's filter.", "A reason without mods.");
         root = Path.Combine(root, "directory");
         Filters(check);
         Values(check);
@@ -180,6 +187,8 @@ static class DirectoryTests
         // A blocked mod hides the lobby.
         ModSettings.SetBlocked(guest.Mods, "test.ammo", true);
         check((await guest.Directory.SearchAsync("b1", MapFilter, 50)).Int(2) == 0, "A lobby running a blocked mod is hidden.");
+        lock (guest.Log) check(guest.Log.Any(l => l.StartsWith("Directory: left out " + LobbyService.EntityId(HostId) + ": it runs a blocked mod: ", StringComparison.Ordinal) &&
+            l.Contains("(test.ammo): blocked")), "The search names the blocked mod: " + string.Join(" / ", guest.Log.TakeLast(2)));
         ModSettings.SetBlocked(guest.Mods, "test.ammo", false);
 
         // Play with strangers off: this machine's lobby is not listed; a search shows friends' listings only; a join to a
@@ -239,6 +248,11 @@ static class DirectoryTests
         check(withStranger.Int(2) == 1 && withStranger.Text(3) == lobbyId, "A stranger's lobby with unverified code the guest lacks is left out.");
         lock (guest.Log) check(guest.Log.Any(l => l.Contains("2 listed, 1 shown (1 left out: it needs mods installed by hand)")),
             "The search says why: " + string.Join(" / ", guest.Log.TakeLast(2)));
+        var leftOutLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": it needs mods installed by hand: Code 1 (test.code): stranger code, not sandboxed.";
+        lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The search names the stranger's mod and why: " + string.Join(" / ", guest.Log.TakeLast(3)));
+        await Task.Delay(SameSearchPause);
+        await guest.Directory.SearchAsync("u1t", MapFilter, 50);
+        lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The same left-out lobby is not logged again by the next search.");
         lock (network.Strangers) network.Strangers.Remove(OtherId);
         await Task.Delay(SameSearchPause);
         await host.Directory.SearchAsync("own2", MapFilter, 50);

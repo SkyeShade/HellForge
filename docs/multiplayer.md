@@ -512,6 +512,15 @@ listed, 1 shown (1 left out: it needs mods installed by hand)`. The reasons are:
 - `its host runs another HellForge version`;
 - `it needs mods installed by hand`.
 
+After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
+and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`):
+`Directory: left out 1100001029d1b02: it needs mods installed by hand: Code 1 (test.code): stranger code, not
+sandboxed.` A mod's why is `share off` (the host does not share its mods), `stranger code, not sandboxed` or `stranger
+raw data, not sandboxed` (unverified code or raw data from a host who is not a Steam friend, while this game is not
+sandboxed), `bundled differs` (another HellForge) or `blocked`. A line names at most 8 mods, then how many more; a
+search writes at most 10 lines, then how many more; and the lines are written only when they differ from the last
+search's, since the map and the debug browser search every few seconds.
+
 Until 2026-10-23 a search left this machine's own lobby out without counting it. On the first two-PC test, "1 listed, 0
 shown" was the searching player's own lobby, not the friend's:
 - It was listed from the planet's search once the player's own listing had been rewritten for that planet (11:22:25,

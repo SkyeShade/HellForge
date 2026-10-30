@@ -202,11 +202,17 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var answer = new Frame("lobby.found").Add(op).Add(0);
         var kept = new List<DirectoryListing>();
         var refused = new Dictionary<string, int>(StringComparer.Ordinal);
+        var leftOut = new List<string>();
         var strangers = strangersAllowed?.Invoke() != false;
         var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
         foreach (var (listing, vouched) in Unambiguous(listings, refused))
         {
-            if (LeftOut(listing, vouched, filter, strangers, friends) is { } why) { Count(refused, why); continue; }
+            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
+            {
+                Count(refused, why);
+                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
+                continue;
+            }
             kept.Add(listing);
             if (kept.Count == count) break;
         }
@@ -221,12 +227,42 @@ public sealed partial class DirectoryService : IAsyncDisposable
         log($"Directory: search \"{filterText}\": {listings.Count} listed, {kept.Count} shown" +
             (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value} left out: {r.Key}")) + ")" : "") +
             (filter.Ignored.Count > 0 ? $"; {filter.Ignored.Count} clause(s) not applied (random window, continent)" : "") + ".");
+        LogLeftOut(leftOut);
         return answer;
     }
 
-    // Why a search leaves out a listing that is not ambiguous (vouched: its host vouches for it), or null when it is shown.
-    string? LeftOut(DirectoryListing listing, bool vouched, LobbyFilter filter, bool strangers, HashSet<ulong> friends)
+    // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
+    // every few seconds, and the same lines again say nothing new.
+    public const int LeftOutLines = 10, BlockersPerLine = 8;
+    string lastLeftOut = "";
+
+    void LogLeftOut(List<string> lines)
     {
+        var signature = string.Join("\n", lines.Order(StringComparer.Ordinal));
+        lock (gate)
+        {
+            if (signature == lastLeftOut) return;
+            lastLeftOut = signature;
+        }
+        if (lines.Count == 0) return;
+        foreach (var line in lines.Take(LeftOutLines)) log("Directory: left out " + line);
+        if (lines.Count > LeftOutLines) log($"Directory: and {lines.Count - LeftOutLines} more left out.");
+    }
+
+    // One left-out lobby for the log: its host, the reason, and for a mod plan the mods in the way, each with why.
+    public static string LeftOutLine(ulong host, string why, JoinCheck? check)
+    {
+        var line = LobbyService.EntityId(host) + ": " + why;
+        if (check == null || check.Blocking.Count == 0) return line + ".";
+        var mods = check.Blocking.Take(BlockersPerLine).Select(b => $"{b.Mod.Name} {b.Mod.Version} ({b.Mod.Id}): {b.Why}");
+        var more = check.Blocking.Count > BlockersPerLine ? $", and {check.Blocking.Count - BlockersPerLine} more" : "";
+        return line + ": " + string.Join(", ", mods) + more + ".";
+    }
+
+    // Why a search leaves out a listing that is not ambiguous (vouched: its host vouches for it), or null when it is shown.
+    string? LeftOut(DirectoryListing listing, bool vouched, LobbyFilter filter, bool strangers, HashSet<ulong> friends, out JoinCheck? check)
+    {
+        check = null;
         // (Steam's search finds this machine's own listing too: counted, so "1 listed, 0 shown" never hides why)
         if (listing.Host == localId) return "this machine's own lobby";
         if (!Valid(listing, out var props, out var members, out var max, out var locked, out var malformed)) return "malformed (" + malformed + ")";
@@ -234,8 +270,9 @@ public sealed partial class DirectoryService : IAsyncDisposable
         // a friend's id on a listing their backend did not publish: a stranger's (Unambiguous)
         if (!strangers && !vouched) return "under a friend's id, not published by them (Play with strangers is off)";
         if (!filter.Matches(props, members, max, locked)) return "the game's filter";
-        if (sync != null && !sync.Joinable(listing, out var why)) return why;
-        return null;
+        if (sync == null) return null;
+        check = sync.Check(listing);
+        return check.Joinable ? null : check.Why;
     }
 
     static void Count(Dictionary<string, int> reasons, string why) => reasons[why] = reasons.GetValueOrDefault(why) + 1;
