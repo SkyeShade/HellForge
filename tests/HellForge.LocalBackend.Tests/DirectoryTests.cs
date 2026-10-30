@@ -94,6 +94,7 @@ static class DirectoryTests
 
     public static async Task Run(string root, Action<bool, string> check)
     {
+        QuickPlay(check);
         // A left-out lobby's log line: its host, the reason, the mods in the way (at most BlockersPerLine, then a count).
         var blockers = Enumerable.Range(0, 10).Select(i => new JoinBlocker(new ModSetEntry($"test.m{i}", $"M{i}", "1", new string('a', 64), 1, ModClass.Code, i),
             SyncAction.Manual, "share off")).ToList();
@@ -277,6 +278,26 @@ static class DirectoryTests
         var invite = guest.Next("lobby.inviteReceived", check);
         check(joined.Status == 202 && invite.Text(0) == lobbyId && invite.Text(1) == connection, "Joining hands the game an invitation: " + joined.Body.ToJsonString());
         await LiveBrowser(browse, guest, lobbyId, otherLobby, check);
+        // With Play with strangers off, strangers' lobbies are still listed (never contacted), as ones to join after
+        // turning it on; Quick Play then finds none.
+        guest.Strangers = false;
+        browse.Forget();
+        await Task.Delay(SameSearchPause);
+        var offList = (await browse.ListAsync())["lobbies"]!.AsArray().OfType<JsonObject>().ToList();
+        check(offList.Count == 2 && offList.All(l => l["joinable"]?.GetValue<bool>() == false && (string?)l["fix"] == JoinCheck.FixStrangers &&
+            (string?)l["reason"] == "Its host is not a Steam friend, and Play with strangers is off."),
+            "Strangers off: their lobbies are listed with the setting that lets them in: " + string.Join(" | ", offList.Select(l => l.ToJsonString())));
+        lock (guest.Log) check(guest.Log.Any(l => l.StartsWith("Directory: browse: 2 listed, 0 joinable (2: its host is not a Steam friend", StringComparison.Ordinal)),
+            "The browse says what it left unjoinable: " + string.Join(" / ", guest.Log.TakeLast(3)));
+        var none = await browse.QuickJoinAsync();
+        check(none.Status == 404 && (string?)none.Body["errorCode"] == "HELLFORGE_NO_JOINABLE_LOBBY", "Quick Play with nothing joinable says so.");
+        guest.Strangers = true;
+        browse.Forget();
+        await Task.Delay(SameSearchPause);
+        var quick = await browse.QuickJoinAsync();
+        var quickInvite = guest.Next("lobby.inviteReceived", check);
+        check(quick.Status == 202 && quick.Outcome == "browse_quick_invited" && (string?)quick.Body["lobbyId"] == lobbyId && (string?)quick.Body["hostName"] == "Host Diver" &&
+            quickInvite.Text(0) == lobbyId, "Quick Play joins the joinable lobby: " + quick.Body.ToJsonString());
         browseClock += BrowseApi.JoinableFor + TimeSpan.FromSeconds(1);
         check(browse.Join(lobbyId).Status == 404, "A lobby from an old list must be listed again first.");
         lock (network.Strangers) network.Strangers.Remove(OtherId);
@@ -323,7 +344,8 @@ static class DirectoryTests
         var runId = "browse-" + Guid.NewGuid().ToString("N")[..8];
         await using var live = new LiveEditServer(runId);
         var logged = new ConcurrentQueue<string>();
-        var browser = new LiveBrowse(browse, live, logged.Enqueue);
+        var modsFolder = Directory.CreateTempSubdirectory("hf-browse-").FullName;
+        var browser = new LiveBrowse(browse, live, logged.Enqueue, modsFolder);
         live.Start();
         using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", LiveEditServer.PipeName(runId), System.IO.Pipes.PipeDirection.InOut,
             System.IO.Pipes.PipeOptions.Asynchronous);
@@ -334,7 +356,8 @@ static class DirectoryTests
         var waited = System.Diagnostics.Stopwatch.StartNew();
         while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
         // the game's side: each line without its sequence number, answered as the loader answers (live.c), up to a browsestate
-        async Task<List<string>> Game(string ask)
+        // (or one in a state of until's)
+        async Task<List<string>> Game(string ask, params string[] until)
         {
             await writer.WriteLineAsync(ask);
             var lines = new List<string>();
@@ -343,7 +366,7 @@ static class DirectoryTests
                 var parts = line.Split('\t');
                 lines.Add(string.Join('\t', parts.Where((_, i) => i != 1)));
                 await writer.WriteLineAsync(parts[1] + "\tok\tnow");
-                if (parts[0] == "browsestate" && parts[3] != "searching") return lines;
+                if (parts[0] == "browsestate" && parts[3] != "searching" && (until.Length == 0 || until.Contains(parts[3]))) return lines;
             }
             return lines;
         }
@@ -351,7 +374,7 @@ static class DirectoryTests
         var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
         var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
         check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
-            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand.", _, "Code 1: manual"],
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand.", _, "Code 1: manual", "-"],
             "The game gets the list: " + string.Join(" | ", first));
         var second = await Game("browseask\trefresh\t-");
         check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",
@@ -363,10 +386,46 @@ static class DirectoryTests
         var refused = await Game("browseask\tjoin\t" + otherLobby);
         check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIt needs mods installed by hand."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
             "An unjoinable lobby's join says why: " + string.Join(" | ", refused));
+        var quick = await Game("browseask\tquick\t-", "invited", "failed");
+        var quickInvite = guest.Next("lobby.inviteReceived", check);
+        check(quick.Last() == "browsestate\t3\tinvited\t2\tQuick Play: joining Host Diver's lobby. Accept the invitation in game." && quickInvite.Text(0) == lobbyId &&
+            logged.Any(l => l == $"Lobby browser: Quick Play: browse_quick_invited {lobbyId}."), "Quick Play from the game lists, then joins the best lobby: " + string.Join(" | ", quick));
+        var shown = await Game("browseask\tallow\teditedstats");
+        check(ModSettings.Read(modsFolder).ShowEditedStats && shown.Last().StartsWith("browsestate\t4\tready\t", StringComparison.Ordinal),
+            "Showing edited-stats lobbies from the game saves the setting and lists again: " + string.Join(" | ", shown));
+        var allowed = await Game("browseask\tallow\tstrangers");
+        check(ModSettings.PlayWithStrangers(modsFolder) == true && ModSettings.Read(modsFolder).StrangersWarned && allowed.Last().StartsWith("browsestate\t5\tready\t", StringComparison.Ordinal) &&
+            logged.Any(l => l.Contains("turned Play with strangers on")), "Play with strangers turned on from the game, after its warning, is saved: " + string.Join(" | ", allowed));
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixEditedStats }) is { Fix: "editedstats" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "sandbox" }) is { Fix: "" }, "A lobby's fix goes to the game by its word.");
         check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "has space", ["verdict"] = "ready" }) == null &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["members"] = 99, ["difficulty"] = 7L, ["planetId"] = -1 }) is { Members: 64, Difficulty: 7, Planet: null, Verdict: "unknown" },
             "A lobby id the loader refuses is left out; counts are kept in range.");
         GC.KeepAlive(browser);
+        Directory.Delete(modsFolder, true);
+    }
+
+    // Quick Play's choice (BrowseApi.Best): joinable with a slot free, a friend's first, then the least a join needs, then
+    // the fullest.
+    static void QuickPlay(Action<bool, string> check)
+    {
+        static BrowseLobby Lobby(string id, bool friend, int members, JoinCheck join, bool locked = false, int max = 4) =>
+            new(id, "c", 1, friend, "directory", members, max, locked, new Dictionary<string, string>(), new JsonObject(), join);
+        var mod = new ModSetEntry("m", "M", "1", new string('a', 64), 5_000_000, ModClass.Content, 0);
+        var ready = new JoinCheck(true, "", null, []);
+        var download = new JoinCheck(true, "", new ModSyncPlan([new SyncItem(mod, SyncAction.Download, null)]), []);
+        var no = new JoinCheck(false, "it runs a blocked mod", null, []);
+        var all = new[]
+        {
+            Lobby("stranger-ready-2", false, 2, ready), Lobby("stranger-ready-3", false, 3, ready), Lobby("stranger-download", false, 3, download),
+            Lobby("friend-download", true, 1, download), Lobby("friend-locked", true, 1, ready, locked: true), Lobby("friend-full", true, 4, ready),
+            Lobby("friend-blocked", true, 1, no)
+        };
+        check(BrowseApi.Best(all)?.LobbyId == "friend-download", "Quick Play picks a friend's joinable lobby first.");
+        check(BrowseApi.Best(all.Where(l => !l.Friend))?.LobbyId == "stranger-ready-3", "Then the same mods before a download, and the fuller lobby.");
+        check(BrowseApi.Best(all.Where(l => l.LobbyId.Contains("locked") || l.LobbyId.Contains("full") || l.LobbyId.Contains("blocked"))) == null,
+            "Locked, full and unjoinable lobbies are never picked.");
     }
 
     static async Task Hostile(MemoryLobbyDirectory listings, Node host, Node guest, Action<bool, string> check)

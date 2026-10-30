@@ -213,9 +213,9 @@ invitation to one. The in-game lobby browser uses it, and a launcher of your own
 so a web page in the player's browser cannot use it.
 
 **`GET /hellforge/v1/lobbies`.** Every HellForge lobby the lobby directory lists, with no planet or difficulty filter,
-plus Steam friends' lobbies that are not listed (Friends only). The list follows Play with strangers, as the Galactic
-Map does: with it off, only friends' lobbies. A new search runs at most once every 2 s; asking sooner returns the last
-list. 200 with:
+plus Steam friends' lobbies that are not listed (Friends only). With Play with strangers off, strangers' lobbies are
+still listed (never contacted), as unjoinable with `"fix": "strangers"`. A new search runs at most once every 2 s;
+asking sooner returns the last list. 200 with:
 
 ```json
 {"version": 1, "available": true, "searchedUtc": "2026-10-30T20:01:02.0000000Z",
@@ -234,6 +234,9 @@ list. 200 with:
 - `verdict` is one of: `ready` (the same shared mods), `download` (the join downloads `downloadBytes`), `trust` (a mod
   waits for the player's trust in the MOD SYNC prompt), `unjoinable`, `blocked`, `full`, `locked`, `unknown`.
   `joinable` is whether a join can be tried now; `reason` says why not.
+- `fix`, when present, is the player's setting that would let the lobby in: `strangers` (Play with strangers is off;
+  the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies whose host shares edited stats are
+  hidden; the Mods page). This API does not change settings: point the player at them.
 - `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
   `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
   `inMission` is whether the host has a mission selected.
@@ -250,6 +253,14 @@ that prompt.
 - 404 `HELLFORGE_LOBBY_UNKNOWN`: the lobby is not in a recent list. List again.
 - 409 `HELLFORGE_LOBBY_NOT_JOINABLE`, with `message` saying why (full, locked, or its mods).
 - 503 `HELLFORGE_MULTIPLAYER_OFF`: the session has no multiplayer.
+
+**`POST /hellforge/v1/lobbies/quick`.** Quick Play: the same invitation, to the best joinable lobby of a list at most
+2 s old: one with a slot free, a Steam friend's first, then the least a join needs (the same mods, then the smallest
+download, then a friend's lobby whose mods are known only on joining, then mods to trust), then the one with the most
+players.
+- 202 as a join's, with `hostName`.
+- 404 `HELLFORGE_NO_JOINABLE_LOBBY`: nothing can be joined now.
+- 503 `HELLFORGE_MULTIPLAYER_OFF`.
 
 The routes take only these methods: anything else is 405 with `Allow`. Version 1 only grows: fields may be added,
 none removed or changed in meaning. A change that breaks this goes to `/hellforge/v2`.

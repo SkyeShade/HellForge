@@ -232,9 +232,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
     }
 
     // The browse API (BrowseApi; docs/external-launchers.md): every listing the directory has (the wire level, a slot free,
-    // worldwide, at most 50), with none of the game's filter, checked as a search checks them (Unambiguous, Valid, the
-    // stranger setting), each with its join check (ModSync.Check). Lobbies a search would leave out for their mods stay
-    // in, with why, so the player can see what keeps them out.
+    // worldwide, at most 50), with none of the game's filter, checked as a search checks them (Unambiguous, Valid), each
+    // with its join check (ModSync.Check). Lobbies a search would leave out stay in, with why and the setting that would
+    // let them in (JoinCheck.Fix): a stranger's while Play with strangers is off is listed as one to join after turning it
+    // on, and is not contacted. A listing under a friend's id that the friend does not vouch for is a stranger's.
     public async Task<IReadOnlyList<BrowseLobby>> BrowseAsync()
     {
         var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), new Dictionary<string, string>(StringComparer.Ordinal));
@@ -242,35 +243,51 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var strangers = strangersAllowed?.Invoke() != false;
         var friends = presence.Friends.Select(f => f.SteamId).ToHashSet();
         var lobbies = new List<BrowseLobby>();
-        foreach (var (listing, vouched) in Unambiguous(listings, new Dictionary<string, int>(StringComparer.Ordinal)))
+        var refused = new Dictionary<string, int>(StringComparer.Ordinal);
+        var leftOut = new List<string>();
+        foreach (var (listing, vouched) in Unambiguous(listings, refused))
         {
             if (listing.Host == localId) continue;
-            if (!strangers && (!friends.Contains(listing.Host) || !vouched)) continue;
             var check = Check(listing);
-            if (!check.Valid || check.Record is not { } record) continue;
-            var join = sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
+            if (!check.Valid || check.Record is not { } record) { Count(refused, "malformed"); continue; }
+            var friend = friends.Contains(listing.Host) && vouched;
+            var join = !strangers && !friend ? new JoinCheck(false, StrangersOff, null, []) { Fix = JoinCheck.FixStrangers }
+                : sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
+            if (!join.Joinable) { Count(refused, join.Why); leftOut.Add(LeftOutLine(listing.Host, join.Why, join)); }
             lobbies.Add(new BrowseLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], listing.Host,
-                friends.Contains(listing.Host), "directory", check.Members, check.Max, check.Locked, check.Props, record, join));
-            Remember(listing);
+                friend, "directory", check.Members, check.Max, check.Locked, check.Props, record, join));
+            if (join.Fix != JoinCheck.FixStrangers) Remember(listing); // as before: not a stranger's, with strangers off
         }
+        var summary = $"Directory: browse: {listings.Count} listed, {lobbies.Count(l => l.Join.Joinable)} joinable" +
+            (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value}: {r.Key}")) + ")" : "") + ".";
+        lock (gate)
+        {
+            if (summary != lastBrowse) { lastBrowse = summary; log(summary); }
+        }
+        LogLeftOut(leftOut, browse: true);
         return lobbies;
     }
+
+    // Why the browse API lists a stranger's lobby as one that cannot be joined (JoinCheck.FixStrangers turns it on).
+    public const string StrangersOff = "its host is not a Steam friend, and Play with strangers is off";
 
     // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
     // every few seconds, and the same lines again say nothing new.
     public const int LeftOutLines = 10, BlockersPerLine = 8;
-    string lastLeftOut = "";
+    string lastLeftOut = "", lastBrowseLeftOut = "", lastBrowse = "";
 
-    void LogLeftOut(List<string> lines)
+    // browse: the browse API's lines, remembered apart from the map's searches (both run while the browser shows).
+    void LogLeftOut(List<string> lines, bool browse = false)
     {
         var signature = string.Join("\n", lines.Order(StringComparer.Ordinal));
         lock (gate)
         {
-            if (signature == lastLeftOut) return;
-            lastLeftOut = signature;
+            if (signature == (browse ? lastBrowseLeftOut : lastLeftOut)) return;
+            if (browse) lastBrowseLeftOut = signature;
+            else lastLeftOut = signature;
         }
         if (lines.Count == 0) return;
-        foreach (var line in lines.Take(LeftOutLines)) log("Directory: left out " + line);
+        foreach (var line in lines.Take(LeftOutLines)) log((browse ? "Directory: browse: cannot join " : "Directory: left out ") + line);
         if (lines.Count > LeftOutLines) log($"Directory: and {lines.Count - LeftOutLines} more left out.");
     }
 

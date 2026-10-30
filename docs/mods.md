@@ -232,7 +232,9 @@ news and war screen, which needs Arrowhead's servers: the camera glides up to th
 browser fills it. It lists every HellForge lobby, on any planet and difficulty,
 including the ones the map leaves out, and says what joining each would take: ready, a download, your trust, or why
 you can't. Filter it to joinable lobbies (J), friends' (F) or a minimum difficulty (D); Enter or JOIN sends you the
-lobby's invitation, which you accept in game. In the in-game editor (F8), Ctrl+L opens it too. Without the editor the
+lobby's invitation, which you accept in game. QUICK PLAY (Q) picks for you: a friend's lobby first, then one you can
+join with the fewest downloads. Strangers' lobbies show even while Play with strangers is off; select one and press A
+to turn it on (after a warning about what that risks). In the in-game editor (F8), Ctrl+L opens it too. Without the editor the
 terminal shows the game's own plain list of lobbies.
 
 Only lobbies whose host set Privacy to Public are listed. To keep your own Public lobbies off other players' maps, turn

@@ -908,13 +908,22 @@ typedef struct HfBrowseLobby
     char players[128];       /* the players' names, comma separated (UTF-8), or "" */
     char mod_list[256];      /* the host's shared mods a join would change, each with what happens to it ("Tanks 2.0:
                               * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "" */
+    uint32_t fix;            /* HF_LOBBY_FIX_...: the player's setting that would let it in (the reason says why it is out) */
 } HfBrowseLobby;
+#define HF_LOBBY_FIX_NONE 0u
+#define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
+#define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
 
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
 #define HF_BROWSE_JOIN 2u    /* join lobby_id, a lobby of a list from the last 2 minutes: the game gets its invitation */
 #define HF_BROWSE_SHOWN 3u   /* the editor's browser shows (the terminal's camera stays on its screen); this machine only */
 #define HF_BROWSE_HIDDEN 4u  /* it went: the terminal's camera glides back to the player; this machine only */
+#define HF_BROWSE_QUICK 5u   /* Quick Play: join the best joinable lobby of a fresh list (a friend's first, then the fewest
+                              * downloads); browse_state says INVITED with the host's name, or FAILED when there is none */
+#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on (HF_LOBBY_FIX_STRANGERS): ask only after showing the
+                                        * player the warning HellForge's launcher shows; a new list follows */
+#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1273,8 +1282,9 @@ typedef struct HfApi
     /* The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last. */
     int (*browse_lobby)(HfMod* mod, uint32_t index, HfBrowseLobby* out);
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
-     * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_SHOWN and
-     * HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. */
+     * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
+     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id
+     * NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;
 

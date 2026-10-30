@@ -2,9 +2,9 @@
  * finds, for an editor to show (browse_state, browse_lobby), and the editor's asks back (browse_ask). Over the live pipe:
  *   backend: browselobby <seq> <version> <index> <ready|download|trust|unjoinable|blocked|full|locked|unknown>
  *                        <friend,mission,joinable or -> <members> <max members> <difficulty or -> <planet or -> <mods>
- *                        <download bytes> <lobby id> <host name> <reason> <players> <mod list>
+ *                        <download bytes> <lobby id> <host name> <reason> <players> <mod list> <strangers|editedstats|->
  *            browsestate <seq> <version> <none|searching|ready|unavailable|invited|failed> <lobbies> <message>
- *   loader:  browseask <refresh|join> <lobby id or ->     (unasked: the editor's ask)
+ *   loader:  browseask <refresh|join|quick|allow> <lobby id, strangers|editedstats, or ->  (unasked: the editor's ask)
  * As mod sync's lines do, a version's browselobby lines come first and wait in g_browseNext (the pipe's thread alone
  * touches it); its browsestate line publishes them. A browsestate of the version already published (a search under way,
  * a join's outcome) keeps its lobbies. The terminal count is terminal.c's: how many times the ship's information
@@ -12,6 +12,7 @@
 #define BROWSE_MAX_LOBBIES 128
 static const char* const kBrowseStates[] = {"none", "searching", "ready", "unavailable", "invited", "failed"};
 static const char* const kBrowseVerdicts[] = {"ready", "download", "trust", "unjoinable", "blocked", "full", "locked", "unknown"};
+static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats"};
 static SRWLOCK g_browseLock = SRWLOCK_INIT;
 static HfBrowseState g_browse;
 static HfBrowseLobby g_browseLobbies[BROWSE_MAX_LOBBIES];
@@ -57,12 +58,13 @@ static int BrowseOptional(const char* text, uint64_t max, int32_t* out)
 
 static void BrowseLobbyLine(char* line, char* reply, size_t size)
 {
-    char* f[17];
-    int n = SplitAll(line, f, 17);
+    char* f[18];
+    int n = SplitAll(line, f, 18);
     uint64_t version = 0, index = 0, members = 0, max = 0, mods = 0, bytes = 0;
     int32_t difficulty = -1, planet = -1;
-    int verdict = n == 17 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 17 ? BrowseFlags(f[5]) : -1;
-    if (n != 17 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
+    int verdict = n == 18 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 18 ? BrowseFlags(f[5]) : -1;
+    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 3) : -1;
+    if (n != 18 || fix < 0 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
         !SyncNumber(f[6], &members) || members > 64 || !SyncNumber(f[7], &max) || max > 64 || !BrowseOptional(f[8], 100, &difficulty) ||
         !BrowseOptional(f[9], 100000, &planet) || !SyncNumber(f[10], &mods) || mods > 4096 || !SyncNumber(f[11], &bytes) || !BrowseLobbyId(f[12]))
     { snprintf(reply, size, "%s\trefused\tmalformed browselobby", n >= 2 ? f[1] : "-"); return; }
@@ -89,6 +91,7 @@ static void BrowseLobbyLine(char* line, char* reply, size_t size)
     SyncCopy(l->reason, sizeof l->reason, f[14]);
     SyncCopy(l->players, sizeof l->players, f[15]);
     SyncCopy(l->mod_list, sizeof l->mod_list, f[16]);
+    l->fix = (uint32_t)fix;
     g_browseNextSeen[index / 64] |= 1ull << (index % 64);
     snprintf(reply, size, "%s\tok\tnow", f[1]);
 }
@@ -176,17 +179,22 @@ static int ApiBrowseLobby(HfMod* mod, uint32_t index, HfBrowseLobby* out)
     return 1;
 }
 
-/* SDK 16, browse_ask: a new list, or a join of a listed lobby, queued for the backend. */
+/* SDK 16, browse_ask: a new list, a join of a listed lobby, Quick Play or a setting the browser offers, queued for the
+ * backend. */
 static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
 {
     (void)mod;
     if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) { TcamBrowser(ask == HF_BROWSE_SHOWN); return 1; }
-    if (ask != HF_BROWSE_REFRESH && ask != HF_BROWSE_JOIN) return 0;
+    const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" :
+        ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS ? "allow" : NULL;
+    if (verb == NULL) return 0;
     if (ask == HF_BROWSE_JOIN && (lobbyId == NULL || !BrowseLobbyId(lobbyId))) return 0;
+    const char* what = ask == HF_BROWSE_JOIN ? lobbyId : ask == HF_BROWSE_ALLOW_STRANGERS ? "strangers" : ask == HF_BROWSE_SHOW_EDITED_STATS ? "editedstats" : "-";
     char line[128];
-    int length = snprintf(line, sizeof line, "browseask\t%s\t%s\n", ask == HF_BROWSE_JOIN ? "join" : "refresh", ask == HF_BROWSE_JOIN ? lobbyId : "-");
+    int length = snprintf(line, sizeof line, "browseask\t%s\t%s\n", verb, what);
     int queued = LiveQueue(line, length);
-    if (ask == HF_BROWSE_JOIN || !queued) Note("lobby browser: %s%s%s", ask == HF_BROWSE_JOIN ? "join " : "a new list asked for",
-        ask == HF_BROWSE_JOIN ? lobbyId : "", queued ? "" : " (not sent: no backend connected)");
+    if (ask != HF_BROWSE_REFRESH || !queued) Note("lobby browser: %s%s%s%s", ask == HF_BROWSE_REFRESH ? "a new list asked for" : verb,
+        ask == HF_BROWSE_REFRESH || ask == HF_BROWSE_QUICK ? "" : " ", ask == HF_BROWSE_REFRESH || ask == HF_BROWSE_QUICK ? "" : what,
+        queued ? "" : " (not sent: no backend connected)");
     return queued;
 }

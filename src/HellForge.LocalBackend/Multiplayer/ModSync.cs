@@ -221,7 +221,8 @@ public sealed class ModSync : IAsyncDisposable
     public JoinCheck Check(DirectoryListing listing)
     {
         var settings = ModSettings.Read(modsFolder);
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats) return new(false, "its host plays with edited stats", null, []);
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats)
+            return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
         if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
         if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return new(true, "", null, []);
         ModSet set;
@@ -1002,6 +1003,11 @@ public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IRe
 {
     // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
     public ModSet? Set { get; init; }
+
+    // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
+    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null.
+    public string? Fix { get; init; }
+    public const string FixStrangers = "strangers", FixEditedStats = "editedStats";
 
     // Why one item stands in the way: the host does not share, a stranger's unchecked mod while this game is not
     // sandboxed, a different bundled mod (another HellForge), or the player's blocklist.

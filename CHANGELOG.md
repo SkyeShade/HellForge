@@ -17,7 +17,9 @@ On `dev`, since 0.3.0-beta.
   Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
   (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
   lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
-  in-game editor opens it too.
+  in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
+  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  that lets them in, which you can turn on from the browser.
 
 ### Changed
 
@@ -92,7 +94,9 @@ On `dev`, since 0.3.0-beta.
 - SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge lobby
   with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
   opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
-  keep it on the screen while a browser shows).
+  keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
+  setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`; show the player the
+  launcher's warning before turning strangers on).
 
 ### For launcher developers
 

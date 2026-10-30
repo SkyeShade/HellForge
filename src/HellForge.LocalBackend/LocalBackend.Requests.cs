@@ -181,6 +181,13 @@ public static partial class LocalBackend
                     new JsonObject { ["version"] = Multiplayer.BrowseApi.Version, ["available"] = false, ["reason"] = "This backend has no lobby browser.", ["lobbies"] = new JsonArray() });
                 return new(StatusCodes.Status200OK, "browse_listed", (await Browse.ListAsync()).DeepClone());
             }
+            if (segments is ["quick"])
+            {
+                if (OtherMethod(context, HttpMethods.IsPost, "POST") is { } rejected) return rejected;
+                if (Browse == null) return new(StatusCodes.Status503ServiceUnavailable, "browse_unavailable", Error("HELLFORGE_MULTIPLAYER_OFF"));
+                var (status, outcome, body) = await Browse.QuickJoinAsync();
+                return new(status, outcome, body);
+            }
             if (segments is [var lobbyId, "join"])
             {
                 if (OtherMethod(context, HttpMethods.IsPost, "POST") is { } rejected) return rejected;

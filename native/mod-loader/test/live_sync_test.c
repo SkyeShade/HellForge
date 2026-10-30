@@ -234,11 +234,11 @@ static void LiveBrowseFixture(void)
     HfBrowseLobby lobby = {sizeof lobby};
     assert(!ApiBrowseState(NULL, &state) && state.state == HF_BROWSE_NONE && state.size == sizeof state && !ApiBrowseLobby(NULL, 0, &lobby));
 
-    SyncLine("browselobby\t1\t3\t0\tready\tfriend,joinable\t2\t4\t7\t118\t0\t0\tsteam-1\tFriend One\t\tFriend One, Two\tTanks 2.0: have", reply, sizeof reply);
+    SyncLine("browselobby\t1\t3\t0\tready\tfriend,joinable\t2\t4\t7\t118\t0\t0\tsteam-1\tFriend One\t\tFriend One, Two\tTanks 2.0: have\t-", reply, sizeof reply);
     assert(!strcmp(reply, "1\tok\tnow"));
-    SyncLine("browselobby\t2\t3\t1\tunjoinable\t-\t1\t4\t-\t-\t3\t0\tsteam-2\tStranger\tit needs mods installed by hand\t\t", reply, sizeof reply);
+    SyncLine("browselobby\t2\t3\t1\tunjoinable\t-\t1\t4\t-\t-\t3\t0\tsteam-2\tStranger\tits host is not a Steam friend\t\t\tstrangers", reply, sizeof reply);
     assert(!strcmp(reply, "2\tok\tnow"));
-    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t", reply, sizeof reply);
+    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\t-", reply, sizeof reply);
     assert(!strcmp(reply, "3\tok\tnow"));
     assert(!ApiBrowseLobby(NULL, 0, &lobby)); /* not published yet */
     SyncLine("browsestate\t4\t3\tready\t3\t", reply, sizeof reply);
@@ -246,9 +246,10 @@ static void LiveBrowseFixture(void)
     assert(ApiBrowseState(NULL, &state) == 0 && state.state == HF_BROWSE_READY && state.version == 3 && state.lobbies == 3); /* 0: no backend */
     assert(ApiBrowseLobby(NULL, 0, &lobby) && lobby.verdict == HF_LOBBY_READY && lobby.flags == (HF_LOBBY_FLAG_FRIEND | HF_LOBBY_FLAG_JOINABLE) &&
         lobby.members == 2 && lobby.max_members == 4 && lobby.difficulty == 7 && lobby.planet == 118 && !strcmp(lobby.lobby_id, "steam-1") &&
-        !strcmp(lobby.host, "Friend One") && lobby.reason[0] == 0 && !strcmp(lobby.players, "Friend One, Two") && !strcmp(lobby.mod_list, "Tanks 2.0: have"));
+        !strcmp(lobby.host, "Friend One") && lobby.reason[0] == 0 && !strcmp(lobby.players, "Friend One, Two") && !strcmp(lobby.mod_list, "Tanks 2.0: have") &&
+        lobby.fix == HF_LOBBY_FIX_NONE);
     assert(ApiBrowseLobby(NULL, 1, &lobby) && lobby.verdict == HF_LOBBY_UNJOINABLE && lobby.flags == 0 && lobby.difficulty == -1 && lobby.planet == -1 &&
-        lobby.mods == 3 && !strcmp(lobby.reason, "it needs mods installed by hand"));
+        lobby.mods == 3 && !strcmp(lobby.reason, "its host is not a Steam friend") && lobby.fix == HF_LOBBY_FIX_STRANGERS);
     assert(ApiBrowseLobby(NULL, 2, &lobby) && lobby.verdict == HF_LOBBY_DOWNLOAD && (lobby.flags & HF_LOBBY_FLAG_MISSION) && lobby.download_bytes == 1048576 &&
         lobby.host[0] == 0);
     assert(!ApiBrowseLobby(NULL, 3, &lobby));
@@ -262,7 +263,7 @@ static void LiveBrowseFixture(void)
     SyncLine("browsestate\t7\t3\tready\t2\t", reply, sizeof reply);
     assert(strstr(reply, "\trefused\t") != NULL);
     /* a new version without all of its lines is refused, the old list stays; an empty list needs none */
-    SyncLine("browselobby\t8\t4\t1\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-9\tA\t\t\t", reply, sizeof reply);
+    SyncLine("browselobby\t8\t4\t1\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-9\tA\t\t\t\t-", reply, sizeof reply);
     SyncLine("browsestate\t9\t4\tready\t2\t", reply, sizeof reply);
     assert(strstr(reply, "missing") != NULL && (ApiBrowseState(NULL, &state), state.version == 3));
     SyncLine("browsestate\t10\t5\tunavailable\t0\tMultiplayer is off for this session.", reply, sizeof reply);
@@ -270,13 +271,14 @@ static void LiveBrowseFixture(void)
     assert(!strcmp(reply, "10\tok\tnow") && state.state == HF_BROWSE_UNAVAILABLE && state.lobbies == 0 && !ApiBrowseLobby(NULL, 0, &lobby));
 
     const char* bad[] = {
-        "browselobby\t11\t6\t0\tgreat\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t",       /* an unknown verdict */
-        "browselobby\t12\t6\t0\tready\tvip\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t",      /* an unknown flag */
-        "browselobby\t13\t6\t128\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t",      /* past the 128th lobby */
-        "browselobby\t14\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam 1\tA\t\t\t",       /* a space in the lobby id */
-        "browselobby\t15\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\t\tA\t\t\t",              /* no lobby id */
-        "browselobby\t16\t6\t0\tready\t-\t1\t4\t-1\t-\t0\t0\tsteam-1\tA\t\t\t",      /* a difficulty that is not a number */
-        "browselobby\t17\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t",           /* a field short */
+        "browselobby\t11\t6\t0\tgreat\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",       /* an unknown verdict */
+        "browselobby\t12\t6\t0\tready\tvip\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* an unknown flag */
+        "browselobby\t13\t6\t128\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* past the 128th lobby */
+        "browselobby\t14\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam 1\tA\t\t\t\t-",       /* a space in the lobby id */
+        "browselobby\t15\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\t\tA\t\t\t\t-",              /* no lobby id */
+        "browselobby\t16\t6\t0\tready\t-\t1\t4\t-1\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* a difficulty that is not a number */
+        "browselobby\t17\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t-",           /* a field short */
+        "browselobby\t20\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\tsandbox", /* an unknown fix */
         "browsestate\t18\t6\tjoining\t0\t",                                          /* an unknown state */
         "browsestate\t19\t6\tready\t129\t",                                          /* too many lobbies */
     };
@@ -291,9 +293,11 @@ static void LiveBrowseFixture(void)
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 1; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
     assert(ApiBrowseState(NULL, &state) == 1);
     assert(!ApiBrowseAsk(NULL, 9, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam\t1"));
-    assert(ApiBrowseAsk(NULL, HF_BROWSE_REFRESH, "ignored") && ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam-1"));
+    assert(ApiBrowseAsk(NULL, HF_BROWSE_REFRESH, "ignored") && ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam-1") && ApiBrowseAsk(NULL, HF_BROWSE_QUICK, NULL) &&
+        ApiBrowseAsk(NULL, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, "ignored"));
     g_liveOut[g_liveOutUsed] = 0;
-    assert(!strcmp(g_liveOut, "browseask\trefresh\t-\nbrowseask\tjoin\tsteam-1\n"));
+    assert(!strcmp(g_liveOut, "browseask\trefresh\t-\nbrowseask\tjoin\tsteam-1\nbrowseask\tquick\t-\nbrowseask\tallow\tstrangers\n"
+        "browseask\tallow\teditedstats\n"));
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
 
     /* the terminal's count goes with the state, and stays when the backend goes */

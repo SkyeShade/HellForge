@@ -155,7 +155,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `browse_state`: `int (HfMod* mod, HfBrowseState* out)`. The list as the backend last sent it: 1 with *out filled (at most out->size bytes), 0 when no backend is connected (*out is filled all the same: state HF_BROWSE_NONE, and the terminal count).
 - `browse_lobby`: `int (HfMod* mod, uint32_t index, HfBrowseLobby* out)`. The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last.
-- `browse_ask`: `int (HfMod* mod, uint32_t ask, const char* lobby_id)`. Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0 not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend.
+- `browse_ask`: `int (HfMod* mod, uint32_t ask, const char* lobby_id)`. Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0 not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend.
 
 ## Components
 

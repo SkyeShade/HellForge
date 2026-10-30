@@ -178,7 +178,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
     public LiveBrowse? Browser { get; private set; }
     public void ShowBrowser(BrowseApi browse)
     {
-        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log);
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, modsFolder);
     }
 
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).

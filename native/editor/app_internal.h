@@ -361,6 +361,7 @@ struct LobbyDialog
     double closingAt = 0;     /* when its screen began to power off (0 not closing) */
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
     bool camera = false;      /* the terminal's camera glides to its screen: the browser waits, drawing nothing */
+    bool confirmStrangers = false; /* the warning before turning Play with strangers on shows, waiting for TURN ON */
 };
 extern LobbyDialog g_lobbies;
 bool HasBrowse();

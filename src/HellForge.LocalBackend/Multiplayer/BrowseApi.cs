@@ -10,7 +10,8 @@ namespace HellForge.LocalBackend.Multiplayer;
 //   GET  /hellforge/v1/lobbies              every HellForge lobby the directory has, with no planet or difficulty filter,
 //                                           plus friends' lobbies heard through presence, each with its join check;
 //   POST /hellforge/v1/lobbies/<id>/join    hands this machine's game an invitation to a lobby of the last list
-//                                           (LobbyService.InviteLocal); the game joins only when the player accepts it.
+//                                           (LobbyService.InviteLocal); the game joins only when the player accepts it;
+//   POST /hellforge/v1/lobbies/quick        the same for the best joinable lobby of a fresh list (Best: Quick Play).
 // Both sit behind the backend's only-this-PC check. A list is searched at most once per MinInterval whoever asks: callers
 // in that time share it. The multiplayer services start after the HTTP server, so they are attached later (Attach);
 // until then, and in a session without multiplayer, the list says it is unavailable.
@@ -28,6 +29,7 @@ public sealed class BrowseApi
     LobbyService? lobby;
     FriendPresence? presence;
     (DateTime At, Task<JsonObject> List)? last;
+    IReadOnlyList<BrowseLobby> latest = []; // the last list's lobbies (Quick Play picks from them)
     readonly Dictionary<string, (BrowseLobby Lobby, DateTime At)> listed = new(StringComparer.Ordinal);
 
     public BrowseApi(Func<DateTime>? clock = null) => now = clock ?? (() => DateTime.UtcNow);
@@ -51,6 +53,12 @@ public sealed class BrowseApi
         }
     }
 
+    // The next list is searched again whatever its age (a setting that changes what is listed changed).
+    public void Forget()
+    {
+        lock (gate) last = null;
+    }
+
     async Task<JsonObject> SearchAsync()
     {
         DirectoryService? directory;
@@ -70,6 +78,7 @@ public sealed class BrowseApi
         lock (gate)
         {
             foreach (var entry in lobbies) listed[entry.LobbyId] = (entry, at);
+            latest = lobbies;
             foreach (var old in listed.Where(l => at - l.Value.At > JoinableFor).Select(l => l.Key).ToList()) listed.Remove(old);
         }
         return new JsonObject
@@ -101,6 +110,7 @@ public sealed class BrowseApi
             ["verdict"] = Verdict(lobby), ["reason"] = Reason(lobby),
             ["downloadBytes"] = join.Plan?.DownloadBytes ?? 0
         };
+        if (join.Fix != null) item["fix"] = join.Fix;
         item["mods"] = Mods(join);
         return item;
     }
@@ -168,6 +178,31 @@ public sealed class BrowseApi
         });
     }
 
+    // POST /hellforge/v1/lobbies/quick: Quick Play, an invitation to the best lobby of a list at most MinInterval old.
+    public async Task<(int Status, string Outcome, JsonObject Body)> QuickJoinAsync()
+    {
+        await ListAsync();
+        BrowseLobby? best;
+        lock (gate) best = Best(latest);
+        if (best == null)
+            return (404, "browse_quick_none", Error("HELLFORGE_NO_JOINABLE_LOBBY", "No lobby you can join right now: host one yourself, or look again in a moment."));
+        var (status, outcome, body) = Join(best.LobbyId);
+        if (status == 202) body["hostName"] = Describe(best, null)["hostName"]?.DeepClone();
+        return (status, outcome == "browse_invited" ? "browse_quick_invited" : outcome, body);
+    }
+
+    // Quick Play's choice: a joinable lobby with a slot free, a friend's first, then the least a join needs (the same
+    // mods, then a download, smallest first, then a friend's lobby whose mods are known only on joining, then mods to
+    // trust), then the fullest (more players to play with). Null when none can be joined.
+    public static BrowseLobby? Best(IEnumerable<BrowseLobby> lobbies) => lobbies
+        .Where(l => l.Join.Joinable && !l.Locked && l.Members < l.MaxMembers)
+        .OrderBy(l => l.Friend ? 0 : 1)
+        .ThenBy(l => Verdict(l) switch { "ready" => 0, "download" => 1, "unknown" => 2, _ => 3 })
+        .ThenBy(l => l.Join.Plan?.DownloadBytes ?? 0)
+        .ThenByDescending(l => l.Members)
+        .ThenBy(l => l.LobbyId, StringComparer.Ordinal)
+        .FirstOrDefault();
+
     static JsonObject Error(string code, string message) => new() { ["errorCode"] = code, ["message"] = message };
 
     static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text) ? text : null;
@@ -179,9 +214,11 @@ public sealed class BrowseApi
 }
 
 // The lobby browser in the game (HfApi browse_state, browse_lobby and browse_ask, SDK 16): an editor's asks over the
-// session's live-edit pipe ("browseask refresh|join <lobby id>", native/mod-loader/live_browse.c), answered with the API's
-// own list (BrowseApi.ListAsync) as one "browselobby" line a lobby and then "browsestate", which publishes them, and a
-// join through the API's (BrowseApi.Join). Asks are answered one at a time, in order.
+// session's live-edit pipe ("browseask refresh|join <lobby id>|quick|allow strangers|editedstats",
+// native/mod-loader/live_browse.c), answered with the API's own list (BrowseApi.ListAsync) as one "browselobby" line a
+// lobby and then "browsestate", which publishes them, and a join through the API's (BrowseApi.Join, QuickJoinAsync).
+// "allow" changes the player's setting a listed lobby's fix names, once the editor showed what it means: only the game's
+// own pipe can ask it, not the loopback HTTP API. Asks are answered one at a time, in order.
 public sealed class LiveBrowse
 {
     // The loader's limit (live_browse.c BROWSE_MAX_LOBBIES): past it the message says how many more there are.
@@ -190,19 +227,21 @@ public sealed class LiveBrowse
     readonly BrowseApi api;
     readonly LiveEditServer live;
     readonly Action<string> log;
+    readonly string? modsFolder;
     readonly SemaphoreSlim order = new(1, 1);
     int attempts;
     // the list the game shows: its version and how many lobbies (0, 0: none yet)
     (int Version, int Lobbies) shown;
 
-    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log)
+    // modsFolder: the session's, where the player's settings live (null: "allow" is refused).
+    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log, string? modsFolder = null)
     {
-        (this.api, this.live, this.log) = (api, live, log);
+        (this.api, this.live, this.log, this.modsFolder) = (api, live, log, modsFolder);
         live.Received += parts => { if (parts[0] == "browseask") _ = AskAsync(parts); };
         live.StateChanged += () => { if (!live.Connected) shown = (0, 0); }; // the loader forgets the list with the pipe
     }
 
-    // "browseask" refresh - | join <lobby id>.
+    // "browseask" refresh - | join <lobby id> | quick - | allow strangers|editedstats.
     public async Task AskAsync(IReadOnlyList<string> parts)
     {
         if (parts.Count != 3 || parts[0] != "browseask") return;
@@ -211,6 +250,8 @@ public sealed class LiveBrowse
         {
             if (parts[1] == "refresh") await RefreshAsync();
             else if (parts[1] == "join" && parts[2] != "-") await JoinAsync(parts[2]);
+            else if (parts[1] == "quick") await QuickAsync();
+            else if (parts[1] == "allow" && parts[2] is "strangers" or "editedstats") await AllowAsync(parts[2]);
         }
         catch (Exception error) { log("Lobby browser: the game's ask failed: " + error.Message); }
         finally { order.Release(); }
@@ -241,6 +282,42 @@ public sealed class LiveBrowse
         await live.BrowseStateAsync(shown.Version, status == 202 ? "invited" : "failed", shown.Lobbies, body["message"]?.GetValue<string>() ?? "");
     }
 
+    async Task QuickAsync()
+    {
+        await RefreshAsync(); // the list the player sees is the one Quick Play chose from
+        var (status, outcome, body) = await api.QuickJoinAsync();
+        log($"Lobby browser: Quick Play: {outcome}{(body["lobbyId"]?.GetValue<string>() is { } id ? " " + id : "")}.");
+        var message = status == 202 ? $"Quick Play: joining {body["hostName"]?.GetValue<string>() ?? "a player"}'s lobby. Accept the invitation in game." : body["message"]?.GetValue<string>() ?? "";
+        await live.BrowseStateAsync(shown.Version, status == 202 ? "invited" : "failed", shown.Lobbies, message);
+    }
+
+    // The player turned a setting on from the browser, after its warning: Play with strangers (the stranger setting
+    // reads it again within StrangerSetting.Recheck), or showing lobbies whose host shares edited stats. A new list follows.
+    async Task AllowAsync(string what)
+    {
+        if (modsFolder == null) { log("Lobby browser: the game asked to change a setting, but this session has no mods folder."); return; }
+        try
+        {
+            if (what == "strangers")
+            {
+                ModSettings.SetPlayWithStrangers(modsFolder, true);
+                ModSettings.SetStrangersWarned(modsFolder);
+            }
+            else ModSettings.SetShowEditedStats(modsFolder, true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            log("Lobby browser: could not save the setting: " + error.Message);
+            await live.BrowseStateAsync(shown.Version, "failed", shown.Lobbies, "Could not save the setting: " + error.Message);
+            return;
+        }
+        log(what == "strangers" ? "Lobby browser: the player turned Play with strangers on, after its warning." : "Lobby browser: the player shows lobbies whose host shares edited stats.");
+        if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "searching", shown.Lobbies, "");
+        if (what == "strangers") await Task.Delay(StrangerSetting.Recheck + TimeSpan.FromMilliseconds(200));
+        api.Forget();
+        await RefreshAsync();
+    }
+
     // A lobby of the API's list as the loader reads it; null for one it could not take (a lobby id it refuses).
     public static LiveLobby? Line(JsonObject lobby)
     {
@@ -259,7 +336,8 @@ public sealed class LiveBrowse
             $"{m["name"]?.GetValue<string>() ?? m["id"]?.GetValue<string>()} {m["version"]?.GetValue<string>()}: {m["action"]!.GetValue<string>()}");
         return new LiveLobby(lobby["verdict"]?.GetValue<string>() ?? "unknown", flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
             Optional("planetId", 100000), sharedMods.Count, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
-            lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), string.Join("; ", changed));
+            lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), string.Join("; ", changed),
+            lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", _ => "" });
     }
 
     // A whole number the list holds (an int or a long, as Describe put it, or parsed JSON), else null.

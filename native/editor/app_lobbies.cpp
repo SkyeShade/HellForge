@@ -27,6 +27,9 @@ static bool LobbiesArmed() { return Now() - g_lobbies.shownAt >= LOBBY_ARM; }
 const double LOBBY_SEARCH_SHOWN = 0.8;
 static bool Searching() { return g_lobbies.state.state == HF_BROWSE_SEARCHING || Now() - g_lobbies.askedAt < LOBBY_SEARCH_SHOWN; }
 
+/* What Quick Play asks for while the backend picks (g_lobbies.joining): JoinAnswered then hears its outcome. */
+const char* const QUICK_JOIN = "quick play";
+
 bool HasBrowse() { return g_host.api->size >= offsetof(HfApi, browse_ask) + sizeof(void*) && g_host.api->browse_state != nullptr; }
 
 static void AskList()
@@ -76,6 +79,7 @@ static void CloseLobbies()
 {
     LobbiesGone();
     g_lobbies.on = false;
+    g_lobbies.confirmStrangers = false;
     g_lobbies.closingAt = 0;
     g_lobbies.joining.clear();
     ShowLobbiesAlone(false);
@@ -117,7 +121,8 @@ static void JoinAnswered(const HfBrowseState& now)
     if (g_lobbies.joining.empty()) return;
     if (now.state == HF_BROWSE_INVITED)
     {
-        g_host.api->log(g_host.mod, "editor: lobby browser: invited to %s; the browser closes for the game's invitation", g_lobbies.joining.c_str());
+        g_host.api->log(g_host.mod, "editor: lobby browser: invited (%s); the browser closes for the game's invitation", g_lobbies.joining.c_str());
+        if (g_lobbies.joining == QUICK_JOIN && now.message[0]) Toast(now.message, OK);
         Sound(sounds::APPLY);
         CloseLobbies();
     }
@@ -179,6 +184,44 @@ static void Join(const HfBrowseLobby* l)
     Sound(sounds::CLICK);
 }
 
+/* Quick Play: the backend joins the best lobby it can (a friend's first, then the least to download). */
+static void Quick()
+{
+    if (!g_lobbies.joining.empty() || !LobbiesArmed()) return;
+    if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_QUICK, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
+    g_lobbies.joining = QUICK_JOIN;
+    Sound(sounds::CLICK);
+}
+
+/* The setting that keeps a lobby out, turned on from the browser: Play with strangers only after its warning
+ * (confirmStrangers, then TurnOnStrangers), edited stats at once. */
+const char* const STRANGER_WARNING = "Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in "
+    "the game's network code could let it run code on your PC. Turn this on only if you accept that risk. You can turn it off again in the "
+    "launcher's Settings > MULTIPLAYER.";
+
+static void Fix(const HfBrowseLobby* l)
+{
+    if (l == nullptr || !LobbiesArmed()) return;
+    if (l->fix == HF_LOBBY_FIX_STRANGERS) { g_lobbies.confirmStrangers = true; Sound(sounds::CLICK); }
+    else if (l->fix == HF_LOBBY_FIX_EDITED_STATS)
+    {
+        if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_SHOW_EDITED_STATS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
+        Toast("Lobbies whose host shares edited stats now show. Joining one, you play with the host's stats.", OK);
+        g_lobbies.askedAt = Now();
+        Sound(sounds::CLICK);
+    }
+}
+
+static void TurnOnStrangers()
+{
+    g_lobbies.confirmStrangers = false;
+    if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_ALLOW_STRANGERS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
+    g_host.api->log(g_host.mod, "editor: lobby browser: the player turned Play with strangers on, after its warning");
+    Toast("Play with strangers is on: strangers' lobbies can be joined.", OK);
+    g_lobbies.askedAt = Now();
+    Sound(sounds::APPLY);
+}
+
 static void Refresh()
 {
     if (Searching()) return;
@@ -203,6 +246,12 @@ static void LobbyEscape()
 void LobbyKeys()
 {
     if (g_lobbies.camera) return;
+    if (g_lobbies.confirmStrangers)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
+        else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) TurnOnStrangers();
+        return;
+    }
     int n = (int)g_lobbies.shown.size();
     if (Pressed(ImGuiKey_UpArrow)) g_lobbies.index = std::max(0, g_lobbies.index - 1);
     if (Pressed(ImGuiKey_DownArrow)) g_lobbies.index = std::min(std::max(0, n - 1), g_lobbies.index + 1);
@@ -213,6 +262,8 @@ void LobbyKeys()
     if (ImGui::IsKeyPressed(ImGuiKey_J, false)) ToggleJoinable();
     if (ImGui::IsKeyPressed(ImGuiKey_F, false)) ToggleFriends();
     if (ImGui::IsKeyPressed(ImGuiKey_D, false)) NextDifficulty();
+    if (ImGui::IsKeyPressed(ImGuiKey_Q, false)) Quick();
+    if (ImGui::IsKeyPressed(ImGuiKey_A, false)) Fix(Selected());
 }
 
 static std::string Megabytes(uint64_t bytes)
@@ -290,8 +341,10 @@ static void DrawTermHeader(float x, float y, float w, float alpha, double t)
     float tw = g_cv.Text(title.substr(0, typed), x, y + 14, T(SZ_LABEL, Alpha(TERM_TEXT, alpha), ui::TITLE, ui::LEFT, 0, 12));
     g_cv.Rect(x + tw + 14, y + 14, w - tw - 14, 2, Alpha(TERM_LINE, alpha), 11);
     const HfBrowseState& s = g_lobbies.state;
+    size_t strangers = std::count_if(g_lobbies.lobbies.begin(), g_lobbies.lobbies.end(), [](const HfBrowseLobby& l) { return l.fix == HF_LOBBY_FIX_STRANGERS; });
     std::string what = s.state == HF_BROWSE_NONE ? "Connecting to the ship's network..." : s.state == HF_BROWSE_UNAVAILABLE ? s.message :
-        s.message[0] ? s.message : "Every HellForge lobby on any planet, and what joining it takes.";
+        s.message[0] ? s.message : strangers > 0 ? std::to_string(strangers) + " of these lobbies are strangers': Play with strangers is off (select one, then A)." :
+        "Every HellForge lobby on any planet, and what joining it takes.";
     g_cv.Text(what, x, y + 42, T(SZ_SMALL, Alpha(s.state == HF_BROWSE_UNAVAILABLE || s.state == HF_BROWSE_FAILED ? TERM_BAD : TERM_DIM, alpha), ui::BODY,
         ui::LEFT, w * 0.6f, 12));
     std::string status = std::to_string(g_lobbies.shown.size()) + " of " + std::to_string(g_lobbies.lobbies.size()) + " lobbies";
@@ -311,9 +364,11 @@ static void DrawTermFilters(float x, float y, float w, float alpha)
     if (TermButton("FRIENDS", {x, y + 66, w, 34}, g_lobbies.friendsOnly, true, ui::Id("lobbyfriends"), alpha)) ToggleFriends();
     std::string difficulty = g_lobbies.difficulty ? "DIFFICULTY " + std::to_string(g_lobbies.difficulty) + "+" : std::string("ANY DIFFICULTY");
     if (TermButton(difficulty, {x, y + 108, w, 34}, g_lobbies.difficulty > 0, true, ui::Id("lobbydifficulty"), alpha)) NextDifficulty();
-    bool searching = Searching();
-    if (TermButton(searching ? "SEARCHING..." : "REFRESH", {x, y + 170, w, 40}, false, !searching, ui::Id("lobbyrefresh"), alpha)) Refresh();
-    if (TermButton("CLOSE", {x, y + 220, w, 40}, false, true, ui::Id("lobbyclose"), alpha)) PowerOff();
+    bool searching = Searching(), quick = g_lobbies.joining == QUICK_JOIN;
+    if (TermButton(quick ? "FINDING A LOBBY..." : "QUICK PLAY", {x, y + 170, w, 48}, quick, g_lobbies.joining.empty(), ui::Id("lobbyquick"), alpha)) Quick();
+    g_cv.Text("Joins the best lobby you can", x, y + 230, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w, 12));
+    if (TermButton(searching ? "SEARCHING..." : "REFRESH", {x, y + 262, w, 40}, false, !searching, ui::Id("lobbyrefresh"), alpha)) Refresh();
+    if (TermButton("CLOSE", {x, y + 312, w, 40}, false, true, ui::Id("lobbyclose"), alpha)) PowerOff();
 }
 
 static void DrawTermList(float x, float y, float w, float h, float alpha)
@@ -402,8 +457,30 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
     }
     else if (l->mods > 0)
         g_cv.Text(std::to_string(l->mods) + " shared mod(s), all the same as yours", x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12));
+    if (l->fix != HF_LOBBY_FIX_NONE)
+    {
+        const char* fix = l->fix == HF_LOBBY_FIX_STRANGERS ? "TURN ON PLAY WITH STRANGERS" : "SHOW EDITED-STATS LOBBIES";
+        if (TermButton(fix, {x + 20, y + h - 116, w - 40, 40}, false, true, ui::Id("lobbyfix"), alpha)) Fix(l);
+    }
     bool joinable = Joinable(l);
     if (TermButton(!g_lobbies.joining.empty() ? "JOINING..." : "JOIN", {x + 20, y + h - 64, w - 40, 44}, joinable, joinable, ui::Id("lobbyjoin"), alpha)) Join(l);
+}
+
+/* The warning before Play with strangers goes on (the launcher's), over the screen: TURN ON (Y) or CANCEL (N, Esc). */
+static void DrawTermConfirm(float X, float Y, float W, float H, float alpha)
+{
+    g_cv.Rect(X, Y, W, H, Alpha(C(0, 8, 30, 170), alpha), 13);
+    float w = std::min(640.0f, W - 80), x = X + (W - w) / 2;
+    std::vector<std::string> lines = Wrapped(STRANGER_WARNING, w - 48, SZ_LABEL);
+    float h = 150 + 24 * (float)lines.size(), y = Y + (H - h) / 2;
+    g_cv.Rect(x, y, w, h, Alpha(TERM_BG, alpha), 13);
+    g_cv.Frame(x, y, w, h, Alpha(TERM_WARN, alpha), 14);
+    g_cv.Text("TURN ON PLAY WITH STRANGERS?", x + 24, y + 30, T(SZ_TITLE, Alpha(TERM_WARN, alpha), ui::TITLE, ui::LEFT, w - 48, 14));
+    float ly = y + 66;
+    for (const std::string& line : lines) { g_cv.Text(line, x + 24, ly, T(SZ_LABEL, Alpha(TERM_TEXT, alpha), ui::BODY, ui::LEFT, w - 48, 14)); ly += 24; }
+    float bw = (w - 64) / 2;
+    if (TermButton("TURN ON (Y)", {x + 24, y + h - 60, bw, 40}, false, true, ui::Id("lobbystrangerson"), alpha)) TurnOnStrangers();
+    if (TermButton("CANCEL (N)", {x + 40 + bw, y + h - 60, bw, 40}, false, true, ui::Id("lobbystrangerscancel"), alpha)) { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
 }
 
 /* Esc or CLOSE: the screen powers off, then the browser goes (LobbyEscape's work, after the animation). */
@@ -438,7 +515,8 @@ void DrawLobbies()
     DrawTermFilters(cx, top, filterW, contents);
     DrawTermList(cx + filterW + 24, top, cw - filterW - detailW - 48, bottom - top, contents);
     DrawTermDetail(cx + cw - detailW, top, detailW, bottom - top, contents);
-    g_cv.Text("Up/Down select   Enter join   R refresh   J joinable only   F friends   D difficulty   Esc close", cx, bottom + 16,
+    if (g_lobbies.confirmStrangers) DrawTermConfirm(X, Y, W, H, contents);
+    g_cv.Text("Up/Down select   Enter join   Q quick play   A allow   R refresh   J joinable only   F friends   D difficulty   Esc close", cx, bottom + 16,
         T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::LEFT, 0, 12));
     g_cv.Text("INTERNAL NETWORK - TT_HD: ID_LOBBIES", cx + cw, bottom + 16, T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::RIGHT, 0, 12));
 }

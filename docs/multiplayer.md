@@ -563,6 +563,18 @@ goes up (and on Ctrl+L), alone over the game and holding its input like the MOD 
 new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
 It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API.
 
+**Quick Play and the hidden lobbies.** `browseask quick -` (Q or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
+lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invited` with the host's name, or `failed`
+when nothing can be joined. The browse API lists what a map search leaves out: a stranger's lobby with Play with
+strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
+and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
+`HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the
+launcher's warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then saves it (the stranger
+setting reads it again within 2 s) and lists again. Only the game's pipe can ask that, not the HTTP API. Each browse
+logs its counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per
+lobby it cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps
+lobbies out.
+
 **The terminal's camera** (`native/mod-loader/terminal_camera.c`, build 25480438). The terminal has no camera move of
 its own, so the loader makes one. When an editor read `browse_state` in the last 3 s, the terminal opens no presenter
 at all, and when the player pressed E at it (the open is called from game.dll; Ship Station Hotkeys' key calls the

@@ -78,7 +78,7 @@ static int SyncAnswer(HfMod*, uint32_t version, uint32_t answer, const char* id)
 /* the lobby browser (SDK 16): the backend's list as the editor reads it, and the asks it makes */
 static HfBrowseState g_browseNow = {sizeof(HfBrowseState)};
 static HfBrowseLobby g_browseList[3];
-static int g_browseRefreshes, g_browseJoins, g_lobbiesAlone, g_lobbiesGone;
+static int g_browseRefreshes, g_browseJoins, g_browseQuick, g_browseAllowStrangers, g_lobbiesAlone, g_lobbiesGone;
 static char g_browseJoined[65];
 static int BrowseState(HfMod*, HfBrowseState* out)
 {
@@ -98,6 +98,9 @@ static int BrowseLobby(HfMod*, uint32_t index, HfBrowseLobby* out)
 static int BrowseAsk(HfMod*, uint32_t ask, const char* id)
 {
     if (ask == HF_BROWSE_REFRESH) { g_browseRefreshes++; return 1; }
+    if (ask == HF_BROWSE_QUICK) { g_browseQuick++; return 1; }
+    if (ask == HF_BROWSE_ALLOW_STRANGERS) { g_browseAllowStrangers++; return 1; }
+    if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN || ask == HF_BROWSE_SHOW_EDITED_STATS) return 1;
     if (ask != HF_BROWSE_JOIN || id == NULL) return 0;
     g_browseJoins++;
     snprintf(g_browseJoined, sizeof g_browseJoined, "%s", id);
@@ -1010,10 +1013,12 @@ int main(int argc, char** argv)
         if (!warned || !unarmed || !noEnter || !back || !opened || !trusted) { puts("FAIL the mod sync TRUST warning or GET IT did not answer as expected"); failures++; }
         /* the lobby browser (SDK 16): the terminal's count going up opens it full screen over the game, asking for a list; J leaves
          * the joinable lobbies (the stranger's goes), Enter joins the selected one, and the backend's invitation closes it
-         * for the game's. Opened again from the terminal, Esc closes it without joining. */
+         * for the game's. Opened again from the terminal: on the stranger's lobby A shows the warning before Play with
+         * strangers goes on, and only Y turns it on; Q asks for Quick Play; Esc closes it without joining. */
         g_browseList[0] = {sizeof(HfBrowseLobby), HF_LOBBY_UNJOINABLE, 0, 1, 4, 7, -1, 2, 0, "steam-1", "Stranger One", "It needs mods installed by hand."};
         g_browseList[1] = {sizeof(HfBrowseLobby), HF_LOBBY_READY, HF_LOBBY_FLAG_FRIEND | HF_LOBBY_FLAG_JOINABLE, 2, 4, 9, 118, 0, 0, "steam-2", "Friend Host", ""};
         g_browseList[2] = {sizeof(HfBrowseLobby), HF_LOBBY_DOWNLOAD, HF_LOBBY_FLAG_JOINABLE | HF_LOBBY_FLAG_MISSION, 3, 4, 10, 5, 3, 5u << 20, "steam-3", "Modded Host", ""};
+        g_browseList[0].fix = HF_LOBBY_FIX_STRANGERS;
         g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 1; g_browseNow.lobbies = 3;
         frames(40);
         int refreshes = g_browseRefreshes, lobbiesAlone = g_lobbiesAlone, lobbiesGone = g_lobbiesGone;
@@ -1028,12 +1033,26 @@ int main(int argc, char** argv)
         g_browseNow.state = HF_BROWSE_INVITED; frames(40);
         bool invited = g_lobbiesGone == lobbiesGone + 1;
         g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 2; g_browseNow.terminal = 2; frames(40); armed();
+        Key(window, 'J'); frames(4); /* every lobby again: the stranger's is first */
+        Key(window, VK_UP); Key(window, VK_UP); Key(window, VK_UP); frames(4);
+        Key(window, 'A'); frames(4);
+        bool warnedFirst = g_browseAllowStrangers == 0;
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-strangers.bmp"); Screenshot(shot, width, height); }
+        Key(window, 'Q'); frames(4); /* the warning holds the keys */
+        bool held = g_browseQuick == 0;
+        Key(window, 'Y'); frames(4);
+        bool allowed = g_browseAllowStrangers == 1;
+        Key(window, 'Q'); frames(4);
+        bool quick = g_browseQuick == 1;
         Key(window, VK_ESCAPE); armed(); /* the screen powers off, then the browser goes */
         bool escaped = g_lobbiesAlone == lobbiesAlone + 2 && g_lobbiesGone == lobbiesGone + 2 && g_browseJoins == 1 && g_editorOpens == editorOpens;
         printf("  lobby browser: idle until the terminal %s, the terminal opens it alone %s, J then Enter joins the friend's lobby %s (%s), "
             "the invitation closes it %s, Esc closes it %s\n", idle ? "yes" : "NO", shown ? "yes" : "NO", joined ? "yes" : "NO", g_browseJoined,
             invited ? "yes" : "NO", escaped ? "yes" : "NO");
-        if (!idle || !shown || !joined || !invited || !escaped) { puts("FAIL the lobby browser did not open, join or close as expected"); failures++; }
+        printf("  lobby browser: A warns before Play with strangers %s, the warning holds other keys %s, Y turns it on %s, Q asks for Quick Play %s\n",
+            warnedFirst ? "yes" : "NO", held ? "yes" : "NO", allowed ? "yes" : "NO", quick ? "yes" : "NO");
+        if (!idle || !shown || !joined || !invited || !escaped || !warnedFirst || !held || !allowed || !quick)
+        { puts("FAIL the lobby browser did not open, join, warn, quick-join or close as expected"); failures++; }
     }
     HRESULT removed = d3d11 ? device11->GetDeviceRemovedReason() : device->GetDeviceRemovedReason();
     if (removed != S_OK) { printf("FAIL device removed 0x%08lx\n", (unsigned long)removed); failures++; }
