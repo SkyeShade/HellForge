@@ -110,6 +110,7 @@ static int prepare_run(struct hf_sandbox *sandbox)
     if (hf_resolve_command(sandbox, sandbox->command[0]) != 0) return 1;
     if (hf_discover_environment(sandbox, sandbox->command, sandbox->command_count) != 0) return 1;
     if (hf_create_session_dirs(sandbox) != 0) return 1;
+    if (hf_copy_lsfg_config(sandbox) != 0) return 1;
     return hf_prepare_session_home(sandbox);
 }
 

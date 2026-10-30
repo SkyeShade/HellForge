@@ -550,6 +550,10 @@ The game's user data and environment are copied into `gameOut` before the domain
 skipped, and a kernel without `openat2` is an error rather than a fallback. The trusted runner merges that staging folder
 and applies the editor's saves. The session home holds only `.steam/sdk32` and `.steam/sdk64` links to Steam's runtimes;
 there are no `.steam/root` or `.steam/steam` aliases. The supervisor removes `.steam` in its after-domain cleanup. The
+session config folder starts empty except for the player's `lsfg-vk/conf.toml` (from `$XDG_CONFIG_HOME` or
+`~/.config`, links resolved, at most 64 KiB), copied mode 0600. lsfg-vk is a frame-generation layer among the player's
+implicit Vulkan layers, which the view binds; without that copy it wrote its default config and ignored the player's
+own, so a game the player had told it to leave alone crashed at start (#112). The game's edits stay in the session copy. The
 overlay's `<run>/sandbox/` (including mode-000 `work/work`) is removed last, whether or not the copy-back ran, and an empty
 `gameOut/prefix/merged` is removed too.
 

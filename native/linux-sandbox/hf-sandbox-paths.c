@@ -489,6 +489,34 @@ static int discover_steam(struct hf_sandbox *sandbox)
 // hf-inner.sh puts Steam's Fossilize (shader recording, G.1) and overlay manifests in the host's
 // ${XDG_DATA_HOME:-$HOME/.local/share}/vulkan/implicit_layer.d. Redirecting XDG_DATA_HOME would hide them, so bind that
 // folder read-only at the same place under the session's data home.
+// lsfg-vk, a frame-generation layer among the player's implicit layers, reads $XDG_CONFIG_HOME/lsfg-vk/conf.toml. The
+// session's config folder starts empty, so remember the player's file for hf_copy_lsfg_config.
+static int discover_lsfg_config(struct hf_sandbox *sandbox)
+{
+    sandbox->lsfg_config[0] = '\0';
+    const char *config = getenv("XDG_CONFIG_HOME");
+    char candidate[PATH_MAX];
+    if (config != NULL && config[0] != '\0')
+    {
+        if (hf_join3(candidate, sizeof(candidate), config, "lsfg-vk", "conf.toml") != 0)
+            return hf_fail("the lsfg-vk config path");
+    }
+    else if (sandbox->host_home[0] != '\0')
+    {
+        if (hf_join3(candidate, sizeof(candidate), sandbox->host_home, ".config/lsfg-vk", "conf.toml") != 0)
+            return hf_fail("the lsfg-vk config path");
+    }
+    else return 0;
+    struct stat info;
+    if (stat(candidate, &info) != 0 || !S_ISREG(info.st_mode)) return 0;
+    // Resolved here, so a config kept as a link (a dotfiles manager) is still copied by the no-follow open.
+    char *resolved = realpath(candidate, NULL);
+    if (resolved == NULL) return 0;
+    int result = copy_path(sandbox->lsfg_config, sizeof(sandbox->lsfg_config), resolved, "the lsfg-vk config");
+    free(resolved);
+    return result;
+}
+
 static int discover_vulkan_layers(struct hf_sandbox *sandbox)
 {
     const char *data = getenv("XDG_DATA_HOME");
@@ -654,6 +682,7 @@ int hf_discover_environment(struct hf_sandbox *sandbox, char **argv, int argc)
     if (discover_host_home(sandbox) != 0) return 1;
     if (discover_steam(sandbox) != 0) return 1;
     if (discover_vulkan_layers(sandbox) != 0) return 1;
+    if (discover_lsfg_config(sandbox) != 0) return 1;
     if (discover_proton(sandbox) != 0) return 1;
     return hf_discover_runtime_sockets(sandbox);
 }
