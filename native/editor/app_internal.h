@@ -360,12 +360,14 @@ struct LobbyDialog
     double listedAt = 0;      /* when the last list came (0 none yet) */
     double closingAt = 0;     /* when its screen began to power off (0 not closing) */
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
+    bool camera = false;      /* the terminal's camera glides to its screen: the browser waits, drawing nothing */
 };
 extern LobbyDialog g_lobbies;
 bool HasBrowse();
 void OpenLobbies(const char* why);
 void ShowLobbiesAlone(bool on);
 void ReadLobbies();
+void LobbiesGone();
 void LobbyKeys();
 void DrawLobbies();
 

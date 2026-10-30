@@ -706,6 +706,7 @@ void Closed()
     /* the window closed on an offer: no, unless it is downloading (the dialog is back over the game when it is ready) */
     if (g_sync.on && !g_sync.sent && g_sync.state.state != HF_SYNC_DOWNLOADING) AnswerSync(HF_SYNC_DECLINE);
     g_lobbies.on = false; /* and the lobby browser in it goes */
+    LobbiesGone();
     g_lobbies.joining.clear();
     ForgetKeys();
     g_picker.on = false;

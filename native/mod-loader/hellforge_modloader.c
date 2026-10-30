@@ -573,6 +573,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
+#include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"
 #include "events.c"
@@ -762,7 +763,7 @@ static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallTerminal();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }

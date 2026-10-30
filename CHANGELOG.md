@@ -16,7 +16,8 @@ On `dev`, since 0.3.0-beta.
 - The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
   Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
   (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
-  lobby's invitation. Ctrl+L in the in-game editor opens it too.
+  lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
+  in-game editor opens it too.
 
 ### Changed
 
@@ -90,7 +91,8 @@ On `dev`, since 0.3.0-beta.
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
 - SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge lobby
   with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
-  opened the browser.
+  opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
+  keep it on the screen while a browser shows).
 
 ### For launcher developers
 

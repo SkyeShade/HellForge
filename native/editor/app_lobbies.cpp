@@ -65,8 +65,16 @@ void OpenLobbies(const char* why)
     else if (fresh) Sound(sounds::OPEN);
 }
 
+/* The browser went: the terminal's camera glides back to the player. */
+void LobbiesGone()
+{
+    g_lobbies.camera = false;
+    if (HasBrowse()) g_host.api->browse_ask(g_host.mod, HF_BROWSE_HIDDEN, nullptr);
+}
+
 static void CloseLobbies()
 {
+    LobbiesGone();
     g_lobbies.on = false;
     g_lobbies.closingAt = 0;
     g_lobbies.joining.clear();
@@ -126,13 +134,24 @@ static void JoinAnswered(const HfBrowseState& now)
 void ReadLobbies()
 {
     static int frames;
-    if (!HasBrowse() || ++frames < 15) return;
+    if (!HasBrowse() || (++frames < 15 && !g_lobbies.camera)) return; /* every frame while the camera glides */
     frames = 0;
     HfBrowseState now{};
     now.size = sizeof now;
     g_host.api->browse_state(g_host.mod, &now);
     if (!g_lobbies.terminalRead) { g_lobbies.terminalRead = true; g_lobbies.terminal = now.terminal; }
-    else if (now.terminal != g_lobbies.terminal) { g_lobbies.terminal = now.terminal; OpenLobbies("the ship's information terminal"); }
+    else if (now.terminal != g_lobbies.terminal)
+    {
+        g_lobbies.terminal = now.terminal;
+        OpenLobbies("the ship's information terminal");
+        g_lobbies.camera = g_lobbies.on && now.camera == HF_BROWSE_CAMERA_MOVING; /* the screen powers on when it arrives */
+    }
+    if (g_lobbies.camera && now.camera != HF_BROWSE_CAMERA_MOVING)
+    {
+        g_lobbies.camera = false; /* on the terminal's screen (or it gave up): the browser powers on there */
+        g_lobbies.shownAt = Now();
+        g_host.api->browse_ask(g_host.mod, HF_BROWSE_SHOWN, nullptr);
+    }
     HfBrowseState& was = g_lobbies.state;
     bool turned = now.version != was.version || now.state != was.state;
     if (turned || strcmp(now.message, was.message))
@@ -183,6 +202,7 @@ static void LobbyEscape()
 
 void LobbyKeys()
 {
+    if (g_lobbies.camera) return;
     int n = (int)g_lobbies.shown.size();
     if (Pressed(ImGuiKey_UpArrow)) g_lobbies.index = std::max(0, g_lobbies.index - 1);
     if (Pressed(ImGuiKey_DownArrow)) g_lobbies.index = std::min(std::max(0, n - 1), g_lobbies.index + 1);
@@ -395,7 +415,7 @@ static void PowerOff()
 
 void DrawLobbies()
 {
-    if (!g_lobbies.on) return;
+    if (!g_lobbies.on || g_lobbies.camera) return;
     double t = Now() - g_lobbies.shownAt;
     float open = (float)std::clamp(t / LOBBY_POWER_ON, 0.0, 1.0);
     if (g_lobbies.closingAt > 0)

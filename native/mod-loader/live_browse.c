@@ -149,6 +149,8 @@ static int ApiBrowseState(HfMod* mod, HfBrowseState* out)
     ReleaseSRWLockShared(&g_browseLock);
     now.size = sizeof now;
     now.terminal = (uint32_t)g_terminalOpens;
+    now.camera = TcamState();
+    g_browseReadAt = GetTickCount64(); /* an editor shows the browser: the terminal opens no screen of the game's under it */
     AcquireSRWLockShared(&g_liveOutLock);
     int connected = g_liveConnected;
     ReleaseSRWLockShared(&g_liveOutLock);
@@ -178,6 +180,7 @@ static int ApiBrowseLobby(HfMod* mod, uint32_t index, HfBrowseLobby* out)
 static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
 {
     (void)mod;
+    if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) { TcamBrowser(ask == HF_BROWSE_SHOWN); return 1; }
     if (ask != HF_BROWSE_REFRESH && ask != HF_BROWSE_JOIN) return 0;
     if (ask == HF_BROWSE_JOIN && (lobbyId == NULL || !BrowseLobbyId(lobbyId))) return 0;
     char line[128];

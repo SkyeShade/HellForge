@@ -559,10 +559,23 @@ backend answers with the API's own list: one `browselobby` line per lobby (at mo
 publishes them, as mod sync's `syncmod` and `syncstate` do. A search under way (`searching`) and a join's outcome
 (`invited`, `failed`) are a `browsestate` of the same version, which keeps the lobbies. The terminal hook counts each
 redirect, and `browse_state`'s `terminal` carries the count: the in-game editor opens its LOBBY BROWSER panel when it
-goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. Presenter 41 still opens
-under it, so the game's own state is the one it expects, and a click closes it after the panel. The panel asks for a
+goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. The panel asks for a
 new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
 It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API.
+
+**The terminal's camera** (`native/mod-loader/terminal_camera.c`, build 25480438). The terminal has no camera move of
+its own, so the loader makes one. When an editor read `browse_state` in the last 3 s, the terminal opens no presenter
+at all, and when the player pressed E at it (the open is called from game.dll; Ship Station Hotkeys' key calls the
+table entry from its own code and gets the browser without a glide) the camera glides for 1.1 s from the player's view to the wall screen, square to it and close enough that it
+fills the view, and `browse_state`'s `camera` goes `moving`, then `held`. The editor draws nothing (and holds input)
+until it is held, then powers its full-screen browser on and says `HF_BROWSE_SHOWN`; closing it says `HF_BROWSE_HIDDEN`
+and the camera glides back in 0.8 s. Held with no `HF_BROWSE_SHOWN` for 4 s, it glides back by itself. Without an
+editor the terminal still opens presenter 41. The glide hooks the engine's script render step (helldivers2.exe +
+0x689BC0): after it, the camera unit's pose (the main world's unit with a camera at the world's last render pose) is
+blended toward the terminal's and set with the engine's own `set_local_pose` and `update_unit`, so the frame renders
+with it. Lua's `render()` setting the pose does the same, which is how it was found; game.dll's camera code sets it
+before that step. The pins cover the five engine functions it calls; any mismatch turns it off (`camera` stays
+`none`) and the browser shows at once.
 
 ### Play with strangers
 

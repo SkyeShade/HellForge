@@ -870,7 +870,14 @@ typedef struct HfBrowseState
     uint32_t terminal;  /* how many times the ship's information terminal opened the browser in this game (build 25480438):
                          * an editor shows its browser when it goes up */
     char message[192];  /* what the backend says about it (UTF-8), or "" */
+    uint32_t camera;    /* HF_BROWSE_CAMERA_...: the terminal's camera, which zooms into its screen; an editor shows its
+                         * browser once it is HELD there (or at once with NONE), and says so with HF_BROWSE_SHOWN */
 } HfBrowseState;
+#define HF_BROWSE_CAMERA_NONE 0u      /* no terminal camera (another build, or turned off) */
+#define HF_BROWSE_CAMERA_IDLE 1u      /* the player's own view */
+#define HF_BROWSE_CAMERA_MOVING 2u    /* gliding to the terminal's screen */
+#define HF_BROWSE_CAMERA_HELD 3u      /* on the terminal's screen, until HF_BROWSE_HIDDEN */
+#define HF_BROWSE_CAMERA_RETURNING 4u /* gliding back to the player's view */
 
 /* One lobby of the list (browse_lobby): what joining it would take. */
 #define HF_LOBBY_READY 0u      /* joins as it is: the same shared mods (per-player ones never need to match) */
@@ -906,6 +913,8 @@ typedef struct HfBrowseLobby
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
 #define HF_BROWSE_JOIN 2u    /* join lobby_id, a lobby of a list from the last 2 minutes: the game gets its invitation */
+#define HF_BROWSE_SHOWN 3u   /* the editor's browser shows (the terminal's camera stays on its screen); this machine only */
+#define HF_BROWSE_HIDDEN 4u  /* it went: the terminal's camera glides back to the player; this machine only */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1264,7 +1273,8 @@ typedef struct HfApi
     /* The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last. */
     int (*browse_lobby)(HfMod* mod, uint32_t index, HfBrowseLobby* out);
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
-     * not (no backend connected, or a malformed ask). The answer arrives through browse_state. */
+     * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_SHOWN and
+     * HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;
 

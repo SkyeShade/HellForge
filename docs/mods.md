@@ -228,7 +228,8 @@ not join:
 Lobbies with other mods you can download still show. Joining one shows the MOD SYNC prompt.
 
 **The lobby browser.** The ship's information terminal, across from the Armory, opens a lobby browser instead of the
-news and war screen, which needs Arrowhead's servers. It lists every HellForge lobby, on any planet and difficulty,
+news and war screen, which needs Arrowhead's servers: the camera glides up to the terminal's screen and the
+browser fills it. It lists every HellForge lobby, on any planet and difficulty,
 including the ones the map leaves out, and says what joining each would take: ready, a download, your trust, or why
 you can't. Filter it to joinable lobbies (J), friends' (F) or a minimum difficulty (D); Enter or JOIN sends you the
 lobby's invitation, which you accept in game. In the in-game editor (F8), Ctrl+L opens it too. Without the editor the
