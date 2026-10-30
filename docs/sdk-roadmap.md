@@ -4,7 +4,7 @@ For contributors: what is left in the mod SDK. [modding/README.md](modding/READM
 [sdk-reference.md](sdk-reference.md) document what exists, [engine-roadmap.md](engine-roadmap.md) is the engine's side,
 and [roadmap.md](roadmap.md) is the overview.
 
-Mod SDK 15, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
+Mod SDK 16, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
 
 | Phase | Status |
 |---|---|
@@ -13,8 +13,8 @@ Mod SDK 15, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
 | 3. Live editing | done (SDK 6); in co-op each player keeps their own (SDK 15) or plays with a sharing host's; field timings to check in game |
 | 4. MDK | done; a New mod button and a helper kit left |
 | 5a. The in-game editor | mostly built; full HD2R Editor parity left |
-| 5b. Events, hooks and registries | built in SDK 7 to 15; some events, registries and launcher views left |
-| 6. Co-op sync for mod content | numbering and sync built; `is_authority` and the message channel left |
+| 5b. Events, hooks and registries | built in SDK 7 to 16; some events, registries and launcher views left |
+| 6. Co-op sync for mod content | done for numbering and sync (SDK 16's `is_authority` and mod channel); the countdown laser and turret target still move onto it |
 
 ## Goal
 
@@ -91,13 +91,14 @@ Full parity with the HD2R Editor, in three steps:
 
 ### Co-op sync (phase 6)
 
-- `is_authority(entity)`: whether this machine is in charge of an entity. The spawn event's `authority` field already
-  says so at spawn.
-- A message channel between the same mod on every player's machine (`send`, and an event for what arrives), carried
-  between the players' backends over the Steam link. HellForge's countdown laser and turret targeting use it first.
+- `is_authority(entity)` (SDK 16): whether this machine is in charge of an entity; `entity_of_network(network)` names
+  the entity a network id has here now. The spawn event's `authority` field says so at spawn too.
+- The mod channel (SDK 16): `send` and `HF_ON_MESSAGE` between the same mod on every player's machine, carried between
+  the players' backends over the Steam link, and the host's shared table (`share_set`, `share_get`, `share_row`,
+  `HF_ON_SHARE`) that a late joiner gets whole. HellForge's countdown laser and turret targeting move onto it (planned).
 - The Pelican turning to face its target, and its custom aim height. Only the machine in charge sees them today.
 - A two-backend test: a stratagem of each kind (entity, behaviour, ability) syncs.
-- The channel in the co-op section of [modding/concepts.md](modding/concepts.md).
+- The channel in the co-op section of [modding/concepts.md](modding/concepts.md#co-op): done (SDK 16).
 
 ## Research gaps
 

@@ -33,7 +33,7 @@ field and constant you will meet.
      "version": "0.1.0",
      "description": "Liberator Tweaks: a HellForge code mod. Source in src/.",
      "gameplay": true,
-     "code": { "dll": "my_mod.dll", "sdk": 15 }
+     "code": { "dll": "my_mod.dll", "sdk": 16 }
    }
    ```
 
@@ -58,7 +58,7 @@ It creates `mods\liberator-tweaks` (the part of the id after the dot), with `"dl
 
 ```
 mods/liberator-tweaks/
-  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 15}
+  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 16}
   src/my_mod.c         the mod's C source
   CMakeLists.txt       for IDEs (Rider, CLion, VS Code)
   CMakePresets.json    the IDE build settings: HellForge's pinned Zig, CMake and Ninja
