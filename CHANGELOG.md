@@ -50,6 +50,25 @@ On `dev`, since 0.3.0-beta.
   The game puts all its location clusters on one circle at 60-80 % of the map's radius, and the locations stay as
   many and as far apart as on a level-10 map. Every other cluster now goes on an inner circle at level 10's distance,
   so the middle has bases again. Every player still generates the same map from the same seed.
+- Towns on difficulty 11's larger maps were sparse: most of a town's buildings may only stand inside the level's
+  playable radius, and on larger maps many towns sit between it and the border. They now build up to the border, as
+  the enemies there already spawn (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius, for comparing).
+- Small towns on difficulty 11's larger maps came out as scattered flat pieces at different heights instead of one
+  flat town. Two causes, both from a larger map's cells being further apart. The game picks a map's town cells from a
+  noise pattern measured in metres, so each town broke into single cells; on larger maps the pattern is now read at
+  level 10's spacing, so a town keeps level 10's cells, each larger. And the ring of cells the game puts around each
+  town cell still used level 10's size, so two other cells sat between every pair of town cells and each was
+  flattened on its own; the ring now uses the larger cells' size, so a town's cells touch and form one flat area
+  (`HELLFORGE_D11_TOWN_NOISE=0` and `HELLFORGE_D11_TOWN_RING=0` keep the old behaviour, for comparing).
+- On the war table, a difficulty 11 map's low ground sank into the table at the drop zone view and showed black until
+  zoomed in: the hologram lifts the terrain by its scale, a formula made for level 10's scales only. It now reads the
+  scale a level-10 map would have, so every map sits above the table as at level 10.
+- Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
+  edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
+  (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
+  separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
+  does, and the session log counts them.
 
 ### For mod makers
 
