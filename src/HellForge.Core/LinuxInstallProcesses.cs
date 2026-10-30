@@ -27,12 +27,44 @@ public static class LinuxInstallProcesses
         return Matching(process => BelongsTo(process, root));
     }
 
-    // Ends every live process of this installation and returns the names it asked the kernel to end. The next scan
-    // decides whether they are gone; a process that exits between the scan and the kill is already in the desired state.
-    public static IReadOnlyList<string> End(string installRoot)
+    // The launcher's check before PLAY and its "End these processes" action: this installation's processes except the
+    // Steam bridge. The bridge outlives sessions on purpose: a player may start hf-bridge-host.sh by hand or as a Steam
+    // shortcut (for NixOS's steam-run, where the launcher cannot read Steam's sockets), and the wrapper uses a bridge that
+    // answers (docs/linux.md "Sessions").
+    public static IReadOnlyList<string> SessionLeftovers(string installRoot) =>
+        FindSessionLeftovers(installRoot).Select(process => process.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+
+    static IReadOnlyList<LinuxInstallProcess> FindSessionLeftovers(string installRoot)
+    {
+        if (!OperatingSystem.IsLinux()) return [];
+        var root = LocalInstall.FullPath(installRoot);
+        return Matching(process => BelongsTo(process, root) && !IsSteamBridge(process, root));
+    }
+
+    // The bridge itself, or a program that only starts it. hf-bridge-host.sh execs app/cli-linux/HellForge.Cli steam-bridge
+    // host, which is matched by its command line: /proc shows that to every process, while the executable, environment
+    // and working folder of a process started in another sandbox (Steam's, from steam-run) can be unreadable. A starter
+    // (Steam's reaper, the shell before its exec) names the bridge script and no other path of the installation and runs
+    // no program from it; its working folder may be the script's (a Steam shortcut's Start In).
+    public static bool IsSteamBridge(LinuxProcessInfo process, string installRoot)
+    {
+        var root = LocalInstall.FullPath(installRoot);
+        var app = Path.Combine(root, "app");
+        if (process.Arguments is [var program, "steam-bridge", "host"])
+            return SameHostPath(program, Path.Combine(app, "cli-linux", "HellForge.Cli"));
+        if (Under(process.Executable, root)) return false;
+        var script = Path.Combine(app, "linux", "hf-bridge-host.sh");
+        var named = process.Arguments.Where(argument => UnderHostOrWine(argument, root)).ToArray();
+        return named.Length > 0 && named.All(argument => SameHostPath(argument, script));
+    }
+
+    // Ends every live session leftover of this installation (not the Steam bridge) and returns the names it asked the
+    // kernel to end. The next scan decides whether they are gone; a process that exits between the scan and the kill is
+    // already in the desired state.
+    public static IReadOnlyList<string> EndSessionLeftovers(string installRoot)
     {
         var ended = new List<string>();
-        foreach (var process in Find(installRoot))
+        foreach (var process in FindSessionLeftovers(installRoot))
         {
             try
             {

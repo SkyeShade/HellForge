@@ -31,6 +31,60 @@ static class SteamBridgeTests
                 (int)LinuxSteamBridge.SocketState.CannotTell == 3, "The three-way check's exit codes changed.");
         });
 
+        test("Steam bridge: says whether Steam is missing, its sockets cannot be read (steam-run), or it has no loopback ports", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux /proc layout)"); return; }
+            var proc = Path.Combine(root, "fake-proc");
+            const uint uid = 4242;
+            string Process(int pid, string comm, uint owner, long? socket = null)
+            {
+                var folder = Directory.CreateDirectory(Path.Combine(proc, pid.ToString(System.Globalization.CultureInfo.InvariantCulture))).FullName;
+                File.WriteAllText(Path.Combine(folder, "comm"), comm + "\n");
+                File.WriteAllText(Path.Combine(folder, "status"), $"Name:\t{comm}\nUid:\t{owner}\t{owner}\t{owner}\t{owner}\n");
+                var fd = Directory.CreateDirectory(Path.Combine(folder, "fd")).FullName;
+                if (socket is { } inode) File.CreateSymbolicLink(Path.Combine(fd, "7"), $"socket:[{inode}]");
+                File.CreateSymbolicLink(Path.Combine(fd, "1"), "/dev/null");
+                return fd;
+            }
+            Directory.CreateDirectory(proc);
+            Process(10, "bash", uid, 111);
+            Process(11, "steam", uid + 1, 222);
+            var none = LinuxSteamBridge.SocketsOf(proc, "steam", uid);
+            check(none.Processes == 0 && none.Inodes.Count == 0 &&
+                LinuxSteamBridge.NoSteamPortsReason(none).Contains("is Steam running?", StringComparison.Ordinal),
+                "Another program or another user's Steam counted as this user's Steam.");
+            var hidden = Process(12, "steam", uid, 333);
+            File.SetUnixFileMode(hidden, UnixFileMode.None);
+            try
+            {
+                if (Directory.EnumerateFileSystemEntries(hidden).Any()) { Console.WriteLine("  (skipped: running as root, every fd folder is readable)"); return; }
+            }
+            catch (UnauthorizedAccessException) { }
+            // Listed but not entered (r--): the names are there, their links cannot be read.
+            var listOnly = Process(14, "steam", uid, 555);
+            File.SetUnixFileMode(listOnly, UnixFileMode.UserRead);
+            try
+            {
+                var unreadable = LinuxSteamBridge.SocketsOf(proc, "steam", uid);
+                check(unreadable.Processes == 2 && unreadable.Unreadable == 2 && unreadable.Inodes.Count == 0 &&
+                    LinuxSteamBridge.NoSteamPortsReason(unreadable).Contains("steam-run", StringComparison.Ordinal) &&
+                    LinuxSteamBridge.NoSteamPortsReason(unreadable).Contains("hf-bridge-host.sh", StringComparison.Ordinal),
+                    $"Steam's unreadable sockets were not reported as another user namespace's ({unreadable.Processes} processes, " +
+                    $"{unreadable.Unreadable} unreadable, {unreadable.Inodes.Count} sockets).");
+                Process(13, "steam", uid, 444);
+                var readable = LinuxSteamBridge.SocketsOf(proc, "steam", uid);
+                check(readable.Processes == 3 && readable.Unreadable == 2 && readable.Inodes.SetEquals([444]),
+                    "The readable Steam process's socket was not found: " + string.Join(", ", readable.Inodes));
+                check(LinuxSteamBridge.NoSteamPortsReason(readable).Contains("No loopback TCP ports", StringComparison.Ordinal),
+                    "Steam with readable sockets but no listener was reported as something else.");
+            }
+            finally
+            {
+                foreach (var fd in new[] { hidden, listOnly })
+                    File.SetUnixFileMode(fd, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        });
+
         test("Steam bridge: check is three-way for the wineserver guard", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux unix sockets)"); return; }

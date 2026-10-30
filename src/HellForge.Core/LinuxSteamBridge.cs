@@ -181,9 +181,10 @@ public static class LinuxSteamBridge
         try
         {
             RemoveStaleSockets(directory);
-            var wanted = (ports ?? SteamPorts()).Distinct().Order().ToArray();
+            string? reason = null;
+            var wanted = (ports ?? SteamPorts(out reason)).Distinct().Order().ToArray();
             if (wanted.Length == 0)
-                throw new InvalidDataException("No loopback TCP ports were found for the Steam process; is Steam running?");
+                throw new InvalidDataException(reason ?? "No loopback TCP ports were found for the Steam process; is Steam running?");
             foreach (var port in wanted)
             {
                 var path = SocketPath(directory, port);
@@ -265,26 +266,82 @@ public static class LinuxSteamBridge
         }
     }
 
-    // Steam's own loopback listeners: the socket inodes of processes named "steam", matched against /proc/net/tcp.
-    static IReadOnlyList<int> SteamPorts()
+    // Steam's own loopback listeners: the socket inodes of this user's processes named "steam", matched against
+    // /proc/net/tcp. With none, reason says why.
+    static IReadOnlyList<int> SteamPorts(out string reason)
     {
-        var inodes = SocketInodes("/proc", "steam");
-        if (inodes.Count == 0) return [];
-        try { return LoopbackPorts(File.ReadAllText("/proc/net/tcp"), inodes); }
+        var steam = SocketsOf("/proc", "steam", GetUid());
+        reason = NoSteamPortsReason(steam);
+        if (steam.Inodes.Count == 0) return [];
+        try { return LoopbackPorts(File.ReadAllText("/proc/net/tcp"), steam.Inodes); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return []; }
     }
 
-    static HashSet<long> SocketInodes(string procRoot, string processName)
+    // The socket inodes of the processes named processName that run as uid, how many such processes there are, and how
+    // many of them this program may not read the open files of. A running process always has some, so none readable
+    // means /proc/<pid>/fd could not be listed or its links could not be read (the listing also leaves out entries it
+    // cannot look at).
+    public sealed record ProcessSockets(IReadOnlySet<long> Inodes, int Processes, int Unreadable);
+
+    public static ProcessSockets SocketsOf(string procRoot, string processName, uint uid)
     {
         var inodes = new HashSet<long>();
+        int processes = 0, unreadable = 0;
         foreach (var processFolder in Entries(procRoot))
         {
             if (!uint.TryParse(Path.GetFileName(processFolder), NumberStyles.None, CultureInfo.InvariantCulture, out _)) continue;
-            if (!IsNamed(processFolder, processName)) continue;
-            foreach (var entry in Entries(Path.Combine(processFolder, "fd")))
-                if (SocketInode(entry) is { } inode) inodes.Add(inode);
+            if (!IsNamed(processFolder, processName) || RealUid(processFolder) != uid) continue;
+            processes++;
+            if (AddSocketLinks(Path.Combine(processFolder, "fd"), inodes) == 0) unreadable++;
         }
-        return inodes;
+        return new(inodes, processes, unreadable);
+    }
+
+    // Adds the socket inodes among one process's open files. The number of its fd links that could be read; -1 when the
+    // process is gone.
+    static int AddSocketLinks(string fdFolder, HashSet<long> inodes)
+    {
+        string[] entries;
+        try { entries = Directory.EnumerateFileSystemEntries(fdFolder).ToArray(); }
+        catch (UnauthorizedAccessException) { return 0; }
+        catch (IOException) { return -1; }
+        var readable = 0;
+        foreach (var entry in entries)
+        {
+            string? target;
+            try { target = new FileInfo(entry).LinkTarget; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
+            // Every fd entry is a link: .NET gives null for one it can list but not read (measured: a folder without x).
+            if (target is null) continue;
+            readable++;
+            if (SocketInode(target) is { } inode) inodes.Add(inode);
+        }
+        return readable;
+    }
+
+    // Why no Steam port was found. Measured on NixOS (#112): inside steam-run, Steam's process is visible in the same PID
+    // namespace, but the sandbox has its own user namespace and Steam's /proc/<pid>/fd cannot be read from it; the same
+    // listing outside steam-run shows Steam's sockets.
+    public static string NoSteamPortsReason(ProcessSockets steam) =>
+        steam.Processes == 0 ? "No Steam client process (named steam) of this user is visible here; is Steam running?"
+        : steam.Inodes.Count == 0 && steam.Unreadable > 0
+            ? "Steam is running, but this program may not read its open sockets (/proc/<pid>/fd): it runs in another user namespace " +
+              "than Steam, for example inside NixOS's steam-run or another sandbox. Start app/linux/hf-bridge-host.sh where Steam runs " +
+              "(for example as a Steam shortcut) and leave it running; HellForge then uses that bridge."
+            : "No loopback TCP ports were found for the Steam process; is Steam running and signed in?";
+
+    // The real user id in /proc/<pid>/status, which every process may read; null when the process is gone.
+    static uint? RealUid(string processFolder)
+    {
+        try
+        {
+            foreach (var line in File.ReadLines(Path.Combine(processFolder, "status")))
+                if (line.StartsWith("Uid:", StringComparison.Ordinal))
+                    return line[4..].Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries) is [var real, ..] &&
+                        uint.TryParse(real, NumberStyles.None, CultureInfo.InvariantCulture, out var uid) ? uid : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return null;
     }
 
     static bool IsNamed(string processFolder, string processName)
@@ -293,11 +350,8 @@ public static class LinuxSteamBridge
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
-    static long? SocketInode(string entry)
+    static long? SocketInode(string? target)
     {
-        string? target;
-        try { target = new FileInfo(entry).LinkTarget; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
         if (target is null || target.Length <= 8 || !target.StartsWith("socket:[", StringComparison.Ordinal) || !target.EndsWith(']')) return null;
         return long.TryParse(target[8..^1], NumberStyles.None, CultureInfo.InvariantCulture, out var inode) ? inode : null;
     }
