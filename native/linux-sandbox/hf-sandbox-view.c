@@ -387,6 +387,48 @@ static int copy_runtime_file(struct hf_sandbox *sandbox, const char *source, con
     return 0;
 }
 
+// The session's config folder starts empty, so lsfg-vk (a frame-generation layer among the player's implicit layers)
+// would write its default config there and ignore the player's own, which may tell it to leave HELLDIVERS 2 alone; with
+// the default, the game crashed at start (Komakozeee on #112). Copy the player's file, capped and never through a link,
+// so the layer behaves as it does outside HellForge. The session folder is the game's own writable copy.
+int hf_copy_lsfg_config(const struct hf_sandbox *sandbox)
+{
+    if (sandbox->lsfg_config[0] == '\0') return 0;
+    char target[PATH_MAX];
+    if (hf_join3(target, sizeof(target), sandbox->config, "lsfg-vk", "conf.toml") != 0)
+        return hf_fail("the session lsfg-vk config path");
+    int input = open_credential(sandbox->lsfg_config);
+    if (input < 0) return 0;
+    if (make_parent_dirs(target) != 0)
+    {
+        close(input);
+        return hf_fail("creating the session lsfg-vk folder");
+    }
+    int output = open(target, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (output < 0)
+    {
+        close(input);
+        return hf_fail("creating the session lsfg-vk config");
+    }
+    int result = copy_credential_bytes(input, output);
+    int saved = errno;
+    close(input);
+    if (close(output) != 0 && result == 0) return hf_fail("finishing the session lsfg-vk config");
+    if (result == 2)
+    {
+        unlink(target);
+        hf_note("%s grew beyond %d bytes; lsfg-vk uses its default config", sandbox->lsfg_config, HF_MAX_CREDENTIAL_BYTES);
+        return 0;
+    }
+    if (result != 0)
+    {
+        errno = saved;
+        return hf_fail("copying the lsfg-vk config");
+    }
+    hf_note("copied the player's lsfg-vk config (%s)", sandbox->lsfg_config);
+    return 0;
+}
+
 static int bind_wayland(struct hf_sandbox *sandbox)
 {
     if (sandbox->wayland_socket[0] == '\0') return 0;

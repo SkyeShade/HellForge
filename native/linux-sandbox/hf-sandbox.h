@@ -104,6 +104,7 @@ struct hf_sandbox
     char proton_lock[PATH_MAX];   // <proton_root>/dist.lock, the one writable file in the Proton folder
     char steam_root[PATH_MAX];    // STEAM_COMPAT_CLIENT_INSTALL_PATH
     char vulkan_layers[PATH_MAX]; // the host's XDG_DATA_HOME/vulkan/implicit_layer.d, read-only
+    char lsfg_config[PATH_MAX];   // the player's lsfg-vk/conf.toml, copied into the session config
     char shader_cache[PATH_MAX];  // Steam's per-game shader cache, writable (G.1's reviewed exception)
     char command_path[PATH_MAX];  // the resolved Linux executable
     char x11_socket[PATH_MAX];    // resolved host /tmp/.X11-unix/X<n>, when DISPLAY names a local display
@@ -158,6 +159,7 @@ bool hf_extra_bind_allowed(const struct hf_sandbox *sandbox, const char *path);
 int hf_pivot_into_root(struct hf_sandbox *sandbox);
 int hf_apply_environment(struct hf_sandbox *sandbox);
 int hf_check_vulkan_layers(const struct hf_sandbox *sandbox);
+int hf_copy_lsfg_config(const struct hf_sandbox *sandbox);
 
 // The boundaries and their proof.
 int hf_apply_landlock(struct hf_sandbox *sandbox);
