@@ -822,9 +822,10 @@ public static partial class LinuxCapture
                 var evidence = SystemRegKeyEvidence(record, thumbprint);
                 Note(record, "reg export (remove): exit " + exported.ExitCode.ToString(CultureInfo.InvariantCulture) +
                     (File.Exists(exportPath) ? ", wrote a file" : ", wrote no file") + "; system.reg: " + evidence);
-                if (exported.ExitCode == 0 || File.Exists(exportPath))
-                    problem = "The capture CA removal is not proven: reg export " +
-                        (exported.ExitCode == 0 ? "exited 0" : "wrote a file") + "; " + evidence + ".";
+                // Proton 11's reg export can exit 0 for a missing key, so its exit code proves nothing here: an export file
+                // means the key was found, and otherwise the flushed system.reg decides.
+                if (File.Exists(exportPath))
+                    problem = "The capture CA removal is not proven: reg export wrote a file; " + evidence + ".";
                 else if (evidence != SystemRegKeyAbsent)
                     problem = "Wine reg export did not find the capture CA key, but " + evidence +
                         " after the flush; the key is not proven gone.";
@@ -981,7 +982,12 @@ public static partial class LinuxCapture
         if (!File.Exists(HelperPath))
             return "The Linux capture helper is not installed. Run this once: sudo bash app/linux/" + HelperInstaller + ".";
         var result = RunSudo(["cleanup"], HelperCommandTimeout);
-        return result.ExitCode == 0 ? null : "The Linux capture helper could not clean up: " + Tail(result.AllText);
+        if (result.ExitCode != 0) return "The Linux capture helper could not clean up: " + Tail(result.AllText);
+        // The helper's exit code is not the proof: the redirect is gone only when /etc/hosts no longer holds the marker.
+        return InventorySync.HasLeftoverRedirect()
+            ? "The Linux capture helper's cleanup exited 0, but /etc/hosts still holds the " + CaptureHosts.Marker +
+              " lines, so the normal game cannot reach its servers."
+            : null;
     }
 
     public static string? StopHelper()
