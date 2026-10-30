@@ -357,6 +357,7 @@ struct LobbyDialog
     uint32_t terminal = 0;    /* the terminal count last read: the terminal opened the browser when it goes up */
     double shownAt = 0;       /* when it appeared: its keys and buttons wait LOBBY_ARM seconds */
     double askedAt = -100;    /* when a list was last asked for */
+    double listedAt = 0;      /* when the last list came (0 none yet) */
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
 };
 extern LobbyDialog g_lobbies;

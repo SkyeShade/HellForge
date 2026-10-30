@@ -18,13 +18,20 @@ LobbyDialog g_lobbies;
 const double LOBBY_ARM = 0.5;
 /* While it shows, a new list every this many seconds (the backend searches at most once every 2 s, whoever asks). */
 const double LOBBY_REFRESH = 10;
-static bool LobbiesArmed() { return ImGui::GetTime() - g_lobbies.shownAt >= LOBBY_ARM; }
+/* Seconds on the wall clock: ImGui's time stands still while the editor draws nothing (closed, nothing over the game)
+ * and jumps on the next frame, which would arm the browser at once and ask for a second list. */
+static double Now() { return (double)GetTickCount64() / 1000.0; }
+static bool LobbiesArmed() { return Now() - g_lobbies.shownAt >= LOBBY_ARM; }
+/* A search shows as one for at least this long: the backend answers a list it searched in the last 2 s at once, and a
+ * REFRESH that changed nothing on screen looked like it did nothing. */
+const double LOBBY_SEARCH_SHOWN = 0.8;
+static bool Searching() { return g_lobbies.state.state == HF_BROWSE_SEARCHING || Now() - g_lobbies.askedAt < LOBBY_SEARCH_SHOWN; }
 
 bool HasBrowse() { return g_host.api->size >= offsetof(HfApi, browse_ask) + sizeof(void*) && g_host.api->browse_state != nullptr; }
 
 static void AskList()
 {
-    g_lobbies.askedAt = ImGui::GetTime();
+    g_lobbies.askedAt = Now();
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_REFRESH, nullptr) && g_lobbies.on)
         Toast("The session's backend is not connected: no lobbies to list", ERROR_);
 }
@@ -36,7 +43,7 @@ void ShowLobbiesAlone(bool on)
     g_lobbies.alone = on;
     HoldInput();
     ForgetKeys();
-    if (on) g_lobbies.shownAt = ImGui::GetTime();
+    if (on) g_lobbies.shownAt = Now();
     sounds::EditorOpen(on || g_sync.alone);
     g_host.api->log(g_host.mod, on ? "editor: the lobby browser shows over the game, the window closed" : "editor: the lobby browser goes");
     if (on) Sound(sounds::SHOW);
@@ -51,7 +58,7 @@ void OpenLobbies(const char* why)
     g_lobbies.joining.clear();
     g_picker.on = false;
     g_edit.on = false;
-    if (fresh) { g_lobbies.shownAt = ImGui::GetTime(); g_seen.erase("lobbies"); }
+    if (fresh) { g_lobbies.shownAt = Now(); g_seen.erase("lobbies"); }
     AskList();
     if (!g_windowShown) ShowLobbiesAlone(true);
     else if (fresh) Sound(sounds::OPEN);
@@ -129,10 +136,11 @@ void ReadLobbies()
     if (turned || strcmp(now.message, was.message))
     {
         if (now.version != was.version || now.lobbies != g_lobbies.lobbies.size()) ReadLobbyList(now.lobbies);
+        if (now.version != was.version && now.state == HF_BROWSE_READY) g_lobbies.listedAt = Now();
         g_lobbies.state = now;
         if (turned) JoinAnswered(now);
     }
-    if (g_lobbies.on && g_lobbies.joining.empty() && now.state != HF_BROWSE_SEARCHING && ImGui::GetTime() - g_lobbies.askedAt >= LOBBY_REFRESH) AskList();
+    if (g_lobbies.on && g_lobbies.joining.empty() && now.state != HF_BROWSE_SEARCHING && Now() - g_lobbies.askedAt >= LOBBY_REFRESH) AskList();
 }
 
 static const HfBrowseLobby* Selected()
@@ -152,7 +160,7 @@ static void Join(const HfBrowseLobby* l)
 
 static void Refresh()
 {
-    if (g_lobbies.state.state == HF_BROWSE_SEARCHING) return;
+    if (Searching()) return;
     AskList();
     Sound(sounds::CLICK);
 }
@@ -229,7 +237,13 @@ static void DrawLobbiesHead(const Area& box)
         NextDifficulty();
     char count[64];
     snprintf(count, sizeof count, "%d of %d lobbies", (int)g_lobbies.shown.size(), (int)g_lobbies.lobbies.size());
-    g_cv.Text(s.state == HF_BROWSE_SEARCHING ? "Searching..." : count, x + w - 24, fy + 12, T(SZ_SMALL, FAINT, ui::BODY, ui::RIGHT, 0, 11));
+    std::string status = count;
+    if (g_lobbies.listedAt > 0)
+    {
+        int ago = (int)(Now() - g_lobbies.listedAt);
+        status += ago < 2 ? ", searched just now" : ", searched " + std::to_string(ago) + " s ago";
+    }
+    g_cv.Text(Searching() ? "Searching..." : status, x + w - 24, fy + 12, T(SZ_SMALL, Searching() ? GOLD : FAINT, ui::BODY, ui::RIGHT, 0, 11));
     float hy = y + 86;
     g_cv.Rect(x + 1, hy, w - 2, 22, HEADER, 10);
     g_cv.Text("HOST", x + 24, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
@@ -273,8 +287,8 @@ static void DrawLobbyButtons(const Area& box)
     bx -= 12 + 150;
     if (Button(join, {bx, by, 150, 30}, joinable ? PRIMARY : DISABLED, ui::Id("lobbyjoin"), 11) && joinable) Join(selected);
     bx -= 12 + 130;
-    bool searching = g_lobbies.state.state == HF_BROWSE_SEARCHING;
-    if (Button(searching ? "SEARCHING" : "REFRESH", {bx, by, 130, 30}, searching ? DISABLED : NORMAL, ui::Id("lobbyrefresh"), 11) && !searching && LobbiesArmed()) Refresh();
+    bool searching = Searching();
+    if (Button(searching ? "SEARCHING..." : "REFRESH", {bx, by, 130, 30}, searching ? DISABLED : NORMAL, ui::Id("lobbyrefresh"), 11) && !searching && LobbiesArmed()) Refresh();
     /* beside the buttons: why the selected lobby cannot be joined, in full */
     if (selected != nullptr && !(selected->flags & HF_LOBBY_FLAG_JOINABLE) && selected->reason[0])
     {
@@ -299,13 +313,13 @@ void DrawLobbies()
     DrawLobbyList(box, top, bottom);
     if (g_lobbies.shown.empty())
     {
-        const char* none = g_lobbies.state.state == HF_BROWSE_SEARCHING || g_lobbies.state.state == HF_BROWSE_NONE ? "Looking for lobbies..." :
+        const char* none = Searching() || g_lobbies.state.state == HF_BROWSE_NONE ? "Looking for lobbies..." :
             g_lobbies.lobbies.empty() ? "No HellForge lobbies right now. Host one yourself, or look again in a moment." : "No lobby fits the filters.";
         g_cv.Text(none, x + 28, top + 24, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, w - 56, 12));
     }
     g_cv.Rect(x + 12, bottom + 4, w - 24, 1, LINE, 10);
     DrawLobbyButtons(box);
-    g_cv.Text("\xE2\x86\x91\xE2\x86\x93 select   Enter join   R refresh   J joinable only   F friends   D difficulty   Esc close", x + 24, y + h - 20,
+    g_cv.Text("Up/Down select   Enter join   R refresh   J joinable only   F friends   D difficulty   Esc close", x + 24, y + h - 20,
         T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
 }
 } // namespace editorapp
