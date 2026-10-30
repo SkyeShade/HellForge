@@ -71,9 +71,9 @@ and only HellForge players can see them (CowboyBingus, PR #17). If you'd rather 
 launcher keeps your Public lobbies off the map.
 
 When you join someone, mod sync downloads the host's mods for that session. You can trust a Steam friend's code mods
-after reading a warning, but a stranger's code mods have to be installed by hand. Downloads run at several MB/s: 38 MB
-takes about 10 seconds now, where it took about 3 minutes before commit 5fb79fe. Mods can also list a web address, which MOD
-SYNC shows as a GET IT button.
+after reading a warning, and a stranger's too while your game is sandboxed (otherwise you install them by hand).
+Downloads run at several MB/s: 38 MB takes about 10 seconds now, where it took about 3 minutes before commit 5fb79fe.
+Mods can also list a web address, which MOD SYNC shows as a GET IT button.
 
 Your lobby's privacy setting decides who can join: Public lets in any HellForge player, Friends only lets in your Steam
 friends, and Invite only lets in the people you invite. In-game invites and kicking both work. Multiplayer now requires

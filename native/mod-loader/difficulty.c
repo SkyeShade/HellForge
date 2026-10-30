@@ -342,9 +342,11 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
  * the catalogue, and to the inventory of a player who has unlocked level 10). */
 static int DifficultyItems(char* text, int n, int size, int first)
 {
-    if (!g_difficultyAdded || n >= size - 512) return n;
+    if (!g_difficultyAdded || n >= size - REG_ITEM_ROOM) return n;
+    char mod[6 * 80 + 1], name[6 * 192 + 1];
     return n + snprintf(text + n, size - n, "%s{\"kind\":\"difficulty\",\"mixId\":%u,\"copyOf\":%u,\"level\":%u,\"mod\":\"%s\",\"name\":\"%s\"}",
-        first ? "" : ",", g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1, g_difficulty.mod->id, g_difficulty.name);
+        first ? "" : ",", g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1, JsonText(g_difficulty.mod->id, mod, sizeof mod),
+        JsonText(g_difficulty.name, name, sizeof name));
 }
 
 static uintptr_t ApiDifficultyRow(uint32_t level)

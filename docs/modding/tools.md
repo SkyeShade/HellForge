@@ -124,7 +124,8 @@ Otherwise the player installs it themselves, from your `url` when the manifest h
 ### The verified list
 
 `data/verified-mods.json` in HellForge's repository lists the code and raw-data mods a HellForge maintainer has
-reviewed. It ships inside each HellForge release, so a change reaches players with the next release. Each entry names
+reviewed. It ships inside each HellForge release, and a signed copy published on files.hf-mod.com reaches players
+before their next session, without a release ([the published verified list](../verified-list.md)). Each entry names
 one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
 each counted file and that file's SHA-256, and for a data spec the data builder's version).
 
@@ -134,9 +135,11 @@ To add a mod (maintainers):
    as a player's HellForge loads it, and prints the mod's class and an `entry` to copy.
 3. Add the entry to `mods` in `data/verified-mods.json`: `id`, `name`, `version`, `hash` (64 lower-case hex digits) and
    `reviewed` (the date, who reviewed it, and what: for example "2026-10-23, SkyeShade: stratagem-compendium-1.0.4.zip
-   as shipped").
+   as shipped"), and raise `"serial"` by one.
 4. Run `scripts/Test.ps1`: the tests parse the list (a malformed entry fails them) and recheck the Stratagem Compendium
    entry against its zip where it is installed.
+5. To reach players before the next release, sign and publish the same list ([publishing a
+   list](../verified-list.md#publishing-a-list)).
 
 Rehash every listed mod that has a data spec when `ModDataBuilder.Version` changes: its hash includes the builder's
 version, so the old entry no longer matches. Any change to a mod's files (a comment, a line ending) is a new hash too:

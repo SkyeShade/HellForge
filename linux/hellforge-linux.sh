@@ -173,20 +173,7 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-# bsdtar (libarchive) unpacks .7z and .rar mods; zips and folders need no extra program, so this is only a warning.
-if ! command -v bsdtar >/dev/null; then
-  echo "Warning: bsdtar was not found; it is needed only to add .7z or .rar mods, so zips and folders still work." >&2
-  if [ "$steamos" = 1 ]; then
-    echo "SteamOS 3.x keeps its system folders read-only; unpack a .7z or .rar mod by hand, or add it as a zip or folder." >&2
-  elif command -v pacman >/dev/null; then echo "Install it with: sudo pacman -S --needed libarchive" >&2
-  elif command -v apt-get >/dev/null; then echo "Install it with: sudo apt install libarchive-tools" >&2
-  elif command -v dnf >/dev/null; then echo "Install it with: sudo dnf install bsdtar" >&2
-  elif command -v zypper >/dev/null; then echo "Install it with: sudo zypper install bsdtar" >&2
-  else echo "Install it with your package manager: bsdtar is in libarchive (libarchive-tools on Debian and Ubuntu)." >&2
-  fi
-fi
-
-# Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. As with bsdtar, warn here;
+# Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. Warn here;
 # hellforge-offline.sh refuses before it makes the namespace when either is missing.
 if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
   missing=""

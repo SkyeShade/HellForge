@@ -15,6 +15,85 @@ On `dev`, since 0.3.0-beta.
   mod tools; Settings can remove the HellForge installation and its desktop shortcut without deleting the
   Proton prefix (#90).
 
+- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
+  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
+  taken off between releases.
+
+### Changed
+
+- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
+  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
+  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
+  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
+  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
+  Map when you're sandboxed.
+- Mods on HellForge's verified list download from any host, not just Steam friends.
+- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
+  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
+  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
+- `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
+  on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
+  ignored.
+- Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
+  #149).
+
+### Fixed
+
+- Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
+  wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
+  some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
+  a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
+  out with a line in the log.
+- With more than about 150 mod weapons, the rest and every mod stratagem never reached your inventory: the list of
+  them HellForge hands its backend was cut off at a fixed size. A quote in a mod weapon's name also broke that list.
+- Past 64 mod weapons and entities with models of their own, the rest were not set up for destruction.
+- A large weapon pack used up the room for mod text, so mod stratagems showed their base's names.
+- A copy of an entity with a decoration, encounter or ship prop visibility component could be written past its table,
+  into the game's records: HellForge had those tables' sizes wrong.
+- On difficulty 11's larger maps every base, outpost and objective sat in a ring near the edge around an empty middle.
+  The game puts all its location clusters on one circle at 60-80 % of the map's radius, and the locations stay as
+  many and as far apart as on a level-10 map. Every other cluster now goes on an inner circle at level 10's distance,
+  so the middle has bases again. Every player still generates the same map from the same seed.
+- City buildings on difficulty 11's larger maps may now stand up to the border, not only inside the level's playable
+  radius, as the enemies there already spawn (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius, for comparing).
+- Small towns on difficulty 11's larger maps came out as scattered flat pieces at different heights instead of one
+  flat town. Two causes, both from a larger map's cells being further apart. The game picks a map's town cells from a
+  noise pattern measured in metres, so each town broke into single cells; on larger maps the pattern is now read at
+  level 10's spacing, so a town keeps level 10's cells, each larger. And the ring of cells the game puts around each
+  town cell still used level 10's size, so two other cells sat between every pair of town cells and each was
+  flattened on its own; the ring now uses the larger cells' size, so a town's cells touch and form one flat area
+  (`HELLFORGE_D11_TOWN_NOISE=0` and `HELLFORGE_D11_TOWN_RING=0` keep the old behaviour, for comparing).
+- On the war table, a difficulty 11 map's low ground sank into the table at the drop zone view and showed black until
+  zoomed in: the hologram lifts the terrain by its scale, a formula made for level 10's scales only. It now reads the
+  scale a level-10 map would have, so every map sits above the table as at level 10.
+- Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
+  edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
+  (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
+  separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
+  does, and the session log counts them.
+
+### For mod makers
+
+- `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
+  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+
+### For launcher developers
+
+- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
+  `--sandbox yes`.
+- The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
+  `"stranger": true`.
+- `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
+  folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
+  `tar` for them.
+- `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
+  list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
+  installation's saved list.
+- A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
+  and why a published list was not taken.
+
 ## 0.3.0-beta (2026-10-26)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.3.0-beta). Engine 0.1.41, mod SDK 15.

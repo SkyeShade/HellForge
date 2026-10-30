@@ -22,18 +22,18 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
-- These programs: `ip` (from iproute2), `unshare` and `flock` (from util-linux), `pgrep` (from procps) and `bsdtar`.
-  `bsdtar` is needed only to add `.7z` or `.rar` mods. The Steam bridge is HellForge's own native program
+- These programs: `ip` (from iproute2), `unshare` and `flock` (from util-linux) and `pgrep` (from procps). HellForge
+  unpacks `.7z` and `.rar` mods itself, so `bsdtar` is not needed. The Steam bridge is HellForge's own native program
   (`app/cli-linux/HellForge.Cli steam-bridge`), and [account sync](#account-sync) uses HellForge's own native relay, so
   `socat` is not needed for setup, a session or account sync.
   `hellforge-linux.sh` checks for them and prints the install command for your package manager:
 
   | Package manager | Common distributions | Command |
   |---|---|---|
-  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 util-linux procps-ng libarchive` |
-  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 util-linux procps libarchive-tools` |
-  | `dnf` | Fedora, Nobara | `sudo dnf install iproute util-linux procps-ng bsdtar` |
-  | `zypper` | openSUSE | `sudo zypper install iproute2 util-linux procps bsdtar` |
+  | `pacman` | Arch, CachyOS, Manjaro | `sudo pacman -S --needed iproute2 util-linux procps-ng` |
+  | `apt-get` | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install iproute2 util-linux procps` |
+  | `dnf` | Fedora, Nobara | `sudo dnf install iproute util-linux procps-ng` |
+  | `zypper` | openSUSE | `sudo zypper install iproute2 util-linux procps` |
 
   On other systems, install the same packages with your package manager.
 
@@ -393,7 +393,6 @@ which SteamOS is not expected to have) and the account-sync helper; neither is n
 | `ip` (iproute2) | loopback, the veth adapter and the `prohibit` routes | Expected: `iproute2` is in Arch's base set, and the Steam Machine ownership run passed through the namespace. |
 | `unshare`, `flock` (util-linux) | the user and network namespace, and the bridge's locks | Expected, for the same reasons. |
 | `pgrep` (procps-ng) | waits for the live-war fetch and the mod tools | Expected, for the same reasons. |
-| `bsdtar` (libarchive) | adding `.7z` or `.rar` mods, only | Expected; without it the wrapper warns and zip and folder mods still work. |
 | `pasta` (passt), `python3` | co-op over Steam relays, only with the Settings switch on | Expected missing: neither is in Arch's base set. A solo session does not need them. |
 
 The Steam Machine run's `find` and `ownership` steps passed, so at least that image had the required programs and

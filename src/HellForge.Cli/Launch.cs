@@ -283,11 +283,14 @@ static class Launch
         return new { fetched = true, cache = paths.LiveWarCache };
     }
 
-    // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones).
+    // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones). A .rar or .7z
+    // dropped into mods/ is added first (ModInstaller.TakeDropped), as the Mods page does.
     public static object Mods(Dictionary<string, string> options)
     {
         var install = Install(options);
+        var dropped = ModInstaller.TakeDropped(install);
         var (mods, problems) = ModCatalog.Load(install.Mods);
+        problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);
         var gameplay = active.Count(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId);
         return new
