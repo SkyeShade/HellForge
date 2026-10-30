@@ -2,7 +2,7 @@
  * finds, for an editor to show (browse_state, browse_lobby), and the editor's asks back (browse_ask). Over the live pipe:
  *   backend: browselobby <seq> <version> <index> <ready|download|trust|unjoinable|blocked|full|locked|unknown>
  *                        <friend,mission,joinable or -> <members> <max members> <difficulty or -> <planet or -> <mods>
- *                        <download bytes> <lobby id> <host name> <reason>
+ *                        <download bytes> <lobby id> <host name> <reason> <players> <mod list>
  *            browsestate <seq> <version> <none|searching|ready|unavailable|invited|failed> <lobbies> <message>
  *   loader:  browseask <refresh|join> <lobby id or ->     (unasked: the editor's ask)
  * As mod sync's lines do, a version's browselobby lines come first and wait in g_browseNext (the pipe's thread alone
@@ -57,12 +57,12 @@ static int BrowseOptional(const char* text, uint64_t max, int32_t* out)
 
 static void BrowseLobbyLine(char* line, char* reply, size_t size)
 {
-    char* f[15];
-    int n = SplitAll(line, f, 15);
+    char* f[17];
+    int n = SplitAll(line, f, 17);
     uint64_t version = 0, index = 0, members = 0, max = 0, mods = 0, bytes = 0;
     int32_t difficulty = -1, planet = -1;
-    int verdict = n == 15 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 15 ? BrowseFlags(f[5]) : -1;
-    if (n != 15 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
+    int verdict = n == 17 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 17 ? BrowseFlags(f[5]) : -1;
+    if (n != 17 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
         !SyncNumber(f[6], &members) || members > 64 || !SyncNumber(f[7], &max) || max > 64 || !BrowseOptional(f[8], 100, &difficulty) ||
         !BrowseOptional(f[9], 100000, &planet) || !SyncNumber(f[10], &mods) || mods > 4096 || !SyncNumber(f[11], &bytes) || !BrowseLobbyId(f[12]))
     { snprintf(reply, size, "%s\trefused\tmalformed browselobby", n >= 2 ? f[1] : "-"); return; }
@@ -87,6 +87,8 @@ static void BrowseLobbyLine(char* line, char* reply, size_t size)
     SyncCopy(l->lobby_id, sizeof l->lobby_id, f[12]);
     SyncCopy(l->host, sizeof l->host, f[13]);
     SyncCopy(l->reason, sizeof l->reason, f[14]);
+    SyncCopy(l->players, sizeof l->players, f[15]);
+    SyncCopy(l->mod_list, sizeof l->mod_list, f[16]);
     g_browseNextSeen[index / 64] |= 1ull << (index % 64);
     snprintf(reply, size, "%s\tok\tnow", f[1]);
 }

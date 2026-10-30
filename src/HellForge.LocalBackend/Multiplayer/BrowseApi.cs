@@ -252,10 +252,14 @@ public sealed class LiveBrowse
         if (lobby["joinable"]?.GetValueKind() == JsonValueKind.True) flags.Add("joinable");
         int Count(string key) => (int)Math.Clamp(Integer(lobby[key]) ?? 0, 0, 64);
         long? Optional(string key, long max) => Integer(lobby[key]) is { } n && n >= 0 && n <= max ? n : null;
-        var shared = (lobby["mods"] as JsonArray)?.OfType<JsonObject>().Count(m => m["tier"]?.GetValue<string>() == ModSets.TierName(CoopTier.Shared)) ?? 0;
+        var sharedMods = (lobby["mods"] as JsonArray)?.OfType<JsonObject>().Where(m => m["tier"]?.GetValue<string>() == ModSets.TierName(CoopTier.Shared)).ToList() ?? [];
+        var players = (lobby["players"] as JsonArray)?.Select(n => n?.GetValue<string>()).OfType<string>() ?? [];
+        // the mods a join would change first (the ones to download, trust or install), then the ones it already has
+        var changed = sharedMods.Where(m => m["action"]?.GetValue<string>() is { } a && a != "have").Select(m =>
+            $"{m["name"]?.GetValue<string>() ?? m["id"]?.GetValue<string>()} {m["version"]?.GetValue<string>()}: {m["action"]!.GetValue<string>()}");
         return new LiveLobby(lobby["verdict"]?.GetValue<string>() ?? "unknown", flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
-            Optional("planetId", 100000), shared, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
-            lobby["reason"]?.GetValue<string>() ?? "");
+            Optional("planetId", 100000), sharedMods.Count, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
+            lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), string.Join("; ", changed));
     }
 
     // A whole number the list holds (an int or a long, as Describe put it, or parsed JSON), else null.

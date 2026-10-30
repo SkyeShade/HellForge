@@ -358,6 +358,7 @@ struct LobbyDialog
     double shownAt = 0;       /* when it appeared: its keys and buttons wait LOBBY_ARM seconds */
     double askedAt = -100;    /* when a list was last asked for */
     double listedAt = 0;      /* when the last list came (0 none yet) */
+    double closingAt = 0;     /* when its screen began to power off (0 not closing) */
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
 };
 extern LobbyDialog g_lobbies;

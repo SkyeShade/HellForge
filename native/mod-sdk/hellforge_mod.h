@@ -898,6 +898,9 @@ typedef struct HfBrowseLobby
     char lobby_id[65];       /* what HF_BROWSE_JOIN names */
     char host[64];           /* the host's name (UTF-8), or "" */
     char reason[192];        /* why it cannot be joined (UTF-8), or "" */
+    char players[128];       /* the players' names, comma separated (UTF-8), or "" */
+    char mod_list[256];      /* the host's shared mods a join would change, each with what happens to it ("Tanks 2.0:
+                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "" */
 } HfBrowseLobby;
 
 /* What an editor asks the backend for (browse_ask). */

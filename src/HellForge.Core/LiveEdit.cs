@@ -29,8 +29,10 @@ public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 
 // One lobby of the in-game lobby browser's list (LiveEditServer.BrowseLobbyAsync): words as native/mod-loader/live_browse.c
 // reads them. Verdict: ready, download, trust, unjoinable, blocked, full, locked or unknown; Flags: friend, mission, joinable.
+// Players: the names, comma separated; ModList: the host's shared mods a join would change ("Name version: action"),
+// semicolon separated.
 public sealed record LiveLobby(string Verdict, IReadOnlyList<string> Flags, int Members, int MaxMembers, long? Difficulty, long? Planet, int Mods,
-    long DownloadBytes, string LobbyId, string Host, string Reason);
+    long DownloadBytes, string LobbyId, string Host, string Reason, string Players = "", string ModList = "");
 
 // The launcher's end of live editing (native/mod-loader/live.c): a named pipe, \\.\pipe\hellforge-live-<run id>, that
 // the session's mod loader connects to; current user only, one game at a time. Each request names a stats field as
@@ -182,7 +184,8 @@ public sealed class LiveEditServer : IAsyncDisposable
     public Task<LiveResult> BrowseLobbyAsync(int version, int index, LiveLobby lobby) =>
         SendAsync("browselobby", string.Join('\t', Invariant(version), Invariant(index), lobby.Verdict, lobby.Flags.Count > 0 ? string.Join(',', lobby.Flags) : "-",
             Invariant(lobby.Members), Invariant(lobby.MaxMembers), lobby.Difficulty is { } d ? Invariant(d) : "-", lobby.Planet is { } p ? Invariant(p) : "-",
-            Invariant(lobby.Mods), Invariant(lobby.DownloadBytes), lobby.LobbyId, Field(lobby.Host), Field(lobby.Reason)));
+            Invariant(lobby.Mods), Invariant(lobby.DownloadBytes), lobby.LobbyId, Field(lobby.Host), Field(lobby.Reason), Field(lobby.Players),
+            string.Concat(lobby.ModList.Where(c => !char.IsControl(c)).Take(250))));
     public Task<LiveResult> BrowseStateAsync(int version, string state, int lobbies, string message) =>
         SendAsync("browsestate", string.Join('\t', Invariant(version), state, Invariant(lobbies), Field(message)));
 

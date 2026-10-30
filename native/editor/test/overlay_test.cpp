@@ -1008,7 +1008,7 @@ int main(int argc, char** argv)
             "a click after a second trusts %s (%s)\n", warned ? "yes" : "NO", unarmed ? "yes" : "NO", noEnter ? "yes" : "NO", back ? "yes" : "NO",
             opened ? "yes" : "NO", g_syncOpened, trusted ? "yes" : "NO", g_syncTrusted);
         if (!warned || !unarmed || !noEnter || !back || !opened || !trusted) { puts("FAIL the mod sync TRUST warning or GET IT did not answer as expected"); failures++; }
-        /* the lobby browser (SDK 16): the terminal's count going up opens it alone over the game, asking for a list; J leaves
+        /* the lobby browser (SDK 16): the terminal's count going up opens it full screen over the game, asking for a list; J leaves
          * the joinable lobbies (the stranger's goes), Enter joins the selected one, and the backend's invitation closes it
          * for the game's. Opened again from the terminal, Esc closes it without joining. */
         g_browseList[0] = {sizeof(HfBrowseLobby), HF_LOBBY_UNJOINABLE, 0, 1, 4, 7, -1, 2, 0, "steam-1", "Stranger One", "It needs mods installed by hand."};
@@ -1028,7 +1028,7 @@ int main(int argc, char** argv)
         g_browseNow.state = HF_BROWSE_INVITED; frames(40);
         bool invited = g_lobbiesGone == lobbiesGone + 1;
         g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 2; g_browseNow.terminal = 2; frames(40); armed();
-        Key(window, VK_ESCAPE); frames(4);
+        Key(window, VK_ESCAPE); armed(); /* the screen powers off, then the browser goes */
         bool escaped = g_lobbiesAlone == lobbiesAlone + 2 && g_lobbiesGone == lobbiesGone + 2 && g_browseJoins == 1 && g_editorOpens == editorOpens;
         printf("  lobby browser: idle until the terminal %s, the terminal opens it alone %s, J then Enter joins the friend's lobby %s (%s), "
             "the invitation closes it %s, Esc closes it %s\n", idle ? "yes" : "NO", shown ? "yes" : "NO", joined ? "yes" : "NO", g_browseJoined,

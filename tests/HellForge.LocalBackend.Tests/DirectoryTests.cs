@@ -351,7 +351,7 @@ static class DirectoryTests
         var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
         var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
         check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
-            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand."],
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand.", _, "Code 1: manual"],
             "The game gets the list: " + string.Join(" | ", first));
         var second = await Game("browseask\trefresh\t-");
         check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",

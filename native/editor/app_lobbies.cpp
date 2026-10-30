@@ -55,6 +55,7 @@ void OpenLobbies(const char* why)
     g_host.api->log(g_host.mod, "editor: the lobby browser opens (%s)", why);
     bool fresh = !g_lobbies.on;
     g_lobbies.on = true;
+    g_lobbies.closingAt = 0;
     g_lobbies.joining.clear();
     g_picker.on = false;
     g_edit.on = false;
@@ -67,6 +68,7 @@ void OpenLobbies(const char* why)
 static void CloseLobbies()
 {
     g_lobbies.on = false;
+    g_lobbies.closingAt = 0;
     g_lobbies.joining.clear();
     ShowLobbiesAlone(false);
 }
@@ -170,6 +172,8 @@ static void ToggleFriends() { g_lobbies.friendsOnly = !g_lobbies.friendsOnly; Fi
 /* any, then 5 and up to 10 and up, then any again */
 static void NextDifficulty() { g_lobbies.difficulty = g_lobbies.difficulty == 0 ? 5 : g_lobbies.difficulty >= 10 ? 0 : g_lobbies.difficulty + 1; Filter(); Sound(sounds::CLICK); }
 
+static void PowerOff();
+
 /* Esc: the window closes (Closed() closes the browser too), or the browser goes. */
 static void LobbyEscape()
 {
@@ -182,7 +186,7 @@ void LobbyKeys()
     int n = (int)g_lobbies.shown.size();
     if (Pressed(ImGuiKey_UpArrow)) g_lobbies.index = std::max(0, g_lobbies.index - 1);
     if (Pressed(ImGuiKey_DownArrow)) g_lobbies.index = std::min(std::max(0, n - 1), g_lobbies.index + 1);
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { LobbyEscape(); return; }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { PowerOff(); return; }
     if (!LobbiesArmed()) return;
     if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) Join(Selected());
     if (ImGui::IsKeyPressed(ImGuiKey_R, false)) Refresh();
@@ -214,112 +218,208 @@ static std::string Verdict(const HfBrowseLobby& l, ImU32* colour)
     }
 }
 
-/* The title, what the backend says, and the filters (each a toggle). */
-static void DrawLobbiesHead(const Area& box)
+/* ---- the look: the CONTROL CENTER wall screen's (blue blueprint, white text), full screen ----
+ * The browser fills the screen as the terminal's own screen would: a blue field with a faint grid and scanlines, the
+ * screen's header and corner marks, filters on the left, the lobbies in the middle and the selected one's details on
+ * the right. It powers on (a line that opens into the screen, then its contents) and off the same way. */
+const ImU32 TERM_BG = C(10, 34, 92, 246), TERM_BG2 = C(18, 64, 150, 120), TERM_GRID = C(150, 190, 255, 16), TERM_SCAN = C(0, 0, 0, 22),
+    TERM_LINE = C(205, 228, 255, 150), TERM_FAINT = C(170, 200, 245, 150), TERM_TEXT = C(240, 246, 255, 255), TERM_DIM = C(196, 214, 245, 255),
+    TERM_ROW = C(255, 255, 255, 14), TERM_SELECT = C(255, 255, 255, 44), TERM_GOOD = C(150, 240, 190, 255), TERM_WARN = C(255, 214, 120, 255),
+    TERM_BAD = C(255, 150, 140, 255);
+const double LOBBY_POWER_ON = 0.55, LOBBY_POWER_OFF = 0.3;
+
+static ImU32 Alpha(ImU32 colour, float a)
 {
-    float x = box.x, y = box.y, w = box.w;
+    unsigned alpha = (unsigned)((float)((colour >> IM_COL32_A_SHIFT) & 0xFF) * std::clamp(a, 0.0f, 1.0f));
+    return (colour & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+}
+
+/* The screen's own button: a frame that lights when hovered; true when clicked (and armed). */
+static bool TermButton(const std::string& label, const Area& a, bool on, bool enabled, uint64_t id, float alpha)
+{
+    bool hovered = enabled && g_cv.Hovered() == id;
+    g_cv.Rect(a.x, a.y, a.w, a.h, Alpha(on ? C(255, 255, 255, 60) : hovered ? C(255, 255, 255, 30) : C(255, 255, 255, 8), alpha), 11);
+    g_cv.Frame(a.x, a.y, a.w, a.h, Alpha(enabled ? TERM_LINE : TERM_FAINT, alpha * (enabled ? 1.0f : 0.5f)), 11);
+    g_cv.Text(label, a.x + a.w / 2, a.y + a.h / 2, T(SZ_SMALL, Alpha(enabled ? TERM_TEXT : TERM_FAINT, alpha), ui::TITLE, ui::CENTER, a.w - 12, 12));
+    return enabled && g_cv.Hit(a.x, a.y, a.w, a.h, id) && LobbiesArmed();
+}
+
+/* What joining a lobby takes, in a few words, and its colour on the screen. */
+static std::string TermVerdict(const HfBrowseLobby& l, ImU32* colour)
+{
+    std::string text = Verdict(l, colour);
+    *colour = *colour == OK ? TERM_GOOD : *colour == GOLD || *colour == PENDING ? TERM_WARN : *colour == ERROR_ ? TERM_BAD : TERM_DIM;
+    return text;
+}
+
+/* The field, its grid and scanlines, the frame and the corner marks, over the whole screen. */
+static void DrawTermField(float x, float y, float w, float h, float alpha)
+{
+    g_cv.Rect(x, y, w, h, Alpha(TERM_BG, alpha), 8);
+    g_cv.Rect(x, y + h * 0.55f, w, h * 0.45f, Alpha(TERM_BG2, alpha), 8); /* the screen's lighter lower half */
+    for (float gx = x + 40; gx < x + w; gx += 40) g_cv.Rect(gx, y, 1, h, Alpha(TERM_GRID, alpha), 8);
+    for (float gy = y + 40; gy < y + h; gy += 40) g_cv.Rect(x, gy, w, 1, Alpha(TERM_GRID, alpha), 8);
+    for (float sy = y; sy < y + h; sy += 4) g_cv.Rect(x, sy, w, 1, Alpha(TERM_SCAN, alpha), 9);
+}
+
+static void DrawTermHeader(float x, float y, float w, float alpha, double t)
+{
+    const std::string title = "CONTROL CENTER  \xC2\xB7  LOBBY BROWSER";
+    size_t typed = std::min(title.size(), (size_t)std::max(0.0, (t - LOBBY_POWER_ON * 0.6) * 90));
+    while (typed < title.size() && typed > 0 && ((unsigned char)title[typed] & 0xC0) == 0x80) typed++; /* whole characters */
+    float tw = g_cv.Text(title.substr(0, typed), x, y + 14, T(SZ_LABEL, Alpha(TERM_TEXT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    g_cv.Rect(x + tw + 14, y + 14, w - tw - 14, 2, Alpha(TERM_LINE, alpha), 11);
     const HfBrowseState& s = g_lobbies.state;
-    g_cv.Rect(x, y, w, 3, GOLD, 10);
-    float tw = g_cv.Text("LOBBY BROWSER", x + 24, y + 30, T(18, GOLD, ui::TITLE, ui::LEFT, 0, 11));
-    std::string what = s.state == HF_BROWSE_NONE ? "Waiting for the session's backend..." : s.state == HF_BROWSE_UNAVAILABLE ? s.message :
-        s.message[0] ? s.message : "Every HellForge lobby, and what joining it takes.";
-    g_cv.Text(what, x + 36 + tw, y + 31, T(SZ_SMALL, s.state == HF_BROWSE_UNAVAILABLE || s.state == HF_BROWSE_FAILED ? ERROR_ : DIM, ui::BODY, ui::LEFT, w - tw - 80, 11));
-    float fx = x + 24, fy = y + 52;
-    auto toggle = [&](const std::string& label, bool on, const char* id) {
-        float bw = g_cv.Measure(label, SZ_TINY, ui::TITLE) + 24;
-        bool clicked = Button(label, {fx, fy, bw, 24}, on ? PRIMARY : NORMAL, ui::Id(id), 11) && LobbiesArmed();
-        fx += bw + 8;
-        return clicked;
-    };
-    if (toggle("JOINABLE ONLY", g_lobbies.joinableOnly, "lobbyjoinable")) ToggleJoinable();
-    if (toggle("FRIENDS", g_lobbies.friendsOnly, "lobbyfriends")) ToggleFriends();
-    if (toggle(g_lobbies.difficulty ? "DIFFICULTY " + std::to_string(g_lobbies.difficulty) + "+" : std::string("ANY DIFFICULTY"), g_lobbies.difficulty > 0, "lobbydifficulty"))
-        NextDifficulty();
-    char count[64];
-    snprintf(count, sizeof count, "%d of %d lobbies", (int)g_lobbies.shown.size(), (int)g_lobbies.lobbies.size());
-    std::string status = count;
+    std::string what = s.state == HF_BROWSE_NONE ? "Connecting to the ship's network..." : s.state == HF_BROWSE_UNAVAILABLE ? s.message :
+        s.message[0] ? s.message : "Every HellForge lobby on any planet, and what joining it takes.";
+    g_cv.Text(what, x, y + 42, T(SZ_SMALL, Alpha(s.state == HF_BROWSE_UNAVAILABLE || s.state == HF_BROWSE_FAILED ? TERM_BAD : TERM_DIM, alpha), ui::BODY,
+        ui::LEFT, w * 0.6f, 12));
+    std::string status = std::to_string(g_lobbies.shown.size()) + " of " + std::to_string(g_lobbies.lobbies.size()) + " lobbies";
     if (g_lobbies.listedAt > 0)
     {
         int ago = (int)(Now() - g_lobbies.listedAt);
-        status += ago < 2 ? ", searched just now" : ", searched " + std::to_string(ago) + " s ago";
+        status += ago < 2 ? "  \xC2\xB7  searched just now" : "  \xC2\xB7  searched " + std::to_string(ago) + " s ago";
     }
-    g_cv.Text(Searching() ? "Searching..." : status, x + w - 24, fy + 12, T(SZ_SMALL, Searching() ? GOLD : FAINT, ui::BODY, ui::RIGHT, 0, 11));
-    float hy = y + 86;
-    g_cv.Rect(x + 1, hy, w - 2, 22, HEADER, 10);
-    g_cv.Text("HOST", x + 24, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
-    g_cv.Text("PLAYERS", x + w - 560, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
-    g_cv.Text("DIFFICULTY", x + w - 480, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
-    g_cv.Text("JOINING", x + w - 380, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::LEFT, 0, 11));
+    g_cv.Text(Searching() ? "SEARCHING THE NETWORK..." : status, x + w, y + 42, T(SZ_SMALL, Alpha(Searching() ? TERM_WARN : TERM_FAINT, alpha), ui::BODY, ui::RIGHT, 0, 12));
 }
 
-static void DrawLobbyList(const Area& box, float top, float bottom)
+/* The filters, a column of the screen's buttons, and REFRESH under them. */
+static void DrawTermFilters(float x, float y, float w, float alpha)
 {
+    g_cv.Text("FILTERS", x, y + 8, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    if (TermButton("JOINABLE ONLY", {x, y + 24, w, 34}, g_lobbies.joinableOnly, true, ui::Id("lobbyjoinable"), alpha)) ToggleJoinable();
+    if (TermButton("FRIENDS", {x, y + 66, w, 34}, g_lobbies.friendsOnly, true, ui::Id("lobbyfriends"), alpha)) ToggleFriends();
+    std::string difficulty = g_lobbies.difficulty ? "DIFFICULTY " + std::to_string(g_lobbies.difficulty) + "+" : std::string("ANY DIFFICULTY");
+    if (TermButton(difficulty, {x, y + 108, w, 34}, g_lobbies.difficulty > 0, true, ui::Id("lobbydifficulty"), alpha)) NextDifficulty();
+    bool searching = Searching();
+    if (TermButton(searching ? "SEARCHING..." : "REFRESH", {x, y + 170, w, 40}, false, !searching, ui::Id("lobbyrefresh"), alpha)) Refresh();
+    if (TermButton("CLOSE", {x, y + 220, w, 40}, false, true, ui::Id("lobbyclose"), alpha)) PowerOff();
+}
+
+static void DrawTermList(float x, float y, float w, float h, float alpha)
+{
+    g_cv.Text("HOST", x + 16, y + 8, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    g_cv.Text("PLAYERS", x + w - 420, y + 8, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    g_cv.Text("DIFF.", x + w - 340, y + 8, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    g_cv.Text("JOINING", x + w - 270, y + 8, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    g_cv.Rect(x, y + 20, w, 1, Alpha(TERM_LINE, alpha), 11);
     ListOpts o;
-    o.x = box.x + 2; o.y = top; o.w = box.w - 4; o.h = bottom - top; o.rowH = 40; o.count = (int)g_lobbies.shown.size(); o.selected = g_lobbies.index;
+    o.x = x; o.y = y + 26; o.w = w; o.h = h - 26; o.rowH = 48; o.count = (int)g_lobbies.shown.size(); o.selected = g_lobbies.index;
     o.key = "lobbies"; o.focused = true; o.layer = 12;
     o.click = [&](int i) { g_lobbies.index = i; };
     o.draw = [&](int i, float rx, float ry, float rw, float rh, bool hovered) {
         const HfBrowseLobby& l = g_lobbies.lobbies[g_lobbies.shown[i]];
         bool selected = i == g_lobbies.index;
-        if (selected) { g_cv.Rect(rx + 10, ry + 2, rw - 20, rh - 4, SELECT, 10); g_cv.Rect(rx + 10, ry + 2, 3, rh - 4, GOLD, 11); }
-        else if (hovered) g_cv.Rect(rx + 10, ry + 2, rw - 20, rh - 4, HOVER, 10);
-        float cy = ry + rh / 2, lx = rx + 22, right = rx + rw - 560;
-        if (l.flags & HF_LOBBY_FLAG_FRIEND) lx += Chip("FRIEND", lx, cy, INVERSE, MOD, false, 12) + 8;
-        float nw = g_cv.Text(l.host[0] ? l.host : "A HellForge lobby", lx, cy, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, (right - lx) * 0.75f, 12));
-        if (l.flags & HF_LOBBY_FLAG_MISSION) g_cv.Text("on a mission", lx + nw + 10, cy, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, right - lx - nw - 20, 12));
-        g_cv.Text(std::to_string(l.members) + " / " + std::to_string(l.max_members), rx + rw - 558, cy, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 70, 12));
-        g_cv.Text(l.difficulty > 0 ? std::to_string(l.difficulty) : "-", rx + rw - 478, cy, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 90, 12));
+        g_cv.Rect(rx, ry + 3, rw - 8, rh - 6, Alpha(selected ? TERM_SELECT : hovered ? C(255, 255, 255, 24) : TERM_ROW, alpha), 10);
+        if (selected) g_cv.Rect(rx, ry + 3, 3, rh - 6, Alpha(TERM_TEXT, alpha), 11);
+        float cy = ry + rh / 2, lx = rx + 16, right = rx + rw - 420;
+        if (l.flags & HF_LOBBY_FLAG_FRIEND) lx += Chip("FRIEND", lx, cy, Alpha(C(10, 34, 92, 255), alpha), Alpha(TERM_TEXT, alpha), false, 12) + 8;
+        float nw = g_cv.Text(l.host[0] ? l.host : "A HellForge lobby", lx, cy, T(SZ_LABEL, Alpha(TERM_TEXT, alpha), ui::BODY, ui::LEFT, (right - lx) * 0.7f, 12));
+        if (l.flags & HF_LOBBY_FLAG_MISSION) g_cv.Text("on a mission", lx + nw + 10, cy, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, right - lx - nw - 20, 12));
+        g_cv.Text(std::to_string(l.members) + " / " + std::to_string(l.max_members), rx + rw - 420, cy, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, 70, 12));
+        g_cv.Text(l.difficulty > 0 ? std::to_string(l.difficulty) : "-", rx + rw - 340, cy, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, 60, 12));
         ImU32 colour;
-        std::string verdict = Verdict(l, &colour);
-        g_cv.Text(g_lobbies.joining == l.lobby_id ? "Joining..." : verdict, rx + rw - 378, cy, T(SZ_SMALL, colour, ui::BODY, ui::LEFT, 360, 12));
+        std::string verdict = TermVerdict(l, &colour);
+        g_cv.Text(g_lobbies.joining == l.lobby_id ? "Joining..." : verdict, rx + rw - 270, cy, T(SZ_SMALL, Alpha(colour, alpha), ui::BODY, ui::LEFT, 260, 12));
     };
     List(o);
+    if (g_lobbies.shown.empty())
+    {
+        const char* none = Searching() || g_lobbies.state.state == HF_BROWSE_NONE ? "Searching the network for lobbies..." :
+            g_lobbies.lobbies.empty() ? "No HellForge lobbies right now. Host one yourself, or look again in a moment." : "No lobby fits the filters.";
+        g_cv.Text(none, x + 16, y + 56, T(SZ_LABEL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 32, 12));
+    }
 }
 
-/* REFRESH, JOIN and CLOSE, from the right. */
-static void DrawLobbyButtons(const Area& box)
+/* The items of a list separated by `separator`, at most `limit` of them. */
+static std::vector<std::string> Items(const char* text, const char* separator, size_t limit)
 {
-    float by = box.y + box.h - 66, bx = box.x + box.w - 24 - 130;
-    if (Button("CLOSE", {bx, by, 130, 30}, NORMAL, ui::Id("lobbyclose"), 11)) { LobbyEscape(); return; }
-    const HfBrowseLobby* selected = Selected();
-    bool joinable = Joinable(selected) && LobbiesArmed();
-    const char* join = !g_lobbies.joining.empty() ? "JOINING..." : "JOIN";
-    bx -= 12 + 150;
-    if (Button(join, {bx, by, 150, 30}, joinable ? PRIMARY : DISABLED, ui::Id("lobbyjoin"), 11) && joinable) Join(selected);
-    bx -= 12 + 130;
-    bool searching = Searching();
-    if (Button(searching ? "SEARCHING..." : "REFRESH", {bx, by, 130, 30}, searching ? DISABLED : NORMAL, ui::Id("lobbyrefresh"), 11) && !searching && LobbiesArmed()) Refresh();
-    /* beside the buttons: why the selected lobby cannot be joined, in full */
-    if (selected != nullptr && !(selected->flags & HF_LOBBY_FLAG_JOINABLE) && selected->reason[0])
+    std::vector<std::string> items;
+    std::string all = text;
+    for (size_t at = 0; at < all.size() && items.size() < limit;)
     {
-        auto lines = Wrapped(selected->reason, bx - box.x - 48, SZ_SMALL);
-        for (size_t i = 0; i < lines.size() && i < 2; i++)
-            g_cv.Text(lines[i], box.x + 24, by + 6 + 18.0f * (float)i, T(SZ_SMALL, ERROR_, ui::BODY, ui::LEFT, bx - box.x - 36, 11));
+        size_t next = all.find(separator, at);
+        items.push_back(all.substr(at, next == std::string::npos ? std::string::npos : next - at));
+        at = next == std::string::npos ? all.size() : next + strlen(separator);
     }
+    return items;
+}
+
+/* The selected lobby: its host, players and what joining takes, mod by mod, and JOIN. */
+static void DrawTermDetail(float x, float y, float w, float h, float alpha)
+{
+    g_cv.Rect(x, y, w, h, Alpha(C(255, 255, 255, 10), alpha), 10);
+    g_cv.Frame(x, y, w, h, Alpha(TERM_LINE, alpha * 0.6f), 11);
+    const HfBrowseLobby* l = Selected();
+    if (l == nullptr) { g_cv.Text("Select a lobby.", x + 20, y + 30, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12)); return; }
+    float ly = y + 30;
+    g_cv.Text(l->host[0] ? l->host : "A HellForge lobby", x + 20, ly, T(SZ_TITLE, Alpha(TERM_TEXT, alpha), ui::TITLE, ui::LEFT, w - 40, 12));
+    ly += 32;
+    std::string facts = std::to_string(l->members) + " of " + std::to_string(l->max_members) + " players";
+    if (l->difficulty > 0) facts += "  \xC2\xB7  difficulty " + std::to_string(l->difficulty);
+    facts += l->flags & HF_LOBBY_FLAG_MISSION ? "  \xC2\xB7  on a mission" : "  \xC2\xB7  on the ship";
+    g_cv.Text(facts, x + 20, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 40, 12));
+    ly += 22;
+    if (l->players[0]) { g_cv.Text(l->players, x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 22; }
+    ly += 12;
+    ImU32 colour;
+    std::string verdict = TermVerdict(*l, &colour);
+    for (std::string& line : Wrapped(verdict, w - 40, SZ_LABEL))
+    { g_cv.Text(line, x + 20, ly, T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 24; }
+    if (l->reason[0] && l->verdict != HF_LOBBY_UNJOINABLE && l->verdict != HF_LOBBY_BLOCKED)
+        for (std::string& line : Wrapped(l->reason, w - 40, SZ_SMALL)) { g_cv.Text(line, x + 20, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 20; }
+    ly += 14;
+    if (l->mod_list[0])
+    {
+        g_cv.Text("MODS A JOIN WOULD CHANGE", x + 20, ly, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+        ly += 22;
+        for (const std::string& item : Items(l->mod_list, "; ", 8))
+        {
+            if (ly > y + h - 90) break;
+            g_cv.Text(item, x + 28, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 48, 12));
+            ly += 20;
+        }
+    }
+    else if (l->mods > 0)
+        g_cv.Text(std::to_string(l->mods) + " shared mod(s), all the same as yours", x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12));
+    bool joinable = Joinable(l);
+    if (TermButton(!g_lobbies.joining.empty() ? "JOINING..." : "JOIN", {x + 20, y + h - 64, w - 40, 44}, joinable, joinable, ui::Id("lobbyjoin"), alpha)) Join(l);
+}
+
+/* Esc or CLOSE: the screen powers off, then the browser goes (LobbyEscape's work, after the animation). */
+static void PowerOff()
+{
+    if (g_lobbies.closingAt > 0) return;
+    g_lobbies.closingAt = Now(); /* LobbyEscape plays the sound */
 }
 
 void DrawLobbies()
 {
     if (!g_lobbies.on) return;
-    if (g_lobbies.alone) g_cv.Rect(-g_cv.ox, -g_cv.oy, g_cv.width, g_cv.height, C(0, 0, 0, 150), 8); /* the game, dimmed */
-    else g_cv.Rect(0, 0, PANEL_W, g_panelH, C(0, 0, 0, 120), 8);
-    float w = std::min(1000.0f, PANEL_W - 60), h = std::min(g_panelH - 80, 660.0f), x = (PANEL_W - w) / 2, y = (g_panelH - h) / 2;
-    Area box{x, y, w, h};
-    g_cv.Block();
-    g_cv.Rect(x, y, w, h, PANEL_ALT, 9);
-    g_cv.Frame(x, y, w, h, LINE_STRONG, 10);
-    DrawLobbiesHead(box);
-    float top = y + 112, bottom = y + h - 84;
-    DrawLobbyList(box, top, bottom);
-    if (g_lobbies.shown.empty())
+    double t = Now() - g_lobbies.shownAt;
+    float open = (float)std::clamp(t / LOBBY_POWER_ON, 0.0, 1.0);
+    if (g_lobbies.closingAt > 0)
     {
-        const char* none = Searching() || g_lobbies.state.state == HF_BROWSE_NONE ? "Looking for lobbies..." :
-            g_lobbies.lobbies.empty() ? "No HellForge lobbies right now. Host one yourself, or look again in a moment." : "No lobby fits the filters.";
-        g_cv.Text(none, x + 28, top + 24, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, w - 56, 12));
+        double c = Now() - g_lobbies.closingAt;
+        if (c >= LOBBY_POWER_OFF) { g_lobbies.closingAt = 0; LobbyEscape(); return; }
+        open = std::min(open, 1.0f - (float)(c / LOBBY_POWER_OFF));
     }
-    g_cv.Rect(x + 12, bottom + 4, w - 24, 1, LINE, 10);
-    DrawLobbyButtons(box);
-    g_cv.Text("Up/Down select   Enter join   R refresh   J joinable only   F friends   D difficulty   Esc close", x + 24, y + h - 20,
-        T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
+    float X = -g_cv.ox, Y = -g_cv.oy, W = g_cv.width, H = g_cv.height;
+    /* power on: a bright line across the middle opens into the screen; the contents fade in after it */
+    float lineOpen = std::clamp(open / 0.45f, 0.0f, 1.0f), fieldOpen = std::clamp((open - 0.3f) / 0.4f, 0.0f, 1.0f), contents = std::clamp((open - 0.6f) / 0.4f, 0.0f, 1.0f);
+    g_cv.Block();
+    float fh = H * fieldOpen;
+    if (fh >= 2) DrawTermField(X, Y + (H - fh) / 2, W, fh, 1.0f);
+    if (fieldOpen < 1) g_cv.Rect(X + W * (1 - lineOpen) / 2, Y + H / 2 - 1, W * lineOpen, 3, C(230, 240, 255, (int)(255 * (1 - fieldOpen))), 12);
+    if (contents <= 0) return;
+    float m = std::max(48.0f, W * 0.04f), cx = X + m, cy = Y + m * 0.8f, cw = W - 2 * m;
+    DrawTermHeader(cx, cy, cw, contents, t);
+    float top = cy + 76, bottom = Y + H - m * 0.8f - 28, filterW = 220, detailW = std::min(460.0f, cw * 0.3f);
+    DrawTermFilters(cx, top, filterW, contents);
+    DrawTermList(cx + filterW + 24, top, cw - filterW - detailW - 48, bottom - top, contents);
+    DrawTermDetail(cx + cw - detailW, top, detailW, bottom - top, contents);
+    g_cv.Text("Up/Down select   Enter join   R refresh   J joinable only   F friends   D difficulty   Esc close", cx, bottom + 16,
+        T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::LEFT, 0, 12));
+    g_cv.Text("INTERNAL NETWORK - TT_HD: ID_LOBBIES", cx + cw, bottom + 16, T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::RIGHT, 0, 12));
 }
 } // namespace editorapp
