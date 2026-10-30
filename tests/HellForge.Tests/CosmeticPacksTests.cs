@@ -99,7 +99,7 @@ static class CosmeticPacksTests
 
             File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["PGO-7V3."]""", """["Reticle (55)/RL-77"]"""));
             (loaded, problems) = ModCatalog.Load(mods);
-            check(loaded.Count == 0 && problems.Single().Contains("an option includes Reticle (55)/RL-77, which the pack does not have"),
+            check(loaded.Count == 0 && problems.Single().Contains($"an option includes {Path.Combine("Reticle (55)", "RL-77")}, which the pack does not have"),
                 "A folder no name matches is still refused, named as the manifest names it: " + string.Join(" | ", problems));
         });
 
