@@ -270,6 +270,14 @@ checks its command line before stopping it: the hand-started `hf-bridge-host.sh`
 `app/cli-linux/HellForge.Cli steam-bridge host` it execs. The wrapper serializes checking, starting and stopping the
 bridge with `flock` on `hf-bridge.lock` and `hf-bridge-users.lock`.
 
+The bridge reads the `steam` process's open sockets in `/proc/<pid>/fd`, which only works from Steam's own user
+namespace or the one above it. From inside another sandbox, such as NixOS's `steam-run` (measured: same PID namespace,
+its own user namespace), Steam is visible but its sockets are not, and the bridge says so. There, start
+`app/linux/hf-bridge-host.sh` where Steam runs, for example as a Steam shortcut, and leave it running: the wrapper uses a
+bridge that answers. The launcher's leftover-process check before PLAY, and its End button, leave the bridge and the
+programs that only start it (Steam's `reaper`) alone. Updating HellForge and backing up or restoring the prefix still
+ask you to close it first, as they do for every process of the installation.
+
 The wrapper then runs `hellforge-offline.sh`, which makes the namespace without root, waits up to 20 seconds for a
 wineserver of the prefix still running outside it, and refuses to start while one runs. Inside, `hf-inner.sh` opens
 the bridge ports and runs the requested program through Proton. The session runner's own network probe runs before the

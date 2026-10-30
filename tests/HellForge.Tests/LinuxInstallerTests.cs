@@ -213,6 +213,45 @@ static class LinuxInstallerTests
             check(!LinuxInstallProcesses.BelongsTo(new("bash", "/usr/bin/bash", [], ["INSTALL=" + installRoot + "-other"], null), installRoot),
                 "A similar installation path was treated as this one.");
         });
+
+        test("Linux leftover check before PLAY leaves the Steam bridge and Steam's reaper for it alone, and nothing else", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux processes)"); return; }
+            var installRoot = Path.Combine(root, "linux-bridge-processes", "pfx", "drive_c", "HellForge");
+            var app = Path.Combine(installRoot, "app");
+            var cli = Path.Combine(app, "cli-linux", "HellForge.Cli");
+            var script = Path.Combine(app, "linux", "hf-bridge-host.sh");
+            Directory.CreateDirectory(installRoot);
+            LinuxProcessInfo Process(string name, string? exe, string[] arguments, string[]? environment = null, string? cwd = null) =>
+                new(name, exe, arguments, environment ?? [], cwd);
+            // From steam-run, a process Steam started shows only its command line: no executable, environment or folder.
+            var bridges = new[]
+            {
+                Process("HellForge.Cli", null, [cli, "steam-bridge", "host"]),
+                Process("HellForge.Cli", cli, [Path.Combine(app, "linux", "..", "cli-linux", "HellForge.Cli"), "steam-bridge", "host"],
+                    ["INSTALL=" + installRoot], Path.Combine(app, "linux")),
+                Process("reaper", null, ["/home/player/.local/share/Steam/ubuntu12_32/reaper", "SteamLaunch", "AppId=3141592653", "--", script],
+                    cwd: Path.Combine(app, "linux")),
+                Process("bash", "/usr/bin/bash", ["bash", script], ["INSTALL=" + installRoot]),
+            };
+            foreach (var bridge in bridges)
+                check(LinuxInstallProcesses.BelongsTo(bridge, installRoot) && LinuxInstallProcesses.IsSteamBridge(bridge, installRoot),
+                    "Not recognised as this installation's Steam bridge: " + string.Join(" ", bridge.Arguments));
+            var sessions = new[]
+            {
+                Process("HellForge.Cli", cli, [cli, "steam-bridge", "inner"]),
+                Process("bash", "/usr/bin/bash", ["bash", Path.Combine(app, "linux", "hellforge-linux.sh")]),
+                Process("reaper", null, ["reaper", "SteamLaunch", "AppId=1", "--", script, Path.Combine(app, "session", "HellForge.Session.exe")]),
+                Process("HellForge.Launcher", Path.Combine(app, "launcher-linux", "HellForge.Launcher"), ["HellForge.Launcher", script]),
+                Process("helldivers2.exe", null, [@"C:\HellForge\game\bin\helldivers2.exe"], cwd: Path.Combine(app, "linux")),
+            };
+            foreach (var session in sessions)
+                check(LinuxInstallProcesses.BelongsTo(session, installRoot) && !LinuxInstallProcesses.IsSteamBridge(session, installRoot),
+                    "Treated as the Steam bridge, so PLAY would not wait for it: " + string.Join(" ", session.Arguments));
+            var other = Path.Combine(root, "linux-bridge-other", "app", "cli-linux", "HellForge.Cli");
+            check(!LinuxInstallProcesses.IsSteamBridge(Process("HellForge.Cli", null, [other, "steam-bridge", "host"]), installRoot),
+                "Another folder's bridge was treated as this installation's.");
+        });
     }
 
     static string Package(string root, string name, string launcher, string? topLevelProgram = "stub",

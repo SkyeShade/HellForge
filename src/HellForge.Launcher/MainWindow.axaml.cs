@@ -631,7 +631,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            var names = LinuxInstallProcesses.Running(paths.InstallRoot);
+            var names = LinuxInstallProcesses.SessionLeftovers(paths.InstallRoot);
             if (names.Count == 0)
             {
                 LeftoverProcessesCard.IsVisible = false;
@@ -655,7 +655,7 @@ public partial class MainWindow : Window
         if (paths.InstallRoot == null) return;
         try
         {
-            var ended = LinuxInstallProcesses.End(paths.InstallRoot);
+            var ended = LinuxInstallProcesses.EndSessionLeftovers(paths.InstallRoot);
             Append(ended.Count > 0 ? "Ended " + string.Join(", ", ended) + "." : "No leftover session processes were found.",
                 ended.Count > 0 ? Green : Light);
         }
