@@ -134,6 +134,9 @@ static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEnti
     }
     else if (own != NULL) ApiLog(w->mod, "%s: no loadout record of its own (%s); the game may not hand it to a player", w->name,
         taken ? "its id is taken" : "no room");
+    else if (baseLoadout != NULL) /* the base has one, but the index has no row for the copy (386 rows, 193 vanilla) */
+        ApiLog(w->mod, "%s: no loadout record of its own (the loadout index is full, or the entity is in it already); the game may not "
+            "hand it to a player", w->name);
 }
 
 /* Its own unit record: the base's, naming the weapon's unit (an entity of add_entity: only when given one). */
@@ -758,7 +761,7 @@ static void RevertWeaponProjectiles(void)
  * 0xFC45C0). A unit missing from it is never registered for destruction (0x883200: "Could not find any destructible
  * index data"), which also sets up some of its havok actors; a sentry so left had no aim and a field around it that
  * blocked players, likely for that reason. */
-#define REG_MAX_UNIT_COPIES 64
+#define REG_MAX_UNIT_COPIES REG_MAX_WEAPONS /* one per registered weapon or entity at most: 64 left those past it without destruction */
 #define DESTR_MANAGER 0x3326550u
 #define DESTR_INDEX 0x2C60u
 static struct { uint64_t base, copy; const char* name; HfMod* mod; } g_unitCopies[REG_MAX_UNIT_COPIES];

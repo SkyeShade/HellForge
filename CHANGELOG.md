@@ -40,6 +40,12 @@ On `dev`, since 0.3.0-beta.
   some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
   a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
   out with a line in the log.
+- With more than about 150 mod weapons, the rest and every mod stratagem never reached your inventory: the list of
+  them HellForge hands its backend was cut off at a fixed size. A quote in a mod weapon's name also broke that list.
+- Past 64 mod weapons and entities with models of their own, the rest were not set up for destruction.
+- A large weapon pack used up the room for mod text, so mod stratagems showed their base's names.
+- A copy of an entity with a decoration, encounter or ship prop visibility component could be written past its table,
+  into the game's records: HellForge had those tables' sizes wrong.
 
 ### For mod makers
 
