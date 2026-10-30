@@ -13,6 +13,9 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The ship's information terminal, across from the Armory, now opens a lobby browser listing every HellForge lobby
+  instead of an error about Arrowhead's news service. It is the game's own basic list for now; HellForge's own browser
+  is on the way.
 
 ### Changed
 

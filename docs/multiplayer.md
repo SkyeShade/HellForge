@@ -542,6 +542,17 @@ only ([external-launchers.md](external-launchers.md#the-lobby-browser-api)). The
 (menu presenter 41, DebugServerBrowser) searches with an empty filter every ~4 s, so the map's search answers it as
 well (seen live on 2026-10-30: a bare list of one row per lobby, or "NO SERVERS").
 
+**The ship's information terminal opens the lobby browser** (`native/mod-loader/terminal.c`, build 25480438). The
+terminal across from the Armory is menu presenter 6 (InformationTerminal). It needs Arrowhead's news, Major Order and
+statistics services; offline the game asks for `NewsFeed/801`, `v2/Assignment/War/801`, the war and profile statistics
+and `Episode/801`, gets 501 for each, and closes the terminal into an error popup. The loader hooks the presenter
+manager's open (game.dll+0x14C0550, which the game calls directly; the table entry at +0x14C0350 that Ship Station
+Hotkeys calls checks the open stack and jumps to it) and opens presenter 41 when 6 is asked for. Seen live on
+2026-10-30: walking up to the terminal and Ship Station Hotkeys' Control Center key both open the browser, and a click
+closes it. Ship Station Hotkeys checks that entry's first bytes through `code_matches`, which reads through hooks, so it
+still matches. Each presenter asked for is logged once with its caller (`terminal: the game opens menu presenter N`).
+`HELLFORGE_TERMINAL=news` keeps the terminal as the game has it.
+
 ### Play with strangers
 
 The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when
