@@ -341,6 +341,9 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 4; i++) memcpy(game + kClusterSites[i].site, kClusterSites[i].pin, kClusterSites[i].length);
     memcpy(game + DIF_CULL_RADIUS, kCullRadiusPin, 8);
     memcpy(game + DIF_VISTA_POSE, kVistaPosePin, 7);
+    memcpy(game + DIF_CLUSTER_RING, kClusterRingPin, 5);
+    memcpy(game + DIF_CLUSTER_X, kClusterXPin, 8);
+    memcpy(game + DIF_CLUSTER_Y, kClusterYPin, 8);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1179,6 +1182,74 @@ static void DifficultyFixture(void)
     char text[2 * REG_ITEM_ROOM]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0; /* room for an entry (REG_ITEM_ROOM) */
     assert(strstr(text, "\"kind\":\"difficulty\"") && strstr(text, "\"copyOf\":2695783738"));
     VirtualFree(game, 0, MEM_RELEASE);
+}
+
+/* A larger map's two rings of location clusters (InstallClusterRings), run as machine code: each slot site's own bytes at
+ * its RVA in a fake game.dll, a harness setting the slot (esi), the larger-map flag ([rsp+0x40]), the radius (xmm15) and
+ * the slot's cos or sin, returning the offset the game goes on with. An odd slot on a larger map is radius / map_scale,
+ * an even one and every slot on another map as before; the ring site sets the flag only for the level's larger disk. */
+typedef float (*RingSlotFn)(int slot, int flag, float radius, float factor);
+typedef int (*RingFlagFn)(uint8_t* pass, int unused, float radius, float fraction);
+
+static void ClusterRingsFixture(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1000000, MEM_RESERVE, PAGE_NOACCESS);
+    assert(game != 0 && VirtualAlloc((void*)(game + 0xF79000), 0x2000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    /* the slot harness: push rsi; sub rsp, 0x50; keep xmm7, xmm15; esi = slot; [rsp+0x40] = flag; xmm15 = radius;
+     * xmm7 / xmm1 = the factor; then the site; at its back: xmm0 = the offset (xmm2 for x), restore, return */
+    static const uint8_t slotIn[] = {0x56, 0x48, 0x83, 0xEC, 0x50, 0x0F, 0x11, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x11, 0x7C, 0x24, 0x30,
+        0x89, 0xCE, 0x89, 0x54, 0x24, 0x40, 0x44, 0x0F, 0x28, 0xFA, 0x0F, 0x28, 0xFB, 0x0F, 0x28, 0xCB};
+    static const uint8_t xOut[] = {0x0F, 0x28, 0xC2, 0x0F, 0x10, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    static const uint8_t yOut[] = {0x0F, 0x10, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    /* the ring harness: push rsi; sub rsp, 0x50; keep xmm15; rsi = the pass; xmm15 = fraction, xmm2 = radius; then the
+     * site; at its back: eax = [rsp+0x40], restore, return */
+    static const uint8_t ringIn[] = {0x56, 0x48, 0x83, 0xEC, 0x50, 0x44, 0x0F, 0x11, 0x7C, 0x24, 0x30, 0x48, 0x89, 0xCE, 0x44, 0x0F, 0x28, 0xFB};
+    static const uint8_t ringOut[] = {0x8B, 0x44, 0x24, 0x40, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    /* the sites and their backs as the game has them (x's back ends before y's site); each harness elsewhere, jumping in */
+    memcpy((void*)(game + DIF_CLUSTER_X), kClusterXPin, 8);
+    memcpy((void*)(game + DIF_CLUSTER_X_BACK), xOut, sizeof xOut);
+    memcpy((void*)(game + DIF_CLUSTER_Y), kClusterYPin, 8);
+    memcpy((void*)(game + DIF_CLUSTER_Y_BACK), yOut, sizeof yOut);
+    memcpy((void*)(game + DIF_CLUSTER_RING), kClusterRingPin, 5);
+    memcpy((void*)(game + DIF_CLUSTER_RING_BACK), ringOut, sizeof ringOut);
+    assert(DIF_CLUSTER_X_BACK + sizeof xOut <= DIF_CLUSTER_Y);
+    const struct { uint32_t at; const uint8_t* in; size_t length; uint32_t site; } harness[3] = {
+        {0xF7A000u, slotIn, sizeof slotIn, DIF_CLUSTER_X}, {0xF7A100u, slotIn, sizeof slotIn, DIF_CLUSTER_Y},
+        {0xF7A200u, ringIn, sizeof ringIn, DIF_CLUSTER_RING}};
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t* h = (uint8_t*)(game + harness[i].at);
+        memcpy(h, harness[i].in, harness[i].length);
+        h[harness[i].length] = 0xE9;
+        int32_t rel = (int32_t)(int64_t)(game + harness[i].site - (uintptr_t)(h + harness[i].length + 5));
+        memcpy(h + harness[i].length + 1, &rel, 4);
+    }
+    RingSlotFn x = (RingSlotFn)(void*)(game + 0xF7A000u), y = (RingSlotFn)(void*)(game + 0xF7A100u);
+    RingFlagFn flag = (RingFlagFn)(void*)(game + 0xF7A200u);
+    assert(x(1, 1, 600.0f, 0.5f) == 300.0f && y(1, 1, 600.0f, 0.5f) == 300.0f); /* unpatched: the radius times the factor */
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    d.disk = 1022.0f;
+    assert(InstallClusterRings(&d) == NULL);
+    for (int slot = 0; slot < 6; slot++)
+    {
+        float inner = slot & 1 ? 0.5f : 1.0f;
+        assert(x(slot, 1, 600.0f, 0.5f) == 300.0f * inner && y(slot, 1, 600.0f, -0.25f) == -150.0f * inner);
+        assert(x(slot, 0, 600.0f, 0.5f) == 300.0f && y(slot, 0, 600.0f, -0.25f) == -150.0f); /* not a larger map */
+    }
+    /* the flag: the level's disk (lg+0x2D7C at [pass+0x18]) is the larger map's, or not; the radius as before */
+    uint8_t level[0x2E00] = {0}, pass[0x20] = {0};
+    uint8_t* levelAt = level;
+    memcpy(pass + 0x18, &levelAt, 8);
+    float diskBits = d.disk / 1024.0f, other = 680.0f / 1024.0f;
+    memcpy(level + 0x2D7C, &diskBits, 4);
+    assert(flag(pass, 0, 600.0f, 0.7f) == 1);
+    memcpy(level + 0x2D7C, &other, 4);
+    assert(flag(pass, 0, 600.0f, 0.7f) == 0);
+    g_difficulty.mapScale = savedScale;
+    VirtualFree((void*)game, 0, MEM_RELEASE);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -3407,6 +3478,7 @@ int main(int argc, char** argv)
         free(heap);
     }
     DifficultyFixture();
+    ClusterRingsFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     {

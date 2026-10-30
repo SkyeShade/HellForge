@@ -46,6 +46,10 @@ On `dev`, since 0.3.0-beta.
 - A large weapon pack used up the room for mod text, so mod stratagems showed their base's names.
 - A copy of an entity with a decoration, encounter or ship prop visibility component could be written past its table,
   into the game's records: HellForge had those tables' sizes wrong.
+- On difficulty 11's larger maps every base, outpost and objective sat in a ring near the edge around an empty middle.
+  The game puts all its location clusters on one circle at 60-80 % of the map's radius, and the locations stay as
+  many and as far apart as on a level-10 map. Every other cluster now goes on an inner circle at level 10's distance,
+  so the middle has bases again. Every player still generates the same map from the same seed.
 
 ### For mod makers
 
