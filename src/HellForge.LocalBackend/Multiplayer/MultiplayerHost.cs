@@ -174,6 +174,13 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"Mod sync: {(own != null ? own.Mods.Count + " gameplay mods to share" : "nothing to share")}; offers go to {(Sync.Display != null ? "the game" : "the session log only")}.");
     }
 
+    // The lobby browser in this session's game (LiveBrowse, SDK 16), over the live-edit pipe mod sync shares.
+    public LiveBrowse? Browser { get; private set; }
+    public void ShowBrowser(BrowseApi browse)
+    {
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log);
+    }
+
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
     void StartRejoin(string file, string modDigest)
     {

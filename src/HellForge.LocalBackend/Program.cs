@@ -157,7 +157,11 @@ try
             SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
         })
         : null;
-    if (multiplayer != null) browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+    if (multiplayer != null)
+    {
+        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+        multiplayer.ShowBrowser(browse); // the in-game browser (SDK 16)
+    }
     var ready = new System.Text.Json.Nodes.JsonObject
     {
         ["scope"] = "synthetic-local-backend", ["urls"] = new System.Text.Json.Nodes.JsonArray(app.Urls.Select(u => (System.Text.Json.Nodes.JsonNode?)u).ToArray()),

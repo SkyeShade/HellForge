@@ -27,6 +27,11 @@ public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
     public static readonly LiveResult NotConnected = new(false, "the game is not connected");
 }
 
+// One lobby of the in-game lobby browser's list (LiveEditServer.BrowseLobbyAsync): words as native/mod-loader/live_browse.c
+// reads them. Verdict: ready, download, trust, unjoinable, blocked, full, locked or unknown; Flags: friend, mission, joinable.
+public sealed record LiveLobby(string Verdict, IReadOnlyList<string> Flags, int Members, int MaxMembers, long? Difficulty, long? Planet, int Mods,
+    long DownloadBytes, string LobbyId, string Host, string Reason);
+
 // The launcher's end of live editing (native/mod-loader/live.c): a named pipe, \\.\pipe\hellforge-live-<run id>, that
 // the session's mod loader connects to; current user only, one game at a time. Each request names a stats field as
 // the stats schema does and the loader applies it with set_live, as an edit of the Local Stats mod. Solo sessions only:
@@ -171,6 +176,15 @@ public sealed class LiveEditServer : IAsyncDisposable
             (stranger ? "\tstranger" : ""));
     public Task<LiveResult> SyncStateAsync(int version, string state, string host, long bytes, long done, int mods, string message) =>
         SendAsync("syncstate", string.Join('\t', Invariant(version), state, Field(host), Invariant(bytes), Invariant(done), Invariant(mods), Field(message)));
+
+    // The lobby browser (HfApi browse_state / browse_lobby, SDK 16): a list's lobbies, index 0 up, then its state, which
+    // publishes them in the game. A search under way or a join's outcome is the state alone, with the same version and count.
+    public Task<LiveResult> BrowseLobbyAsync(int version, int index, LiveLobby lobby) =>
+        SendAsync("browselobby", string.Join('\t', Invariant(version), Invariant(index), lobby.Verdict, lobby.Flags.Count > 0 ? string.Join(',', lobby.Flags) : "-",
+            Invariant(lobby.Members), Invariant(lobby.MaxMembers), lobby.Difficulty is { } d ? Invariant(d) : "-", lobby.Planet is { } p ? Invariant(p) : "-",
+            Invariant(lobby.Mods), Invariant(lobby.DownloadBytes), lobby.LobbyId, Field(lobby.Host), Field(lobby.Reason)));
+    public Task<LiveResult> BrowseStateAsync(int version, string state, int lobbies, string message) =>
+        SendAsync("browsestate", string.Join('\t', Invariant(version), state, Invariant(lobbies), Field(message)));
 
     static string Invariant(long number) => number.ToString(CultureInfo.InvariantCulture);
     // Text inside one field: no tabs, line breaks or other control characters, at most 200 characters.

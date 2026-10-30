@@ -13,9 +13,10 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
-- The ship's information terminal, across from the Armory, now opens a lobby browser listing every HellForge lobby
-  instead of an error about Arrowhead's news service. It is the game's own basic list for now; HellForge's own browser
-  is on the way.
+- The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
+  Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
+  (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
+  lobby's invitation. Ctrl+L in the in-game editor opens it too.
 
 ### Changed
 
@@ -87,6 +88,9 @@ On `dev`, since 0.3.0-beta.
 
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge lobby
+  with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
+  opened the browser.
 
 ### For launcher developers
 

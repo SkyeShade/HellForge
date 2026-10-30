@@ -254,6 +254,11 @@ that prompt.
 The routes take only these methods: anything else is 405 with `Allow`. Version 1 only grows: fields may be added,
 none removed or changed in meaning. A change that breaks this goes to `/hellforge/v2`.
 
+A browser drawn inside the game (a code mod's, as HellForge's in-game editor draws its own) gets the same list and
+joins through the SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)),
+over the session's live-edit pipe, with no HTTP of its own. `browse_state`'s `terminal` count goes up each time the
+ship's information terminal opens the browser.
+
 ### Logs
 
 Each session has its own folder, `logs\sessions\<runId>\`, and `logs\play-session.json` names the newest one (`"run"`).

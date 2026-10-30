@@ -553,6 +553,17 @@ closes it. Ship Station Hotkeys checks that entry's first bytes through `code_ma
 still matches. Each presenter asked for is logged once with its caller (`terminal: the game opens menu presenter N`).
 `HELLFORGE_TERMINAL=news` keeps the terminal as the game has it.
 
+**The in-game browser** (SDK 16; `native/mod-loader/live_browse.c`, `LiveBrowse` in `Multiplayer/BrowseApi.cs`,
+`native/editor/app_lobbies.cpp`). An editor asks over the live-edit pipe (`browseask refresh|join <lobby id>`), and the
+backend answers with the API's own list: one `browselobby` line per lobby (at most 128), then `browsestate`, which
+publishes them, as mod sync's `syncmod` and `syncstate` do. A search under way (`searching`) and a join's outcome
+(`invited`, `failed`) are a `browsestate` of the same version, which keeps the lobbies. The terminal hook counts each
+redirect, and `browse_state`'s `terminal` carries the count: the in-game editor opens its LOBBY BROWSER panel when it
+goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. Presenter 41 still opens
+under it, so the game's own state is the one it expects, and a click closes it after the panel. The panel asks for a
+new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
+It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API.
+
 ### Play with strangers
 
 The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when

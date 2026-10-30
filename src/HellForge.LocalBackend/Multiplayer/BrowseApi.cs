@@ -177,3 +177,88 @@ public sealed class BrowseApi
     static long? SearchNumber(BrowseLobby lobby, string key) =>
         lobby.SearchProperties.TryGetValue(key, out var text) && long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) ? n : null;
 }
+
+// The lobby browser in the game (HfApi browse_state, browse_lobby and browse_ask, SDK 16): an editor's asks over the
+// session's live-edit pipe ("browseask refresh|join <lobby id>", native/mod-loader/live_browse.c), answered with the API's
+// own list (BrowseApi.ListAsync) as one "browselobby" line a lobby and then "browsestate", which publishes them, and a
+// join through the API's (BrowseApi.Join). Asks are answered one at a time, in order.
+public sealed class LiveBrowse
+{
+    // The loader's limit (live_browse.c BROWSE_MAX_LOBBIES): past it the message says how many more there are.
+    public const int MaxLobbies = 128;
+
+    readonly BrowseApi api;
+    readonly LiveEditServer live;
+    readonly Action<string> log;
+    readonly SemaphoreSlim order = new(1, 1);
+    int attempts;
+    // the list the game shows: its version and how many lobbies (0, 0: none yet)
+    (int Version, int Lobbies) shown;
+
+    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log)
+    {
+        (this.api, this.live, this.log) = (api, live, log);
+        live.Received += parts => { if (parts[0] == "browseask") _ = AskAsync(parts); };
+        live.StateChanged += () => { if (!live.Connected) shown = (0, 0); }; // the loader forgets the list with the pipe
+    }
+
+    // "browseask" refresh - | join <lobby id>.
+    public async Task AskAsync(IReadOnlyList<string> parts)
+    {
+        if (parts.Count != 3 || parts[0] != "browseask") return;
+        await order.WaitAsync();
+        try
+        {
+            if (parts[1] == "refresh") await RefreshAsync();
+            else if (parts[1] == "join" && parts[2] != "-") await JoinAsync(parts[2]);
+        }
+        catch (Exception error) { log("Lobby browser: the game's ask failed: " + error.Message); }
+        finally { order.Release(); }
+    }
+
+    async Task RefreshAsync()
+    {
+        if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "searching", shown.Lobbies, "");
+        var list = await api.ListAsync();
+        var version = ++attempts;
+        if (list["available"]?.GetValueKind() != JsonValueKind.True)
+        {
+            if ((await live.BrowseStateAsync(version, "unavailable", 0, list["reason"]?.GetValue<string>() ?? "")).Ok) shown = (version, 0);
+            return;
+        }
+        var all = (list["lobbies"] as JsonArray)?.OfType<JsonObject>().Select(Line).OfType<LiveLobby>().ToList() ?? [];
+        var lobbies = all.Take(MaxLobbies).ToList();
+        for (var i = 0; i < lobbies.Count; i++)
+            if (await live.BrowseLobbyAsync(version, i, lobbies[i]) is { Ok: false } refused) { log("Lobby browser: the game refused a lobby: " + refused.Detail); return; }
+        var message = all.Count > MaxLobbies ? $"({all.Count - MaxLobbies} more lobbies are not listed.)" : "";
+        if ((await live.BrowseStateAsync(version, "ready", lobbies.Count, message)).Ok) shown = (version, lobbies.Count);
+    }
+
+    async Task JoinAsync(string lobbyId)
+    {
+        var (status, outcome, body) = api.Join(lobbyId);
+        log($"Lobby browser: the game asked to join {lobbyId}: {outcome}.");
+        await live.BrowseStateAsync(shown.Version, status == 202 ? "invited" : "failed", shown.Lobbies, body["message"]?.GetValue<string>() ?? "");
+    }
+
+    // A lobby of the API's list as the loader reads it; null for one it could not take (a lobby id it refuses).
+    public static LiveLobby? Line(JsonObject lobby)
+    {
+        var id = lobby["lobbyId"]?.GetValue<string>() ?? "";
+        if (id.Length is 0 or > 64 || id.Any(c => c <= ' ' || c >= 0x7F)) return null;
+        var flags = new List<string>();
+        if (lobby["friend"]?.GetValueKind() == JsonValueKind.True) flags.Add("friend");
+        if (lobby["inMission"]?.GetValueKind() == JsonValueKind.True) flags.Add("mission");
+        if (lobby["joinable"]?.GetValueKind() == JsonValueKind.True) flags.Add("joinable");
+        int Count(string key) => (int)Math.Clamp(Integer(lobby[key]) ?? 0, 0, 64);
+        long? Optional(string key, long max) => Integer(lobby[key]) is { } n && n >= 0 && n <= max ? n : null;
+        var shared = (lobby["mods"] as JsonArray)?.OfType<JsonObject>().Count(m => m["tier"]?.GetValue<string>() == ModSets.TierName(CoopTier.Shared)) ?? 0;
+        return new LiveLobby(lobby["verdict"]?.GetValue<string>() ?? "unknown", flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
+            Optional("planetId", 100000), shared, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
+            lobby["reason"]?.GetValue<string>() ?? "");
+    }
+
+    // A whole number the list holds (an int or a long, as Describe put it, or parsed JSON), else null.
+    static long? Integer(JsonNode? node) =>
+        node is not JsonValue value ? null : value.TryGetValue<long>(out var wide) ? wide : value.TryGetValue<int>(out var narrow) ? narrow : null;
+}

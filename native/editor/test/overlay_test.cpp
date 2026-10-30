@@ -75,6 +75,34 @@ static int SyncAnswer(HfMod*, uint32_t version, uint32_t answer, const char* id)
     if (answer == HF_SYNC_OPEN) snprintf(g_syncOpened, sizeof g_syncOpened, "%s", id ? id : "");
     return 1;
 }
+/* the lobby browser (SDK 16): the backend's list as the editor reads it, and the asks it makes */
+static HfBrowseState g_browseNow = {sizeof(HfBrowseState)};
+static HfBrowseLobby g_browseList[3];
+static int g_browseRefreshes, g_browseJoins, g_lobbiesAlone, g_lobbiesGone;
+static char g_browseJoined[65];
+static int BrowseState(HfMod*, HfBrowseState* out)
+{
+    uint32_t size = out->size;
+    memcpy(out, &g_browseNow, size < sizeof g_browseNow ? size : sizeof g_browseNow);
+    out->size = size;
+    return 1;
+}
+static int BrowseLobby(HfMod*, uint32_t index, HfBrowseLobby* out)
+{
+    if (index >= g_browseNow.lobbies || index >= 3) return 0;
+    uint32_t size = out->size;
+    memcpy(out, &g_browseList[index], size < sizeof(HfBrowseLobby) ? size : sizeof(HfBrowseLobby));
+    out->size = size;
+    return 1;
+}
+static int BrowseAsk(HfMod*, uint32_t ask, const char* id)
+{
+    if (ask == HF_BROWSE_REFRESH) { g_browseRefreshes++; return 1; }
+    if (ask != HF_BROWSE_JOIN || id == NULL) return 0;
+    g_browseJoins++;
+    snprintf(g_browseJoined, sizeof g_browseJoined, "%s", id);
+    return 1;
+}
 static void SyncOffer(uint32_t state, uint32_t version, uint64_t bytes, uint64_t done)
 {
     g_syncNow = {};
@@ -105,6 +133,8 @@ static void Log(HfMod*, const char* format, ...)
     if (strstr(line, "the mod sync prompt shows over the game")) g_syncAlone++;
     if (strstr(line, "the mod sync prompt goes")) g_syncGone++;
     if (strstr(line, "the trust warning for")) g_syncWarnings++;
+    if (strstr(line, "the lobby browser shows over the game")) g_lobbiesAlone++;
+    if (strstr(line, "the lobby browser goes")) g_lobbiesGone++;
     if (strstr(line, "sound: the editor opens")) g_editorOpens++;
 }
 static const char* Build() { return "25480438"; }
@@ -287,6 +317,7 @@ int main(int argc, char** argv)
     g_api.mods = Mods;
     g_api.notice = Notice;
     g_api.sync_state = SyncState; g_api.sync_mod = SyncMod; g_api.sync_answer = SyncAnswer;
+    g_api.browse_state = BrowseState; g_api.browse_lobby = BrowseLobby; g_api.browse_ask = BrowseAsk;
     g_modsView = getenv("HELLFORGE_EDITOR_TEST_VIEW") != NULL && !strcmp(getenv("HELLFORGE_EDITOR_TEST_VIEW"), "mods");
     g_enemiesView = getenv("HELLFORGE_EDITOR_TEST_VIEW") != NULL && !strcmp(getenv("HELLFORGE_EDITOR_TEST_VIEW"), "enemies");
     /* the editor's folder in a mods folder of the test's own: its catalogue and icons, and Local Stats next to it */
@@ -977,6 +1008,32 @@ int main(int argc, char** argv)
             "a click after a second trusts %s (%s)\n", warned ? "yes" : "NO", unarmed ? "yes" : "NO", noEnter ? "yes" : "NO", back ? "yes" : "NO",
             opened ? "yes" : "NO", g_syncOpened, trusted ? "yes" : "NO", g_syncTrusted);
         if (!warned || !unarmed || !noEnter || !back || !opened || !trusted) { puts("FAIL the mod sync TRUST warning or GET IT did not answer as expected"); failures++; }
+        /* the lobby browser (SDK 16): the terminal's count going up opens it alone over the game, asking for a list; J leaves
+         * the joinable lobbies (the stranger's goes), Enter joins the selected one, and the backend's invitation closes it
+         * for the game's. Opened again from the terminal, Esc closes it without joining. */
+        g_browseList[0] = {sizeof(HfBrowseLobby), HF_LOBBY_UNJOINABLE, 0, 1, 4, 7, -1, 2, 0, "steam-1", "Stranger One", "It needs mods installed by hand."};
+        g_browseList[1] = {sizeof(HfBrowseLobby), HF_LOBBY_READY, HF_LOBBY_FLAG_FRIEND | HF_LOBBY_FLAG_JOINABLE, 2, 4, 9, 118, 0, 0, "steam-2", "Friend Host", ""};
+        g_browseList[2] = {sizeof(HfBrowseLobby), HF_LOBBY_DOWNLOAD, HF_LOBBY_FLAG_JOINABLE | HF_LOBBY_FLAG_MISSION, 3, 4, 10, 5, 3, 5u << 20, "steam-3", "Modded Host", ""};
+        g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 1; g_browseNow.lobbies = 3;
+        frames(40);
+        int refreshes = g_browseRefreshes, lobbiesAlone = g_lobbiesAlone, lobbiesGone = g_lobbiesGone;
+        bool idle = g_lobbiesAlone == lobbiesAlone && refreshes == 0;
+        g_browseNow.terminal = 1; frames(40);
+        bool shown = g_lobbiesAlone == lobbiesAlone + 1 && g_browseRefreshes == refreshes + 1;
+        armed();
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-lobbies.bmp"); Screenshot(shot, width, height); }
+        Key(window, 'J'); frames(4);
+        Key(window, VK_RETURN); frames(4);
+        bool joined = g_browseJoins == 1 && !strcmp(g_browseJoined, "steam-2");
+        g_browseNow.state = HF_BROWSE_INVITED; frames(40);
+        bool invited = g_lobbiesGone == lobbiesGone + 1;
+        g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 2; g_browseNow.terminal = 2; frames(40); armed();
+        Key(window, VK_ESCAPE); frames(4);
+        bool escaped = g_lobbiesAlone == lobbiesAlone + 2 && g_lobbiesGone == lobbiesGone + 2 && g_browseJoins == 1 && g_editorOpens == editorOpens;
+        printf("  lobby browser: idle until the terminal %s, the terminal opens it alone %s, J then Enter joins the friend's lobby %s (%s), "
+            "the invitation closes it %s, Esc closes it %s\n", idle ? "yes" : "NO", shown ? "yes" : "NO", joined ? "yes" : "NO", g_browseJoined,
+            invited ? "yes" : "NO", escaped ? "yes" : "NO");
+        if (!idle || !shown || !joined || !invited || !escaped) { puts("FAIL the lobby browser did not open, join or close as expected"); failures++; }
     }
     HRESULT removed = d3d11 ? device11->GetDeviceRemovedReason() : device->GetDeviceRemovedReason();
     if (removed != S_OK) { printf("FAIL device removed 0x%08lx\n", (unsigned long)removed); failures++; }

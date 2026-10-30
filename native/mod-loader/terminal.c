@@ -17,6 +17,7 @@ static int g_terminalState;
 static int g_terminalRedirect = 1;
 static ULONGLONG g_terminalFirstTry;
 static volatile LONG g_terminalNoted[TERMINAL_NOTED];
+static volatile LONG g_terminalOpens; /* the browser opened by the terminal: SDK 16 browse_state's terminal count */
 static const uint8_t kTerminalOpenEntry[] = {0x4c,0x89,0x44,0x24,0x18,0x56,0x57,0x41,0x56,0x48,0x83,0xec,0x60,0x8b,0x41,0x28};
 
 static uintptr_t TerminalOpenDetour(uintptr_t manager, int32_t presenter, void* arg)
@@ -32,6 +33,7 @@ static uintptr_t TerminalOpenDetour(uintptr_t manager, int32_t presenter, void* 
         static volatile LONG redirected;
         if (InterlockedIncrement(&redirected) <= 4) Note("terminal: the information terminal opens the lobby browser (presenter %d)", TERMINAL_SERVER_BROWSER);
         presenter = TERMINAL_SERVER_BROWSER;
+        InterlockedIncrement(&g_terminalOpens); /* an editor shows its own browser over it */
     }
     return g_terminalOpenOriginal(manager, presenter, arg);
 }

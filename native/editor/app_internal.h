@@ -2,8 +2,9 @@
  * another. app.cpp holds the state, the frame and the entry points; app_values.cpp the values (settings, co-op, what a
  * row holds and why it is locked); app_staging.cpp staging, applying and editing a value, and the marks; app_widgets.cpp
  * the drawing helpers and the list; app_page.cpp an object's page, navigation, search and the changes; app_presets.cpp,
- * app_mods_logs.cpp and app_sync.cpp the presets, the MODS and LOGS views and mod sync; app_keys.cpp the keys;
- * app_browse.cpp the header, BROWSE, the status bar and the footer; app_views.cpp the other views and the dialogs. */
+ * app_mods_logs.cpp, app_sync.cpp and app_lobbies.cpp the presets, the MODS and LOGS views, mod sync and the lobby browser;
+ * app_keys.cpp the keys; app_browse.cpp the header, BROWSE, the status bar and the footer; app_views.cpp the other views
+ * and the dialogs. */
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -338,6 +339,33 @@ void AnswerSync(uint32_t answer, const char* id = nullptr);
 void ReadSync();
 void SyncKeys();
 void DrawSync();
+/* The editor holds the game's input while a dialog shows over it alone (mod sync's, the lobby browser's). */
+void HoldInput();
+
+/* ---- the lobby browser (app_lobbies.cpp) ---- */
+struct LobbyDialog
+{
+    bool on = false;          /* the browser is shown */
+    bool alone = false;       /* it is shown over the game by itself, the window closed */
+    HfBrowseState state{};    /* as last read */
+    std::vector<HfBrowseLobby> lobbies;
+    std::vector<int> shown;   /* the lobbies the filters leave, in list order */
+    int index = 0;            /* the selected one, in shown */
+    bool joinableOnly = false, friendsOnly = false;
+    int difficulty = 0;       /* the lowest difficulty shown (0 any) */
+    bool terminalRead = false;
+    uint32_t terminal = 0;    /* the terminal count last read: the terminal opened the browser when it goes up */
+    double shownAt = 0;       /* when it appeared: its keys and buttons wait LOBBY_ARM seconds */
+    double askedAt = -100;    /* when a list was last asked for */
+    std::string joining;      /* the lobby a join was asked for, until the backend answers */
+};
+extern LobbyDialog g_lobbies;
+bool HasBrowse();
+void OpenLobbies(const char* why);
+void ShowLobbiesAlone(bool on);
+void ReadLobbies();
+void LobbyKeys();
+void DrawLobbies();
 
 /* ---- keys (app_keys.cpp) ---- */
 inline bool Pressed(ImGuiKey key) { return ImGui::IsKeyPressed(key, true); }

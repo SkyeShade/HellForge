@@ -276,6 +276,7 @@ static class DirectoryTests
         var joined = browse.Join(lobbyId);
         var invite = guest.Next("lobby.inviteReceived", check);
         check(joined.Status == 202 && invite.Text(0) == lobbyId && invite.Text(1) == connection, "Joining hands the game an invitation: " + joined.Body.ToJsonString());
+        await LiveBrowser(browse, guest, lobbyId, otherLobby, check);
         browseClock += BrowseApi.JoinableFor + TimeSpan.FromSeconds(1);
         check(browse.Join(lobbyId).Status == 404, "A lobby from an old list must be listed again first.");
         lock (network.Strangers) network.Strangers.Remove(OtherId);
@@ -315,6 +316,59 @@ static class DirectoryTests
     }
 
     // Strangers' listings: anything off the schema leaves the listing out whole (or, for the live record, just that).
+    // The in-game browser (LiveBrowse, SDK 16) over the live-edit pipe: the editor's refresh brings the API's list as
+    // browselobby lines and a browsestate; a second one says it searches first; a join answers with its outcome.
+    static async Task LiveBrowser(BrowseApi browse, Node guest, string lobbyId, string otherLobby, Action<bool, string> check)
+    {
+        var runId = "browse-" + Guid.NewGuid().ToString("N")[..8];
+        await using var live = new LiveEditServer(runId);
+        var logged = new ConcurrentQueue<string>();
+        var browser = new LiveBrowse(browse, live, logged.Enqueue);
+        live.Start();
+        using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", LiveEditServer.PipeName(runId), System.IO.Pipes.PipeDirection.InOut,
+            System.IO.Pipes.PipeOptions.Asynchronous);
+        await pipe.ConnectAsync(5000);
+        using var reader = new StreamReader(pipe, new System.Text.UTF8Encoding(false));
+        using var writer = new StreamWriter(pipe, new System.Text.UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
+        await writer.WriteLineAsync($"hello\t{LiveEditServer.Protocol}\t{StatsSchema.Current.Build}\t{StatsSchema.Fingerprint}");
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
+        // the game's side: each line without its sequence number, answered as the loader answers (live.c), up to a browsestate
+        async Task<List<string>> Game(string ask)
+        {
+            await writer.WriteLineAsync(ask);
+            var lines = new List<string>();
+            while (await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)) is { } line)
+            {
+                var parts = line.Split('\t');
+                lines.Add(string.Join('\t', parts.Where((_, i) => i != 1)));
+                await writer.WriteLineAsync(parts[1] + "\tok\tnow");
+                if (parts[0] == "browsestate" && parts[3] != "searching") return lines;
+            }
+            return lines;
+        }
+        var first = await Game("browseask\trefresh\t-");
+        var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
+        var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
+        check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand."],
+            "The game gets the list: " + string.Join(" | ", first));
+        var second = await Game("browseask\trefresh\t-");
+        check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",
+            "A new search keeps the old list until the new one: " + string.Join(" | ", second));
+        var joined = await Game("browseask\tjoin\t" + lobbyId);
+        var invite = guest.Next("lobby.inviteReceived", check);
+        check(joined.SequenceEqual(["browsestate\t2\tinvited\t2\tAccept the invitation in game to join. Other shared mods bring HellForge's MOD SYNC prompt."]) &&
+            invite.Text(0) == lobbyId, "A join from the game hands it the invitation: " + string.Join(" | ", joined));
+        var refused = await Game("browseask\tjoin\t" + otherLobby);
+        check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIt needs mods installed by hand."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
+            "An unjoinable lobby's join says why: " + string.Join(" | ", refused));
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "has space", ["verdict"] = "ready" }) == null &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["members"] = 99, ["difficulty"] = 7L, ["planetId"] = -1 }) is { Members: 64, Difficulty: 7, Planet: null, Verdict: "unknown" },
+            "A lobby id the loader refuses is left out; counts are kept in range.");
+        GC.KeepAlive(browser);
+    }
+
     static async Task Hostile(MemoryLobbyDirectory listings, Node host, Node guest, Action<bool, string> check)
     {
         var good = new Dictionary<string, string>(listings.All.Single(l => l.Host == HostId).Data);
