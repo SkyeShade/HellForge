@@ -650,7 +650,9 @@ For the length of a sync, until the normal game exits, these change:
 - The installed relay binds `127.0.0.1:443` as root, drops to `nobody` with `setgroups`/`setgid`/`setuid` (each checked),
   and only then accepts connections. It forwards only to `127.0.0.1:18443`, where the native proxy listens; no argument
   can change either address or port. Nothing is bound beyond loopback, the table of connections is bounded, and the relay
-  stops with the helper.
+  stops with the helper. The relay is a static musl program, whose account lookup reads only `/etc/passwd`. Fedora Atomic
+  systems (Silverblue, Kinoite, Bazzite) keep `nobody` in `/usr/lib/passwd` instead, so the relay reads that root-owned
+  file when `/etc/passwd` has no `nobody`. It refuses an entry with uid or gid 0.
 - The proxy makes a one-day CA and writes only its public certificate to the sync folder. HellForge starts the Proton
   that Steam's `CompatToolMapping` selects for HELLDIVERS 2, not HellForge's own Proton choice; when the mapping names
   no tool, the prefix's `config_info` decides as described above. It refuses if neither gives a matching Proton. The
