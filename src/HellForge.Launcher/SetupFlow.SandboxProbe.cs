@@ -49,6 +49,9 @@ public partial class MainWindow
             ApplyLinuxSandboxSettings(install);
             return;
         }
+        // Readiness may make the prefix case-sensitive, which rebuilds folders under the same names (new inodes); a
+        // working folder inside the prefix is entered again by its name afterwards (LinuxPrefixCase).
+        var workingFolder = Environment.CurrentDirectory;
         try
         {
             var start = new ProcessStartInfo(cli)
@@ -86,6 +89,8 @@ public partial class MainWindow
             }
             var errorText = await errorTask;
             var outputText = await outputTask;
+            try { Directory.SetCurrentDirectory(workingFolder); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
             Directory.CreateDirectory(install.Logs);
             File.WriteAllText(report, errorText + outputText);
             var readiness = LinuxSandboxReadiness.Read(install);

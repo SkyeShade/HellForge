@@ -459,6 +459,9 @@ if session_command "$@"; then
   if ! "$cliNative" sandbox-readiness --install "$INSTALL" 9>&- >&2; then
     echo "HellForge: the Linux sandbox readiness check did not record a pass; the session will report the reason." >&2
   fi
+  # Readiness may have made the prefix case-sensitive, which rebuilds folders (new inodes) under the same names: enter
+  # the working folder again by its name, so nothing started from here inherits a removed one.
+  cd -- "$PWD" 2>/dev/null || cd -- "$INSTALL"
   if [ "${HELLFORGE_SKIP_MOD_BUILDS:-}" = 1 ]; then
     echo "Skipping the source-mod build." >&2
   elif [ -x "$cliNative" ]; then
