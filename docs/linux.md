@@ -654,8 +654,9 @@ For the length of a sync, until the normal game exits, these change:
   Blob before the game opens; the failure message says which check disagreed. `proton run reg query` is not used for
   the verdict: the measured Proton gives it 0 bytes of stdout even for a known key. Import/export stdout and stderr stay
   as log evidence only. Removal imports
-  a delete `.reg`, then requires `reg export` to exit non-zero and write no file **and** `system.reg` to no longer have
-  the key after the flush; empty output is never read as "gone". A failed check is a failure, never "removed". A running
+  a delete `.reg`, then requires `reg export` to write no file **and** `system.reg` to no longer have the key after
+  the flush; the export's exit code is only logged, since Proton 11 exits 0 for a missing key. Empty output is never
+  read as "gone". A failed check is a failure, never "removed". A running
   wineserver for that prefix (Steam's game or a tool) is refused
   with "close Steam's game/tools in that prefix first"; a record whose prefix differs from the game library's
   `steamapps/compatdata/553850` (for example a second Steam library) is refused before the import. The prefix's

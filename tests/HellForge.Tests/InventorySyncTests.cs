@@ -254,6 +254,22 @@ static class InventorySyncTests
                 lingeringProblem.Contains("the key is in system.reg", StringComparison.Ordinal) &&
                 lingeringProblem.Contains("not proven gone", StringComparison.Ordinal),
                 "A removal with an empty export and a remaining system.reg key was accepted: " + lingeringProblem);
+
+            // Removal on Proton 11: reg export exits 0 for the missing key but writes no file, and system.reg has no key
+            // after the flush. That is a proven removal, not a failure retried at every launcher start.
+            var exitZeroFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-exit-zero")).FullName;
+            var exitZero = WriteFakeProton(exitZeroFolder, Path.Combine(exitZeroFolder, "state"), template, expectedHex,
+                importLands: true, exportTemplate: exportTemplate, missingExportExit: 0);
+            File.WriteAllText(Path.Combine(prefix, "system.reg"), File.ReadAllText(template));
+            var exitZeroProblem = LinuxCapture.RemoveCertificate(fakeRecord with { Proton = exitZero });
+            check(exitZeroProblem == null && !File.Exists(Path.Combine(prefix, "system.reg")),
+                "A removal whose reg export exits 0 without a file was not accepted: " + exitZeroProblem);
+            var lingeringZero = WriteFakeProton(exitZeroFolder, Path.Combine(exitZeroFolder, "state"), template, expectedHex,
+                importLands: true, exportTemplate: exportTemplate, deleteLands: false, missingExportExit: 0);
+            File.WriteAllText(Path.Combine(prefix, "system.reg"), File.ReadAllText(template));
+            check(LinuxCapture.RemoveCertificate(fakeRecord with { Proton = lingeringZero }) is { } zeroLingers &&
+                zeroLingers.Contains("not proven gone", StringComparison.Ordinal),
+                "A removal whose reg export exits 0 while system.reg keeps the key was accepted.");
         }
         LinuxCapture.DeleteCertificateRecord(sync);
         check(LinuxCapture.ReadCertificateRecord(sync) == null, "The removed certificate record still reads.");
@@ -935,7 +951,7 @@ static class InventorySyncTests
     // the removal test can prove that an empty export is not enough. Its sibling files/bin/wineserver records the flush.
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     static string WriteFakeProton(string folder, string state, string? template, string expectedHex, bool importLands,
-        string? exportTemplate, bool deleteLands = true)
+        string? exportTemplate, bool deleteLands = true, int missingExportExit = 1)
     {
         Directory.CreateDirectory(folder);
         var proton = Path.Combine(folder, "proton");
@@ -954,7 +970,7 @@ static class InventorySyncTests
             (importLands
                 ? "  *'reg import'*) printf '%s\\n' " + ShQuote(expectedHex) + " > \"$state\"; cp \"$template\" \"$reg\"; printf 'OpenXR-Loader: xrizer noise\\n' >&2 ;;\n"
                 : "  *'reg import'*) printf 'reg import wrote nothing\\n' ;;\n") +
-            "  *'reg export'*) out=\"$5\"; case \"$out\" in Z:*) out=\"${out#Z:}\"; out=$(printf '%s' \"$out\" | tr '\\\\' '/') ;; esac; if [ -s \"$state\" ] && [ -n \"$export_template\" ]; then cp \"$export_template\" \"$out\"; else rm -f \"$out\"; exit 1; fi ;;\n" +
+            "  *'reg export'*) out=\"$5\"; case \"$out\" in Z:*) out=\"${out#Z:}\"; out=$(printf '%s' \"$out\" | tr '\\\\' '/') ;; esac; if [ -s \"$state\" ] && [ -n \"$export_template\" ]; then cp \"$export_template\" \"$out\"; else rm -f \"$out\"; exit " + missingExportExit.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; fi ;;\n" +
             "  *'reg query'*) : ;;\n" +
             "esac\n";
         File.WriteAllText(proton, script);
