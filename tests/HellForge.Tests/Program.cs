@@ -477,6 +477,29 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     Check(SessionLogs.Prune(sessions).Removed == 0 && SessionLogs.Prune(Path.Combine(root, "no-such-folder")).Removed == 0, "Nothing more to remove.");
 });
 
+Test("Session logs: the older sessions that ended in a crash stay too, the newest five of them", () =>
+{
+    var sessions = Directory.CreateDirectory(Path.Combine(root, "prune-crashes")).FullName;
+    var start = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+    var runs = Enumerable.Range(0, 20).Select(i => Guid.NewGuid().ToString("N")).ToList();
+    var crashed = new HashSet<int> { 0, 1, 2, 3, 4, 5, 7, 12, 15 }; /* 7 crashes among the 10 older sessions, 2 among the newest */
+    for (var i = 0; i < runs.Count; i++)
+    {
+        var run = Directory.CreateDirectory(Path.Combine(sessions, runs[i])).FullName;
+        File.WriteAllText(Path.Combine(run, "result.json"), crashed.Contains(i)
+            ? """{"gameLaunched": true, "gameExitCode": "0xC0000005"}""" : """{"gameLaunched": true, "gameExitCode": "0x00000000"}""");
+        Directory.SetCreationTimeUtc(run, start.AddMinutes(i)); /* runs[0] the oldest */
+    }
+    var pruned = SessionLogs.Prune(sessions);
+    var left = Directory.GetDirectories(sessions).Select(Path.GetFileName).ToHashSet();
+    var kept = new[] { 2, 3, 4, 5, 7 }; /* the five newest crashes past the ten newest sessions */
+    Check(pruned.Removed == 5 && runs.Skip(10).All(left.Contains) && kept.All(i => left.Contains(runs[i])) && left.Count == 15,
+        $"The ten newest and the five newest older crashes stayed: {pruned}, {left.Count} left");
+    Check(!left.Contains(runs[0]) && !left.Contains(runs[1]) && !left.Contains(runs[6]), "The oldest crashes and the older clean sessions went.");
+    Check(SessionLogs.Prune(sessions).Removed == 0, "Nothing more to remove.");
+    Check(SessionLogs.Prune(sessions, keepCrashes: 0).Removed == 5, "Without crashes kept, the ten newest stay.");
+});
+
 Test("Launch options are read as Steam takes them, and never set what a session sets itself", () =>
 {
     Check(GameLaunchOptions.Parse("  ").Count == 0 && GameLaunchOptions.Parse(null).Count == 0, "Empty options are none.");
@@ -504,6 +527,7 @@ SessionLaunchTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
+ModStatusTests.Register(Test, Check, Reject, root);
 DownpatchTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
 SessionJobTests.Register(Test, Check, Reject, root);

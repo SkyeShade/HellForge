@@ -5,21 +5,25 @@ for refusing something, crashes, and testing with friends.
 
 ## The logs
 
-Every session has a folder, `<installation>/logs/sessions/<session>/`. `logs/play-session.json` names the newest one,
-and the newest ten are kept. The launcher's CONSOLE page has an **Open session logs** button for the current one.
+Every session has a folder, `<installation>/logs/sessions/<session>/`. `logs/play-session.json` names the newest one.
+The newest ten are kept, and of the older ones the five newest that ended in a crash. The launcher's CONSOLE page has an **Open session logs** button for the current one.
 
 | File | Has |
 |---|---|
 | `session.log` | the session's steps: building and staging mods, checks, starting the game. Look here first when a session fails early |
 | `mod-<your id>.log` | everything your mod logs (`hf->log`), and what the SDK did for it or refused, with your source line |
-| `modloader.log` | the loader: which mods loaded and in what order, events, every registry step, conflicts between mods, crash notes |
+| `modloader.log` | the loader: which mods loaded and in what order (each code mod's version and its DLL's SHA-256, and why a DLL did not load), events, every registry step, conflicts between mods, crash notes |
 | `modlist.txt` | multiplayer sessions: the gameplay mods friends compare (id, name, version, hash), by id |
 | `cli-output.txt` | building source mods and data specs, staging |
 | `result.json` | the session's outcome: `mods.loaded` lists the mods in load order, `mods.problems` the mods left out and why |
 | `arsenal.tsv` | every armory item: loadout id, type, entity, name (for choosing a weapon's base); written when a mod adds a weapon or changes component stats |
 | `stats-values.tsv` | every stats field's raw value from before the stats pass, by its place (kind, component, resource, record, offset) |
 | `hooks.tsv` | every hooked function, with its hooks in the order they run (owner, priority) |
+| `mod-status.tsv` | each code mod's status (`set_status`, SDK 16) as the Mods page shows it: id, tab, text |
 | `engine-logs/` | the game's own logs, when the launcher's **Engine log** setting is on (`play --engine-log yes`) |
+
+Each log's first line gives the local date and time it was opened and the offset from UTC; the lines after it give a
+time of day only, in UTC (`session.log`: local time).
 
 In code, `hf->last_log(mod)` returns your mod's last log line, so it can show why a call that returned 0 was refused.
 
@@ -57,10 +61,11 @@ The loader does not catch a mod's crash, so the game ends. Then:
    game.dll+0x...`, or `?+0x...` outside the game), the address it read, the registers and the game addresses on the
    stack. The next line, `crash: by module: at my_mod.dll+0x...`, names the module, your DLL among them. A fault in your
    DLL is your code, and a fault in game.dll right after your mod changed something often is too. Notes cover access
-   violations and illegal instructions, the first four of them.
-2. Take a memory dump. The launcher's **Crash dump** setting (or `HellForge.Cli play --crash-dump yes`) writes a full
-   dump of the game at its first crash beside the session's logs (`crash-<pid>.dmp`), to open in WinDbg or Visual
-   Studio.
+   violations (`c0000005`), illegal instructions (`c000001d`), heap corruption (`c0000374`), stack overflows
+   (`c00000fd`) and integer divide by zero (`c0000094`), the first four of each.
+2. Open the crash dump in WinDbg or Visual Studio. The first noted crash of a session leaves one beside the session's
+   logs (`crash-<pid>.dmp`): a small dump, with every thread's stack and registers and the memory they point to. The
+   launcher's **Crash dump** setting (or `HellForge.Cli play --crash-dump yes`) makes it a full memory dump instead.
 3. Narrow it down: run your mod alone, then with the others, and turn off one change at a time.
 
 HELLDIVERS 2 also crashes as it quits (`helldivers2.exe+0x626296` at the end of a session). That crash is the game's

@@ -9,6 +9,10 @@
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
+#include "crash_notes_test.c"
+#include "log_header_test.c"
+#include "mod_identity_test.c"
+#include "mod_status_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -3307,9 +3311,10 @@ int main(int argc, char** argv)
     wchar_t temporary[MAX_PATH], plan[MAX_PATH];
     assert(GetTempPathW(MAX_PATH, temporary) && GetTempFileNameW(temporary, L"hfs", 0, plan));
     FILE* file = _wfopen(plan, L"wb"); assert(file);
-    fputs("mod\ta\tfixture\t-\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
+    fputs("mod\ta\tfixture\t-\nmod_version\ta\t1.2.3 beta\nmod_version\tnobody\t9\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0;
     assert(ReadPlan(plan) == 0 && g_statCount == 1 && g_modCount == 1 && !wcscmp(g_mods[0].dll, L"-"));
+    assert(!strcmp(g_mods[0].version, "1.2.3 beta")); /* a version for no mod of the plan is dropped */
     assert(g_stats[0].hasExpect && g_stats[0].expect == 10 && g_stats[0].value == 20);
     /* More observations than the loader once held (16384), and one it cannot read: the plan, and its mods, still load. */
     file = _wfopen(plan, L"wb"); assert(file);
@@ -3317,6 +3322,7 @@ int main(int argc, char** argv)
     fputs("observe\tNoSuchTable\t-\t0\t1\t4\ti32\nmod\ta\tfixture\t-\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0; g_statsProbeCount = 0; g_statsProbesSkipped = 0;
     assert(ReadPlan(plan) == 0 && g_modCount == 1 && g_statsProbeCount == 20000 && g_statsProbesSkipped == 1);
+    assert(g_mods[0].version[0] == 0); /* a plan without the line: no version */
     g_statsProbeCount = 0;
     DeleteFileW(plan);
     if (argc == 3)
@@ -3346,6 +3352,10 @@ int main(int argc, char** argv)
         assert(!ModuleAt(0, where, sizeof where) && !ModuleAt((uintptr_t)heap, where, sizeof where));
         free(heap);
     }
+    CrashNotesFixture();
+    LogHeaderFixture();
+    ModIdentityFixture();
+    StatusFixture();
     DifficultyFixture();
     NetSwitchFixture();
     NetworkTypesFixture();

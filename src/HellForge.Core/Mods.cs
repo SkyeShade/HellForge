@@ -76,7 +76,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 15;
+    public const int SdkVersion = 16;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -714,6 +714,12 @@ public static class ModLoaderPlan
     {
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A path in the mod loader plan contains a tab or line break.") : value;
+        // free text, on one line of at most 63 characters (the loader's room)
+        static string OneLine(string value)
+        {
+            var line = new string([.. value.Select(c => char.IsControl(c) ? ' ' : c)]).Trim();
+            return line.Length > 63 ? line[..63] : line;
+        }
         var lines = new List<string> { "build\t" + buildId, "logs\t" + Field(logs), "network_config\t" + NetworkConfig,
             $"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader.ToLowerInvariant()}" };
         foreach (var (name, c) in profile.Components.OrderBy(c => c.Key, StringComparer.Ordinal))
@@ -728,6 +734,8 @@ public static class ModLoaderPlan
         {
             if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
             lines.Add($"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}");
+            // a code mod's version, for modloader.log beside its DLL's SHA-256 (older loaders skip the line)
+            if (mod.HasCode && OneLine(mod.Version) is { Length: > 0 } version) lines.Add($"mod_version\t{mod.Id}\t{version}");
             foreach (var e in StatsData.Edits(mod))
                 lines.Add(FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}"));
         }

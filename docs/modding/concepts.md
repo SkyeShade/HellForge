@@ -31,7 +31,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "icon": "images/icon.png",
   "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 16 }
 }
 ```
 
@@ -64,6 +64,7 @@ game starts     the loader calls each code mod's hellforge_mod_init, in the orde
                   HF_EVENT_ENTITIES_READY     entity data loaded (again after a reload)
 game running    game events (subscribe), on_game_thread callbacks, every update                 game thread
                 hook detours: whenever the game calls the function                             the caller's thread
+session end     HF_EVENT_SESSION_END (SDK 16): a stop from the launcher, or a normal quit       watch or quitting thread
 ```
 
 `hellforge_mod_init(const HfApi* hf, HfMod* mod)` runs once, while the game is still starting. Register everything
@@ -215,7 +216,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 17; this HellForge provides SDK 16"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c

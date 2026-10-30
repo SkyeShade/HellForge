@@ -3,20 +3,22 @@ using System.Text.RegularExpressions;
 namespace HellForge.Core;
 
 // A session's logs (logs/sessions/<run id>: the session runner's result, the mod loader's and the backend's logs, the
-// game's own, a crash dump when asked for) stay for the next sessions to compare, but not for ever: with crash dumps and
-// engine logs they reached gigabytes. When the launcher opens and when a session ends, only the newest Keep stay. Only
-// folders named as a run id, directly in the sessions folder, are removed; a folder in use (a session still writing) is
-// left.
+// game's own, a crash dump) stay for the next sessions to compare, but not for ever: with crash dumps and engine logs
+// they reached gigabytes. When the launcher opens and when a session ends, only the newest Keep stay, and of the older
+// ones the newest KeepCrashes that ended in a crash (CrashReport.Crashed): a crash report is often asked for after a few
+// more sessions. Only folders named as a run id, directly in the sessions folder, are removed; a folder in use (a
+// session still writing) is left.
 public static partial class SessionLogs
 {
     public const int Keep = 10;
+    public const int KeepCrashes = 5;
 
     [GeneratedRegex("^[0-9a-f]{32}$")]
     private static partial Regex RunId();
 
     public sealed record Pruned(int Removed, long Bytes, int Skipped);
 
-    public static Pruned Prune(string sessionsFolder, int keep = Keep)
+    public static Pruned Prune(string sessionsFolder, int keep = Keep, int keepCrashes = KeepCrashes)
     {
         if (!Directory.Exists(sessionsFolder)) return new(0, 0, 0);
         LocalInstall.NoLinks(sessionsFolder);
@@ -25,7 +27,9 @@ public static partial class SessionLogs
             .OrderByDescending(d => d.CreationTimeUtc).ThenByDescending(d => d.Name, StringComparer.Ordinal).ToList();
         int removed = 0, skipped = 0;
         long bytes = 0;
-        foreach (var run in runs.Skip(keep))
+        var older = runs.Skip(keep).ToList();
+        var crashes = older.Where(run => CrashReport.Crashed(run.FullName)).Take(keepCrashes).Select(run => run.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var run in older.Where(run => !crashes.Contains(run.FullName)))
         {
             long size = 0;
             try

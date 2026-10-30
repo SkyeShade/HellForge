@@ -6,7 +6,34 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Unreleased
 
-On `dev`, since 0.3.0-beta.
+On `dev`, since 0.3.0-beta. Mod SDK 16.
+
+### Added
+
+- The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
+  for mods that tell it (SDK 16) (#84).
+
+### Changed
+
+- After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
+  "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
+- Sessions that ended in a crash keep their logs past the newest ten, the five newest of them, so a crash report can
+  still be made a few sessions later (#84).
+- A crash leaves a small dump in the session's logs (the game's threads and the memory they point to, not all of
+  it), also without the Crash dump setting, which now only makes it a full memory dump. Save logs to Desktop includes
+  it (#84).
+
+### For mod makers
+
+- SDK 16: `set_status`, a mod's line for the player, which the Mods page shows on its row (and `mod-status.tsv` in the
+  session's logs); and `HF_EVENT_SESSION_END`, the session's end, when the launcher stops it (the session runner waits
+  up to 2 seconds for the mods) or the game quits normally (#84).
+- `modloader.log` gives each code mod's version and its DLL's SHA-256, and, for a DLL that does not load, Windows'
+  error ("error 126: The specified module could not be found.") (#84).
+- `modloader.log`, each mod's log, `steam-cloud.log`, `session.log` and `backend/multiplayer.log` start with the local
+  date and time they were opened and the offset from UTC: their lines give only a time of day (#84).
+- The crash note in `modloader.log` also covers heap corruption, stack overflows and integer divide by zero, and notes
+  the first four faults of each kind instead of the first four in all (#84).
 
 ### Added
 

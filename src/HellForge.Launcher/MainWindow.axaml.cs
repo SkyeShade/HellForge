@@ -98,6 +98,7 @@ public partial class MainWindow : Window
         ConsoleLogsButton.Click += (_, _) => OpenFolder(runDirectory ?? paths.RunsFolder);
         ShareLogsButton.Click += (_, _) => SaveLogsToDesktop();
         CrashReportButton.Click += (_, _) => SaveCrashReport();
+        CrashLogsButton.Click += (_, _) => SaveLogsToDesktop();
         CrashIssueButton.Click += (_, _) => OpenLink(CrashReport.IssuePage);
         SettingsLogsButton.Click += (_, _) => OpenFolder(runDirectory ?? paths.RunsFolder);
         OpenRootButton.Click += (_, _) => OpenFolder(paths.Root);
@@ -229,7 +230,7 @@ public partial class MainWindow : Window
         if (runner.IsRunning) return;
         runDirectory = null;  // Forget the previous run so its final state does not overwrite this one.
         launchedUtc = default;
-        crashRun = null;
+        crashRun = crashEnding = null;
         CrashReportPanel.IsVisible = false;
         NoteSessionEditor();
         if (!StartPreflight()) return;
@@ -361,6 +362,7 @@ public partial class MainWindow : Window
         else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
         if (runner.IsRunning) ShowModSync(runDirectory!);
         else ModSyncCard.IsVisible = false;
+        FollowModStatuses();
     }
 
     // The backend stopped the session so the launcher starts again with the host's mods it downloaded; true when it restarted.
@@ -459,7 +461,7 @@ public partial class MainWindow : Window
     void ShowObserved(JsonElement state, bool stopped)
     {
         RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-        if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
+        if (stopped && !ShowCrashEnding()) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
         else SetStatus("Ending the session...", Phase.Busy);
     }
 

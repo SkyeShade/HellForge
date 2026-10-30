@@ -63,6 +63,14 @@ order:
 | `HF_EVENT_NETWORK_READY` | the engine's network configuration exists | read or widen network field types |
 | `HF_EVENT_ENTITIES_READY` | the entity data has loaded, with every entity mods added; again after a reload | read records, log what loaded |
 | `HF_EVENT_PROJECTILES_READY` | the projectile and damage lists have loaded, with mods' | change your projectile and damage rows |
+| `HF_EVENT_SESSION_END` (SDK 16) | the session is ending: the launcher stops it, or the game quits normally | save or flush your files |
+
+`HF_EVENT_SESSION_END` comes once, last. A stop from the launcher delivers it on the watch thread, and the session
+runner waits up to 2 seconds for your callback before it ends the game. A normal quit delivers it on the quitting thread
+while Windows ends the process: the game's other threads are gone and Windows' loader lock is held, so only write and
+close files there, load no DLL and wait for nothing. A crash delivers nothing, and on build 25480438 the game crashes as
+it quits ([debugging](debugging.md#crashes)), so do not keep work that matters for the last moment. An older loader
+refuses the event: check `hf->version >= 16` first.
 
 `examples/mods/machine-gun-10k-code` uses two of them: it widens a network field type at `HF_EVENT_NETWORK_READY`, and
 reads its backpack record back at `HF_EVENT_ENTITIES_READY`:
@@ -334,6 +342,11 @@ static void Hold(HfMod* mod, HfEvent event, void* user)
 | `notice(mod, &out)` | 12 | HellForge's latest message for the player (a refused join, say) |
 | `last_log(mod)`, `logs_folder(mod)` | 6 | your last log line (why a call was refused), the session's logs folder |
 | `build_id()`, `mod_id(mod)`, `mod_folder(mod)` | 1 | the game build, your id, your folder (for files your mod ships) |
+
+`set_status(mod, text)` (SDK 16) tells the player what your mod is doing, or why it stopped, in one line: "waiting for
+a mission", "off: this game build is not supported". The launcher's Mods page shows it on your mod's row, during the
+session and after it, and your log records each change. Set it when it changes; setting the same text again only
+compares it. `NULL` or `""` clears it. Check `hf->size` before calling it.
 
 ## Where to go next
 

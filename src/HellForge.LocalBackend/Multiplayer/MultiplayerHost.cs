@@ -62,6 +62,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         presence = settings.Presence;
         this.warClock = warClock;
         logFile = new StreamWriter(Path.Combine(settings.EvidenceDirectory, "multiplayer.log"), append: true) { AutoFlush = true };
+        Log(HellForge.Core.LogHeader.Line(DateTimeOffset.Now, utcTimes: true));
         peersFile = Path.Combine(settings.EvidenceDirectory, PeersFileName);
         transport = CreateTransport(settings.Link, Log);
         pipes = new PipeHost(settings.PipeName, Log);

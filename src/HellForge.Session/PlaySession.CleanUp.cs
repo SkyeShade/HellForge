@@ -38,8 +38,15 @@ sealed partial class PlaySession
         { result[what] = error.Message; }
     }
 
+    // How long a stop waits for the mods to hear the session's end (HF_EVENT_SESSION_END) before it takes the game down.
+    static readonly TimeSpan SessionEndWait = TimeSpan.FromSeconds(2);
+
     void StopGameJob()
     {
+        // the game still runs (a stop from the launcher, or this runner failing): its mods hear the end first
+        if (job != null && endSignal != null)
+            Try("sessionEndError", () => { job.Process.Refresh(); if (!job.Process.HasExited) result["sessionEndHeard"] = endSignal.Signal(SessionEndWait); });
+        endSignal?.Dispose();
         if (job != null && result["gameExitCode"] == null)
             Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
         if (job != null)

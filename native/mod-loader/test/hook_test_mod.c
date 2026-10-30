@@ -1,7 +1,7 @@
 /* A code mod for the mod loader smoke test: once the "game" is loaded, it finds the decode pin by pattern, checks
  * hellforge_fake_target the way a mod checks a function before hooking it (SDK 13 code_matches: its bytes from before
  * any hook, so a second copy of this mod hooking after the first still passes) and detours it so it returns 1000 more
- * than the next in its chain. */
+ * than the next in its chain. Its status (SDK 16) says so, and it logs the session's end when it hears it. */
 #define WIN32_LEAN_AND_MEAN
 #include <stddef.h>
 #include <stdio.h>
@@ -35,11 +35,19 @@ static void Loaded(HfMod* mod, HfEvent event, void* user)
         }
     }
     if (hellforge->hook(mod, target, (void*)Detour, (void**)&original) == 0) hellforge->log(mod, "detour installed");
+    if (hellforge->size >= offsetof(HfApi, set_status) + sizeof hellforge->set_status) hellforge->set_status(mod, "detour\tinstalled");
+}
+
+static void Ended(HfMod* mod, HfEvent event, void* user)
+{
+    hellforge->log(mod, "heard the session end");
+    hellforge->set_status(mod, "session over");
 }
 
 HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
 {
     hellforge = api;
     hellforge->log(mod, "hook test for %s (%s)", hellforge->mod_id(mod), hellforge->build_id());
+    if (hellforge->version >= 16 && hellforge->on(mod, HF_EVENT_SESSION_END, Ended, 0)) return 1;
     return hellforge->on(mod, HF_EVENT_GAME_LOADED, Loaded, 0);
 }

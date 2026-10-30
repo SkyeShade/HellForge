@@ -78,6 +78,9 @@ public static unsafe class ModLoaderSmoke
             .Append($"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader}\n")
             .Append($"component\tDepositComponentData\t{schema.Offset}\t{schema.Header}\t{schema.Index}\t{schema.Indices}\t{schema.Records}\t{schema.RecordOffset}\t{schema.Stride}\n")
             .Append($"mod\ttest.hook\t{hookFolder}\t{Path.Combine(hookFolder, "hook_test_mod.dll")}\n")
+            .Append("mod_version\ttest.hook\t9.9.9-smoke\n")
+            // a DLL that is not there: modloader.log gives Windows' error
+            .Append($"mod\ttest.missing\t{hookFolder}\t{Path.Combine(hookFolder, "missing.dll")}\n")
             .Append($"mod\ttest.hook2\t{hookFolder2}\t{Path.Combine(hookFolder2, "hook_test_mod.dll")}\n")
             .Append($"mod\tskyeshade.machine-gun-10k-code\t{gunFolder}\t{Path.Combine(gunFolder, "machine_gun_10k.dll")}\n");
         // The Stratagem Compendium: every definition, field and value it registers is accepted (no game data needed yet).
@@ -95,6 +98,8 @@ public static unsafe class ModLoaderSmoke
         File.Copy(Path.Combine(standIns, "steam_api64.dll"), Path.Combine(root, "steam_api64.dll"));
         Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER", Path.Combine(root, "hellforge_modloader.dll"));
         Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER_PLAN", planPath);
+        // the session runner's two events for this "game" (SDK 16, the session's end), made before the loader starts
+        using var endSignal = SessionEndSignal.Create(Environment.ProcessId)!;
         NativeLibrary.Load(Path.Combine(root, "steam_api64.dll"));
 
         string Log(string name) => File.Exists(Path.Combine(root, name)) ? ReadShared(Path.Combine(root, name)) : "";
@@ -129,6 +134,13 @@ public static unsafe class ModLoaderSmoke
                 "The Stratagem Compendium's only refusals are the smoke plan's missing components: " + Log("mod-skyeshade.stratagem-compendium.log"));
         }
         Expect(Log("mod-test.hook.log").Contains("pattern found the pin"), "find_pattern finds the pin");
+        var hookHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(hookFolder, "hook_test_mod.dll"))));
+        Expect(Log("modloader.log").Contains($"test.hook: version 9.9.9-smoke, hook_test_mod.dll, SHA-256 {hookHash}"),
+            "modloader.log gives a code mod's version and its DLL's SHA-256");
+        Expect(Log("modloader.log").Contains("test.hook2: version not given, hook_test_mod.dll, SHA-256 " + hookHash), "A mod without a version line says so");
+        Expect(Log("modloader.log").Contains("test.missing: not loaded (the DLL could not be loaded: error 126: "), "A DLL that does not load gives its error");
+        Expect(CloudSmoke.OpensDated(Path.Combine(root, "modloader.log")), "modloader.log opens with its dated line");
+        Expect(CloudSmoke.OpensDated(Path.Combine(root, "mod-test.hook.log")), "A mod's log opens with its dated line");
         Expect(target(5) == 2016, "Both detours run, each calling the next, then the original");
         Expect(WaitFor(() => Marshal.ReadInt32(record) == 10000 && Marshal.ReadInt32(record + 4) == 10000 && Marshal.ReadInt32(record + 8) == 5000),
             "The Machine Gun mod fills the backpack's deposit record once the entity data is ready");
@@ -151,10 +163,27 @@ public static unsafe class ModLoaderSmoke
         Expect(WaitFor(() => rows[0x18 + 13] == 14), "The Machine Gun mod widens deposit_value once the network configuration is ready");
         Expect(rows[13] == 1, "Other field types are untouched");
         Expect(Log("mod-skyeshade.machine-gun-10k-code.log").Contains("holds up to 16383"), "The mod logs to its own log");
+        SessionEndChecks(root, endSignal, Expect);
 
         Console.WriteLine($"Mod loader smoke: {(problems.Count == 0 ? "passed" : problems.Count + " problem(s)")}; logs in {root}");
         foreach (var problem in problems) Console.Error.WriteLine("  failed: " + problem);
         return problems.Count == 0 ? 0 : 1;
+    }
+
+    // SDK 16: the hook-test mods' status in mod-status.tsv, then the session's end as the session runner tells it: the mods
+    // hear it, the loader answers, and their status says so.
+    static void SessionEndChecks(string root, SessionEndSignal endSignal, Action<bool, string> expect)
+    {
+        string Log(string name) => File.Exists(Path.Combine(root, name)) ? ReadShared(Path.Combine(root, name)) : "";
+        var statuses = ModStatus.Read(root);
+        expect(statuses?.GetValueOrDefault("test.hook") == "detour installed", "set_status reaches mod-status.tsv, its tab a space: " + Log(ModStatus.FileName));
+        expect(statuses?.GetValueOrDefault("test.hook2") == "detour installed", "Each mod has its own status");
+        expect(Log("mod-test.hook.log").Contains("status: detour installed"), "The mod's log records its status");
+        expect(endSignal.Signal(TimeSpan.FromSeconds(5)), "The loader answers the session's end");
+        expect(Log("modloader.log").Contains("session end: the session is stopping"), "modloader.log notes the session's end");
+        expect(Log("mod-test.hook.log").Contains("heard the session end") && Log("mod-test.hook2.log").Contains("heard the session end"),
+            "Both hook-test mods hear the session's end");
+        expect(ModStatus.Read(root)?.GetValueOrDefault("test.hook") == "session over", "A status set at the session's end is kept");
     }
 
     static string ReadShared(string path)

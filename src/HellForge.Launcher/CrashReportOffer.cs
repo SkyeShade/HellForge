@@ -3,23 +3,36 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// Save crash report (CrashReport): offered on the Play page once a session has ended in a crash. One zip on the Desktop,
-// for the player to attach to a GitHub issue; then Open a GitHub issue opens the repository's new-issue page, with
-// nothing in its address. Nothing is uploaded. The crash dump goes in only when the player says so, after being told
-// that a dump cannot be scrubbed.
+// After a session that ended in a crash, the Play page says so, with the game's exit code and what it means
+// (CrashReport.ExitText), and offers Save logs to Desktop (the session's logs for whoever helps, as the Console page's
+// button) and Save crash report (CrashReport): one zip on the Desktop, for the player to attach to a GitHub issue; then
+// Open a GitHub issue opens the repository's new-issue page, with nothing in its address. Nothing is uploaded. The crash
+// dump goes in only when the player says so, after being told that a dump cannot be scrubbed.
 public partial class MainWindow
 {
-    string? crashRun;
+    string? crashRun, crashEnding;
 
     void OfferCrashReport(string? run)
     {
         if (run == null || !CrashReport.Crashed(run)) return;
         crashRun = run;
+        crashEnding = CrashReport.ExitText(run);
         CrashReportPanel.IsVisible = true;
         CrashReportButton.IsEnabled = true;
         CrashIssueButton.IsVisible = false;
-        Append("The game crashed. Save crash report (on the Play page) puts this session's logs, scrubbed for a public bug report, " +
-            "in one zip on your Desktop to attach to a GitHub issue.", Orange);
+        ShowCrashEnding();
+        Append("The game crashed" + (crashEnding != null ? " (exit code " + crashEnding + ")" : "") + ". Save logs to Desktop keeps this " +
+            "session's logs for whoever helps you; Save crash report (on the Play page) puts them, scrubbed for a public bug report, in one " +
+            "zip on your Desktop to attach to a GitHub issue.", Orange);
+    }
+
+    // The Play page's status after the session that crashed: true when it is the one shown (the next session clears it).
+    bool ShowCrashEnding()
+    {
+        if (crashRun == null || crashRun != runDirectory) return false;
+        SetStatus("The game crashed.", Phase.Failed, (crashEnding != null ? "It ended with " + crashEnding + ". " : "") +
+            "Save logs or a crash report below, then press PLAY to start another session.");
+        return true;
     }
 
     async void SaveCrashReport()
@@ -50,7 +63,7 @@ public partial class MainWindow
     {
         if (ConfirmOverlay.IsVisible) return false;
         ConfirmTitle.Text = "Add the crash dump?";
-        ConfirmText.Text = "This session wrote a crash dump (Settings > Crash dump). A dump is the game's memory as it crashed: HellForge " +
+        ConfirmText.Text = "This session wrote a crash dump. A dump is the game's memory as it crashed: HellForge " +
             "cannot scrub it, and it can hold your Steam account name and your friends' names. Add it only if you are fine with " +
             "whoever reads the issue seeing that. The rest of the report is scrubbed either way.";
         (ConfirmCancel.Content, ConfirmStop.Content) = ("Without the dump", "Add the dump");

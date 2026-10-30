@@ -9,7 +9,8 @@
  *   network_config <module> <rva hex>       ([[module+rva]] is the engine's network configuration)
  *   entity_region <size> <map header hex>
  *   component <name> <offset> <header hex> <index> <indices> <records> <record offset> <stride>
- *   mod <id> <folder> <dll> */
+ *   mod <id> <folder> <dll>
+ *   mod_version <id> <version>              (a code mod's version, for modloader.log) */
 #define WIN32_LEAN_AND_MEAN
 #define HF_MOD_LOADER
 #include <windows.h>
@@ -19,15 +20,18 @@
 #include <string.h>
 #include <math.h>
 #include <tlhelp32.h>
+#include <dbghelp.h> /* MiniDumpWriteDump's types: the small crash dump (crash_notes.c) */
 #include "hellforge_mod.h"
 #include "MinHook.h"
 #include "hde/hde64.h" /* MinHook's instruction decoder: FarHook */
 #include "../common/hf_privacy.h"
+#include "../common/hf_log_header.h"
 
 #define MAX_MODS 192 /* code and stats mods from the plan, then Lua mods (lua_bridge.c) */
 #define MAX_COMPONENTS 64
 #define MAX_CALLBACKS 256
 #define MAX_PINS 4
+#define STATUS_MAX 192 /* a mod's status line with its 0 (SDK 16, set_status: mod_status.c) */
 
 struct HfMod
 {
@@ -41,6 +45,9 @@ struct HfMod
     char last[512]; /* its last log line (last_log: why a call was refused) */
     int lua;        /* a Lua mod (lua.<name>), registered through the Lua bridge while the game runs (lua_bridge.c) */
     char name[128]; /* a Lua mod's name as its runtime gave it (SDK 10, mods) */
+    char version[64]; /* a code mod's version, from the plan (mod_identity.c) */
+    char status[STATUS_MAX];      /* its status line for the player (SDK 16, set_status), as the launcher shows it */
+    char statusGiven[STATUS_MAX]; /* the text set_status was given last, to skip the same text again cheaply */
 };
 
 typedef struct Component
@@ -80,6 +87,7 @@ static int g_modCount;
  * player's load order (2026-10-18: friends with the same mods in another order). g_mods stays in load order: the
  * deferred edits queued while they set up apply in it (fields.c), so the top mod still wins a conflict. */
 static int g_modsSettingUp;
+static void PlanModVersion(const char* id, const char* version); /* mod_identity.c */
 static int ModLoadIndex(const HfMod* mod) { return mod >= g_mods && mod < g_mods + g_modCount ? (int)(mod - g_mods) : MAX_MODS; }
 /* The code mods' set-up order: indices into g_mods by mod id. */
 static void SetupOrder(int order[MAX_MODS])
@@ -95,7 +103,7 @@ static void SetupOrder(int order[MAX_MODS])
 }
 static Callback g_callbacks[MAX_CALLBACKS];
 static int g_callbackCount;
-static volatile LONG g_fired[5];
+static volatile LONG g_fired[HF_EVENT_SESSION_END + 1];
 static uintptr_t g_region;
 static SRWLOCK g_lock = SRWLOCK_INIT;
 static int g_hooksReady;
@@ -127,11 +135,14 @@ static void Note(const char* format, ...)
     va_end(arguments);
 }
 
+/* A log of the session's folder, opened to append, its dated line first (hf_log_header.h: the lines carry UTC times). */
 static HANDLE OpenLog(const wchar_t* name)
 {
     wchar_t path[MAX_PATH];
     if (!g_logs[0] || swprintf(path, MAX_PATH, L"%ls\\%ls", g_logs, name) < 0) return INVALID_HANDLE_VALUE;
-    return CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HfLogHeader(file);
+    return file;
 }
 
 /* While the live editor's request runs, its mod's last message is kept: the reason a refusal gives (live.c). */
@@ -606,7 +617,7 @@ static uint64_t ApiResourceHash(const char* name) { return name != NULL ? Murmur
 
 static int ApiOn(HfMod* mod, HfEvent event, HfEventCallback callback, void* user)
 {
-    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_PROJECTILES_READY || g_callbackCount >= MAX_CALLBACKS) return 1;
+    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_SESSION_END || g_callbackCount >= MAX_CALLBACKS) return 1;
     g_callbacks[g_callbackCount++] = (Callback){mod, event, callback, user};
     if (g_fired[event]) callback(mod, event, user);
     return 0;
@@ -703,6 +714,7 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
@@ -856,6 +868,8 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }
 
+#include "mod_status.c" /* SDK 16: set_status, and the session's end (WatchPause) */
+
 static DWORD WINAPI Watch(void* parameter)
 {
     ULONGLONG started = GetTickCount64();
@@ -878,7 +892,7 @@ static DWORD WINAPI Watch(void* parameter)
         WatchRegion(elapsed);
         WatchWaiting();
         WatchRunning();
-        Sleep(elapsed < 180000 ? 5 : 250);
+        WatchPause(elapsed < 180000 ? 5 : 250); /* ends early when the session runner stops the session */
     }
     return 0;
 }
@@ -986,7 +1000,9 @@ static void PlanData(char** f, int n)
         snprintf(mod->id, sizeof mod->id, "%s", f[1]);
         snprintf(mod->folder, sizeof mod->folder, "%s", f[2]);
         Utf8ToWide(f[3], mod->dll, MAX_PATH);
+        mod->version[0] = 0;
     }
+    else if (n == 3 && strcmp(f[0], "mod_version") == 0) PlanModVersion(f[1], f[2]);
 }
 
 /* One line of the plan. 1 when it refuses the plan. */
@@ -1032,6 +1048,8 @@ static int ReadPlan(const wchar_t* path)
 #include "netreap.c"
 #include "coop_diag.c" /* after live.c: the co-op role */
 
+#include "mod_identity.c" /* the version, SHA-256 and load error of each code mod */
+
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
@@ -1042,13 +1060,21 @@ static void SetupMod(HfMod* mod)
     swprintf(logName, 128, L"mod-%hs.log", mod->id);
     mod->log = OpenLog(logName);
     if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
+    NoteModIdentity(mod);
     mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    char why[320] = "it exports no hellforge_mod_init";
+    if (mod->module == NULL)
+    {
+        char error[288];
+        LoadError(GetLastError(), error, sizeof error);
+        snprintf(why, sizeof why, "the DLL could not be loaded: %s", error);
+    }
     InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
     /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
     if (init == NULL)
     {
-        Note("%s: not loaded (%s)", mod->id, mod->module == NULL ? "the DLL could not be loaded" : "it exports no hellforge_mod_init");
+        Note("%s: not loaded (%s)", mod->id, why);
         if (mod->module != NULL) FreeLibrary(mod->module);
         return;
     }
@@ -1084,7 +1110,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
         ApiRegisterEntity, ApiCopyField, ApiSetField, ApiSetTag, ApiMount, ApiRecord, ApiFind, ApiEditEntity, ApiSetLive, ApiGetLive, ApiSetPassives, ApiGetPassives,
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
-        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource};
+        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource, ApiSetStatus};
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");
@@ -1093,6 +1119,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 0;
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
+    OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */
     HANDLE thread = CreateThread(NULL, 0, Watch, NULL, 0, NULL);
     if (thread != NULL) CloseHandle(thread);
     HANDLE live = g_logs[0] ? CreateThread(NULL, 0, LiveWatch, NULL, 0, NULL) : NULL; /* the launcher's live editor */

@@ -84,8 +84,13 @@ public static unsafe partial class CloudSmoke
         Expect(!File.Exists(Path.Combine(root, "escape.sav")) && Directory.GetFiles(cloud).Length == 0, "Nothing is written outside HELLFORGE_CLOUD_DIR");
         Expect(count(storage) == 0, "An unused method returns zero");
         Expect(File.Exists(log) && ReadShared(log).Contains("FileWrite testament_new.sav 20 bytes ok"), "Calls are logged to HELLFORGE_CLOUD_LOG");
+        Expect(OpensDated(log), "The log opens with its dated line");
         return Report(problems);
     }
+
+    // Whether a native log exists and its first line is its dated one (native/common/hf_log_header.h).
+    internal static bool OpensDated(string path) => File.Exists(path) && System.Text.RegularExpressions.Regex.IsMatch(ReadShared(path).Split('\n')[0],
+        @"^\d\d:\d\d:\d\d\.\d{3} log opened \d{4}-\d\d-\d\d \d\d:\d\d:\d\d local time \(UTC[+-]\d\d:\d\d\); the times below are UTC$");
 
     static bool InModule(nint address, nint module) =>
         module != 0 && address >= module && address < module + *(int*)(module + *(int*)(module + 0x3c) + 0x50);

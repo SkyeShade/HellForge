@@ -390,8 +390,9 @@ Mod sync and public lobbies bring mods from people a player may not know. What l
 - **The copy is off the internet.** The network block lets the copied game reach only this PC (loopback).
 - **The game cannot start other programs.** The session runner puts the game in a job whose active-process limit is 1
   (`HostBoundedProcess`). That costs the game's crash reporter, already blocked from the network, and the DLSS updater
-  Steam's overlay starts. The Crash dump setting lifts the limit, because the loader starts `HellForge.Cli` to write
-  the dump; so does `HELLFORGE_ALLOW_CHILD_PROCESSES=1`, for diagnosing. The session's `result.json` says which
+  Steam's overlay starts. The loader writes the small crash dump from inside the game; the Crash dump setting (a full
+  dump) lifts the limit, because the loader starts `HellForge.Cli` to write that one; so does
+  `HELLFORGE_ALLOW_CHILD_PROCESSES=1`, for diagnosing. The session's `result.json` says which
   (`childProcesses`).
 - **HellForge's own programs stay as they are.** For the session, every file of the installation's `app` folder is held
   read-only, as the game copy's are: nothing the game runs can replace the launcher, the session runner, the backend

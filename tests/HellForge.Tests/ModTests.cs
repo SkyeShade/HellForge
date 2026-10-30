@@ -62,6 +62,7 @@ static class ModTests
             check(plan.Contains("build\t25480438") && plan.Contains("network_config\thelldivers2.exe\t1a10268") &&
                 plan.Any(l => l.StartsWith("component\tDepositComponentData\t7287344\t", StringComparison.Ordinal)) &&
                 plan.Contains($"mod\ttest.code\t{loaded[0].Folder}\t{Path.Combine(loaded[0].Folder, "mod.dll")}"), "The loader plan is incomplete.");
+            check(plan.Contains("mod_version\ttest.code\t1"), "The loader plan lacks the code mod's version.");
             var digest = ModCatalog.Digest(loaded);
             File.WriteAllText(Path.Combine(mods, "good", "mod.dll"), "rebuilt dll");
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != digest, "A rebuilt DLL kept the modlist code.");

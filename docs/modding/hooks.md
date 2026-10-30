@@ -305,8 +305,9 @@ static void SteerAnywhere(HfMod* mod, HfEvent event, void* user)
 - Your log (`logs/sessions/<session>/mod-<id>.log`) has every hook and why one failed, with the function's first
   bytes.
 - A crash leaves its note in `modloader.log`: where it happened as `module+offset` (`game.dll+0x...`, or your DLL's
-  name), what it read, the registers and the game addresses on the stack. The launcher's Crash dump setting also writes
-  a full memory dump of the game beside the logs, to open in a debugger. See [debugging](debugging.md#crashes).
+  name), what it read, the registers and the game addresses on the stack, and a crash dump beside the logs to open in a
+  debugger (a small one, or a full memory dump with the launcher's Crash dump setting). See
+  [debugging](debugging.md#crashes).
 - Test alone first, with only your mod on, then with the mods yours will run beside.
 
 ## From a hook to an event

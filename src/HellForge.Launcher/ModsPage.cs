@@ -26,6 +26,9 @@ public partial class MainWindow
     readonly Dictionary<Border, TextBlock> modNumbers = []; // each row's place number, renumbered when a row moves
     FileSystemWatcher? modsWatcher;
     DispatcherTimer? modsChanged;
+    // SDK 16 set_status: each code mod's line for the player in the current or last session (ModStatus), on its row
+    Dictionary<string, string> modStatuses = [];
+    DateTime modStatusesWritten;
 
     // A row being dragged: its group's rows (top first), where it was, and where it would go.
     sealed class ModDrag(string id, StackPanel panel, List<(ModManifest Mod, Border Row)> rows, int from)
@@ -102,10 +105,26 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
+    // The statuses of the current or last session's mods; the ones read before stay while the file is being replaced.
+    void ReadModStatuses()
+    {
+        if (runDirectory == null) { (modStatuses, modStatusesWritten) = ([], default); return; }
+        modStatusesWritten = ModStatus.WrittenUtc(runDirectory);
+        if (ModStatus.Read(runDirectory) is { } statuses) modStatuses = statuses;
+    }
+
+    // Each second while there is a run folder (RefreshRun): the page drawn again when a mod's status changed.
+    void FollowModStatuses()
+    {
+        if (runDirectory == null || !ModsPage.IsVisible || modDrag != null || ModStatus.WrittenUtc(runDirectory) == modStatusesWritten) return;
+        RefreshMods();
+    }
+
     void RefreshMods()
     {
         modDrag = null;
         premiumOwnership = null;
+        ReadModStatuses();
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -396,6 +415,9 @@ public partial class MainWindow
             : mod.Description;
         if (summary.Length > 0)
             text.Children.Add(new TextBlock { Text = summary, FontSize = 12, Classes = { "muted" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, IsVisible = !expanded });
+        if (modStatuses.TryGetValue(mod.Id, out var status))
+            text.Children.Add(new TextBlock { Text = (runner.IsRunning ? "In game: " : "Last session: ") + status, FontSize = 12, Foreground = Light,
+                TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 });
         text.Tapped += (_, _) =>
         {
             if (modDragged) { modDragged = false; return; } // the end of a drag, not a click
