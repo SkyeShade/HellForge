@@ -30,15 +30,16 @@ public static class LinuxInstallProcesses
     // The launcher's check before PLAY and its "End these processes" action: this installation's processes except the
     // Steam bridge. The bridge outlives sessions on purpose: a player may start hf-bridge-host.sh by hand or as a Steam
     // shortcut (for NixOS's steam-run, where the launcher cannot read Steam's sockets), and the wrapper uses a bridge that
-    // answers (docs/linux.md "Sessions").
-    public static IReadOnlyList<string> SessionLeftovers(string installRoot) =>
-        FindSessionLeftovers(installRoot).Select(process => process.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    // answers (docs/linux.md "Sessions"). keep is a process the launcher runs itself and is not a leftover: the capture of
+    // its own Account Sync, which keeps the normal game connected until the game closes.
+    public static IReadOnlyList<string> SessionLeftovers(string installRoot, int? keep = null) =>
+        FindSessionLeftovers(installRoot, keep).Select(process => process.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
 
-    static IReadOnlyList<LinuxInstallProcess> FindSessionLeftovers(string installRoot)
+    static IReadOnlyList<LinuxInstallProcess> FindSessionLeftovers(string installRoot, int? keep)
     {
         if (!OperatingSystem.IsLinux()) return [];
         var root = LocalInstall.FullPath(installRoot);
-        return Matching(process => BelongsTo(process, root) && !IsSteamBridge(process, root));
+        return Matching(process => BelongsTo(process, root) && !IsSteamBridge(process, root)).Where(process => process.Id != keep).ToArray();
     }
 
     // The bridge itself, or a program that only starts it. hf-bridge-host.sh execs app/cli-linux/HellForge.Cli steam-bridge
@@ -61,10 +62,10 @@ public static class LinuxInstallProcesses
     // Ends every live session leftover of this installation (not the Steam bridge) and returns the names it asked the
     // kernel to end. The next scan decides whether they are gone; a process that exits between the scan and the kill is
     // already in the desired state.
-    public static IReadOnlyList<string> EndSessionLeftovers(string installRoot)
+    public static IReadOnlyList<string> EndSessionLeftovers(string installRoot, int? keep = null)
     {
         var ended = new List<string>();
-        foreach (var process in FindSessionLeftovers(installRoot))
+        foreach (var process in FindSessionLeftovers(installRoot, keep))
         {
             try
             {
@@ -169,12 +170,27 @@ public static class LinuxInstallProcesses
     {
         var folder = Path.Combine("/proc", pid.ToString(CultureInfo.InvariantCulture));
         var arguments = ReadList(Path.Combine(folder, "cmdline"));
-        var name = ReadText(Path.Combine(folder, "comm")).Trim();
-        if (name.Length == 0 && arguments.Count > 0) name = Path.GetFileName(arguments[0]) ?? "";
+        var executable = ReadLink(Path.Combine(folder, "exe"));
+        var name = DisplayName(ReadText(Path.Combine(folder, "comm")).Trim(), executable, arguments);
         if (name.Length == 0) return null;
-        return new(name, ReadLink(Path.Combine(folder, "exe")), arguments, ReadList(Path.Combine(folder, "environ")),
-            ReadLink(Path.Combine(folder, "cwd")));
+        return new(name, executable, arguments, ReadList(Path.Combine(folder, "environ")), ReadLink(Path.Combine(folder, "cwd")));
     }
+
+    // The kernel keeps 15 characters of a command name ("HellForge.Captu"). A cut name is replaced by the program's file
+    // name it starts (the executable's, else the first argument's, which is the Windows path for a Wine program).
+    internal static string DisplayName(string comm, string? executable, IReadOnlyList<string> arguments)
+    {
+        if (comm.Length == 0) return arguments.Count > 0 ? FileName(arguments[0]) : "";
+        if (comm.Length < CommLength) return comm;
+        foreach (var path in new[] { executable, arguments.Count > 0 ? arguments[0] : null })
+            if (path is { Length: > 0 } && FileName(path) is var file && file.Length > comm.Length &&
+                file.StartsWith(comm, StringComparison.Ordinal)) return file;
+        return comm;
+    }
+
+    const int CommLength = 15;
+
+    static string FileName(string path) => path[(path.LastIndexOfAny(['/', '\\']) + 1)..];
 
     static IReadOnlyList<string> ReadList(string path)
     {
