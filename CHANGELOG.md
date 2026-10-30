@@ -16,6 +16,17 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
+  - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
+    player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
+    names them. A mod's author can set this with the manifest's new `"coop"` field.
+  - READMEs, licences, pictures and documents in a mod without code no longer split players.
+  - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
+    players.
+  - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. The first time it applies, the launcher
+    shows the stranger warning once.
+  - Players on HellForge versions from before this change can't join you, and you can't join them.
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the

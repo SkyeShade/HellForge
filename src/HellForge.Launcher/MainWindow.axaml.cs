@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     readonly List<ProgressBar> connectors = []; /* each step's track, to the next step: its progress */
     readonly List<ProfileTemplate> templates;
     List<LocalProfile> profiles = [];
-    bool loadingProfiles;
+    bool loadingProfiles, updatingStrangersUi;
     SelectableTextBlock? runPathText, profilePathText;
     TaskCompletionSource<bool>? confirm;
     string? runDirectory;
@@ -110,24 +110,18 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
-        // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
-        StrangersBox.IsEnabled = paths.ModsFolder != null;
-        StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
-        StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-        StrangersBox.IsCheckedChanged += (_, _) =>
-        {
-            StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-            if (paths.ModsFolder == null) return;
-            try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
-        };
         // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
         // Windows (SessionRunner.CanSandbox).
         var steamBridge = SessionRunner.HasSteamBridge(paths);
         SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
         SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
         SandboxUnavailable.IsVisible = !steamBridge;
-        SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+        SandboxBox.IsCheckedChanged += (_, _) =>
+        {
+            ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+            ApplyStrangersSetting();
+        };
+        InitializeStrangers();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
@@ -263,6 +257,7 @@ public partial class MainWindow : Window
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+            ShowStrangersDefaultNotice();
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {

@@ -117,11 +117,19 @@ static class DirectoryTests
         var (lobbyId, connection) = (created.Text(3), created.Text(4));
         host.Directory.Publish(now);
         var listing = listings.All.Single();
-        check(listing.Host == HostId && listing.Data[DirectoryKeys.Protocol] == LobbyService.Protocol && listing.Data[DirectoryKeys.LobbyId] == lobbyId &&
+        check(listing.Host == HostId && listing.Data[DirectoryKeys.Protocol] == LobbyService.Protocol &&
+            listing.Data[DirectoryKeys.Wire] == LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture) && listing.Data[DirectoryKeys.LobbyId] == lobbyId &&
             listing.Data[DirectoryKeys.Connection] == connection && listing.Data[DirectoryKeys.Host] == HostId.ToString(CultureInfo.InvariantCulture) &&
             listing.Data[DirectoryKeys.Members] == "1" && listing.Data[DirectoryKeys.Slots] == "3" && listing.Data["number_key3"] == "261" &&
             listing.Data[DirectoryKeys.Stats] == "0" && listing.Data[DirectoryKeys.Share] == "1" && listing.Data[DirectoryKeys.Digest] == hostSet.Digest &&
             !listing.Data.ContainsKey(DirectoryKeys.Record), "The listing: " + string.Join(", ", listing.Data.Keys));
+        var wire = LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture);
+        check(DirectoryData.Matches(listing, new DirectoryQuery(wire, new Dictionary<string, string>())) &&
+            !DirectoryData.Matches(listing, new DirectoryQuery("2", new Dictionary<string, string>())), "A search does not go by hf.wire.");
+        check(DirectoryService.Valid(listing, out _, out _, out _, out _, out var listingWhy), "The current listing is not valid: " + listingWhy);
+        var older = new DirectoryListing(listing.Host, new Dictionary<string, string>(listing.Data, StringComparer.Ordinal) { [DirectoryKeys.Protocol] = "hellforge-mp-8" });
+        check(!DirectoryService.Valid(older, out _, out _, out _, out _, out var olderWhy) && olderWhy == "protocol",
+            "An mp-8 listing was taken: " + olderWhy);
         check(ModSet.Parse(DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods))!, local: false).Mods.Single().Id == "test.ammo", "The listing carries the mod set.");
         host.Presence.SetLocalLobby(JsonDocument.Parse(Record(HostId)).RootElement);
         host.Directory.Publish(now + TimeSpan.FromSeconds(1));
