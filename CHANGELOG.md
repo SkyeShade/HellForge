@@ -50,9 +50,8 @@ On `dev`, since 0.3.0-beta.
   The game puts all its location clusters on one circle at 60-80 % of the map's radius, and the locations stay as
   many and as far apart as on a level-10 map. Every other cluster now goes on an inner circle at level 10's distance,
   so the middle has bases again. Every player still generates the same map from the same seed.
-- Towns on difficulty 11's larger maps were sparse: most of a town's buildings may only stand inside the level's
-  playable radius, and on larger maps many towns sit between it and the border. They now build up to the border, as
-  the enemies there already spawn (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius, for comparing).
+- City buildings on difficulty 11's larger maps may now stand up to the border, not only inside the level's playable
+  radius, as the enemies there already spawn (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius, for comparing).
 - Small towns on difficulty 11's larger maps came out as scattered flat pieces at different heights instead of one
   flat town. Two causes, both from a larger map's cells being further apart. The game picks a map's town cells from a
   noise pattern measured in metres, so each town broke into single cells; on larger maps the pattern is now read at
