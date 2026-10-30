@@ -76,6 +76,30 @@ static class CosmeticPacksTests
             check(loaded.Count == 0 && problems.Single().Contains("Pistol includes a folder outside the pack"), "Refused: " + string.Join(" | ", problems));
         });
 
+        test("Cosmetic packs: folders named as Windows matches them (other case, a trailing dot) load; a missing one is named as written", () =>
+        {
+            // Packs from Nexus mods 11057 and 5466: "Reticle (55)/RL-77/PGO-7V3." is stored without its dot, and a folder's
+            // case differs from the manifest's. Windows opens both; native Linux refused them.
+            var mods = Directory.CreateDirectory(Path.Combine(root, "windows-names-mods")).FullName;
+            var folder = Pack(mods, "scopes", "33333333-2222-3333-4444-555555555555");
+            var manifest = Path.Combine(folder, CosmeticPacks.ManifestName);
+            Directory.Move(Path.Combine(folder, "Pistol"), Path.Combine(folder, "PGO-7V3"));
+            Directory.Move(Path.Combine(folder, "Rifle A"), Path.Combine(folder, "rifle a"));
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["Pistol"]""", """["PGO-7V3."]""")
+                .Replace(""".jpgs/icon.png""", """.JPGS/Icon.PNG"""));
+            var (loaded, problems) = ModCatalog.Load(mods);
+            var pack = loaded.SingleOrDefault();
+            check(problems.Count == 0 && pack != null && pack.PackFolders.SequenceEqual([Path.Combine(folder, "rifle a"), Path.Combine(folder, "PGO-7V3")]),
+                "Loads, staging the folders as stored: " + string.Join(" | ", problems) + " " + string.Join(", ", pack?.PackFolders ?? []));
+            check(pack?.Icon == Path.Combine(folder, ".jpgs", "icon.png"), "The icon is found whatever its case: " + pack?.Icon);
+            check(pack != null && pack.PackFolders.Sum(f => CosmeticPacks.PatchFiles(f).Count()) == 6, "Each folder's patches are found.");
+
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["PGO-7V3."]""", """["Reticle (55)/RL-77"]"""));
+            (loaded, problems) = ModCatalog.Load(mods);
+            check(loaded.Count == 0 && problems.Single().Contains("an option includes Reticle (55)/RL-77, which the pack does not have"),
+                "A folder no name matches is still refused, named as the manifest names it: " + string.Join(" | ", problems));
+        });
+
         test("The Mods page's order: gameplay then cosmetic, saved, new mods on top; sessions load it bottom first", () =>
         {
             var mods = Directory.CreateDirectory(Path.Combine(root, "order-mods")).FullName;
