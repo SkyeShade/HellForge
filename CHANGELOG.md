@@ -38,6 +38,9 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
