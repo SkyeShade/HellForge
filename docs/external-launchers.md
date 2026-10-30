@@ -95,9 +95,11 @@ Everything in `mods\` appears on HellForge's Mods page, whoever put it there. A 
 `hellforge-mod.json`. A cosmetic pack's id is `pack.<its manifest's Guid>`, or `pack.<its name, as a slug>` when the
 manifest has no Guid. `mods` prints them.
 
-The page has two groups:
+The page has three groups:
 
 - Gameplay mods: friends need the same ones in co-op, and they make up the modlist code.
+- Per-player gameplay mods: stats-only mods, texture/sound/text-only patch mods, and manifest `"coop": "per-player"`
+  mods. Each player keeps their own; they are not in the modlist code and never download in co-op.
 - Cosmetic mods, which include Lua mods (tag `lua`: Bingus Shared Loader, HD2Runtime and the mods made for them). These
   are client-only and never part of the modlist code; see [lua-bridge.md](lua-bridge.md).
 
@@ -132,13 +134,13 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), saves the ones given, checks
-them as `play` would, and prints every setting:
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--strangers yes|no|default`,
+`--game-options`), saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamUdp": false, "steamBridge": true, "playWithStrangers": false,
- "file": "<installation>\\launcher-settings.json"}
+ "gameOptions": "", "sandbox": true, "steamUdp": false, "steamBridge": true, "playWithStrangers": true,
+ "playWithStrangersChosen": null, "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --steam-udp yes|no` saves co-op over Steam relays (off by default). On Linux, `play` sets
@@ -146,9 +148,13 @@ them as `play` would, and prints every setting:
 other destination stay refused. The session refuses before it starts if `passt`'s `pasta` command or `python3` is
 missing ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions.
 
-`settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
+`settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
+`"strangers": "on"`/`"off"` (a legacy `playWithStrangers`: true still counts as on; legacy false means never chosen),
+and `default` removes it and lets the sandbox decide (on in a sandboxed session, off otherwise; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
-`launcher-settings.json`, and `play` has no option for it. A running session's backend picks it up within a few seconds.
+`launcher-settings.json`, and `play` has no option for it. The printed `playWithStrangers` is the effective bool for the
+next session's sandbox state; `playWithStrangersChosen` is `true`, `false` or `null`. A running session's backend picks
+the effective value up within a few seconds.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.

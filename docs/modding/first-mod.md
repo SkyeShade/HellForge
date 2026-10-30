@@ -73,7 +73,8 @@ The manifest's keys:
 | `id` | the mod's unique id, `owner.mod-name` |
 | `name`, `description` | what players see on the Mods page |
 | `version` | raise it for every release; friends compare it |
-| `gameplay` | `true`: friends must run the same gameplay mods to play together |
+| `gameplay` | `true`: shared gameplay mods must match to play together; per-player ones need not (see `coop`) |
+| `coop` | optional: `"shared"` (everyone needs it) or `"per-player"` (each player keeps their own; stats-only and texture/sound/text-only mods default to this). A per-player mod cannot have network field types or a data spec |
 | `code.dll` | the DLL's file name. HellForge builds it from every `.c` and `.cpp` file under `src/` |
 | `code.sdk` | the mod SDK version the mod needs; this HellForge provides SDK 13 |
 

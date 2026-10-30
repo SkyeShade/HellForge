@@ -80,9 +80,15 @@ undo it.
 
 ## Playing with friends
 
-Friends who play together need the same gameplay mods: the same mods, the same versions and the same files. The order
-is up to each of you, and cosmetic mods, packs and Lua mods are your own. The Mods page shows the modlist code to
-compare. With no gameplay mods there is nothing to compare, and you can play with friends who have none.
+Friends who play together need the same **shared** gameplay mods: the same mods, the same versions and the same files.
+The order is up to each of you, and cosmetic mods, packs and Lua mods are your own. So are **per-player** gameplay mods:
+stats-only mods, texture/sound/text-only patch mods, and mods whose manifest says `"coop": "per-player"`. The Mods page
+puts those in the PER PLAYER group ("Only on your PC: friends do not need them, and each player plays with their own"),
+and they do not change the modlist code. A manifest can also force `"coop": "shared"`; one that declares per-player
+but changes the wire (network field types) or numbered resources (a data spec) is refused. The Mods page shows the
+modlist code to compare. With no shared gameplay mods there is nothing to compare, and you can play with friends who
+have none. Bundled HellForge mods count by their manifest's `"coopLevel"` rather than their files, so the same level
+can differ between HellForge releases while a level change splits players.
 
 When a friend's code is not the host's, the join is refused and both games say why, over the game:
 
@@ -94,6 +100,11 @@ When a friend's code is not the host's, the join is refused and both games say w
 A different HellForge version is reported the same way, and the joiner is told when a lobby is full or locked. The
 bundled in-game editor draws these notices. With it switched off, only the logs say why: `backend/multiplayer.log` in
 each session's folder, the first lines of the list.
+
+A join is accepted even when per-player mods differ. After it, if the host plays with per-player mods this player lacks,
+the joiner gets one brief notice ("<host> plays with 2 mods you don't: <names>. Each player keeps their own."); nothing
+downloads for those. The host's set lists them with `"tier": "per-player"`, and older sets without a tier read as
+shared.
 
 When the host lets joiners download their mods, the joiner also gets the MOD SYNC prompt (below).
 

@@ -44,6 +44,8 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
 | `icon` | optional: a PNG or JPEG in the mod folder; square looks best |
 | `url` | optional: where players get the mod, an `https://` address of at most 200 characters (no `http://`, user name, port or spaces). The Mods page links it, and the in-game MOD SYNC prompt shows it as GET IT to a joiner who has to install the mod themselves. Any other address is left out; a bundled mod's is never shown |
 | `gameplay` | default `true`: friends must run the same gameplay mods. Set `false` for cosmetic mods, which are not compared. A mod with stats or `componentWrites` is always gameplay; one holding only Lua patches is always cosmetic |
+| `coop` | optional, `"shared"` or `"per-player"`. Shared mods must match on every machine; per-player mods stay on the player's PC and leave the modlist code. Without the field HellForge infers it: stats-only mods, texture/sound/text-only patch mods, and Local Stats are per-player, everything else shared. `"shared"` always wins; `"per-player"` is refused when the mod has network field types or a data spec, since those change the wire or numbered resources |
+| `coopLevel` | bundled mods only: a non-negative whole number that replaces the mod's file hashes in the modlist code (`id\|bundled\|<level>`). Bump it when a change alters what other machines see or need (added content, network messages, host-side logic), not for a fix that stays on one machine. A bundled mod without it is compared by its files |
 | `code.dll` | the DLL's file name; HellForge builds it from `src/` |
 | `code.sdk` | the SDK version the mod needs (see [compatibility](#compatibility)) |
 | `code.prebuilt`, `code.game` | for a mod that ships its DLL ([tools](tools.md#prebuilt-mods)) |
@@ -129,10 +131,11 @@ game: use `hf_set` or `edit_entity` instead.
 
 ## Co-op
 
-- The modlist code. Before a friend joins, HellForge compares both players' gameplay mods: ids, versions and files (a
-  source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
-  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic
-  mods, packs and Lua mods are not compared. Nor is the order: friends who order the same mods differently can play
+- The modlist code. Before a friend joins, HellForge compares both players' **shared** gameplay mods: ids, versions and
+  files (a source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
+  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic mods, packs, Lua
+  mods, and per-player gameplay mods (stats-only, texture/sound/text-only patches, or manifest `"coop":
+  "per-player"`) are not compared. Nor is the order: friends who order the same mods differently can play
   together, but where two mods conflict, a different one may win on each machine.
 - Every machine runs its own mods. Each player's game runs the mods' code and data. A hit is applied by the machine
   that owns the target, and its damage events are raised there; a stratagem's activation is applied on its thrower's

@@ -40,6 +40,9 @@ public sealed record ModSetEntry(string Id, string Name, string Version, string 
     public string? Folder { get; init; }
     public IReadOnlyList<ModFile> Files { get; init; } = [];
     public string? Url { get; init; }
+    // Whether every player needs this mod or each player keeps their own (ModCatalog.Tier). Absent on the wire reads as
+    // Shared, so sets written before this field parse.
+    public CoopTier Tier { get; init; } = CoopTier.Shared;
 }
 
 // The gameplay mods a session runs, with the modlist digest they make. Written per session (mods-stage --modset) for the
@@ -48,19 +51,25 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
 {
     public const int MaxMods = 256;
 
-    // The set of mods given in load order (bottom of the Mods page first): the mods the digest counts, from the digest's
-    // own lines (ModCatalog.Compared), so the set's digest is the modlist digest.
+    // The set of gameplay mods (both tiers) given in load order (bottom of the Mods page first). Its digest takes only the
+    // shared ones' lines (ModCatalog.Compared), so the set's digest stays the modlist digest; per-player entries travel
+    // for the joiner's brief notice but never for a download.
     public static ModSet Of(IReadOnlyList<ModManifest> loadOrder)
     {
         var entries = new List<ModSetEntry>();
         var lines = new StringBuilder();
-        var counted = loadOrder.Where(ModCatalog.Counted).ToList();
-        foreach (var (mod, files, block) in ModCatalog.Compared(counted))
+        var gameplay = loadOrder.Where(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId).ToList();
+        var sharedOrder = loadOrder.Where(ModCatalog.Counted).ToList();
+        foreach (var mod in gameplay.OrderBy(m => m.Id, StringComparer.Ordinal))
         {
-            lines.Append(block);
+            var files = ModSets.Files(mod);
+            var block = ModSets.Block(mod, files);
+            var shared = ModCatalog.Counted(mod);
+            if (shared) lines.Append(block);
             var kind = ModSets.ClassOf(mod);
-            entries.Add(new ModSetEntry(mod.Id, mod.Name, mod.Version, ModSets.Hash(block), files.Sum(f => f.Size), kind, counted.IndexOf(mod))
-                { Folder = mod.Folder, Files = files, Url = kind == ModClass.Bundled ? null : mod.Url });
+            entries.Add(new ModSetEntry(mod.Id, mod.Name, mod.Version, ModSets.Hash(block), files.Sum(f => f.Size), kind,
+                shared ? sharedOrder.IndexOf(mod) : gameplay.IndexOf(mod))
+                { Folder = mod.Folder, Files = files, Url = kind == ModClass.Bundled ? null : mod.Url, Tier = ModCatalog.Tier(mod) });
         }
         var digest = lines.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines.ToString())))[..32].ToLowerInvariant();
         return new ModSet(digest, entries);
@@ -68,8 +77,10 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
 
     public ModSetEntry? Find(string id, string hash) => Mods.FirstOrDefault(m => m.Id == id && m.Hash == hash);
 
-    // The mods as a refused join names them (ModCatalog.Modlist's fingerprints: the content hash's first 16 characters).
-    public List<ModFingerprint> Fingerprints() => [.. Mods.Select(m => new ModFingerprint(m.Id, m.Name, m.Version, m.Hash[..16]))];
+    // The shared mods as a refused join names them (ModCatalog.Modlist's fingerprints: the content hash's first 16
+    // characters). A per-player mod is not a difference: each player keeps their own.
+    public List<ModFingerprint> Fingerprints() =>
+        [.. Mods.Where(m => m.Tier == CoopTier.Shared).Select(m => new ModFingerprint(m.Id, m.Name, m.Version, m.Hash[..16]))];
 
     // local: with each mod's folder and files (the session's own file); otherwise what a joiner is sent.
     public JsonObject ToJson(bool local)
@@ -83,6 +94,7 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
                 ["class"] = ModSets.ClassName(mod.Class), ["order"] = mod.Order
             };
             if (mod.Url != null) item["url"] = mod.Url;
+            if (mod.Tier == CoopTier.PerPlayer) item["tier"] = ModSets.TierName(mod.Tier);
             if (local)
             {
                 item["folder"] = mod.Folder;
@@ -128,9 +140,13 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
         var hash = Text("hash", 64);
         if (!ModSets.Hex(hash, 64)) throw new InvalidDataException($"{id}: its content hash is malformed.");
         var kind = ModSets.ClassNamed(Text("class", 16));
+        var tier = !item.TryGetPropertyValue("tier", out var tierNode) ? CoopTier.Shared
+            : tierNode is JsonValue tierValue && tierValue.TryGetValue<string>(out var tierName) ? ModSets.TierNamed(tierName)
+            : throw new InvalidDataException("A mod set entry's tier is malformed.");
         // a url that is not a web address HellForge would open (or a bundled mod's) is left out, not the set
         var url = kind == ModClass.Bundled || item["url"] is not JsonValue address || !address.TryGetValue<string>(out var given) ? null : ModCatalog.WebAddress(given);
-        var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods)) { Url = url };
+        var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods))
+            { Url = url, Tier = tier };
         if (!local) return entry;
         var files = new List<ModFile>();
         foreach (var file in item["files"] as JsonArray ?? [])
@@ -155,8 +171,12 @@ public static class ModSets
 
     // The lines the modlist digest takes from one mod: id and version, the data builder's version for a data spec (with
     // the supported game build, which every player has, it determines the generated bytes), then each file and its hash.
+    // A bundled mod with a coopLevel is a line of its own, not its files: a release's fixes do not split players while the
+    // level says what other machines see or need. One without the field keeps the file lines.
     public static string Block(ModManifest mod, IEnumerable<ModFile> files)
     {
+        if (mod.CoopLevel is { } level && ClassOf(mod) == ModClass.Bundled)
+            return mod.Id + "|bundled|" + level.ToString(CultureInfo.InvariantCulture) + "\n";
         var lines = new StringBuilder();
         lines.Append(mod.Id).Append('|').Append(mod.Version).Append('\n');
         if (mod.HasDataSpec) lines.Append("data-builder|").Append(ModDataBuilder.Version).Append('\n');
@@ -215,6 +235,14 @@ public static class ModSets
     {
         "content" => ModClass.Content, "code" => ModClass.Code, "bundled" => ModClass.Bundled, "raw" => ModClass.Raw,
         _ => throw new InvalidDataException($"{name} is not a mod class.")
+    };
+
+    public static string TierName(CoopTier tier) => tier == CoopTier.PerPlayer ? "per-player" : "shared";
+
+    public static CoopTier TierNamed(string name) => name switch
+    {
+        "shared" => CoopTier.Shared, "per-player" => CoopTier.PerPlayer,
+        _ => throw new InvalidDataException($"{name} is not a co-op tier.")
     };
 
     // Why a mod of this class needs the verified list, for the player.
@@ -336,13 +364,15 @@ public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
     {
         trust ??= new SyncTrust();
         var items = new List<SyncItem>();
-        foreach (var mod in host.Mods.OrderBy(m => m.Id, StringComparer.Ordinal))
+        // Per-player entries are each player's own: never a download, never an off. The notice after a join names them.
+        var hostShared = host.Mods.Where(m => m.Tier == CoopTier.Shared).ToList();
+        foreach (var mod in hostShared.OrderBy(m => m.Id, StringComparer.Ordinal))
         {
             if (blocked.Contains(mod.Id)) { items.Add(new(mod, SyncAction.Blocked, null)); continue; }
             var folder = own.Find(mod.Id, mod.Hash)?.Folder ?? find(mod.Id, mod.Hash);
             items.Add(new(mod, folder != null ? SyncAction.Have : Missing(mod, hostShares, trust), folder));
         }
-        foreach (var mod in own.Mods.Where(m => host.Mods.All(h => h.Id != m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
+        foreach (var mod in own.Mods.Where(m => m.Tier == CoopTier.Shared && hostShared.All(h => h.Id != m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
             items.Add(new(mod, SyncAction.Off, mod.Folder));
         return new ModSyncPlan(items);
     }

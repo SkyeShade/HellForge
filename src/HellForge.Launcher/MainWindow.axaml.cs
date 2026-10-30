@@ -46,7 +46,7 @@ public partial class MainWindow : Window
     readonly List<ProgressBar> connectors = []; /* each step's track, to the next step: its progress */
     readonly List<ProfileTemplate> templates;
     List<LocalProfile> profiles = [];
-    bool loadingProfiles;
+    bool loadingProfiles, updatingStrangersUi;
     SelectableTextBlock? runPathText, profilePathText;
     TaskCompletionSource<bool>? confirm;
     string? runDirectory;
@@ -121,18 +121,8 @@ public partial class MainWindow : Window
         SteamUdpOptions.IsVisible = OperatingSystem.IsLinux();
         SteamUdpBox.IsChecked = ProfileStore.LoadSteamUdp(paths);
         SteamUdpBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSteamUdp(paths, SteamUdpBox.IsChecked == true);
-        // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
-        StrangersBox.IsEnabled = paths.ModsFolder != null;
-        StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
-        StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-        StrangersBox.IsCheckedChanged += (_, _) =>
-        {
-            StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-            if (paths.ModsFolder == null) return;
-            try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
-        };
         InitializeSandboxSettings();
+        InitializeStrangers();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
@@ -291,6 +281,7 @@ public partial class MainWindow : Window
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
                 SteamUdp: SteamUdpBox.IsChecked == true));
+            ShowStrangersDefaultNotice();
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {

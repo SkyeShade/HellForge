@@ -55,7 +55,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--steam-udp yes | no] [--strangers yes | no] [--game-options <options>]
+                     [--steam-udp yes | no] [--strangers yes | no | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a

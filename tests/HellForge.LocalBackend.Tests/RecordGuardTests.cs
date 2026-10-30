@@ -72,19 +72,27 @@ static class RecordGuardTests
         check(presence.Local.Objects.ToJsonString() == first.Objects.ToJsonString() && presence.Local.Version == first.Version && logged.Any(l => l.Contains("too large")),
             "Objects over the size limit are not shared; the last ones stay.");
 
-        // Play with strangers, read for every stranger's frame: from the file once, again only when it changed.
+        // Play with strangers, read for every stranger's frame: from the file once, again only when it changed. With no
+        // choice the sandbox decides; an explicit choice wins, and the first answer says why.
         var mods = Directory.CreateDirectory(Path.Combine(root, "strangers-setting")).FullName;
         var clock = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var setting = new StrangerSetting(mods, () => clock);
-        check(!setting.Allowed && !new StrangerSetting(null).Allowed, "Play with strangers is off by default (and without a mods folder).");
-        HellForge.Core.ModSettings.SetPlayWithStrangers(mods, true);
+        var logs = new List<string>();
+        var setting = new StrangerSetting(mods, () => clock, sandboxed: true, log: logs.Add);
+        check(setting.Allowed && !new StrangerSetting(null).Allowed && !new StrangerSetting(mods, sandboxed: false).Allowed,
+            "Without a choice a sandboxed game takes strangers, an unsandboxed one does not, and no mods folder is off.");
+        check(logs.Count == 1 && logs[0].Contains("sandboxed"), "The backend did not say that the sandbox default applied: " + string.Join(" | ", logs));
+        HellForge.Core.ModSettings.SetPlayWithStrangers(mods, false);
         var read = setting.Reads;
         for (var i = 0; i < 1000; i++) _ = setting.Allowed;
-        check(setting.Reads == read && !setting.Allowed, "Within Recheck the file is not looked at again.");
+        check(setting.Reads == read && setting.Allowed, "Within Recheck the file is not looked at again.");
         clock += StrangerSetting.Recheck;
-        check(setting.Allowed && setting.Reads == read + 1, "After Recheck a changed file is read again.");
+        check(!setting.Allowed && setting.Reads == read + 1, "An explicit off wins over the sandbox, after Recheck.");
+        HellForge.Core.ModSettings.SetPlayWithStrangers(mods, true);
         clock += StrangerSetting.Recheck;
-        check(setting.Allowed && setting.Reads == read + 1, "An unchanged file is not read again.");
+        check(setting.Allowed && setting.Reads == read + 2, "An explicit on wins over the sandbox, after Recheck.");
+        HellForge.Core.ModSettings.SetPlayWithStrangers(mods, null);
+        clock += StrangerSetting.Recheck;
+        check(setting.Allowed && setting.Reads == read + 3, "Going back to the default lets the sandbox decide again.");
         Console.WriteLine("PASS record guard: known fields, limits, control characters, size; the selected mission's seed; host file keys; the game's objects; the strangers setting");
     }
 

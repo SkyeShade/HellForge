@@ -6,8 +6,9 @@ using System.Text.RegularExpressions;
 namespace HellForge.LocalBackend.Multiplayer;
 
 // The Galactic Map's public lobbies through the lobby directory (LobbyDirectory.cs; docs/multiplayer.md step 7).
-// Both only while the player has turned on "Play with strangers" (ModSettings.PlayWithStrangers, off by default): off, nothing
-// is listed and a search shows friends' listings only (a stranger's lobby could not be joined: StrangerGate).
+// Both only while Play with strangers is on for this session (ModSettings.StrangersEffective; by default on only when
+// the game is sandboxed): off, nothing is listed and a search shows friends' listings only (a stranger's lobby could not
+// be joined: StrangerGate).
 //   publish: the public lobby this machine's game hosts is listed while it can be joined (privacy Public: lobby
 //            property "19" / number_key6 0, LobbyService.PrivacyOf; not locked, not full) and the player lists it (the
 //            Mods page's "listPublic", on by default), with its search properties, the game's lobby record (PUT /lobby,
@@ -140,6 +141,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var data = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [DirectoryKeys.Protocol] = LobbyService.Protocol,
+            [DirectoryKeys.Wire] = LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.Connection] = hosted.ConnectionString,
             [DirectoryKeys.LobbyId] = hosted.Id,
             [DirectoryKeys.Host] = localId.ToString(CultureInfo.InvariantCulture),
@@ -195,7 +197,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     public async Task<Frame> SearchAsync(string op, string filterText, int count)
     {
         var filter = LobbyFilter.Parse(filterText);
-        var query = new DirectoryQuery(LobbyService.Protocol, filter.Equalities());
+        var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), filter.Equalities());
         var listings = await Listings(query);
         var answer = new Frame("lobby.found").Add(op).Add(0);
         var kept = new List<DirectoryListing>();
@@ -280,7 +282,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     }
 
     static bool Same(DirectoryQuery a, DirectoryQuery b) =>
-        a.Protocol == b.Protocol && a.Count == b.Count && a.Equal.Count == b.Equal.Count && a.Equal.All(e => b.Equal.TryGetValue(e.Key, out var v) && v == e.Value);
+        a.Wire == b.Wire && a.Count == b.Count && a.Equal.Count == b.Equal.Count && a.Equal.All(e => b.Equal.TryGetValue(e.Key, out var v) && v == e.Value);
 
     // A listing a search can show (see the top of this file): its HellForge keys, its search properties and its records,
     // all checked; why: what was wrong, for the log.
@@ -310,6 +312,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         if (!data.TryGetValue(DirectoryKeys.LobbyId, out var id) || !Guid.TryParseExact(id, "D", out _)) why = "lobby id";
         else if (data.GetValueOrDefault(DirectoryKeys.Host) != listing.Host.ToString(CultureInfo.InvariantCulture) ||
             data.GetValueOrDefault(DirectoryKeys.Connection) != LobbyService.ConnectionPrefix + id + ";" + LobbyService.EntityId(listing.Host)) why = "host";
+        else if (!LobbyService.Compatible(data.GetValueOrDefault(DirectoryKeys.Protocol) ?? "")) why = "protocol";
         else if (!int.TryParse(data.GetValueOrDefault(DirectoryKeys.Members), NumberStyles.None, CultureInfo.InvariantCulture, out members) ||
             !int.TryParse(data.GetValueOrDefault(DirectoryKeys.MaxMembers), NumberStyles.None, CultureInfo.InvariantCulture, out max) ||
             members is < 1 or > MaxListedMembers || max is < 2 or > MaxListedLimit || members >= max) why = "member counts";

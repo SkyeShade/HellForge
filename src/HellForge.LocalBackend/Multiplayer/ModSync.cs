@@ -60,6 +60,8 @@ public sealed class ModSync : IAsyncDisposable
     readonly bool sandboxed;
     readonly CancellationTokenSource stop = new();
     readonly object gate = new();
+    // The host and lobby of each mods.info this join already took (at most one each).
+    readonly HashSet<string> infoHeard = [];
 
     // sandboxed: this session's game runs sandboxed (MultiplayerSettings.Sandboxed).
     public ModSync(IPeerTransport transport, ModSyncPaths paths, ModSet? own, Func<ulong, string> nameOf, Action<string> log,
@@ -81,6 +83,11 @@ public sealed class ModSync : IAsyncDisposable
         serving = Task.Run(ServeAsync);
         launcherAnswers = Task.Run(TakeLauncherAnswersAsync);
     }
+
+    // This session's mods of both tiers as a host sends them in mods.info (null when the session gave no set).
+    public string? OwnWire => ownWire;
+    // A brief note for the game (MultiplayerHost shows it in the corner): here, the host's per-player mods this joiner lacks.
+    public event Action<string>? Notice;
 
 
     // A launcher's answer (ModSyncOffer.Answer), for a game without the in-game editor: looked for once a second while an
@@ -138,6 +145,7 @@ public sealed class ModSync : IAsyncDisposable
             {
                 case "mods.files" or "mods.get": Queue(peer, frame); break;
                 case "mods.offer": Offered(peer, frame); break;
+                case "mods.info": Info(peer, frame); break;
                 case "mods.filelist" or "mods.chunk": Answered(peer, frame); break;
             }
         }
@@ -160,8 +168,8 @@ public sealed class ModSync : IAsyncDisposable
     readonly Task serving, launcherAnswers;
     long totalNext;
 
-    // What one grant may download: the whole set twice (a retry after a failed check), and a little over.
-    long GrantBudget => 2 * (own?.Mods.Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
+    // What one grant may download: the whole shared set twice (a retry after a failed check), and a little over.
+    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
 
     // A joiner with other gameplay mods is about to be refused (LobbyService.ModsRefused): this session's mod set goes to
     // them first, and they may download it for GrantTime. True when they may (this player shares, and the set is known).
@@ -294,6 +302,7 @@ public sealed class ModSync : IAsyncDisposable
         if (!Shares()) return Refused(frame, "the host does not share their mods");
         var mod = own?.Find(frame.Text(1), frame.Text(2));
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
+        if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
         return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
     }
@@ -381,6 +390,55 @@ public sealed class ModSync : IAsyncDisposable
             }
             catch (Exception error) { log("Mod sync: making the offer failed: " + error); }
         });
+    }
+
+    // A host's mods after it accepted this machine's join: if its per-player mods are not this player's, a brief note says
+    // so. Only the host of a lobby this machine asked to join, and only once per join; nothing downloads.
+    void Info(ulong host, Frame frame)
+    {
+        if (frame.Count < 2) { log($"Mod sync: a short mods.info from {LobbyService.EntityId(host)}."); return; }
+        var lobbyId = frame.Text(0);
+        if (Expected?.Invoke(host, lobbyId) != true)
+        {
+            log($"Mod sync: dropped mods.info from {LobbyService.EntityId(host)} for a join not asked for.");
+            return;
+        }
+        ModSet set;
+        try { set = ModSet.Parse(frame.Text(1), local: false); }
+        catch (InvalidDataException error) { log($"Mod sync: {LobbyService.EntityId(host)}'s mods.info could not be used: {error.Message}"); return; }
+        var key = InfoKey(host, lobbyId);
+        lock (gate)
+        {
+            if (!infoHeard.Add(key)) { log($"Mod sync: {LobbyService.EntityId(host)}'s mods.info for {lobbyId} was already taken."); return; }
+        }
+        var mine = own?.Mods.Where(m => m.Tier == CoopTier.PerPlayer).ToList() ?? [];
+        var missing = set.Mods.Where(m => m.Tier == CoopTier.PerPlayer && !mine.Any(o => o.Id == m.Id && o.Hash == m.Hash)).ToList();
+        if (missing.Count == 0) return;
+        var message = NoticeText(nameOf(host), missing.Select(m => m.Name).ToList());
+        if (message == null) { log("Mod sync: the host's per-player mods differ, but their notice has no room for a name."); return; }
+        log("Mod sync: " + message);
+        Notice?.Invoke(message);
+    }
+
+    // A new join for that host and lobby may take a new mods.info (the earlier one was for the earlier join).
+    public void JoinStarted(ulong host, string lobbyId)
+    {
+        lock (gate) infoHeard.Remove(InfoKey(host, lobbyId));
+    }
+
+    static string InfoKey(ulong host, string lobbyId) => host.ToString(CultureInfo.InvariantCulture) + "|" + lobbyId;
+
+    // The notice's text, its names cut so the game's 200-character title limit keeps the ending. Null when even the
+    // host's name and the ending leave no room for one name.
+    static string? NoticeText(string host, IReadOnlyList<string> names)
+    {
+        var prefix = $"{host} plays with {names.Count} mod{(names.Count == 1 ? "" : "s")} you don't: ";
+        const string suffix = ". Each player keeps their own.";
+        var room = 200 - prefix.Length - suffix.Length;
+        if (room < 1) return null;
+        var all = string.Join(", ", names);
+        var shown = all.Length <= room ? all : all[..(room - 1)].TrimEnd() + "…";
+        return prefix + shown + suffix;
     }
 
     // accept: the player trusted a mod and asked for the download (TRUST AND DOWNLOAD): it starts when nothing else waits.
@@ -791,7 +849,7 @@ public sealed class ModSync : IAsyncDisposable
             return;
         }
         new ModSyncSession(LobbyService.EntityId(current.Host), current.HostName, current.Connection, current.Set.Digest,
-            [.. current.Set.Mods.Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(sessionFile);
+            [.. current.Set.Mods.Where(m => m.Tier == CoopTier.Shared).Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(sessionFile);
         Update(current, "ready", $"Restarting with {current.HostName}'s mods...");
         File.WriteAllText(Path.Combine(runDirectory, StopSignal), StopReason);
         log($"Mod sync: the next session plays {current.HostName}'s mods ({sessionFile}); this session stops for the launcher to restart it.");
