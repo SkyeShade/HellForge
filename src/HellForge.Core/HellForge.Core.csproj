@@ -25,4 +25,8 @@
     <EmbeddedResource Include="../../mappings/melee.json" LogicalName="HellForge.Core.mappings.melee.json" />
     <EmbeddedResource Include="../../mappings/fired-entities.json" LogicalName="HellForge.Core.mappings.fired-entities.json" />
     <EmbeddedResource Include="../../mappings/parity.json" LogicalName="HellForge.Core.mappings.parity.json" /></ItemGroup>
+  <ItemGroup>
+    <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->
+    <PackageReference Include="SharpCompress" Version="0.50.7" />
+  </ItemGroup>
 </Project>

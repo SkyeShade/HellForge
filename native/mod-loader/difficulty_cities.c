@@ -333,6 +333,26 @@ static const char* StructuredFailed(uintptr_t game)
     return NULL;
 }
 
+/* GenerateLocationClusters (0xF79520) puts every cluster of locations (bases, outposts, objectives) on one circle: its
+ * radius is lerp(0.6, 0.8) of the playable radius (0xF79A27 mulss xmm15, xmm2), and each slot's centre is 1024 +
+ * radius x (cos, sin) (0xF79E0F, 0xF79E2E). SpreadLocations then places each location as near its cluster's centre as
+ * the gaps (absolute metres) allow. A larger map's radius moves the circle out with it and the locations stay as
+ * many and as large, so on a level-11 map of 2x they formed a ring 470-620 m out around an empty middle (research
+ * d11-map-centre: in a level-10 snapshot all four centres sit 293 m out on a 389 m map, and the blobs reach the middle).
+ * On a larger map every odd slot (the clusters are shuffled into them) now gets the radius over map_scale, vanilla's
+ * own 233-311 m: an inner and an outer ring. The first stub flags a larger map (the level's disk, lg+0x2D7C, at
+ * [rsi+0x18]; rsi is the pass there and [rsp+0x40] is free across the slot loop), the other two scale the odd slots.
+ * No random draw changes, so every machine still generates the same map from the same seed. */
+#define DIF_CLUSTER_RING 0xF79A27u      /* mulss xmm15, xmm2: the ring's radius */
+#define DIF_CLUSTER_RING_BACK 0xF79A2Cu
+#define DIF_CLUSTER_X 0xF79E0Fu         /* movaps xmm2, xmm15; mulss xmm2, xmm7: a slot's x offset */
+#define DIF_CLUSTER_X_BACK 0xF79E17u
+#define DIF_CLUSTER_Y 0xF79E2Eu         /* movaps xmm0, xmm15; mulss xmm0, xmm1: a slot's y offset */
+#define DIF_CLUSTER_Y_BACK 0xF79E36u
+static const uint8_t kClusterRingPin[5] = {0xF3, 0x44, 0x0F, 0x59, 0xFA};
+static const uint8_t kClusterXPin[8] = {0x41, 0x0F, 0x28, 0xD7, 0xF3, 0x0F, 0x59, 0xD7};
+static const uint8_t kClusterYPin[8] = {0x41, 0x0F, 0x28, 0xC7, 0xF3, 0x0F, 0x59, 0xC1};
+
 /* The location clusters' assignments, the playable area's cull, the vista level's spawn and the clusters' appends. */
 static const char* ClusterPinsFailed(uintptr_t game)
 {
@@ -345,6 +365,10 @@ static const char* ClusterPinsFailed(uintptr_t game)
         return "the playable area's cull is not the reviewed one (a map_scale above 1 needs it)";
     if (SafeRead(game + DIF_VISTA_POSE, zone, 7) || memcmp(zone, kVistaPosePin, 7) != 0)
         return "the vista level's spawn is not the reviewed one (a map_scale above 1 needs it)";
+    if (SafeRead(game + DIF_CLUSTER_RING, zone, 5) || memcmp(zone, kClusterRingPin, 5) != 0 ||
+        SafeRead(game + DIF_CLUSTER_X, zone, 8) || memcmp(zone, kClusterXPin, 8) != 0 ||
+        SafeRead(game + DIF_CLUSTER_Y, zone, 8) || memcmp(zone, kClusterYPin, 8) != 0)
+        return "the location clusters' ring is not the reviewed one (a map_scale above 1 needs it)";
     for (int i = 0; i < 4; i++)
     {
         uint8_t length = kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc;
@@ -521,6 +545,65 @@ static const char* InstallClusterGuards(DifficultyInstall* d)
         jump[0] = 0xE9;
         rel = DifficultyJumpRel(game + kClusterSites[i].site, (uintptr_t)(clusters + 0x40 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kClusterSites[i].site, jump, kClusterSites[i].length)) return "the location clusters could not be guarded";
+    }
+    return NULL;
+}
+
+static const uint8_t kClusterRingStub[42] = {
+    0xF3, 0x44, 0x0F, 0x59, 0xFA,                                     /*  0 mulss xmm15, xmm2 (as it was) */
+    0xC7, 0x44, 0x24, 0x40, 0x00, 0x00, 0x00, 0x00,                   /*  5 mov dword [rsp+0x40], 0 */
+    0x48, 0x8B, 0x46, 0x18,                                           /* 13 mov rax, [rsi+0x18] (lg; rax is dead after) */
+    0x81, 0xB8, 0x7C, 0x2D, 0x00, 0x00, 0, 0, 0, 0,                   /* 17 cmp dword [rax+0x2d7c], disk / 1024 (at 23) */
+    0x75, 0x08,                                                       /* 27 jne 37 */
+    0xC7, 0x44, 0x24, 0x40, 0x01, 0x00, 0x00, 0x00,                   /* 29 mov dword [rsp+0x40], 1 (a larger map) */
+    0xE9, 0, 0, 0, 0};                                                /* 37 jmp 0xF79A2C (rel32 at 38) */
+/* A slot's offset: the radius, over map_scale on a larger map's odd slot (esi the slot), then times cos or sin. */
+static const uint8_t kClusterSlotStub[34] = {
+    0x41, 0x0F, 0x28, 0x00,                                           /*  0 movaps xmmN, xmm15 (modrm at 3) */
+    0x83, 0x7C, 0x24, 0x40, 0x00,                                     /*  4 cmp dword [rsp+0x40], 0 */
+    0x74, 0x0E,                                                       /*  9 je 25 */
+    0x40, 0xF6, 0xC6, 0x01,                                           /* 11 test sil, 1 (an odd slot) */
+    0x74, 0x08,                                                       /* 15 jz 25 */
+    0xF3, 0x0F, 0x59, 0x00, 0, 0, 0, 0,                               /* 17 mulss xmmN, [rip+k] (modrm at 20, rel32 at 21) */
+    0xF3, 0x0F, 0x59, 0x00,                                           /* 25 mulss xmmN, xmmM (as it was; modrm at 28) */
+    0xE9, 0, 0, 0, 0};                                                /* 29 jmp back (rel32 at 30) */
+
+/* The two rings: the flag at the radius, then the odd slots' scale at both offsets. */
+static const char* InstallClusterRings(DifficultyInstall* d)
+{
+    if (!LargerMaps()) return NULL;
+    uintptr_t game = d->game;
+    uint8_t* rings = AllocateNearGame(game, 0x100);
+    if (rings == NULL) return "no memory within 2 GB of game.dll for the location clusters' rings";
+    float diskBits = d->disk / 1024.0f, k = 1.0f / g_difficulty.mapScale;
+    uint8_t* ring = rings, *x = rings + 0x40, *y = rings + 0x80;
+    memcpy(rings + 0xC0, &k, 4);
+    memcpy(ring, kClusterRingStub, sizeof kClusterRingStub);
+    memcpy(ring + 23, &diskBits, 4);
+    int32_t rel = (int32_t)(game + DIF_CLUSTER_RING_BACK - (uintptr_t)(ring + 42)); memcpy(ring + 38, &rel, 4);
+    /* {stub, movaps modrm (xmmN <- xmm15), the k operand's modrm (xmmN, rip), the replayed mulss modrm, back} */
+    const struct { uint8_t* stub; uint8_t from, withK, times; uint32_t back; } slots[2] = {
+        {x, 0xD7, 0x15, 0xD7, DIF_CLUSTER_X_BACK},  /* xmm2, then mulss xmm2, xmm7 */
+        {y, 0xC7, 0x05, 0xC1, DIF_CLUSTER_Y_BACK}}; /* xmm0, then mulss xmm0, xmm1 */
+    for (int i = 0; i < 2; i++)
+    {
+        uint8_t* s = slots[i].stub;
+        memcpy(s, kClusterSlotStub, sizeof kClusterSlotStub);
+        s[3] = slots[i].from;
+        s[20] = slots[i].withK;
+        s[28] = slots[i].times;
+        rel = (int32_t)((uintptr_t)(rings + 0xC0) - (uintptr_t)(s + 25)); memcpy(s + 21, &rel, 4);
+        rel = (int32_t)(game + slots[i].back - (uintptr_t)(s + 34)); memcpy(s + 30, &rel, 4);
+    }
+    DWORD protect;
+    VirtualProtect(rings, 0x100, PAGE_EXECUTE_READ, &protect);
+    const struct { uint32_t site; uint8_t length; uint8_t* stub; } sites[3] = {
+        {DIF_CLUSTER_RING, 5, ring}, {DIF_CLUSTER_X, 8, x}, {DIF_CLUSTER_Y, 8, y}};
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        rel = (int32_t)((uintptr_t)sites[i].stub - (game + sites[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + sites[i].site, jump, sites[i].length)) return "the location clusters' rings could not be placed";
     }
     return NULL;
 }

@@ -5,7 +5,7 @@
 static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     DifficultyReadersFailed, KeepTenFailed, BandFailed, LevelReadersFailed, BoardFailed, SpreadFailed, HashInsertFailed,
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
-    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed,       /* a map_scale above 1 */
+    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, /* a map_scale above 1 */
     LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed};
 
@@ -29,7 +29,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     WidenMissionRanges, InstallBoard, InstallSpreadGuard, InstallHashInsertGuard, MixStep, InstallGrant, InstallRadar,
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
-    InstallClusterGuards, InstallAppendGuards, InstallFootprintWatch, InstallNavGrid,             /* a map_scale above 1 */
+    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
 
@@ -43,7 +43,7 @@ static const char* const kInstallStepNames[] = {
     "WidenMissionRanges", "InstallBoard", "InstallSpreadGuard", "InstallHashInsertGuard", "MixStep", "InstallGrant", "InstallRadar",
     "MoveBandsAndIcons",
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
-    "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid",
+    "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallFootprintWatch", "InstallNavGrid",
     "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
     "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],

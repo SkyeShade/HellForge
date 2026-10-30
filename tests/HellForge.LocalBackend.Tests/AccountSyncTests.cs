@@ -34,7 +34,33 @@ static class AccountSyncTests
         Imports(root, ids, check);
         WarbondChoices(root, paid, ids, check);
         DuplicateItems(root, ids, check);
+        ShipAwayFromPlanet(root, ids, check);
         ModItems(root, paid, check);
+    }
+
+    // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The
+    // import still goes through with the ship's name, the profile keeps its location, and the review names no planet.
+    static void ShipAwayFromPlanet(string root, Ids ids, Action<bool, string> check)
+    {
+        var (profileDir, snapshot) = Install(root, "away-from-planet", ids);
+        var file = Path.Combine(snapshot, InventorySync.ProgressionFile);
+        File.WriteAllText(file, File.ReadAllText(file).Replace("{\"warId\":801,\"planetIndex\":171,\"territoryIndex\":11}",
+            "{\"warId\":-1,\"planetIndex\":-1,\"regionIndex\":-1}"));
+        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        var settings = new AccountImportSettings();
+        settings.Set("ship", true, ImportRule.Vanilla);
+        settings.Save(AccountImportSettings.PathIn(profileDir));
+        using (var store = ProfileStore.Open(profileDir, "starter"))
+            store.TrySetLocation(JsonSerializer.SerializeToElement(new { warId = 801, planetIndex = 64, regionIndex = 2 }));
+
+        check(Command(AccountCommands.Preview, profileDir, Player, out var preview) == 0, "The preview failed.");
+        using (var review = JsonDocument.Parse(preview))
+            check(review.RootElement.GetProperty("categories").GetProperty("ship").GetProperty("vanilla").GetString() == "name 9-16",
+                "The review of a ship away from any planet is wrong: " + preview);
+        check(Command(AccountCommands.Import, profileDir, Player, out var error) == 0, "A ship away from any planet failed the import: " + error);
+        var progression = ProfileStore.Load(Path.Combine(profileDir, ProfileStore.FileName))["progression"]!;
+        check(progression["shipName"]!.ToJsonString() == "[9,16]" && Whole(progression["location"]!["planetIndex"]) == 64,
+            "A ship away from any planet did not import its name or replaced the profile's location.");
     }
 
     // Mods' weapons and stratagems (RegisteredItems): a copy of premium content is the player's only when they own the

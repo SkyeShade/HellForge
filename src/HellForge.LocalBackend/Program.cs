@@ -162,7 +162,7 @@ try
         {
             WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
             ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin"),
-            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null
+            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
         })
         : null;
     var ready = new System.Text.Json.Nodes.JsonObject

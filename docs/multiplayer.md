@@ -251,12 +251,18 @@ launcher restarts the session with the host's mods (`--mod-sync`). Each mod's cl
 with one rule for every host, Steam friends included (`ModSets.ClassOf`). Content (data specs HellForge checks all of,
 `DataSpecs.Unchecked`; schema stats; network field types) downloads from any host. Code and raw data (binary data
 patches, data specs with `"replace"` or unreviewed resource types such as `lua`, raw stats lines, `componentWrites`)
-download only from a Steam friend (a host serves them to friends alone), and only when `data/verified-mods.json` names
-their exact content hash or the player trusted it. A friend's unverified one is `SyncAction.Trust` ("needs your trust"):
-the prompt's TRUST, after a warning, answers `trust`, which adds `{id, hash, name, version, from, since}` to
+download only when `data/verified-mods.json` names their exact content hash (from any host) or the player trusted it. A
+Steam friend's unverified one is `SyncAction.Trust` ("needs your trust"); a stranger's is too when the joiner's game is
+sandboxed (the backend's `--sandbox true`, `MultiplayerSettings.Sandboxed`), and otherwise `SyncAction.Manual`. The
+prompt's TRUST, after a warning (a harder one for a stranger's: `HF_SYNC_FLAG_STRANGER`, the offer file's `"stranger"`),
+answers `trust`, which adds `{id, hash, name, version, from, since}` (and `"stranger": true` for a stranger's) to
 `"trusted"` in `mods/hellforge-mods.json` (`ModSettings`, beside `"blocked"`; the Mods page lists and untrusts them) and
 makes the offer again, downloading once nothing else waits. The joiner's checks then take the verified list or that
-list (`ModSync.Allowed`), every byte checked as before. A mod's manifest `url` (an `https://` address,
+list (`ModSync.Allowed`; a stranger's trust counts only in a sandboxed session), every byte checked as before. The
+session after the sync runs a synced mod trusted only from a stranger only when it is sandboxed too (`mods-stage
+--sandbox`, `ModSyncSession.Resolve`); otherwise it plays the player's own mods and says why. Hosts serve code and raw
+mods to whoever their grant covers; a 0.3.0-beta host served them to Steam friends alone, so a stranger's download
+from one fails with its refusal. A mod's manifest `url` (an `https://` address,
 `ModCatalog.WebAddress`) travels in its mod set entry; GET IT answers `open`, and the joiner's backend opens that
 address (checked again) in the default browser. Bundled mods never download. The host side is
 `src/HellForge.LocalBackend/Multiplayer/ModSync.cs`; the protocol and limits are in
@@ -376,8 +382,9 @@ most 360 ms (40 ms of that is the one-way delay). A fixed window of 16 chunks wo
 
 Mod sync and public lobbies bring mods from people a player may not know. What limits them:
 - **What downloads by itself** is only what HellForge checks itself (data specs, schema stats, network field types),
-  read from the bytes received, with the same rule for every host. Code and raw data need the verified list, or,
-  from a Steam friend, the player's own trust after a warning ([Mod sync](#mod-sync)).
+  read from the bytes received, with the same rule for every host. Code and raw data need the verified list, or the
+  player's own trust after a warning: a Steam friend's, or a stranger's while the game is sandboxed
+  ([Mod sync](#mod-sync)).
 - **Synced mods load only in the synced session.** They sit in `mods/.synced`, which normal sessions never load, and
   the player's own Mods page never changes.
 - **The copy is off the internet.** The network block lets the copied game reach only this PC (loopback).
@@ -411,9 +418,12 @@ Mod sync and public lobbies bring mods from people a player may not know. What l
   in-game editor's native JSON reader never parses what the host sent. A file that is not JSON is left out; values
   past a limit are left out and counted in `multiplayer.log`.
 
-What this does not stop: code in the game runs with the player's own Windows permissions. It can read their files,
-write those outside HellForge's held folders, and reach other programs of the same user. That is why code from
-another player downloads only when HellForge has verified it, or when the player trusts the friend it comes from.
+What this does not stop: unsandboxed, code in the game runs with the player's own Windows permissions. It can read
+their files, write those outside HellForge's held folders, and reach other programs of the same user. Sandboxed (at
+low integrity, [steam-bridge.md](steam-bridge.md)), it can still read their files, and send what it reads through the
+game's traffic, to the lobby's other players among others. That is why code from another player downloads only when
+HellForge has verified it, or when the player trusts it: from a friend, or from a stranger only while sandboxed, with
+a warning that names what the sandbox does not stop.
 
 ### Public lobbies (the lobby directory)
 
@@ -469,7 +479,8 @@ Which lobbies a search shows is mod sync's rule (`ModSync.Joinable`), and it use
 (`ModSyncPlan`):
 - A Steam friend's lobby running code or raw mods that are not verified is shown, because joining brings the MOD SYNC
   prompt with TRUST.
-- A stranger's lobby running such mods is hidden, because they are mods to install by hand.
+- A stranger's lobby running such mods is shown to a sandboxed player, for the same reason, and hidden from an
+  unsandboxed one, because they are mods to install by hand.
 
 Each search logs what it found, what it showed, and why it left out the rest: `Directory: search "<the game's filter>": 2
 listed, 1 shown (1 left out: it needs mods installed by hand)`. The reasons are:
