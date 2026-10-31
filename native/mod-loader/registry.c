@@ -150,7 +150,7 @@ typedef struct Weapon
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
-    int ownAll;          /* add_entity: a record of its own in every component of its base (HfEntity.own_all) */
+    int ownAll;          /* a record of its own in every component of its base (HfEntity.own_all, HfWeapon.own_all) */
     uint64_t copies;     /* the entity it was registered as a copy of (its map row's components are that entity's) */
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
@@ -464,6 +464,17 @@ static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
     w->text[3] = AddText(def->designation, key, 0x04);
 }
 
+/* The mod's log line for a weapon add_weapon accepted: its text, entity and ids, and the records it owns. */
+static void LogWeaponAdded(HfMod* mod, const HfWeapon* def, const Weapon* w)
+{
+    char own[48];
+    if (w->ownAll) snprintf(own, sizeof own, "records of its own in every component");
+    else snprintf(own, sizeof own, "%d record(s) of its own", w->ownCount);
+    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %s",
+        w->name, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
+        (unsigned long long)w->entity, w->id, def->base, own);
+}
+
 static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfWeapon, own_components) + sizeof def->own_components)
@@ -490,11 +501,10 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     snprintf(w.name, sizeof w.name, "%s", unit);
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
+    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);
     g_weapons[g_weaponCount++] = w;
-    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %d record(s) of its own",
-        unit, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
-        (unsigned long long)entity, id, def->base, w.ownCount);
+    LogWeaponAdded(mod, def, &w);
     WriteRegisteredItems();
     return id;
 }
@@ -818,6 +828,13 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
 /* The engine's text function; any further register arguments are passed on untouched. */
 typedef const char* (*EngineTextFn)(uint32_t id, void* a, void* b, void* c);
 static EngineTextFn g_engineText;
+
+/* A mod text's text (AddText's id), or NULL for none. */
+static const char* ModTextOf(uint32_t id)
+{
+    for (int i = 0; id != 0 && i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
+    return NULL;
+}
 
 /* The engine's text function with the mods' text first. */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)

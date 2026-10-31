@@ -84,6 +84,13 @@ typedef struct HfWeapon
      * base's: its own ProjectileWeapon record takes that weapon's sound events. Their sound banks must load with it: the
      * mod's data puts them in the weapon's archive patch (examples/mods/talon-liberator). */
     uint32_t sound_from;
+    /* HellForge 2026-10-31 (older ones ignore it): 1 gives it a record of its own in every component of its base (a copy
+     * of the base's), as HfEntity.own_all does for an entity: it shares nothing with its base, so an edit of the base
+     * never changes it and its own edits never change the base. The in-game editor then gives it a page with every field
+     * of its base's page; without it, the page has only the records it owns (own_components, and its ProjectileWeapon
+     * record when it has a projectile of its own). Its log names any component HellForge could not copy (record size
+     * unknown), which it still shares. */
+    uint32_t own_all;
 } HfWeapon;
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
@@ -556,24 +563,29 @@ typedef struct HfAbility
     uint32_t flags;         /* HF_ABILITY_... flags (HellForge 2026-10-18; older mods leave it out) */
 } HfAbility;
 
-/* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem a page. Strings live as long
- * as the session. */
+/* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem and arsenal weapon a page.
+ * Strings live as long as the session. */
 typedef struct HfContent
 {
     uint32_t size;          /* sizeof(HfContent): set by the caller */
-    uint32_t kind;          /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE or HF_KIND_DAMAGE */
-    uint64_t id;            /* its stratagem type, entity resource, projectile type or damage id */
+    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, or (HellForge 2026-10-31) HF_KIND_ITEM:
+     * an arsenal weapon of add_weapon, once it is registered */
+    uint32_t kind;
+    uint64_t id;            /* its stratagem type, entity resource, projectile type, damage id or loadout id */
     uint64_t base;          /* the vanilla one of its kind it copies */
     uint64_t link;          /* a projectile: the damage it deals (0: its base's) */
     const char* mod;        /* the id of the mod that added it, and that mod's folder (UTF-8) */
     const char* folder;
     const char* name;       /* its identity */
-    const char* title;      /* a stratagem's or entity's name for players, or NULL for its base's */
+    const char* title;      /* a stratagem's, entity's or weapon's name for players, or NULL for its base's */
     const char* icon;       /* a stratagem's icon resource name, or NULL for its base's */
     uint64_t editor_like;   /* a stratagem: the stratagem whose editor page it takes */
     const HfEditorEntity* editor_entities; /* a stratagem: the entities its page shows, ending in {0} */
-    const char* designation; /* an entity's designation (HfEntity.designation), or NULL for its base's */
+    const char* designation; /* an entity's or weapon's designation, or NULL for its base's */
     uint32_t category;       /* a stratagem's HF_CATEGORY_... (HfStratagem.category), or 0 for its base's */
+    /* HellForge 2026-10-31, a weapon (HF_KIND_ITEM; older ones leave these 0): its entity resource and its base's */
+    uint64_t entity;
+    uint64_t base_entity;
 } HfContent;
 
 typedef struct HfEventInfo
@@ -1099,8 +1111,9 @@ typedef struct HfApi
     int (*subscribe)(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
     /* The game's state now (HF_STATE_...), or HF_STATE_NONE before the game has one. */
     uint32_t (*game_state)(HfMod* mod);
-    /* The index-th piece of content mods added (stratagems, entities, projectiles, damage; see HfContent): 1 with *out
-     * filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED). */
+    /* The index-th piece of content mods added (stratagems, entities, projectiles, damage, then arsenal weapons once
+     * registered; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has
+     * run (from HF_EVENT_GAME_LOADED); the weapons from HF_EVENT_ENTITIES_READY. */
     int (*content)(HfMod* mod, uint32_t index, HfContent* out);
     /* Adds a new ability (see HfAbility). Call it from hellforge_mod_init. Returns its id (2868 and up), or 0 (the mod's
      * log says why). An entity naming it never sets it off if HellForge could not install it (modloader.log). */

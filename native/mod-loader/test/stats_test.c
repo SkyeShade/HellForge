@@ -2507,6 +2507,30 @@ static void OwnAllFixture(void)
         for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
             if (c.kind == HF_KIND_ENTITY && c.id == hmg) found = c.base == base && !strcmp(c.name, "fixture/hmg-sentry") && !strcmp(c.mod, g_mods[0].id);
         assert(found);
+        /* an arsenal weapon: own_all taken from its HfWeapon; listed last once registered, with its entities and its own
+         * text (the editor gives it a page), not while pending */
+        HfWeapon gold = {sizeof gold};
+        gold.base = 0x5678; gold.unit = "fixture/liberator_gold"; gold.designation = "AR-23G"; gold.name = "Liberator Gold"; gold.own_all = 1;
+        uint32_t goldId = ApiAddWeapon(&g_mods[0], &gold);
+        Weapon* w = &g_weapons[g_weaponCount - 1];
+        assert(goldId != 0 && w->id == goldId && w->ownAll && !w->plain && w->state == 0);
+        int listed = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c) listed += c.kind == HF_KIND_ITEM;
+        assert(listed == 0);
+        w->state = 1;
+        w->copies = base;
+        uint32_t last = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
+            if (c.kind == HF_KIND_ITEM)
+            {
+                assert(c.id == goldId && c.base == 0x5678 && c.entity == w->entity && c.base_entity == base && !strcmp(c.name, "fixture/liberator_gold") &&
+                    !strcmp(c.title, "Liberator Gold") && !strcmp(c.designation, "AR-23G") && !strcmp(c.mod, g_mods[0].id));
+                listed++;
+                last = i;
+            }
+        HfContent after = {sizeof after};
+        assert(listed == 1 && !ApiContent(&g_mods[0], last + 1, &after));
+        g_weaponCount--; /* the fixture's other checks know the sentry only */
         uint8_t small[offsetof(HfContent, designation) + 8];
         memset(small, 0xEE, sizeof small);
         ((HfContent*)small)->size = offsetof(HfContent, designation);

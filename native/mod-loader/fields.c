@@ -1039,8 +1039,19 @@ static HfContent EntityContent(const Weapon* w, uint32_t size)
         w->title[0] ? w->title : NULL, NULL, 0, NULL, w->designation[0] ? w->designation : NULL};
 }
 
-/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles and damage, in the order added. A
- * stratagem without editor entities of its own lists each payload entity a mod added, for the entity it copies. */
+/* An arsenal weapon a mod added, registered: its loadout ids, entities and text of its own. */
+static HfContent WeaponContent(const Weapon* w, uint32_t size)
+{
+    HfContent c = {size, HF_KIND_ITEM, w->id, w->base, 0, w->mod->id, w->mod->folder, w->name, ModTextOf(w->text[0]), NULL, 0, NULL,
+        ModTextOf(w->text[3]), 0};
+    c.entity = w->entity;
+    c.base_entity = w->copies;
+    return c;
+}
+
+/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage and (HellForge 2026-10-31,
+ * last so the others keep their indexes) registered arsenal weapons, in the order added. A stratagem without editor
+ * entities of its own lists each payload entity a mod added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
 {
     if (out == NULL || out->size < offsetof(HfContent, editor_entities) + sizeof out->editor_entities) return 0;
@@ -1074,6 +1085,13 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
         c = (HfContent){size, HF_KIND_DAMAGE, d->id, d->base, 0, d->mod->id, d->mod->folder, d->name, NULL, NULL, 0, NULL};
         return GIVE();
     }
+    index -= g_damageCount;
+    for (int i = 0; i < g_weaponCount; i++)
+        if (!g_weapons[i].plain && g_weapons[i].state == 1 && index-- == 0)
+        {
+            c = WeaponContent(&g_weapons[i], size);
+            return GIVE();
+        }
     return 0;
     #undef GIVE
 }
