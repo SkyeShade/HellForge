@@ -183,8 +183,16 @@ public partial class MainWindow : Window
         PlatformText.Text = $"{RuntimeInformation.OSDescription} · .NET {Environment.Version}";
         VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 build {HellForge.Core.SupportedBuild.Current.BuildId}";
         if (SessionRunner.IsSupported)
+        {
             SetStatus("Ready. Steam must be running and signed in.", Phase.Idle,
                 "Press PLAY to verify the game files and launch the game.");
+            // Smart App Control blocks HellForge's unsigned programs: said before the first PLAY, not only when it fails.
+            if (HellForge.Core.SmartAppControl.Warning(HellForge.Core.SmartAppControl.Current) is { } appControl)
+            {
+                PlatformNote.Text = appControl;
+                PlatformNote.IsVisible = true;
+            }
+        }
         else
         {
             PlatformNote.Text = SessionRunner.UnsupportedMessage;
@@ -259,10 +267,18 @@ public partial class MainWindow : Window
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
+        var appControl = HellForge.Core.SmartAppControl.Current;
+        if (HellForge.Core.SmartAppControl.Warning(appControl) is { } warning) Append(warning, Orange);
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+        }
+        catch (System.ComponentModel.Win32Exception error) when (HellForge.Core.SmartAppControl.IsBlock(error.NativeErrorCode))
+        {
+            launchedUtc = default;
+            SetStatus("Windows blocked HellForge's session runner.", Phase.Failed, failure: HellForge.Core.SmartAppControl.BlockedMessage(paths.Session, appControl));
+            return;
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {

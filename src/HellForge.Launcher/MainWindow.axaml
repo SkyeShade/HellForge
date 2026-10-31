@@ -120,7 +120,7 @@
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel VerticalAlignment="Bottom" Spacing="4" Margin="0,0,24,4">
-              <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" IsVisible="False" />
+              <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" TextWrapping="Wrap" IsVisible="False" />
             </StackPanel>
             <StackPanel Grid.Column="1" Width="340" Spacing="10">
               <TextBlock Text="PROFILE" Classes="h2" Margin="0" />
