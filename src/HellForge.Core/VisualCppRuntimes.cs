@@ -5,8 +5,8 @@ using System.Security.Cryptography;
 namespace HellForge.Core;
 
 // The Microsoft Visual C++ runtimes the supported build loads from Windows' system folder. helldivers2.exe imports
-// lua51.dll, which needs the 2012 runtime's MSVCR110.dll; PartyWin, PlayFab, libcurl, XeSS, EOS, WinPixEventRuntime and
-// the upscaler need the v14 (2015-2022) runtime, VCRUNTIME140_1.dll among it. The game ships neither, and the live
+// lua51.dll, which needs the 2012 runtime's MSVCR110.dll; PartyWin, PlayFab, libcurl, XeSS, WinPixEventRuntime and the
+// upscaler (all static imports too) and EOS need the v14 (2015-2022) runtime, VCRUNTIME140_1.dll among it. The game ships neither, and the live
 // build's Steam install no longer installs the 2012 one, so a fresh PC has the game stop at start (0xC0000135, a DLL not
 // found). Setup and the launcher's PLAY download Microsoft's installer (pinned URL and SHA-256) and run it silently,
 // with Windows' permission prompt; only when that fails does the message name the download, with the reason. The session
@@ -17,17 +17,24 @@ namespace HellForge.Core;
 // (Zig) and .NET programs import neither runtime. Microsoft's redistributable installer is the supported route.
 public static class VisualCppRuntimes
 {
-    // Size and SHA-256 of the exact installer at Url (the v14 URL carries its own hash in the path).
-    public sealed record Runtime(string Name, string[] Files, string Download, string Sha256, long Size);
+    // Download: the exact installer the automatic install fetches, with its Size and SHA-256 (the v14 URL carries its
+    // own hash in the path). Link: Microsoft's lasting link the message gives the player, which keeps working once the
+    // pinned v14 build is gone. All of VCRUNTIME140_1.dll's importers but EOS (libxess, the FidelityFX upscaler,
+    // WinPixEventRuntime) are static imports of helldivers2.exe, so the game does not start without it either.
+    public sealed record Runtime(string Name, string[] Files, string Download, string Sha256, long Size, string Link);
 
+    // When the v14 pin stops downloading (Microsoft retires the build: the message then says the download failed and
+    // gives Link), pin the build aka.ms/vc14/vc_redist.x64.exe resolves to then, with its size and SHA-256.
     public static readonly Runtime[] Required =
     [
         new("Microsoft Visual C++ 2012 Redistributable (x64)", ["msvcr110.dll"],
             "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe",
-            "681BE3E5BA9FD3DA02C09D7E565ADFA078640ED66A0D58583EFAD2C1E3CC4064", 7_186_992),
+            "681BE3E5BA9FD3DA02C09D7E565ADFA078640ED66A0D58583EFAD2C1E3CC4064", 7_186_992,
+            "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe"),
         new("Microsoft Visual C++ 2015-2022 (v14) Redistributable (x64)", ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"],
             "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
-            "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C", 18_731_856),
+            "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C", 18_731_856,
+            "https://aka.ms/vc14/vc_redist.x64.exe"),
     ];
 
     // The 64-bit system folder, also from a 32-bit process (whose System32 Windows redirects to SysWOW64).
@@ -74,7 +81,7 @@ public static class VisualCppRuntimes
     static string Message(List<(Runtime Runtime, string? Reason)> failed, string then) =>
         "The game needs " + (failed.Count == 1 ? "a Microsoft runtime" : "Microsoft runtimes") + " this PC does not have. " +
         string.Concat(failed.Where(f => f.Reason != null).Select(f => $"HellForge could not install the {f.Runtime.Name} itself: {f.Reason}. ")) +
-        "Install " + string.Join(" and ", failed.Select(f => $"the {f.Runtime.Name} from {f.Runtime.Download}")) + ", then " + then;
+        "Install " + string.Join(" and ", failed.Select(f => $"the {f.Runtime.Name} from {f.Runtime.Link}")) + ", then " + then;
 
     // Runs an installer with these arguments and returns its exit code; asks Windows for permission (UAC) first.
     public delegate Task<int> InstallerRunner(string installer, string arguments, CancellationToken cancel);

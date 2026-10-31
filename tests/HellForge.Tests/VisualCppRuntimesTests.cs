@@ -63,7 +63,7 @@ static class VisualCppRuntimesTests
         {
             foreach (var runtime in VisualCppRuntimes.Required)
                 check(runtime.Download.StartsWith("https://download.", StringComparison.Ordinal) && new Uri(runtime.Download).Host.EndsWith(".microsoft.com", StringComparison.Ordinal) &&
-                    runtime.Sha256.Length == 64 && runtime.Sha256.All(Uri.IsHexDigit) && runtime.Size > 1_000_000, runtime.Name);
+                    runtime.Sha256.Length == 64 && runtime.Sha256.All(Uri.IsHexDigit) && runtime.Size > 1_000_000 && runtime.Link.StartsWith("https://", StringComparison.Ordinal), runtime.Name);
         });
 
         test("Installer exit codes: restart wanted and already installed pass; cancelled, busy and others say why", () =>
@@ -78,10 +78,16 @@ static class VisualCppRuntimesTests
         // A runtime pinned to a synthetic installer, served by a fake Microsoft.
         var installer = "synthetic installer"u8.ToArray();
         var runtime = new VisualCppRuntimes.Runtime("Microsoft Visual C++ 2012 Redistributable (x64)", ["msvcr110.dll"],
-            "https://download.microsoft.com/vcredist_x64.exe", Convert.ToHexString(SHA256.HashData(installer)), installer.Length);
+            "https://download.microsoft.com/vcredist_x64.exe", Convert.ToHexString(SHA256.HashData(installer)), installer.Length,
+            "https://aka.ms/vc-lasting-link");
         var downloads = 0;
-        HttpClient Microsoft(byte[] body) => new(new Respond(_ => { downloads++; return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) }; }));
-        string? Ensure(string name, byte[] body, VisualCppRuntimes.InstallerRunner run, List<string>? said = null)
+        // a null body: the pinned build is gone (404)
+        HttpClient Microsoft(byte[]? body) => new(new Respond(_ =>
+        {
+            downloads++;
+            return body == null ? new HttpResponseMessage(HttpStatusCode.NotFound) : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) };
+        }));
+        string? Ensure(string name, byte[]? body, VisualCppRuntimes.InstallerRunner run, List<string>? said = null)
         {
             var folder = Directory.CreateDirectory(Path.Combine(root, "vc-install", name)).FullName;
             using var http = Microsoft(body);
@@ -123,15 +129,18 @@ static class VisualCppRuntimesTests
         test("When the automatic install fails, the player is told why and given Microsoft's download", () =>
         {
             var declined = Ensure("declined", installer, (_, _, _) => throw new Win32Exception(1223));
-            check(declined != null && declined.Contains("permission prompt was declined") && declined.Contains(runtime.Download) && declined.EndsWith("press PLAY again."), "Declined: " + declined);
+            check(declined != null && declined.Contains("permission prompt was declined") && declined.Contains(runtime.Link) && !declined.Contains(runtime.Download) && declined.EndsWith("press PLAY again."), "Declined: " + declined);
             var ran = false;
             var tampered = Ensure("tampered", "not the installer"u8.ToArray(), (_, _, _) => { ran = true; return Task.FromResult(0); });
-            check(!ran && tampered != null && tampered.Contains("pinned checksum") && tampered.Contains(runtime.Download), "A download that does not match: " + tampered);
+            check(!ran && tampered != null && tampered.Contains("pinned checksum") && tampered.Contains(runtime.Link), "A download that does not match: " + tampered);
             check(!File.Exists(Path.Combine(root, "vc-install", "tampered", "temp", runtime.Sha256[..8] + "-vcredist_x64.exe")), "The mismatched download is not kept.");
             var busy = Ensure("busy", installer, (_, _, _) => Task.FromResult(1618));
             check(busy != null && busy.Contains("another installation") && busy.Contains("installer log"), "Busy: " + busy);
             var nothing = Ensure("nothing", installer, (_, _, _) => Task.FromResult(0));
             check(nothing != null && nothing.Contains("still not in"), "Installer claimed success: " + nothing);
+            var gone = Ensure("gone", null, (_, _, _) => { ran = true; return Task.FromResult(0); });
+            check(!ran && gone != null && gone.Contains("download from Microsoft failed") && gone.Contains("404") && gone.Contains(runtime.Link),
+                "The pinned build retired: " + gone);
         });
 
         test("An installer already downloaded with its pinned checksum is not downloaded again", () =>
