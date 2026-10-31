@@ -566,6 +566,9 @@ try
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });
     Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP");
+    await SquadTests.Run(Check);
+    results.Add(new { mode = "squad", outcome = "passed" });
+    Console.WriteLine("PASS squad: a third and fourth player join a lobby of two in turn and at once, nobody replaced, a fifth refused, each joiner lists the others as co-op peers");
     // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
     // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
     // repeated one is refused.
