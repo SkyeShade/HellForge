@@ -42,8 +42,9 @@ On `dev`, since 0.3.0-beta.
 - On Linux, with HellForge Difficulty on, the game crashed when a mission was selected, at the hellpod, or when the
   ship started moving to another system (#21, #166). A diagnostic of HellForge's own, which watches each new map with
   the processor's debug registers, did not recognise its own traps under Proton and handed them to the game, which
-  ended. It now recognises them, turns itself off once it has what it needs (which also ends the short freezes at Esc
-  and mission select), and stays off on a PC where the self-test it runs first fails (#124, #127).
+  ended. The diagnostic is now off unless it is turned on (`HELLFORGE_DIFFICULTY_FIELDWATCH=1`), which also ends the
+  short freezes at Esc and mission select. When on, it recognises its own traps under Proton, turns itself off once it
+  has what it needs, and stays off on a PC where the self-test it runs first fails (#124, #127, #197).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
