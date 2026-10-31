@@ -1044,12 +1044,17 @@ static void SetupMod(HfMod* mod)
     mod->log = OpenLog(logName);
     if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
     mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    DWORD loadError = mod->module == NULL ? GetLastError() : 0;
     InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
     /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
     if (init == NULL)
     {
-        Note("%s: not loaded (%s)", mod->id, mod->module == NULL ? "the DLL could not be loaded" : "it exports no hellforge_mod_init");
+        /* Windows error 4551 (and 577): code integrity refused the DLL, as Smart App Control does an unsigned one (SmartAppControl.cs). */
+        if (mod->module == NULL && (loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582)))
+            Note("%s: not loaded (the DLL could not be loaded: Windows error %lu, an Application Control policy such as Smart App Control blocked it)", mod->id, (unsigned long)loadError);
+        else if (mod->module == NULL) Note("%s: not loaded (the DLL could not be loaded: Windows error %lu)", mod->id, (unsigned long)loadError);
+        else Note("%s: not loaded (it exports no hellforge_mod_init)", mod->id);
         if (mod->module != NULL) FreeLibrary(mod->module);
         return;
     }
