@@ -12,7 +12,8 @@ sealed class SetupForm : Form
     const string ProgramName = "HellForge.exe";
     readonly TextBox folder = new() { Dock = DockStyle.Fill };
     readonly Button browse = new() { Text = "Browse...", AutoSize = true };
-    readonly Label note = new() { AutoSize = true, MaximumSize = new(560, 0), ForeColor = Color.DarkOrange };
+    // UseMnemonic off: a note may name "App & browser control", whose & a label would take for a mnemonic
+    readonly Label note = new() { AutoSize = true, MaximumSize = new(560, 0), ForeColor = Color.DarkOrange, UseMnemonic = false };
     readonly ProgressBar progress = new() { Dock = DockStyle.Fill, Maximum = 1000 };
     readonly Label status = new() { AutoSize = true, MaximumSize = new(560, 0) };
     readonly Button install = new() { Text = "Install", AutoSize = true, MinimumSize = new(96, 0) };
