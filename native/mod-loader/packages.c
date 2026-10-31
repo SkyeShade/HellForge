@@ -286,12 +286,14 @@ static void PackagesRequest(void)
 }
 
 static void EventsTick(void); /* events.c */
+static void ArmoryDiagTick(void); /* armory_diag.c */
 
 static void TickDetour(void* manager, float dt)
 {
     InterlockedExchange64(&g_tickLast, (LONG64)GetTickCount64());
     EventsTick();
     PackagesRequest();
+    ArmoryDiagTick();
     LONG count = g_tickCount;
     for (LONG i = 0; i < count; i++) g_ticks[i].callback(g_ticks[i].mod, dt, g_ticks[i].user);
     g_tickOriginal(manager, dt);

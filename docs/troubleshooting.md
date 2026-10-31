@@ -8,6 +8,7 @@ and [ask](#where-to-ask).
 - [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
+- [In the game](#in-the-game): blank Armory icons
 - [Playing with friends](#playing-with-friends)
 - [Collecting logs](#collecting-logs) · [Where to ask](#where-to-ask)
 
@@ -242,6 +243,17 @@ the way to the game copy is a link: a junction or symbolic link (a Documents fol
 one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
 it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example
 `C:\HellForge`), or undo the link or compression at the path the message names, then run Settings > Installation.
+
+## In the game
+
+### Armory icons are blank
+
+The game draws every Armory icon itself (weapons, helmets, armour, capes), a page at a time, and scrolling hands it the
+next page. An icon stays blank until the game has drawn its page, and the game waits for the item's textures to load
+first. `--toaster_mode` in Settings > Launch options turns texture loading off, so the icons never appear: remove it
+(the launcher warns about it under the box). If icons stay blank without it, wait ten seconds on the Armory, then
+Save logs to Desktop and send the zip: `modloader.log` then has an "armory thumbnails: no progress" line naming the
+items the game is waiting on.
 
 ## Playing with friends
 

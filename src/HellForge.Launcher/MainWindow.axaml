@@ -420,6 +420,7 @@
                 <TextBlock Text="LAUNCH OPTIONS" Classes="h2" />
                 <TextBox x:Name="LaunchOptionsBox" Watermark="e.g. --use-d3d11" MaxLength="1024" VerticalContentAlignment="Center" />
                 <TextBlock x:Name="LaunchOptionsProblem" Classes="muted" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
+                <TextBlock x:Name="LaunchOptionsWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Options for the game's command line, as in Steam's Launch Options: --use-d3d11 starts it with DirectX 11, for one. Steam's &quot;%command% --use-d3d11&quot; works too. HellForge's own options come first. Applies to the next session." />
               </StackPanel>

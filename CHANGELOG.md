@@ -38,6 +38,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only

@@ -173,6 +173,13 @@ public partial class MainWindow : Window
                 BootProgress.IsVisible = true;
                 BootProgress.Value = 400;
                 await Task.Delay(1500);
+                // HELLFORGE_LAUNCHER_SHOT_SHOW=<control name> scrolls its page so that control is near the picture's top.
+                if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_SHOW") is { Length: > 0 } show && this.FindControl<Control>(show) is { } shown &&
+                    Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<ScrollViewer>(shown) is { Content: Visual content } viewer && shown.TranslatePoint(default, content) is { } at)
+                {
+                    viewer.Offset = new Vector(0, Math.Max(0, at.Y - 120));
+                    await Task.Delay(500);
+                }
                 var size = new PixelSize((int)Bounds.Width, (int)Bounds.Height);
                 using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size);
                 bitmap.Render(this);
@@ -258,6 +265,7 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
@@ -875,14 +883,17 @@ public partial class MainWindow : Window
         Close();
     }
 
-    // What is wrong with the typed launch options, under their box (nothing when they can be used).
+    // What is wrong with the typed launch options, under their box (nothing when they can be used), and what they do that a
+    // player would not expect (GameLaunchOptions.Warnings).
     void ShowLaunchOptionsProblem()
     {
-        string? problem = null;
-        try { HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
+        string? problem = null, warning = null;
+        try { warning = string.Join(" ", HellForge.Core.GameLaunchOptions.Warnings(HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text))); }
         catch (InvalidDataException error) { problem = error.Message; }
         LaunchOptionsProblem.Text = problem;
         LaunchOptionsProblem.IsVisible = problem != null;
+        LaunchOptionsWarning.Text = warning;
+        LaunchOptionsWarning.IsVisible = !string.IsNullOrEmpty(warning);
     }
 
     static IBrush Solid(string color) => new ImmutableSolidColorBrush(Color.Parse(color));
