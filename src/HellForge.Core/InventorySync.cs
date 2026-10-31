@@ -117,8 +117,9 @@ public static class InventorySync
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)]);
     }
 
-    // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
-    public static Process? StartCleanup(string proxyPath) => StartElevated(proxyPath, ["--cleanup"]);
+    // Removes a leftover hosts line and CA (one UAC prompt), its log and any hosts failure (CaptureHosts.ReadFailure) in
+    // logDir. Null when elevation was declined.
+    public static Process? StartCleanup(string proxyPath, string logDir) => StartElevated(proxyPath, ["--cleanup", "--evidence", logDir]);
 
     static Process? StartElevated(string path, string[] arguments)
     {
