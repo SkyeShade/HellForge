@@ -35,7 +35,7 @@ static class InventorySyncTests
             check(InventorySync.FindCaptureProxy(install) == proxy, "The installed capture was not found.");
         });
 
-        test("The capture's hosts line never joins the player's last entry, and cleanup removes only the capture's lines", () => Hosts(root, check));
+        test("The capture's hosts line never joins the player's last entry, cleanup removes only the capture's lines, and a read-only, missing or briefly held hosts file ends as it was", () => Hosts(root, check));
 
         test("A snapshot seal holds only for its files, its Steam account and this installation's key", () => Seals(root, check));
 
@@ -80,6 +80,64 @@ static class InventorySyncTests
             check(!CaptureHosts.Remove(hosts, Host), name + ": a second cleanup removed more.");
         }
         check(!CaptureHosts.Remove(Path.Combine(folder, "missing"), Host), "Cleanup of a missing file removed something.");
+
+        // No hosts file at all (and no etc folder): Add creates one, cleanup deletes it again.
+        var missing = Path.Combine(folder, "no-etc", "hosts");
+        CaptureHosts.Add(missing, Host);
+        check(File.ReadAllLines(missing).Any(line => line.Contains(CaptureHosts.Marker, StringComparison.Ordinal) && line.Contains(CaptureHosts.CreatedFlag, StringComparison.Ordinal)),
+            "A created hosts file does not say so.");
+        check(CaptureHosts.Remove(missing, Host) && !File.Exists(missing), "Cleanup kept the hosts file the capture created.");
+
+        // The launcher's message for a failed hosts write.
+        check(CaptureHosts.ReadFailure(folder) == null, "A failure is read without its file.");
+        CaptureHosts.WriteFailure(folder, "Another program kept the hosts file open.");
+        check(CaptureHosts.ReadFailure(folder) == "Another program kept the hosts file open.", "The failure did not round-trip.");
+        check(new HostsFileException(HostsFailure.Blocked, @"C:\Windows\System32\drivers\etc\hosts", null).Message.Contains("HostsFileHijack", StringComparison.Ordinal),
+            "A refused write does not name Defender's detection.");
+
+        // The read-only attribute and file locks are Windows behaviour.
+        if (!OperatingSystem.IsWindows()) return;
+        foreach (var (name, original) in new[] { ("read-only-no-newline", "# player\r\n0.0.0.0 foo.com"), ("read-only", "0.0.0.0 foo.com\r\n") })
+        {
+            var hosts = Path.Combine(folder, name);
+            File.WriteAllText(hosts, original);
+            File.SetAttributes(hosts, FileAttributes.ReadOnly | FileAttributes.Archive);
+            CaptureHosts.Add(hosts, Host);
+            check(File.GetAttributes(hosts).HasFlag(FileAttributes.ReadOnly), name + ": Add left the hosts file writable.");
+            var lines = File.ReadAllLines(hosts);
+            check(lines.Contains("127.0.0.1 " + Host) && lines.Contains("0.0.0.0 foo.com"), name + ": Add did not write past read-only, or changed the player's entry.");
+            check(lines.Any(line => line.Contains(CaptureHosts.ReadOnlyFlag, StringComparison.Ordinal)), name + ": the marker does not record read-only.");
+            // A crash between the write and the attribute: cleanup still restores read-only.
+            File.SetAttributes(hosts, FileAttributes.Archive);
+            check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
+            check(File.GetAttributes(hosts).HasFlag(FileAttributes.ReadOnly), name + ": cleanup after a crash left the hosts file writable.");
+            check(File.ReadAllLines(hosts).SequenceEqual(original.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)), name + ": cleanup changed the player's entries.");
+            File.SetAttributes(hosts, FileAttributes.Normal);
+        }
+
+        var locked = Path.Combine(folder, "locked");
+        File.WriteAllText(locked, "0.0.0.0 foo.com\r\n");
+        var retry = CaptureHosts.LockedRetry;
+        try
+        {
+            CaptureHosts.LockedRetry = TimeSpan.FromMilliseconds(400);
+            using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                HostsFailure? failure = null;
+                try { CaptureHosts.Add(locked, Host); }
+                catch (HostsFileException error) { failure = error.Failure; }
+                check(failure == HostsFailure.InUse, "A hosts file held open is not reported as in use.");
+            }
+            // Held open only briefly (an antivirus scan): the retry gets through.
+            CaptureHosts.LockedRetry = TimeSpan.FromSeconds(5);
+            var holder = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+            var release = Task.Delay(500).ContinueWith(_ => holder.Dispose(), TaskScheduler.Default);
+            CaptureHosts.Add(locked, Host);
+            release.Wait();
+            check(File.ReadAllLines(locked).Contains("127.0.0.1 " + Host), "A briefly held hosts file was not retried.");
+            check(CaptureHosts.Remove(locked, Host) && File.ReadAllLines(locked).SequenceEqual(["0.0.0.0 foo.com"]), "Cleanup after a retry changed the player's entries.");
+        }
+        finally { CaptureHosts.LockedRetry = retry; }
     }
 
     static void Seals(string root, Action<bool, string> check)
