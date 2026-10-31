@@ -227,7 +227,7 @@ HellForge's public lobbies go through its own directory instead (docs/multiplaye
 The census saw `CreateLobby`, `SetLobbyData`, `SetLobbyJoinable` and `LeaveLobby`, never `SetLobbyType`, so the
 lobby's type is the one asked for at creation. The table marks `eLobbyType` for the broker to adjust (`adjust` in
 `bridge-methods.json`, `BrokerApi.adjust`, run once every check of the table passed):
-- **Play with strangers off** (the default): a Public lobby (`2`) is made Friends only (`1`). Friends and invitees
+- **Play with strangers off:** a Public lobby (`2`) is made Friends only (`1`). Friends and invitees
   can still join it, and it is in no search. Strangers could reach no one anyway, so nothing is lost.
 - **Play with strangers on:** the type is left as the game asked. A stranger joining through the directory may join
   the host's Steam lobby too (a joiner posts it as its `platform_lobby`), which Friends only would refuse. To settle
@@ -235,8 +235,10 @@ lobby's type is the one asked for at creation. The table marks `eLobbyType` for 
   which keeps it Friends only with strangers on): if a stranger's join still works, it can be Friends only always.
 - Every other type is left as asked, and every request is logged: `broker: CreateLobby asks lobby type 2; Steam gets
   1 (Play with strangers off)`.
-- The broker reads the setting as the backend does (`mods/hellforge-mods.json` `playWithStrangers`, top level only, off
-  without the file). It looks at the file's time stamp every 2 s, in the broker's process. When the setting changes,
+- The broker reads the setting as the backend does (`mods/hellforge-mods.json` `"strangers": "on"`/`"off"`, top level
+  only; a legacy `playWithStrangers`: true still counts, and without a choice it is on because the broker runs only in a
+  sandboxed session). It looks at the file's time stamp
+  every 2 s, in the broker's process. When the setting changes,
   each lobby the game asked to be Public gets `SetLobbyType`, Public or Friends only.
 - `bridge_test.c` checks the clamp, a nested key that is not the setting, both changes, the test switch and a private
   lobby left alone.

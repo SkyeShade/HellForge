@@ -18,10 +18,16 @@ namespace HellForge.Core;
 //   native  engine edits HellForge applies in the running game's memory (docs/modding/data.md "Native edits in the manifest"):
 //     networkFieldTypes  widen a named network field type (only widen; kind, bits and min must be as expected);
 //     componentWrites    set u32 fields of an entity's component record, only from their expected vanilla value.
-// A gameplay mod changes how the game plays; friends must run the same gameplay mods to play together.
+// A gameplay mod changes how the game plays; friends must run the same shared gameplay mods to play together, while a
+// per-player one (stats, and later client-only data) each player keeps their own.
 public sealed record NetworkFieldTypeEdit(string Name, int ExpectKind, int ExpectBits, int ExpectMin, int Bits);
 public sealed record ComponentFieldEdit(string Name, int Offset, uint Expect, uint Value);
 public sealed record ComponentWrite(string Component, ulong Resource, IReadOnlyList<ComponentFieldEdit> Fields);
+
+// Whether friends need the same copy of a gameplay mod (Shared: it changes what every machine sees or needs) or each
+// player runs their own (PerPlayer: stats and client-only content, which co-op leaves to each machine).
+public enum CoopTier { Shared, PerPlayer }
+
 public sealed record ModManifest(string Id, string Name, string Version, string Description, bool Gameplay, string Folder,
     IReadOnlyList<NetworkFieldTypeEdit> NetworkFieldTypes, IReadOnlyList<ComponentWrite> ComponentWrites, IReadOnlyList<string> DataFiles)
 {
@@ -53,6 +59,12 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public IReadOnlyList<string> PackFolders { get; init; } = [];
     // The Mods page's groups: gameplay mods (friends need the same ones; the same order is up to them) and cosmetic ones.
     public bool Cosmetic => !Gameplay;
+    // Whether friends need the same copy (CoopTier.Shared) or each player keeps their own (CoopTier.PerPlayer), from the
+    // manifest's "coop" or what the mod changes (ModCatalog.Tier).
+    public CoopTier Coop { get; init; } = CoopTier.Shared;
+    // The mod's co-op level: changes other machines see or need raise it (the manifest's "coopLevel"). Copies of a mod with
+    // the same level play together whatever their files (ModSets.MatchLines); one without it is compared by its files.
+    public int? CoopLevel { get; init; }
     // The picture the Mods page shows for it (a manifest's "icon", a pack's IconPath): a file in its folder, or null.
     public string? Icon { get; init; }
     // A patch of it holds Lua scripts (ModCatalog.HoldsLua): an HD2Runtime or Bingus Shared Loader mod, or one made for them.
@@ -76,7 +88,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 15;
+    public const int SdkVersion = 16;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -253,9 +265,105 @@ public static partial class ModCatalog
         var icon = ReadIcon(root, folder);
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
-        return new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
+        var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
             { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
-              Premium = PremiumList(root) };
+              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root) };
+        return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
+    }
+
+    // The changes a tier is read from, so DecideTier keeps a short argument list.
+    readonly record struct TierFacts(string? Code, bool Source, IReadOnlyList<string> Data, bool Lua, bool Spec,
+        IReadOnlyList<StatsEdit> Stats, IReadOnlyList<NetworkFieldTypeEdit> Types, IReadOnlyList<ComponentWrite> Writes);
+
+    // The tier the manifest says, or the one its changes decide: a stat mod's edits are per player already
+    // (docs/multiplayer.md "Stats in co-op"), so the same edits in a mod are the player's own too. A data patch whose every
+    // resource is client-only (a texture, material, sound, font or strings) is too; anything else is shared. The wire
+    // carries network field types to every machine, and a data spec's resources are numbered alike on every machine: a mod
+    // with either cannot be the player's own.
+    static CoopTier DecideTier(JsonElement root, ModManifest mod, TierFacts facts)
+    {
+        var statsOnly = facts.Stats.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && facts.Data.Count == 0 && !facts.Spec &&
+            facts.Types.Count == 0 && facts.Writes.Count == 0;
+        var dataOnly = facts.Data.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && !facts.Spec &&
+            facts.Stats.Count == 0 && facts.Types.Count == 0 && facts.Writes.Count == 0;
+        var tier = ReadCoop(root) ?? (statsOnly || dataOnly && ClientOnlyPatches(mod) ? CoopTier.PerPlayer : CoopTier.Shared);
+        if (tier == CoopTier.PerPlayer && facts.Types.Count > 0)
+            throw new InvalidDataException("coop is per-player, but native.networkFieldTypes change the network for every player.");
+        if (tier == CoopTier.PerPlayer && facts.Spec)
+            throw new InvalidDataException("coop is per-player, but its data spec (hellforge-data.json) adds resources every machine numbers alike.");
+        return tier;
+    }
+
+    // The resource types a client may see differently without splitting the players: pictures, sounds, fonts and text.
+    static readonly HashSet<ulong> ClientOnlyTypes = [ResourceTypes.Texture, ResourceTypes.Material, ResourceTypes.Hash("wwise_bank"),
+        ResourceTypes.Hash("wwise_stream"), ResourceTypes.Hash("wwise_dep"), ResourceTypes.Hash("wwise_metadata"),
+        ResourceTypes.Hash("wwise_properties"), ResourceTypes.Hash("font"), ResourceTypes.Hash("strings")];
+
+    // Answers kept by the mod's content hash, as the digest's zip hashes are: the same bytes are classified once.
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> clientOnlyPatches = new(StringComparer.Ordinal);
+
+    // Whether every resource of every data/ patch is one the client alone sees. A patch that cannot be read, has no
+    // resources or holds any other type makes the mod shared.
+    static bool ClientOnlyPatches(ModManifest mod)
+    {
+        string key;
+        try { key = ModSets.ContentHash(mod); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or OverflowException or IndexOutOfRangeException)
+        {
+            return false;
+        }
+        if (clientOnlyPatches.TryGetValue(key, out var known)) return known;
+        var result = PatchesAreClientOnly(mod);
+        clientOnlyPatches[key] = result;
+        return result;
+    }
+
+    static bool PatchesAreClientOnly(ModManifest mod)
+    {
+        var folder = Path.Combine(mod.Folder, "data");
+        var patches = mod.DataFiles.Where(f => PatchFile().Match(f) is { Success: true } match && match.Groups[2].Length == 0).ToList();
+        if (patches.Count == 0) return false;
+        foreach (var name in patches)
+        {
+            try
+            {
+                var archive = ReadShared(Path.Combine(folder, name));
+                var gpuPath = Path.Combine(folder, name + ".gpu_resources");
+                var streamPath = Path.Combine(folder, name + ".stream");
+                var gpu = File.Exists(gpuPath) ? ReadShared(gpuPath) : Array.Empty<byte>();
+                var stream = File.Exists(streamPath) ? ReadShared(streamPath) : Array.Empty<byte>();
+                var resources = ResourceArchive.Read(archive, gpu, stream);
+                if (resources.Count == 0 || resources.Keys.Any(key => !ClientOnlyTypes.Contains(key.Type))) return false;
+            }
+            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or OverflowException or IndexOutOfRangeException)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The manifest's "coop": shared or per-player, or null when it does not say (the mod's changes decide).
+    static CoopTier? ReadCoop(JsonElement root)
+    {
+        if (!root.TryGetProperty("coop", out var value)) return null;
+        if (value.ValueKind != JsonValueKind.String) throw new InvalidDataException("coop must be \"shared\" or \"per-player\".");
+        return value.GetString() switch
+        {
+            "shared" => CoopTier.Shared,
+            "per-player" => CoopTier.PerPlayer,
+            _ => throw new InvalidDataException("coop must be \"shared\" or \"per-player\".")
+        };
+    }
+
+    // The manifest's "coopLevel": a non-negative integer other machines' copies are compared by, or null
+    // when the mod does not say (then its files are compared).
+    static int? ReadCoopLevel(JsonElement root)
+    {
+        if (!root.TryGetProperty("coopLevel", out var value)) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var level) || level < 0)
+            throw new InvalidDataException("coopLevel must be a whole number of zero or more.");
+        return level;
     }
 
     // "premium": the premium content the mod recreates or builds on (PremiumContent), each entry once.
@@ -392,9 +500,8 @@ public static partial class ModCatalog
     // name, version and a hash of its part of the digest.
     public static (string Digest, List<ModFingerprint> Mods) Modlist(IEnumerable<ModManifest> mods)
     {
-        var compared = Compared(mods).ToList();
-        var lines = string.Concat(compared.Select(m => m.Lines));
-        var digest = lines.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines)))[..32].ToLowerInvariant();
+        var compared = Compared(mods).Select(m => (m.Mod, Lines: ModSets.MatchLines(m.Mod, m.Lines))).ToList();
+        var digest = ModSet.DigestOf(string.Concat(compared.Select(m => m.Lines)));
         return (digest, [.. compared.Select(m => new ModFingerprint(m.Mod.Id, m.Mod.Name, m.Mod.Version,
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.Lines)))[..16].ToLowerInvariant()))]);
     }
@@ -412,24 +519,49 @@ public static partial class ModCatalog
         }
     }
 
-    // The mods the digest counts: gameplay mods except Local Stats.
-    public static bool Counted(ModManifest mod) => mod.Gameplay && mod.Id != LocalStatsId;
+    // The mods the digest counts: shared gameplay mods except Local Stats. A per-player mod is each player's own, like the
+    // stats edits it makes.
+    public static bool Counted(ModManifest mod) => mod.Gameplay && mod.Id != LocalStatsId && Tier(mod) == CoopTier.Shared;
+
+    // Whether friends need the same copy of a mod (CoopTier), as its manifest says or its changes decide (ParseManifest).
+    public static CoopTier Tier(ModManifest mod) => mod.Coop;
 
     // The files the digest counts in a mod (relative, '/'), in order, with the SHA-256 it takes from the mod's zip (null:
     // read the file). A zipped mod by what its zip ships, not the files it writes into its unpacked folder as it runs (key
     // bindings, a cache: each player's own); a zip that cannot be read again is compared by its folder. A bundled mod (the
     // in-game editor) by the files HellForge ships for it, not what the player saved beside them. A source mod by its
     // sources: the DLL in its folder (an IDE's build) is not what loads (ModBuilds).
+    // A mod without code cannot read a file by name, so documentation, pictures and licences are not part of it: only what
+    // HellForge or the game opens (data/, the manifests, the stats file, the data spec and its inputs, src/) is counted.
     internal static IEnumerable<(string Path, string? Sha256)> DigestFiles(ModManifest mod)
     {
         var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
         var shipped = BundledMods.ShippedFiles(mod.Folder);
         var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
+        var specInputs = mod.HasDataSpec ? DataSpecs.Load(mod.Folder)?.Inputs.ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
         return files.Where(f => !IsWorkspaceFile(f))
             .Where(f => shipped == null || shipped.Contains(f))
             .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
+            .Where(f => mod.HasCode || mod.HasSource || !UnloadedFile(f, specInputs))
             .Order(StringComparer.Ordinal)
             .Select(f => (f, zipped?[f]));
+    }
+
+    // Documentation, pictures and licences that HellForge and the game never load. A data spec's own inputs (its PNG and
+    // OBJ files) are read by ModDataBuilder and stay counted, as does everything under data/ and src/ and the files that
+    // make up the mod.
+    static readonly string[] UnloadedExtensions = [".md", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg", ".psd", ".xcf"];
+    static readonly string[] UnloadedNames = ["LICENSE", "COPYING", "README", "CHANGELOG", "NOTICE"];
+
+    static bool UnloadedFile(string relative, IReadOnlySet<string>? specInputs)
+    {
+        if (specInputs?.Contains(relative) == true) return false;
+        if (relative.StartsWith("data/", StringComparison.OrdinalIgnoreCase) || relative.StartsWith("src/", StringComparison.OrdinalIgnoreCase)) return false;
+        var name = Path.GetFileName(relative);
+        if (name.Equals(ManifestName, StringComparison.OrdinalIgnoreCase) || name.Equals(LegacyManifestName, StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(StatsData.FileName, StringComparison.OrdinalIgnoreCase) || name.Equals(DataSpecs.FileName, StringComparison.OrdinalIgnoreCase)) return false;
+        if (UnloadedNames.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) return true;
+        return UnloadedExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
     }
 
     internal static bool SourceBuildOutput(ModManifest mod, string relative) =>
@@ -768,10 +900,11 @@ public static class ModSettings
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
         public bool HostStats { get; set; }
-        // Off by default: a stranger's traffic only reaches this machine when the player turns this on. Friends are
-        // always accepted. Off, this machine's lobby is not listed in the lobby directory, a search shows friends'
-        // listings only, and a join to a stranger's lobby is refused with the reason (docs/multiplayer.md).
-        public bool PlayWithStrangers { get; set; }
+        // The choice lives under "strangers" ("on"/"off"); a legacy "playWithStrangers" true is a deliberate old choice,
+        // while legacy false was written by every settings save and means never chosen. Null: never chosen.
+        public bool? PlayWithStrangers { get; set; }
+        // The first session that ran with strangers on by default showed its warning, in the launcher's Play page.
+        public bool StrangersWarned { get; set; }
     }
 
     public static State Read(string modsFolder)
@@ -816,7 +949,19 @@ public static class ModSettings
         if (root.TryGetProperty("showEditedStats", out var edited) && edited.ValueKind == JsonValueKind.True) state.ShowEditedStats = true;
         if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
         if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
-        if (root.TryGetProperty("playWithStrangers", out var strangers) && strangers.ValueKind == JsonValueKind.True) state.PlayWithStrangers = true;
+        state.PlayWithStrangers = ReadStrangers(root);
+        if (root.TryGetProperty("strangersWarned", out var warned) && warned.ValueKind == JsonValueKind.True) state.StrangersWarned = true;
+    }
+
+    // The stranger choice: "strangers" wins when present; a legacy playWithStrangers true was a deliberate on, while a
+    // legacy false was written for everyone who saved any setting before the choice existed, so it means not chosen.
+    static bool? ReadStrangers(JsonElement root)
+    {
+        if (root.TryGetProperty("strangers", out var current))
+            return current.ValueKind == JsonValueKind.String
+                ? current.GetString() switch { "on" => true, "off" => false, _ => null }
+                : null;
+        return root.TryGetProperty("playWithStrangers", out var legacy) && legacy.ValueKind == JsonValueKind.True ? true : null;
     }
 
     static void ReadOrder(JsonElement root, State state)
@@ -884,9 +1029,14 @@ public static class ModSettings
 
     // Hosting: whether this player's Public lobbies are listed on other HellForge players' Galactic Map.
     public static void SetListPublic(string modsFolder, bool list) => Change(modsFolder, state => state.ListPublic = list);
-    // Multiplayer: whether people who are not Steam friends can reach this machine through the lobby directory.
-    public static void SetPlayWithStrangers(string modsFolder, bool allow) => Change(modsFolder, state => state.PlayWithStrangers = allow);
-    public static bool PlayWithStrangers(string modsFolder) => Read(modsFolder).PlayWithStrangers;
+    // Multiplayer: the player's explicit choice for strangers, or null when they never chose (the sandbox decides then).
+    public static void SetPlayWithStrangers(string modsFolder, bool? allow) => Change(modsFolder, state => state.PlayWithStrangers = allow);
+    public static bool? PlayWithStrangers(string modsFolder) => Read(modsFolder).PlayWithStrangers;
+    // Whether strangers may reach this machine now: the player's choice if they made one, else whether the game is
+    // sandboxed (the task's default: a sandboxed game takes strangers, an unsandboxed one does not).
+    public static bool StrangersEffective(bool? chosen, bool sandboxed) => chosen ?? sandboxed;
+    // The first session with strangers on by default showed the warning; later ones do not.
+    public static void SetStrangersWarned(string modsFolder) => Change(modsFolder, state => state.StrangersWarned = true);
 
     // Hosting: whether friends play with this player's editor changes instead of their own.
     public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
@@ -912,9 +1062,12 @@ public static class ModSettings
             ["share"] = state.Share,
             ["showEditedStats"] = state.ShowEditedStats,
             ["listPublic"] = state.ListPublic,
-            ["hostStats"] = state.HostStats,
-            ["playWithStrangers"] = state.PlayWithStrangers
+            ["hostStats"] = state.HostStats
         };
+        // Written only when the player chose, so "never chosen" survives a round trip and the sandbox default applies. The
+        // old playWithStrangers key is not written; a legacy true is migrated to "on" by the next save.
+        if (state.PlayWithStrangers is { } chosen) root["strangers"] = chosen ? "on" : "off";
+        if (state.StrangersWarned) root["strangersWarned"] = true;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         File.WriteAllText(path + ".tmp", text);
         LastWritten = text;

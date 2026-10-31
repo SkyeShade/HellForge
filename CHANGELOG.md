@@ -13,9 +13,37 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
+  Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
+  (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
+  lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
+  in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
+  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  that lets them in, which you can turn on from the browser. A stranger's lobby that only a sandboxed game could join
+  says so, and how to turn the sandbox on for the next session.
 
 ### Changed
 
+- A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
+  or you do.
+- **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
+  - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
+    player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
+    names them. A mod's author can set this with the manifest's new `"coop"` field.
+  - READMEs, licences, pictures and documents in a mod without code no longer split players.
+  - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
+    players.
+  - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. The first time it applies, the launcher
+    shows the stranger warning once.
+  - **Players on HellForge 0.3 still play with you.** Their lobbies show on the Galactic Map and in the lobby browser,
+    yours show in theirs, and joins work both ways, MOD SYNC included. A lobby with Hell Forge's difficulty or Vanilla
+    Plus on is not listed for 0.3 players, though 0.3 friends who run the same mod still join it. Versions before 0.3
+    can't join you, and you can't join them.
+  - A mod's author can give it a `"coopLevel"` in its manifest: players whose copies have the same level play together,
+    whatever version of the mod each has, so a fix release no longer splits them.
+  - With more than 50 HellForge lobbies listed (the most Steam returns in one search), lobbies you can join right away,
+    with your mods or after a download, are searched for and shown first.
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
@@ -38,6 +66,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
+  places, a squad 4. A full squad's listing now has no free slot.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -77,6 +107,14 @@ On `dev`, since 0.3.0-beta.
 
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge lobby
+  with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
+  opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
+  keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
+  setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`; show the player the
+  launcher's warning before turning strangers on; `HF_LOBBY_FIX_SANDBOX` has no ask: the launcher's Sandbox setting,
+  for the next session). A mod that draws a browser of its own asks `HF_BROWSE_CLAIM`, and HellForge's in-game editor
+  then shows none (`HfBrowseState.owner`). How to build one: [docs/lobby-browser.md](docs/lobby-browser.md).
 
 ### For launcher developers
 

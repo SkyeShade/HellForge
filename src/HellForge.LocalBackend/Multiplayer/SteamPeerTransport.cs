@@ -156,7 +156,8 @@ public sealed unsafe class SteamPeerTransport : IPeerTransport, IFriendSource
                     byte* value;
                     fixed (byte* k = key) value = friendPresence(friends, friend, k);
                     if (value == null || *value == 0) continue;
-                    found.Add(new FriendPresence.Friend(friend, Marshal.PtrToStringUTF8((nint)personaName(friends, friend)) ?? "Steam friend"));
+                    found.Add(new FriendPresence.Friend(friend, Marshal.PtrToStringUTF8((nint)personaName(friends, friend)) ?? "Steam friend",
+                        Marshal.PtrToStringUTF8((nint)value)));
                 }
                 hellforgeFriends = found;
                 friendIds = all;

@@ -33,7 +33,7 @@ field and constant you will meet.
      "version": "0.1.0",
      "description": "Liberator Tweaks: a HellForge code mod. Source in src/.",
      "gameplay": true,
-     "code": { "dll": "my_mod.dll", "sdk": 15 }
+     "code": { "dll": "my_mod.dll", "sdk": 16 }
    }
    ```
 
@@ -58,7 +58,7 @@ It creates `mods\liberator-tweaks` (the part of the id after the dot), with `"dl
 
 ```
 mods/liberator-tweaks/
-  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 15}
+  hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 16}
   src/my_mod.c         the mod's C source
   CMakeLists.txt       for IDEs (Rider, CLion, VS Code)
   CMakePresets.json    the IDE build settings: HellForge's pinned Zig, CMake and Ninja
@@ -73,7 +73,8 @@ The manifest's keys:
 | `id` | the mod's unique id, `owner.mod-name` |
 | `name`, `description` | what players see on the Mods page |
 | `version` | raise it for every release; friends compare it |
-| `gameplay` | `true`: friends must run the same gameplay mods to play together |
+| `gameplay` | `true`: shared gameplay mods must match to play together; per-player ones need not (see `coop`) |
+| `coop` | optional: `"shared"` (everyone needs it) or `"per-player"` (each player keeps their own; stats-only and texture/sound/text-only mods default to this). A per-player mod cannot have network field types or a data spec |
 | `code.dll` | the DLL's file name. HellForge builds it from every `.c` and `.cpp` file under `src/` |
 | `code.sdk` | the mod SDK version the mod needs; this HellForge provides SDK 13 |
 

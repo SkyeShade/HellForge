@@ -113,10 +113,20 @@
             </StackPanel>
           </Border>
 
-          <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
-          <Border x:Name="ModSyncCard" Grid.Row="3" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
-            <StackPanel x:Name="ModSyncPanel" Spacing="8" />
-          </Border>
+          <StackPanel Grid.Row="3">
+            <!-- the stranger warning, once, when the first sandboxed session runs with strangers on by default -->
+            <Border x:Name="StrangersNoticeCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel Spacing="6">
+                <TextBlock Text="PLAY WITH STRANGERS" Classes="h2" Margin="0" />
+                <SelectableTextBlock x:Name="StrangersNoticeText" Foreground="#FFA235" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
+            <Border x:Name="ModSyncCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel x:Name="ModSyncPanel" Spacing="8" />
+            </Border>
+          </StackPanel>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel VerticalAlignment="Bottom" Spacing="4" Margin="0,0,24,4">
@@ -369,8 +379,10 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
                 <CheckBox x:Name="StrangersBox" Content="Play with strangers" />
+                <TextBlock x:Name="StrangersEffectiveText" Classes="muted" TextWrapping="Wrap" />
+                <Button x:Name="StrangersDefaultButton" Classes="ghost" Content="Use default" HorizontalAlignment="Left" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Off: only Steam friends reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs." />
+                           Text="Friends always reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs. Off: friends only." />
                 <TextBlock x:Name="StrangersWarning" Foreground="#FFA235" TextWrapping="Wrap"
                            Text="Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It applies within a few seconds, also during a session." />
               </StackPanel>

@@ -133,7 +133,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
-        host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder);
+        host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder, settings.Sandboxed);
         // The transport knows this machine's SteamID only once started.
         if (host.transport != null && accountKeys != null) host.keyExchange = new AccountKeyExchange(host.transport, accountKeys, host.Log);
         // before the pipes: the game's first lobby must not be missed
@@ -155,10 +155,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
         // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
         var verifiedSource = VerifiedMods.UseInstallation(install);
         Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
-        Sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
+        var sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
             ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
-        Lobby.ModsRefused = Sync.OfferMods;
-        Sync.Expected = Lobby.JoinedRecently;
+        Sync = sync;
+        Lobby.ModsRefused = sync.OfferMods;
+        Lobby.LegacyAdmits = sync.LegacyAdmits;
+        Lobby.JoinAs = sync.JoinAs;
+        sync.Expected = Lobby.JoinedRecently;
+        // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
+        // differences in the corner.
+        Lobby.ModSetWire = sync.OwnWire;
+        Lobby.LocalJoinStarted += (host, lobbyId) => sync.JoinStarted(host, lobbyId);
+        sync.Notice += text => Stats?.Notice("brief", text, []);
         if (Stats?.Live is { } live)
         {
             Sync.Display = new LiveSyncDisplay(live);
@@ -168,11 +176,19 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"Mod sync: {(own != null ? own.Mods.Count + " gameplay mods to share" : "nothing to share")}; offers go to {(Sync.Display != null ? "the game" : "the session log only")}.");
     }
 
+    // The lobby browser in this session's game (LiveBrowse, SDK 16), over the live-edit pipe mod sync shares.
+    public LiveBrowse? Browser { get; private set; }
+    public void ShowBrowser(BrowseApi browse)
+    {
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, modsFolder);
+    }
+
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
     void StartRejoin(string file, string modDigest)
     {
-        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow);
+        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow, Sync?.Own);
         if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
+        if (target.Legacy) Sync?.Rejoining(target.Host, target.Digest);
         var rejoin = Rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
             (kind, title, lines) =>
             {
@@ -185,11 +201,11 @@ public sealed class MultiplayerHost : IAsyncDisposable
 
     // The lobby directory and the gate for strangers, who reach this machine through it only.
     // modsFolder: where the Mods page keeps the switch that lists this player's public lobbies (ModSettings.ListPublic; on
-    // without one).
-    void StartDirectory(ILobbyDirectory? directory, string? modsFolder)
+    // without one). sandboxed: whether this session's game is, which decides the stranger default when the player never chose.
+    void StartDirectory(ILobbyDirectory? directory, string? modsFolder, bool sandboxed)
     {
         if (transport == null) return;
-        var setting = new StrangerSetting(modsFolder);
+        var setting = new StrangerSetting(modsFolder, sandboxed: sandboxed, log: Log);
         bool StrangersAllowed() => setting.Allowed;
         if (directory != null && presence != null)
             Directory = new DirectoryService(directory, Lobby, presence, transport.LocalId, pipes.SendLobby, Log, new DirectorySettings(Sync,
@@ -200,8 +216,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
         var link = transport;
         Lobby.JoinRefusal = peer => link.IsFriend(peer) || StrangersAllowed() ? null :
             ["This player is not a Steam friend, and Play with strangers is off.", "Turn it on in the launcher's Multiplayer settings to join public lobbies."];
-        Log((Directory != null ? "Directory: public lobbies are listed and searched" : "Directory: off (no lobby directory for this link)") +
-            (StrangersAllowed() ? "; Play with strangers is on." : "; Play with strangers is off: friends only."));
+        Log(Directory != null ? "Directory: public lobbies are listed and searched" : "Directory: off (no lobby directory for this link)");
+        _ = StrangersAllowed(); // the first read logs which stranger rule applies and why
     }
 
     // A machine this one deals with: in a lobby hosted here, hosting one joined (or being joined) from here, a mod download,
@@ -332,6 +348,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (presence == null || transport is not IFriendSource source) return;
         var friends = source.HellForgeFriends;
         presence.SetFriends(friends);
+        // a friend whose presence gives HellForge 0.3's protocol is joined with it (ModSync.JoinAs)
+        foreach (var friend in friends.Where(f => f.Protocol != null))
+            if (friend.Protocol == LobbyService.LegacyProtocol) Sync?.LegacyHost(friend.SteamId, null);
+            else Sync?.NotLegacy(friend.SteamId);
         List<ulong> hello, periodic = [];
         lock (presenceGate)
         {

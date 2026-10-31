@@ -55,6 +55,20 @@ try
                 using var response = await client.SendAsync(request);
                 Check(response.StatusCode == HttpStatusCode.Forbidden, $"A request to {address.Authority} with {header} was served.");
             }
+            // The lobby browser's API takes the same check, and a backend without a browser says so.
+            using (var request = new HttpRequestMessage(HttpMethod.Get, "/hellforge/v1/lobbies"))
+            {
+                request.Headers.TryAddWithoutValidation("Origin", "https://attacker.example");
+                using var response = await client.SendAsync(request);
+                Check(response.StatusCode == HttpStatusCode.Forbidden, "The lobby list was served to a web page.");
+            }
+            using (var response = await client.GetAsync("/hellforge/v1/lobbies"))
+                Check(response.StatusCode == HttpStatusCode.OK && (await response.Content.ReadAsStringAsync()).Contains("\"available\":false"),
+                    "A backend without a lobby browser says it has none.");
+            using (var response = await client.PostAsync("/hellforge/v1/lobbies/" + Guid.NewGuid().ToString("D") + "/join", null))
+                Check(response.StatusCode == HttpStatusCode.ServiceUnavailable, "A join without a lobby browser is unavailable: " + response.StatusCode);
+            using (var response = await client.PostAsync("/hellforge/v1/lobbies", null))
+                Check(response.StatusCode == HttpStatusCode.MethodNotAllowed, "The list takes GET only.");
             Console.WriteLine("PASS web pages: another Host, Origin, Referer and Sec-Fetch-* refused; 127.0.0.1, localhost and [::1] served");
         }
         finally { await app.StopAsync(); }
@@ -596,8 +610,9 @@ try
     results.Add(new { mode = "lobby-privacy", outcome = "passed" });
     Console.WriteLine("PASS lobby privacy: Public, Friends only and Invite only against friends, strangers and invited players; kicks and no rejoin; invitations; frame limits; the stranger gate's limits and memory");
     await ModSyncTests.Run(root, Check);
+    await ModSyncTests.Legacy(root, Check);
     results.Add(new { mode = "mod-sync", outcome = "passed" });
-    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's only when sandboxed; the live pipe");
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's only when sandboxed; the live pipe; HellForge 0.3 joiners and hosts");
     await RejoinTests.Run(root, Check);
     results.Add(new { mode = "rejoin", outcome = "passed" });
     Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");

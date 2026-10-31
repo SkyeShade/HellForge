@@ -93,9 +93,11 @@ Everything in `mods\` appears on HellForge's Mods page, whoever put it there. A 
 `hellforge-mod.json`. A cosmetic pack's id is `pack.<its manifest's Guid>`, or `pack.<its name, as a slug>` when the
 manifest has no Guid. `mods` prints them.
 
-The page has two groups:
+The page has three groups:
 
 - Gameplay mods: friends need the same ones in co-op, and they make up the modlist code.
+- Per-player gameplay mods: stats-only mods, texture/sound/text-only patch mods, and manifest `"coop": "per-player"`
+  mods. Each player keeps their own; they are not in the modlist code and never download in co-op.
 - Cosmetic mods, which include Lua mods (tag `lua`: Bingus Shared Loader, HD2Runtime and the mods made for them). These
   are client-only and never part of the modlist code; see [lua-bridge.md](lua-bridge.md).
 
@@ -130,18 +132,22 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--strangers yes|no|default`,
+`--game-options`), saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false,
- "file": "<installation>\\launcher-settings.json"}
+ "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": true,
+ "playWithStrangersChosen": null, "file": "<installation>\\launcher-settings.json"}
 ```
 
-`settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
+`settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
+`"strangers": "on"`/`"off"` (a legacy `playWithStrangers`: true still counts as on; legacy false means never chosen),
+and `default` removes it and lets the sandbox decide (on in a sandboxed session, off otherwise; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
-`launcher-settings.json`, and `play` has no option for it. A running session's backend picks it up within a few seconds.
+`launcher-settings.json`, and `play` has no option for it. The printed `playWithStrangers` is the effective bool for the
+next session's sandbox state; `playWithStrangersChosen` is `true`, `false` or `null`. A running session's backend picks
+the effective value up within a few seconds.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
@@ -192,6 +198,80 @@ so handle them too.
 
 One session runs at a time on a PC, because the game runs only once. `play` refuses while one is running, in any
 installation.
+
+### The lobby browser API
+
+While a session runs with multiplayer on, its local backend lists HellForge lobbies and can hand the game an
+invitation to one. The in-game lobby browser uses it, and a launcher of your own can too
+(`src/HellForge.LocalBackend/Multiplayer/BrowseApi.cs`).
+
+**Where.** The backend's address is in the session's `<run>\backend\ready.json`, under `"urls"`
+(`http://127.0.0.1:<port>`). It listens on loopback only.
+
+**Who may call it.** Programs on this PC only. Send no `Origin`, `Referer` or `Sec-Fetch-*` header, and keep `Host` as
+`127.0.0.1`, `localhost` or `[::1]` with the port. Anything else gets 403 with `{"errorCode": "HELLFORGE_NOT_FROM_THIS_PC"}`,
+so a web page in the player's browser cannot use it.
+
+**`GET /hellforge/v1/lobbies`.** Every HellForge lobby the lobby directory lists, with no planet or difficulty filter,
+plus Steam friends' lobbies that are not listed (Friends only). With Play with strangers off, strangers' lobbies are
+still listed (never contacted), as unjoinable with `"fix": "strangers"`. A new search runs at most once every 2 s;
+asking sooner returns the last list. 200 with:
+
+```json
+{"version": 1, "available": true, "searchedUtc": "2026-10-30T20:01:02.0000000Z",
+ "lobbies": [{"lobbyId": "<GUID>", "host": "<SteamID64>", "hostName": "Helldiver", "friend": false,
+              "source": "directory", "members": 1, "maxMembers": 4, "locked": false, "privacy": 0,
+              "difficulty": 7, "planetId": 168, "race": 2, "inMission": true, "older": false, "players": ["Helldiver"],
+              "joinable": false, "verdict": "unjoinable", "reason": "It needs mods installed by hand.",
+              "downloadBytes": 0,
+              "mods": [{"id": "author.mod", "name": "Mod", "version": "1.0", "tier": "shared", "class": "code",
+                        "action": "manual", "why": "stranger code, not sandboxed", "url": "https://..."}]}]}
+```
+
+- `available` is false, with a `reason` and an empty list, when the session has no multiplayer.
+- `source` is `directory` for a listed lobby, or `friend` for one heard only from a Steam friend. A friend's lobby has
+  no mod list until a join; its `verdict` is `unknown`.
+- `verdict` is one of: `ready` (the same shared mods), `download` (the join downloads `downloadBytes`), `trust` (a mod
+  waits for the player's trust in the MOD SYNC prompt), `unjoinable`, `blocked`, `full`, `locked`, `unknown`.
+  `joinable` is whether a join can be tried now; `reason` says why not.
+- `fix`, when present, is the player's setting that would let the lobby in: `strangers` (Play with strangers is off;
+  the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies whose host shares edited stats are
+  hidden; the Mods page) or `sandbox` (a stranger's unchecked mods download only in a sandboxed session: the launcher's
+  Settings > Sandbox, then a new session). This API does not change settings: point the player at them.
+- `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
+  `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
+  `inMission` is whether the host has a mission selected. `older` is whether the host runs HellForge 0.3, which this
+  HellForge joins in that version's protocol; its lobbies are joinable as any other's.
+- `mods` lists the host's gameplay mods (at most 64). `tier` is `shared` (must match) or `per-player` (each player's
+  own). A shared mod has the `action` a join would take (`have`, `download`, `trust`, `manual`, `blocked`, `update`),
+  and `why` when it keeps the lobby out (`share off`, `stranger code, not sandboxed`, `stranger raw data, not
+  sandboxed`, `bundled differs`, `blocked`). `url` is where to get it, when the author gave one.
+
+**`POST /hellforge/v1/lobbies/<lobbyId>/join`.** Hands this session's game an invitation to a lobby from a list of the
+last 2 minutes. The game shows it as a friend's invitation would, and joins only if the player accepts. A lobby with
+other shared mods then brings HellForge's MOD SYNC prompt, as any join does. Nothing downloads or is trusted without
+that prompt.
+- 202 `{"version": 1, "lobbyId": ..., "state": "invited", "message": ...}`.
+- 404 `HELLFORGE_LOBBY_UNKNOWN`: the lobby is not in a recent list. List again.
+- 409 `HELLFORGE_LOBBY_NOT_JOINABLE`, with `message` saying why (full, locked, or its mods).
+- 503 `HELLFORGE_MULTIPLAYER_OFF`: the session has no multiplayer.
+
+**`POST /hellforge/v1/lobbies/quick`.** Quick Play: the same invitation, to the best joinable lobby of a list at most
+2 s old: one with a slot free, a Steam friend's first, then the least a join needs (the same mods, then the smallest
+download, then a friend's lobby whose mods are known only on joining, then mods to trust), then the one with the most
+players.
+- 202 as a join's, with `hostName`.
+- 404 `HELLFORGE_NO_JOINABLE_LOBBY`: nothing can be joined now.
+- 503 `HELLFORGE_MULTIPLAYER_OFF`.
+
+The routes take only these methods: anything else is 405 with `Allow`. Version 1 only grows: fields may be added,
+none removed or changed in meaning. A change that breaks this goes to `/hellforge/v2`.
+
+A browser drawn inside the game (a code mod's, as HellForge's in-game editor draws its own) gets the same list and
+joins through the SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)),
+over the session's live-edit pipe, with no HTTP of its own. `browse_state`'s `terminal` count goes up each time the
+ship's information terminal opens the browser. [lobby-browser.md](lobby-browser.md) is the guide to building one, and
+`HF_BROWSE_CLAIM` makes HellForge's own step aside for it.
 
 ### Logs
 

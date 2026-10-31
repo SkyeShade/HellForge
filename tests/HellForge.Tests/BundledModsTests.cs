@@ -137,5 +137,28 @@ static class BundledModsTests
             empty.Create(SupportedBuild.Current.BuildId);
             check(BundledMods.Sync(empty).Count == 0 && !Directory.Exists(Path.Combine(empty.Mods, BundledMods.EditorFolder)), "An app without bundled mods adds none.");
         });
+
+        test("Bundled mods count by their coopLevel, and a change of level splits players", () =>
+        {
+            string Player(string name, string dll, int level)
+            {
+                var install = new InstallLayout(Path.Combine(root, name));
+                install.Create(SupportedBuild.Current.BuildId);
+                var app = Directory.CreateDirectory(Path.Combine(BundledMods.Folder(install), "test.bundled")).FullName;
+                File.WriteAllText(Path.Combine(app, ModCatalog.ManifestName), $$$"""
+                    {"format":1,"id":"test.bundled","name":"Bundled","version":"1","gameplay":true,"coopLevel":{{{level}}},
+                     "code":{"dll":"mod.dll","sdk":1}}
+                    """);
+                File.WriteAllText(Path.Combine(app, "mod.dll"), dll);
+                var problems = BundledMods.Sync(install);
+                var (mods, loadProblems) = ModCatalog.Load(install.Mods);
+                check(problems.Count == 0 && loadProblems.Count == 0 && mods.Count == 1 && mods[0].CoopLevel == level,
+                    $"{name}: the bundled mod loads: " + string.Join(" | ", problems.Concat(loadProblems)));
+                return ModCatalog.Digest(mods);
+            }
+            var one = Player("bundled-level-a", "build one", 1);
+            check(one == Player("bundled-level-b", "build two", 1), "Two bundled mods with the same coopLevel split friends by their files.");
+            check(one != Player("bundled-level-c", "build one", 2), "A changed coopLevel kept the same modlist code.");
+        });
     }
 }

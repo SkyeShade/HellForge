@@ -40,6 +40,14 @@ public sealed record ModSetEntry(string Id, string Name, string Version, string 
     public string? Folder { get; init; }
     public IReadOnlyList<ModFile> Files { get; init; } = [];
     public string? Url { get; init; }
+    // Whether every player needs this mod or each player keeps their own (ModCatalog.Tier). Absent on the wire reads as
+    // Shared, so sets written before this field parse.
+    public CoopTier Tier { get; init; } = CoopTier.Shared;
+    // The manifest's "coopLevel" of a mod that is not bundled (a bundled one's is in its Hash already): another copy of the
+    // same mod with the same level plays with it, whatever their files (ModSets.MatchLines). Null: compared by Hash.
+    public int? CoopLevel { get; init; }
+    // What two players' copies are compared by: the coop level's line when the mod has one, else its content hash.
+    public string MatchHash => CoopLevel is { } level ? ModSets.Hash(ModSets.CoopLine(Id, level)) : Hash;
 }
 
 // The gameplay mods a session runs, with the modlist digest they make. Written per session (mods-stage --modset) for the
@@ -47,29 +55,61 @@ public sealed record ModSetEntry(string Id, string Name, string Version, string 
 public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
 {
     public const int MaxMods = 256;
+    // The digest a HellForge before coop tiers (protocol hellforge-mp-8, 0.3) would take from this set once it plays the
+    // set's shared mods that are not bundled: their file lines alone (ModSets.Block). Null when a shared bundled mod is on,
+    // since such a HellForge counts bundled mods by their files, which differ between releases. This machine's own only.
+    public string? LegacyDigest { get; init; }
 
-    // The set of mods given in load order (bottom of the Mods page first): the mods the digest counts, from the digest's
-    // own lines (ModCatalog.Compared), so the set's digest is the modlist digest.
+    // The set of gameplay mods (both tiers) given in load order (bottom of the Mods page first). Its digest takes only the
+    // shared ones' lines (ModCatalog.Compared), so the set's digest stays the modlist digest; per-player entries travel
+    // for the joiner's brief notice but never for a download.
     public static ModSet Of(IReadOnlyList<ModManifest> loadOrder)
     {
         var entries = new List<ModSetEntry>();
         var lines = new StringBuilder();
-        var counted = loadOrder.Where(ModCatalog.Counted).ToList();
-        foreach (var (mod, files, block) in ModCatalog.Compared(counted))
+        var legacy = new StringBuilder();
+        var sharedBundled = false;
+        var gameplay = loadOrder.Where(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId).ToList();
+        var sharedOrder = loadOrder.Where(ModCatalog.Counted).ToList();
+        foreach (var mod in gameplay.OrderBy(m => m.Id, StringComparer.Ordinal))
         {
-            lines.Append(block);
+            var files = ModSets.Files(mod);
+            var block = ModSets.Block(mod, files);
+            var shared = ModCatalog.Counted(mod);
             var kind = ModSets.ClassOf(mod);
-            entries.Add(new ModSetEntry(mod.Id, mod.Name, mod.Version, ModSets.Hash(block), files.Sum(f => f.Size), kind, counted.IndexOf(mod))
-                { Folder = mod.Folder, Files = files, Url = kind == ModClass.Bundled ? null : mod.Url });
+            if (shared)
+            {
+                lines.Append(ModSets.MatchLines(mod, block));
+                if (kind == ModClass.Bundled) sharedBundled = true;
+                else legacy.Append(block);
+            }
+            entries.Add(new ModSetEntry(mod.Id, mod.Name, mod.Version, ModSets.Hash(block), files.Sum(f => f.Size), kind,
+                shared ? sharedOrder.IndexOf(mod) : gameplay.IndexOf(mod))
+                {
+                    Folder = mod.Folder, Files = files, Url = kind == ModClass.Bundled ? null : mod.Url, Tier = ModCatalog.Tier(mod),
+                    CoopLevel = kind == ModClass.Bundled ? null : mod.CoopLevel
+                });
         }
-        var digest = lines.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines.ToString())))[..32].ToLowerInvariant();
-        return new ModSet(digest, entries);
+        return new ModSet(DigestOf(lines.ToString()), entries) { LegacyDigest = sharedBundled ? null : DigestOf(legacy.ToString()) };
     }
+
+    // The modlist digest of these lines: "none" without any.
+    public static string DigestOf(string lines) =>
+        lines.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines)))[..32].ToLowerInvariant();
+
+    // The set as a HellForge before coop tiers reads it (LegacyDigest): its shared mods that are not bundled, with that
+    // digest; null when it has none (a shared bundled mod is on). Such a HellForge takes every entry as shared, so the
+    // per-player ones (and the per-player in-game editor) stay out, and it compares bundled mods by their files.
+    public ModSet? Legacy() =>
+        LegacyDigest is not { } digest ? null
+        : new ModSet(digest, [.. Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled).Select(m => m with { CoopLevel = null })]);
 
     public ModSetEntry? Find(string id, string hash) => Mods.FirstOrDefault(m => m.Id == id && m.Hash == hash);
 
-    // The mods as a refused join names them (ModCatalog.Modlist's fingerprints: the content hash's first 16 characters).
-    public List<ModFingerprint> Fingerprints() => [.. Mods.Select(m => new ModFingerprint(m.Id, m.Name, m.Version, m.Hash[..16]))];
+    // The shared mods as a refused join names them (ModCatalog.Modlist's fingerprints: the content hash's first 16
+    // characters). A per-player mod is not a difference: each player keeps their own.
+    public List<ModFingerprint> Fingerprints() =>
+        [.. Mods.Where(m => m.Tier == CoopTier.Shared).Select(m => new ModFingerprint(m.Id, m.Name, m.Version, m.MatchHash[..16]))];
 
     // local: with each mod's folder and files (the session's own file); otherwise what a joiner is sent.
     public JsonObject ToJson(bool local)
@@ -83,6 +123,8 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
                 ["class"] = ModSets.ClassName(mod.Class), ["order"] = mod.Order
             };
             if (mod.Url != null) item["url"] = mod.Url;
+            if (mod.Tier == CoopTier.PerPlayer) item["tier"] = ModSets.TierName(mod.Tier);
+            if (mod.CoopLevel is { } level) item["coopLevel"] = level;
             if (local)
             {
                 item["folder"] = mod.Folder;
@@ -90,7 +132,9 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
             }
             mods.Add((JsonNode?)item);
         }
-        return new JsonObject { ["format"] = 1, ["digest"] = Digest, ["mods"] = mods };
+        var json = new JsonObject { ["format"] = 1, ["digest"] = Digest, ["mods"] = mods };
+        if (local && LegacyDigest != null) json["legacyDigest"] = LegacyDigest;
+        return json;
     }
 
     public void Write(string path)
@@ -113,7 +157,8 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
         var mods = new List<ModSetEntry>();
         foreach (var node in list) mods.Add(ParseEntry(node, local));
         if (mods.Select(m => m.Id).Distinct(StringComparer.Ordinal).Count() != mods.Count) throw new InvalidDataException("The mod set names a mod twice.");
-        return new ModSet(digest, mods);
+        var legacy = local && set["legacyDigest"] is JsonValue legacyValue && legacyValue.TryGetValue<string>(out var given) && (given == "none" || ModSets.Hex(given, 32)) ? given : null;
+        return new ModSet(digest, mods) { LegacyDigest = legacy };
     }
 
     static ModSetEntry ParseEntry(JsonNode? node, bool local)
@@ -128,9 +173,17 @@ public sealed record ModSet(string Digest, IReadOnlyList<ModSetEntry> Mods)
         var hash = Text("hash", 64);
         if (!ModSets.Hex(hash, 64)) throw new InvalidDataException($"{id}: its content hash is malformed.");
         var kind = ModSets.ClassNamed(Text("class", 16));
+        var tier = !item.TryGetPropertyValue("tier", out var tierNode) ? CoopTier.Shared
+            : tierNode is JsonValue tierValue && tierValue.TryGetValue<string>(out var tierName) ? ModSets.TierNamed(tierName)
+            : throw new InvalidDataException("A mod set entry's tier is malformed.");
         // a url that is not a web address HellForge would open (or a bundled mod's) is left out, not the set
         var url = kind == ModClass.Bundled || item["url"] is not JsonValue address || !address.TryGetValue<string>(out var given) ? null : ModCatalog.WebAddress(given);
-        var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods)) { Url = url };
+        // a bundled mod's level is in its hash; for another, a level that is not a whole number of zero or more is malformed
+        int? level = !item.ContainsKey("coopLevel") || kind == ModClass.Bundled ? null
+            : item["coopLevel"] is JsonValue levelValue && levelValue.TryGetValue<int>(out var number) && number >= 0 ? number
+            : throw new InvalidDataException($"{id}: its coopLevel is malformed.");
+        var entry = new ModSetEntry(id, Text("name", 80), Text("version", 32), hash, Number("bytes", 1L << 40), kind, (int)Number("order", MaxMods))
+            { Url = url, Tier = tier, CoopLevel = level };
         if (!local) return entry;
         var files = new List<ModFile>();
         foreach (var file in item["files"] as JsonArray ?? [])
@@ -155,14 +208,32 @@ public static class ModSets
 
     // The lines the modlist digest takes from one mod: id and version, the data builder's version for a data spec (with
     // the supported game build, which every player has, it determines the generated bytes), then each file and its hash.
+    // A bundled mod with a coopLevel is a line of its own, not its files: a release's fixes do not split players while the
+    // level says what other machines see or need. One without the field keeps the file lines.
     public static string Block(ModManifest mod, IEnumerable<ModFile> files)
     {
+        if (mod.CoopLevel is { } level && ClassOf(mod) == ModClass.Bundled) return BundledLine(mod.Id, level);
         var lines = new StringBuilder();
         lines.Append(mod.Id).Append('|').Append(mod.Version).Append('\n');
         if (mod.HasDataSpec) lines.Append("data-builder|").Append(ModDataBuilder.Version).Append('\n');
         foreach (var file in files) lines.Append(file.Path).Append('|').Append(file.Sha256).Append('\n');
         return lines.ToString();
     }
+
+    // The lines a mod gives the modlist digest: its Block, or for a mod that is not bundled but has a coopLevel, the
+    // level's line (CoopLine). Its author raises the level for a change other machines see or need; copies with one level
+    // play together whatever their files, the data their specs build included. Mod sync still checks every downloaded
+    // byte against the content hash (Hash of the Block).
+    public static string MatchLines(ModManifest mod, string block) =>
+        mod.CoopLevel is { } level && ClassOf(mod) != ModClass.Bundled ? CoopLine(mod.Id, level) : block;
+
+    public static string BundledLine(string id, int level) => id + "|bundled|" + level.ToString(CultureInfo.InvariantCulture) + "\n";
+
+    // The co-op level a bundled mod of a HellForge before coop tiers (0.3) counts as: it compared bundled mods by their
+    // files, and the bundled mods' co-op behaviour has not changed since (their coopLevel is still 1).
+    public const int LegacyBundledLevel = 1;
+
+    public static string CoopLine(string id, int level) => id + "|coop|" + level.ToString(CultureInfo.InvariantCulture) + "\n";
 
     public static string Hash(string block) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(block)));
 
@@ -215,6 +286,14 @@ public static class ModSets
     {
         "content" => ModClass.Content, "code" => ModClass.Code, "bundled" => ModClass.Bundled, "raw" => ModClass.Raw,
         _ => throw new InvalidDataException($"{name} is not a mod class.")
+    };
+
+    public static string TierName(CoopTier tier) => tier == CoopTier.PerPlayer ? "per-player" : "shared";
+
+    public static CoopTier TierNamed(string name) => name switch
+    {
+        "shared" => CoopTier.Shared, "per-player" => CoopTier.PerPlayer,
+        _ => throw new InvalidDataException($"{name} is not a co-op tier.")
     };
 
     // Why a mod of this class needs the verified list, for the player.
@@ -308,7 +387,12 @@ public sealed class ModLocator(string modsFolder, EntityProfile? profile = null)
 public enum SyncAction { Have, Download, Manual, Blocked, Update, Off, Trust }
 // Trust: nothing else stands in the way, but mods wait for the player's trust.
 public enum SyncVerdict { Ready, Download, Unjoinable, Blocked, Trust }
-public sealed record SyncItem(ModSetEntry Mod, SyncAction Action, string? Folder);
+// Folder and LocalHash: the copy this machine has (Have), whose content hash differs from the host's when it matched by
+// coop level or as a bundled mod of an older HellForge.
+public sealed record SyncItem(ModSetEntry Mod, SyncAction Action, string? Folder)
+{
+    public string? LocalHash { get; init; }
+}
 // What lets a code or raw mod download: HellForge's verified list (VerifiedMods.Contains when null) and the player's
 // trusted mods (ModSettings' Trusts for this session; none when null), both by id and exact content hash; whether the host
 // is a Steam friend, and whether this session's game is sandboxed (only then can a stranger's unverified ones be trusted).
@@ -326,21 +410,40 @@ public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
     public long DownloadBytes => Items.Where(i => i.Action == SyncAction.Download).Sum(i => i.Mod.Bytes);
 
     // own: this session's mod set (the joiner's); find: an installed or synced mod by id and hash (ModLocator.Find);
-    // trust: what lets a code or raw mod download (SyncTrust; its defaults when null).
+    // trust: what lets a code or raw mod download (SyncTrust; its defaults when null). A host mod with a coopLevel is had
+    // when this session runs the same mod at that level. legacyHost: the host's HellForge predates coop tiers (0.3), whose
+    // bundled mods are this machine's own at LegacyBundledLevel.
     public static ModSyncPlan Make(ModSet host, bool hostShares, ModSet own, Func<string, string, string?> find, IReadOnlySet<string> blocked,
-        SyncTrust? trust = null)
+        SyncTrust? trust = null, bool legacyHost = false)
     {
         trust ??= new SyncTrust();
         var items = new List<SyncItem>();
-        foreach (var mod in host.Mods.OrderBy(m => m.Id, StringComparer.Ordinal))
+        // Per-player entries are each player's own: never a download, never an off. The notice after a join names them.
+        var hostShared = host.Mods.Where(m => m.Tier == CoopTier.Shared).ToList();
+        foreach (var mod in hostShared.OrderBy(m => m.Id, StringComparer.Ordinal))
         {
             if (blocked.Contains(mod.Id)) { items.Add(new(mod, SyncAction.Blocked, null)); continue; }
-            var folder = own.Find(mod.Id, mod.Hash)?.Folder ?? find(mod.Id, mod.Hash);
-            items.Add(new(mod, folder != null ? SyncAction.Have : Missing(mod, hostShares, trust), folder));
+            var (folder, hash) = Local(mod, own, find, legacyHost);
+            items.Add(new(mod, folder != null ? SyncAction.Have : Missing(mod, hostShares, trust), folder) { LocalHash = folder != null ? hash : null });
         }
-        foreach (var mod in own.Mods.Where(m => host.Mods.All(h => h.Id != m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
+        foreach (var mod in own.Mods.Where(m => m.Tier == CoopTier.Shared && hostShared.All(h => h.Id != m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
             items.Add(new(mod, SyncAction.Off, mod.Folder));
         return new ModSyncPlan(items);
+    }
+
+    // This machine's copy of a host's mod, and its content hash: the same content, in this session or installed or synced;
+    // for an older HellForge's bundled mod, this machine's at LegacyBundledLevel; for a mod with a coop level, this session's
+    // copy at that level.
+    static (string? Folder, string? Hash) Local(ModSetEntry mod, ModSet own, Func<string, string, string?> find, bool legacyHost)
+    {
+        if (own.Find(mod.Id, mod.Hash) is { } same) return (same.Folder, mod.Hash);
+        if (legacyHost && mod.Class == ModClass.Bundled)
+        {
+            var bundled = ModSets.Hash(ModSets.BundledLine(mod.Id, ModSets.LegacyBundledLevel));
+            return (own.Find(mod.Id, bundled)?.Folder ?? find(mod.Id, bundled), bundled);
+        }
+        if (mod.CoopLevel is { } level && own.Mods.FirstOrDefault(m => m.Id == mod.Id && m.CoopLevel == level) is { } alike) return (alike.Folder, alike.Hash);
+        return (find(mod.Id, mod.Hash), mod.Hash);
     }
 
     // A host's mod this machine lacks: a Steam friend's unverified code and raw mods can be trusted, a stranger's only in a
@@ -623,9 +726,12 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
 // The session after a sync: the host's gameplay mods in the host's load order, found by id and content hash, then this
 // player's own cosmetic mods and Local Stats. <installation>/temp/mod-sync/session.json, written by the joiner's backend
 // once everything is here; used once, by the session the launcher starts with --mod-sync.
+// Legacy: the host's HellForge predates coop tiers (0.3), so its digest counts what this machine cannot rebuild (its bundled
+// mods' files): the session is checked mod by mod, and the rejoin speaks that HellForge's protocol (AutoRejoin).
 public sealed record ModSyncSession(string Host, string HostName, string Connection, string Digest, IReadOnlyList<ModSyncSession.Mod> Mods)
 {
     public sealed record Mod(string Id, string Hash, int Order);
+    public bool Legacy { get; init; }
     public const string FolderName = "mod-sync", FileName = "session.json";
 
     public static string PathIn(InstallLayout install) => System.IO.Path.Combine(install.Temp, FolderName, FileName);
@@ -635,7 +741,7 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         var root = new JsonObject
         {
-            ["format"] = 1, ["host"] = Host, ["hostName"] = HostName, ["connection"] = Connection, ["digest"] = Digest,
+            ["format"] = 1, ["host"] = Host, ["hostName"] = HostName, ["connection"] = Connection, ["digest"] = Digest, ["legacy"] = Legacy,
             ["created"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
             ["mods"] = new JsonArray([.. Mods.Select(m => (JsonNode?)new JsonObject { ["id"] = m.Id, ["hash"] = m.Hash, ["order"] = m.Order })])
         };
@@ -654,7 +760,8 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
             if (!ModCatalog.IsModId(mod.Id) || !ModSets.Hex(mod.Hash, 64) || mod.Order < 0) throw new InvalidDataException("A mod in the mod sync file is malformed.");
             mods.Add(mod);
         }
-        return new ModSyncSession((string?)root["host"] ?? "", (string?)root["hostName"] ?? "", (string?)root["connection"] ?? "", (string?)root["digest"] ?? "", mods);
+        return new ModSyncSession((string?)root["host"] ?? "", (string?)root["hostName"] ?? "", (string?)root["connection"] ?? "", (string?)root["digest"] ?? "", mods)
+            { Legacy = root["legacy"] is JsonValue legacy && legacy.TryGetValue<bool>(out var older) && older };
     }
 
     // The session's mods in load order (bottom of the Mods page first), from the player's catalogue (ModCatalog.Load) and
@@ -687,6 +794,8 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
         // The player's own: cosmetic mods first (the bottom of their Mods page), Local Stats last (it stays on top).
         var own = ModCatalog.LoadOrder(catalog).Where(m => m.Enabled && !ModCatalog.Counted(m) && host.All(h => h.Id != m.Id)).ToList();
         var loadOrder = own.Where(m => m.Id != ModCatalog.LocalStatsId).Concat(host).Concat(own.Where(m => m.Id == ModCatalog.LocalStatsId)).ToList();
+        // an older host's digest counts its own bundled mods' files: each mod was found by its exact hash above instead
+        if (Legacy) return (loadOrder, null);
         var digest = ModSet.Of(loadOrder).Digest;
         return digest == Digest ? (loadOrder, null) : (null, "the mods found do not make the host's modlist code.");
     }
