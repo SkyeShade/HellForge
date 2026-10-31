@@ -55,26 +55,32 @@ anyway.
 Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, or no
 HELLDIVERS 2, setup downloads the supported build from Steam's servers for your account.
 
-The wizard shows a card headed Sign in to Steam to download the supported build:
+The wizard shows a card headed Get the supported build from Steam, with three choices. You can switch between them
+at any time:
 
-- Scan its QR code with the Steam app on your phone (the Steam Guard shield, then the QR code scanner) and approve the
-  sign-in in the app. HellForge never sees your password this way.
-- Or press Sign in with account name and password instead, sign in, and enter the Steam Guard code Steam sends by
-  email or shows in the Steam app.
+- **Scan a QR code with the Steam app** (the default): scan the code with the Steam app on your phone (the Steam Guard
+  shield, then the QR code scanner) and approve the sign-in in the app. HellForge never sees your password this way.
+- **No phone? Account name and password:** sign in with your Steam account name and password. If your account has
+  Steam Guard by email, Steam emails you a code: enter it on the card. Without Steam Guard nothing more is asked. Your
+  password goes only to Steam and is never kept.
+- **Download with the Steam client:** no sign-in in HellForge. The Steam client on your PC downloads the build to your
+  own account through its console, and HellForge then copies it (the steps below).
 
-HellForge keeps nothing of the sign-in, so the next download asks again. Setup then downloads what your Steam install
-does not have and copies the rest from it, every file checked against Steam's hashes. Your Steam install is only read.
-Pause download stops it; setup continues where it stopped the next time, after you sign in again.
+HellForge keeps nothing of the sign-in, so the next download asks again. With either sign-in, setup downloads what
+your Steam install does not have and copies the rest from it, every file checked against Steam's hashes. Your Steam
+install is only read. Pause download stops it; setup continues where it stopped the next time, after you sign in again.
 
-When Steam does not allow that download (below), and always on Linux, the Steam client downloads the supported build
-for your account instead. The wizard shows a card headed Download the supported build through Steam, with one
+When you choose the Steam client, when Steam does not allow the download after a sign-in (below), and always on Linux,
+the wizard shows a card headed Download the supported build through Steam, with one
 `download_depot 553850 <depot> <manifest>` command per depot. To use it:
 
 1. Press Open the Steam console, or open `steam://open/console` yourself.
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
    command, one at a time.
 3. Watch the wizard's progress bar: Steam shows no progress in its library for this download. Steam puts it in
-   `<Steam>/steamapps/content/app_553850/` (about 24 GB). On Linux the bar stays empty, and setup reads the download
+   `<Steam>/steamapps/content/app_553850/` (about 24 GB); the Linux Steam client may use
+   `steamrt64/steamapps/content/app_553850/` or `ubuntu12_64/steamapps/content/app_553850/` instead, and setup looks in
+   each. On Linux the bar stays empty, and setup reads the download
    only once `hellforge-linux.sh` has moved it into the prefix: see
    [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's

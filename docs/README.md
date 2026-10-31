@@ -69,12 +69,14 @@ Reference and related pages:
 
 1. Finds HELLDIVERS 2 in your Steam libraries and checks that it is the supported build (Steam build 25480438).
    - When Steam has that build, setup copies it as it is.
-   - When Steam has another build, or no HELLDIVERS 2, you sign in to Steam on the setup screen (a QR code approved in
-     the Steam app, or account name and password with a Steam Guard code; nothing is kept) and setup downloads the
-     supported build from Steam's servers for your account. What your Steam install already has is copied, not
-     downloaded, and every file is checked against Steam's hashes. [steam-download.md](steam-download.md) explains how.
-   - When Steam does not allow that download (a game borrowed through Steam Family Sharing, for example), or on Linux,
-     the Steam client downloads the supported build on your account. The wizard shows one
+   - When Steam has another build, or no HELLDIVERS 2, the setup screen offers three ways to get the supported build
+     for your account. You can sign in to Steam with a QR code approved in the Steam app (the default), or with no phone,
+     with your account name and password and the code Steam emails; nothing is kept. Setup then downloads the build
+     from Steam's servers. What your Steam install already has is copied, not downloaded, and every file is checked
+     against Steam's hashes. [steam-download.md](steam-download.md) explains how.
+   - When you choose Download with the Steam client, when Steam does not allow the download after a sign-in (a game
+     borrowed through Steam Family Sharing, for example), or on Linux, the Steam client downloads the supported build
+     on your account. The wizard shows one
      `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
      `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches
      `<Steam>/steamapps/content/app_553850/`, continues when every depot is complete, copies from there and can delete

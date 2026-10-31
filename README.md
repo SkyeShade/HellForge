@@ -70,12 +70,14 @@ galactic war can follow the live war read-only from the community mirror
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
-HellForge runs one game build (Steam build 25480438). When Steam has another build, setup asks you to sign in to Steam
-(a QR code you approve in the Steam app, or your account name and password) and downloads that build from Steam's own
-servers for your account, copying whatever your Steam install already has. HellForge never sees your password with
-the QR code and keeps nothing of the sign-in ([how it works](docs/steam-download.md)). If Steam does not allow that
-download, for a game borrowed through Steam Family Sharing for example, the wizard shows commands to paste into the
-Steam console, and the Steam client downloads the supported build for your account. HellForge hosts no game files.
+HellForge runs one game build (Steam build 25480438). When Steam has another build, setup offers three ways to get
+that build for your account. You can scan a QR code with the Steam app. With no phone, you can sign in with your account
+name and password; Steam emails you a code if your account has Steam Guard by email. After either sign-in, setup
+downloads the build from Steam's own servers, copying whatever your Steam install already has. Or you can let the
+Steam client download it through its console, with no sign-in in HellForge, and setup copies it from there. Your
+password goes only to Steam, and nothing of the sign-in is kept ([how it works](docs/steam-download.md)). If Steam
+does not allow the download after a sign-in, for a game borrowed through Steam Family Sharing for example, the wizard
+shows the Steam console commands. HellForge hosts no game files.
 
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).

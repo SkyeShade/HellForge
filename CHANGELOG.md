@@ -16,13 +16,16 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
-- **Setup gets the supported game build from Steam itself.** When Steam has another HELLDIVERS 2 build, setup asks you
-  to sign in to Steam (a QR code you approve in the Steam app, or your account name and password with a Steam Guard
-  code) and downloads the build HellForge runs from Steam's servers for your own account. Whatever your Steam install
-  already has is copied, not downloaded, and every file is checked against Steam's hashes. With the QR code HellForge
-  never sees your password, and nothing of the sign-in is kept. HellForge no longer downloads build patches from
-  files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
-  Sharing) or on Linux, setup shows the Steam console commands as before (#205).
+- **Setup gets the supported game build from Steam itself.** When Steam has another HELLDIVERS 2 build, setup offers
+  three equal ways to get the build HellForge runs for your own account: scan a QR code with the Steam app (the
+  default); with no phone, sign in with your account name and password (Steam emails you a code if your account has
+  Steam Guard by email); or let the Steam client download it through its console, with no sign-in in HellForge. After
+  a sign-in, setup downloads it from Steam's servers and copies whatever your Steam install already has instead of
+  downloading it. Either way every file is checked against Steam's hashes. Your password goes only to Steam, and
+  nothing of the sign-in is kept. Setup also finds the Steam client's download in the Linux client's `steamrt64`
+  folder. HellForge no longer downloads build patches from files.hf-mod.com, so it hosts no game files. When Steam
+  won't allow the download after a sign-in (a game borrowed through Family Sharing) or on Linux, setup shows the Steam
+  console commands (#205).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the

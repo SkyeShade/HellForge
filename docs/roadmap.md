@@ -260,7 +260,8 @@ Proton, but co-op on Linux, the Steam ownership check under Proton, and Steam as
 still untested.
 
 Setup downloads the supported build from Steam's servers for the player's account (a QR code or password sign-in that
-keeps nothing), copying what Steam's install shares with it, and keeps Steam's console download as the fallback. A new
+keeps nothing), copying what Steam's install shares with it. Steam's console download is the third choice, with no
+sign-in in HellForge, and the fallback. A new
 Steam build of HD2 needs nothing published. It replaced the build patches, which carried game data from
 files.hf-mod.com; it still needs a full run with a real account.
 

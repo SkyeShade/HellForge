@@ -12,15 +12,22 @@ HellForge distributes no game bytes. Every byte of the copy comes from the playe
 content servers, under the player's own licence. Earlier versions downloaded build patches from files.hf-mod.com
 instead. A patch from a newer build to an older one carries the older build's content, so those patches were removed.
 
-## Signing in
+## Three ways to get it
 
-Setup shows a sign-in card that says why it is needed: Steam sends the build to the player's own account. There are
-two ways to sign in:
+Setup shows a card that says why Steam is needed: Steam sends the build to the player's own account. It offers three
+equal choices, and the player can switch between them at any time:
 
-- **QR code (the default):** the player scans it with the Steam mobile app (Steam Guard, then the QR scanner) and
-  approves the sign-in there. HellForge never sees the password.
-- **Account name and password:** with a Steam Guard code when Steam asks for one, from the email Steam sends or from the
-  Steam app.
+- **Scan a QR code with the Steam app (the default):** the player scans it with the Steam mobile app (Steam Guard,
+  then the QR scanner) and approves the sign-in there. HellForge never sees the password.
+- **No phone? Account name and password:** the player signs in with the Steam account name and password. An account
+  with Steam Guard by email gets a code from Steam by email and types it into the card; an account without Steam Guard
+  needs nothing more. (An account with the mobile authenticator can approve in the app or type its code.) The password
+  goes only to Steam, through Steam's own sign-in, and is never kept.
+- **Download with the Steam client:** no sign-in in HellForge at all. The Steam client on the PC downloads the build to
+  the player's own account through its console, and HellForge copies it from there
+  ([below](#with-the-steam-client)).
+
+The first two download from Steam's content servers, in a separate Steam session of their own.
 
 Nothing is kept. The session is not persistent: no password, no refresh token and no Steam Guard data is written
 anywhere, and the next download asks again. The password box is emptied as soon as it is read. Every message the
@@ -67,13 +74,24 @@ On this PC's Steam (build 26251122 installed, October 2026), an older manifest o
 the installed build needed at most 0.44 GB from Steam's servers: the rest was found in the installed files. How much the
 supported build needs depends on how far Steam's build has moved from it.
 
+## With the Steam client
+
+The third choice, and the way when a sign-in cannot download: setup shows Steam's console download. **Open the Steam
+console** opens it (`steam://open/console`), and each depot has its `download_depot 553850 <depot> <manifest>` command
+with a Copy button. The Steam client downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`;
+the Linux client may use `ubuntu12_32/steamapps`, `ubuntu12_64/steamapps` or `steamrt64/steamapps` under the Steam
+folder instead. Setup looks in all of them and takes, for each depot, the folder that holds the most of the build, so an
+empty folder left by an earlier download does not hide the real one. It watches the download by itself, says which file
+it still waits for, and once every file has the build's size it copies them into the installation, each checked against
+the SHA-1 in `supported-build.json`. A file the Steam client wrote wrong is never copied. Choosing the QR code or the
+password on the card while setup waits starts the download from Steam's servers instead.
+
 ## When Steam does not allow the download
 
 Steam refuses the depot key or the manifest request code when the account that signed in does not own the game. The
-usual case is a game borrowed through Steam Family Sharing. Setup then says so and shows Steam's console download
-instead: one `download_depot 553850 <depot> <manifest>` command per depot, pasted into the Steam client's console, which
-downloads the build into `<Steam>/steamapps/content/app_553850/`. Setup copies from there once every depot is complete
-([troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build)). The console card also shows when the
+usual case is a game borrowed through Steam Family Sharing. Setup then says so and shows the Steam client's console
+download ([above](#with-the-steam-client), and
+[troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build)). The console card also shows when the
 download from Steam's servers stops for another reason (a lost connection, Steam's servers refusing). Check again
 signs in again and continues it instead.
 
