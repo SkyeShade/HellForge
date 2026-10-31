@@ -38,6 +38,9 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Big frame drops with a Difficulty 11 mod on: HellForge left a developer's diagnostic for the war table's map
+  previews running, which interrupted the game each time it read the map's size. It is off now, so Difficulty 11
+  mods don't need to be switched off any more.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
