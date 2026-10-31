@@ -25,6 +25,7 @@ sealed partial class PlaySession
         CheckHashes();
         CheckPlantedMods();
         SandboxCopyBack();
+        RecordShaderCacheAtEnd();
         lease?.Dispose();
         result["completedUtc"] = DateTime.UtcNow.ToString("o");
         Save();
@@ -227,6 +228,20 @@ sealed partial class PlaySession
                 };
                 Say($"WARNING: {planted.Files.Count} file(s) appeared in the mods folder during the session" +
                     (planted.DisabledMods.Count > 0 ? $"; {planted.DisabledMods.Count} mod(s) they appeared in switched off until you turn them on in Mods." : "."));
+            });
+    }
+
+    // The shader cache the next session starts with (ShaderCache), beside the one this one started with: a cache that
+    // did not change after a session that ran long enough is what makes every start slow.
+    void RecordShaderCacheAtEnd()
+    {
+        if (gameStarted != null && result["shaderCache"] is JsonObject cache)
+            Try("shaderCacheError", () =>
+            {
+                var end = ShaderCache.Read(install.UserData);
+                cache["atEnd"] = end.ToJson();
+                var start = (string?)cache["atStart"]?["newestUtc"];
+                cache["written"] = end.NewestUtc is { } newest && (start == null || newest > DateTime.Parse(start, null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime());
             });
     }
 
