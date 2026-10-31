@@ -177,6 +177,33 @@ static class CosmeticPacksTests
             // a disabled runtime counts as absent
             ModSettings.SetEnabled(mods, "pack.11111111-0000-0000-0000-000000000002", false);
             check(Problems().Single().StartsWith("Railgun, HD2Runtime need Bingus Shared Loader"), "Bingus turned off: " + string.Join(" | ", Problems()));
+            ModSettings.SetEnabled(mods, "pack.11111111-0000-0000-0000-000000000002", true);
+
+            // HD2R Editor (its release zip's hd2runtime.json and manifest.json): listed, always off, said to be unsupported
+            var editor = LuaMod("HD2R Editor 1.0.1", LuaRuntimes.EditorGuid,
+                """{"format":1,"name":"HD2R Editor","resource":"mods/skyeshade/hd2runtime_editor","guid":"e4b62702-7e11-557e-8413-2b0facb4c1ff","requires":{"bingus":{"api":1},"hd2runtime":{"min_version":"0.40.0","api":1,"module":"mods/skyeshade/hd2runtime"}}}""");
+            var (loaded, editorProblems) = ModCatalog.Load(mods);
+            var listed = loaded.Single(m => m.Name == "HD2R Editor 1.0.1");
+            check(!listed.Enabled && listed.Unsupported == LuaRuntimes.EditorUnsupported && listed.Lua, "The editor is listed, off and marked unsupported.");
+            check(!ModCatalog.Active(loaded).Contains(listed), "It is never in a session's mods.");
+            check(editorProblems.Single() == "HD2R Editor 1.0.1: " + LuaRuntimes.EditorUnsupported && editorProblems[0].Contains("press F8"),
+                "One notice, saying how to open HellForge's editor: " + string.Join(" | ", editorProblems));
+            check(loaded.Where(m => m != listed).All(m => m.Enabled && m.Unsupported == null), "HD2Runtime and its other mods still load.");
+            // the Mods page's switch cannot turn it on
+            ModSettings.SetEnabled(mods, listed.Id, true);
+            check(!ModCatalog.Load(mods).Mods.Single(m => m.Id == listed.Id).Enabled, "Switched on, it stays off.");
+            // known by its resource alone, or by its manifest's guid alone
+            File.WriteAllText(Path.Combine(editor, "hd2runtime.json"), """{"format":1,"resource":"mods/skyeshade/hd2runtime_editor"}""");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), """{"Version":1,"Guid":"11111111-0000-0000-0000-000000000009","Name":"Renamed","Options":[]}""");
+            check(LuaRuntimes.IsEditor(editor), "By its resource.");
+            File.Delete(Path.Combine(editor, "hd2runtime.json"));
+            check(!LuaRuntimes.IsEditor(editor), "Neither: another mod.");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), """{"Version":1,"Guid":"E4B62702-7E11-557E-8413-2B0FACB4C1FF","Name":"HD2R Editor","Options":[]}""");
+            check(LuaRuntimes.IsEditor(editor), "By its manifest's guid, in any case.");
+            check(!LuaRuntimes.IsEditor(runtime), "HD2Runtime is not the editor.");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), "{not json");
+            check(!LuaRuntimes.IsEditor(editor), "A broken manifest is not the editor (and does not throw).");
+            Directory.Delete(editor, recursive: true);
         });
 
         test("A cosmetic pack zipped loads like a folder, and Add mods takes it", () =>

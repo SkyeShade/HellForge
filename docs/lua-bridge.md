@@ -22,6 +22,11 @@ made for HD2Runtime runs unchanged.
    not a mod, and the Mods page says so if you add it.
 2. Add the Lua mods you want.
 
+HD2R Editor, HD2Runtime's own in-game editor, is not supported on HellForge: use HellForge's F8 editor, which edits the
+same fields and shows what each Lua mod changed. If you add HD2R Editor, the Mods page marks it UNSUPPORTED and keeps it
+switched off (it would take F8 too, build HD2Runtime's whole catalogue while the game loads, and replay its own saved
+changes over HellForge's). HD2Runtime and the other Lua mods made for it are not affected.
+
 Lua mods are listed in the cosmetic group with a LUA tag, and they are staged like any game patch. The F8 editor shows
 a value a Lua mod changed with the mod's name, `lua.<mod>`. Your own F8 changes win over a Lua mod's, and a Lua mod's
 win over a code mod's.
