@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace HellForge.Core;
@@ -102,8 +103,46 @@ public static partial class SessionLogs
     {
         int written, skipped;
         using (var zip = System.IO.Compression.ZipFile.Open(target, System.IO.Compression.ZipArchiveMode.Create))
+        {
             (written, skipped) = AddTo(zip, run, gameLogs, new(Privacy.Current.ApplyBytes, Privacy.Scrub, "", Dumps: true));
+            // a game that would not close: which of the session's programs were still running when the logs were saved
+            using (var writer = new StreamWriter(zip.CreateEntry(Path.GetFileName(run) + "/" + ProcessesFile, System.IO.Compression.CompressionLevel.Optimal).Open(),
+                       new System.Text.UTF8Encoding(false)))
+                writer.Write(Privacy.Scrub(RunningProcesses(DateTime.UtcNow, Process.GetProcesses())));
+            written++;
+        }
         return new(target, written, skipped);
+    }
+
+    public const string ProcessesFile = "processes-now.txt";
+
+    // The programs of a session, and those that hold a quitting or crashed game open (Windows Error Reporting, the game's
+    // crash reporter, GameGuard), by name.
+    static readonly string[] SessionPrograms = ["helldivers2", "HellForge.Session", "HellForge.LocalBackend", "HellForge.CaptureProxy",
+        "hellforge_steam_broker", "HellForge.Cli", "HellForge.Launcher", "WerFault", "WerFaultSecure", "crs-handler", "GameGuard", "GameMon", "GameMon64"];
+
+    // The session's programs among `processes` (all of them disposed), one line each: name, id, how long it has run, its
+    // threads, whether its window answers (Windows), its path. What `tasklist /v` would tell of a game that would not close.
+    public static string RunningProcesses(DateTime nowUtc, IEnumerable<Process> processes)
+    {
+        var text = new System.Text.StringBuilder($"Session programs running at {nowUtc:o} (the logs were saved then):\n");
+        var lines = new List<string>();
+        foreach (var process in processes)
+            using (process)
+            {
+                string name;
+                try { name = process.ProcessName; } catch (InvalidOperationException) { continue; }
+                if (!SessionPrograms.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+                string Try(Func<string> read) { try { return read(); } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { return "?"; } }
+                var age = Try(() => ((int)(nowUtc - process.StartTime.ToUniversalTime()).TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s");
+                var threads = Try(() => process.Threads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                var responding = OperatingSystem.IsWindows() ? Try(() => process.MainWindowHandle == 0 ? "no window" : process.Responding ? "responding" : "NOT RESPONDING") : "?";
+                var path = Try(() => process.MainModule?.FileName ?? "?");
+                lines.Add($"{name} pid {process.Id}: running {age}, {threads} thread(s), {responding}, {path}");
+            }
+        if (lines.Count == 0) text.Append("none\n");
+        foreach (var line in lines.Order(StringComparer.OrdinalIgnoreCase)) text.Append(line).Append('\n');
+        return text.ToString();
     }
 
     // How a run's files go into a zip: the text files' scrub, the names' scrub, the folder they go in (a crash report's
