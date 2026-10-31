@@ -13,6 +13,39 @@ public static class LuaRuntimes
     // HF_LUA_BRIDGE_VERSION): one older than this HellForge's is refused by the engine's exports it binds.
     public const int Bridge = 3;
 
+    // HD2R Editor (SkyeShade/HD2Runtime-Editor), HD2Runtime's own in-game editor, is a Lua mod made for HD2Runtime. It is not
+    // supported on HellForge: it binds F8 like HellForge's editor, builds HD2Runtime's whole catalogue while the game loads,
+    // and replays its saved session over HellForge's live edits. HellForge keeps it switched off (ModCatalog.LoadOne) and
+    // says so; HD2Runtime and the other mods made for it still run. It is known by its hd2runtime.json resource or its guid.
+    public const string EditorResource = "mods/skyeshade/hd2runtime_editor";
+    public const string EditorGuid = "e4b62702-7e11-557e-8413-2b0facb4c1ff";
+    public const string EditorUnsupported = "HD2R Editor is not supported on HellForge, so HellForge keeps it switched off. " +
+        "Use HellForge's own editor instead: press F8 in game (the HellForge editor mod must be on). HD2Runtime and the Lua mods made for it still run.";
+
+    public static bool IsEditor(string folder)
+    {
+        static string? Text(JsonElement root, string name) =>
+            root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        static bool Guid(string? text) => System.Guid.TryParse(text, out var g) && g == System.Guid.Parse(EditorGuid);
+        try
+        {
+            var spec = Path.Combine(folder, "hd2runtime.json");
+            if (File.Exists(spec))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(spec));
+                if (Text(document.RootElement, "resource") == EditorResource || Guid(Text(document.RootElement, "guid"))) return true;
+            }
+            var manifest = Path.Combine(folder, CosmeticPacks.ManifestName);
+            if (File.Exists(manifest))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(manifest), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                if (Guid(Text(document.RootElement, "Guid"))) return true;
+            }
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { }
+        return false;
+    }
+
     // A Lua mod's identity: Bingus Shared Loader (its BingusSharedLoader-manifest.json), HD2Runtime itself, or a mod made
     // for HD2Runtime (hd2runtime.json); none for any other.
     public sealed record Identity(bool Bingus, bool Runtime, bool NeedsRuntime, int Bridge);
