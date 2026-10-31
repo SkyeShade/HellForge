@@ -2,7 +2,8 @@ namespace HellForge.Core;
 
 // The capture's line in the hosts file: a marker, then the API host mapped to loopback. Remove drops every line that holds
 // the marker, so Add starts a new line first when the file does not end with one; otherwise the marker would join the
-// player's last entry and cleanup would delete that entry with it.
+// player's last entry and cleanup would delete that entry with it; the marker says so, and cleanup leaves that last line
+// without a newline again.
 // A hosts file the player made read-only has the attribute cleared for each write and set again straight after, so it is
 // read-only for the whole sync. The marker line records that (and a hosts file Add had to create), so a cleanup after a
 // crash, even a crash between the write and the attribute, leaves the file as it was. A file another program holds open is
@@ -12,7 +13,7 @@ public static class CaptureHosts
 {
     public const string Marker = "# HellForge-CaptureProxy";
     // Words after the marker: what Remove restores.
-    public const string ReadOnlyFlag = "was-read-only", CreatedFlag = "was-missing";
+    public const string ReadOnlyFlag = "was-read-only", CreatedFlag = "was-missing", NoNewlineFlag = "no-final-newline";
     // The capture's reason a hosts write failed, in its sync folder, for the launcher's message.
     public const string FailureFile = "hosts-failure.txt";
 
@@ -23,11 +24,11 @@ public static class CaptureHosts
     {
         var existed = File.Exists(hostsPath);
         var readOnly = existed && File.GetAttributes(hostsPath).HasFlag(FileAttributes.ReadOnly);
-        var marker = Marker + (readOnly ? " " + ReadOnlyFlag : "") + (existed ? "" : " " + CreatedFlag);
+        var midLine = existed && Retry(hostsPath, "read", () => EndsMidLine(hostsPath));
+        var marker = Marker + (readOnly ? " " + ReadOnlyFlag : "") + (existed ? "" : " " + CreatedFlag) + (midLine ? " " + NoNewlineFlag : "");
         var text = marker + Environment.NewLine + Mapping(host) + Environment.NewLine;
         if (!existed) Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(hostsPath))!);
-        Write(hostsPath, "add the capture's line", () =>
-            File.AppendAllText(hostsPath, existed && EndsMidLine(hostsPath) ? Environment.NewLine + text : text));
+        Write(hostsPath, "add the capture's line", () => File.AppendAllText(hostsPath, midLine ? Environment.NewLine + text : text));
         // Security software that undoes the change at once leaves nothing to redirect the game.
         if (!Retry(hostsPath, "read", () => File.ReadAllLines(hostsPath)).Any(line => line.Trim().Equals(Mapping(host), StringComparison.OrdinalIgnoreCase)))
             throw new HostsFileException(HostsFailure.Reverted, hostsPath, null);
@@ -47,7 +48,11 @@ public static class CaptureHosts
             Write(hostsPath, "remove the hosts file it created", () => File.Delete(hostsPath));
             return true;
         }
-        Write(hostsPath, "remove the capture's line", () => File.WriteAllLines(hostsPath, kept));
+        // The player's lines, without a final newline when the file had none before Add (Add's own newline goes with
+        // the capture's lines).
+        var rest = string.Join(Environment.NewLine, kept);
+        if (kept.Length > 0 && !markers.Any(line => HasFlag(line, NoNewlineFlag))) rest += Environment.NewLine;
+        Write(hostsPath, "remove the capture's line", () => File.WriteAllText(hostsPath, rest));
         // A crash between the write and the attribute in Add left it cleared.
         if (markers.Any(line => HasFlag(line, ReadOnlyFlag)))
             File.SetAttributes(hostsPath, File.GetAttributes(hostsPath) | FileAttributes.ReadOnly);

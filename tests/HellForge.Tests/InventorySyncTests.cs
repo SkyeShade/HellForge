@@ -73,10 +73,10 @@ static class InventorySyncTests
             File.WriteAllText(hosts, original);
             CaptureHosts.Add(hosts, Host);
             var lines = File.ReadAllLines(hosts);
-            check(lines.Contains(CaptureHosts.Marker) && lines.Contains("127.0.0.1 " + Host), name + ": the capture's lines are not lines of their own.");
+            check(lines.Any(line => line.StartsWith(CaptureHosts.Marker, StringComparison.Ordinal)) && lines.Contains("127.0.0.1 " + Host), name + ": the capture's lines are not lines of their own.");
             check(!original.Contains("foo", StringComparison.Ordinal) || lines.Contains("0.0.0.0 foo.com"), name + ": the player's last entry was changed.");
             check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
-            check(File.ReadAllLines(hosts).SequenceEqual(original.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)), name + ": cleanup changed the player's entries.");
+            check(File.ReadAllText(hosts) == original.Replace("\r\n", Environment.NewLine, StringComparison.Ordinal), name + ": cleanup did not leave the file as it was, final newline or not.");
             check(!CaptureHosts.Remove(hosts, Host), name + ": a second cleanup removed more.");
         }
         check(!CaptureHosts.Remove(Path.Combine(folder, "missing"), Host), "Cleanup of a missing file removed something.");
@@ -111,7 +111,7 @@ static class InventorySyncTests
             File.SetAttributes(hosts, FileAttributes.Archive);
             check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
             check(File.GetAttributes(hosts).HasFlag(FileAttributes.ReadOnly), name + ": cleanup after a crash left the hosts file writable.");
-            check(File.ReadAllLines(hosts).SequenceEqual(original.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)), name + ": cleanup changed the player's entries.");
+            check(File.ReadAllText(hosts) == original.Replace("\r\n", Environment.NewLine, StringComparison.Ordinal), name + ": cleanup changed the player's entries or their final newline.");
             File.SetAttributes(hosts, FileAttributes.Normal);
         }
 
