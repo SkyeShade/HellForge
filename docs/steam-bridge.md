@@ -440,7 +440,7 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
     30 s), and a kick takes it out at once.
   - A joiner also lists the lobby's **other members** (`LobbyService.LobbyMates`): the members of the host's join
     answer, then each one the host reports added, written in before the game hears of them (`MateAdded`), and taken
-    out at the next heartbeat once the host reports them gone. Before (0.3.0-beta), a joiner listed only the host, so
+    out at once when the host reports them gone or this game leaves the lobby (`MateRemoved`). Before (0.3.0-beta), a joiner listed only the host, so
     in a squad of three or four the joiners' games could not reach each other. The list comes from the host of a lobby
     this game is in, at most 8 a lobby, never this machine or the host itself. The joiners' backends still never talk:
     these peers are not pinged.

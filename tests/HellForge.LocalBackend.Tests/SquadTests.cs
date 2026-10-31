@@ -17,6 +17,8 @@ static class SquadTests
         public readonly LobbyService Lobby;
         // The co-op peers the backend listed ahead of its game (MateAdded), each with whether its game already knew of them.
         public readonly ConcurrentQueue<(ulong Peer, bool GameKnew)> Listed = new();
+        // The co-op peers it took out again (MateRemoved).
+        public readonly ConcurrentQueue<ulong> Unlisted = new();
 
         public Player(InMemoryNetwork network, ulong id)
         {
@@ -24,6 +26,7 @@ static class SquadTests
             var transport = network.Join(id);
             Lobby = new LobbyService(transport, Game.Enqueue, _ => { }, "mods-a");
             Lobby.MateAdded += peer => Listed.Enqueue((peer, GameKnows(peer)));
+            Lobby.MateRemoved += Unlisted.Enqueue;
             transport.Received += (peer, bytes) =>
             {
                 var frame = Frame.Decode(bytes);
@@ -124,6 +127,10 @@ static class SquadTests
         check(Poll.Until(() => Mates(second, [FourthId]) && Mates(fourth, [SecondId])),
             "A joiner who left is no one's mate any more.");
         check(third.Lobby.LobbyMates().Count == 0, "A machine out of the lobby lists no mates.");
+        check(Poll.Until(() => second.Unlisted.Contains(ThirdId) && fourth.Unlisted.Contains(ThirdId)),
+            "The others' backends take the third out of their co-op peers at once (MateRemoved).");
+        check(third.Unlisted.Contains(SecondId) && third.Unlisted.Contains(FourthId), "The machine that left takes out its own mates.");
+        check(!second.Unlisted.Contains(FourthId) && !fourth.Unlisted.Contains(SecondId), "Mates still in the lobby stay listed.");
         check(!second.Removed() && !fourth.Removed(), "The others stay when one leaves.");
     }
 

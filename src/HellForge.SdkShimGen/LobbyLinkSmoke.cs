@@ -360,16 +360,16 @@ public static unsafe class LobbyLinkSmoke
         }
     }
 
-    // Each game's login key reaches the other backend, which serves it to its game's /Account/Keys lookup, as a host's
-    // game asks for a joining player's key.
-    // Whether the co-op peers file lists that machine (MultiplayerHost.PeersFileName), within four seconds.
-    static bool Lists(string file, string hexId)
+    // Whether the co-op peers file lists that machine (MultiplayerHost.PeersFileName), or no longer does (listed: false),
+    // within four seconds.
+    static bool Lists(string file, string hexId, bool listed = true)
     {
         for (var i = 0; i < 40; i++)
         {
             try
             {
-                if (File.Exists(file) && File.ReadAllLines(file).Contains(ulong.Parse(hexId, NumberStyles.HexNumber).ToString(CultureInfo.InvariantCulture))) return true;
+                if (File.Exists(file) && File.ReadAllLines(file).Contains(ulong.Parse(hexId, NumberStyles.HexNumber).ToString(CultureInfo.InvariantCulture)) == listed)
+                    return true;
             }
             catch (IOException) { }
             Thread.Sleep(100);
@@ -418,11 +418,16 @@ public static unsafe class LobbyLinkSmoke
                 "The friend and the third player list each other as co-op peers (and the host and the third each other)");
             expect(leave(lobby, &key, 0x24) == 0 && third.WaitFor("10"), "The third player leaves");
             expect(host.Player.WaitFor("4") && friend.Player.WaitFor("4"), "The host and the friend see the third player leave");
+            expect(Lists(Path.Combine(root, "friend", "p2p-peers.txt"), ThirdId, listed: false) &&
+                Lists(Path.Combine(root, "third", "p2p-peers.txt"), FriendId, listed: false),
+                "The friend's and the third's co-op peers no longer list each other");
             expect(hostMembers(host.Lobby, &count, &list) == 0 && count == 2 && friendMembers(friend.Lobby, &count, &list) == 0 && count == 2,
                 "The lobby is two again");
         }
     }
 
+    // Each game's login key reaches the other backend, which serves it to its game's /Account/Keys lookup, as a host's
+    // game asks for a joining player's key.
     static void KeyFlow(string root, Action<bool, string> expect)
     {
         string Url(string directory)
