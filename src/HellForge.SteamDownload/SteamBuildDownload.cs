@@ -108,7 +108,7 @@ public static class SteamBuildDownload
     {
         var app = ValveData.Parse(File.ReadAllText(appManifest)).Children["AppState"];
         if (!app.Children.TryGetValue("InstalledDepots", out var depots)) return [];
-        return [.. depots.Children.Where(d => uint.TryParse(d.Key, out _) && d.Value.Children.ContainsKey("manifest") &&
+        return [.. depots.Children.Where(d => uint.TryParse(d.Key, out _) && d.Value.Values.ContainsKey("manifest") &&
                 ulong.TryParse(d.Value.Required("manifest"), out _))
             .Select(d => (uint.Parse(d.Key), ulong.Parse(d.Value.Required("manifest"))))];
     }
