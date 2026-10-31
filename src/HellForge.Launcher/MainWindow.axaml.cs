@@ -221,6 +221,32 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) RequestStop();
         else if (SyncBusy) SetStatus("Inventory sync is running. Play once it finishes.", Phase.Idle);
+        else if (!installingRuntimes && VisualCppRuntimes.Needed().Count > 0) _ = InstallRuntimesThenStart();
+        else if (!installingRuntimes) Start();
+    }
+
+    bool installingRuntimes;
+
+    // An installation set up before setup installed the Visual C++ runtimes (0.2), or a runtime removed since: Microsoft's
+    // installer runs first, with Windows' permission prompt; PLAY stays disabled and says so meanwhile.
+    async Task InstallRuntimesThenStart()
+    {
+        installingRuntimes = true;
+        UpdateButton();
+        string? problem;
+        try
+        {
+            var downloads = paths.InstallRoot != null ? new InstallLayout(paths.InstallRoot).Temp : Path.Combine(Path.GetTempPath(), "HellForge");
+            problem = await VisualCppRuntimes.EnsureAsync(downloads, "press PLAY again.",
+                detail => Dispatcher.UIThread.Post(() => SetStatus(detail, Phase.Busy, "The game cannot start without it.")));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { problem = VisualCppRuntimes.Problem("press PLAY again.") + " (" + error.Message + ")"; }
+        finally
+        {
+            installingRuntimes = false;
+            UpdateButton();
+        }
+        if (problem != null) SetStatus("A Microsoft runtime the game needs is missing.", Phase.Failed, failure: problem);
         else Start();
     }
 
@@ -672,9 +698,9 @@ public partial class MainWindow : Window
     void UpdateButton()
     {
         var running = runner.IsRunning;
-        PlayLabel.Text = !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
+        PlayLabel.Text = installingRuntimes ? "INSTALLING" : !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
         PlayButton.Classes.Set("stop", running);
-        PlayButton.IsEnabled = SessionRunner.IsSupported && !(running && stopRequested) && !(bundledSyncing && !running);
+        PlayButton.IsEnabled = SessionRunner.IsSupported && !installingRuntimes && !(running && stopRequested) && !(bundledSyncing && !running);
         // The session keeps the profile it started with.
         ProfileCombo.IsEnabled = NewProfileButton.IsEnabled = !running;
         CreateProfileButton.IsEnabled = !running && TemplateCombo.SelectedItem != null;
