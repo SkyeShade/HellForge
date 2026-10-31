@@ -731,12 +731,18 @@ static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
     return set;
 }
 
+/* The Dr7 bits WatchThread sets for Dr0-Dr2: their local and global enables (bits 0-5: L0 G0 L1 G1 L2 G2) and their
+ * read/write and length fields (bits 16-27). */
+#define FIELD_WATCH_DR7_BITS 0x0FFF003Full
+
 /* B.4b: one armed thread's watchpoints off, set while it is suspended, as WatchThread sets them. Dr0-Dr2 and their
- * Dr7 enable bits go; Dr3 and the rest of Dr7 stay. A thread that has ended cannot be opened and is skipped. */
-static void ClearWatchThread(DWORD id)
+ * Dr7 bits go (Dr2's L2 is bit 4: clearing only bits 0-2 left the preview record's watchpoint on); Dr3 and the rest
+ * of Dr7 stay. 1 when they were cleared; 0 for a thread that has ended (it cannot be opened) or could not be changed. */
+static int ClearWatchThread(DWORD id)
 {
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
-    if (thread == NULL) return;
+    if (thread == NULL) return 0;
+    int cleared = 0;
     if (SuspendThread(thread) != (DWORD)-1)
     {
         CONTEXT context = {0};
@@ -744,12 +750,13 @@ static void ClearWatchThread(DWORD id)
         if (GetThreadContext(thread, &context))
         {
             context.Dr0 = context.Dr1 = context.Dr2 = 0;
-            context.Dr7 &= ~(DWORD64)0x7;
-            SetThreadContext(thread, &context);
+            context.Dr7 &= ~FIELD_WATCH_DR7_BITS;
+            cleared = SetThreadContext(thread, &context) ? 1 : 0;
         }
         ResumeThread(thread);
     }
     CloseHandle(thread);
+    return cleared;
 }
 
 /* B.4b: once the 48 places are full, the loader's thread turns the watchpoints off: never the exception handler, which
@@ -761,8 +768,10 @@ static void FieldWatchTick(void)
     g_fieldWatchOff = 1;
     LONG count = g_fieldWatchThreadCount;
     if (count > FIELD_WATCH_THREADS) count = FIELD_WATCH_THREADS;
-    for (LONG i = 0; i < count; i++) ClearWatchThread((DWORD)g_fieldWatchThreads[i]);
-    Note("difficulty: watchpoints off: their log is full (%d places)", FIELD_WATCH_HITS);
+    LONG cleared = 0;
+    for (LONG i = 0; i < count; i++) cleared += ClearWatchThread((DWORD)g_fieldWatchThreads[i]);
+    Note("difficulty: watchpoints off: their log is full (%d places); cleared on %ld of the %ld threads armed (the others "
+        "had ended or could not be changed)", FIELD_WATCH_HITS, (long)cleared, (long)count);
 }
 
 static void FieldWatch(uintptr_t field)
