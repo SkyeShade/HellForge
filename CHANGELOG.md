@@ -38,6 +38,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- HD2R Editor (HD2Runtime's own in-game editor) doesn't work on HellForge, but HellForge loaded it anyway, on the same
+  F8 key as its own editor, with nothing to say why. The Mods page now marks it UNSUPPORTED and keeps it switched off,
+  so it can't take F8 or slow the game down, and says to use HellForge's own editor (F8 in game) instead. HD2Runtime
+  and the Lua mods made for it still run.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
