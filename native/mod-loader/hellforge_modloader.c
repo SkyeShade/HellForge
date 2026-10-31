@@ -1035,6 +1035,15 @@ static int ReadPlan(const wchar_t* path)
 
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
 
+/* A mod's DLL that LoadLibrary refused: Windows' error, and when code integrity refused it (4551, 577 and the reputation
+   codes: Smart App Control does so to an unsigned DLL, SmartAppControl.cs), that too. */
+static void NoteLoadFailure(const HfMod* mod, DWORD loadError)
+{
+    int blocked = loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582);
+    Note("%s: not loaded (the DLL could not be loaded: Windows error %lu%s)", mod->id, (unsigned long)loadError,
+        blocked ? ", an Application Control policy such as Smart App Control blocked it" : "");
+}
+
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
 static void SetupMod(HfMod* mod)
 {
@@ -1050,10 +1059,7 @@ static void SetupMod(HfMod* mod)
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
     if (init == NULL)
     {
-        /* Windows error 4551 (and 577): code integrity refused the DLL, as Smart App Control does an unsigned one (SmartAppControl.cs). */
-        if (mod->module == NULL && (loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582)))
-            Note("%s: not loaded (the DLL could not be loaded: Windows error %lu, an Application Control policy such as Smart App Control blocked it)", mod->id, (unsigned long)loadError);
-        else if (mod->module == NULL) Note("%s: not loaded (the DLL could not be loaded: Windows error %lu)", mod->id, (unsigned long)loadError);
+        if (mod->module == NULL) NoteLoadFailure(mod, loadError);
         else Note("%s: not loaded (it exports no hellforge_mod_init)", mod->id);
         if (mod->module != NULL) FreeLibrary(mod->module);
         return;
