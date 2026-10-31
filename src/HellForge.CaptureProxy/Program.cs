@@ -24,6 +24,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -45,6 +46,8 @@ var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
 bool manageHosts = true, manageCa = true, cleanupOnly = false;
+// Set once this run's hosts line is in, until cleanup removes it: a line already gone at cleanup was removed by something else.
+var hostsAdded = false;
 var timeoutMin = 10;
 string? sealKey = null;
 ulong? steamAccount = null;
@@ -90,6 +93,8 @@ catch (Exception error) when (error is ArgumentException or FormatException or O
 
 if (cleanupOnly)
 {
+    try { Directory.CreateDirectory(evidenceDir); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message); }
     var removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null));
     return removed ? 0 : 1;
 }
@@ -217,7 +222,7 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
-    if (manageHosts) AddHosts();
+    if (manageHosts && !Step("hosts line", AddHosts)) return 1;
     LogResolution();
     listener.Start();
     Log($"listening on port {listenPort}");
@@ -645,15 +650,116 @@ static void Run(string file, string arguments)
 
 void RemoveHosts()
 {
-    if (!CaptureHosts.Remove(hostsPath, host)) return;
+    if (!HostsWrite(() => CaptureHosts.Remove(hostsPath, host)))
+    {
+        if (hostsAdded) HostsGone();
+        return;
+    }
+    hostsAdded = false;
     Run("ipconfig", "/flushdns");
     Log("hosts line removed");
 }
 
 void AddHosts()
 {
-    CaptureHosts.Add(hostsPath, host);
+    LogHostsFile();
+    HostsWrite(() => { CaptureHosts.Add(hostsPath, host); return true; });
+    hostsAdded = true;
     Run("ipconfig", "/flushdns");
+    Log("hosts line added");
+}
+
+// A failed hosts write: the plain reason, named more exactly where Windows can say who, goes to the log and to the sync
+// folder for the launcher's message (CaptureHosts.FailureFile). Rethrown as an IOException with that reason for Step.
+bool HostsWrite(Func<bool> write)
+{
+    try
+    {
+        return write();
+    }
+    catch (HostsFileException error)
+    {
+        Log($"hosts file {error.Failure}: {CaptureDiagnostics.Chain(error.InnerException ?? error)}");
+        var reason = error.Failure switch
+        {
+            HostsFailure.InUse when HostsLockers() is { Count: > 0 } lockers =>
+                $"{string.Join(", ", lockers)} kept the hosts file ({hostsPath}) open, so the sync could not change it. Close it, then sync again.",
+            HostsFailure.Blocked or HostsFailure.Reverted or HostsFailure.ReadOnly when DefenderFlaggedHosts() => DefenderReason("blocked the sync's change to"),
+            _ => error.Message
+        };
+        Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+        throw new IOException(reason, error);
+    }
+}
+
+string DefenderReason(string what) =>
+    $"Microsoft Defender {what} the hosts file ({hostsPath}) as SettingsModifier:Win32/HostsFileHijack. The sync needs one line " +
+    "there pointing the game's API at this PC while it reads your inventory, and removes it afterwards.";
+
+// The capture's line vanished before cleanup: something other than the capture removed it while the game was meant to use it.
+void HostsGone()
+{
+    hostsAdded = false;
+    Log("hosts line was already gone at cleanup: something else removed it");
+    var reason = DefenderFlaggedHosts() ? DefenderReason("removed the sync's line from")
+        : HostsFileException.Describe(HostsFailure.Reverted, hostsPath);
+    Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+}
+
+// The hosts file's attributes before the capture changes it (read-only, system, hidden), for a log from another PC.
+void LogHostsFile()
+{
+    try { Log(File.Exists(hostsPath) ? $"hosts file attributes: {File.GetAttributes(hostsPath)}" : "hosts file missing: the capture creates it and deletes it at cleanup"); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("hosts file attributes unreadable: " + error.Message); }
+}
+
+// Whether Microsoft Defender's threat history holds its hosts-file detection (asked only after a hosts write failed).
+bool DefenderFlaggedHosts()
+{
+    try
+    {
+        using var process = Process.Start(new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -Command \"if (Get-MpThreat -ErrorAction SilentlyContinue | Where-Object ThreatName -like '*HostsFileHijack*') { exit 3 } else { exit 0 }\"")
+            { UseShellExecute = false, CreateNoWindow = true });
+        if (process == null || !process.WaitForExit(15000)) return false;
+        var flagged = process.ExitCode == 3;
+        Log("Microsoft Defender's history " + (flagged ? "holds" : "does not hold") + " HostsFileHijack");
+        return flagged;
+    }
+    catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        Log("Microsoft Defender's history not read: " + error.Message);
+        return false;
+    }
+}
+
+// The programs holding the hosts file open, by name (Windows Restart Manager).
+List<string> HostsLockers()
+{
+    var names = new List<string>();
+    try
+    {
+        if (RestartManager.RmStartSession(out var session, 0, Guid.NewGuid().ToString("N")) != 0) return names;
+        try
+        {
+            if (RestartManager.RmRegisterResources(session, 1, [hostsPath], 0, null, 0, null) == 0)
+            {
+                uint count = 0;
+                // ERROR_MORE_DATA with the count needed, then the list.
+                if (RestartManager.RmGetList(session, out var needed, ref count, null, out _) == 234 && needed > 0)
+                {
+                    var processes = new RestartManager.ProcessInfo[needed];
+                    count = needed;
+                    if (RestartManager.RmGetList(session, out _, ref count, processes, out _) == 0)
+                        names.AddRange(processes.Take((int)count).Select(process => $"{process.AppName} (pid {process.Process.ProcessId})"));
+                }
+            }
+        }
+        finally { RestartManager.RmEndSession(session); }
+    }
+    catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
+    Log("hosts file held open by: " + (names.Count > 0 ? string.Join(", ", names) : "not known"));
+    return names;
 }
 
 // This run's CA by thumbprint, or with null every CA this tool installed.
@@ -728,4 +834,40 @@ static X509Certificate2 MakeLeaf(X509Certificate2? issuer, string name, byte[]? 
         : request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(8)).CopyWithPrivateKey(key);
     // SslStream needs the key in a form Schannel can use; a PKCS#12 round trip gives it one.
     return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
+}
+
+// Windows Restart Manager: which programs hold a file open, to name the one blocking a hosts write.
+static class RestartManager
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniqueProcess
+    {
+        public int ProcessId;
+        public System.Runtime.InteropServices.ComTypes.FILETIME StartTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ProcessInfo
+    {
+        public UniqueProcess Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceShortName;
+        public int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
+        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
+    }
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmStartSession(out uint session, int flags, string key);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmEndSession(uint session);
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmRegisterResources(uint session, uint files, string[] names, uint applications, UniqueProcess[]? processes,
+        uint services, string[]? serviceNames);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmGetList(uint session, out uint needed, ref uint count, [In, Out] ProcessInfo[]? processes, out uint rebootReasons);
 }

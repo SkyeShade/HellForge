@@ -125,8 +125,9 @@ public partial class MainWindow
         foreach (var line in InventorySync.CollectGameLogs(folder, syncStartedUtc)) InventorySync.Note(folder, line);
         if (syncTaken) ProxyClosed(exitCode, folder);
         else if (exitCode == 0) TakeCapture(profile, folder, snapshot);
-        else SyncFailed(syncGameOpened ? $"Nothing was captured within {InventorySync.TimeoutMinutes} minutes. Close the game and sync again."
-            : "The capture could not start: see " + Path.Combine(folder, "proxy.log") + ".");
+        // A hosts write the capture could not make (CaptureHosts) names its own cause.
+        else SyncFailed(CaptureHosts.ReadFailure(folder) ?? (syncGameOpened ? $"Nothing was captured within {InventorySync.TimeoutMinutes} minutes. Close the game and sync again."
+            : "The capture could not start: see " + Path.Combine(folder, "proxy.log") + "."));
         (syncProfile, syncDir, syncSnapshotDir) = (null, null, null);
         syncTaken = false;
         UpdateSyncStatus();
@@ -197,13 +198,15 @@ public partial class MainWindow
         syncStarting = true;
         SyncButton.IsEnabled = false;
         SetSyncStatus("Waiting for the administrator prompt...", Gold);
-        using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy));
+        var folder = Path.Combine(new InstallLayout(paths.InstallRoot!).Logs, "sync-cleanup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+        using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy, folder));
         if (cleanup != null) await cleanup.WaitForExitAsync();
         syncStarting = false;
         SyncButton.IsEnabled = true;
         UpdateSyncStatus();
         if (cleanup == null) SetSyncStatus("Clean up needs the administrator prompt.", Orange);
-        else if (InventorySync.HasLeftoverRedirect()) SetSyncStatus("Clean up failed: remove the HellForge-CaptureProxy lines from the hosts file.", Red);
+        else if (InventorySync.HasLeftoverRedirect())
+            SetSyncStatus("Clean up failed: " + (CaptureHosts.ReadFailure(folder) ?? "see " + Path.Combine(folder, "proxy.log") + "."), Red);
         else SetSyncStatus("Cleaned up: the normal game reaches its servers again.", Green);
     }
 }
