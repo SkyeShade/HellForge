@@ -7,14 +7,16 @@
 // repeating the client headers the login carried (CaptureHeaders: the API refuses a read without Accept-Language), and
 // writes them to --progression and --output. With --seal-key and --steam-account it seals the two files for that Steam
 // account (HellForge.Core SnapshotSeal) as soon as the inventory is in, and says so in its state file (CaptureState), so
-// the launcher takes them while the game plays on; the backend unlocks premium items only from a seal. It then keeps
-// forwarding until the game exits, removes the hosts line and the CA, and exits 0 (1 when nothing was captured before
+// the launcher takes them; the backend unlocks premium items only from a seal. With --close-game it then closes the game
+// the sync opened (CaptureGameEnd), before the game gets the login's answer. It keeps forwarding until the game exits,
+// removes the hosts line and the CA, and exits 0 (1 when nothing was captured before
 // the timeout or the seal failed). Nothing else is kept. The log (proxy.log) is detailed but holds no values: for every
 // connection its TLS version, cipher and SNI, timings and where it failed; for every request and response the method, the
 // first two path segments, status, sizes, content types and the names of headers and query parameters; a refused
 // request's reason (CaptureLog); the key-and-count shape of what the capture keeps (CaptureDiagnostics); the game's and
 // Easy Anti-Cheat's processes; and a summary. Never bodies, header or query values, or the session.
 //
+//   --close-game   end the sync's game once the capture is sealed (the launcher's sync passes it)
 //   --cleanup      only remove a hosts line and CA left by a run that was killed
 //   --no-hosts --no-ca --listen-port 8443 --real-ip <ip>   local plumbing test, no system changes
 
@@ -44,7 +46,8 @@ List<IPAddress>? fixedUpstream = null;
 var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
-bool manageHosts = true, manageCa = true, cleanupOnly = false;
+bool manageHosts = true, manageCa = true, cleanupOnly = false, closeGame = false;
+var startedUtc = DateTime.UtcNow;
 var timeoutMin = 10;
 string? sealKey = null;
 ulong? steamAccount = null;
@@ -66,12 +69,13 @@ try
             case "--no-hosts": manageHosts = false; break;
             case "--no-ca": manageCa = false; break;
             case "--cleanup": cleanupOnly = true; break;
+            case "--close-game": closeGame = true; break;
             case "--seal-key": sealKey = Next(); break;
             case "--steam-account": steamAccount = ulong.Parse(Next(), NumberStyles.None, CultureInfo.InvariantCulture); break;
             case "--help":
                 Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
                 Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
-                Console.WriteLine("  [--no-hosts] [--no-ca] | --cleanup");
+                Console.WriteLine("  [--close-game] [--no-hosts] [--no-ca] | --cleanup");
                 return 0;
             default: throw new ArgumentException("Unknown argument: " + args[i]);
         }
@@ -249,7 +253,7 @@ void LogStart()
         .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     Log($"capture built {built}, {Environment.OSVersion.VersionString}, .NET {Environment.Version}, elevated {(elevated ? "yes" : "no")}");
     Log($"options: host {host}, port {listenPort}, timeout {timeoutMin} min, hosts line {(manageHosts ? "yes" : "no")}, " +
-        $"CA {(manageCa ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
+        $"CA {(manageCa ? "yes" : "no")}, close game {(closeGame ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
 }
 
 // Where the system now sends the API's name: 127.0.0.1 when the hosts line holds.
@@ -299,20 +303,33 @@ void LogProcessChanges(Dictionary<int, string> seen)
     foreach (var entry in now) seen[entry.Key] = entry.Value;
 }
 
-// Once the inventory is in: seal what was captured and tell the launcher, then keep the game's connection until it exits.
+// Once the inventory is in: seal what was captured and tell the launcher, then (--close-game) end the sync's game, and
+// keep forwarding until it exits. In this order: the files are sealed and the state says so before the game is ended, so
+// the launcher always finds a finished capture; the game is ended before this returns, so it never gets the login's answer
+// and never reaches Easy Anti-Cheat's "Could not connect" (CaptureGameEnd).
 void CompleteCapture()
 {
     var progression = progressionPath != null && File.Exists(progressionPath);
     sealOk = sealKey == null || Step("seal", () => SnapshotSeal.Write(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, sealKey, steamAccount!.Value, DateTime.UtcNow));
     if (sealKey != null && sealOk) Log("capture sealed" + (progression ? "" : " without progression"));
     Step("state", () => CaptureState.Write(evidenceDir, Environment.ProcessId, sealOk, progression));
+    if (closeGame) EndSyncGame();
     _ = Task.Run(ForwardUntilGameExits);
+}
+
+void EndSyncGame()
+{
+    var running = Process.GetProcessesByName(GameProcess);
+    var games = CaptureGameEnd.Ours(running.Select(process => (CaptureGameEnd.IGame)new ProcessGame(process)), startedUtc);
+    var outcome = CaptureGameEnd.End(games, CaptureGameEnd.Grace, CaptureGameEnd.KillWait, Log);
+    Log("close game: " + CaptureGameEnd.Describe(outcome));
+    foreach (var process in running) process.Dispose();
 }
 
 // The redirect and the CA stay until the game exits, so its requests after the login still reach the API. Easy Anti-Cheat
 // closed the game ("Could not connect to Easy Anti Cheat network") both when the redirect ended right after the login and
-// when it stayed (live runs, 2026-10-26), so that error has another cause; WatchProcesses and the per-connection lines
-// are there to find it.
+// when it stayed (live runs, 2026-10-26), so that error has another cause; with --close-game the game is ended before it
+// shows, and WatchProcesses and the per-connection lines are there to find the cause.
 async Task ForwardUntilGameExits()
 {
     stop.CancelAfter(TimeSpan.FromHours(ForwardHoursAtMost));
@@ -728,4 +745,42 @@ static X509Certificate2 MakeLeaf(X509Certificate2? issuer, string name, byte[]? 
         : request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(8)).CopyWithPrivateKey(key);
     // SslStream needs the key in a form Schannel can use; a PKCS#12 round trip gives it one.
     return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
+}
+
+// A running game for CaptureGameEnd.
+sealed class ProcessGame(Process process) : CaptureGameEnd.IGame
+{
+    public int Id => process.Id;
+
+    public DateTime? StartedUtc
+    {
+        get
+        {
+            try { return process.StartTime.ToUniversalTime(); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { return null; }
+        }
+    }
+
+    public bool HasExited
+    {
+        get
+        {
+            try { return process.HasExited; }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
+        }
+    }
+
+    public bool RequestClose()
+    {
+        try { return process.CloseMainWindow(); }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    public void Kill() => process.Kill();
+
+    public bool WaitForExit(TimeSpan timeout)
+    {
+        try { return process.WaitForExit(timeout); }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
+    }
 }
