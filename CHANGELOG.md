@@ -38,6 +38,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
+  Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
+  Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
+  update to, and can open Windows Update (#14).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
