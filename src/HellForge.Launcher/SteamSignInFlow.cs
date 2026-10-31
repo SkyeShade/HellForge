@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
 using HellForge.Core;
@@ -6,43 +7,62 @@ using HellForge.SteamDownload;
 
 namespace HellForge.Launcher;
 
-// Setup's sign-in to Steam for downloading the supported build (SteamDepotSession), on the setup screen's sign-in card: a
-// QR code to approve in the Steam app first, or account name and password with a Steam Guard code. Nothing of it is kept:
-// the password box is emptied as soon as it is read, the session ends with the download, and no token or Steam Guard
-// data is saved, so the next download asks again.
+// How setup gets the supported build from Steam, on the setup screen's card: three equal choices (DownloadChoices). Scan a
+// QR code with the Steam app (the default), or sign in with account name and password (no phone needed; Steam emails a
+// code when the account has Steam Guard by email): both download from Steam's servers (SteamDepotSession). Or let the
+// Steam client on this PC download it through its console, with no sign-in in HellForge (SteamDepotDownload, the console
+// card). Nothing of a sign-in is kept: the password box is emptied as soon as it is read, the session ends with the
+// download, and no token or Steam Guard data is saved, so the next download asks again.
 public partial class MainWindow
 {
-    bool signInByAccount;
+    DownloadChoice downloadChoice = DownloadChoices.Default;
     CancellationTokenSource? signInAttempt;
     TaskCompletionSource<SignInRequest>? passwordEntered;
     TaskCompletionSource<string>? codeEntered;
     bool signInWired;
 
+    // The player chose the Steam client: setup waits for its console download instead of signing in.
+    sealed class SteamClientChosen() : Exception("The Steam client downloads the build.");
+
+    (Button Button, DownloadChoice Choice)[] ChoiceButtons =>
+        [(ChoiceQrButton, DownloadChoice.QrCode), (ChoicePasswordButton, DownloadChoice.Password), (ChoiceClientButton, DownloadChoice.SteamClient)];
+
     void WireSignIn()
     {
         if (signInWired) return;
         signInWired = true;
-        SignInSwitchButton.Click += (_, _) =>
+        foreach (var (button, choice) in ChoiceButtons)
         {
-            signInByAccount = !signInByAccount;
-            ShowSignInMode();
-            signInAttempt?.Cancel(); // the attempt under way ends; SignInForDownload starts the other kind
-        };
+            button.Content = DownloadChoices.Title(choice);
+            button.Click += (_, _) => Choose(choice);
+        }
         SignInPasswordButton.Click += (_, _) => SubmitPassword();
         SignInPassword.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) SubmitPassword(); };
         SignInCodeButton.Click += (_, _) => SubmitCode();
         SignInCode.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) SubmitCode(); };
     }
 
-    // Waits on the card until the player has signed in (or cancel ends it), and returns the signed-in session.
+    void Choose(DownloadChoice choice)
+    {
+        if (choice == downloadChoice) return;
+        downloadChoice = choice;
+        ShowSignInMode();
+        signInAttempt?.Cancel(); // the attempt under way ends; SignInForDownload starts the chosen one
+        if (!DownloadChoices.SignsIn(choice)) return;
+        // a sign-in instead of the Steam client's download: its console card goes, and setup (waiting for it) starts again
+        downloadTimer?.Stop();
+        DownloadCard.IsVisible = false;
+        if (!setupRunning) _ = RunSetup();
+    }
+
+    // Waits on the card until the player has signed in (or cancel ends it), and returns the signed-in session. Throws
+    // SteamClientChosen when the player picks (or had picked) the Steam client's download.
     async Task<SteamDepotSession> SignInForDownload(SupportedBuild build, CancellationToken cancel)
     {
         WireSignIn();
         SignInIntro.Text = $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). Steam can send " +
-            "that build to your own account from its servers: sign in to Steam below to start the download. It runs under your own " +
-            "licence, and only what your Steam install does not already have is downloaded. With the QR code, HellForge never sees your " +
-            "password. Nothing of the sign-in is kept: the next download asks again. Your normal game and Steam stay as they are.";
-        SignInStatus.Text = "";
+            "that build to your own account, under your own licence; only what your Steam install does not already have is downloaded. " +
+            "Choose how. Nothing of a sign-in is kept, and your normal game and Steam stay as they are.";
         ShowSignInMode();
         SignInCard.IsVisible = true;
         try
@@ -50,6 +70,7 @@ public partial class MainWindow
             while (true)
             {
                 cancel.ThrowIfCancellationRequested();
+                if (!DownloadChoices.SignsIn(downloadChoice)) throw new SteamClientChosen();
                 using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancel);
                 signInAttempt = attempt;
                 var session = await TrySignIn(attempt.Token, cancel);
@@ -62,40 +83,47 @@ public partial class MainWindow
             passwordEntered = null;
             SignInPassword.Text = "";
             SignInCodePanel.IsVisible = false;
-            SignInCard.IsVisible = false;
+            // the Steam client's choice keeps the card, so the player can still switch to a sign-in
+            SignInCard.IsVisible = !DownloadChoices.SignsIn(downloadChoice);
         }
     }
 
-    // One sign-in, of the kind on screen: the session, or null to try again (switched kind, or a failure shown on the card).
+    // One sign-in, of the chosen kind: the session, or null to try again (another choice, or a failure shown on the card).
     async Task<SteamDepotSession?> TrySignIn(CancellationToken attempt, CancellationToken cancel)
     {
+        var byQr = downloadChoice == DownloadChoice.QrCode;
         try
         {
-            SignInRequest request = signInByAccount ? await WaitForPassword(attempt) : new QrSignIn();
-            if (!signInByAccount) SignInQrWait.IsVisible = true;
+            var request = byQr ? DownloadChoices.Request(DownloadChoice.QrCode, null, null)! : await WaitForPassword(attempt);
+            if (byQr) SignInQrWait.IsVisible = true;
             return await SteamDepotSession.SignInAsync(request, new CardPrompt(this), attempt);
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested) { return null; }
         catch (SteamSignInException failed) when (!cancel.IsCancellationRequested)
         {
-            SignInStatus.Text = failed.Message + (signInByAccount ? " Check the details and sign in again." : " A new code follows.");
+            SignInStatus.Text = failed.Message + (byQr ? " A new code follows." : " Check the details and sign in again.");
             SignInPasswordButton.IsEnabled = true;
             SignInPasswordButton.Content = "Sign in";
             SignInCodePanel.IsVisible = false;
-            if (!signInByAccount) await Task.Delay(TimeSpan.FromSeconds(3), cancel);
+            if (byQr) await Task.Delay(TimeSpan.FromSeconds(3), cancel);
             return null;
         }
     }
 
     void ShowSignInMode()
     {
-        SignInQrPanel.IsVisible = !signInByAccount;
-        SignInPasswordPanel.IsVisible = signInByAccount;
+        foreach (var (button, choice) in ChoiceButtons)
+        {
+            button.Classes.Set("primary", choice == downloadChoice);
+            button.Classes.Set("ghost", choice != downloadChoice);
+        }
+        SignInChoiceText.Text = DownloadChoices.Explanation(downloadChoice, SupportedBuild.Current.BuildId);
+        SignInQrPanel.IsVisible = downloadChoice == DownloadChoice.QrCode;
+        SignInPasswordPanel.IsVisible = downloadChoice == DownloadChoice.Password;
         SignInCodePanel.IsVisible = false;
         SignInPasswordButton.IsEnabled = true;
         SignInPasswordButton.Content = "Sign in";
         SignInQr.Data = null;
-        SignInSwitchButton.Content = signInByAccount ? "Sign in with a QR code instead" : "Sign in with account name and password instead";
         SignInStatus.Text = "";
     }
 
@@ -109,9 +137,8 @@ public partial class MainWindow
 
     void SubmitPassword()
     {
-        var account = SignInAccount.Text?.Trim() ?? "";
-        var typed = SignInPassword.Text ?? "";
-        if (passwordEntered == null || account.Length == 0 || typed.Length == 0)
+        var request = DownloadChoices.Request(DownloadChoice.Password, SignInAccount.Text, SignInPassword.Text);
+        if (passwordEntered == null || request == null)
         {
             SignInStatus.Text = "Enter your Steam account name and password.";
             return;
@@ -120,7 +147,7 @@ public partial class MainWindow
         SignInPasswordButton.IsEnabled = false;
         SignInPasswordButton.Content = "Signing in...";
         SignInStatus.Text = "Signing in to Steam...";
-        passwordEntered.TrySetResult(new PasswordSignIn(account, typed));
+        passwordEntered.TrySetResult(request);
     }
 
     void SubmitCode()

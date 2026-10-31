@@ -344,6 +344,60 @@ static class SteamDownloadTests
             check(session.Contains("IsPersistentSession = false") && session.Contains("ShouldRememberPassword = false"), "The session is not marked non-persistent.");
         });
 
+        test("Three equal ways to get the build: the QR code first, a password with no phone, or the Steam client with no sign-in", () =>
+        {
+            check(DownloadChoices.Default == DownloadChoice.QrCode && DownloadChoices.All.SequenceEqual([DownloadChoice.QrCode, DownloadChoice.Password, DownloadChoice.SteamClient]),
+                "The choices or the default.");
+            check(DownloadChoices.SignsIn(DownloadChoice.QrCode) && DownloadChoices.SignsIn(DownloadChoice.Password) && !DownloadChoices.SignsIn(DownloadChoice.SteamClient),
+                "Which choices sign in.");
+            check(DownloadChoices.Request(DownloadChoice.QrCode, null, null) is QrSignIn, "The QR choice does not start a QR sign-in.");
+            check(DownloadChoices.Request(DownloadChoice.Password, "  someone ", "secret") is PasswordSignIn { AccountName: "someone" }, "The password choice.");
+            check(DownloadChoices.Request(DownloadChoice.Password, "someone", "") == null && DownloadChoices.Request(DownloadChoice.Password, " ", "secret") == null,
+                "A password sign-in started without both.");
+            check(DownloadChoices.Request(DownloadChoice.SteamClient, "someone", "secret") == null, "The Steam client's choice signed in.");
+            check(DownloadChoices.All.Select(DownloadChoices.Title).Distinct().Count() == 3, "Two choices share a title.");
+            var password = DownloadChoices.Explanation(DownloadChoice.Password, "100");
+            check(DownloadChoices.Title(DownloadChoice.Password).Contains("No phone") && password.Contains("emails you a code") &&
+                password.Contains("goes only to Steam") && password.Contains("never keeps it"), "The password choice's words: " + password);
+            var client = DownloadChoices.Explanation(DownloadChoice.SteamClient, "100");
+            check(client.Contains("No sign-in in HellForge") && client.Contains("Steam client") && client.Contains("build 100") && client.Contains("copies it"),
+                "The Steam client choice's words: " + client);
+        });
+
+        test("The Steam client's download is picked up where Steam put it, past an empty leftover folder, and copied verified", () =>
+        {
+            var fixture = new Fixture(root, "steam-client-download");
+            var steamRoot = Path.Combine(fixture.Home, "Client");
+            var content = Path.Combine(steamRoot, "steamapps", "content", "app_553850");
+            // an earlier download's leftovers in the usual place, the real download under steamrt64 (Linux's 64-bit client)
+            Directory.CreateDirectory(Path.Combine(content, $"depot_{Bin}"));
+            Directory.CreateDirectory(Path.Combine(content, $"depot_{Data}"));
+            var real = Path.Combine(steamRoot, "steamrt64", "steamapps", "content", "app_553850");
+            void Put(string path, byte[] bytes)
+            {
+                var file = fixture.Build.Files.Single(f => f.Path == path);
+                var target = Path.Combine(real, $"depot_{file.Depot}", path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, bytes);
+            }
+            Put("bin/b.dll", fixture.Contents["bin/b.dll"]);
+            Put("data/empty", []);
+            Put("data/a.bin", fixture.Contents["data/a.bin"][..1000]);
+            // still downloading: not complete, and the file it waits for is named
+            check(!SteamDepotDownload.IsComplete(steamRoot, fixture.Build), "A download still under way counted as complete.");
+            var waiting = SteamDepotDownload.Status(steamRoot, fixture.Build).SelectMany(s => s.Waiting).ToList();
+            check(waiting.Count == 1 && waiting[0].Path == "data/a.bin" && waiting[0].Have == 1000, "Waiting for: " + string.Join(", ", waiting));
+            Put("data/a.bin", fixture.Contents["data/a.bin"]);
+            check(SteamDepotDownload.IsComplete(steamRoot, fixture.Build), "The finished download was not found.");
+            check(SteamDepotDownload.DepotFolder(steamRoot, fixture.Build, Data) == Path.Combine(real, $"depot_{Data}"), "The empty leftover folder won.");
+            var destination = Path.Combine(fixture.Home, "client-game");
+            GameCopier.CopyFromDepots(steamRoot, destination, fixture.Build);
+            fixture.CheckOutput(destination, check);
+            // a file the Steam client wrote wrong is never copied
+            Put("bin/b.dll", Bytes(77, fixture.C3.Length));
+            reject(() => GameCopier.CopyFromDepots(steamRoot, Path.Combine(fixture.Home, "client-game-2"), fixture.Build));
+        });
+
         test("The Steam download's libraries ship with their licences, and the notices name the versions referenced", () =>
         {
             var licences = Path.Combine(AppContext.BaseDirectory, "licences");

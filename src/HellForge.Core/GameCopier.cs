@@ -38,7 +38,7 @@ public static class GameCopier
         LocalInstall.NoLinks(destination);
         if (LocalInstall.Within(destination, Path.Combine(steamRoot, "steamapps")))
             throw new InvalidDataException("The game folder must be outside Steam's steamapps folder.");
-        CopyFiles(file => SteamDepotDownload.Locate(steamRoot, build, file), destination, build, "Steam's download",
+        CopyFiles(SteamDepotDownload.Locator(steamRoot, build), destination, build, "Steam's download",
             "run its download_depot command again", progress, cancellation);
     }
 

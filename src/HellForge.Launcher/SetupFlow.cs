@@ -227,7 +227,7 @@ public partial class MainWindow
             SetupSteps.Children.Remove(copyRow);
             SetupSteps.Children.Insert(SetupSteps.Children.IndexOf(ownershipRow), copyRow);
         }
-        SetRow(SetupStep.Copy, null, $"Sign in to Steam below to download build {build.BuildId}.", running: true);
+        SetRow(SetupStep.Copy, null, $"Choose below how Steam sends build {build.BuildId}.", running: true);
         setupCancel = new();
         var token = setupCancel.Token;
         SetupPauseButton.Content = "Cancel sign-in";
@@ -239,6 +239,13 @@ public partial class MainWindow
             var (downloaded, copied) = await DownloadFromSteam(steam, install, found, token);
             SetRow(SetupStep.Copy, true, $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB) from Steam for your account: {downloaded / 1e9:0.0} GB " +
                 $"downloaded, {copied / 1e9:0.0} GB copied from your Steam install. Each file verified against Steam's hashes.");
+        }
+        catch (SteamClientChosen)
+        {
+            // the player's choice: the Steam client downloads it through its console, and setup copies it from there
+            ShowDownload(found.SteamRoot, SteamHas(found.Game));
+            throw new SetupWaiting($"The Steam client downloads build {build.BuildId} for your account: follow the steps below. Setup " +
+                "continues by itself when the download is complete, and copies it into this folder.");
         }
         catch (Exception error) when (DownloadFailures.Describe(error, build.BuildId) is { } failure)
         {
@@ -305,6 +312,7 @@ public partial class MainWindow
             copied += " Steam's download was deleted.";
         }
         DownloadCard.IsVisible = false;
+        SignInCard.IsVisible = false;
         SetRow(SetupStep.Copy, true, copied);
     }
 
