@@ -13,6 +13,9 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
+  because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
+  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new.
 
 ### Changed
 
