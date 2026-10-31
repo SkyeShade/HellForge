@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
+#include "armory_diag_test.c"
 #include "live_sync_test.c"
 #include "director_test.c"
 #include "shots_test.c"
@@ -3785,6 +3786,7 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    ArmoryDiagFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
