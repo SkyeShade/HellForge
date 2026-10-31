@@ -14,6 +14,10 @@ On `dev`, since 0.3.0-beta.
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
 
+- Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
+  and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
+  (`HF_DIFFICULTY_HEAVY_ARTILLERY`, on in the Hell Forge difficulty).
+
 ### Changed
 
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
@@ -69,6 +73,10 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
+  about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
+  faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
+  it already did. Other levels keep the game's shells.
 - A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
   separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
   does, and the session log counts them.

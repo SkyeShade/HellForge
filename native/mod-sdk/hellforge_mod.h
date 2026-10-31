@@ -314,7 +314,8 @@ typedef struct HfDifficulty
     /* Missions at this level (0 keeps level 10's). */
     float map_scale;             /* playable radius, relative to level 10's: up to 2. Above 1 the route cells are
                                     farther apart (the generator has room for level 10's number); the structured
-                                    maps (map type 2) keep level 10's size */
+                                    maps (map type 2) keep level 10's size. The SEAF Artillery's shells reach
+                                    across it (their range x map_scale) */
     uint32_t optional_objectives;/* optional objectives a mission draws from its list (level 10: 4) */
     uint32_t major_objectives;   /* secondary objectives (level 10: 1); optional + major at most 18 (the map
                                     generator places 30 objectives at this level, the missions' own among them) */
@@ -351,6 +352,9 @@ typedef struct HfDifficulty
  * codes to retrieve, power to restore and a refuelling station, beside the city's side objectives (three unused mission
  * rows of the game, one per faction, offered only at the level; city copies of the ICBM objectives' stamps). */
 #define HF_DIFFICULTY_CITY_ICBM 0x40u
+/* The SEAF Artillery side objective's shells at the level are Explosive, High-Yield Explosive and Mini Nuke only (by
+ * weight 10, 5 and 5: a quarter of them nukes) instead of the game's mix with Napalm, Smoke and Static Field. */
+#define HF_DIFFICULTY_HEAVY_ARTILLERY 0x80u
 
 /* ---- SDK 6: named fields, definition blocks and deferred edits (docs/modding/content.md) ------------------------- */
 
