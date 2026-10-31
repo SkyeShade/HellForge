@@ -503,6 +503,7 @@ EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
+SteamDownloadTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 DownpatchTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
