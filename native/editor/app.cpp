@@ -487,21 +487,56 @@ static bool ReadU32(const char* component, uint64_t target, uint16_t offset, uin
     return true;
 }
 
+/* Whether a projectile type or damage id is one a mod added (of that kind). */
+static bool ModAdded(const std::vector<HfContent>& all, uint32_t kind, uint64_t id)
+{
+    for (const HfContent& c : all) if (c.kind == kind && c.id == id) return true;
+    return false;
+}
+
 /* what each entity standing in fires, against what the page's entity fires, and the damage of each (read from the
- * game) */
-static void RemapFired(catalog::Remap& remap)
+ * game): only a projectile or damage a mod added, never a vanilla one another weapon uses too */
+static void RemapFired(catalog::Remap& remap, const std::vector<HfContent>& all)
 {
     for (auto& [likeEntity, copyEntity] : remap.entity)
     {
         uint64_t a, b;
-        if (ReadU32("ProjectileWeaponComponentData", likeEntity, 0, &a) && ReadU32("ProjectileWeaponComponentData", copyEntity, 0, &b) && a != b && b != 0)
+        if (ReadU32("ProjectileWeaponComponentData", likeEntity, 0, &a) && ReadU32("ProjectileWeaponComponentData", copyEntity, 0, &b) && a != b &&
+            ModAdded(all, HF_KIND_PROJECTILE, b))
             remap.projectile[a] = b;
     }
     for (auto& [a, b] : remap.projectile)
     {
         uint64_t da, db;
-        if (ReadU32("ProjectileSettings", a, 0x3C, &da) && ReadU32("ProjectileSettings", b, 0x3C, &db) && da != db && db != 0) remap.damage[da] = db;
+        if (ReadU32("ProjectileSettings", a, 0x3C, &da) && ReadU32("ProjectileSettings", b, 0x3C, &db) && da != db && ModAdded(all, HF_KIND_DAMAGE, db))
+            remap.damage[da] = db;
     }
+}
+
+/* Whether the copy entity has a record of its own of the component, not the page's entity's shared with it: a field
+ * of a shared record is left off the copy's page, so an edit there never reaches the base. */
+static bool OwnsRecord(const std::string& component, uint64_t like, uint64_t copy)
+{
+    if (g_host.api->component_record == nullptr) return false;
+    /* asked once per record: a page has many fields of each (a weapon's 15 of WeaponData) */
+    static std::map<std::string, bool> known;
+    std::string key = component + '\t' + std::to_string(like) + '\t' + std::to_string(copy);
+    if (auto found = known.find(key); found != known.end()) return found->second;
+    uint32_t stride;
+    uintptr_t own = g_host.api->component_record(component.c_str(), copy, &stride);
+    return known[key] = own != 0 && own != g_host.api->component_record(component.c_str(), like, &stride);
+}
+
+/* A field of the copy's page: an entity's field only where the copy owns the record and get_live reads it (a Pelican's
+ * turret has no hellpod payload, say); a settings row's always (remap points it at the mod's own). */
+static bool OwnField(const Row& r, uint64_t ref)
+{
+    if (r.component.find("ComponentData") == std::string::npos) return true;
+    if (!OwnsRecord(r.component, r.ref, ref)) return false;
+    if (!HasGetLive()) return true;
+    HfField field = FieldOf(&r);
+    HfLiveValue value;
+    return g_host.api->get_live(g_host.mod, ref, &field, &value) != 0;
 }
 
 /* A content of the stratagem's own mod. */
@@ -531,8 +566,8 @@ static void RemapCopied(const HfContent& s, const std::vector<HfContent>& all, c
     }
 }
 
-/* The page's name: the mod's title (else the page's), after its entity's designation where the title lacks it. */
-static std::string StratagemName(const HfContent& s, const Object* like, const std::string& designation)
+/* The page's name: the mod's title (else the page's), after the designation where the title lacks it. */
+static std::string PageName(const HfContent& s, const Object* like, const std::string& designation)
 {
     std::string title = s.title != nullptr ? s.title : like->name;
     return designation.empty() || title.rfind(designation, 0) == 0 ? title : designation + " " + title;
@@ -566,21 +601,46 @@ static bool AddStratagemPage(const HfContent& s, const std::vector<HfContent>& a
     catalog::Remap remap;
     remap.stratagem[s.editor_like] = s.id;
     std::string designation = RemapEntities(s, all, remap);
-    RemapFired(remap);
+    RemapFired(remap, all);
     RemapCopied(s, all, remap);
-    std::string name = StratagemName(s, like, designation);
+    std::string name = PageName(s, like, designation);
     std::string nav = StratagemNav(s, like);
-    /* an entity's fields only where it has the record (a Pelican's turret has no hellpod payload, say) */
-    auto keep = [&](const Row& r, uint64_t ref) {
-        if (r.component.find("ComponentData") == std::string::npos || !HasGetLive()) return true;
-        HfField field = FieldOf(&r);
-        HfLiveValue value;
-        return api->get_live(g_host.mod, ref, &field, &value) != 0;
-    };
-    Object* o = g_catalog.AddCopy(*like, {std::string("mod/") + s.name, name, std::string("mod:") + s.name, s.name, nav}, remap, keep);
+    Object* o = g_catalog.AddCopy(*like, {std::string("mod/") + s.name, name, std::string("mod:") + s.name, s.name, nav}, remap, OwnField);
     if (o == nullptr) { api->log(g_host.mod, "editor: %s: none of its page's fields are its own", s.name); return false; }
     o->detail = std::string("Added by ") + s.mod;
     SetPageIcon(o, s);
+    api->log(g_host.mod, "editor: %s gets a page (%s's, %d field(s) of its own)", name.c_str(), like->name.c_str(), (int)o->rows.size());
+    return true;
+}
+
+/* A mod's arsenal weapon's page: a copy of its base weapon's page in the same section, pointed at the weapon's own
+ * entity and at the projectile and damage it fires where a mod added them. Only the records it owns: HfWeapon.own_all
+ * gives it all of them, else own_components and its own projectile's ProjectileWeapon record. False (logged why) when
+ * it gets none. */
+static bool AddWeaponPage(const HfContent& w, const std::vector<HfContent>& all)
+{
+    const HfApi* api = g_host.api;
+    if (w.size < offsetof(HfContent, base_entity) + sizeof w.base_entity || w.entity == 0 || w.base_entity == 0) return false;
+    const Object* like = g_catalog.EntityObject(w.base_entity);
+    if (like == nullptr)
+    {
+        api->log(g_host.mod, "editor: %s has no page (its base, entity %016llx, has none)", w.name, (unsigned long long)w.base_entity);
+        return false;
+    }
+    /* what it fires is its own ProjectileWeapon record's (it owns one with a projectile of its own): never a guess from
+     * what else its mod copied */
+    catalog::Remap remap;
+    remap.entity[w.base_entity] = w.entity;
+    RemapFired(remap, all);
+    std::string name = PageName(w, like, w.designation != nullptr ? w.designation : "");
+    Object* o = g_catalog.AddCopy(*like, {std::string("mod/") + w.name, name, std::string("mod:") + w.name, w.name, ""}, remap, OwnField);
+    if (o == nullptr)
+    {
+        api->log(g_host.mod, "editor: %s has no page: it shares every record on %s's page with it (HfWeapon.own_all gives it its own)", w.name,
+            like->name.c_str());
+        return false;
+    }
+    o->detail = std::string("Added by ") + w.mod;
     api->log(g_host.mod, "editor: %s gets a page (%s's, %d field(s) of its own)", name.c_str(), like->name.c_str(), (int)o->rows.size());
     return true;
 }
@@ -592,14 +652,21 @@ void AddModContent()
     done = true;
     const HfApi* api = g_host.api;
     if (api->size < offsetof(HfApi, content) + sizeof(void*) || api->content == nullptr) return;
+    LONGLONG started = QpcNow();
     std::vector<HfContent> all = AllContent(api);
-    int pages = 0;
+    int pages = 0, weapons = 0;
     for (const HfContent& s : all)
+    {
         if (s.kind == HF_KIND_STRATAGEM && AddStratagemPage(s, all)) pages++;
+        if (s.kind == HF_KIND_ITEM && AddWeaponPage(s, all)) weapons++;
+    }
     /* their saved values, to the game: the stats pass does not know them (joined to a friend, Tick swaps in the host's) */
     int applied = ApplyModValues(localstats::OwnEntries(), "this machine's", "HellForge refused its saved value");
     g_modRole = HF_SESSION_SOLO;
-    if (pages || applied) api->log(g_host.mod, "editor: %d mod stratagem page(s), %d saved value(s) of them applied", pages, applied);
+    double ms = (double)(QpcNow() - started) * 1000.0 / (double)QpcFrequency();
+    if (pages || weapons || applied)
+        api->log(g_host.mod, "editor: %d mod stratagem page(s), %d mod weapon page(s), %d saved value(s) of them applied (%.0f ms)", pages, weapons,
+            applied, ms);
 }
 
 void Tick()

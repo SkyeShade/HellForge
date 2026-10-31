@@ -38,6 +38,9 @@ static void* g_drawnQueue; /* the queue the editor says it draws on (D3D12) */
 static int g_again; /* times the editor got in front of an overlay that hooked over it */
 static int g_putBack; /* times the editor put its own hook back after an overlay put the code back as it was */
 static int g_modPage, g_modApplied; /* a mod's stratagem: its page made, its saved value sent to its own row */
+/* mod weapons' pages: the fields of the one owning every record and of the one owning its fire record (-1 no page), and
+ * whether the one sharing every record was left without one */
+static int g_goldFields = -1, g_swiftFields = -1, g_plainNoPage;
 static char g_modDir[MAX_PATH] = "";
 static HfSession g_sessionNow; /* the co-op role the stand-in loader reports */
 static void Session(HfMod*, HfSession* out) { *out = g_sessionNow; }
@@ -101,6 +104,9 @@ static void Log(HfMod*, const char* format, ...)
     if (strstr(line, "the editor's hook is back in place")) g_putBack++;
     if (strstr(line, "staged (APPLY writes them)")) g_presetImports++;
     if (strstr(line, "A/MG-101 Heavy MG Sentry gets a page")) g_modPage = 1;
+    if (strstr(line, "AR-23G Liberator Gold gets a page") && strstr(line, "'s, ")) g_goldFields = atoi(strstr(line, "'s, ") + 4);
+    if (strstr(line, "AR-23S Liberator Swift gets a page") && strstr(line, "'s, ")) g_swiftFields = atoi(strstr(line, "'s, ") + 4);
+    if (strstr(line, "test/mod/liberator_plain has no page: it shares every record")) g_plainNoPage = 1;
     if (strstr(line, "editor: mod sync") && strstr(line, "the dialog opens")) g_syncOpens++;
     if (strstr(line, "the mod sync prompt shows over the game")) g_syncAlone++;
     if (strstr(line, "the mod sync prompt goes")) g_syncGone++;
@@ -213,6 +219,17 @@ static int GetStat(HfMod*, const HfStat* stat, HfLiveValue* out)
 /* A mod's content, as the loader lists it: a copy of the A/MG-43 sentry's stratagem (type 150) dropping a copy of the
  * sentry (its own designation) that fires a copy of its round dealing a copy of its damage. */
 static const HfEditorEntity kModEntities[] = {{0xABCDull, 0x37CDE43876BA26BBull}, {0, 0}};
+static uint32_t g_extraWeapons;
+static const uint64_t kLiberator = 0x968211C0033DCE64ull, kWeaponOwnsAll = 0xBEEF01, kWeaponSharesAll = 0xBEEF02, kWeaponOwnsFire = 0xBEEF03;
+/* An entity's record of a component, as the loader answers: a vanilla entity's and the sentry copy's (own_all) are
+ * their own; of the Liberator copies, the first owns every record (HfWeapon.own_all), the second none, the third only
+ * its ProjectileWeapon record (a projectile of its own). A copy's shared record is refused (0), as the loader does. */
+static uintptr_t ComponentRecord(const char* component, uint64_t resource, uint32_t* stride)
+{
+    if (stride) *stride = 64;
+    if (resource == kWeaponSharesAll || (resource == kWeaponOwnsFire && strcmp(component, "ProjectileWeaponComponentData") != 0)) return 0;
+    return (uintptr_t)(resource * 0x100 + strlen(component)) | 1;
+}
 static int Content(HfMod*, uint32_t index, HfContent* out)
 {
     HfContent c = {};
@@ -226,7 +243,27 @@ static int Content(HfMod*, uint32_t index, HfContent* out)
     case 1: c.kind = HF_KIND_ENTITY; c.id = 0xABCD; c.base = 0x37CDE43876BA26BBull; c.name = "test/mod/hmg_entity"; c.designation = "A/MG-101"; break;
     case 2: c.kind = HF_KIND_PROJECTILE; c.id = 400; c.base = 148; c.link = 700; c.name = "test/mod/round"; break;
     case 3: c.kind = HF_KIND_DAMAGE; c.id = 700; c.base = 125; c.name = "test/mod/damage"; break;
-    default: return 0;
+    /* HELLFORGE_EDITOR_TEST_WEAPONS=<n>: n more Liberator copies owning every record, as a large weapon pack (the editor
+     * logs how long its mod pages took) */
+    case 4: case 5: case 6: /* three Liberator copies (ComponentRecord: what each owns) */
+        c.kind = HF_KIND_ITEM; c.id = 0x1110 + index; c.base = HF_ITEM_AR23_LIBERATOR; c.base_entity = kLiberator;
+        c.entity = index == 4 ? kWeaponOwnsAll : index == 5 ? kWeaponSharesAll : kWeaponOwnsFire;
+        c.name = index == 4 ? "test/mod/liberator_gold" : index == 5 ? "test/mod/liberator_plain" : "test/mod/liberator_swift";
+        c.title = index == 4 ? "Liberator Gold" : index == 5 ? "Liberator Plain" : "Liberator Swift";
+        c.designation = index == 4 ? "AR-23G" : index == 5 ? "AR-23P" : "AR-23S";
+        break;
+    default:
+        if (index - 7 >= g_extraWeapons) return 0;
+        {
+            static char names[512][32], designations[512][8], titles[512][16];
+            uint32_t n = index - 7;
+            snprintf(names[n], sizeof names[n], "test/mod/stress_%03u", n + 1);
+            snprintf(designations[n], sizeof designations[n], "T-%03u", n + 1);
+            snprintf(titles[n], sizeof titles[n], "Test %03u", n + 1);
+            c.kind = HF_KIND_ITEM; c.id = 0x2000 + n; c.base = HF_ITEM_AR23_LIBERATOR; c.base_entity = kLiberator; c.entity = 0xC0DE0000ull + n;
+            c.name = names[n]; c.designation = designations[n]; c.title = titles[n];
+        }
+        break;
     }
     *out = c;
     return 1;
@@ -284,6 +321,9 @@ int main(int argc, char** argv)
     g_api.get_live = GetLive;
     g_api.last_log = LastLog; g_api.logs_folder = LogsFolder; g_api.get_stat = GetStat; g_api.session = Session; g_api.stats_source = StatsSource;
     g_api.content = Content;
+    g_api.component_record = ComponentRecord;
+    g_extraWeapons = getenv("HELLFORGE_EDITOR_TEST_WEAPONS") ? (uint32_t)atoi(getenv("HELLFORGE_EDITOR_TEST_WEAPONS")) : 0;
+    if (g_extraWeapons > 512) g_extraWeapons = 512;
     g_api.mods = Mods;
     g_api.notice = Notice;
     g_api.sync_state = SyncState; g_api.sync_mod = SyncMod; g_api.sync_answer = SyncAnswer;
@@ -394,6 +434,12 @@ int main(int argc, char** argv)
     {
         printf("  mod stratagem: page %s, its saved cooldown sent to its own row %d time(s)\n", g_modPage ? "made" : "NOT made", g_modApplied);
         if (!g_modPage || g_modApplied != 1) { puts("FAIL a mod's stratagem got no page, or its saved value did not reach its own row"); return 1; }
+        printf("  mod weapons: own_all %d field(s), its own fire record %d, shares everything: %s\n", g_goldFields, g_swiftFields,
+            g_plainNoPage ? "no page" : "a page");
+        /* the Liberator's live fields: 15 handling and fire, 3 rates of fire, 5 armory traits (stats snapshot reads and
+         * choices, its displayed armor penetration, stay off copies) */
+        if (g_goldFields != 23 || g_swiftFields != 3 || !g_plainNoPage)
+        { puts("FAIL a mod weapon's page is not the fields of the records it owns"); return 1; }
     }
 
     ID3D12CommandAllocator* allocator = NULL; ID3D12GraphicsCommandList* list = NULL; ID3D12Fence* fence = NULL; ID3D12DescriptorHeap* rtvHeap = NULL;

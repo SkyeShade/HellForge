@@ -10,6 +10,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
+  (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
+  while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
+  page. Editing a mod weapon's page never changes the weapon it copies.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
@@ -41,6 +45,9 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
+  fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
+  now shows only what the mod owns.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
