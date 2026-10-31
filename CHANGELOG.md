@@ -45,6 +45,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
+  Mobilize at the top.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
