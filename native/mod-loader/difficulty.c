@@ -260,7 +260,7 @@ static int DifficultyFlags(HfMod* mod, const char* name, const HfDifficulty* def
 {
     if (def->size < offsetof(HfDifficulty, flags) + sizeof def->flags) return 0;
     uint32_t known = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
-        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM | HF_DIFFICULTY_HEAVY_ARTILLERY;
     if (def->flags & ~known)
     {
         ApiLog(mod, "add_difficulty(%s): unknown flags 0x%x", name, def->flags & ~known);

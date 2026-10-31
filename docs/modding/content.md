@@ -571,7 +571,7 @@ hell.patrol_frequency = 2.0f;      /* roaming patrols twice as often */
 hell.patrol_cap = 1.5f;            /* and up to 1.5 times as many living patrol enemies */
 hell.mission_stratagem = HF_STRATAGEM_M102_GUNNER_FRV; /* every mission grants the M-102 Gunner FRV (no loadout slot) */
 hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
-    HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+    HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM | HF_DIFFICULTY_HEAVY_ARTILLERY;
 return api->add_difficulty(mod, &hell) == 11 ? 0 : 1;
 ```
 
@@ -586,7 +586,8 @@ guards, and `spawner_cooldown` the time between the shared spawners' waves. An e
 - `optional_objectives` (0 to 32) and `major_objectives` (0 to 8) are together at most 18.
 - `outpost_scale` is 0 to 8, relative to level 10's outposts.
 - `mission_minutes` is 1 to 75.
-- `map_scale` is up to 2.
+- `map_scale` is up to 2. Above 1, the SEAF Artillery's shells fly farther at the level (their range times
+  `map_scale`), so the gun still reaches across the map.
 - `patrol_frequency` and `patrol_cap` are up to 4 each.
 - `mission_stratagem` is a stratagem every player gets in missions at the level.
 
@@ -596,7 +597,7 @@ guards, and `spawner_cooldown` the time between the shared spawners' waves. An e
 ### Flags
 
 `HF_DIFFICULTY_SECOND_PRIMARY` (every mission is two in one), `_NO_ERADICATE`, `_NO_RAPID_ACQUISITION`, `_NO_BLITZ`,
-`_RADAR`, `_CITY_STRONGHOLDS` and `_CITY_ICBM`. `hellforge_mod.h` says what each does.
+`_RADAR`, `_CITY_STRONGHOLDS`, `_CITY_ICBM` and `_HEAVY_ARTILLERY`. `hellforge_mod.h` says what each does.
 
 ### Icon
 

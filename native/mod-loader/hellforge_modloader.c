@@ -564,6 +564,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
+#include "difficulty_artillery.c" /* the SEAF Artillery's reach on larger maps */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
 #include "difficulty_install.c" /* after every difficulty file: the checks and the install, in their order */
@@ -852,6 +853,7 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
     if (g_difficultyState == 1) DifficultyWatch();
+    if (g_difficultyState == 1) DifficultyArtillery();
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
