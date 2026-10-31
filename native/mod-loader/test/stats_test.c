@@ -3621,8 +3621,10 @@ static void FieldWatchEndToEndFixture(void)
 }
 
 /* B.4b end to end: a helper of this test process touches a watched buffer past the 48 places; then the loader's
- * FieldWatchTick clears its Dr0-Dr2 and their Dr7 bits, and a later touch traps no more. Nothing here needs game.dll. */
+ * FieldWatchTick clears its Dr0-Dr2 and their Dr7 bits, and a later touch traps no more. A preview record is known
+ * first, so Dr2 (L2, Dr7 bit 4) is armed too, as in a game with the war table open. Nothing here needs game.dll. */
 static volatile LONG g_fieldCapBuffer[8];
+static volatile LONG g_fieldCapRecord; /* the preview record's +0x240, never touched */
 static HANDLE g_fieldCapReady, g_fieldCapGo, g_fieldCapFilled, g_fieldCapDone;
 
 #define FIELD_CAP_TOUCH(n) g_fieldCapBuffer[(n) & 4] = (LONG)(n)
@@ -3664,7 +3666,19 @@ static void FieldWatchCapFixture(void)
     HANDLE thread = CreateThread(NULL, 0, FieldWatchCapThread, NULL, 0, NULL);
     assert(thread != NULL);
     assert(WaitForSingleObject(g_fieldCapReady, 5000) == WAIT_OBJECT_0);
+    uintptr_t recordBefore = g_previewRecord;
+    g_previewRecord = (uintptr_t)&g_fieldCapRecord - 0x240;
     FieldWatch((uintptr_t)g_fieldCapBuffer);
+    if (works)
+    {
+        CONTEXT armed = {0};
+        armed.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &armed));
+        assert(ResumeThread(thread) != (DWORD)-1);
+        /* Wine may report zeros here (it does in the exception handler); when it reports them, Dr2 is armed */
+        assert(armed.Dr7 == 0 || (armed.Dr2 == (uintptr_t)&g_fieldCapRecord && (armed.Dr7 & 0x10) != 0));
+    }
     assert(SetEvent(g_fieldCapGo));
     assert(WaitForSingleObject(g_fieldCapFilled, 5000) == WAIT_OBJECT_0); /* the helper touched 56 places */
     if (works)
@@ -3677,7 +3691,7 @@ static void FieldWatchCapFixture(void)
         context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         assert(SuspendThread(thread) != (DWORD)-1);
         assert(GetThreadContext(thread, &context));
-        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & 0x7) == 0);
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & FIELD_WATCH_DR7_BITS) == 0);
         assert(ResumeThread(thread) != (DWORD)-1);
         LONG trapsCleared = g_fieldTrapCount;
         assert(SetEvent(g_fieldCapGo));
@@ -3701,7 +3715,8 @@ static void FieldWatchCapFixture(void)
     CloseHandle(g_fieldCapFilled);
     CloseHandle(g_fieldCapDone);
     g_fieldCapReady = g_fieldCapGo = g_fieldCapFilled = g_fieldCapDone = NULL;
-    puts("PASS field watch: past the 48 places the loader's thread clears the armed threads' Dr0-Dr2, logs once, and later touches do not trap");
+    g_previewRecord = recordBefore;
+    puts("PASS field watch: past the 48 places the loader's thread clears the armed threads' Dr0-Dr2 and all their Dr7 bits (Dr2's L2 too), logs once, and later touches do not trap");
 }
 
 int main(int argc, char** argv)
