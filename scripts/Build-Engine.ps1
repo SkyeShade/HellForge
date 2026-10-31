@@ -286,6 +286,8 @@ function Publish-Aot([string]$Staging){
         if($LASTEXITCODE){throw ('Compiling '+$app.folder+' failed.')}
         Get-ChildItem -LiteralPath (Join-Path $Staging $app.folder) -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
     }
+    # signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks unsigned programs), before engine.json hashes them
+    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (Join-Path $Staging 'session'),(Join-Path $Staging 'backend')
     if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $Staging 'backend/HellForge.LocalBackend.exe')|Select-Object -Last 1}
 }
 $env:PATH+=';'+(Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer')
@@ -300,6 +302,10 @@ if($NoSteamApi){
     Write-Output 'Built and tested without Valve''s steam_api64.dll (-NoSteamApi): no build.json, no engine package.'
     return
 }
+# The stand-ins, mod loader, WFP tool and broker, signed when a certificate is configured (Sign-Files.ps1), before build.json
+# pins them: the session checks them against these hashes.
+$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@($signed|ForEach-Object {Join-Path $out $_})+$(if($SteamCensus){@(Join-Path $census 'steam_api64.dll')}else{@()}))
 $receipt=[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');zig='0.17.0';
     originals=[ordered]@{'PartyWin.dll'=(Get-FileHash $partyOriginal).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash $lobbyOriginal).Hash;'steam_api64.dll'=$steamApiPin};
     standIns=[ordered]@{'PartyWin.dll'=(Get-FileHash (Join-Path $out 'PartyWin.dll')).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash (Join-Path $out 'PlayFabMultiplayerWin.dll')).Hash;

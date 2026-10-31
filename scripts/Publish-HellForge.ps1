@@ -142,6 +142,9 @@ $stub=Join-Path $staging 'HellForge.exe'
     (Join-Path $project 'native/launcher-stub/launcher_stub.rc') -o $stub # the .rc: its icon, HellForge's
 if($LASTEXITCODE){throw 'Building the launcher program failed.'}
 Get-ChildItem -LiteralPath $staging -File|Where-Object {$_.Extension -in @('.pdb','.lib')}|Remove-Item
+# HellForge's own programs and DLLs, signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks
+# unsigned ones). The engine's folders are signed by Build-Engine.ps1 or not at all: engine.json pins their hashes.
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@('launcher','cli','steamprobe','capture','bundled-mods','HellForge.exe')|ForEach-Object {Join-Path $staging $_})
 $commit=(git -C $project rev-parse --short HEAD 2>$null)
 $dirty=[bool](git -C $project status --porcelain 2>$null)
 [ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|
