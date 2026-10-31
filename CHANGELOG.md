@@ -40,10 +40,10 @@ On `dev`, since 0.3.0-beta.
 
 - Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
   game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
-  to close and waits up to 30 seconds for it before ending it.
+  to close and waits up to 30 seconds for it before ending it (#194).
 - The first start of a new installation built the shader cache from nothing even when the normal game already had
   one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
-  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running".
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
