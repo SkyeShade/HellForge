@@ -6,6 +6,8 @@
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
+    <EmbeddedResource Include="../../mappings/functions.json" LogicalName="HellForge.Core.mappings.functions.json" />
+    <EmbeddedResource Include="../../mappings/globals.json" LogicalName="HellForge.Core.mappings.globals.json" />
     <EmbeddedResource Include="../../mappings/hud-icons.json" LogicalName="HellForge.Core.mappings.hud-icons.json" />
     <EmbeddedResource Include="../../mappings/boosters.json" LogicalName="HellForge.Core.mappings.boosters.json" />
     <EmbeddedResource Include="../../mappings/passives.json" LogicalName="HellForge.Core.mappings.passives.json" />

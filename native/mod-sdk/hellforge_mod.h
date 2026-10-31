@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 15
+#define HF_MOD_SDK_VERSION 16
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -488,9 +488,10 @@ typedef struct HfNotice
 
 /* ---- game events (SDK 7, subscribe) ------------------------------------------------------------------------------
  * What happens in the game, delivered on the game thread (engine calls are safe in a listener) to every listener of the
- * kind, highest priority first. A listener gets the event as an HfEventInfo and casts it to the kind's struct; the data
- * is valid during the call only. Events observe: changing their data changes nothing in the game. Every machine
- * raises its own: an event says what this machine's game did (see each kind for host and client).
+ * kind, highest priority first. A listener gets the event as an HfEventInfo and casts it to the kind's struct (or use
+ * hf_on_<event>, after HfApi, whose listener takes the struct itself); the data is valid during the call only. Events
+ * observe: changing their data changes nothing in the game. Every machine raises its own: an event says what this
+ * machine's game did (see each kind for host and client).
  *
  *     static void Spawned(HfMod* mod, const HfEventInfo* event, void* user)
  *     {
@@ -1199,6 +1200,22 @@ typedef struct HfApi
     /* ---- SDK 15 --------------------------------------------------------------------------------------------------- */
     /* Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size. */
     uint32_t (*stats_source)(HfMod* mod);
+
+    /* ---- SDK 16: game functions and globals by name (hellforge_functions.h, hellforge_globals.h; check hf->size) - */
+    /* A game function mappings/functions.json names: its address, or 0 (the mod's log says why: not a mapped name,
+     * another game build, before HF_EVENT_GAME_LOADED, or its code is not the reviewed one). Use hf_fn_<Name>(mod),
+     * which returns it typed. */
+    uintptr_t (*function)(HfMod* mod, const char* name);
+    /* hook_ex on a mapped function, by name: 0 when its hook is in, or will go in once the game's code is decoded and
+     * reads as reviewed (*original stays NULL until then; the mod's log says when it went in, or why not); 1 refused
+     * (not a mapped name, a function only for calling, another game build, no detour or original). Callable from
+     * hellforge_mod_init on. Use HF_HOOK(mod, <Name>, detour, &original) or hf_hook_<Name>, which check the types. */
+    int (*hook_function)(HfMod* mod, const char* name, void* detour, void** original, int32_t priority);
+    /* The cell of a game global mappings/globals.json names (it holds a pointer to the game's object): its address, or 0
+     * (the mod's log says why: not a mapped name, another game build, before HF_EVENT_GAME_LOADED, or the code that
+     * witnesses it is not the reviewed one). Use hf_global_<Name>(mod), which reads the cell and returns the object
+     * typed. */
+    uintptr_t (*global)(HfMod* mod, const char* name);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
@@ -1231,8 +1248,126 @@ static inline int hf_set_field_(HfMod* mod, HfRef entity, HfField field, HfValue
 static inline int hf_live_field_(HfMod* mod, HfRef target, HfField field, HfValue value, uint32_t flags) { return HF_API(mod)->set_live(mod, target, &field, &value, flags); }
 #define hf_live(mod, target, C, f, value, flags) hf_live_field_((mod), (target), HF_LITERAL(HfField) HF_FIELD(C, f), HF_LITERAL(HfValue) value, (flags))
 
+/* ---- typed events (SDK 16's header; any loader of SDK 7 on) ---------------------------------------------------------
+ * hf_on_<event>(mod, listener, user, priority) listens to one kind of game event (subscribe) with a listener that takes
+ * the kind's own struct: nothing to cast, the compiler checks the listener's type, and typing hf_on_ lists every event.
+ * 0 when listening, 1 refused (the mod's log says why), as hook, on and HF_HOOK answer. The load events are under the
+ * same prefix (hf_on_game_loaded and the rest, through on). subscribe and on work as before.
+ *
+ *     static void Spawned(HfMod* mod, const HfSpawnEvent* spawn, void* user)
+ *     {
+ *         if (spawn->resource == mySentry) HF_API(mod)->log(mod, "sentry %u is down", spawn->entity);
+ *     }
+ *     hf_on_spawn(mod, Spawned, NULL, 0); */
+typedef void (*HfStateListener)(HfMod* mod, const HfStateEvent* event, void* user);
+typedef void (*HfPlayerListener)(HfMod* mod, const HfPlayerEvent* event, void* user);
+typedef void (*HfDamageListener)(HfMod* mod, const HfDamageEvent* event, void* user);
+typedef void (*HfDamagePreListener)(HfMod* mod, HfDamagePreEvent* event, void* user); /* may change amount or cancel */
+typedef void (*HfStratagemListener)(HfMod* mod, const HfStratagemEvent* event, void* user);
+typedef void (*HfKillListener)(HfMod* mod, const HfKillEvent* event, void* user);
+typedef void (*HfSpawnListener)(HfMod* mod, const HfSpawnEvent* event, void* user);
+typedef void (*HfHealListener)(HfMod* mod, const HfHealEvent* event, void* user);
+typedef void (*HfStatListener)(HfMod* mod, const HfStatEvent* event, void* user);
+typedef void (*HfWeaponListener)(HfMod* mod, const HfWeaponEvent* event, void* user);
+typedef void (*HfExplosionListener)(HfMod* mod, const HfExplosionEvent* event, void* user);
+typedef void (*HfBugholeListener)(HfMod* mod, const HfBugholeEvent* event, void* user);
+
+/* The listener goes to subscribe as an HfListener: its event argument points at the event's HfEventInfo, which is the
+ * struct's first member (checked below), so both take the same pointer, and on Windows x64, HellForge's only target, the
+ * same arguments in the same registers. Through void (*)(void), so -Wcast-function-type stays quiet. */
+HF_ASSERT_OFFSET(HfStateEvent, info, 0);
+HF_ASSERT_OFFSET(HfPlayerEvent, info, 0);
+HF_ASSERT_OFFSET(HfDamageEvent, info, 0);
+HF_ASSERT_OFFSET(HfDamagePreEvent, damage, 0);
+HF_ASSERT_OFFSET(HfStratagemEvent, info, 0);
+HF_ASSERT_OFFSET(HfKillEvent, info, 0);
+HF_ASSERT_OFFSET(HfSpawnEvent, info, 0);
+HF_ASSERT_OFFSET(HfHealEvent, info, 0);
+HF_ASSERT_OFFSET(HfStatEvent, info, 0);
+HF_ASSERT_OFFSET(HfWeaponEvent, info, 0);
+HF_ASSERT_OFFSET(HfExplosionEvent, info, 0);
+HF_ASSERT_OFFSET(HfBugholeEvent, info, 0);
+static inline int hf_subscribe_(HfMod* mod, uint32_t kind, void (*listener)(void), void* user, int32_t priority)
+{
+    const HfApi* hf = HF_API(mod);
+    if (listener == NULL || hf->size < offsetof(HfApi, subscribe) + sizeof(void*)) return 1;
+    return hf->subscribe(mod, kind, (HfListener)listener, user, priority) ? 0 : 1;
+}
+#define HF_LISTENER_(listener) ((void (*)(void))(listener))
+
+/* HF_ON_STATE: the game's state changed (HfStateEvent.from, to: HF_STATE_...). */
+static inline int hf_on_state(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STATE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_MISSION_START: the game entered HF_STATE_MISSION. */
+static inline int hf_on_mission_start(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_MISSION_START, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_MISSION_END: the game left HF_STATE_MISSION (to: where it went). */
+static inline int hf_on_mission_end(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_MISSION_END, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_PLAYER_SPAWN: a player is on the ground (dropped in, or reinforced). */
+static inline int hf_on_player_spawn(HfMod* mod, HfPlayerListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_PLAYER_SPAWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_PLAYER_DOWN: a player died and waits to be reinforced. */
+static inline int hf_on_player_down(HfMod* mod, HfPlayerListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_PLAYER_DOWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_DAMAGE: damage this machine's game applies, before armour and multipliers. */
+static inline int hf_on_damage(HfMod* mod, HfDamageListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_DAMAGE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_DAMAGE_PRE (SDK 11): damage about to apply; the listener may change event->damage.amount or set cancel. */
+static inline int hf_on_damage_pre(HfMod* mod, HfDamagePreListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_DAMAGE_PRE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_STRATAGEM: a stratagem's beacon activates (on the thrower's machine). */
+static inline int hf_on_stratagem(HfMod* mod, HfStratagemListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STRATAGEM, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_KILL: something was killed (on the victim's owner). */
+static inline int hf_on_kill(HfMod* mod, HfKillListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_KILL, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_SPAWN: an entity was spawned in this machine's world (remote spawns too). */
+static inline int hf_on_spawn(HfMod* mod, HfSpawnListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_SPAWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_HEAL (SDK 11): a Helldiver's health went up. */
+static inline int hf_on_heal(HfMod* mod, HfHealListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_HEAL, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_STAT (SDK 11): the local player's mission stats grew (HF_STAT_...). */
+static inline int hf_on_stat(HfMod* mod, HfStatListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STAT, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_WEAPON (SDK 11): what the local player's Helldiver holds changed. */
+static inline int hf_on_weapon(HfMod* mod, HfWeaponListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_WEAPON, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_EXPLOSION (SDK 11): an explosion was requested in this machine's world. */
+static inline int hf_on_explosion(HfMod* mod, HfExplosionListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_EXPLOSION, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_BUGHOLE (SDK 11): a bug hole was closed, on every machine. */
+static inline int hf_on_bughole(HfMod* mod, HfBugholeListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_BUGHOLE, HF_LISTENER_(listener), user, priority); }
+
+/* The load events (on): the callback once the game reaches that point of its start, at once if it has. */
+static inline int hf_on_game_loaded(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_GAME_LOADED, callback, user); }
+static inline int hf_on_network_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_NETWORK_READY, callback, user); }
+static inline int hf_on_entities_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_ENTITIES_READY, callback, user); }
+static inline int hf_on_projectiles_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_PROJECTILES_READY, callback, user); }
+
+/* Every game update, on the game thread (on_game_thread, SDK 6): 0 when it runs, 1 refused, as the calls above answer
+ * (on_game_thread itself answers 1 when it runs). */
+static inline int hf_on_game_thread(HfMod* mod, HfTickCallback callback, void* user)
+{
+    const HfApi* hf = HF_API(mod);
+    if (callback == NULL || hf->size < offsetof(HfApi, on_game_thread) + sizeof(void*)) return 1;
+    return hf->on_game_thread(mod, callback, user) ? 0 : 1;
+}
+
 /* Vanilla content by name (HF_ITEM_..., HF_ENTITY_..., HF_STRATAGEM_...), generated from mappings/catalog.json. */
 #include "hellforge_content.h"
+
+/* SDK 16: game functions by name (hf_fn_..., hf_hook_..., HF_HOOK), generated from mappings/functions.json. */
+#include "hellforge_functions.h"
+
+/* SDK 16: game globals by name (hf_global_..., Hf<Name>), generated from mappings/globals.json. */
+#include "hellforge_globals.h"
 
 /* Implemented by the mod. */
 #ifndef HF_MOD_LOADER

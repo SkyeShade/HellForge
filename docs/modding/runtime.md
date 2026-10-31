@@ -81,63 +81,70 @@ hf->on(mod, HF_EVENT_NETWORK_READY, WidenAmmoField, NULL);
 hf->on(mod, HF_EVENT_ENTITIES_READY, BackpackReady, NULL);
 ```
 
+`hf_on_game_loaded(mod, callback, user)`, `hf_on_network_ready`, `hf_on_entities_ready` and `hf_on_projectiles_ready`
+are the same calls under the game events' prefix (below): `hf_on_entities_ready(mod, BackpackReady, NULL)`.
+
 `HF_API(mod)` (SDK 6) gives you the API table from the mod handle, so a callback needs no global.
 
 ## Game events
 
-`hf->subscribe(mod, kind, listener, user, priority)` (SDK 7) hands you what happens in the game. You subscribe one
-listener per kind of event. Listeners are called on the game thread, highest priority first, equal priorities in
-subscription order. A listener gets an `HfEventInfo` and casts it to its kind's struct; the data is valid during the
-call only.
+`hf_on_<event>(mod, listener, user, priority)` hands you what happens in the game, one kind of event per call. The
+listener takes its kind's own struct, so there is nothing to cast: the compiler checks the listener's type (a listener
+for the wrong event, or one that drops `const` to write to an event that only observes, does not compile), and typing
+`hf_on_` in your IDE lists every event. Listeners are called on the game thread, highest priority first, equal
+priorities in subscription order; the data is valid during the call only. Each call answers 0 when listening, 1 when
+refused (the mod's log says why).
 
-The compendium's Heavy MG Sentry (`examples/mods/stratagem-compendium/src/hmg_sentry.c`) logs when its beacon
+A Heavy MG Sentry like the compendium's (`examples/mods/stratagem-compendium/src/hmg_sentry.c`) logs when its beacon
 activates, when one of its sentries lands, and how many were deployed each mission:
 
 ```c
-static void Called(HfMod* mod, const HfEventInfo* event, void* user)
+static void Called(HfMod* mod, const HfStratagemEvent* called, void* user)
 {
-    const HfStratagemEvent* called = (const HfStratagemEvent*)event;
     if (called->type == hmgType)
         HF_API(mod)->log(mod, "HMG sentry called in at (%.1f, %.1f, %.1f)", (double)called->position[0], (double)called->position[1],
             (double)called->position[2]);
 }
 
-static void Spawned(HfMod* mod, const HfEventInfo* event, void* user)
+static void Spawned(HfMod* mod, const HfSpawnEvent* spawn, void* user)
 {
-    const HfSpawnEvent* spawn = (const HfSpawnEvent*)event;
     if (spawn->resource == hmgRef) HF_API(mod)->log(mod, "HMG sentry %u is down (%d this mission)", spawn->entity, ++deployed);
 }
 
-static void Mission(HfMod* mod, const HfEventInfo* event, void* user)
+static void Mission(HfMod* mod, const HfStateEvent* state, void* user)
 {
-    if (event->kind == HF_ON_MISSION_END) HF_API(mod)->log(mod, "mission over: %d HMG sentr%s deployed", deployed, deployed == 1 ? "y" : "ies");
+    if (state->info.kind == HF_ON_MISSION_END) HF_API(mod)->log(mod, "mission over: %d HMG sentr%s deployed", deployed, deployed == 1 ? "y" : "ies");
     deployed = 0;
 }
 
 /* in hellforge_mod_init, after add_stratagem */
-hf->subscribe(mod, HF_ON_STRATAGEM, Called, NULL, 0);
-hf->subscribe(mod, HF_ON_SPAWN, Spawned, NULL, 0);
-hf->subscribe(mod, HF_ON_MISSION_START, Mission, NULL, 0);
-hf->subscribe(mod, HF_ON_MISSION_END, Mission, NULL, 0);
+hf_on_stratagem(mod, Called, NULL, 0);
+hf_on_spawn(mod, Spawned, NULL, 0);
+hf_on_mission_start(mod, Mission, NULL, 0);
+hf_on_mission_end(mod, Mission, NULL, 0);
 ```
+
+The typed calls come with SDK 16's `hellforge_mod.h` and run on any HellForge from SDK 7 on (SDK 11 for the kinds
+marked so below): they call `hf->subscribe(mod, kind, listener, user, priority)`, which still works as it always has.
+A `subscribe` listener gets an `HfEventInfo` and casts it to its kind's struct, as the compendium's own code does.
 
 The kinds:
 
-| Kind | Struct | When |
-|---|---|---|
-| `HF_ON_STATE` | `HfStateEvent` | the game's state changes (`HF_STATE_TITLE`, `_SHIP`, `_MISSION`, `_PREPARE_SHIP`...); `hf->game_state(mod)` reads it any time |
-| `HF_ON_MISSION_START`, `HF_ON_MISSION_END` | `HfStateEvent` | a mission starts or ends |
-| `HF_ON_PLAYER_SPAWN`, `HF_ON_PLAYER_DOWN` | `HfPlayerEvent` | a player lands (dropped in, reinforced) or dies; players by peer id, `local` marks this machine's |
-| `HF_ON_DAMAGE` | `HfDamageEvent` | damage this machine applies: target, kind, element, dealer, owner, creditor, amount (before armour and multipliers), where it hit |
-| `HF_ON_DAMAGE_PRE` (SDK 11) | `HfDamagePreEvent` | the same, before it applies: a listener may change `damage.amount` or set `cancel` |
-| `HF_ON_KILL` | `HfKillEvent` | something is killed: victim, dealer, creditor, kind, element |
-| `HF_ON_STRATAGEM` | `HfStratagemEvent` | a stratagem's beacon activates: its type, the thrower, the beacon's position |
-| `HF_ON_SPAWN` | `HfSpawnEvent` | an entity spawns: its entity id, network id, resource, whether this machine simulates it |
-| `HF_ON_HEAL` (SDK 11) | `HfHealEvent` | a Helldiver's health went up: amount, health now, maximum, peer |
-| `HF_ON_STAT` (SDK 11) | `HfStatEvent` | the local player's mission stats grew (`HF_STAT_SHOTS`, `_HITS`, `_KILLS`, `_DAMAGE`), with up to five sources |
-| `HF_ON_WEAPON` (SDK 11) | `HfWeaponEvent` | what the local Helldiver holds changed |
-| `HF_ON_EXPLOSION` (SDK 11) | `HfExplosionEvent` | an explosion was requested: its type, where, its source, the creditor |
-| `HF_ON_BUGHOLE` (SDK 11) | `HfBugholeEvent` | a bug hole was closed: entity, resource, stage, where |
+| Call | Kind | Struct | When |
+|---|---|---|---|
+| `hf_on_state` | `HF_ON_STATE` | `HfStateEvent` | the game's state changes (`HF_STATE_TITLE`, `_SHIP`, `_MISSION`, `_PREPARE_SHIP`...); `hf->game_state(mod)` reads it any time |
+| `hf_on_mission_start`, `hf_on_mission_end` | `HF_ON_MISSION_START`, `HF_ON_MISSION_END` | `HfStateEvent` | a mission starts or ends |
+| `hf_on_player_spawn`, `hf_on_player_down` | `HF_ON_PLAYER_SPAWN`, `HF_ON_PLAYER_DOWN` | `HfPlayerEvent` | a player lands (dropped in, reinforced) or dies; players by peer id, `local` marks this machine's |
+| `hf_on_damage` | `HF_ON_DAMAGE` | `HfDamageEvent` | damage this machine applies: target, kind, element, dealer, owner, creditor, amount (before armour and multipliers), where it hit |
+| `hf_on_damage_pre` | `HF_ON_DAMAGE_PRE` (SDK 11) | `HfDamagePreEvent` | the same, before it applies: a listener may change `damage.amount` or set `cancel` (its struct is not `const`) |
+| `hf_on_kill` | `HF_ON_KILL` | `HfKillEvent` | something is killed: victim, dealer, creditor, kind, element |
+| `hf_on_stratagem` | `HF_ON_STRATAGEM` | `HfStratagemEvent` | a stratagem's beacon activates: its type, the thrower, the beacon's position |
+| `hf_on_spawn` | `HF_ON_SPAWN` | `HfSpawnEvent` | an entity spawns: its entity id, network id, resource, whether this machine simulates it |
+| `hf_on_heal` | `HF_ON_HEAL` (SDK 11) | `HfHealEvent` | a Helldiver's health went up: amount, health now, maximum, peer |
+| `hf_on_stat` | `HF_ON_STAT` (SDK 11) | `HfStatEvent` | the local player's mission stats grew (`HF_STAT_SHOTS`, `_HITS`, `_KILLS`, `_DAMAGE`), with up to five sources |
+| `hf_on_weapon` | `HF_ON_WEAPON` (SDK 11) | `HfWeaponEvent` | what the local Helldiver holds changed |
+| `hf_on_explosion` | `HF_ON_EXPLOSION` (SDK 11) | `HfExplosionEvent` | an explosion was requested: its type, where, its source, the creditor |
+| `hf_on_bughole` | `HF_ON_BUGHOLE` (SDK 11) | `HfBugholeEvent` | a bug hole was closed: entity, resource, stage, where |
 
 `hellforge_mod.h` documents every field of every struct.
 
@@ -157,9 +164,10 @@ helps it become an event.
 
 ## The game thread
 
-`hf->on_game_thread(mod, callback, user)` (SDK 6) calls you every game update on the game thread, before the game's
-update, with the frame time in seconds. The callback starts once the loader has hooked the game's update, which can
-take up to a minute after `HF_EVENT_GAME_LOADED`. There is room for 16 callbacks across all mods. It runs every frame,
+`hf_on_game_thread(mod, callback, user)` calls you every game update on the game thread, before the game's update, with
+the frame time in seconds. It answers 0 when the callback is in and 1 when refused, as the `hf_on_` calls do; the
+`hf->on_game_thread` it calls (SDK 6) answers the other way round, 1 when in. The callback starts once the loader has
+hooked the game's update, which can take up to a minute after `HF_EVENT_GAME_LOADED`. There is room for 16 callbacks across all mods. It runs every frame,
 so keep it short.
 
 This callback heals the local Helldiver by 10 every 5 seconds:

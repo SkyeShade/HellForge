@@ -39,9 +39,12 @@ path. Stats files (`hellforge-stats.json`) hold value edits and are the editors'
 ## Mappings
 
 `mappings/components.json` names every field the SDK can touch (offset, type, count, meaning, and the game build it was
-reviewed on), and `mappings/catalog.json` names vanilla content. `HellForge.Cli sdk-headers` generates
-`hellforge_components.h`, `hellforge_content.h`, the loader's `sdk_fields.h` and `sdk_content.h`, and
-`sdk-reference.md` from them ([internals.md](internals.md#named-fields)).
+reviewed on), `mappings/catalog.json` names vanilla content, `mappings/functions.json` names game functions (SDK 16:
+offset, first bytes, signature and what each argument is) and `mappings/globals.json` names game globals (SDK 16: the
+cell, the instruction that witnesses it, the object's fields). `HellForge.Cli sdk-headers` generates
+`hellforge_components.h`, `hellforge_content.h`, `hellforge_functions.h`, `hellforge_globals.h`, the loader's
+`sdk_fields.h`, `sdk_content.h`, `sdk_functions.h` and `sdk_globals.h`, and `sdk-reference.md` from them
+([internals.md](internals.md#named-fields)).
 
 Naming grows one entry at a time: an `_unknown_XX` range becomes a named field by adding its entry (offset, type,
 meaning, build, evidence) and regenerating. Adding a name never breaks a mod, and a renamed field keeps its old name as a
@@ -84,7 +87,10 @@ Full parity with the HD2R Editor, in three steps:
 - Mod content in progression: a level requirement, a price or a warbond page for a mod's stratagems and weapons
   ([roadmap.md](roadmap.md#progression)).
 - Game functions as SDK calls (spawn, give, damage, Wwise events) instead of raw addresses, which move with every game
-  build.
+  build. Started in SDK 16: ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events
+  (`hf_on_<event>`, no cast), and 15 game globals by name (`mappings/globals.json`, `hf_global_`: the managers and
+  queues those functions take, with their named fields). Left: more names and fields, and named sites inside functions
+  for patches.
 - The launcher shows which mods hook what, and conflicts between mods. The logs and `hooks.tsv` already report both.
 - Conflict rules beyond load order: a priority set by the mod or the player, and merge rules for list data.
 - The Lua bridge's events and actions that have no engine call yet ([lua-bridge.md](lua-bridge.md)).
