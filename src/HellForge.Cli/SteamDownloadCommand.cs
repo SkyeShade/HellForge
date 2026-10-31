@@ -17,7 +17,9 @@ static class SteamDownloadCommand
         var steamRoot = options.GetValueOrDefault("--steam-root") ?? SteamLocator.SteamRoot();
         var installed = FindInstalled(steamRoot);
         if (steamRoot != null) OutsideSteam(destination, steamRoot);
-        var job = new BuildDownloadJob(build, destination, steamRoot, installed, options.TryGetValue("--file", out var file) ? [file.Replace('\\', '/')] : null);
+        var only = options.TryGetValue("--file", out var file) ? file.Replace('\\', '/') : null;
+        if (only != null && !build.Files.Any(f => f.Path == only)) throw new ArgumentException($"Not a file of build {build.BuildId}: {only}.");
+        var job = new BuildDownloadJob(build, destination, steamRoot, installed, only != null ? [only] : null);
         var dryRun = options.GetValueOrDefault("--dry-run") switch { null or "no" => false, "yes" => true, _ => throw new ArgumentException("--dry-run is yes or no.") };
         SignInRequest request = options.GetValueOrDefault("--sign-in") switch
         {

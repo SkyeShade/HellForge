@@ -193,14 +193,24 @@ public partial class MainWindow
         // ("Linked/reparse paths are not supported: Z:\", GitHub issue 1), so everything is downloaded there.
         if (game == null && unusable != null && !LinuxNetworkBlock.UnderWine)
             throw new SetupStopped($"HELLDIVERS 2 is in Steam, but setup cannot use it right now: {unusable}");
+        // Linux (Wine/Proton): setup runs inside HellForge's network namespace, which has no route out, so Steam's
+        // servers are out of its reach; the Steam client downloads the build through its console instead.
+        if (LinuxNetworkBlock.Requested)
+        {
+            ShowDownload(steamRoot, SteamHas(game, unusable));
+            throw new SetupWaiting($"Steam has {SteamHas(game, unusable)}, but this version of HellForge needs build {build.BuildId}. Setup " +
+                "runs inside HellForge's network namespace and cannot reach Steam's servers itself; the Steam client can download that exact " +
+                "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
+        }
         SetRow(SetupStep.Find, true, game != null
             ? $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. Steam sends build {build.BuildId} for your account; what your install already has is copied, not downloaded."
             : $"No HELLDIVERS 2 setup can copy from. Steam sends build {build.BuildId} (about {build.TotalBytes / 1e9:0} GB) for your account.");
         return new(build, steamRoot, game, false, true);
     }
 
-    // The game a failed Steam download leaves Steam's console to fetch, in the console card's words.
-    static string SteamHas(SteamGame? game) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}" : "no HELLDIVERS 2 setup can copy from";
+    // What Steam has, in the console card's words.
+    static string SteamHas(SteamGame? game, string? unusable = null) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
+        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 setup can copy from";
 
     // Signs in to Steam and downloads the supported build into the installation (the copy step's row). A full drive asks
     // for space; a refused or failed download also offers Steam's console download. Files already written are kept.
