@@ -950,7 +950,8 @@ public sealed record TrustedMod(string Id, string Hash, string Name, string Vers
 // Data mods for one session: their patch files are copied into game/data, renumbered so each bundle's patches stay
 // contiguous after any the player installed there by hand, and listed in temp/staged-mods.json so the next session
 // removes exactly them first. Game files from Steam are never touched. A mod's generated data (ModDataCache.Prepare) is
-// staged after its data/ folder, the same way.
+// staged after its data/ folder, the same way, and HellForge's own patches for the session (the locked warbond art,
+// WarbondLocks) after every mod's.
 public static class ModStaging
 {
     const string RecordName = "staged-mods.json";
@@ -962,11 +963,12 @@ public static class ModStaging
     // time as the file they come from: a copy keeps its source's time): a session start copied and deleted every patch
     // again, ~3 GB for a tester's packs, and kept the drive busy for minutes. Only new or changed patches are copied;
     // those no longer staged are removed.
-    public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods)
+    // own: folders of HellForge's own patch files, staged after the mods'.
+    public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods, IReadOnlyList<string>? own = null)
     {
         var data = Path.Combine(install.Game, "data");
         var previous = Previous(install);
-        var plan = Plan(mods, data, previous);
+        var plan = Plan(mods, own ?? [], data, previous);
         var wanted = plan.Select(p => p.Target).ToHashSet(StringComparer.Ordinal);
         var left = new HashSet<string>(previous, StringComparer.Ordinal); /* staged here before and still in game/data */
         var staged = new List<string>();
@@ -1002,7 +1004,7 @@ public static class ModStaging
 
     // Each mod's patch files (its data/, its pack's chosen folders, its generated data) with the names they are staged
     // under: each bundle's patches renumbered after the ones already in game/data, in load order.
-    static List<(string Source, string Target)> Plan(IReadOnlyList<ModManifest> mods, string data, HashSet<string> previous)
+    static List<(string Source, string Target)> Plan(IReadOnlyList<ModManifest> mods, IReadOnlyList<string> own, string data, HashSet<string> previous)
     {
         var next = new Dictionary<string, int>(StringComparer.Ordinal);
         int NextIndex(string bundle)
@@ -1017,18 +1019,22 @@ public static class ModStaging
             return index;
         }
         var plan = new List<(string Source, string Target)>();
+        void Add(string folder, IEnumerable<string> files)
+        {
+            foreach (var group in files.GroupBy(f => (Bundle: f[..16], Index: int.Parse(ModCatalog.PatchFile().Match(f).Groups[1].Value, CultureInfo.InvariantCulture)))
+                .OrderBy(g => g.Key.Bundle, StringComparer.Ordinal).ThenBy(g => g.Key.Index))
+            {
+                var index = NextIndex(group.Key.Bundle);
+                foreach (var file in group.Order(StringComparer.Ordinal))
+                    plan.Add((Path.Combine(folder, file), $"{group.Key.Bundle}.patch_{index}{ModCatalog.PatchFile().Match(file).Groups[2].Value}"));
+            }
+        }
         foreach (var mod in mods)
         {
             if (mod.HasDataSpec && mod.GeneratedData == null) throw new InvalidDataException($"{mod.Id}: its data has not been generated.");
-            foreach (var (folder, files) in Sources(mod))
-                foreach (var group in files.GroupBy(f => (Bundle: f[..16], Index: int.Parse(ModCatalog.PatchFile().Match(f).Groups[1].Value, CultureInfo.InvariantCulture)))
-                    .OrderBy(g => g.Key.Bundle, StringComparer.Ordinal).ThenBy(g => g.Key.Index))
-                {
-                    var index = NextIndex(group.Key.Bundle);
-                    foreach (var file in group.Order(StringComparer.Ordinal))
-                        plan.Add((Path.Combine(folder, file), $"{group.Key.Bundle}.patch_{index}{ModCatalog.PatchFile().Match(file).Groups[2].Value}"));
-                }
+            foreach (var (folder, files) in Sources(mod)) Add(folder, files);
         }
+        foreach (var folder in own) Add(folder, PatchFiles(folder));
         return plan;
     }
 
@@ -1037,10 +1043,12 @@ public static class ModStaging
     {
         var sources = new List<(string Folder, IEnumerable<string> Files)> { (Path.Combine(mod.Folder, "data"), mod.DataFiles) };
         foreach (var folder in mod.PackFolders) sources.Add((folder, CosmeticPacks.PatchFiles(folder)));
-        if (mod.GeneratedData != null)
-            sources.Add((mod.GeneratedData, Directory.GetFiles(mod.GeneratedData).Select(f => Path.GetFileName(f)).Where(f => ModCatalog.PatchFile().IsMatch(f))));
+        if (mod.GeneratedData != null) sources.Add((mod.GeneratedData, PatchFiles(mod.GeneratedData)));
         return sources;
     }
+
+    static IEnumerable<string> PatchFiles(string folder) =>
+        Directory.GetFiles(folder).Select(f => Path.GetFileName(f)).Where(f => ModCatalog.PatchFile().IsMatch(f));
 
     // The last session's staged files (patch file names only).
     static HashSet<string> Previous(InstallLayout install)
