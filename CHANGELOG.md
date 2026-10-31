@@ -72,6 +72,10 @@ On `dev`, since 0.3.0-beta.
 - A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
   separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
   does, and the session log counts them.
+- With the sandbox on (Settings > Sandbox), a player who joined a squad could reach only the host's game, never the
+  other players who joined: the sandbox let the game's Steam connection through to the host alone. In a squad of three
+  or four, each player's game now reaches every other player in the lobby too. This is a likely cause of the known
+  issue where a third player joining a lobby of two pushed the second player out.
 
 ### For mod makers
 

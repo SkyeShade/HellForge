@@ -438,6 +438,12 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
     moment it hears of a joiner, so the file must already list it; before, the file was written a few milliseconds
     after the announcement. A peer listed that way stays in the file until the lobby or Party lists it too (at most
     30 s), and a kick takes it out at once.
+  - A joiner also lists the lobby's **other members** (`LobbyService.LobbyMates`): the members of the host's join
+    answer, then each one the host reports added, written in before the game hears of them (`MateAdded`), and taken
+    out at the next heartbeat once the host reports them gone. Before (0.3.0-beta), a joiner listed only the host, so
+    in a squad of three or four the joiners' games could not reach each other. The list comes from the host of a lobby
+    this game is in, at most 8 a lobby, never this machine or the host itself. The joiners' backends still never talk:
+    these peers are not pinged.
   - The broker reads the file when its time stamp moves, and again at once when a SteamID is not in it: a host sends
     within a second of a join, seconds before the joiner enters its Steam lobby.
 - **Out:** `SendP2PPacket` (at most 7000 bytes, channels 0-7), `AcceptP2PSessionWithUser` and `GetP2PSessionState` to a
