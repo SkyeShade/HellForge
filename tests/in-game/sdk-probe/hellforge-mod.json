@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.sdk-probe",
+  "name": "SDK probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: exercises SDK 16's hooks by name, typed events, game functions and game globals, and logs one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "sdk_probe.dll", "sdk": 16 }
+}
