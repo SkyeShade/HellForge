@@ -139,6 +139,9 @@ public sealed class LobbyService
     // reaches only listed peers, and a squad's games may talk to each other, not only to the host. The same rules for a
     // handler.
     public event Action<ulong>? MateAdded;
+    // A mate is gone: the owner reported it left or removed, or this machine is out of that lobby (left it, was removed,
+    // the lobby closed, its owner was lost). Raised under this service's lock; the same rules for a handler.
+    public event Action<ulong>? MateRemoved;
     public Action<Frame>? Find { get; set; }
     public sealed record Hosted(string Id, string ConnectionString, uint MaxMembers, int Members, int Access, bool Locked, bool LocalOwner,
         IReadOnlyDictionary<string, string> SearchProperties, Privacy Privacy = Privacy.FriendsOnly);
@@ -284,8 +287,8 @@ public sealed class LobbyService
             }
             foreach (var (id, owner) in remote.ToList())
                 Send(owner, new Frame("lobby.leave").Add("hellforge-disconnect-" + id).Add(id).Add(""));
+            foreach (var id in mates.Keys.ToList()) DropMates(id);
             remote.Clear();
-            mates.Clear();
             forwarded.Clear();
             joining.Clear();
             invitesSent.Clear();
@@ -403,6 +406,7 @@ public sealed class LobbyService
             foreach (var (id, owner) in remote.Where(r => r.Value == peer).ToList())
             {
                 remote.Remove(id);
+                DropMates(id);
                 toLocal(new Frame("lobby.disconnected").Add(id).Add(2)); // ConnectionInterruption
             }
         }
@@ -474,7 +478,7 @@ public sealed class LobbyService
             Answer(LocalNode, op, Kind(frame.Type), frame.Type == "lobby.kick" && remote.ContainsKey(lobbyId) ? AccessDenied : LobbyNotFound);
             return null;
         }
-        if (frame.Type == "lobby.leave") remote.Remove(lobbyId);
+        if (frame.Type == "lobby.leave") { remote.Remove(lobbyId); DropMates(lobbyId); }
         // an invitation to a friend's lobby: its owner records it, then this machine passes it on (RelayEvent)
         if (frame.Type == "lobby.invite" && TryNode(frame.Text(3), out var invitee))
             invitesSent[op] = (invitee, lobbyId, frame.Text(2));
@@ -504,7 +508,7 @@ public sealed class LobbyService
     {
         var op = frame.Text(0);
         if (!forwarded.Remove(op, out var request) || request.Owner != peer) return false;
-        if (frame.Text(1) == "join" && frame.Text(2) != "0") remote.Remove(request.LobbyId);
+        if (frame.Text(1) == "join" && frame.Text(2) != "0") { remote.Remove(request.LobbyId); DropMates(request.LobbyId); }
         if (frame.Text(1) == "join" && frame.Text(2) == "0") joining.Remove(peer); /* in: no refusal to wait for */
         if (frame.Text(1) == "join" && frame.Text(2) == "0") SnapshotMates(request.LobbyId, frame);
         if (frame.Text(1) == "join" && uint.TryParse(frame.Text(2), NumberStyles.None, CultureInfo.InvariantCulture, out var joinResult))
@@ -518,10 +522,11 @@ public sealed class LobbyService
     bool OwnersEvent(ulong peer, Frame frame)
     {
         if (!remote.TryGetValue(frame.Text(0), out var owner) || owner != peer) return false;
-        if (frame.Type == "lobby.disconnected") { remote.Remove(frame.Text(0)); mates.Remove(frame.Text(0)); }
+        if (frame.Type == "lobby.disconnected") { remote.Remove(frame.Text(0)); DropMates(frame.Text(0)); }
         if (frame.Type == "lobby.memberAdded") AddMate(frame.Text(0), frame.Text(1));
-        if (frame.Type == "lobby.memberRemoved" && mates.TryGetValue(frame.Text(0), out var others) && TryNode(frame.Text(1), out var gone))
-            others.Remove(gone);
+        if (frame.Type == "lobby.memberRemoved" && mates.TryGetValue(frame.Text(0), out var others) && TryNode(frame.Text(1), out var gone) &&
+            others.Remove(gone))
+            MateRemoved?.Invoke(gone);
         // the owner removed this machine's player (its own copy goes to this machine only with this reason)
         if (frame.Type == "lobby.memberRemoved" && frame.Text(2) == MemberRemovedForcibly.ToString(CultureInfo.InvariantCulture))
         {
@@ -536,7 +541,7 @@ public sealed class LobbyService
     // none: the answer still goes to the game.
     void SnapshotMates(string lobbyId, Frame frame)
     {
-        mates.Remove(lobbyId);
+        DropMates(lobbyId);
         if (frame.Count < 11 || frame.Text(3) != lobbyId) return;
         try
         {
@@ -553,6 +558,13 @@ public sealed class LobbyService
             }
         }
         catch (InvalidDataException error) { log($"Could not read the members of lobby {lobbyId}: {error.Message}"); }
+    }
+
+    // A lobby's mates are gone (MateRemoved for each).
+    void DropMates(string lobbyId)
+    {
+        if (!mates.Remove(lobbyId, out var gone)) return;
+        foreach (var node in gone) MateRemoved?.Invoke(node);
     }
 
     // A member of a friend's lobby this machine is in, as a co-op peer (MateAdded), unless it is this machine or the
