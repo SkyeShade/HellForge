@@ -166,6 +166,19 @@ Console page and in Settings) shows the session's folder; `session.log` there li
 The first launch of a new installation can stop in the cryo pod. The launcher notices and says "The game seems stuck in
 the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 
+### A black screen for minutes when the game starts
+
+Without a shader cache the game builds one before it shows anything, which can take several minutes with the window
+black. The launcher says "Building the shader cache (first start only, this can take a few minutes)..." meanwhile. A new
+installation starts from the normal game's shader cache when there is one, and a sandboxed session takes a copy of the
+installation's and brings it back at the end, so this should happen once.
+
+The game saves its shader cache only when it closes by itself. STOP and closing the launcher ask it to close and wait
+up to 30 seconds; a game that crashes, or that does not close in time, keeps the cache it started with. If every start
+is slow, play one session and quit from the game's own menu, then send Save logs to Desktop from the next one: its
+`result.json` says how big the shader cache was at the start and the end, whether the game wrote it, and how long the
+game took to its first request.
+
 ### Messages before the game starts
 
 | Message | What to do |

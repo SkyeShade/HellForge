@@ -262,7 +262,9 @@ lobby stays listed.
     ImGui settings. The game's logs, dumps and crash data land there too and stay with the session.
 
   Both copies go back once the game is gone (`SandboxFolders`): regular files only, never through a link or junction
-  (a low process can make one in its own folder), at most 4 GiB and 100,000 files. The rest of the run folder stays at
+  (a low process can make one in its own folder), at most 4 GiB and 100,000 files. The game writes its shader cache only on a clean exit,
+  so a stop the player asked for first posts WM_CLOSE to the game's windows and waits up to 30 s (`GameClose`); an
+  installation without a shader cache starts from the normal game's (`ShaderCache.Seed`). The rest of the run folder stays at
   the player's level: the runner's result, the backend's evidence and the `steam_api64.dll` copy the backend loads for
   the peer link must stay out of the game's reach.
 - **Pipes the game opens** carry a low label when the backend runs with `--sandbox` (`PipeServer`): the lobby and party

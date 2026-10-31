@@ -429,7 +429,7 @@ public partial class MainWindow : Window
                 RenderSteps(LaunchStep, false);
                 if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");
                 break;
-            case "observing": ShowObserving(); break;
+            case "observing": ShowObserving(state); break;
             case "observed": ShowObserved(state, stopped); break;
             case "failed": ShowFailed(state, stopped); break;
             case "cleanup_failed":
@@ -446,11 +446,15 @@ public partial class MainWindow : Window
         if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
     }
 
-    void ShowObserving()
+    void ShowObserving(JsonElement state)
     {
         RenderSteps(RunStep, false);
         if (stopRequested) return;
-        if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
+        // No shader cache yet: the game builds it behind a black screen before it asks the backend for anything.
+        if (seasonPassUtc == null && !reachedShip && ShaderCache.Building(state))
+            SetStatus("Building the shader cache (first start only, this can take a few minutes)...", Phase.Running,
+                "The game window stays black until it is done. Later starts are quick. Press STOP or close the game to end the session.");
+        else if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
             SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
                 "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
         else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");

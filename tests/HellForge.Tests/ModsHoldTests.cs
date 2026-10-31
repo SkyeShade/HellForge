@@ -137,6 +137,47 @@ static class ModsHoldTests
             Directory.Delete(junction);
         });
 
+        test("Shader cache: a new installation starts from the normal game's, one it has is kept, and its facts are read", () =>
+        {
+            var userData = Directory.CreateDirectory(Path.Combine(root, "shader-seed", "userdata")).FullName;
+            var vanilla = Directory.CreateDirectory(Path.Combine(root, "shader-seed", "vanilla")).FullName;
+            check(ShaderCache.Read(userData) is { Empty: true, Bytes: 0, NewestUtc: null }, "No folder: an empty cache.");
+            check(ShaderCache.Seed(userData, vanilla) == null && ShaderCache.Seed(userData, null) == null, "Nothing to seed from.");
+            Directory.CreateDirectory(Path.Combine(vanilla, ShaderCache.Folder));
+            File.WriteAllText(Path.Combine(vanilla, ShaderCache.Folder, "pipeline_library.cache"), new string('p', 500));
+            File.WriteAllText(Path.Combine(vanilla, "user_settings.config"), "not the cache");
+            var seeded = ShaderCache.Seed(userData, vanilla);
+            check(seeded is { Files: 1, Bytes: 500, Skipped: 0 } && File.Exists(Path.Combine(userData, ShaderCache.Folder, "pipeline_library.cache")) &&
+                !File.Exists(Path.Combine(userData, "user_settings.config")), "Seeded with the cache only: " + seeded);
+            var facts = ShaderCache.Read(userData);
+            check(facts is { Files: 1, Bytes: 500, Empty: false } && facts.NewestUtc != null && (int?)facts.ToJson()["files"] == 1, "Facts: " + facts);
+
+            // the installation's own cache is never replaced by the normal game's
+            File.WriteAllText(Path.Combine(userData, ShaderCache.Folder, "pipeline_library.cache"), "own");
+            File.WriteAllText(Path.Combine(vanilla, ShaderCache.Folder, "pipeline_library.cache"), "newer vanilla");
+            check(ShaderCache.Seed(userData, vanilla) == null &&
+                File.ReadAllText(Path.Combine(userData, ShaderCache.Folder, "pipeline_library.cache")) == "own", "A cache the installation has is kept.");
+        });
+
+        test("Shader cache: the launcher says the game is building it only while it started without one and has not reached the backend", () =>
+        {
+            static System.Text.Json.JsonElement State(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+            check(ShaderCache.Building(State("""{"status":"observing","shaderCache":{"atStart":{"files":0,"bytes":0}}}""")), "Empty at start, no request yet.");
+            check(!ShaderCache.Building(State("""{"shaderCache":{"atStart":{"files":0}},"firstBackendRequestSeconds":95.2}""")), "Past its black screen.");
+            check(!ShaderCache.Building(State("""{"shaderCache":{"atStart":{"files":1,"bytes":110000000}}}""")), "Started with a cache.");
+            check(!ShaderCache.Building(State("""{"shaderCache":{"readError":"denied"}}""")) && !ShaderCache.Building(State("""{"status":"observing"}""")) &&
+                !ShaderCache.Building(State("[]")), "Unknown: not said.");
+        });
+
+        test("Stop signal: a plain stop lets the game close first, a stop now ends it at once", () =>
+        {
+            var run = Directory.CreateDirectory(Path.Combine(root, "stop-signal")).FullName;
+            SessionRunner.SignalStop(run);
+            check(File.ReadAllText(Path.Combine(run, "stop-observation.signal")) == "stop", "A plain stop.");
+            SessionRunner.SignalStop(run, now: true);
+            check(File.ReadAllText(Path.Combine(run, "stop-observation.signal")) == SessionRunner.StopNowSignal, "A stop now.");
+        });
+
         test("Sandboxed editor saves: changes are applied onto the files as they are now, each checked", () =>
         {
             var mods = Folder(root, "sandbox-stats");
