@@ -132,6 +132,11 @@ catch (SocketException error)
 if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return Fail(CaptureProblem.Offline, "no IPv4 address for " + host); }
 Log("upstream " + string.Join(", ", upstreamIps) + ":443");
 
+// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
+// Bound before the certificate and the hosts line: when another program holds the port, neither is touched.
+var listener = new TcpListener(IPAddress.Loopback, listenPort);
+if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFailure.Detail);
+
 string? caThumbprint = null;
 X509Certificate2 serverCert;
 // A crash from here on would leave the hosts line and the CA trusted: an exception nothing catches is logged with its
@@ -142,42 +147,50 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     if (manageHosts) Step("hosts cleanup", RemoveHosts);
     if (manageCa) Step("CA cleanup", () => RemoveCas(null));
 };
-if (manageCa)
+// Making the certificates can fail as well as installing the CA (a broken crypto provider; Wine's, 2026-10-30): either
+// stops the run as a certificate problem, with every HellForge CA removed.
+try
 {
-    var crlListener = new TcpListener(IPAddress.Loopback, 0);
-    crlListener.Start();
-    var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
-    using var caKey = RSA.Create(2048);
-    var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-    caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
-    caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
-    using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-    if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
-    try
+    if (manageCa)
     {
-        using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
-        store.Open(OpenFlags.ReadWrite);
-        using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
-        store.Add(publicCa);
+        var crlListener = new TcpListener(IPAddress.Loopback, 0);
+        crlListener.Start();
+        var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
+        using var caKey = RSA.Create(2048);
+        var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
+        using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
+        try
+        {
+            using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+            store.Open(OpenFlags.ReadWrite);
+            using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
+            store.Add(publicCa);
+        }
+        catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
+        {
+            // A security program guarding the trusted root store refuses the add.
+            throw new CryptographicException("Windows refused to add the certificate: " + error.Message, error);
+        }
+        caThumbprint = ca.Thumbprint;
+        Log("CA installed");
+        serverCert = MakeLeaf(ca, host, cdp);
+        StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
     }
-    catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
-    {
-        // A security program guarding the trusted root store refuses the add.
-        Log("CA install failed: " + CaptureDiagnostics.Chain(error));
-        Step("CA cleanup", () => RemoveCas(null));
-        return Fail(CaptureProblem.Certificate, error.Message);
-    }
-    caThumbprint = ca.Thumbprint;
-    Log("CA installed");
-    serverCert = MakeLeaf(ca, host, cdp);
-    StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
-        HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
+    else serverCert = MakeLeaf(null, host, null);
 }
-else serverCert = MakeLeaf(null, host, null);
+catch (CryptographicException error)
+{
+    Log("certificate failed: " + CaptureDiagnostics.Chain(error));
+    if (manageCa) Step("CA cleanup", () => RemoveCas(null));
+    listener.Stop();
+    return Fail(CaptureProblem.Certificate, error.Message);
+}
 
-// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
-var listener = new TcpListener(IPAddress.Loopback, listenPort);
 var cleaned = 0;
 void Cleanup()
 {
@@ -238,8 +251,6 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
-    // The port first: when another program holds it, the hosts file is left alone.
-    if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFailure.Detail);
     if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
     LogResolution();
     Log($"listening on port {listenPort}");

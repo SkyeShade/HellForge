@@ -104,7 +104,8 @@ public static class CaptureStart
         {
             CaptureProblem.Declined => "Sync cancelled: it needs the administrator prompt.",
             CaptureProblem.Blocked => "Windows refused to start the capture" + detail + ".",
-            CaptureProblem.Missing => "The capture program is missing: " + proxyPath + " was removed" + detail +
+            // Windows' own text only repeats the path.
+            CaptureProblem.Missing => "The capture program is missing: " + proxyPath + " was removed" +
                 ". Restore it from your security program's quarantine (or reinstall HellForge).",
             CaptureProblem.Stopped => "The capture was stopped before it could start" + detail + ".",
             CaptureProblem.Crashed => "The capture crashed while starting" + detail + ".",
@@ -116,7 +117,7 @@ public static class CaptureStart
             CaptureProblem.HostsBusy => failure.Detail ?? "Another program kept the hosts file open, so the sync could not change it.",
             CaptureProblem.HostsDenied => failure.Detail ?? "Windows refused the sync's change to the hosts file.",
             CaptureProblem.Offline => "The capture could not reach HELLDIVERS 2's servers" + detail + ": check your internet connection, then sync again.",
-            CaptureProblem.Certificate => "The capture could not add its certificate to Windows" + detail + ".",
+            CaptureProblem.Certificate => "The capture could not make its certificate or add it to Windows" + detail + ".",
             CaptureProblem.PortInUse => "Another program already uses port 443, which the capture needs" + detail +
                 ": close it, then sync again.",
             CaptureProblem.PortDenied => "Windows did not let the capture use port 443" + detail + ".",
