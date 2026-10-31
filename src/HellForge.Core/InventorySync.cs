@@ -104,33 +104,39 @@ public static class InventorySync
     }
 
     // Starts the proxy elevated (one UAC prompt), sealing what it captures for steamAccount. Blocks until the prompt is
-    // answered, so call it off the UI thread. Returns null when elevation was declined.
-    public static Process? StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount)
+    // answered, so call it off the UI thread. Without a process, Refused says why (CaptureStart.FromStartError): the
+    // prompt declined, or Windows refusing the file (a security program, an application control policy).
+    public static (Process? Process, CaptureProblem Refused, string? Detail) StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount)
     {
         Directory.CreateDirectory(syncDir);
-        return StartElevated(proxyPath, [
+        // An earlier attempt's failure must not be read as this one's.
+        File.Delete(Path.Combine(syncDir, CaptureStart.FailureFile));
+        var started = TryStartElevated(proxyPath, [
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)]);
+        return started.Process != null ? (started.Process, CaptureProblem.None, null)
+            : (null, CaptureStart.FromStartError(started.Error), started.Message);
     }
 
-    // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
-    public static Process? StartCleanup(string proxyPath) => StartElevated(proxyPath, ["--cleanup"]);
+    // Removes a leftover hosts line and CA (one UAC prompt), its log and any hosts failure (CaptureHosts.ReadFailure) in
+    // logDir. Null when elevation was declined.
+    public static Process? StartCleanup(string proxyPath, string logDir) => TryStartElevated(proxyPath, ["--cleanup", "--evidence", logDir]).Process;
 
-    static Process? StartElevated(string path, string[] arguments)
+    static (Process? Process, int Error, string? Message) TryStartElevated(string path, string[] arguments)
     {
         var start = new ProcessStartInfo(path) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         try
         {
-            return Process.Start(start);
+            return (Process.Start(start), 0, null);
         }
-        catch (Win32Exception)
+        catch (Win32Exception error)
         {
-            return null;
+            return (null, error.NativeErrorCode, $"{error.Message} (Windows error {error.NativeErrorCode})");
         }
     }
 

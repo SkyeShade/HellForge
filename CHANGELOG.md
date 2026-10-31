@@ -38,8 +38,20 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Sync Inventory's "The capture could not start: see proxy.log" now says why and what to do: a security program
+  blocking or stopping the capture (named, with the exact file to add to its exclusions), another program on port 443
+  (named), the certificate refused, no internet, or the administrator prompt declined; a hosts file problem (below)
+  also names the security program to allow. A capture slow to start is reported after a minute. An
+  earlier sync's capture still running is stopped by the next sync, so restarting the PC is no longer needed for it
+  (#160).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
   some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
   a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left

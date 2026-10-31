@@ -15,6 +15,9 @@
 // request's reason (CaptureLog); the key-and-count shape of what the capture keeps (CaptureDiagnostics); the game's and
 // Easy Anti-Cheat's processes; and a summary. Never bodies, header or query values, or the session.
 //
+// A run that cannot get as far as listening ends with a CaptureStart exit code (20 and up) and writes capture-failure.json
+// beside proxy.log with what was in its way (StartProblems), for the launcher to tell the player.
+//
 //   --cleanup      only remove a hosts line and CA left by a run that was killed
 //   --no-hosts --no-ca --listen-port 8443 --real-ip <ip>   local plumbing test, no system changes
 
@@ -24,6 +27,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -45,6 +49,8 @@ var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
 bool manageHosts = true, manageCa = true, cleanupOnly = false;
+// Set once this run's hosts line is in, until cleanup removes it: a line already gone at cleanup was removed by something else.
+var hostsAdded = false;
 var timeoutMin = 10;
 string? sealKey = null;
 ulong? steamAccount = null;
@@ -90,7 +96,11 @@ catch (Exception error) when (error is ArgumentException or FormatException or O
 
 if (cleanupOnly)
 {
-    var removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null));
+    try { Directory.CreateDirectory(evidenceDir); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message); }
+    // A capture still running would remove or re-add its lines as it ends.
+    var removed = StartProblems.StopOtherCaptures(Log) == null;
+    removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null)) & removed;
     return removed ? 0 : 1;
 }
 
@@ -98,14 +108,17 @@ try { Directory.CreateDirectory(evidenceDir); }
 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message);
-    return 1;
+    return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
 // The sync folder stays private to this user.
 Run("icacls", $"\"{evidenceDir}\" /inheritance:r /grant:r \"{System.Security.Principal.WindowsIdentity.GetCurrent().Name}:(OI)(CI)F\"");
 
+// What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
+// (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
+if (StartProblems.StopOtherCaptures(Log) is { } stillRunning) return Fail(CaptureProblem.LeftoverCapture, stillRunning);
 // Resolve the real host before the hosts line points it at loopback; clear a line an earlier killed run left first.
-if (manageHosts && !Step("hosts cleanup", RemoveHosts)) return 1;
+if (manageHosts && HostsStep("hosts cleanup", RemoveHosts) is { } cleanupFailure) return Fail(cleanupFailure.Problem, cleanupFailure.Detail);
 List<IPAddress> upstreamIps;
 try
 {
@@ -114,10 +127,15 @@ try
 catch (SocketException error)
 {
     Log("could not resolve " + host + ": " + error.SocketErrorCode);
-    return 1;
+    return Fail(CaptureProblem.Offline, host + " does not resolve: " + error.SocketErrorCode);
 }
-if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return 1; }
+if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return Fail(CaptureProblem.Offline, "no IPv4 address for " + host); }
 Log("upstream " + string.Join(", ", upstreamIps) + ":443");
+
+// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
+// Bound before the certificate and the hosts line: when another program holds the port, neither is touched.
+var listener = new TcpListener(IPAddress.Loopback, listenPort);
+if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFailure.Detail);
 
 string? caThumbprint = null;
 X509Certificate2 serverCert;
@@ -129,34 +147,50 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     if (manageHosts) Step("hosts cleanup", RemoveHosts);
     if (manageCa) Step("CA cleanup", () => RemoveCas(null));
 };
-if (manageCa)
+// Making the certificates can fail as well as installing the CA (a broken crypto provider; Wine's, 2026-10-30): either
+// stops the run as a certificate problem, with every HellForge CA removed.
+try
 {
-    var crlListener = new TcpListener(IPAddress.Loopback, 0);
-    crlListener.Start();
-    var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
-    using var caKey = RSA.Create(2048);
-    var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-    caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
-    caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
-    using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-    if (!Step("CA cleanup", () => RemoveCas(null))) return 1;
-    using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine))
+    if (manageCa)
     {
-        store.Open(OpenFlags.ReadWrite);
-        using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
-        store.Add(publicCa);
+        var crlListener = new TcpListener(IPAddress.Loopback, 0);
+        crlListener.Start();
+        var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
+        using var caKey = RSA.Create(2048);
+        var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
+        using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
+        try
+        {
+            using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+            store.Open(OpenFlags.ReadWrite);
+            using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
+            store.Add(publicCa);
+        }
+        catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
+        {
+            // A security program guarding the trusted root store refuses the add.
+            throw new CryptographicException("Windows refused to add the certificate: " + error.Message, error);
+        }
+        caThumbprint = ca.Thumbprint;
+        Log("CA installed");
+        serverCert = MakeLeaf(ca, host, cdp);
+        StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
     }
-    caThumbprint = ca.Thumbprint;
-    Log("CA installed");
-    serverCert = MakeLeaf(ca, host, cdp);
-    StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
-        HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
+    else serverCert = MakeLeaf(null, host, null);
 }
-else serverCert = MakeLeaf(null, host, null);
+catch (CryptographicException error)
+{
+    Log("certificate failed: " + CaptureDiagnostics.Chain(error));
+    if (manageCa) Step("CA cleanup", () => RemoveCas(null));
+    listener.Stop();
+    return Fail(CaptureProblem.Certificate, error.Message);
+}
 
-// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
-var listener = new TcpListener(IPAddress.Loopback, listenPort);
 var cleaned = 0;
 void Cleanup()
 {
@@ -217,9 +251,8 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
-    if (manageHosts) AddHosts();
+    if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
     LogResolution();
-    listener.Start();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
     _ = Task.Run(WatchProcesses);
@@ -239,6 +272,51 @@ finally
 Log(captured == 1 ? "capture complete" : "nothing captured");
 LogSummary();
 return captured == 1 && sealOk ? 0 : 1;
+
+// Stops before listening: says why in proxy.log and capture-failure.json, for the launcher (CaptureStart).
+int Fail(CaptureProblem problem, string? detail)
+{
+    Log($"could not start: {problem}" + (detail != null ? ": " + detail : ""));
+    // A hosts failure's reason is already in hosts-failure.txt (HostsWrite): one message per failure.
+    if (problem is not (CaptureProblem.HostsBusy or CaptureProblem.HostsDenied)) Step("failure", () => CaptureStart.Write(evidenceDir, problem, detail));
+    return CaptureStart.ExitCode(problem);
+}
+
+CaptureFailure? StartListener()
+{
+    try
+    {
+        listener.Start();
+        return null;
+    }
+    catch (SocketException error)
+    {
+        Log($"port {listenPort} refused: {CaptureDiagnostics.Chain(error)}");
+        if (error.SocketErrorCode != SocketError.AddressAlreadyInUse)
+            return new CaptureFailure(CaptureProblem.PortDenied, $"{error.Message} ({(int)error.SocketErrorCode})");
+        var owner = StartProblems.PortOwner(listenPort);
+        if (owner is { } pid && StartProblems.Describe(pid).StartsWith(StartProblems.ProcessName + ".exe", StringComparison.OrdinalIgnoreCase))
+            return new CaptureFailure(CaptureProblem.LeftoverCapture, "it still holds port " + listenPort);
+        return new CaptureFailure(CaptureProblem.PortInUse, owner is { } holder ? "used by " + StartProblems.Describe(holder) : null);
+    }
+}
+
+// A hosts change before listening (CaptureHosts retries a locked file and clears read-only; HostsWrite names who holds it
+// and writes the reason to hosts-failure.txt). Null when it worked; otherwise that same reason, as this run's start failure.
+CaptureFailure? HostsStep(string name, Action change)
+{
+    try
+    {
+        change();
+        return null;
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+    {
+        Log(name + " failed: " + error.Message);
+        var failure = error as HostsFileException ?? error.InnerException as HostsFileException;
+        return new CaptureFailure(failure?.Failure == HostsFailure.InUse ? CaptureProblem.HostsBusy : CaptureProblem.HostsDenied, error.Message);
+    }
+}
 
 // What this run is, so a log from another PC or build can be read on its own.
 void LogStart()
@@ -645,15 +723,116 @@ static void Run(string file, string arguments)
 
 void RemoveHosts()
 {
-    if (!CaptureHosts.Remove(hostsPath, host)) return;
+    if (!HostsWrite(() => CaptureHosts.Remove(hostsPath, host)))
+    {
+        if (hostsAdded) HostsGone();
+        return;
+    }
+    hostsAdded = false;
     Run("ipconfig", "/flushdns");
     Log("hosts line removed");
 }
 
 void AddHosts()
 {
-    CaptureHosts.Add(hostsPath, host);
+    LogHostsFile();
+    HostsWrite(() => { CaptureHosts.Add(hostsPath, host); return true; });
+    hostsAdded = true;
     Run("ipconfig", "/flushdns");
+    Log("hosts line added");
+}
+
+// A failed hosts write: the plain reason, named more exactly where Windows can say who, goes to the log and to the sync
+// folder for the launcher's message (CaptureHosts.FailureFile). Rethrown as an IOException with that reason for Step.
+bool HostsWrite(Func<bool> write)
+{
+    try
+    {
+        return write();
+    }
+    catch (HostsFileException error)
+    {
+        Log($"hosts file {error.Failure}: {CaptureDiagnostics.Chain(error.InnerException ?? error)}");
+        var reason = error.Failure switch
+        {
+            HostsFailure.InUse when HostsLockers() is { Count: > 0 } lockers =>
+                $"{string.Join(", ", lockers)} kept the hosts file ({hostsPath}) open, so the sync could not change it. Close it, then sync again.",
+            HostsFailure.Blocked or HostsFailure.Reverted or HostsFailure.ReadOnly when DefenderFlaggedHosts() => DefenderReason("blocked the sync's change to"),
+            _ => error.Message
+        };
+        Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+        throw new IOException(reason, error);
+    }
+}
+
+string DefenderReason(string what) =>
+    $"Microsoft Defender {what} the hosts file ({hostsPath}) as SettingsModifier:Win32/HostsFileHijack. The sync needs one line " +
+    "there pointing the game's API at this PC while it reads your inventory, and removes it afterwards.";
+
+// The capture's line vanished before cleanup: something other than the capture removed it while the game was meant to use it.
+void HostsGone()
+{
+    hostsAdded = false;
+    Log("hosts line was already gone at cleanup: something else removed it");
+    var reason = DefenderFlaggedHosts() ? DefenderReason("removed the sync's line from")
+        : HostsFileException.Describe(HostsFailure.Reverted, hostsPath);
+    Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+}
+
+// The hosts file's attributes before the capture changes it (read-only, system, hidden), for a log from another PC.
+void LogHostsFile()
+{
+    try { Log(File.Exists(hostsPath) ? $"hosts file attributes: {File.GetAttributes(hostsPath)}" : "hosts file missing: the capture creates it and deletes it at cleanup"); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("hosts file attributes unreadable: " + error.Message); }
+}
+
+// Whether Microsoft Defender's threat history holds its hosts-file detection (asked only after a hosts write failed).
+bool DefenderFlaggedHosts()
+{
+    try
+    {
+        using var process = Process.Start(new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -Command \"if (Get-MpThreat -ErrorAction SilentlyContinue | Where-Object ThreatName -like '*HostsFileHijack*') { exit 3 } else { exit 0 }\"")
+            { UseShellExecute = false, CreateNoWindow = true });
+        if (process == null || !process.WaitForExit(15000)) return false;
+        var flagged = process.ExitCode == 3;
+        Log("Microsoft Defender's history " + (flagged ? "holds" : "does not hold") + " HostsFileHijack");
+        return flagged;
+    }
+    catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        Log("Microsoft Defender's history not read: " + error.Message);
+        return false;
+    }
+}
+
+// The programs holding the hosts file open, by name (Windows Restart Manager).
+List<string> HostsLockers()
+{
+    var names = new List<string>();
+    try
+    {
+        if (RestartManager.RmStartSession(out var session, 0, Guid.NewGuid().ToString("N")) != 0) return names;
+        try
+        {
+            if (RestartManager.RmRegisterResources(session, 1, [hostsPath], 0, null, 0, null) == 0)
+            {
+                uint count = 0;
+                // ERROR_MORE_DATA with the count needed, then the list.
+                if (RestartManager.RmGetList(session, out var needed, ref count, null, out _) == 234 && needed > 0)
+                {
+                    var processes = new RestartManager.ProcessInfo[needed];
+                    count = needed;
+                    if (RestartManager.RmGetList(session, out _, ref count, processes, out _) == 0)
+                        names.AddRange(processes.Take((int)count).Select(process => $"{process.AppName} (pid {process.Process.ProcessId})"));
+                }
+            }
+        }
+        finally { RestartManager.RmEndSession(session); }
+    }
+    catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
+    Log("hosts file held open by: " + (names.Count > 0 ? string.Join(", ", names) : "not known"));
+    return names;
 }
 
 // This run's CA by thumbprint, or with null every CA this tool installed.
@@ -728,4 +907,40 @@ static X509Certificate2 MakeLeaf(X509Certificate2? issuer, string name, byte[]? 
         : request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(8)).CopyWithPrivateKey(key);
     // SslStream needs the key in a form Schannel can use; a PKCS#12 round trip gives it one.
     return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
+}
+
+// Windows Restart Manager: which programs hold a file open, to name the one blocking a hosts write.
+static class RestartManager
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniqueProcess
+    {
+        public int ProcessId;
+        public System.Runtime.InteropServices.ComTypes.FILETIME StartTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ProcessInfo
+    {
+        public UniqueProcess Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceShortName;
+        public int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
+        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
+    }
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmStartSession(out uint session, int flags, string key);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmEndSession(uint session);
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmRegisterResources(uint session, uint files, string[] names, uint applications, UniqueProcess[]? processes,
+        uint services, string[]? serviceNames);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmGetList(uint session, out uint needed, ref uint count, [In, Out] ProcessInfo[]? processes, out uint rebootReasons);
 }
