@@ -157,6 +157,8 @@ Copy-Item -LiteralPath (Join-Path $project 'data/progression-data.json') -Destin
 # app/linux: the Linux (Proton) scripts and their guide (docs/linux.md), for an installation copied to Linux.
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
+# the namespace relay of the several-installations test mode (docs/multi-instance.md); nothing a session starts runs it
+Copy-Item -LiteralPath (Join-Path $project 'linux/hf-mi-relay.py') -Destination $linuxTarget
 Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
 # The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and

@@ -58,3 +58,35 @@ session runner's environment. Without the switch nothing below changes what a se
     different SteamIDs);
   - a whole mission together;
   - `BeginAuthSession` (each game checks the other's Steam ticket at a join). It is refused, and the join went on.
+
+## On Linux: the test broker
+
+On Linux the sandbox is a separate Wine prefix and wineserver, which the broker's pipe cannot reach, so the steps above
+need `HELLFORGE_TEST_BROKER=1` instead of `--sandbox`. Each installation needs its own Wine prefix too: a second
+session's wrapper refuses a prefix whose wineserver runs outside its network namespace (`hellforge-offline.sh`).
+
+1. Make the second installation in a copy of the prefix (for example `~/.local/share/hellforge-prefix-b`), with its game
+   data hard-linked as on Windows.
+2. Set the variables of step 3 and `HELLFORGE_TEST_BROKER=1`, and start `HellForge.Session play --multiplayer` without
+   `--sandbox`. The session uses the Steam bridge and starts the broker at the player's integrity (no low token;
+   `PlaySession.LinuxTestBroker`, the session's `"testBroker": true`). With `--sandbox` it refuses to start. The build
+   needs the bridge and broker (`scripts/Build-Engine.ps1` with the Steamworks SDK, not `-NoSteamApi`).
+3. Each session has its own network namespace, so loopback does not reach the other one. Once both games run, start the
+   relay in each session's namespace, giving the other installation's backend link port and broker P2P port
+   (48000 + its SteamID mod 1000):
+
+   ```sh
+   nsenter -t <first game pid> -U -n --preserve-credentials python3 -I app/linux/hf-mi-relay.py a b 47003 48003
+   nsenter -t <second game pid> -U -n --preserve-credentials python3 -I app/linux/hf-mi-relay.py b a 47002 48002
+   ```
+
+The lobby folder is shared through files, which cross namespaces. Its lock is an exclusive create (`CREATE_NEW`, in
+`broker_lobby.c`), since two prefixes' wineservers do not see each other's share modes. Tested 2026-10-30 under Proton
+Experimental: with the earlier share-mode lock, two prefixes both took one lock; with the exclusive create, the second
+is refused until the first lets go, and the file goes with the handle. A stale lock (older than 5 s, left by a
+wineserver that was killed) is taken over. The broker's pipe security (a low label, the owner's SID) works under Wine
+as it is: a client at the player's integrity connects, and the broker reads its pid.
+
+**Not yet run with two games.** The bridge and broker are not in the Linux builds made so far, which had no Steamworks
+SDK. Whether two brokers signed in to one Steam account keep each other's game at its title screen (as two games with
+Valve's DLL did) is still to be seen.

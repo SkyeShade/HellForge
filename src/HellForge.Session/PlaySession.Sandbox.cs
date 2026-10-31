@@ -38,9 +38,19 @@ sealed partial class PlaySession
         Say(notice);
     }
 
+    // Several installations on one Linux PC (test mode, docs/multi-instance.md "On Linux"): HELLFORGE_TEST_BROKER=1 gives an
+    // unsandboxed session's game the Steam bridge and broker, as a Windows sandboxed session has them but without the low
+    // token, so each installation's game is its own SteamID (HELLFORGE_IDENTITY) in the broker's lobbies. Never with the
+    // Linux sandbox: its domain's wineserver cannot reach the broker's pipe.
+    public const string TestBrokerVariable = "HELLFORGE_TEST_BROKER";
+    bool LinuxTestBroker => GameProcesses.MultiInstance && LinuxNetworkBlock.UnderWine && !options.Sandbox &&
+        Environment.GetEnvironmentVariable(TestBrokerVariable) == "1";
+
     void ConfigureLinuxSandbox()
     {
         linuxSandbox = options.Sandbox && LinuxNetworkBlock.UnderWine;
+        if (linuxSandbox && GameProcesses.MultiInstance && Environment.GetEnvironmentVariable(TestBrokerVariable) == "1")
+            throw new SessionFailure(TestBrokerVariable + " needs a session without the sandbox (the broker's pipe cannot reach the Linux sandbox's game).");
         if (options.Sandbox && OperatingSystem.IsLinux() && !linuxSandbox)
             throw new SessionFailure("The Linux sandbox runs through HellForge's Linux wrapper, not as a native session. Start HellForge with app/linux/hellforge-linux.sh.");
         if (linuxSandbox)
