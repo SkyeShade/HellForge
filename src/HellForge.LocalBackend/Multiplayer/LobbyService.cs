@@ -97,6 +97,12 @@ public sealed class LobbyService
     readonly Dictionary<string, HostedLobby> hosted = new(StringComparer.Ordinal);
     // Lobbies on a friend's machine that this machine's DLL joined or is joining: lobby id -> owner node.
     readonly Dictionary<string, ulong> remote = new(StringComparer.Ordinal);
+    // The other members' machines of each friend's lobby this machine is in, as its owner reported them (the join's
+    // snapshot, then lobby.memberAdded and lobby.memberRemoved), at most MaxMates a lobby: lobby id -> machines. They
+    // are this game's co-op peers too (LobbyMates), so a sandboxed game reaches the squad's other joiners, not only
+    // the host.
+    readonly Dictionary<string, HashSet<ulong>> mates = new(StringComparer.Ordinal);
+    const int MaxMates = 8;
     // Forwarded requests awaiting the owner's answer: op -> owner node and lobby.
     readonly Dictionary<string, (ulong Owner, string LobbyId)> forwarded = new(StringComparer.Ordinal);
     // Friends' machines this machine's game last asked to join, and when: a refusal ("lobby.refused") may come before or
@@ -128,6 +134,11 @@ public sealed class LobbyService
     // joiner the moment it hears of it (MultiplayerHost.ListPeer). A handler must not take this service's or the Party
     // service's lock.
     public event Action<ulong>? PeerAdmitted;
+    // Another member's machine joined a friend's lobby this machine is in (its owner said so), raised under this
+    // service's lock BEFORE this machine's game hears of the member, as PeerAdmitted is for a host: a sandboxed game
+    // reaches only listed peers, and a squad's games may talk to each other, not only to the host. The same rules for a
+    // handler.
+    public event Action<ulong>? MateAdded;
     public Action<Frame>? Find { get; set; }
     public sealed record Hosted(string Id, string ConnectionString, uint MaxMembers, int Members, int Access, bool Locked, bool LocalOwner,
         IReadOnlyDictionary<string, string> SearchProperties, Privacy Privacy = Privacy.FriendsOnly);
@@ -274,6 +285,7 @@ public sealed class LobbyService
             foreach (var (id, owner) in remote.ToList())
                 Send(owner, new Frame("lobby.leave").Add("hellforge-disconnect-" + id).Add(id).Add(""));
             remote.Clear();
+            mates.Clear();
             forwarded.Clear();
             joining.Clear();
             invitesSent.Clear();
@@ -299,6 +311,18 @@ public sealed class LobbyService
     public IReadOnlyCollection<ulong> Peers()
     {
         lock (gate) return hosted.Values.SelectMany(l => l.Nodes()).Concat(remote.Values).Where(n => n != LocalNode).ToHashSet();
+    }
+
+    // The other members' machines of the friends' lobbies this machine is in (not their owners, not this machine), for
+    // a sandboxed game's Steam P2P peers (MultiplayerHost.WritePeers). Not heartbeat peers: their backends never talk
+    // to this one.
+    public IReadOnlyCollection<ulong> LobbyMates()
+    {
+        lock (gate)
+        {
+            foreach (var gone in mates.Keys.Where(id => !remote.ContainsKey(id)).ToList()) mates.Remove(gone);
+            return mates.SelectMany(m => m.Value.Where(n => n != remote[m.Key])).ToHashSet();
+        }
     }
 
     // The string a friend's game joins a lobby this machine's game is in with (social tab), or null when unknown.
@@ -482,6 +506,7 @@ public sealed class LobbyService
         if (!forwarded.Remove(op, out var request) || request.Owner != peer) return false;
         if (frame.Text(1) == "join" && frame.Text(2) != "0") remote.Remove(request.LobbyId);
         if (frame.Text(1) == "join" && frame.Text(2) == "0") joining.Remove(peer); /* in: no refusal to wait for */
+        if (frame.Text(1) == "join" && frame.Text(2) == "0") SnapshotMates(request.LobbyId, frame);
         if (frame.Text(1) == "join" && uint.TryParse(frame.Text(2), NumberStyles.None, CultureInfo.InvariantCulture, out var joinResult))
             afterLock.Add(() => LocalJoinFinished?.Invoke(peer, request.LobbyId, joinResult));
         if (invitesSent.Remove(op, out var invite) && frame.Text(1) == "invite" && frame.Text(2) == "0" && ConnectionStringFor(invite.LobbyId) is { } connection)
@@ -493,7 +518,10 @@ public sealed class LobbyService
     bool OwnersEvent(ulong peer, Frame frame)
     {
         if (!remote.TryGetValue(frame.Text(0), out var owner) || owner != peer) return false;
-        if (frame.Type == "lobby.disconnected") remote.Remove(frame.Text(0));
+        if (frame.Type == "lobby.disconnected") { remote.Remove(frame.Text(0)); mates.Remove(frame.Text(0)); }
+        if (frame.Type == "lobby.memberAdded") AddMate(frame.Text(0), frame.Text(1));
+        if (frame.Type == "lobby.memberRemoved" && mates.TryGetValue(frame.Text(0), out var others) && TryNode(frame.Text(1), out var gone))
+            others.Remove(gone);
         // the owner removed this machine's player (its own copy goes to this machine only with this reason)
         if (frame.Type == "lobby.memberRemoved" && frame.Text(2) == MemberRemovedForcibly.ToString(CultureInfo.InvariantCulture))
         {
@@ -501,6 +529,40 @@ public sealed class LobbyService
             afterLock.Add(() => KickedByHost?.Invoke(peer));
         }
         return true;
+    }
+
+    // The members of a friend's lobby this machine just joined, from the owner's snapshot (lobby.result [op, "join", 0,
+    // snapshot]: the members after the lobby's fields and its two property maps). A snapshot it cannot read leaves
+    // none: the answer still goes to the game.
+    void SnapshotMates(string lobbyId, Frame frame)
+    {
+        mates.Remove(lobbyId);
+        if (frame.Count < 11 || frame.Text(3) != lobbyId) return;
+        try
+        {
+            var index = 10;
+            _ = frame.Properties(ref index);
+            _ = frame.Properties(ref index);
+            var count = frame.Int(index++);
+            for (var i = 0; i < count && i < 64; i++)
+            {
+                var member = frame.Text(index++);
+                index++; // type
+                _ = frame.Properties(ref index);
+                AddMate(lobbyId, member);
+            }
+        }
+        catch (InvalidDataException error) { log($"Could not read the members of lobby {lobbyId}: {error.Message}"); }
+    }
+
+    // A member of a friend's lobby this machine is in, as a co-op peer (MateAdded), unless it is this machine or the
+    // owner.
+    void AddMate(string lobbyId, string memberId)
+    {
+        if (!remote.TryGetValue(lobbyId, out var owner) || !TryNode(memberId, out var node) || node == owner || node == LocalId) return;
+        if (!mates.TryGetValue(lobbyId, out var others)) mates[lobbyId] = others = [];
+        if (others.Count >= MaxMates || !others.Add(node)) return;
+        MateAdded?.Invoke(node);
     }
 
     // An invitation goes from the inviting player's backend to the invitee's (lobby.invited); its game shows it.
