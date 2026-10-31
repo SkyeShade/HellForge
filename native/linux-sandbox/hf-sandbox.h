@@ -170,7 +170,7 @@ int hf_close_inherited_fds(void);
 int hf_exec_command(struct hf_sandbox *sandbox);
 
 // Self-test: the real view, the real guard, and the phase-1 G1 canaries. directory is the working folder (or NULL for
-// the current folder); it must not be under /tmp, /dev/shm, /run or /usr.
+// the current folder); it must not be under /tmp, /dev/shm, /run (a drive under /run/media is fine) or /usr.
 int hf_run_self_test(const char *directory);
 
 #endif

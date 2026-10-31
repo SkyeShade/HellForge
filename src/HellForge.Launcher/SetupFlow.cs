@@ -385,7 +385,7 @@ public partial class MainWindow
             case SetupSourceKind.DepotDownload:
             {
                 var steamApi = SteamDepotDownload.Locate(steamRoot, build, build.Files.Single(file => file.Path == "bin/steam_api64.dll"));
-                SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} downloaded by Steam into {SteamDepotDownload.ContentFolder(steamRoot, build)}");
+                SetRow(SetupStep.Find, true, $"Supported build {build.BuildId} downloaded by Steam into {Path.GetDirectoryName(SteamDepotDownload.DepotFolder(steamRoot, build, build.Depots[0].Id))}");
                 return new(build, steamRoot, false, true, null, steamApi);
             }
             case SetupSourceKind.BuildPatch:
