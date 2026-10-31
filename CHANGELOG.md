@@ -17,9 +17,9 @@ On `dev`, since 0.3.0-beta.
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
   gets an "Update profile sync" button beside PLAY for after you buy or unlock something new.
 - Premium warbonds you don't own look locked in Acquisitions: their art is darkened, with a padlock in the middle and
-  lines in from the corners. Ownership follows your profile's sync, the same as what the game lets you use, so a
-  warbond unlocks there once you buy it in the live game and sync again. HellForge draws this from your own game
-  copy when a session starts.
+  lines in from the corners, and their pages show nothing bought (an unlock-all profile showed every item there as
+  bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
+  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts.
 
 ### Changed
 
