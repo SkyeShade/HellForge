@@ -98,16 +98,25 @@ continues where it stopped the next time you run setup.
 
 ### Microsoft Visual C++ runtimes
 
-The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64) and the
-Visual C++ 2015-2022 Redistributable (x64). Steam's own install of the game no longer adds the 2012 one, so a fresh PC
-often lacks it. Setup checks for both before it copies the game, and every session checks again before it starts the
-game. When one is missing, the message names it and gives Microsoft's download link:
+The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64), for the
+game's `lua51.dll` (MSVCR110.dll), and the Visual C++ 2015-2022 (v14) Redistributable (x64), for PartyWin, PlayFab,
+libcurl, XeSS, EOS and the upscalers (VCRUNTIME140.dll, VCRUNTIME140_1.dll, MSVCP140.dll). Steam's own install of the
+game no longer adds the 2012 one, so a fresh PC often lacks it.
+
+Setup, and PLAY in an installation that lacks one (one set up with 0.2, or a runtime removed since), download
+Microsoft's installer, check it against the SHA-256 HellForge pins, and run it silently after Windows asks for
+permission. PLAY shows INSTALLING meanwhile. A runtime counts as missing when its DLL is not in System32 as a 64-bit
+DLL, so one Windows lists as installed whose DLL is gone is repaired, and a 32-bit copy put there by hand does not
+count. The installer's log is in the installation's `temp` folder.
+
+Only when that fails (the permission prompt declined, no connection to Microsoft, another installation running) does
+the message say why and give Microsoft's download link:
 
 - 2012: <https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe>
-- 2015-2022: <https://aka.ms/vc14/vc_redist.x64.exe>
+- 2015-2022 (v14): <https://aka.ms/vc14/vc_redist.x64.exe>
 
 Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
-have.
+have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or installed.
 
 ### Playing in a language other than English
 
