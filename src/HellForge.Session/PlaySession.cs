@@ -747,16 +747,19 @@ sealed partial class PlaySession(PlayOptions options)
     // loads in the game. Returns the path where the verified original is kept (real).
     string SwapInCloud(JsonNode build)
     {
-        // The Windows low-integrity topology uses the bridge build and the broker. The Linux domain keeps the forwarding
-        // stand-in: the broker's pipe lives in the real prefix's wineserver and cannot cross to the overlay (review-F4c 4).
-        var windowsSandbox = options.Sandbox && !linuxSandbox;
-        var cloudStandIn = Path.Combine(Shims, windowsSandbox ? "steam_api64_bridge.dll" : CloudName);
-        var cloudPin = windowsSandbox ? (string?)build["steamBridge"] : (string?)build["standIns"]?[CloudName];
-        if (windowsSandbox && cloudPin == null)
-            throw new SessionFailure("This HellForge was built without the Steam bridge (it needs the Steamworks SDK), so a sandboxed session cannot start.");
+        // The Windows low-integrity topology uses the bridge build and the broker, as does the Linux test broker
+        // (LinuxTestBroker). The Linux domain keeps the forwarding stand-in: the broker's pipe lives in the real prefix's
+        // wineserver and cannot cross to the overlay (review-F4c 4).
+        var bridged = options.Sandbox && !linuxSandbox || LinuxTestBroker;
+        var cloudStandIn = Path.Combine(Shims, bridged ? "steam_api64_bridge.dll" : CloudName);
+        var cloudPin = bridged ? (string?)build["steamBridge"] : (string?)build["standIns"]?[CloudName];
+        if (bridged && cloudPin == null)
+            throw new SessionFailure("This HellForge was built without the Steam bridge (it needs the Steamworks SDK), so a sandboxed (or " +
+                TestBrokerVariable + ") session cannot start.");
         if (cloudPin == null || !File.Exists(cloudStandIn)) throw new SessionFailure("The Steam Cloud stand-in is missing; reinstall HellForge.");
         if (Tools.Sha256(cloudStandIn) != cloudPin) throw new SessionFailure("Stand-in changed since it was built: " + Path.GetFileName(cloudStandIn));
-        result["steamBridge"] = windowsSandbox;
+        result["steamBridge"] = bridged;
+        if (LinuxTestBroker) result["testBroker"] = true;
         var realTarget = Path.GetFullPath(Path.Combine(copy, "bin", CloudReal));
         if (Tools.Sha256(Path.Combine(copy, "bin", CloudName)) != shimPins[CloudName]) throw new SessionFailure("The copy's steam_api64.dll is not the verified original.");
         SwapIn(CloudName, cloudStandIn, cloudPin, realTarget);
@@ -958,11 +961,15 @@ sealed partial class PlaySession(PlayOptions options)
         // Low-integrity sandbox (docs/steam-bridge.md phase 4): the game runs at low mandatory integrity and cannot
         // write to the player's files, registry or other processes. A broker at normal integrity forwards Steam API
         // calls over a named pipe and pushes callbacks through a shared-memory ring.
+        // The Linux test broker (LinuxTestBroker) gets the same pipe and broker, at the player's integrity.
         string? bridgeSuffix = null;
-        if (options.Sandbox)
+        if (options.Sandbox || LinuxTestBroker)
         {
             bridgeSuffix = (string)result["runId"]!;
             Environment.SetEnvironmentVariable("HELLFORGE_BRIDGE_PIPE", bridgeSuffix);
+        }
+        if (options.Sandbox)
+        {
             // Everything the game writes is in gameOut, made with a low label that its folders inherit: its logs, its
             // environment and user data (copies), and the editor's saves (gameOut/sandbox-stats, applied after the game is
             // gone: SandboxStats).
@@ -975,7 +982,7 @@ sealed partial class PlaySession(PlayOptions options)
             Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);
         result["gamePid"] = job.Process.Id;
         result["gameLaunched"] = true;
-        if (options.Sandbox) StartBroker(bridgeSuffix!);
+        if (bridgeSuffix != null) StartBroker(bridgeSuffix);
         result["status"] = "patching";
         Save();
         job.Resume();
