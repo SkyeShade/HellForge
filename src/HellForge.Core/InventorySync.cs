@@ -183,9 +183,11 @@ public static class InventorySync
         _ => "The capture could not start: see " + proxyLog + "."
     };
 
-    // Shown when this launcher cannot read the capture's folder.
+    // Shown when this launcher cannot read the capture's folder. Its proxy.log is in that folder, which this account
+    // cannot open either, so it names who can.
     public const string UnreadableFolderMessage = "This launcher cannot read the sync's folder: the capture runs as the Windows account that " +
-        "answered the administrator prompt, and that account kept the folder to itself. See proxy.log in the folder for the cause.";
+        "answered the administrator prompt, and it could not share the folder with your account. Sync again; if this repeats, " +
+        "sign in to that administrator account and send the newest logs\\sync-... folder's proxy.log.";
 
     // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
     public static Process? StartCleanup(string proxyPath) => StartElevated(proxyPath, ["--cleanup"]);
