@@ -93,15 +93,16 @@ public static class CaptureStart
         or CaptureProblem.Certificate or CaptureProblem.PortDenied or CaptureProblem.Crashed;
 
     // The status line for the launcher. antivirus: third-party security programs Windows knows of (SecurityProducts);
-    // proxyPath: the capture's exe, to name in an exclusion.
-    public static string Message(CaptureFailure failure, IReadOnlyList<string> antivirus, string proxyPath, string proxyLog)
+    // proxyPath: the capture's exe, to name in an exclusion; logPath: where the details are, when there is a log.
+    public static string Message(CaptureFailure failure, IReadOnlyList<string> antivirus, string proxyPath, string? logPath)
     {
         var detail = string.IsNullOrWhiteSpace(failure.Detail) ? "" : " (" + failure.Detail.TrimEnd('.') + ")";
         var what = failure.Problem switch
         {
             CaptureProblem.Declined => "Sync cancelled: it needs the administrator prompt.",
             CaptureProblem.Blocked => "Windows refused to start the capture" + detail + ".",
-            CaptureProblem.Missing => "The capture program is missing: " + proxyPath + " was removed" + detail + ".",
+            CaptureProblem.Missing => "The capture program is missing: " + proxyPath + " was removed" + detail +
+                ". Restore it from your security program's quarantine (or reinstall HellForge).",
             CaptureProblem.Stopped => "The capture was stopped before it could start" + detail + ".",
             CaptureProblem.Crashed => "The capture crashed while starting" + detail + ".",
             CaptureProblem.NotReady => "The capture has not got ready after a minute; still waiting.",
@@ -117,8 +118,8 @@ public static class CaptureStart
             CaptureProblem.PortDenied => "Windows did not let the capture use port 443" + detail + ".",
             _ => "The capture could not start."
         };
-        if (failure.Problem != CaptureProblem.Declined && failure.Problem != CaptureProblem.NotReady && failure.Problem != CaptureProblem.Offline)
-            what += " Details: " + proxyLog + ".";
+        if (logPath != null && failure.Problem is not (CaptureProblem.Declined or CaptureProblem.NotReady or CaptureProblem.Offline or CaptureProblem.Missing))
+            what += " Details: " + logPath + ".";
         return SecurityProgramLikely(failure.Problem) ? what + " " + SecurityAdvice(antivirus, proxyPath) : what;
     }
 
