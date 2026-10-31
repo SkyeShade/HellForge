@@ -15,6 +15,9 @@
 // request's reason (CaptureLog); the key-and-count shape of what the capture keeps (CaptureDiagnostics); the game's and
 // Easy Anti-Cheat's processes; and a summary. Never bodies, header or query values, or the session.
 //
+// A run that cannot get as far as listening ends with a CaptureStart exit code (20 and up) and writes capture-failure.json
+// beside proxy.log with what was in its way (StartProblems), for the launcher to tell the player.
+//
 //   --cleanup      only remove a hosts line and CA left by a run that was killed
 //   --no-hosts --no-ca --listen-port 8443 --real-ip <ip>   local plumbing test, no system changes
 
@@ -90,7 +93,9 @@ catch (Exception error) when (error is ArgumentException or FormatException or O
 
 if (cleanupOnly)
 {
-    var removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null));
+    // A capture still running would remove or re-add its lines as it ends.
+    var removed = StartProblems.StopOtherCaptures(Console.WriteLine) == null;
+    removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null)) & removed;
     return removed ? 0 : 1;
 }
 
@@ -98,14 +103,17 @@ try { Directory.CreateDirectory(evidenceDir); }
 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message);
-    return 1;
+    return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
 // The sync folder stays private to this user.
 Run("icacls", $"\"{evidenceDir}\" /inheritance:r /grant:r \"{System.Security.Principal.WindowsIdentity.GetCurrent().Name}:(OI)(CI)F\"");
 
+// What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
+// (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
+if (StartProblems.StopOtherCaptures(Log) is { } stillRunning) return Fail(CaptureProblem.LeftoverCapture, stillRunning);
 // Resolve the real host before the hosts line points it at loopback; clear a line an earlier killed run left first.
-if (manageHosts && !Step("hosts cleanup", RemoveHosts)) return 1;
+if (manageHosts && ChangeHosts("hosts cleanup", RemoveHosts) is { } cleanupFailure) return Fail(cleanupFailure.Problem, cleanupFailure.Detail);
 List<IPAddress> upstreamIps;
 try
 {
@@ -114,9 +122,9 @@ try
 catch (SocketException error)
 {
     Log("could not resolve " + host + ": " + error.SocketErrorCode);
-    return 1;
+    return Fail(CaptureProblem.Offline, host + " does not resolve: " + error.SocketErrorCode);
 }
-if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return 1; }
+if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return Fail(CaptureProblem.Offline, "no IPv4 address for " + host); }
 Log("upstream " + string.Join(", ", upstreamIps) + ":443");
 
 string? caThumbprint = null;
@@ -140,12 +148,20 @@ if (manageCa)
     caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
     caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
     using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-    if (!Step("CA cleanup", () => RemoveCas(null))) return 1;
-    using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine))
+    if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
+    try
     {
+        using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
         store.Open(OpenFlags.ReadWrite);
         using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
         store.Add(publicCa);
+    }
+    catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
+    {
+        // A security program guarding the trusted root store refuses the add.
+        Log("CA install failed: " + CaptureDiagnostics.Chain(error));
+        Step("CA cleanup", () => RemoveCas(null));
+        return Fail(CaptureProblem.Certificate, error.Message);
     }
     caThumbprint = ca.Thumbprint;
     Log("CA installed");
@@ -217,9 +233,10 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
-    if (manageHosts) AddHosts();
+    // The port first: when another program holds it, the hosts file is left alone.
+    if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFailure.Detail);
+    if (manageHosts && ChangeHosts("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
     LogResolution();
-    listener.Start();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
     _ = Task.Run(WatchProcesses);
@@ -239,6 +256,63 @@ finally
 Log(captured == 1 ? "capture complete" : "nothing captured");
 LogSummary();
 return captured == 1 && sealOk ? 0 : 1;
+
+// Stops before listening: says why in proxy.log and capture-failure.json, for the launcher (CaptureStart).
+int Fail(CaptureProblem problem, string? detail)
+{
+    Log($"could not start: {problem}" + (detail != null ? ": " + detail : ""));
+    Step("failure", () => CaptureStart.Write(evidenceDir, problem, detail));
+    return CaptureStart.ExitCode(problem);
+}
+
+CaptureFailure? StartListener()
+{
+    try
+    {
+        listener.Start();
+        return null;
+    }
+    catch (SocketException error)
+    {
+        Log($"port {listenPort} refused: {CaptureDiagnostics.Chain(error)}");
+        if (error.SocketErrorCode != SocketError.AddressAlreadyInUse)
+            return new CaptureFailure(CaptureProblem.PortDenied, $"{error.Message} ({(int)error.SocketErrorCode})");
+        var owner = StartProblems.PortOwner(listenPort);
+        if (owner is { } pid && StartProblems.Describe(pid).StartsWith(StartProblems.ProcessName + ".exe", StringComparison.OrdinalIgnoreCase))
+            return new CaptureFailure(CaptureProblem.LeftoverCapture, "it still holds port " + listenPort);
+        return new CaptureFailure(CaptureProblem.PortInUse, owner is { } holder ? "used by " + StartProblems.Describe(holder) : null);
+    }
+}
+
+// A hosts file change, tried again for ten seconds while another program has the file open (a security program's scan
+// holds it for a moment). Null when it worked; otherwise why, naming the programs holding the file when Windows says.
+CaptureFailure? ChangeHosts(string name, Action change)
+{
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            change();
+            return null;
+        }
+        catch (IOException error) when (IsSharingViolation(error) && attempt < 10)
+        {
+            if (attempt == 1) Log($"{name}: the hosts file is in use by another program; trying again for ten seconds");
+            Thread.Sleep(1000);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Log($"{name} failed: {CaptureDiagnostics.Chain(error)}");
+            if (!IsSharingViolation(error)) return new CaptureFailure(CaptureProblem.HostsDenied, error.Message);
+            var holders = StartProblems.FileHolders(hostsPath);
+            Log("hosts file held by: " + (holders.Count == 0 ? "Windows did not say" : string.Join("; ", holders)));
+            return new CaptureFailure(CaptureProblem.HostsBusy, holders.Count == 0 ? hostsPath + " is in use" : "held by " + string.Join("; ", holders));
+        }
+    }
+}
+
+// ERROR_SHARING_VIOLATION or ERROR_LOCK_VIOLATION
+static bool IsSharingViolation(Exception error) => error is IOException && (error.HResult & 0xFFFF) is 32 or 33;
 
 // What this run is, so a log from another PC or build can be read on its own.
 void LogStart()
