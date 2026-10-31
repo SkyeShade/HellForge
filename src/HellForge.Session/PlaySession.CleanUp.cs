@@ -38,8 +38,24 @@ sealed partial class PlaySession
         { result[what] = error.Message; }
     }
 
+    // A game still running when the session ends is stopped with its job. Only a stop the player asked for (STOP, closing
+    // the launcher, a mod sync's restart) first asks the game to close, so it writes its shader cache (ShaderCache:
+    // killed, it never does); a session that failed (the network block changed) stops it at once.
+    const int CloseWaitSeconds = 30;
+
     void StopGameJob()
     {
+        if (job != null && (bool?)result["observationStoppedBySignal"] == true)
+            Try("gameCloseError", () =>
+            {
+                var clock = Stopwatch.StartNew();
+                var closed = GameClose.CloseAndWait(job.Process, TimeSpan.FromSeconds(CloseWaitSeconds), out var windows);
+                result["gameClose"] = new JsonObject
+                {
+                    ["windows"] = windows, ["closedByItself"] = closed, ["seconds"] = Math.Round(clock.Elapsed.TotalSeconds, 1)
+                };
+                if (windows > 0 && !closed) Say($"The game did not close within {CloseWaitSeconds} s; stopping it (its shader cache is not saved this time).");
+            });
         if (job != null && result["gameExitCode"] == null)
             Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
         if (job != null)
