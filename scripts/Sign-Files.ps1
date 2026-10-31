@@ -1,7 +1,7 @@
 # Authenticode-signs HellForge's own programs and DLLs, when a signing certificate is configured on this PC
 # (docs/code-signing.md). Without one it signs nothing, says so once, and the build goes on as before: signing is optional.
 # Windows 11's Smart App Control blocks unsigned programs and DLLs it does not know (src/HellForge.Core/SmartAppControl.cs).
-# -Path: files or folders (their .exe and .dll files, recursively). A file that already carries a valid signature
+# -Path: files or folders (their .exe, .dll and .ps1 files, recursively). A file that already carries a valid signature
 # (Microsoft's .NET runtime files, a file signed by an earlier step) is left as it is. Sign before anything records the
 # files' SHA-256 (build.json, engine.json): signing changes the file.
 # Configured through the environment, never committed:
@@ -29,11 +29,11 @@ if(-not $signtool){
     $signtool=$signtool[0]
 }
 $files=foreach($item in $Path){
-    if(Test-Path -LiteralPath $item -PathType Container){Get-ChildItem -LiteralPath $item -Recurse -File|Where-Object {$_.Extension -in @('.exe','.dll')}|ForEach-Object FullName}
+    if(Test-Path -LiteralPath $item -PathType Container){Get-ChildItem -LiteralPath $item -Recurse -File|Where-Object {$_.Extension -in @('.exe','.dll','.ps1')}|ForEach-Object FullName}
     elseif(Test-Path -LiteralPath $item){(Get-Item -LiteralPath $item).FullName}
     else{throw ('Nothing to sign at '+$item)}
 }
-$unsigned=@($files|Where-Object {(Get-AuthenticodeSignature -LiteralPath $_).Status -ne 'Valid'})
+$unsigned=@($files|Where-Object {$_ -and (Get-AuthenticodeSignature -LiteralPath $_).Status -ne 'Valid'})
 if(-not $unsigned.Count){return}
 $arguments=@('sign','/fd','SHA256','/td','SHA256')
 if($dlib -and $metadata){

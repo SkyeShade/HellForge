@@ -332,6 +332,8 @@ $scriptTarget=New-Item -ItemType Directory (Join-Path $staging 'scripts')
 foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
 # The WFP block tool ships beside the block scripts that drive it.
 Copy-Item -LiteralPath (Join-Path $out 'hellforge_wfp.exe') -Destination $scriptTarget
+# the block and ownership scripts too, when a certificate is configured (Sign-Files.ps1): Windows can refuse unsigned scripts
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $scriptTarget
 foreach($name in @('LICENSE','LICENSE-EXCEPTION')){Copy-Item -LiteralPath (Join-Path $project $name) -Destination $staging}
 # Nothing that ships names the PC it was built on: its user folder (debug paths) or the git author's email.
 $private=@($env:USERPROFILE,$env:USERPROFILE.Replace('\','/'),(git -C $project config user.email))|Where-Object {$_}
