@@ -38,6 +38,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // The member counts a listing may claim: HD2's lobbies are made for 8 PlayFab members (max 8 members in every captured
     // PFMultiplayerCreateAndJoinLobby), a squad is at most 4.
     public const int MaxListedMembers = 4, MaxListedLimit = 8;
+    // The places left in a squad: its lobby's 8 PlayFab places stop at the squad's 4, so a full squad has no slot (Steam's
+    // search asks for one) and the lobby browser shows it full, not 4 of 8.
+    public static int SquadSize(int max) => Math.Min(max, MaxListedMembers);
+    public static int SquadSlots(int max, int members) => Math.Max(0, SquadSize(max) - members);
 
     readonly ILobbyDirectory directory;
     readonly LobbyService lobby;
@@ -147,7 +151,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
             [DirectoryKeys.Host] = localId.ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.Members] = hosted.Members.ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.MaxMembers] = hosted.MaxMembers.ToString(CultureInfo.InvariantCulture),
-            [DirectoryKeys.Slots] = (hosted.MaxMembers - hosted.Members).ToString(CultureInfo.InvariantCulture),
+            [DirectoryKeys.Slots] = SquadSlots((int)Math.Min(hosted.MaxMembers, int.MaxValue), hosted.Members).ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.Lock] = hosted.Locked ? "1" : "0",
             [DirectoryKeys.Stats] = editedStats() ? "1" : "0",
             [DirectoryKeys.Digest] = sync?.OwnDigest ?? "none",
@@ -255,10 +259,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
                 : sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
             if (!join.Joinable) { Count(refused, join.Why); leftOut.Add(LeftOutLine(listing.Host, join.Why, join)); }
             lobbies.Add(new BrowseLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], listing.Host,
-                friend, "directory", check.Members, check.Max, check.Locked, check.Props, record, join));
+                friend, "directory", check.Members, SquadSize(check.Max), check.Locked, check.Props, record, join));
             if (join.Fix != JoinCheck.FixStrangers) Remember(listing); // as before: not a stranger's, with strangers off
         }
-        var summary = $"Directory: browse: {listings.Count} listed, {lobbies.Count(l => l.Join.Joinable)} joinable" +
+        var summary = $"Directory: browse: {lobbies.Count} listed, {lobbies.Count(l => l.Join.Joinable)} joinable" +
             (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value}: {r.Key}")) + ")" : "") + ".";
         lock (gate)
         {

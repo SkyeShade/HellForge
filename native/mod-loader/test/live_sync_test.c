@@ -238,7 +238,7 @@ static void LiveBrowseFixture(void)
     assert(!strcmp(reply, "1\tok\tnow"));
     SyncLine("browselobby\t2\t3\t1\tunjoinable\t-\t1\t4\t-\t-\t3\t0\tsteam-2\tStranger\tits host is not a Steam friend\t\t\tstrangers", reply, sizeof reply);
     assert(!strcmp(reply, "2\tok\tnow"));
-    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\t-", reply, sizeof reply);
+    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\tsandbox", reply, sizeof reply);
     assert(!strcmp(reply, "3\tok\tnow"));
     assert(!ApiBrowseLobby(NULL, 0, &lobby)); /* not published yet */
     SyncLine("browsestate\t4\t3\tready\t3\t", reply, sizeof reply);
@@ -251,7 +251,7 @@ static void LiveBrowseFixture(void)
     assert(ApiBrowseLobby(NULL, 1, &lobby) && lobby.verdict == HF_LOBBY_UNJOINABLE && lobby.flags == 0 && lobby.difficulty == -1 && lobby.planet == -1 &&
         lobby.mods == 3 && !strcmp(lobby.reason, "its host is not a Steam friend") && lobby.fix == HF_LOBBY_FIX_STRANGERS);
     assert(ApiBrowseLobby(NULL, 2, &lobby) && lobby.verdict == HF_LOBBY_DOWNLOAD && (lobby.flags & HF_LOBBY_FLAG_MISSION) && lobby.download_bytes == 1048576 &&
-        lobby.host[0] == 0);
+        lobby.host[0] == 0 && lobby.fix == HF_LOBBY_FIX_SANDBOX);
     assert(!ApiBrowseLobby(NULL, 3, &lobby));
 
     /* a search under way, then a join's outcome: the same version keeps its lobbies; another count is refused */
@@ -278,7 +278,7 @@ static void LiveBrowseFixture(void)
         "browselobby\t15\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\t\tA\t\t\t\t-",              /* no lobby id */
         "browselobby\t16\t6\t0\tready\t-\t1\t4\t-1\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* a difficulty that is not a number */
         "browselobby\t17\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t-",           /* a field short */
-        "browselobby\t20\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\tsandbox", /* an unknown fix */
+        "browselobby\t20\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\tvip",     /* an unknown fix */
         "browsestate\t18\t6\tjoining\t0\t",                                          /* an unknown state */
         "browsestate\t19\t6\tready\t129\t",                                          /* too many lobbies */
     };

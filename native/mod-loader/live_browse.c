@@ -12,7 +12,7 @@
 #define BROWSE_MAX_LOBBIES 128
 static const char* const kBrowseStates[] = {"none", "searching", "ready", "unavailable", "invited", "failed"};
 static const char* const kBrowseVerdicts[] = {"ready", "download", "trust", "unjoinable", "blocked", "full", "locked", "unknown"};
-static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats"};
+static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats", "sandbox"};
 static SRWLOCK g_browseLock = SRWLOCK_INIT;
 static HfBrowseState g_browse;
 static HfBrowseLobby g_browseLobbies[BROWSE_MAX_LOBBIES];
@@ -63,7 +63,7 @@ static void BrowseLobbyLine(char* line, char* reply, size_t size)
     uint64_t version = 0, index = 0, members = 0, max = 0, mods = 0, bytes = 0;
     int32_t difficulty = -1, planet = -1;
     int verdict = n == 18 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 18 ? BrowseFlags(f[5]) : -1;
-    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 3) : -1;
+    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 4) : -1;
     if (n != 18 || fix < 0 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
         !SyncNumber(f[6], &members) || members > 64 || !SyncNumber(f[7], &max) || max > 64 || !BrowseOptional(f[8], 100, &difficulty) ||
         !BrowseOptional(f[9], 100000, &planet) || !SyncNumber(f[10], &mods) || mods > 4096 || !SyncNumber(f[11], &bytes) || !BrowseLobbyId(f[12]))

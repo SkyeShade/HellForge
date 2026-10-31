@@ -95,6 +95,7 @@ static class DirectoryTests
     public static async Task Run(string root, Action<bool, string> check)
     {
         QuickPlay(check);
+        Versions(check);
         // A left-out lobby's log line: its host, the reason, the mods in the way (at most BlockersPerLine, then a count).
         var blockers = Enumerable.Range(0, 10).Select(i => new JoinBlocker(new ModSetEntry($"test.m{i}", $"M{i}", "1", new string('a', 64), 1, ModClass.Code, i),
             SyncAction.Manual, "share off")).ToList();
@@ -227,7 +228,7 @@ static class DirectoryTests
 
         // A lobby running unverified code the guest lacks (a valid listing of its own: a GUID, its host's record): a Steam
         // friend's is shown, since joining brings the MOD SYNC prompt with TRUST (the first two-PC test's case); a
-        // stranger's needs its mods installed by hand and is left out, and the search log says so.
+        // stranger's would need a sandboxed session (else installing them by hand) and is left out, and the search log says so.
         var code = new ModSet("0123456789abcdef0123456789abcdef", [new ModSetEntry("test.code", "Code", "1", new string('c', 64), 10, ModClass.Code, 0)]);
         var otherLobby = Guid.NewGuid().ToString("D");
         var other = new Dictionary<string, string>(listings.All.Single().Data)
@@ -247,9 +248,9 @@ static class DirectoryTests
         await Task.Delay(SameSearchPause);
         var withStranger = await guest.Directory.SearchAsync("u1s", MapFilter, 50);
         check(withStranger.Int(2) == 1 && withStranger.Text(3) == lobbyId, "A stranger's lobby with unverified code the guest lacks is left out.");
-        lock (guest.Log) check(guest.Log.Any(l => l.Contains("2 listed, 1 shown (1 left out: it needs mods installed by hand)")),
+        lock (guest.Log) check(guest.Log.Any(l => l.Contains("2 listed, 1 shown (1 left out: its host's unchecked mods download only in a sandboxed session)")),
             "The search says why: " + string.Join(" / ", guest.Log.TakeLast(2)));
-        var leftOutLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": it needs mods installed by hand: Code 1 (test.code): stranger code, not sandboxed.";
+        var leftOutLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": its host's unchecked mods download only in a sandboxed session: Code 1 (test.code): stranger code, not sandboxed.";
         lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The search names the stranger's mod and why: " + string.Join(" / ", guest.Log.TakeLast(3)));
         await Task.Delay(SameSearchPause);
         await guest.Directory.SearchAsync("u1t", MapFilter, 50);
@@ -270,7 +271,8 @@ static class DirectoryTests
         var closed = browsed.SingleOrDefault(l => (string?)l["lobbyId"] == otherLobby);
         check(browsed.Count == 2 && open?["joinable"]?.GetValue<bool>() == true && open["host"]?.GetValue<string>() == HostId.ToString(CultureInfo.InvariantCulture),
             "The browser lists the open lobby: " + string.Join(" | ", browsed.Select(l => l.ToJsonString())));
-        check(closed?["joinable"]?.GetValue<bool>() == false && (string?)closed["verdict"] == "unjoinable" && (string?)closed["reason"] == "It needs mods installed by hand." &&
+        check(closed?["joinable"]?.GetValue<bool>() == false && (string?)closed["verdict"] == "unjoinable" &&
+            (string?)closed["reason"] == "Its host's unchecked mods download only in a sandboxed session." && (string?)closed["fix"] == JoinCheck.FixSandbox &&
             closed["mods"]?.AsArray().OfType<JsonObject>().Any(m => (string?)m["id"] == "test.code" && (string?)m["action"] == "manual" && (string?)m["why"] == "stranger code, not sandboxed") == true,
             "The browser lists the stranger's lobby with why: " + closed?.ToJsonString());
         check(browse.Join(otherLobby).Status == 409 && browse.Join(Guid.NewGuid().ToString("D")).Status == 404, "Joining an unjoinable or unknown lobby is refused.");
@@ -374,7 +376,7 @@ static class DirectoryTests
         var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
         var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
         check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
-            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "It needs mods installed by hand.", _, "Code 1: manual", "-"],
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "Its host's unchecked mods download only in a sandboxed session.", _, "Code 1: manual", "sandbox"],
             "The game gets the list: " + string.Join(" | ", first));
         var second = await Game("browseask\trefresh\t-");
         check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",
@@ -384,7 +386,7 @@ static class DirectoryTests
         check(joined.SequenceEqual(["browsestate\t2\tinvited\t2\tAccept the invitation in game to join. Other shared mods bring HellForge's MOD SYNC prompt."]) &&
             invite.Text(0) == lobbyId, "A join from the game hands it the invitation: " + string.Join(" | ", joined));
         var refused = await Game("browseask\tjoin\t" + otherLobby);
-        check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIt needs mods installed by hand."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
+        check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIts host's unchecked mods download only in a sandboxed session."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
             "An unjoinable lobby's join says why: " + string.Join(" | ", refused));
         var quick = await Game("browseask\tquick\t-", "invited", "failed");
         var quickInvite = guest.Next("lobby.inviteReceived", check);
@@ -398,12 +400,27 @@ static class DirectoryTests
             logged.Any(l => l.Contains("turned Play with strangers on")), "Play with strangers turned on from the game, after its warning, is saved: " + string.Join(" | ", allowed));
         check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixEditedStats }) is { Fix: "editedstats" } &&
-            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "sandbox" }) is { Fix: "" }, "A lobby's fix goes to the game by its word.");
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixSandbox }) is { Fix: "sandbox" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "vip" }) is { Fix: "" }, "A lobby's fix goes to the game by its word.");
         check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "has space", ["verdict"] = "ready" }) == null &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["members"] = 99, ["difficulty"] = 7L, ["planetId"] = -1 }) is { Members: 64, Difficulty: 7, Planet: null, Verdict: "unknown" },
             "A lobby id the loader refuses is left out; counts are kept in range.");
         GC.KeepAlive(browser);
         Directory.Delete(modsFolder, true);
+    }
+
+    // Another HellForge: whose bundled mod is older says who updates.
+    static void Versions(Action<bool, string> check)
+    {
+        ModSetEntry Editor(string version) => new("hellforge.editor", "HellForge Editor", version, new string('e', 64), 10, ModClass.Bundled, 0);
+        check(ModSync.OtherVersion(Editor("0.4.1"), Editor("0.4.2")) == "its host runs an older HellForge (HellForge Editor 0.4.1, yours 0.4.2): the host needs to update",
+            "An older host is told to update.");
+        check(ModSync.OtherVersion(Editor("0.5.0"), Editor("0.4.2")) == "its host runs a newer HellForge (HellForge Editor 0.5.0, yours 0.4.2): update HellForge to join",
+            "A newer host: the player updates.");
+        check(ModSync.OtherVersion(Editor("0.4.2"), Editor("0.4.2")) == "its host runs another HellForge version" &&
+            ModSync.OtherVersion(Editor("dev"), null) == "its host runs another HellForge version", "The same or unreadable versions say neither.");
+        check(DirectoryService.SquadSize(8) == 4 && DirectoryService.SquadSlots(8, 4) == 0 && DirectoryService.SquadSlots(8, 1) == 3 && DirectoryService.SquadSlots(2, 1) == 1,
+            "A squad is at most 4 of the lobby's 8 places.");
     }
 
     // Quick Play's choice (BrowseApi.Best): joinable with a slot free, a friend's first, then the least a join needs, then

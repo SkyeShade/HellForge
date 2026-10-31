@@ -337,7 +337,7 @@ public sealed class LiveBrowse
         return new LiveLobby(lobby["verdict"]?.GetValue<string>() ?? "unknown", flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
             Optional("planetId", 100000), sharedMods.Count, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
             lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), string.Join("; ", changed),
-            lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", _ => "" });
+            lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", JoinCheck.FixSandbox => "sandbox", _ => "" });
     }
 
     // A whole number the list holds (an int or a long, as Describe put it, or parsed JSON), else null.

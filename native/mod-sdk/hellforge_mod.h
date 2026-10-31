@@ -913,6 +913,8 @@ typedef struct HfBrowseLobby
 #define HF_LOBBY_FIX_NONE 0u
 #define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
 #define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
+#define HF_LOBBY_FIX_SANDBOX 3u      /* a stranger's unchecked mods, which only a sandboxed session may download: the
+                                     * launcher's Settings > Sandbox, for the next session (no ask changes it) */
 
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */

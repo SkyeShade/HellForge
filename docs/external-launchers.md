@@ -236,7 +236,8 @@ asking sooner returns the last list. 200 with:
   `joinable` is whether a join can be tried now; `reason` says why not.
 - `fix`, when present, is the player's setting that would let the lobby in: `strangers` (Play with strangers is off;
   the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies whose host shares edited stats are
-  hidden; the Mods page). This API does not change settings: point the player at them.
+  hidden; the Mods page) or `sandbox` (a stranger's unchecked mods download only in a sandboxed session: the launcher's
+  Settings > Sandbox, then a new session). This API does not change settings: point the player at them.
 - `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
   `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
   `inMission` is whether the host has a mission selected.

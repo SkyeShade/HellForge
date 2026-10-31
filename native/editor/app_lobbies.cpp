@@ -210,6 +210,13 @@ static void Fix(const HfBrowseLobby* l)
         g_lobbies.askedAt = Now();
         Sound(sounds::CLICK);
     }
+    else if (l->fix == HF_LOBBY_FIX_SANDBOX)
+    {
+        /* the sandbox is the session's: the launcher's setting, for the next one */
+        Toast("Turn on Settings > Sandbox in HellForge's launcher, then start a new session: a sandboxed game can download this "
+            "host's unchecked mods once you trust them.", OK);
+        Sound(sounds::CLICK);
+    }
 }
 
 static void TurnOnStrangers()
@@ -459,7 +466,8 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
         g_cv.Text(std::to_string(l->mods) + " shared mod(s), all the same as yours", x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12));
     if (l->fix != HF_LOBBY_FIX_NONE)
     {
-        const char* fix = l->fix == HF_LOBBY_FIX_STRANGERS ? "TURN ON PLAY WITH STRANGERS" : "SHOW EDITED-STATS LOBBIES";
+        const char* fix = l->fix == HF_LOBBY_FIX_STRANGERS ? "TURN ON PLAY WITH STRANGERS"
+            : l->fix == HF_LOBBY_FIX_SANDBOX ? "HOW TO JOIN: SANDBOX" : "SHOW EDITED-STATS LOBBIES";
         if (TermButton(fix, {x + 20, y + h - 116, w - 40, 40}, false, true, ui::Id("lobbyfix"), alpha)) Fix(l);
     }
     bool joinable = Joinable(l);

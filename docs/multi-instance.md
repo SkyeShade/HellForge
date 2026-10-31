@@ -58,3 +58,23 @@ session runner's environment. Without the switch nothing below changes what a se
     different SteamIDs);
   - a whole mission together;
   - `BeginAuthSession` (each game checks the other's Steam ticket at a join). It is refused, and the join went on.
+
+## On Linux (2026-10-30, the lobby browser)
+
+Two installations ran side by side on Fedora (Proton), each a session of its own, to test the lobby browser:
+
+- **A Wine prefix each.** Two sessions cannot share a prefix: the second wrapper sees the first one's wineserver, which
+  runs outside its network namespace, and refuses (`hellforge-offline.sh`). The second installation went into a copy
+  of the prefix (`~/.local/share/hellforge-prefix-b/pfx/drive_c/...`, about 380 MB without the installations), with
+  its game data hard-linked as on Windows.
+- **A namespace each.** Each session has its own loopback, so `HELLFORGE_PEER_LINK`'s ports do not reach the other
+  session. A relay run in both namespaces (`nsenter`) and joined over a Unix datagram socket can carry them. The
+  directory folder needs nothing, since files cross namespaces.
+- **What worked:** each backend listed its lobby in the shared folder, under `HELLFORGE_IDENTITY`. The other session's
+  browse API and in-game browser listed it as a stranger's ("Ready to join"), and Quick Play handed that game the
+  invitation.
+- **Not covered: the game's join.** The sandboxed Steam broker (`broker_lobby.c`), which gives each game its own
+  SteamID, is Windows-only. On Linux both games are the same Steam account, and a second game signing in sends the
+  first back to its title screen. A join between two installations on one Linux PC therefore needs two PCs, or the
+  broker on Linux.
+

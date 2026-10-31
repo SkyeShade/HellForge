@@ -19,9 +19,13 @@ On `dev`, since 0.3.0-beta.
   lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
   in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
   hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
-  that lets them in, which you can turn on from the browser.
+  that lets them in, which you can turn on from the browser. A stranger's lobby that only a sandboxed game could join
+  says so, and how to turn the sandbox on for the next session.
 
 ### Changed
+
+- A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
+  or you do.
 
 - **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
   - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
@@ -52,6 +56,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
+  places, a squad 4. A full squad's listing now has no free slot.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -96,7 +102,8 @@ On `dev`, since 0.3.0-beta.
   opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
   keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
   setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`; show the player the
-  launcher's warning before turning strangers on).
+  launcher's warning before turning strangers on; `HF_LOBBY_FIX_SANDBOX` has no ask: the launcher's Sandbox setting,
+  for the next session).
 
 ### For launcher developers
 

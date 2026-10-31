@@ -502,19 +502,23 @@ Which lobbies a search shows is mod sync's rule (`ModSync.Joinable`), and it use
   unsandboxed one, because they are mods to install by hand.
 
 Each search logs what it found, what it showed, and why it left out the rest: `Directory: search "<the game's filter>": 2
-listed, 1 shown (1 left out: it needs mods installed by hand)`. The reasons are:
+listed, 1 shown (1 left out: its host's unchecked mods download only in a sandboxed session)`. The reasons are:
 - `this machine's own lobby`, which Steam's search returns too;
 - `malformed (...)`;
 - `the game's filter`, which covers clauses Steam's search does not apply, such as difficulty ranges and member counts;
 - `its host plays with edited stats`;
 - `its mod list is malformed`;
 - `it runs a blocked mod`;
-- `its host runs another HellForge version`;
+- `its host runs an older HellForge (<bundled mod> <its version>, yours <yours>): the host needs to update`, `its host
+  runs a newer HellForge (...): update HellForge to join`, or `its host runs another HellForge version` when the
+  versions do not compare;
+- `its host's unchecked mods download only in a sandboxed session` (a stranger's unverified code or raw data while this
+  game is not sandboxed; the lobby browser points at Settings > Sandbox for the next session);
 - `it needs mods installed by hand`.
 
 After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
 and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`):
-`Directory: left out 1100001029d1b02: it needs mods installed by hand: Code 1 (test.code): stranger code, not
+`Directory: left out 1100001029d1b02: its host's unchecked mods download only in a sandboxed session: Code 1 (test.code): stranger code, not
 sandboxed.` A mod's why is `share off` (the host does not share its mods), `stranger code, not sandboxed` or `stranger
 raw data, not sandboxed` (unverified code or raw data from a host who is not a Steam friend, while this game is not
 sandboxed), `bundled differs` (another HellForge) or `blocked`. A line names at most 8 mods, then how many more; a
@@ -570,7 +574,12 @@ strangers off is listed (not contacted, its record not remembered for the map) a
 and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
 `HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the
 launcher's warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then saves it (the stranger
-setting reads it again within 2 s) and lists again. Only the game's pipe can ask that, not the HTTP API. Each browse
+setting reads it again within 2 s) and lists again. Only the game's pipe can ask that, not the HTTP API. A stranger's
+lobby that only a sandboxed session could join (its unchecked mods wait for the player's trust there) has the fix
+`sandbox`: the sandbox is the session's, so the button (HOW TO JOIN: SANDBOX) only says to turn on Settings > Sandbox
+in the launcher and start a new session. A squad is at most 4 although the game's lobby has 8 PlayFab places: a
+listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full (`DirectoryService.SquadSize`, also for
+older HellForge versions' listings, which count to 8). Each browse
 logs its counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per
 lobby it cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps
 lobbies out.
