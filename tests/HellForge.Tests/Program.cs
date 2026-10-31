@@ -520,6 +520,37 @@ Test("On Linux, the depot downloads Steam put under its client's folder (ubuntu1
     Check(!Directory.Exists(client) && !SteamDepotDownload.IsComplete(steam, build), "The ubuntu12_32 download was not deleted.");
 });
 
+Test("An earlier download's empty depot folders and state files do not hide Steam's download under steamrt64 (issue 112)", () =>
+{
+    var (manifest, source, depotCache) = DepotFixture("depot-download-leftover");
+    var build = SupportedBuild.FromSteam(manifest, depotCache);
+    var steam = Path.Combine(root, "depot-download-leftover-steam");
+    // What an earlier setup's cleanup left: empty depot folders and Steam's state files in the usual place.
+    var usual = SteamDepotDownload.ContentFolder(steam, build);
+    foreach (var depot in build.Depots) Directory.CreateDirectory(Path.Combine(usual, "depot_" + depot.Id));
+    var appState = Path.Combine(usual, "state_" + build.AppId + "_1.patch");
+    var contentState = Path.Combine(Path.GetDirectoryName(usual)!, "state_" + build.AppId + "_2.patch");
+    var otherState = Path.Combine(Path.GetDirectoryName(usual)!, "state_1_2.patch");
+    foreach (var state in new[] { appState, contentState, otherState }) File.WriteAllText(state, "state");
+    var client = Path.Combine(steam, "steamrt64", "steamapps", "content", "app_" + build.AppId);
+    foreach (var file in build.Files)
+    {
+        var target = Path.Combine(client, "depot_" + file.Depot, file.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Copy(Path.Combine(source, file.Path), target);
+    }
+    Check(SteamDepotDownload.IsComplete(steam, build), "The steamrt64 download behind empty depot folders is not complete.");
+    Check(build.Depots.All(depot => SteamDepotDownload.DepotFolder(steam, build, depot.Id).StartsWith(client, StringComparison.Ordinal)),
+        "An empty depot folder was chosen over the download.");
+    var destination = Path.Combine(root, "depot-download-leftover-install", "game");
+    GameCopier.CopyFromDepots(steam, destination, build);
+    Check(build.Verify(destination).Count == 0, "The copy from the steamrt64 download is not the build.");
+    SteamDepotDownload.Delete(steam, build);
+    Check(!Directory.Exists(usual) && !Directory.Exists(client), "The depot and app folders were not all deleted.");
+    Check(!File.Exists(appState) && !File.Exists(contentState), "Steam's state files for the app were left.");
+    Check(File.Exists(otherState), "Another app's state file was deleted.");
+});
+
 Test("Migration copies profiles, settings and game user data into an installation without overwriting", () =>
 {
     var old = Path.Combine(root, "migration", "host-startup");
