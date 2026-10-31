@@ -49,6 +49,9 @@ public partial class MainWindow
             ApplyLinuxSandboxSettings(install);
             return;
         }
+        // Setup and Check and repair test again: a failed record for this app build and kernel is not reused (the readiness
+        // command would), while a current pass is.
+        if (LinuxSandboxReadiness.Read(install) is { Passed: false }) InvalidateLinuxSandboxTest(install);
         // Readiness may make the prefix case-sensitive, which rebuilds folders under the same names (new inodes); a
         // working folder inside the prefix is entered again by its name afterwards (LinuxPrefixCase).
         var workingFolder = Environment.CurrentDirectory;

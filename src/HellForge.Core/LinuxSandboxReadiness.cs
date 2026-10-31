@@ -154,7 +154,8 @@ public static class LinuxSandboxReadiness
     {
         var expected = ExpectedMode(install);
         var metadata = ReadMode(install);
-        if (metadata == null) return (expected, false, "the self-test did not report its runtime mode");
+        // a self-test that failed before it wrote the mode file keeps its own reason (it may not have started at all)
+        if (metadata == null) return (expected, false, exitCode != 0 && !string.IsNullOrWhiteSpace(reason) ? reason : "the self-test did not report its runtime mode");
         if (metadata.Mode != expected.Mode || metadata.RuntimeIdentity != expected.RuntimeIdentity)
             return (metadata, false, expected.Mode == "container"
                 ? "the self-test ran in host mode, but this session uses the Steam Linux Runtime container"

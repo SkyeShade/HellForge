@@ -39,6 +39,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Linux: game updates were patched by starting Proton once per file (several minutes, a window each time), because
+  the native patch tool was never installed (#112).
+- Linux: on a new Proton prefix the sandbox self-test failed during setup and was never run again, so sessions ran
+  unsandboxed with "the self-test did not report its runtime mode". It now runs after the prefix is made
+  case-sensitive, a failure says its real reason, and Check and repair tests it again (#112).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
