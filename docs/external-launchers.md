@@ -173,7 +173,9 @@ Once the session runner has made its run folder, `play` prints
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. A line
 `{"event": "mod-problems", "problems": [...]}` lists mods the session left out (a mod that did not compile, data that
-was not built...). Closing `play` does not stop the session; `stop` does.
+was not built...). Closing `play` does not stop the session; `stop` does. `stop` asks the game to close by itself first, as its
+window's close button does, and ends it after 30 seconds if it has not: the game saves its shader cache only when it
+closes by itself.
 
 | `status` | Meaning |
 |---|---|
@@ -201,7 +203,7 @@ Only the newest ten are kept. These are the files to show a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`windows`, `closedByItself`, `seconds`) |
 | `modloader.log` | the mod loader: which mods loaded, and why one did not |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
