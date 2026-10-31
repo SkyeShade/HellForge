@@ -258,6 +258,7 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
@@ -875,14 +876,17 @@ public partial class MainWindow : Window
         Close();
     }
 
-    // What is wrong with the typed launch options, under their box (nothing when they can be used).
+    // What is wrong with the typed launch options, under their box (nothing when they can be used), and what they do that a
+    // player would not expect (GameLaunchOptions.Warnings).
     void ShowLaunchOptionsProblem()
     {
-        string? problem = null;
-        try { HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
+        string? problem = null, warning = null;
+        try { warning = string.Join(" ", HellForge.Core.GameLaunchOptions.Warnings(HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text))); }
         catch (InvalidDataException error) { problem = error.Message; }
         LaunchOptionsProblem.Text = problem;
         LaunchOptionsProblem.IsVisible = problem != null;
+        LaunchOptionsWarning.Text = warning;
+        LaunchOptionsWarning.IsVisible = !string.IsNullOrEmpty(warning);
     }
 
     static IBrush Solid(string color) => new ImmutableSolidColorBrush(Color.Parse(color));
