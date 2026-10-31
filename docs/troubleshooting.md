@@ -164,7 +164,7 @@ Cases HellForge already recognises:
   | Message | What to do |
   | --- | --- |
   | "Another program already uses port 443, which the capture needs (used by ...)" | Close the program it names (a VM host, a local web server), then sync again. |
-  | "Another program kept the hosts file locked ... (held by ...)" | The program it names keeps the hosts file open; it is usually a security program. Allow the capture in it. |
+  | "... kept the hosts file (...) open, so the sync could not change it" | The program it names keeps the hosts file open; it is usually a security program. Allow the capture in it. |
   | "The capture has not got ready after a minute; still waiting." | A security program is usually checking or holding the capture. It goes on if it is let through. |
   | "The capture could not reach HELLDIVERS 2's servers" | Check the internet connection. |
 

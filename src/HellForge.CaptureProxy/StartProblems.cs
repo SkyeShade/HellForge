@@ -1,11 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 
-// Who is in the capture's way when it cannot start: the program listening on its port (iphlpapi's TCP table with owning
-// process ids) and the programs holding a file open (the Restart Manager, which Windows' own installers use to find
-// them). Each answer is a short "name.exe (process 1234)" list for proxy.log and the launcher's message; empty when
-// Windows does not say.
+// Who is in the capture's way when it cannot start: an earlier sync's capture still running, and the program listening on
+// its port (iphlpapi's TCP table with owning process ids), as "name.exe (process 1234)" for proxy.log and the launcher.
+// The programs holding the hosts file open are named by Program.cs's HostsLockers (Restart Manager).
 static class StartProblems
 {
     public const string ProcessName = "HellForge.CaptureProxy";
@@ -80,68 +78,8 @@ static class StartProblems
         }
     }
 
-    // The programs that have a file open; empty when none is found or the Restart Manager does not answer.
-    public static IReadOnlyList<string> FileHolders(string path)
-    {
-        try
-        {
-            var key = new StringBuilder(33);
-            if (RmStartSession(out var session, 0, key) != 0) return [];
-            try
-            {
-                if (RmRegisterResources(session, 1, [path], 0, null, 0, null) != 0) return [];
-                uint count = 0, reasons = 0;
-                var result = RmGetList(session, out var needed, ref count, null, ref reasons);
-                if (result != ErrorMoreData || needed == 0) return [];
-                var found = new RmProcessInfo[needed];
-                count = needed;
-                if (RmGetList(session, out needed, ref count, found, ref reasons) != 0) return [];
-                return [.. found.Take((int)count).Select(info => Describe(info.Process.ProcessId) +
-                    (string.IsNullOrWhiteSpace(info.AppName) ? "" : ", " + info.AppName.Trim()))];
-            }
-            finally { RmEndSession(session); }
-        }
-        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException)
-        {
-            return [];
-        }
-    }
-
-    const int AfInet = 2, TcpTableOwnerPidListener = 3, ErrorMoreData = 234;
+    const int AfInet = 2, TcpTableOwnerPidListener = 3;
 
     [DllImport("iphlpapi.dll")]
     static extern uint GetExtendedTcpTable(IntPtr table, ref int size, bool sort, int family, int tableClass, uint reserved);
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct RmUniqueProcess
-    {
-        public int ProcessId;
-        // FILETIME: two DWORDs, so the struct stays 12 bytes.
-        public uint StartTimeLow, StartTimeHigh;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    struct RmProcessInfo
-    {
-        public RmUniqueProcess Process;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceShortName;
-        public int ApplicationType;
-        public uint AppStatus;
-        public uint SessionId;
-        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
-    }
-
-    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
-    static extern int RmStartSession(out uint session, int flags, StringBuilder key);
-
-    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
-    static extern int RmRegisterResources(uint session, uint files, string[] names, uint applications, RmUniqueProcess[]? processes,
-        uint services, string[]? serviceNames);
-
-    [DllImport("rstrtmgr.dll")]
-    static extern int RmGetList(uint session, out uint needed, ref uint count, [In, Out] RmProcessInfo[]? processes, ref uint rebootReasons);
-
-    [DllImport("rstrtmgr.dll")]
-    static extern int RmEndSession(uint session);
 }

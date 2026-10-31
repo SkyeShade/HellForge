@@ -72,9 +72,12 @@ public static class CaptureStart
         _ => CaptureProblem.Blocked               // 5 access denied, 225/226 virus, 4551 application control policy, ...
     };
 
-    // A capture that ended before it listened: its own failure file, else its exit code, else how it ended.
-    public static CaptureFailure FromExit(int exitCode, CaptureFailure? written, string? proxyLog)
+    // A capture that ended before it listened: the reason a hosts write gave (CaptureHosts.ReadFailure, the only message for
+    // a hosts failure), else its own failure file, else its exit code, else how it ended.
+    public static CaptureFailure FromExit(int exitCode, CaptureFailure? written, string? proxyLog, string? hostsReason = null)
     {
+        if (hostsReason != null)
+            return new CaptureFailure(FromExitCode(exitCode) == CaptureProblem.HostsBusy ? CaptureProblem.HostsBusy : CaptureProblem.HostsDenied, hostsReason);
         if (written != null) return written;
         if (FromExitCode(exitCode) is var known and not CaptureProblem.None) return new CaptureFailure(known, null);
         var crashed = proxyLog?.Split('\n').Select(line => line.TrimEnd('\r')).LastOrDefault(line => line.Contains(" crashed: ", StringComparison.Ordinal));
@@ -109,8 +112,9 @@ public static class CaptureStart
             CaptureProblem.EvidenceFolder => "The capture could not write its log folder" + detail + ".",
             CaptureProblem.LeftoverCapture => "An earlier sync's capture is still running and could not be stopped" + detail +
                 ". Restart the PC, then sync again.",
-            CaptureProblem.HostsBusy => "Another program kept the hosts file locked, so the capture could not redirect the game" + detail + ".",
-            CaptureProblem.HostsDenied => "The capture was not allowed to change the hosts file" + detail + ".",
+            // The hosts write's own reason (CaptureHosts: HostsFileException, or who holds the file), as it was written.
+            CaptureProblem.HostsBusy => failure.Detail ?? "Another program kept the hosts file open, so the sync could not change it.",
+            CaptureProblem.HostsDenied => failure.Detail ?? "Windows refused the sync's change to the hosts file.",
             CaptureProblem.Offline => "The capture could not reach HELLDIVERS 2's servers" + detail + ": check your internet connection, then sync again.",
             CaptureProblem.Certificate => "The capture could not add its certificate to Windows" + detail + ".",
             CaptureProblem.PortInUse => "Another program already uses port 443, which the capture needs" + detail +
