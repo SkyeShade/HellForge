@@ -27,8 +27,9 @@ typedef struct BrokerBridge {
     /* CreateLobby's types asked for, oldest first, until their LobbyCreated_t (the calls run in order) */
     int32_t pendingAsked[BROKER_PENDING_LOBBIES];
     int pendingCount;
-    /* Play with strangers (mods/hellforge-mods.json "playWithStrangers", off without the file): the mods folder, the
-     * settings file's time stamp when read, when it was last looked at */
+    /* Play with strangers (mods/hellforge-mods.json "strangers": "on"/"off"; a legacy "playWithStrangers": true still
+     * counts; on without a choice in the sandboxed broker): the mods folder, the settings file's time stamp when read,
+     * when it was last looked at */
     wchar_t modsFolder[520];
     /* Steam P2P's co-op peers (BrokerBridgeWatchPeers): the backend's file, its time stamp when read, when (system time)
      * it was read, when last looked at */
@@ -61,7 +62,8 @@ typedef struct BrokerBridge {
 int BrokerBridgeOpen(BrokerBridge* b, HMODULE valve, int hPipe);
 
 /* Reads Play with strangers from that mods folder now, and again whenever its settings file changes (the pump looks
- * every BROKER_STRANGERS_MS). Without it, strangers are off. Call before serving. */
+ * every BROKER_STRANGERS_MS). Without a file or a choice it is on: the broker runs only for a sandboxed session. Call
+ * before serving. */
 void BrokerBridgeWatchStrangers(BrokerBridge* b, const wchar_t* modsFolder);
 
 /* Steam P2P passes only to and from the game's co-op peers: the SteamIDs in this file (the backend's lobby and Party
@@ -73,7 +75,8 @@ void BrokerBridgeWatchPeers(BrokerBridge* b, const wchar_t* peersFile);
  * SteamID64 or the folder cannot be used. */
 int BrokerBridgeMultiInstance(BrokerBridge* b, const wchar_t* lobbyFolder, uint64_t identity, const char* persona);
 
-/* Play with strangers in a settings file's text: a top-level "playWithStrangers": true. */
+/* Play with strangers in a settings file's text: a top-level "strangers": "on" or "off", else on (the sandboxed
+ * broker's default; a legacy "playWithStrangers": true is on, and legacy false was not a choice). */
 int BrokerStrangersIn(const char* json, size_t length);
 
 /* Fills the snapshot in ch's mapping now (the pump also does it every BROKER_SNAPSHOT_MS). */

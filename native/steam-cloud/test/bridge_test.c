@@ -130,12 +130,19 @@ int wmain(int argc, wchar_t** argv)
     swprintf(suffix, 64, L"bridgetest-%lu", GetCurrentProcessId());
     if (!BrokerChannelCreate(&g_broker, suffix) || !BrokerBridgeOpen(&g_bridge, valve, 1)) { fprintf(stderr, "broker setup failed\n"); return 2; }
     BrokerBridgeSnapshot(&g_bridge, &g_broker);
-    // strangers off: a nested "playWithStrangers" (a mod's own setting) is not the player's
+    // The keys: the new on/off wins over a legacy key; a legacy true still means on.
+    EXPECT(BrokerStrangersIn("{\"strangers\":\"on\"}", strlen("{\"strangers\":\"on\"}")) == 1, "The new on key is not on");
+    EXPECT(BrokerStrangersIn("{\"strangers\":\"off\",\"playWithStrangers\":true}", strlen("{\"strangers\":\"off\",\"playWithStrangers\":true}")) == 0,
+        "The new off key did not win");
+    EXPECT(BrokerStrangersIn("{\"playWithStrangers\":true}", strlen("{\"playWithStrangers\":true}")) == 1, "A legacy on key is not on");
+    EXPECT(BrokerStrangersIn("{\"playWithStrangers\":false}", strlen("{\"playWithStrangers\":false}")) == 1, "A legacy off key overrode the sandbox default");
+    EXPECT(BrokerStrangersIn("{}", 2) == 1, "No choice is not on in the sandboxed broker");
+    // strangers off: a nested "strangers" (a mod's own setting) is not the player's; the top-level off wins.
     wchar_t temp[MAX_PATH];
     GetTempPathW(MAX_PATH, temp);
     swprintf(g_mods, MAX_PATH, L"%lsbridgetest-mods-%lu", temp, GetCurrentProcessId());
     CreateDirectoryW(g_mods, NULL);
-    Strangers("{\"mods\":{\"x\":{\"playWithStrangers\":true}},\"playWithStrangers\":false}");
+    Strangers("{\"mods\":{\"x\":{\"strangers\":\"on\"}},\"strangers\":\"off\"}");
     BrokerBridgeWatchStrangers(&g_bridge, g_mods);
     // the backend's co-op peers for Steam P2P: none yet
     swprintf(g_peers, MAX_PATH + 32, L"%ls\\p2p-peers.txt", g_mods);
@@ -267,7 +274,7 @@ int wmain(int argc, wchar_t** argv)
 
     // Play with strangers turned on: the game's lobby is Public again, and a new Public lobby stays Public; a private one
     // (0) is never changed. Off again: every lobby the game asked to be Public is Friends only.
-    Strangers("{\"playWithStrangers\": true}");
+    Strangers("{\"strangers\":\"on\"}");
     for (int i = 0; i < 1000 && fake->setLobbyTypeCalls == 0; i++) Sleep(10);
     EXPECT(fake->setLobbyTypeCalls == 1 && fake->setLobbyType == 2 && fake->setLobbyTypeLobby == LOBBY, "Strangers on: the game's lobby is made Public again");
     createLobby(matchmaking, 2, 4);
@@ -279,7 +286,7 @@ int wmain(int argc, wchar_t** argv)
     EXPECT(fake->createLobbyType == 1, "HELLFORGE_STEAM_LOBBY_FRIENDS_ONLY=1 (a two-PC test): Friends only with strangers on too");
     SetEnvironmentVariableW(L"HELLFORGE_STEAM_LOBBY_FRIENDS_ONLY", NULL);
     for (int i = 0; i < 1000 && g_bridge.lobbyCount < 4; i++) Sleep(10);
-    Strangers("{\"playWithStrangers\":false}");
+    Strangers("{\"strangers\":\"off\"}");
     for (int i = 0; i < 1000 && fake->setLobbyTypeCalls < 4; i++) Sleep(10);
     Sleep(BROKER_STRANGERS_MS + 300);
     EXPECT(g_bridge.lobbyCount == 4 && fake->setLobbyTypeCalls == 4 && fake->setLobbyType == 1,

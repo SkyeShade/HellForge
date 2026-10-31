@@ -60,6 +60,8 @@ public sealed class ModSync : IAsyncDisposable
     readonly bool sandboxed;
     readonly CancellationTokenSource stop = new();
     readonly object gate = new();
+    // The host and lobby of each mods.info this join already took (at most one each).
+    readonly HashSet<string> infoHeard = [];
 
     // sandboxed: this session's game runs sandboxed (MultiplayerSettings.Sandboxed).
     public ModSync(IPeerTransport transport, ModSyncPaths paths, ModSet? own, Func<ulong, string> nameOf, Action<string> log,
@@ -81,6 +83,11 @@ public sealed class ModSync : IAsyncDisposable
         serving = Task.Run(ServeAsync);
         launcherAnswers = Task.Run(TakeLauncherAnswersAsync);
     }
+
+    // This session's mods of both tiers as a host sends them in mods.info (null when the session gave no set).
+    public string? OwnWire => ownWire;
+    // A brief note for the game (MultiplayerHost shows it in the corner): here, the host's per-player mods this joiner lacks.
+    public event Action<string>? Notice;
 
 
     // A launcher's answer (ModSyncOffer.Answer), for a game without the in-game editor: looked for once a second while an
@@ -138,6 +145,7 @@ public sealed class ModSync : IAsyncDisposable
             {
                 case "mods.files" or "mods.get": Queue(peer, frame); break;
                 case "mods.offer": Offered(peer, frame); break;
+                case "mods.info": Info(peer, frame); break;
                 case "mods.filelist" or "mods.chunk": Answered(peer, frame); break;
             }
         }
@@ -160,8 +168,8 @@ public sealed class ModSync : IAsyncDisposable
     readonly Task serving, launcherAnswers;
     long totalNext;
 
-    // What one grant may download: the whole set twice (a retry after a failed check), and a little over.
-    long GrantBudget => 2 * (own?.Mods.Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
+    // What one grant may download: the whole shared set twice (a retry after a failed check), and a little over.
+    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
 
     // A joiner with other gameplay mods is about to be refused (LobbyService.ModsRefused): this session's mod set goes to
     // them first, and they may download it for GrantTime. True when they may (this player shares, and the set is known).
@@ -203,25 +211,58 @@ public sealed class ModSync : IAsyncDisposable
     // mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
     public bool Joinable(DirectoryListing listing, out string why)
     {
-        why = "";
+        var check = Check(listing);
+        why = check.Why;
+        return check.Joinable;
+    }
+
+    // The same answer with what stands in the way (DirectoryService's search log, the browse API): the plan, and the
+    // mods that keep the lobby out, each with why.
+    public JoinCheck Check(DirectoryListing listing)
+    {
         var settings = ModSettings.Read(modsFolder);
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats) { why = "its host plays with edited stats"; return false; }
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return true;
-        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return true;
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats)
+            return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
+        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return new(true, "", null, []);
         ModSet set;
         try { set = ModSet.Parse(wire, local: false); }
-        catch (InvalidDataException) { why = "its mod list is malformed"; return false; }
-        var plan = ModSyncPlan.Make(set, listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1", own ?? new ModSet("none", []), Locator.Find, settings.Blocked,
-            Trust(listing.Host, settings));
-        why = plan.Verdict switch
+        catch (InvalidDataException) { return new(false, "its mod list is malformed", null, []); }
+        var shares = listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1";
+        var trust = Trust(listing.Host, settings);
+        var plan = ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), Locator.Find, settings.Blocked, trust);
+        var why = plan.Verdict switch
         {
             SyncVerdict.Blocked => "it runs a blocked mod",
-            SyncVerdict.Unjoinable when plan.Items.Any(i => i.Action == SyncAction.Update) => "its host runs another HellForge version",
+            SyncVerdict.Unjoinable when plan.Items.FirstOrDefault(i => i.Action == SyncAction.Update) is { } other => OtherVersion(other.Mod, own?.Mods.FirstOrDefault(m => m.Id == other.Mod.Id)),
+            SyncVerdict.Unjoinable when SandboxLetsIn(plan, shares, trust) => "its host's unchecked mods download only in a sandboxed session",
             SyncVerdict.Unjoinable => "it needs mods installed by hand",
             _ => ""
         };
-        return plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust;
+        var blocking = plan.Items.Where(i => i.Action is SyncAction.Manual or SyncAction.Blocked or SyncAction.Update)
+            .Select(i => new JoinBlocker(i.Mod, i.Action, JoinCheck.Reason(i, shares))).ToList();
+        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking)
+        {
+            Set = set, Fix = plan.Verdict == SyncVerdict.Unjoinable && SandboxLetsIn(plan, shares, trust) ? JoinCheck.FixSandbox : null
+        };
     }
+
+    // Why another HellForge keeps a lobby out, and who updates: a bundled mod's version against this machine's (an older
+    // host updates; a newer one, the player). Versions that do not compare (the same, or not numbers) say neither.
+    public static string OtherVersion(ModSetEntry hostMod, ModSetEntry? mine)
+    {
+        var order = mine != null && Version.TryParse(hostMod.Version, out var theirs) && Version.TryParse(mine.Version, out var ours) ? theirs.CompareTo(ours) : 0;
+        var which = $"{hostMod.Name} {hostMod.Version}, yours {mine?.Version}";
+        return order < 0 ? $"its host runs an older HellForge ({which}): the host needs to update"
+            : order > 0 ? $"its host runs a newer HellForge ({which}): update HellForge to join"
+            : "its host runs another HellForge version";
+    }
+
+    // Whether a sandboxed session would let the lobby in: the host shares, and every mod to install by hand is a stranger's
+    // unchecked one (ModSyncPlan.Missing: those wait for the player's trust there instead), with no other HellForge's.
+    static bool SandboxLetsIn(ModSyncPlan plan, bool shares, SyncTrust trust) =>
+        shares && !trust.Sandboxed && !trust.HostIsFriend && plan.Items.Any(i => i.Action == SyncAction.Manual)
+        && plan.Items.All(i => i.Action is not (SyncAction.Update or SyncAction.Blocked));
 
     // A machine this one downloads from or lets download (a stranger is let through for that: MultiplayerHost's gate).
     public bool Related(ulong peer)
@@ -294,6 +335,7 @@ public sealed class ModSync : IAsyncDisposable
         if (!Shares()) return Refused(frame, "the host does not share their mods");
         var mod = own?.Find(frame.Text(1), frame.Text(2));
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
+        if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
         return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
     }
@@ -381,6 +423,55 @@ public sealed class ModSync : IAsyncDisposable
             }
             catch (Exception error) { log("Mod sync: making the offer failed: " + error); }
         });
+    }
+
+    // A host's mods after it accepted this machine's join: if its per-player mods are not this player's, a brief note says
+    // so. Only the host of a lobby this machine asked to join, and only once per join; nothing downloads.
+    void Info(ulong host, Frame frame)
+    {
+        if (frame.Count < 2) { log($"Mod sync: a short mods.info from {LobbyService.EntityId(host)}."); return; }
+        var lobbyId = frame.Text(0);
+        if (Expected?.Invoke(host, lobbyId) != true)
+        {
+            log($"Mod sync: dropped mods.info from {LobbyService.EntityId(host)} for a join not asked for.");
+            return;
+        }
+        ModSet set;
+        try { set = ModSet.Parse(frame.Text(1), local: false); }
+        catch (InvalidDataException error) { log($"Mod sync: {LobbyService.EntityId(host)}'s mods.info could not be used: {error.Message}"); return; }
+        var key = InfoKey(host, lobbyId);
+        lock (gate)
+        {
+            if (!infoHeard.Add(key)) { log($"Mod sync: {LobbyService.EntityId(host)}'s mods.info for {lobbyId} was already taken."); return; }
+        }
+        var mine = own?.Mods.Where(m => m.Tier == CoopTier.PerPlayer).ToList() ?? [];
+        var missing = set.Mods.Where(m => m.Tier == CoopTier.PerPlayer && !mine.Any(o => o.Id == m.Id && o.Hash == m.Hash)).ToList();
+        if (missing.Count == 0) return;
+        var message = NoticeText(nameOf(host), missing.Select(m => m.Name).ToList());
+        if (message == null) { log("Mod sync: the host's per-player mods differ, but their notice has no room for a name."); return; }
+        log("Mod sync: " + message);
+        Notice?.Invoke(message);
+    }
+
+    // A new join for that host and lobby may take a new mods.info (the earlier one was for the earlier join).
+    public void JoinStarted(ulong host, string lobbyId)
+    {
+        lock (gate) infoHeard.Remove(InfoKey(host, lobbyId));
+    }
+
+    static string InfoKey(ulong host, string lobbyId) => host.ToString(CultureInfo.InvariantCulture) + "|" + lobbyId;
+
+    // The notice's text, its names cut so the game's 200-character title limit keeps the ending. Null when even the
+    // host's name and the ending leave no room for one name.
+    static string? NoticeText(string host, IReadOnlyList<string> names)
+    {
+        var prefix = $"{host} plays with {names.Count} mod{(names.Count == 1 ? "" : "s")} you don't: ";
+        const string suffix = ". Each player keeps their own.";
+        var room = 200 - prefix.Length - suffix.Length;
+        if (room < 1) return null;
+        var all = string.Join(", ", names);
+        var shown = all.Length <= room ? all : all[..(room - 1)].TrimEnd() + "…";
+        return prefix + shown + suffix;
     }
 
     // accept: the player trusted a mod and asked for the download (TRUST AND DOWNLOAD): it starts when nothing else waits.
@@ -791,7 +882,7 @@ public sealed class ModSync : IAsyncDisposable
             return;
         }
         new ModSyncSession(LobbyService.EntityId(current.Host), current.HostName, current.Connection, current.Set.Digest,
-            [.. current.Set.Mods.Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(sessionFile);
+            [.. current.Set.Mods.Where(m => m.Tier == CoopTier.Shared).Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(sessionFile);
         Update(current, "ready", $"Restarting with {current.HostName}'s mods...");
         File.WriteAllText(Path.Combine(runDirectory, StopSignal), StopReason);
         log($"Mod sync: the next session plays {current.HostName}'s mods ({sessionFile}); this session stops for the launcher to restart it.");
@@ -922,3 +1013,33 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
 // Where a session's mod sync works: the session's mods folder, its run folder (the evidence folder's parent) and evidence
 // folder, and the file the next session's mods are written to (ModSyncSession).
 public sealed record ModSyncPaths(string ModsFolder, string RunDirectory, string EvidenceDirectory, string SessionFile);
+
+// A host's mod that keeps its lobby out, and why (JoinCheck.Reason).
+public sealed record JoinBlocker(ModSetEntry Mod, SyncAction Action, string Why);
+
+// Whether a listed lobby could be joined (ModSync.Check): Why is the search log's reason when it cannot, Plan the join's
+// mod plan (null when the mods match, the listing carries no set, or it was left out before planning), Blocking the mods
+// that keep it out.
+public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IReadOnlyList<JoinBlocker> Blocking)
+{
+    // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
+    public ModSet? Set { get; init; }
+
+    // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
+    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), FixSandbox (a stranger's
+    // unchecked mods, which only a sandboxed session may download: the launcher's setting, for the next session), or null.
+    public string? Fix { get; init; }
+    public const string FixStrangers = "strangers", FixEditedStats = "editedStats", FixSandbox = "sandbox";
+
+    // Why one item stands in the way: the host does not share, a stranger's unchecked mod while this game is not
+    // sandboxed, a different bundled mod (another HellForge), or the player's blocklist.
+    public static string Reason(SyncItem item, bool hostShares) => item.Action switch
+    {
+        SyncAction.Blocked => "blocked",
+        SyncAction.Update => "bundled differs",
+        SyncAction.Manual when !hostShares => "share off",
+        SyncAction.Manual when item.Mod.Class == ModClass.Raw => "stranger raw data, not sandboxed",
+        SyncAction.Manual => "stranger code, not sandboxed",
+        _ => ModSyncPlan.ActionName(item.Action)
+    };
+}

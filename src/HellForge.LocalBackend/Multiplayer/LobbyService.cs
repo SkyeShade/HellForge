@@ -67,8 +67,13 @@ public sealed class LobbyService
     public const uint ModlistMismatch = LobbyNotJoinable;
     // The HellForge multiplayer protocol a joiner's backend speaks; a host refuses other versions, since mixed builds fail in
     // confusing ways (second two-PC test: an outdated friend got no missions and could not rejoin). Raise it whenever
-    // backends or stand-ins change behaviour the other side relies on.
-    public const string Protocol = "hellforge-mp-8"; // 8: every player keeps their own stats unless the host shares its ("stats.set" says which), and the lobby's packages are loaded on every machine (AssetShare); 7: a refusal for different gameplay mods carries the host's mod set, and joiners download it (ModSync); 6: mods set up in id order and added entities numbered by resource id (engine 0.1.4: content numbered alike whatever the load order), the editor's mod content values in stats.set; 5: the host's stats, Local Stats left the mod digest
+    // backends or stand-ins change behaviour the other side relies on. WireLevel is the frame and directory contract split
+    // out of the feature version: later protocols that keep it can still meet.
+    public const string Protocol = "hellforge-mp-9"; // 9: per-player mods leave the modlist code, the mod set carries both tiers, bundled mods count by coopLevel, and the directory searches by WireLevel; 8: every player keeps their own stats unless the host shares its ("stats.set" says which), and the lobby's packages are loaded on every machine (AssetShare); 7: a refusal for different gameplay mods carries the host's mod set, and joiners download it (ModSync); 6: mods set up in id order and added entities numbered by resource id (engine 0.1.4: content numbered alike whatever the load order), the editor's mod content values in stats.set; 5: the host's stats, Local Stats left the mod digest
+    public const int WireLevel = 1;
+    // Whether a joiner's protocol can be used: the feature version this build speaks, now; add later protocols here while
+    // they keep this wire level and older features still answer, as lobby.rejoin's "older hosts" note does.
+    public static bool Compatible(string protocol) => protocol == Protocol;
     const int MemberRemovedForcibly = 1, MemberRemovedRemoteLeft = 2, DisconnectingNoLocalMembers = 0, DisconnectingLobbyDeleted = 1;
     static readonly HashSet<string> Requests = ["lobby.create", "lobby.join", "lobby.update", "lobby.leave", "lobby.kick", "lobby.invite"];
     // PlayFab's limits (PFLobby.h: PFLobbyMaxLobbyPropertyCount, ...MemberPropertyCount, ...SearchPropertyCount, 30 each),
@@ -114,6 +119,9 @@ public sealed class LobbyService
     // host's mods first and says whether they may download them (the joiner's game is then told so). Called under this
     // service's lock: it must not call back into it.
     public Func<ulong, string, bool>? ModsRefused { get; set; }
+    // Host: this session's gameplay mods of both tiers in ModSet's wire form, sent as mods.info after a remote joins. The
+    // joiner's backend compares its own per-player mods and notes any difference; nothing downloads (ModSync.Info).
+    public string? ModSetWire { get; set; }
     // Joins this machine asked for in the last minute: lobby id -> owner, kept whatever their answers (a mod offer, a
     // refusal or the failed join's result, in any order).
     readonly Dictionary<string, (ulong Owner, DateTime At)> joins = new(StringComparer.Ordinal);
@@ -349,13 +357,17 @@ public sealed class LobbyService
         lobby.Expected[node] = until;
     }
 
-    // This machine's game invites itself into a lobby (AutoRejoin: the host said it may come back): the lobby stand-in hands
-    // its invitation listeners InviteReceived, as for a friend's invitation.
-    public void InviteLocal(string lobbyId, string connectionString, string inviterId)
+    // This machine's game invites itself into a lobby (AutoRejoin: the host said it may come back; the browse API: the
+    // player chose the lobby): the lobby stand-in hands its invitation listeners InviteReceived, as for a friend's
+    // invitation. The game's own join follows only when the player accepts it.
+    public void InviteLocal(string lobbyId, string connectionString, string inviterId) =>
+        InviteLocal(lobbyId, connectionString, inviterId, "rejoining after a mod sync");
+
+    public void InviteLocal(string lobbyId, string connectionString, string inviterId, string why)
     {
         lock (gate)
         {
-            log($"Passed {inviterId}'s lobby {lobbyId} to this player's game as an invitation (rejoining after a mod sync).");
+            log($"Passed {inviterId}'s lobby {lobbyId} to this player's game as an invitation ({why}).");
             toLocal(new Frame("lobby.inviteReceived").Add(lobbyId).Add(connectionString).Add(inviterId));
         }
     }
@@ -559,7 +571,7 @@ public sealed class LobbyService
         var protocol = node == LocalNode ? Protocol : frame.Count > index + 1 ? frame.Text(index + 1) : "an older HellForge";
         if (connection.Length != 3 || !hosted.TryGetValue(connection[1], out var lobby)) { Answer(node, op, "join", LobbyNotFound, connection.ElementAtOrDefault(1)); return; }
         if (!Admits(node, frame, op, lobby, memberId, memberProperties)) return;
-        if (protocol != Protocol)
+        if (!Compatible(protocol))
         {
             Refuse(node, op, lobby.Id, $"different HellForge versions ({protocol} joining, {Protocol} hosting); both players need the same installer.",
                 ["Your HellForge version is not the host's.", "Both players need the same HellForge installer (its version is in the launcher's corner)."],
@@ -632,9 +644,17 @@ public sealed class LobbyService
         Send(node, Snapshot(new Frame("lobby.result").Add(op).Add("join").Add(0), lobby));
         // A friend's backend adopts this war time, so both games see the same war.
         if (node != LocalNode && warClock != null) Send(node, new Frame("war.clock").Add(warClock.Seconds));
+        // After the accept: the host's gameplay mods of both tiers, so the joiner can note the per-player ones it lacks.
+        SendModsInfo(node, lobby.Id);
         var added = new Frame("lobby.memberAdded").Add(lobby.Id).Add(member.Id).Add(member.Type).Add(member.Properties);
         foreach (var other in lobby.Nodes().Where(n => n != node)) Send(other, added);
         HostedChanged?.Invoke();
+    }
+
+    // The host's set after an accepted join (nothing for the local player, or a session without one).
+    void SendModsInfo(ulong node, string lobbyId)
+    {
+        if (node != LocalNode && ModSetWire is { } wire) Send(node, new Frame("mods.info").Add(lobbyId).Add(wire));
     }
 
     // A lobby.update's changes: the lobby's properties, its search properties, and the member's (when MemberUpdate).
@@ -775,7 +795,7 @@ public sealed class LobbyService
         if (asked.Length is 0 or > 100) return;
         if (lobby == null) { Tell("gone", ["The host's lobby has closed."]); return; }
         if (Admission(lobby, node) is { } refusal) { Tell("refused", refusal.JoinerLines); return; }
-        if (protocol != Protocol) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
+        if (!Compatible(protocol)) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
         if (digest != modDigest) { Tell("mods", ["The host's gameplay mods changed after your restart.", "Join them again to see which differ."]); return; }
         if (lobby.Lock == 1) { Tell("locked", ["The host's lobby is locked."]); return; }
         if (lobby.Members.Count(m => m.Node != node) >= lobby.MaxMembers) { Tell("full", ["The host's lobby is full."]); return; }

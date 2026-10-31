@@ -35,7 +35,7 @@ static class StatsTests
             }) reject(() => StatsData.Parse(json, profile));
             reject(() => StatsData.Parse(rpm, profile with { GameDllSha256 = "mismatch" }));
         });
-        test("Stats-only mods load, conflict in mod order, and affect the digest", () =>
+        test("Stats-only mods load, conflict in mod order, and stay out of the digest", () =>
         {
             var modsRoot = Path.Combine(root, "stats-mods");
             foreach (var id in new[] { "a", "b" })
@@ -46,13 +46,17 @@ static class StatsTests
             }
             var (mods, problems) = ModCatalog.Load(modsRoot);
             check(mods.Count == 2 && mods.All(m => m.NeedsLoader && !m.HasCode && m.Gameplay), "Stats-only mods were omitted.");
+            check(mods.All(m => m.Coop == CoopTier.PerPlayer && !ModCatalog.Counted(m)), "A stats-only mod is not per-player.");
             // listed a, b (new mods by id): b loads first, a later, so a's value wins
             check(problems.Count == 1 && problems[0].Contains("a applies later"), "Stats conflict not reported in load order: " + string.Join(" | ", problems));
             var plan = ModLoaderPlan.Text(ModCatalog.LoadOrder(mods), root, profile, "25480438");
             check(plan.Contains("\t-\nstat\ta\tcomponent") && plan.IndexOf("stat\tb\t", StringComparison.Ordinal) < plan.IndexOf("stat\ta\t", StringComparison.Ordinal), "Plan order/data-only marker wrong.");
             var digest = ModCatalog.Digest(mods);
+            var set = ModSet.Of(ModCatalog.LoadOrder(mods));
+            check(digest == "none" && set.Mods.Count == 2 && set.Mods.All(m => m.Tier == CoopTier.PerPlayer),
+                "A stats-only mod is in the digest or missing from the co-op mod set.");
             File.WriteAllText(Path.Combine(modsRoot, "b", StatsData.FileName), rpm.Replace("900", "700"));
-            check(ModCatalog.Digest(ModCatalog.Load(modsRoot).Mods) != digest, "Stats edit did not affect digest.");
+            check(ModCatalog.Digest(ModCatalog.Load(modsRoot).Mods) == digest, "Stats edit changed the digest.");
             var disabled = mods.Select(m => m with { Enabled = false }).ToList();
             check(!ModLoaderPlan.Text(disabled, root, profile, "25480438").Contains("stat\t"), "Disabled stats leaked into plan.");
         });

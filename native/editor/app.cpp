@@ -180,6 +180,7 @@ static void Draw()
     if (Locked()) g_cv.Rect(0, bodyY, PANEL_W, g_panelH - bodyY, C(40, 42, 48, 150), 7); /* read-only: greyed, still browsable */
     DrawPicker();
     DrawErrors();
+    DrawLobbies();
     DrawSync();
     /* the holders read after the page, with what its own reads left of the frame's budget: what is on screen comes first */
     LONGLONG used = LiveFrame().ticks * 1000000 / QpcFrequency();
@@ -605,6 +606,7 @@ void AddModContent()
 void Tick()
 {
     ReadSync();
+    ReadLobbies();
     static ULONGLONG next, nextNotice;
     ULONGLONG now = GetTickCount64();
     if (now >= nextNotice) { nextNotice = now + 250; ReadNotice(); }
@@ -646,7 +648,7 @@ void Frame(ImDrawList* list, float width, float height, float dt)
     g_cv.Input(io.MousePos.x, io.MousePos.y, ImGui::IsMouseClicked(0), ImGui::IsMouseClicked(1), io.MouseWheel);
     if (ImGui::IsMouseClicked(0) && g_edit.on) CommitEdit();
     if (ImGui::IsMouseClicked(0) && g_search.active) g_search.active = false;
-    if (g_catalogOk || g_sync.on) HandleKeys();
+    if (g_catalogOk || g_sync.on || g_lobbies.on) HandleKeys();
     else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) g_host.close();
     Draw();
     DrawNotice();
@@ -676,6 +678,8 @@ void Modal(ImDrawList* list, float width, float height, float dt)
     ImGuiIO& io = ImGui::GetIO();
     g_cv.Input(io.MousePos.x, io.MousePos.y, ImGui::IsMouseClicked(0), ImGui::IsMouseClicked(1), io.MouseWheel);
     if (g_sync.on) SyncKeys();
+    else if (g_lobbies.on) LobbyKeys();
+    DrawLobbies();
     DrawSync();
     DrawNotice();
     if (g_cv.Clicked()) Sound(sounds::CLICK);
@@ -686,6 +690,7 @@ void Opened()
 {
     g_windowShown = true;
     ShowSyncAlone(false); /* F8 over the prompt: the window opens on the dialog */
+    ShowLobbiesAlone(false); /* and on the lobby browser */
     ForgetKeys();
     sounds::Report("the editor opens");
     sounds::EditorOpen(true);
@@ -700,6 +705,9 @@ void Closed()
     g_windowShown = false;
     /* the window closed on an offer: no, unless it is downloading (the dialog is back over the game when it is ready) */
     if (g_sync.on && !g_sync.sent && g_sync.state.state != HF_SYNC_DOWNLOADING) AnswerSync(HF_SYNC_DECLINE);
+    g_lobbies.on = false; /* and the lobby browser in it goes */
+    LobbiesGone();
+    g_lobbies.joining.clear();
     ForgetKeys();
     g_picker.on = false;
     sounds::Report("the editor closes");

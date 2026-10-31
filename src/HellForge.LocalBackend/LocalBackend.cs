@@ -27,6 +27,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // The lobby browser's API (null: the routes answer that there is none); its multiplayer services are attached later.
+    public Multiplayer.BrowseApi? Browse { get; init; }
 }
 
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
@@ -147,7 +149,7 @@ public static partial class LocalBackend
         {
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse
         };
         app.Run(requests.HandleAsync);
         return app;

@@ -78,9 +78,15 @@ undo it.
 
 ## Playing with friends
 
-Friends who play together need the same gameplay mods: the same mods, the same versions and the same files. The order
-is up to each of you, and cosmetic mods, packs and Lua mods are your own. The Mods page shows the modlist code to
-compare. With no gameplay mods there is nothing to compare, and you can play with friends who have none.
+Friends who play together need the same **shared** gameplay mods: the same mods, the same versions and the same files.
+The order is up to each of you, and cosmetic mods, packs and Lua mods are your own. So are **per-player** gameplay mods:
+stats-only mods, texture/sound/text-only patch mods, and mods whose manifest says `"coop": "per-player"`. The Mods page
+puts those in the PER PLAYER group ("Only on your PC: friends do not need them, and each player plays with their own"),
+and they do not change the modlist code. A manifest can also force `"coop": "shared"`; one that declares per-player
+but changes the wire (network field types) or numbered resources (a data spec) is refused. The Mods page shows the
+modlist code to compare. With no shared gameplay mods there is nothing to compare, and you can play with friends who
+have none. Bundled HellForge mods count by their manifest's `"coopLevel"` rather than their files, so the same level
+can differ between HellForge releases while a level change splits players.
 
 When a friend's code is not the host's, the join is refused and both games say why, over the game:
 
@@ -92,6 +98,11 @@ When a friend's code is not the host's, the join is refused and both games say w
 A different HellForge version is reported the same way, and the joiner is told when a lobby is full or locked. The
 bundled in-game editor draws these notices. With it switched off, only the logs say why: `backend/multiplayer.log` in
 each session's folder, the first lines of the list.
+
+A join is accepted even when per-player mods differ. After it, if the host plays with per-player mods this player lacks,
+the joiner gets one brief notice ("<host> plays with 2 mods you don't: <names>. Each player keeps their own."); nothing
+downloads for those. The host's set lists them with `"tier": "per-player"`, and older sets without a tier read as
+shared.
 
 When the host lets joiners download their mods, the joiner also gets the MOD SYNC prompt (below).
 
@@ -216,12 +227,22 @@ not join:
 
 Lobbies with other mods you can download still show. Joining one shows the MOD SYNC prompt.
 
+**The lobby browser.** The ship's information terminal, across from the Armory, opens a lobby browser instead of the
+news and war screen, which needs Arrowhead's servers: the camera glides up to the terminal's screen and the
+browser fills it. It lists every HellForge lobby, on any planet and difficulty,
+including the ones the map leaves out, and says what joining each would take: ready, a download, your trust, or why
+you can't. Filter it to joinable lobbies (J), friends' (F) or a minimum difficulty (D); Enter or JOIN sends you the
+lobby's invitation, which you accept in game. QUICK PLAY (Q) picks for you: a friend's lobby first, then one you can
+join with the fewest downloads. Strangers' lobbies show even while Play with strangers is off; select one and press A
+to turn it on (after a warning about what that risks). In the in-game editor (F8), Ctrl+L opens it too. Without the editor the
+terminal shows the game's own plain list of lobbies.
+
 Only lobbies whose host set Privacy to Public are listed. To keep your own Public lobbies off other players' maps, turn
 off "List my Public lobbies on the Galactic Map" on the Mods page. Who may join each privacy
 setting is in [multiplayer.md](multiplayer.md#how-co-op-works-for-players).
 
-For mod authors, the prompt is the SDK 14 calls `sync_state`, `sync_mod` and `sync_answer`
-([sdk-reference.md](sdk-reference.md)).
+For mod authors, the prompt is the SDK 14 calls `sync_state`, `sync_mod` and `sync_answer`, and the lobby browser the
+SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)).
 
 If a mod does not show up in game, see [troubleshooting](troubleshooting.md#sessions-that-fail). For the docs map, see
 [README.md](README.md).
