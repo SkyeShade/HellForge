@@ -46,7 +46,7 @@ sealed partial class PlaySession
             try
             {
                 // what was still in the job when the session ended it (the game, or what it started when it may)
-                result["jobActiveAtStop"] = job.ActiveProcesses;
+                result["jobActiveAtStop"] ??= job.ActiveProcesses; // a stuck game's, counted before it was ended (WatchQuit)
                 job.Stop();
                 result["jobEmpty"] = job.ActiveProcesses == 0;
             }

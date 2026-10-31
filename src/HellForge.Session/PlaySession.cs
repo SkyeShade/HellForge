@@ -1144,6 +1144,14 @@ sealed partial class PlaySession(PlayOptions options)
                 var holders = (snapshot["holders"] as JsonArray)?.Select(h => (string?)h?["name"]).ToList() ?? [];
                 Say($"The game closed its window but was still running {QuitWatch.GraceMilliseconds / 1000} s later: HellForge ends it and finishes " +
                     $"the session ({snapshot["threadCount"]} thread(s) left{(holders.Count > 0 ? ", held open by " + string.Join(", ", holders) : "")}).");
+                // Ended here, at once: the game has no window left to ask to close, so the graceful close STOP gives a
+                // game (the clean-up's, for a stop the player asked for) would only add its wait.
+                try
+                {
+                    result["jobActiveAtStop"] = job.ActiveProcesses;
+                    job.Stop();
+                }
+                catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; } // the clean-up stops it again
                 return true;
             default:
                 return false;
