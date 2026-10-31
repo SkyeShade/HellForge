@@ -26,7 +26,6 @@ On `dev`, since 0.3.0-beta.
 
 - A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
   or you do.
-
 - **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
   - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
     player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
