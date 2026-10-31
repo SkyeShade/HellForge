@@ -40,6 +40,10 @@ On `dev`, since 0.3.0-beta.
 
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
+  closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
+  inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
+  the launcher tells you to close it; your sync is already saved.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
   some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
   a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
