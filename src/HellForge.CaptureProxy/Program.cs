@@ -317,14 +317,7 @@ void CompleteCapture()
     _ = Task.Run(ForwardUntilGameExits);
 }
 
-void EndSyncGame()
-{
-    var running = Process.GetProcessesByName(GameProcess);
-    var games = CaptureGameEnd.Ours(running.Select(process => (CaptureGameEnd.IGame)new ProcessGame(process)), startedUtc);
-    var outcome = CaptureGameEnd.End(games, CaptureGameEnd.Grace, CaptureGameEnd.KillWait, Log);
-    Log("close game: " + CaptureGameEnd.Describe(outcome));
-    foreach (var process in running) process.Dispose();
-}
+void EndSyncGame() => Log("close game: " + CaptureGameEnd.Describe(ProcessGame.EndSyncGame(startedUtc, Log)));
 
 // The redirect and the CA stay until the game exits, so its requests after the login still reach the API. Easy Anti-Cheat
 // closed the game ("Could not connect to Easy Anti Cheat network") both when the redirect ended right after the login and
@@ -745,42 +738,4 @@ static X509Certificate2 MakeLeaf(X509Certificate2? issuer, string name, byte[]? 
         : request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(8)).CopyWithPrivateKey(key);
     // SslStream needs the key in a form Schannel can use; a PKCS#12 round trip gives it one.
     return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
-}
-
-// A running game for CaptureGameEnd.
-sealed class ProcessGame(Process process) : CaptureGameEnd.IGame
-{
-    public int Id => process.Id;
-
-    public DateTime? StartedUtc
-    {
-        get
-        {
-            try { return process.StartTime.ToUniversalTime(); }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { return null; }
-        }
-    }
-
-    public bool HasExited
-    {
-        get
-        {
-            try { return process.HasExited; }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
-        }
-    }
-
-    public bool RequestClose()
-    {
-        try { return process.CloseMainWindow(); }
-        catch (InvalidOperationException) { return false; }
-    }
-
-    public void Kill() => process.Kill();
-
-    public bool WaitForExit(TimeSpan timeout)
-    {
-        try { return process.WaitForExit(timeout); }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
-    }
 }
