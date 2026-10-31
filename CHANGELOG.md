@@ -15,11 +15,12 @@ On `dev`, since 0.3.0-beta.
   taken off between releases.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
-  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new.
+  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
 - Premium warbonds you don't own look locked in Acquisitions: their art is darkened, with a padlock in the middle and
   lines in from the corners, and their pages show nothing bought (an unlock-all profile showed every item there as
   bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
-  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts.
+  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
+  (#206).
 
 ### Changed
 
@@ -46,7 +47,7 @@ On `dev`, since 0.3.0-beta.
 ### Fixed
 
 - Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
-  Mobilize at the top.
+  Mobilize at the top (#206).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
