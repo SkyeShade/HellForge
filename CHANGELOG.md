@@ -38,6 +38,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
+  running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
+  settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
+  Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -80,6 +84,11 @@ On `dev`, since 0.3.0-beta.
 
 ### For launcher developers
 
+- A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
+  (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
+  the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
+  `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
+  `<run>/processes-now.txt`.
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
