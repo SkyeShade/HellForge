@@ -10,7 +10,7 @@ static class WarbondLocksTests
 
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
-        test("Every warbond with locked art is a premium warbond of the progression data, its cards named once", () =>
+        test("Every warbond with locked art is a premium warbond of the progression data, its textures named once", () =>
         {
             using var data = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Repository(), "data", "progression-data.json")));
             var details = data.RootElement.GetProperty("seasonPassDetails");
@@ -18,9 +18,9 @@ static class WarbondLocksTests
             check(mapping.Count >= 19, $"The mapping has {mapping.Count} warbonds.");
             foreach (var art in mapping)
                 check(art.Id != PremiumContent.FreeWarbond && details.TryGetProperty(art.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), out _) &&
-                    art.Cards.Length > 0 && art.Name.Length > 0, $"{art.Name} ({art.Id}) is not a premium warbond of the progression data.");
-            var cards = mapping.SelectMany(a => a.Cards).ToList();
-            check(cards.Distinct().Count() == cards.Count, "A card is named twice.");
+                    art.Textures.Length >= 2 && art.Name.Length > 0, $"{art.Name} ({art.Id}) is not a premium warbond of the progression data.");
+            var textures = mapping.SelectMany(a => a.Textures).ToList();
+            check(textures.Distinct().Count() == textures.Count, "A texture is named twice.");
         });
 
         test("Locked art is dimmed and grey, with a padlock in the middle and lines from the corners that stop short of it", () =>

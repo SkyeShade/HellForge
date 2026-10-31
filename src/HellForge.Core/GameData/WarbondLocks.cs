@@ -5,8 +5,9 @@ using System.Text.Json;
 
 namespace HellForge.Core.GameData;
 
-// The premium warbonds a profile does not own look locked in the game's Acquisitions: their art (mappings/warbond-art.json)
-// dimmed and greyed, a padlock in the middle and a line in from each corner that stops short of it. The art is read from
+// The premium warbonds a profile does not own look locked in the game's Acquisitions: their art (mappings/warbond-art.json:
+// the untitled art Acquisitions shows as the warbond's card, with the title drawn over it by the game, and the same art
+// with the title drawn in) dimmed and greyed, a padlock in the middle and a line in from each corner that stops short of it. The art is read from
 // the installation's game copy, drawn on and staged as HellForge's own patch for the session (ModStaging), after the
 // mods'. Ownership is the backend's (PremiumContent: the profile's sync, sealed for the Steam account signed in), so what
 // looks locked is what stays locked. The game still opens a locked warbond; only its art changes. The art is Arrowhead's:
@@ -14,22 +15,24 @@ namespace HellForge.Core.GameData;
 public static class WarbondLocks
 {
     // Part of the cache key: raise it whenever the same warbonds would build different bytes.
-    public const int Version = 1;
+    // 2: the untitled art too, which is what Acquisitions shows.
+    public const int Version = 2;
     const string DoneFile = "done";
     const int Bc1 = 71;
 
     // Dimmed to this share of its brightness, and greyed by this much.
     const float Dim = 0.32f, Grey = 0.65f;
 
-    // A premium warbond's art: its card textures, locked when the player does not own it.
-    public sealed record Art(uint Id, string Name, ulong[] Cards);
+    // A premium warbond's art: its textures, locked when the player does not own it.
+    public sealed record Art(uint Id, string Name, ulong[] Textures);
 
     public static IReadOnlyList<Art> Mapping()
     {
         using var stream = typeof(WarbondLocks).Assembly.GetManifestResourceStream("HellForge.Core.mappings.warbond-art.json")!;
         using var json = JsonDocument.Parse(stream);
+        static ulong Name(JsonElement hex) => Convert.ToUInt64(hex.GetString()![2..], 16);
         return [.. json.RootElement.GetProperty("warbonds").EnumerateObject().Select(w => new Art(uint.Parse(w.Name, System.Globalization.CultureInfo.InvariantCulture),
-            w.Value.GetProperty("name").GetString()!, [.. w.Value.GetProperty("card").EnumerateArray().Select(c => Convert.ToUInt64(c.GetString()![2..], 16))]))];
+            w.Value.GetProperty("name").GetString()!, [Name(w.Value.GetProperty("list")), .. w.Value.GetProperty("titled").EnumerateArray().Select(Name)]))];
     }
 
     // The folder of patch files that lock the art of the warbonds ownership lacks, built once per game build and set of
@@ -45,19 +48,19 @@ public static class WarbondLocks
         if (Directory.Exists(root))
             foreach (var old in Directory.GetDirectories(root)) Directory.Delete(old, recursive: true);
         using (var game = new GameDataReader(Path.Combine(install.Game, "data")))
-            Build(game, locked.SelectMany(w => w.Cards), folder);
+            Build(game, locked.SelectMany(w => w.Textures), folder);
         File.WriteAllText(Path.Combine(folder, DoneFile), key + "\n");
         log?.Invoke($"Warbond art: {locked.Count} premium warbond(s) your synced account does not own are shown locked.");
         return folder;
     }
 
-    // The cards as patch files in output: each 2048 x 1024 BC1 texture with one mip, locked, in a patch of its archive. A
-    // card the game data lacks, or has in another form, is left as it is.
-    public static IReadOnlyList<string> Build(GameDataReader game, IEnumerable<ulong> cards, string output)
+    // The textures as patch files in output: each 2048 x 1024 BC1 texture with one mip, locked, in a patch of its archive.
+    // One the game data lacks, or has in another form, is left as it is.
+    public static IReadOnlyList<string> Build(GameDataReader game, IEnumerable<ulong> textures, string output)
     {
         Directory.CreateDirectory(output);
         // Read one after the other (the reader is not shared across threads), then drawn and encoded side by side.
-        var read = game.Find(cards.Select(card => new ResourceKey(ResourceTypes.Texture, card)))
+        var read = game.Find(textures.Select(texture => new ResourceKey(ResourceTypes.Texture, texture)))
             .Select(found => (found.Key, found.Value.Archive, Parts: game.Read(found.Value))).ToList();
         var locked = new ResourceParts?[read.Count];
         Parallel.For(0, read.Count, i =>
