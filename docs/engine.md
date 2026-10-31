@@ -123,7 +123,7 @@ the engine that `scripts/Build-Engine.ps1` last staged in `artifacts/engine-pack
 The engine build runs:
 
 - `native/mod-loader/test/stats_test.c`: the loader's stats pass and more, on synthetic component and settings tables
-  (it includes `stratagem_categories_test.c` and `loadout_preview_test.c`);
+  (it includes `stratagem_categories_test.c`, `loadout_preview_test.c` and `armory_diag_test.c`);
 - `native/common/test/privacy_test.c`: native logs do not name the PC;
 - `native/steam-cloud/test/net_gate_test.c`: the network gate in the built `steam_api64.dll`, all groups and the `dns`
   group alone;
