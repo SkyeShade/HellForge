@@ -43,7 +43,13 @@ sealed partial class PlaySession
         if (job != null && result["gameExitCode"] == null)
             Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
         if (job != null)
-            try { job.Stop(); result["jobEmpty"] = job.ActiveProcesses == 0; }
+            try
+            {
+                // what was still in the job when the session ended it (the game, or what it started when it may)
+                result["jobActiveAtStop"] = job.ActiveProcesses;
+                job.Stop();
+                result["jobEmpty"] = job.ActiveProcesses == 0;
+            }
             catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
             finally { job.Dispose(); }
     }

@@ -6,4 +6,6 @@
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>
   <!-- which running games keep a session from starting (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/GameProcesses.cs" Link="Session/GameProcesses.cs" /></ItemGroup>
+  <!-- when a game that closed its window is ended (SessionJobTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Session/QuitWatch.cs" Link="Session/QuitWatch.cs" /></ItemGroup>
 </Project>
