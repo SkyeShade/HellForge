@@ -1,32 +1,68 @@
-using System.Diagnostics;
 using System.Globalization;
 using Avalonia.Media;
 using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// Profile > Account sync (HellForge.Core InventorySync): runs the elevated capture proxy, opens the normal game through Steam
-// once the proxy listens, and saves the player's sealed inventory and progression as the profile's snapshot as soon as the
-// proxy has sealed them. The proxy keeps the game connected until it exits. The backend takes premium ownership from the
-// snapshot on every Play; the rest is imported as the player chooses (AccountImportFlow). Polled with the rest of the
-// window, once a second, only while a sync runs.
+// Profile > Account sync (HellForge.Core InventorySync): runs the platform's capture (elevated on Windows, native and
+// below the installed helper on Linux), opens the normal game through Steam once the proxy listens, and saves the
+// player's sealed inventory and progression as the profile's snapshot as soon as the proxy has sealed them. The proxy
+// keeps the game connected until it exits. The backend takes premium ownership from the snapshot on every Play; the rest
+// is imported as the player chooses (AccountImportFlow). Polled with the rest of the window, once a second, only while a
+// sync runs.
 public partial class MainWindow
 {
-    Process? syncProxy;
+    InventorySync.CaptureRun? syncProxy;
     LocalProfile? syncProfile;
-    string? syncDir, syncSnapshotDir;
-    bool syncGameOpened, syncStarting, syncTaken;
+    string? syncDir, syncSnapshotDir, syncWorkingFolder;
+    bool syncGameOpened, syncStarting, syncTaken, syncClosing;
     DateTime syncStartedUtc;
+
+    static bool NativeLinux => OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine;
 
     // Busy until the capture is taken; after that the proxy only keeps the game connected, and imports may run.
     bool SyncBusy => syncProxy != null && !syncTaken || syncStarting;
+    // This launcher's running capture: not a session leftover (MainWindow.ShowLeftoverProcesses).
+    int? SyncCaptureId => syncProxy is { HasExited: false } run ? run.Id : null;
 
     void InitializeSync()
     {
         SyncCard.IsVisible = InventorySync.FindCaptureProxy(paths.InstallRoot) != null;
+        if (NativeLinux)
+            SyncDescription.Text = "Brings your own HELLDIVERS 2 account into this profile. Warbonds, Superstore items and DLC gear you bought always follow your latest sync; everything else is imported only as you choose, and the profile is backed up first. Super Credits are never imported or usable. Sync opens the normal game through Steam; log in and pass the title screen. On Linux the first sync asks once to install a small root-owned helper, through the desktop's password dialog; until the normal game exits, two marked /etc/hosts lines point its server name at this PC and a one-day certificate is trusted only in HELLDIVERS 2's Proton prefix. Both are removed when it exits.";
         SyncButton.Click += async (_, _) => await StartSync();
         InitializeAccountImport();
         UpdateSyncStatus();
+        var root = paths.InstallRoot;
+        if (NativeLinux && root != null && !InventorySync.IsGameRunning() && InventorySync.HasPendingLinuxCleanup(root))
+            _ = CleanupLinuxLeftoversAsync(root);
+    }
+
+    // A killed sync leaves the helper's hosts lines and its recorded prefix certificate. The next launcher start removes
+    // them without a prompt; the sync card is still available if this fails.
+    // The startup cleanup holds the same busy flag as a sync, so a Sync pressed while it runs waits instead of having its
+    // helper or hosts lines removed by the cleanup.
+    async Task CleanupLinuxLeftoversAsync(string installRoot)
+    {
+        syncStarting = true;
+        SyncButton.IsEnabled = false;
+        try
+        {
+            string? problem;
+            try { problem = await Task.Run(() => InventorySync.CleanupLinux(installRoot)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+                or System.ComponentModel.Win32Exception)
+            {
+                problem = error.Message;
+            }
+            if (problem != null) Append("Inventory sync: leftover Linux cleanup failed: " + problem, Orange);
+        }
+        finally
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+            UpdateSyncStatus();
+        }
     }
 
     void UpdateSyncStatus()
@@ -54,7 +90,7 @@ public partial class MainWindow
 
     async Task StartSync()
     {
-        if (SyncBusy || paths.InstallRoot == null || InventorySync.FindCaptureProxy(paths.InstallRoot) is not { } proxy) return;
+        if (SyncBusy || syncClosing || paths.InstallRoot == null || InventorySync.FindCaptureProxy(paths.InstallRoot) is not { } proxy) return;
         if (syncProxy != null)
         {
             SetSyncStatus("The last sync still keeps HELLDIVERS 2 connected: close the game first.", Orange);
@@ -65,30 +101,59 @@ public partial class MainWindow
             await CleanUpSync(proxy);
             return;
         }
-        if (SyncRefusal(out var account) is { } refusal)
+        if (SyncRefusal() is { } refusal)
         {
             SetSyncStatus(refusal, Orange);
             return;
         }
         var install = new InstallLayout(paths.InstallRoot);
+        if (NativeLinux && !await EnsureLinuxCaptureHelperAsync(install.Root)) return;
+        syncStarting = true;
+        SyncButton.IsEnabled = false;
+        SetSyncStatus("Checking the signed-in Steam account...", Gold);
+        ulong? signedIn;
+        try { signedIn = await Task.Run(() => SteamAccount.Current(install)); }
+        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception)
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+            SetSyncStatus("The signed-in Steam account could not be read: " + error.Message, Orange);
+            return;
+        }
+        if (signedIn is not { } account)
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+            SetSyncStatus("Sign in to Steam first: the sync is sealed for your Steam account.", Orange);
+            return;
+        }
         var profile = Selected;
         var snapshot = InventorySync.SnapshotDirectory(install.Root, profile.Name);
         var folder = Path.Combine(install.Logs, "sync-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
-        syncStarting = true;
-        SyncButton.IsEnabled = false;
-        SetSyncStatus("Waiting for the administrator prompt...", Gold);
-        Process? started = null;
+        syncWorkingFolder = folder;
+        SetSyncStatus(SyncStartingText(), Gold);
+        InventorySync.CaptureRun? started = null;
         string? failure = null;
-        try { started = await Task.Run(() => InventorySync.StartCaptureProxy(proxy, folder, snapshot, account)); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { failure = error.Message; }
-        syncStarting = false;
-        if (started == null)
+        try { started = await Task.Run(() => InventorySync.StartCaptureProxy(install.Root, proxy, folder, snapshot, account, runner.IsRunning)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            InventorySync.Note(folder, "capture did not start: " + (failure ?? "the administrator prompt was declined"));
-            SyncButton.IsEnabled = true;
-            SetSyncStatus(failure ?? "Sync cancelled: it needs the administrator prompt.", failure != null ? Red : Orange);
+            failure = error.Message;
+        }
+        syncStarting = false;
+        if (syncClosing)
+        {
+            syncWorkingFolder = null;
+            started?.Dispose();
             return;
         }
+        if (started == null)
+        {
+            syncWorkingFolder = null;
+            SyncNotStarted(folder, failure);
+            return;
+        }
+        syncWorkingFolder = null;
         (syncProxy, syncProfile, syncDir, syncSnapshotDir, syncGameOpened, syncTaken) = (started, profile, folder, snapshot, false, false);
         syncStartedUtc = DateTime.UtcNow;
         InventorySync.Note(folder, $"sync started for profile {profile.Name}; capture pid {started.Id}; launcher {Environment.ProcessPath}");
@@ -96,14 +161,86 @@ public partial class MainWindow
         Append("Inventory sync: capture started for profile " + profile.Name + ". HELLDIVERS 2 opens through Steam; take it past the title screen.", LauncherLine);
     }
 
-    // Why a sync cannot start now; null with the signed-in Steam account it will be sealed for.
-    string? SyncRefusal(out ulong account)
+    // One confirmation, then pkexec's own password dialog. The helper and relay are root-owned and the launcher never
+    // keeps root or a password. A failed or cancelled install changes nothing and says why.
+    async Task<bool> EnsureLinuxCaptureHelperAsync(string installRoot)
     {
-        account = 0;
+        if (LinuxCapture.HelperProblem(installRoot) is not { } need) return true;
+        if (ConfirmOverlay.IsVisible)
+        {
+            SetSyncStatus("Finish the open confirmation first.", Orange);
+            return false;
+        }
+        syncStarting = true;
+        SyncButton.IsEnabled = false;
+        try
+        {
+            ConfirmTitle.Text = "Install Account Sync helper?";
+            ConfirmText.Text = LinuxCapture.HelperInstallDescription(installRoot) + "\n\nIt is needed because: " + need;
+            (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", "Install");
+            ConfirmButtons.IsVisible = true;
+            ConfirmOverlay.IsVisible = true;
+            confirm = new TaskCompletionSource<bool>();
+            var accepted = await confirm.Task;
+            confirm = null;
+            ConfirmOverlay.IsVisible = false;
+            if (!accepted)
+            {
+                SetSyncStatus("The capture helper was not installed; nothing changed.", Orange);
+                return false;
+            }
+            SetSyncStatus("Installing the Account Sync helper...", Gold);
+            LinuxCapture.HelperSetupResult result;
+            try { result = await Task.Run(() => LinuxCapture.InstallHelper(installRoot)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+                or System.ComponentModel.Win32Exception)
+            {
+                var text = "The Account Sync helper could not be installed: " + error.Message;
+                SetSyncStatus(text, Red);
+                Append("Inventory sync: " + text, Red);
+                return false;
+            }
+            if (!result.Succeeded)
+            {
+                SetSyncStatus(result.Message, result.Cancelled ? Orange : Red);
+                Append("Inventory sync: " + result.Message, result.Cancelled ? Orange : Red);
+                return false;
+            }
+            if (LinuxCapture.HelperProblem(installRoot) is { } problem)
+            {
+                var text = "The helper installer finished, but the installed copies still do not match: " + problem;
+                SetSyncStatus(text, Red);
+                Append("Inventory sync: " + text, Red);
+                return false;
+            }
+            Append("Inventory sync: " + result.Message, LauncherLine);
+            return true;
+        }
+        finally
+        {
+            syncStarting = false;
+            SyncButton.IsEnabled = true;
+        }
+    }
+
+    static string SyncStartingText() => NativeLinux
+        ? "Starting the native capture and the Linux helper..."
+        : "Waiting for the administrator prompt...";
+
+    void SyncNotStarted(string folder, string? failure)
+    {
+        var declined = NativeLinux ? "the capture did not start" : "the administrator prompt was declined";
+        InventorySync.Note(folder, "capture did not start: " + (failure ?? declined));
+        SyncButton.IsEnabled = true;
+        SetSyncStatus(failure ?? (NativeLinux ? "Sync cancelled before the capture started." : "Sync cancelled: it needs the administrator prompt."),
+            failure != null ? Red : Orange);
+    }
+
+    // Why a sync cannot start now; its Steam account is asked for separately, off the UI thread when the probe is needed.
+    string? SyncRefusal()
+    {
         if (runner.IsRunning) return "Stop the HellForge session first.";
         if (InventorySync.IsGameRunning()) return "Close HELLDIVERS 2 first: the sync reads its next login.";
-        if (SteamAccount.Current() is not { } signedIn) return "Sign in to Steam first: the sync is sealed for your Steam account.";
-        account = signedIn;
         return null;
     }
 
@@ -192,17 +329,68 @@ public partial class MainWindow
         }
     }
 
+    // Closing the window while a Linux capture runs must not leave the hosts redirect, the root relay and the prefix CA
+    // behind. The helper command and reg.exe are bounded; if they do not finish in time the helper's own pid watch and
+    // lifetime cap still end the relay, and the next launcher start runs the same cleanup again.
+    async Task StopSyncForCloseAsync()
+    {
+        if (syncClosing) return;
+        syncClosing = true;
+        syncStarting = true;
+        poll.Stop();
+        var folder = syncDir ?? syncWorkingFolder;
+        var run = syncProxy;
+        syncProxy = null;
+        SetSyncStatus("Stopping the Linux capture...", Gold);
+        if (folder != null)
+        {
+            var syncFolder = folder;
+            try
+            {
+                var stop = Task.Run(() =>
+                {
+                    var problem = LinuxCapture.Finish(syncFolder);
+                    if (problem != null) InventorySync.Note(syncFolder, "cleanup before closing: " + problem);
+                    run?.Dispose();
+                });
+                await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(30)));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+                or System.ComponentModel.Win32Exception)
+            {
+                if (folder != null) InventorySync.Note(folder, "cleanup before closing failed: " + error.Message);
+            }
+        }
+        else run?.Dispose();
+        syncStarting = false;
+        closeConfirmed = true;
+        Close();
+    }
+
     async Task CleanUpSync(string proxy)
     {
         syncStarting = true;
         SyncButton.IsEnabled = false;
-        SetSyncStatus("Waiting for the administrator prompt...", Gold);
-        using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy));
-        if (cleanup != null) await cleanup.WaitForExitAsync();
+        string? failure = null;
+        bool declined = false;
+        if (NativeLinux)
+        {
+            SetSyncStatus("Cleaning up the Linux capture...", Gold);
+            var root = paths.InstallRoot;
+            failure = root == null ? "The installation folder is missing." : await Task.Run(() => InventorySync.CleanupLinux(root));
+        }
+        else
+        {
+            SetSyncStatus("Waiting for the administrator prompt...", Gold);
+            using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy));
+            if (cleanup != null) await cleanup.WaitForExitAsync();
+            else declined = true;
+        }
         syncStarting = false;
         SyncButton.IsEnabled = true;
         UpdateSyncStatus();
-        if (cleanup == null) SetSyncStatus("Clean up needs the administrator prompt.", Orange);
+        if (declined) SetSyncStatus("Clean up needs the administrator prompt.", Orange);
+        else if (failure != null) SetSyncStatus("Clean up failed: " + failure, Red);
         else if (InventorySync.HasLeftoverRedirect()) SetSyncStatus("Clean up failed: remove the HellForge-CaptureProxy lines from the hosts file.", Red);
         else SetSyncStatus("Cleaned up: the normal game reaches its servers again.", Green);
     }

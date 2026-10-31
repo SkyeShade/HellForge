@@ -1,8 +1,16 @@
 using HellForge.Core;
+using HellForge.SdkShimGen;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 // Dependency-free integration checks. Every game file here is synthetic.
 var root = Path.GetFullPath(Path.Combine("artifacts", "tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
+// The Linux snapshot seal uses this synthetic machine id in every test; the real /etc/machine-id is never read.
+var sampleMachineId = Path.Combine(root, "machine-id");
+File.WriteAllText(sampleMachineId, "0123456789abcdef0123456789abcdef\n");
+SnapshotSeal.MachineData.MachineIdPathForTests = sampleMachineId;
 var passed = 0;
 var failed = 0;
 void Check(bool condition, string reason)
@@ -47,6 +55,146 @@ Test("Steam ownership requires the correct app, live subscription, the owner or 
         valid with { Subscribed = false }, valid with { SameOwner = false }, borrowed with { Subscribed = false },
         valid with { FreeWeekend = true }, valid with { Cafe = true } })
         Check(!SteamOwnershipPolicy.ConfirmsCurrentClientOwner(rejected), "Incomplete ownership observation accepted.");
+});
+
+Test("Steam export manifests validate their source pin and generate forwarded definitions", () =>
+{
+    var path = Path.Combine(root, "steam-exports.json");
+    File.WriteAllText(path, """
+        {
+          "schemaVersion": 1,
+          "sourceSha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+          "exports": [
+            { "name": "SteamAPI_Init", "ordinal": 2, "data": false },
+            { "name": "SteamAPI_Stat", "ordinal": 1, "data": true }
+          ]
+        }
+        """);
+    var manifest = SteamExportsManifest.Read(path);
+    SteamExportsManifest.ValidateSourceHash(manifest, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    Reject(() => SteamExportsManifest.ValidateSourceHash(manifest, new string('0', 64)));
+    var definition = SteamExportsManifest.ForwardDefinition(manifest, "steam_api64_hellforge",
+        new HashSet<string>(["SteamAPI_Init"], StringComparer.Ordinal));
+    Check(definition.Contains("SteamAPI_Stat = steam_api64_hellforge.SteamAPI_Stat @1 DATA", StringComparison.Ordinal),
+        "Data export forwarding was not marked DATA.");
+    Check(definition.Contains("SteamAPI_Init @2", StringComparison.Ordinal) &&
+        !definition.Contains("SteamAPI_Init = ", StringComparison.Ordinal), "Hand-written exports should not forward.");
+    Check(definition.IndexOf("SteamAPI_Stat", StringComparison.Ordinal) < definition.IndexOf("SteamAPI_Init", StringComparison.Ordinal),
+        "Exports were not ordered by ordinal.");
+    Reject(() => SteamExportsManifest.ForwardDefinition(manifest, "steam_api64_hellforge",
+        new HashSet<string>(["NotAnExport"], StringComparer.Ordinal)));
+
+    File.WriteAllText(path, """
+        {
+          "schemaVersion": 1,
+          "sourceSha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+          "exports": [
+            { "name": "Duplicate", "ordinal": 1, "data": false },
+            { "name": "Duplicate", "ordinal": 1, "data": false }
+          ]
+        }
+        """);
+    Reject(() => SteamExportsManifest.Read(path));
+});
+
+Test("Engine package install verifies hashes before replacing the engine", () =>
+{
+    var install = new InstallLayout(Path.Combine(root, "engine-package"));
+    install.Create(SupportedBuild.Current.BuildId);
+    Check(install.Exists && File.Exists(install.Marker) && new[] { install.App, install.Game, install.UserData, install.Profiles, install.Logs, install.Temp }
+        .All(Directory.Exists), "Native bootstrap did not create the Windows-compatible install layout.");
+    foreach (var folder in new[] { "session", "backend", "sdk-shims", "scripts" })
+    {
+        var path = Path.Combine(install.App, folder);
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "old.txt"), "old engine");
+    }
+    var packagePath = Path.Combine(root, "engine-package.zip");
+    var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+    {
+        ["session/HellForge.Session.exe"] = "session"u8.ToArray(),
+        ["backend/HellForge.LocalBackend.exe"] = "backend"u8.ToArray(),
+        ["sdk-shims/link.dll"] = "shim"u8.ToArray(),
+        ["scripts/hellforge_wfp.exe"] = "script"u8.ToArray()
+    };
+    var hashes = contents.ToDictionary(entry => entry.Key,
+        entry => Convert.ToHexString(SHA256.HashData(entry.Value)), StringComparer.Ordinal);
+    using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
+    {
+        using (var metadata = new StreamWriter(archive.CreateEntry("engine.json").Open()))
+            metadata.Write(JsonSerializer.Serialize(new { build = SupportedBuild.Current.BuildId, files = hashes }));
+        foreach (var (name, content) in contents)
+        {
+            using var output = archive.CreateEntry(name).Open();
+            output.Write(content);
+        }
+    }
+
+    EnginePackageInstaller.Install(install, packagePath);
+    foreach (var (name, content) in contents)
+        Check(File.ReadAllBytes(Path.Combine(install.App, name.Replace('/', Path.DirectorySeparatorChar))).SequenceEqual(content),
+            "Engine package file was not installed: " + name);
+    Check(!File.Exists(Path.Combine(install.App, "session", "old.txt")), "Old engine file remained after replacement.");
+
+    var corruptPath = Path.Combine(root, "engine-package-corrupt.zip");
+    using (var archive = ZipFile.Open(corruptPath, ZipArchiveMode.Create))
+    {
+        using (var metadata = new StreamWriter(archive.CreateEntry("engine.json").Open()))
+            metadata.Write(JsonSerializer.Serialize(new { build = SupportedBuild.Current.BuildId, files = hashes }));
+        foreach (var (name, content) in contents)
+        {
+            using var output = archive.CreateEntry(name).Open();
+            output.Write(content);
+        }
+        using var extra = new StreamWriter(archive.CreateEntry("session/extra.exe").Open());
+        extra.Write("unlisted");
+    }
+    Reject(() => EnginePackageInstaller.Install(install, corruptPath));
+    Check(File.ReadAllBytes(Path.Combine(install.App, "session", "HellForge.Session.exe")).SequenceEqual(contents["session/HellForge.Session.exe"]),
+        "A rejected package changed the installed engine.");
+});
+
+Test("Linux Proton discovery chooses the newest numbered version before Experimental", () =>
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var steamRoot = Path.Combine(root, "proton-discovery");
+    var common = Path.Combine(steamRoot, "steamapps", "common");
+    var old = Path.Combine(common, "Proton 9.0");
+    var newest = Path.Combine(common, "Proton 10.0");
+    var experimental = Path.Combine(common, "Proton - Experimental");
+    var custom = Path.Combine(steamRoot, "compatibilitytools.d", "Proton Custom");
+    var secondary = Path.Combine(root, "proton-library");
+    var secondaryProton = Path.Combine(secondary, "steamapps", "common", "Proton 8.0");
+    foreach (var folder in new[] { old, newest, experimental, custom, secondaryProton })
+    {
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "proton"), "");
+    }
+    File.WriteAllText(Path.Combine(custom, "compatibilitytool.vdf"), "\"compatibilitytools\" { \"compat_tools\" { } }");
+    File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
+        "\"libraryfolders\" { \"0\" { \"path\" \"" + steamRoot.Replace("\\", "\\\\") + "\" } \"1\" { \"path\" \"" +
+        secondary.Replace("\\", "\\\\") + "\" } }");
+    var configured = Environment.GetEnvironmentVariable("PROTON");
+    try
+    {
+        Environment.SetEnvironmentVariable("PROTON", Path.Combine(custom, "proton"));
+        Check(SteamLocator.ProtonScript(steamRoot) == Path.Combine(custom, "proton"), "PROTON did not override the search.");
+        Environment.SetEnvironmentVariable("PROTON", null);
+        var versions = SteamLocator.ProtonVersionsFrom(steamRoot, [], [], null);
+        Check(versions.Select(version => version.ScriptPath).SequenceEqual(new[]
+            { Path.Combine(custom, "proton"), Path.Combine(secondaryProton, "proton"), Path.Combine(old, "proton"),
+                Path.Combine(newest, "proton"), Path.Combine(experimental, "proton") }),
+            "The chooser did not list Steam's Proton versions in sorting order: " + string.Join(", ", versions.Select(version => version.Name)));
+        Check(versions.Last().ScriptPath == Path.Combine(experimental, "proton"), "Experimental was not selected.");
+        var install = new InstallLayout(Path.Combine(root, "proton-selection"));
+        Directory.CreateDirectory(install.Root);
+        SteamLocator.SaveProtonSelection(install, Path.Combine(old, "proton"));
+        Check(SteamLocator.SelectedProtonScript(install) == Path.Combine(old, "proton"), "The selected Proton was not saved for later sessions.");
+        Directory.Delete(experimental, recursive: true);
+        Check(SteamLocator.ProtonVersionsFrom(steamRoot, [], [], null).Last().ScriptPath == Path.Combine(newest, "proton"),
+            "Version 10 did not sort after version 9.");
+    }
+    finally { Environment.SetEnvironmentVariable("PROTON", configured); }
 });
 
 Test("The ownership check passes only on fresh evidence that confirms this app; a check that wrote nothing fails", () =>
@@ -289,6 +437,7 @@ Test("A supported build lists depot files only, pins the build, and verifies a c
     File.WriteAllBytes(asset + GameSettings.OriginalSuffix, assetBytes);
     File.AppendAllText(asset, " rewritten by a session");
     Check(build.IsComplete(source), "A file rewritten from its kept original made the copy incomplete.");
+    Check(build.Verify(source).Count == 0, "A rewritten file with a verified original failed verification.");
     File.Delete(asset + GameSettings.OriginalSuffix);
     Check(!build.IsComplete(source), "A resized file passed the completeness check.");
     File.WriteAllBytes(asset, assetBytes);
@@ -461,10 +610,21 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     var sessions = Directory.CreateDirectory(Path.Combine(root, "prune-sessions")).FullName;
     var start = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
     var runs = Enumerable.Range(0, 13).Select(i => Guid.NewGuid().ToString("N")).ToList();
+    string? linkedTarget = null;
     for (var i = 0; i < runs.Count; i++)
     {
         var run = Directory.CreateDirectory(Path.Combine(sessions, runs[i])).FullName;
         File.WriteAllText(Path.Combine(run, "result.json"), new string('x', 1000));
+        if (i == 0 && OperatingSystem.IsLinux())
+        {
+            // The oldest run holds a link to a large "Steam library" file. Counting its size must not enter the link, and
+            // deleting the run must unlink it, not delete the target. The link is made before the run's time is set: on
+            // Linux that time is the folder's last write, which a new entry would move.
+            var targetFolder = Directory.CreateDirectory(Path.Combine(root, "prune-link-target")).FullName;
+            linkedTarget = Path.Combine(targetFolder, "steam-library.bin");
+            File.WriteAllText(linkedTarget, new string('x', 100_000));
+            Directory.CreateSymbolicLink(Path.Combine(run, "steam-root"), targetFolder);
+        }
         Directory.SetCreationTimeUtc(run, start.AddMinutes(i)); /* runs[0] the oldest */
     }
     var other = Directory.CreateDirectory(Path.Combine(sessions, "keep-me")).FullName;
@@ -474,6 +634,7 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     Check(pruned.Removed == 3 && pruned.Bytes == 3000 && pruned.Skipped == 0, $"Three removed: {pruned}");
     Check(runs.Take(3).All(r => !left.Contains(r)) && runs.Skip(3).All(left.Contains) && left.Contains("keep-me"),
         "The three oldest sessions went; the ten newest and the other folder stayed: " + string.Join(", ", left));
+    if (linkedTarget != null) Check(File.Exists(linkedTarget), "Deleting a pruned run followed its link into the target.");
     Check(SessionLogs.Prune(sessions).Removed == 0 && SessionLogs.Prune(Path.Combine(root, "no-such-folder")).Removed == 0, "Nothing more to remove.");
 });
 
@@ -501,19 +662,40 @@ CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
+WinePathTests.Register(Test, Check, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 DownpatchTests.Register(Test, Check, Reject, root);
+SetupSourceTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
+DiskSpaceTests.Register(Test, Check, Reject, root);
+SteamBridgeTests.Register(Test, Check, root);
+CrashDumpTests.Register(Test, Check);
 SessionJobTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
+LinuxInstallerTests.Register(Test, Check, Reject, root);
+LinuxUninstallTests.Register(Test, Check, Reject, root);
+LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
+LinkRuleTests.Register(Test, Check, Reject, root);
+SandboxCopyBackTests.Register(Test, Check, Reject, root);
+SandboxWireTests.Register(Test, Check, Reject, root);
+SandboxPipeRelayTests.Register(Test, Check);
 ModSyncTests.Register(Test, Check, Reject, root);
+SteamAccountTests.Register(Test, Check, Reject, root);
+SteamPathTests.Register(Test, Check, Reject, root);
+SteamRuntimeTests.Register(Test, Check, Reject, root);
+LinuxInvocationTests.Register(Test, Check, Reject, root);
+ContainerCheckTests.Register(Test, Check, Reject, root);
+LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
 VerifiedListTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
+OwnershipLogTests.Register(Test, Check, root);
+LauncherPollTests.Register(Test, Check, root);
+IntegrityTests.Register(Test, Check, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;

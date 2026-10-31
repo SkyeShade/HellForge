@@ -38,8 +38,8 @@ static class Launch
 
     static void Emit(object value) => Console.WriteLine(JsonSerializer.Serialize(value, Line));
 
-    // play: the launcher's saved choices (launcher-settings.json), each replaced by its option when given.
-    public static int Play(Dictionary<string, string> options)
+    // The launch checks that do not depend on any choice: platform, installed programs and the game copy.
+    static (InstallLayout Install, InstallSessionPaths Paths) Preflight(Dictionary<string, string> options)
     {
         if (!SessionRunner.IsSupported) throw new InvalidDataException(SessionRunner.UnsupportedMessage);
         var install = Install(options);
@@ -48,14 +48,34 @@ static class Launch
             if (!File.Exists(file)) throw new InvalidDataException($"{part} is missing ({file}): reinstall HellForge.");
         if (!SupportedBuild.Current.IsComplete(install.Game))
             throw new InvalidDataException("The game copy is not complete: open HellForge.exe once to set up (or repair) the installation.");
+        return (install, paths);
+    }
+
+    // An explicit --sandbox wins; otherwise the saved setting, where it can be offered. Linux must have the program
+    // before the wrapper starts; without it the session is refused rather than falling through.
+    static bool SandboxChoice(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        var sandbox = options.ContainsKey("--sandbox") ? Yes(options, "--sandbox", false) : SessionRunner.SandboxByDefault(paths);
+        if (sandbox && OperatingSystem.IsLinux() && SessionRunner.LinuxSandboxProgramProblem(paths) is { } sandboxProblem)
+            throw new InvalidDataException("The Linux sandbox could not start: " + sandboxProblem +
+                ". The game was not started. To run without the sandbox, turn off Settings > Sandbox.");
+        return sandbox;
+    }
+
+    // play: the launcher's saved choices (launcher-settings.json), each replaced by its option when given.
+    public static int Play(Dictionary<string, string> options)
+    {
+        var (install, paths) = Preflight(options);
         var war = options.GetValueOrDefault("--war") ?? ProfileStore.LoadWar(paths);
         if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
             throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
+        var sandbox = SandboxChoice(options, paths);
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
-            Sandbox: Yes(options, "--sandbox", SessionRunner.SandboxByDefault(paths)), FullOwnershipCheck: Yes(options, "--full-ownership-check", false));
+            Sandbox: sandbox, FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
+            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)));
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -73,15 +93,18 @@ static class Launch
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         var runner = new SessionRunner();
         var startedUtc = DateTime.UtcNow;
+        var previousRunId = SessionRunner.LatestRunId(paths);
         try { runner.Start(paths, profile, session); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
             throw new InvalidDataException("Could not start the session runner: " + error.Message);
         }
         string? run;
-        while ((run = SessionRunner.RunSince(paths, startedUtc)) == null)
+        while ((run = SessionRunner.RunSince(paths, previousRunId)) == null)
         {
-            if (!runner.IsRunning) throw new InvalidDataException("The session runner exited before starting: " + RunnerLog(install, startedUtc));
+            if (!runner.IsRunning)
+                throw new InvalidDataException(SessionRunner.LinuxContainerRefusal(install.Root)
+                    ?? "The session runner exited before starting: " + RunnerLog(install, startedUtc));
             Thread.Sleep(250);
         }
         Emit(new { @event = "started", runId = Path.GetFileName(run), run, pid = runner.ProcessId, profile = profile.Name, war, arguments });
@@ -195,6 +218,7 @@ static class Launch
                 engineLog = ProfileStore.LoadEngineLog(paths),
                 crashDump = ProfileStore.LoadCrashDump(paths),
                 sandbox = ProfileStore.LoadSandbox(paths),
+                steamUdp = ProfileStore.LoadSteamUdp(paths),
                 gameOptions = ProfileStore.LoadLaunchOptions(paths)
             },
             session = new
@@ -472,6 +496,7 @@ static class Launch
         if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
         if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
         if (options.ContainsKey("--sandbox")) ProfileStore.SaveSandbox(paths, Yes(options, "--sandbox", false));
+        if (options.ContainsKey("--steam-udp")) ProfileStore.SaveSteamUdp(paths, Yes(options, "--steam-udp", false));
         if (options.TryGetValue("--game-options", out var typed))
         {
             _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself
@@ -489,6 +514,7 @@ static class Launch
             crashDump = ProfileStore.LoadCrashDump(paths),
             gameOptions = ProfileStore.LoadLaunchOptions(paths),
             sandbox = ProfileStore.LoadSandbox(paths),
+            steamUdp = ProfileStore.LoadSteamUdp(paths),
             steamBridge = SessionRunner.HasSteamBridge(paths),
             playWithStrangers = ModSettings.PlayWithStrangers(install.Mods),
             file = paths.SettingsFile
@@ -522,7 +548,7 @@ static class Launch
         return new
         {
             runs = runs.Select(Describe),
-            files = picked == null ? null : Directory.EnumerateFiles(picked.Folder, "*", SearchOption.AllDirectories)
+            files = picked == null ? null : LocalInstall.FilesNoLinks(picked.Folder)
                 .Select(f => new { path = Path.GetRelativePath(picked.Folder, f).Replace('\\', '/'), bytes = new FileInfo(f).Length }),
             sessionRunnerLog = File.Exists(runnerLog) ? runnerLog : null,
             gameLogs = Path.Combine(install.UserData, "logs")

@@ -1,9 +1,11 @@
 {
   "format": 1,
-  "about": "The tools code mods are built with, pinned and checksummed: Zig compiles them; CMake and Ninja are for IDEs that open a mod as a CMake project. Fetched into tools/ by scripts/Setup-ModTools.ps1 (the repository) or HellForge.Cli mod-tools (an installation).",
+  "about": "The tools code mods are built with and the native build patch tool, pinned and checksummed: Zig compiles mods; CMake and Ninja are for IDEs that open a mod as a CMake project; hpatchz-linux applies Steam build patches on Linux. Fetched into tools/ by scripts/Setup-ModTools.ps1 (the repository) or HellForge.Cli mod-tools (an installation). Platform says which host runs the tool: zig compiles Windows sessions, zig-linux compiles source mods on a Linux host before its session, and hpatchz-linux patches a Linux installation without starting Proton for each file.",
   "tools": [
-    { "name": "zig", "version": "0.17.0", "url": "https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip", "sha256": "B5663F69581DCF391293FBF16C06CB80D81D806545CE618B4D0BAB7F0EB8C428", "exe": "zig.exe", "ide": false },
-    { "name": "cmake", "version": "4.4.4", "url": "https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-windows-x86_64.zip", "sha256": "BACE36E94B31C68AB6FA295F26DFA11219E0701CF7C94B0284A7D1CB13DAC536", "exe": "bin/cmake.exe", "ide": true },
-    { "name": "ninja", "version": "1.13.2", "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip", "sha256": "07FC8261B42B20E71D1720B39068C2E14FFCEE6396B76FB7A795FB460B78DC65", "exe": "ninja.exe", "ide": true }
+    { "name": "zig", "version": "0.17.0", "platform": "windows-x64", "url": "https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip", "sha256": "B5663F69581DCF391293FBF16C06CB80D81D806545CE618B4D0BAB7F0EB8C428", "exe": "zig.exe", "ide": false },
+    { "name": "zig-linux", "version": "0.17.0", "platform": "linux-x64", "url": "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz", "sha256": "1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026", "bytes": 57332648, "exe": "zig", "ide": false },
+    { "name": "hpatchz-linux", "version": "5.1.3", "platform": "linux-x64", "url": "https://github.com/sisong/HDiffPatch/releases/download/v5.1.3/hdiffpatch_v5.1.3_bin_linux64.zip", "sha256": "628963BF2EE9108A97260FA5EEF44ACD9EC94369B76090A957C9182B3ABBB558", "bytes": 1925039, "exe": "linux64/hpatchz", "ide": false },
+    { "name": "cmake", "version": "4.4.4", "platform": "windows-x64", "url": "https://github.com/Kitware/CMake/releases/download/v4.4.4/cmake-4.4.4-windows-x86_64.zip", "sha256": "BACE36E94B31C68AB6FA295F26DFA11219E0701CF7C94B0284A7D1CB13DAC536", "exe": "bin/cmake.exe", "ide": true },
+    { "name": "ninja", "version": "1.13.2", "platform": "windows-x64", "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip", "sha256": "07FC8261B42B20E71D1720B39068C2E14FFCEE6396B76FB7A795FB460B78DC65", "exe": "ninja.exe", "ide": true }
   ]
 }

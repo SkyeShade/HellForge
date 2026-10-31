@@ -15,6 +15,10 @@ const string Usage = """
     HellForge.SdkShimGen census-thunks <original.dll> <real module> <handwritten.c> <output.def> <output.c>   (the Steam census's stand-in)
     HellForge.SdkShimGen steam-bridge <steam_api.json> <original steam_api64.dll> <bridge-methods.json> <handwritten.c[,more.c]> <output directory>   (the Steam bridge)
     HellForge.SdkShimGen verify-forward <original.dll> <real module> <handwritten.c> <stand-in.dll>
+    HellForge.SdkShimGen manifest <original.dll> <output.json>
+    HellForge.SdkShimGen validate-manifest <manifest.json> <expected-sha256>
+    HellForge.SdkShimGen forward-manifest <manifest.json> <real module> <handwritten.c> <output.def>
+    HellForge.SdkShimGen verify-forward-manifest <manifest.json> <real module> <handwritten.c> <stand-in.dll>
     HellForge.SdkShimGen smoke-cloud <steam_api64 stand-in> <original steam_api64.dll>
     HellForge.SdkShimGen smoke-lobby-link <directory with the stand-ins> <HellForge.LocalBackend.dll>
     HellForge.SdkShimGen smoke-lobby-search <directory with PlayFabMultiplayerWin.dll> <HellForge.LocalBackend.dll>
@@ -32,6 +36,10 @@ try
         ["census-thunks", var original, var module, var handwritten, var definition, var code] =>
             CensusThunks.Write(original, module, handwritten, definition, code, OwnFunctions),
         ["verify-forward", var original, var module, var handwritten, var standIn] => VerifyForward(original, module, handwritten, standIn),
+        ["manifest", var original, var output] => WriteManifest(original, output),
+        ["validate-manifest", var manifest, var expectedSha256] => ValidateManifest(manifest, expectedSha256),
+        ["forward-manifest", var manifest, var module, var handwritten, var output] => ForwardManifest(manifest, module, handwritten, output),
+        ["verify-forward-manifest", var manifest, var module, var handwritten, var standIn] => VerifyForwardManifest(manifest, module, handwritten, standIn),
         ["steam-bridge", var sdkJson, var original, var table, var handwritten, var output] =>
             SteamBridge.Write(sdkJson, original, table, handwritten, output,
                 files => files.Split(',').SelectMany(OwnFunctions).ToHashSet(StringComparer.Ordinal)),
@@ -43,7 +51,7 @@ try
         _ => Fail(Usage)
     };
 }
-catch (Exception error) when (error is IOException or FormatException or InvalidDataException or BadImageFormatException)
+catch (Exception error) when (error is IOException or FormatException or InvalidDataException or BadImageFormatException or System.Text.Json.JsonException)
 {
     return Fail(error.Message);
 }
@@ -169,11 +177,50 @@ static int Forward(string original, string module, string handwritten, string ou
     return 0;
 }
 
+static int WriteManifest(string original, string output)
+{
+    SteamExportsManifest.WriteFromPe(original, output);
+    var manifest = SteamExportsManifest.Read(output);
+    Console.WriteLine($"{Path.GetFileName(original)}: wrote {manifest.Exports.Count} named exports to {output}.");
+    return 0;
+}
+
+static int ValidateManifest(string path, string expectedSha256)
+{
+    var manifest = SteamExportsManifest.Read(path);
+    SteamExportsManifest.ValidateSourceHash(manifest, expectedSha256);
+    Console.WriteLine($"Steam export manifest: {manifest.Exports.Count} exports; source SHA-256 matches the pin.");
+    return 0;
+}
+
+static int ForwardManifest(string manifestPath, string module, string handwritten, string output)
+{
+    if (!Regex.IsMatch(module, @"^[A-Za-z0-9_]+$")) return Fail("The real module name must be a plain DLL name without extension.");
+    var manifest = SteamExportsManifest.Read(manifestPath);
+    var own = OwnFunctions(handwritten);
+    File.WriteAllText(output, SteamExportsManifest.ForwardDefinition(manifest, module, own));
+    Console.WriteLine($"steam_api64.dll: {manifest.Exports.Count} exports, {own.Count} hand-written, {manifest.Exports.Count - own.Count} forwarded to {module}.dll.");
+    return 0;
+}
+
+static int VerifyForwardManifest(string manifestPath, string module, string handwritten, string standIn)
+{
+    var manifest = SteamExportsManifest.Read(manifestPath);
+    var own = OwnFunctions(handwritten);
+    var expected = manifest.Exports.ToDictionary(export => export.Name, export => export.Ordinal, StringComparer.Ordinal);
+    return VerifyForwardTable(expected, module, own, standIn);
+}
+
 // Same names and ordinals as the original; the hand-written ones are code, all others forward to module.sameName.
 static int VerifyForward(string original, string module, string handwritten, string standIn)
 {
     var own = OwnFunctions(handwritten);
     var expected = PeTables.Exports(original).ToDictionary(e => e.Name, e => e.Ordinal, StringComparer.Ordinal);
+    return VerifyForwardTable(expected, module, own, standIn);
+}
+
+static int VerifyForwardTable(Dictionary<string, uint> expected, string module, HashSet<string> own, string standIn)
+{
     var actual = PeTables.Exports(standIn).ToDictionary(e => e.Name, e => e.Ordinal, StringComparer.Ordinal);
     var forwarders = PeTables.Forwarders(standIn);
     var problems = new List<string>();

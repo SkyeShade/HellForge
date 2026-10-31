@@ -1,9 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" />
+    <ProjectReference Include="../../src/HellForge.SdkShimGen/HellForge.SdkShimGen.csproj" />
+  </ItemGroup>
   <!-- the session runner's game job, which stands alone (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/HostBoundedProcess.cs" Link="Session/HostBoundedProcess.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>
   <!-- which running games keep a session from starting (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/GameProcesses.cs" Link="Session/GameProcesses.cs" /></ItemGroup>
+  <!-- the launcher's session file poll (LauncherPollTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Launcher/LineTail.cs" Link="Launcher/LineTail.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/HellForge.Launcher/ResultFile.cs" Link="Launcher/ResultFile.cs" /></ItemGroup>
+  <!-- the crash dump's free-space choice (CrashDumpTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Cli/CrashDump.cs" Link="Cli/CrashDump.cs" /></ItemGroup>
+  <!-- the Steam bridge check's 0/1/3 exit codes (SteamBridgeTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Cli/SteamBridgeCommand.cs" Link="Cli/SteamBridgeCommand.cs" /></ItemGroup>
 </Project>

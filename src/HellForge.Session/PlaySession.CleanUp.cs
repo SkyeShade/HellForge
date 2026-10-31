@@ -12,40 +12,134 @@ sealed partial class PlaySession
 {
     void CleanUp()
     {
-        StopGameJob();
-        CopyEngineLogs();
-        StopBrokerAndBackend();
-        FinishApplier();
-        RecordBackendRequests();
-        if (gameStarted != null) Try("networkCensusError", () => result["networkCensus"] = NetworkCensus.Summarize(Path.Combine(gameOut, CensusLog)));
-        if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
-        ReleaseHolds();
-        RestoreStandIns();
-        RestoreGameGuardLogs();
-        CheckHashes();
-        CheckPlantedMods();
-        SandboxCopyBack();
-        lease?.Dispose();
-        result["completedUtc"] = DateTime.UtcNow.ToString("o");
-        Save();
+        try
+        {
+            StopGameJob();
+            Try("sandboxPipeRelayStopError", StopSandboxPipeRelay);
+            CopyEngineLogs();
+            StopBrokerAndBackend();
+            FinishApplier();
+            RecordBackendRequests();
+            if (gameStarted != null)
+                Try("networkCensusError", () =>
+                {
+                    var census = Path.Combine(gameOut, CensusLog);
+                    if (OperatingSystem.IsLinux()) census = LocalInstall.NoLinks(census, gameOut);
+                    result["networkCensus"] = NetworkCensus.Summarize(census);
+                });
+            if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
+            Try("releaseHoldsError", ReleaseHolds);
+            RestoreStandIns();
+            RestoreGameGuardLogs();
+            CheckHashes();
+            CheckPlantedMods();
+            SandboxCopyBack();
+        }
+        catch (Exception error)
+        {
+            // No clean-up step should get this far, but a result that says cleanup was incomplete is still a result.
+            result["cleanupError"] = error.Message;
+            Say("Cleanup stopped early: " + error.Message);
+        }
+        finally
+        {
+            try { lease?.Dispose(); }
+            catch (Exception error) { result["leaseDisposeError"] = error.Message; }
+            result["completedUtc"] = DateTime.UtcNow.ToString("o");
+            try { Save(); }
+            catch (Exception error) { Say("The final result could not be written: " + error.Message); }
+        }
     }
 
     // Runs one clean-up step, recording its error in the result instead of throwing (clean-up carries on).
     void Try(string what, Action action)
     {
         try { action(); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception or SessionFailure or JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or
+                                         System.ComponentModel.Win32Exception or SessionFailure or JsonException)
         { result[what] = error.Message; }
     }
 
     void StopGameJob()
     {
+        if (linuxSandbox) { StopSandboxDomain(); return; }
         if (job != null && result["gameExitCode"] == null)
             Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
-        if (job != null)
-            try { job.Stop(); result["jobEmpty"] = job.ActiveProcesses == 0; }
-            catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
-            finally { job.Dispose(); }
+        if (job == null) return;
+        var current = job;
+        // TerminateJobObject normally returns at once. If it does not, cleanup must still finish and write its result.
+        var stop = Task.Run(() => current.Stop());
+        bool completed;
+        try { completed = stop.Wait(TimeSpan.FromSeconds(10)); }
+        catch (AggregateException error)
+        {
+            result["jobStopError"] = error.InnerException?.Message ?? error.Message;
+            try { current.Dispose(); }
+            catch (Exception disposeError) when (disposeError is System.ComponentModel.Win32Exception or InvalidOperationException) { result["jobDisposeError"] = disposeError.Message; }
+            return;
+        }
+        if (!completed)
+        {
+            result["jobStopTimeout"] = true;
+            Say("Stopping the game job is taking longer than 10 seconds; cleanup goes on without it.");
+            return;
+        }
+        try { result["jobEmpty"] = current.ActiveProcesses == 0; }
+        catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
+        finally
+        {
+            try { current.Dispose(); }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { result["jobDisposeError"] = error.Message; }
+        }
+    }
+
+    // STOP and normal cleanup both go through the domain's own job. The supervisor's process-group timeout remains the
+    // second path when the host does not answer.
+    void StopSandboxDomain()
+    {
+        result["jobEmpty"] = false;
+        var control = Path.Combine(run, "control");
+        if (gameStarted == null) { RequestSandboxGameStop(); return; }
+        var status = ReadDomainStatus();
+        if (status is not { State: "exited" or "stopped" }) RequestSandboxGameStop();
+        var deadline = DateTime.UtcNow.AddSeconds(25);
+        while (DateTime.UtcNow < deadline)
+        {
+            status = ReadDomainStatus();
+            if (status is { State: "exited" or "stopped" }) break;
+            if (File.Exists(Path.Combine(control, "exit.json"))) break;
+            Thread.Sleep(250);
+        }
+        status = ReadDomainStatus();
+        if (status is { State: "exited" or "stopped" })
+        {
+            result["jobEmpty"] = status.JobEmpty;
+            result["sandboxDomainState"] = status.State;
+            result["gameExitedNaturally"] = status.State == "exited";
+            result["gamePid"] = status.GamePid;
+            result["sandboxDomainPid"] = status.DomainPid;
+            if (status.ExitCode is { } code) result["gameExitCode"] = $"0x{code:X8}";
+            if (status.Failure is { Length: > 0 } failure) result["sandboxDomainFailure"] = failure;
+        }
+        else
+        {
+            result["sandboxStopTimeout"] = true;
+            Say("The Linux sandbox domain did not finish within 25 seconds; cleanup goes on without it.");
+        }
+        if (Tools.ReadJson(Path.Combine(control, "exit.json")) is JsonObject exit) result["sandboxExit"] = exit.DeepClone();
+    }
+
+    // A stop file is seen by the domain host even if it starts after cleanup wrote it. The supervisor's own parent/deadline
+    // paths remain the fallback when no domain host ever starts.
+    void RequestSandboxGameStop()
+    {
+        try
+        {
+            var stop = Path.Combine(gameOut, "domain", "stop");
+            Directory.CreateDirectory(Path.GetDirectoryName(stop)!);
+            File.WriteAllText(stop, "stop\n");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { result["sandboxStopError"] = error.Message; }
     }
 
     void CopyEngineLogs()
@@ -54,12 +148,7 @@ sealed partial class PlaySession
             Try("engineLogError", () =>
             {
                 var engineLogs = Path.Combine(run, "engine-logs");
-                var places = new[] { Path.Combine(copy, "bin"), profileFolder, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HellForge"), install.UserData };
-                var found = places.Where(p => p != null && Directory.Exists(p))
-                    .SelectMany(p => Directory.EnumerateFiles(p!, "*", SearchOption.AllDirectories))
-                    .Where(f => (f.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) &&
-                                !f.StartsWith(run, StringComparison.OrdinalIgnoreCase))
-                    .Select(f => new FileInfo(f)).Where(f => f.LastWriteTimeUtc >= started && f.Length < 200L * 1024 * 1024).ToList();
+                var found = EngineLogFiles(started);
                 if (found.Count > 0) Directory.CreateDirectory(engineLogs);
                 var copied = new JsonArray();
                 // The game names its console logs after the computer and writes the user folder in them: the copies don't.
@@ -71,6 +160,36 @@ sealed partial class PlaySession
                 }
                 result["engineLogFiles"] = copied;
             });
+    }
+
+    // The logs and text files this session wrote, in the game copy and in every place the game's profile can write.
+    List<FileInfo> EngineLogFiles(DateTime started)
+    {
+        string?[] places = [Path.Combine(copy, "bin"), profileFolder, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HellForge"), install.UserData];
+        var found = new List<FileInfo>();
+        foreach (var place in places)
+        {
+            if (place == null || !Directory.Exists(place)) continue;
+            foreach (var file in LocalInstall.FilesNoLinks(place))
+            {
+                var full = ReadableLogFile(file, place);
+                if (full == null) continue;
+                var info = new FileInfo(full);
+                if ((full.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || full.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) &&
+                    !full.StartsWith(run, StringComparison.OrdinalIgnoreCase) && info.LastWriteTimeUtc >= started && info.Length < 200L * 1024 * 1024)
+                    found.Add(info);
+            }
+        }
+        return found;
+    }
+
+    // One place is a sandbox copy the game can write: never read a log through a link it planted below that place. A link
+    // skips the file; the rest of the logs are still copied.
+    static string? ReadableLogFile(string file, string place)
+    {
+        if (!OperatingSystem.IsLinux()) return file;
+        try { return LocalInstall.NoLinks(file, place); }
+        catch (InvalidDataException) { return null; }
     }
 
     void StopBrokerAndBackend()
@@ -216,12 +335,19 @@ sealed partial class PlaySession
 
     void SandboxCopyBack()
     {
+        if (linuxSandbox)
+        {
+            LinuxSandboxCopyBack();
+            if (!string.IsNullOrEmpty(run))
+                Try("sandboxStateCleanupError", () => SandboxFolders.RemoveSessionState(run, gameOut));
+            return;
+        }
         if (options.Sandbox && (bool?)result["jobEmpty"] == true && gameStarted != null)
             Try("sandboxCopyBackError", () =>
             {
                 // the game's data back where the next session reads it (written by the game: files only, bounded)
-                var back = SandboxFolders.Copy(SandboxUserData, install.UserData, SandboxFolders.UserDataParts(profileName));
-                var environment = SandboxFolders.Copy(gameOut, install.UserData, ["environment"]);
+                var back = SandboxFolders.Copy(SandboxUserData, install.UserData, SandboxFolders.UserDataParts(profileName), fromSession: true);
+                var environment = SandboxFolders.Copy(gameOut, install.UserData, ["environment"], fromSession: true);
                 result["sandboxCopiedBack"] = new JsonObject
                 {
                     ["files"] = back.Files + environment.Files, ["bytes"] = back.Bytes + environment.Bytes, ["skipped"] = back.Skipped + environment.Skipped
@@ -240,5 +366,67 @@ sealed partial class PlaySession
                 };
                 if (applied?.Refused > 0) Say($"{applied.Refused} in-game editor change(s) were left out: the stats file would not accept them.");
             });
+        // The overlay upper/work are outside gameOut and no longer read: remove <run>/sandbox, including work/work.
+        if (options.Sandbox && !string.IsNullOrEmpty(run))
+            Try("sandboxStateCleanupError", () => SandboxFolders.RemoveSessionState(run));
+    }
+
+    // The Linux copy-back asks the already-running native supervisor to stage only regular, singly linked files. This
+    // Wine-side code then merges that trusted staging folder; it never walks gameOut itself.
+    void LinuxSandboxCopyBack()
+    {
+        if ((bool?)result["jobEmpty"] != true || gameStarted == null)
+        {
+            result["sandboxCopyBackSkipped"] = "the domain did not report an empty job";
+            return;
+        }
+        Try("sandboxCopyBackError", () =>
+        {
+            var control = Path.Combine(run, "control");
+            var request = Path.Combine(control, "copy-back.request");
+            var partial = request + ".partial";
+            File.WriteAllText(partial, new JsonObject
+            {
+                ["runId"] = (string?)result["runId"], ["nonce"] = sandboxNonce, ["profile"] = profileName
+            }.ToJsonString());
+            File.Move(partial, request, overwrite: true);
+            var answer = Path.Combine(control, "copy-back.json");
+            var deadline = DateTime.UtcNow.AddSeconds(60);
+            while (!File.Exists(answer) && DateTime.UtcNow < deadline) Thread.Sleep(200);
+            if (Tools.ReadJson(answer) is not JsonObject receipt) throw new SessionFailure("The native sandbox copy-back did not answer.");
+            if ((bool?)receipt["ok"] != true) throw new SessionFailure("The native sandbox copy-back failed: " + ((string?)receipt["error"] ?? "no reason"));
+            var staging = Path.Combine(run, "copy-back");
+            var back = SandboxFolders.Copy(Path.Combine(staging, "userdata"), install.UserData, SandboxFolders.UserDataParts(profileName));
+            var environment = SandboxFolders.Copy(Path.Combine(staging, "game"), install.UserData, ["environment"]);
+            result["sandboxCopiedBack"] = new JsonObject
+            {
+                ["files"] = back.Files + environment.Files, ["bytes"] = back.Bytes + environment.Bytes,
+                ["skipped"] = back.Skipped + environment.Skipped, ["nativeSkipped"] = (int?)receipt["skipped"] ?? 0
+            };
+            var applied = SandboxStats.Apply(Path.Combine(staging, "game", "sandbox-stats"), install.Mods, EntityProfile.Current);
+            result["sandboxStats"] = applied == null ? "none" : new JsonObject
+            {
+                ["stats"] = applied.Stats, ["modValues"] = applied.ModValues, ["refused"] = applied.Refused,
+                ["settings"] = applied.Settings, ["presets"] = applied.Presets
+            };
+            CopySandboxEvidence(Path.Combine(staging, "game", "domain"));
+            LocalInstall.NoLinks(staging, run);
+            Directory.Delete(staging, recursive: true);
+            result["sandboxNativeCopyBack"] = receipt.DeepClone();
+            if (back.Skipped + environment.Skipped + ((int?)receipt["skipped"] ?? 0) > 0)
+                Say($"{back.Skipped + environment.Skipped + ((int?)receipt["skipped"] ?? 0)} file(s) the game wrote were not copied back (links, special files, hard links or over the size limit).");
+        });
+    }
+
+    void CopySandboxEvidence(string folder)
+    {
+        foreach (var name in new[] { "native-mods.log", "native-mods.json" })
+        {
+            var source = Path.Combine(folder, name);
+            if (!File.Exists(source)) continue;
+            var target = Path.Combine(run, name);
+            File.Copy(source, target, overwrite: true);
+            if (name.EndsWith(".json", StringComparison.Ordinal) && Tools.ReadJson(target) is { } status) result["nativeMods"] = status.DeepClone();
+        }
     }
 }

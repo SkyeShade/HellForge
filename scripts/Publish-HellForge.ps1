@@ -1,14 +1,13 @@
 # Publishes HellForge into an installation's app folder: the launcher, command-line tool, Steam ownership probe and
-# Sync Inventory's capture proxy as
-# self-contained Windows builds (no .NET installation needed), the HellForge engine (its session runner, local backend,
-# mod loader and stand-ins, and the network block and ownership scripts: the package scripts/Build-Engine.ps1 builds from
-# this repository), the mod SDK, the bundled mods and the profile templates. Everything else in the
-# installation (game, user data, profiles, logs) is left alone. The new app is staged in the installation's temp folder
-# and swapped in at the end.
+# Sync Inventory's capture proxy as self-contained Windows builds (no .NET installation needed), the native Linux
+# launcher, command-line tool and capture proxy, the HellForge engine (its session runner, local backend, mod loader and
+# stand-ins, and the network block and ownership scripts: the package scripts/Build-Engine.ps1 builds from this
+# repository), the mod SDK, the bundled mods and the profile templates. Everything else in the installation (game, user
+# data, profiles, logs) is left alone. The new app is staged in the installation's temp folder and swapped in at the end.
 # -PayloadFolder instead writes the same files (app\ and the top-level program) into a folder for scripts/Package-HellForge.ps1.
-# The engine is built first (scripts/Build-Engine.ps1, with -SteamApi passed on); -EnginePackage uses a package built
+# The engine is built first (scripts/Build-Engine.ps1, with -SteamApi or -SteamExports passed on); -EnginePackage uses a package built
 # already (artifacts/engine-package/hellforge-engine-<version>.zip) instead.
-param([string]$InstallRoot,[string]$PayloadFolder,[string]$EnginePackage,[string]$SteamApi)
+param([string]$InstallRoot,[string]$PayloadFolder,[string]$EnginePackage,[string]$SteamApi,[string]$SteamExports)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $project=Split-Path -Parent $PSScriptRoot
@@ -32,7 +31,9 @@ if($InstallRoot){
 # engine.json below.
 if(-not $EnginePackage){
     # its own PowerShell process: the engine build does not run reliably inside another script's session
-    $engineArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Build-Engine.ps1'));if($SteamApi){$engineArgs+=@('-SteamApi',$SteamApi)}
+    $engineArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Build-Engine.ps1'))
+    if($SteamApi){$engineArgs+=@('-SteamApi',$SteamApi)}
+    if($SteamExports){$engineArgs+=@('-SteamExports',$SteamExports)}
     & powershell @engineArgs
     if($LASTEXITCODE){throw 'Building the engine failed (scripts/Build-Engine.ps1).'}
     $engineVersion=([xml](Get-Content -LiteralPath (Join-Path $project 'Directory.Build.props') -Raw)).Project.PropertyGroup.EngineVersion
@@ -47,12 +48,33 @@ New-Item -ItemType Directory $staging|Out-Null
 foreach($app in @(
     @{folder='launcher';project='src/HellForge.Launcher/HellForge.Launcher.csproj'},
     @{folder='cli';project='src/HellForge.Cli/HellForge.Cli.csproj'},
-    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'},
-    @{folder='capture';project='src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj'})){
+    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'})){
     Write-Output ('Publishing '+$app.folder)
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}
 }
+Write-Output 'Publishing capture'
+dotnet publish (Join-Path $project 'src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj') -c Release -f net10.0-windows -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'capture')
+if($LASTEXITCODE){throw 'Publishing capture failed.'}
+Write-Output 'Publishing launcher-linux'
+dotnet publish (Join-Path $project 'src/HellForge.Launcher/HellForge.Launcher.csproj') -c Release -r linux-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'launcher-linux')
+if($LASTEXITCODE){throw 'Publishing launcher-linux failed.'}
+# app/capture-linux: the same capture logic as a native Linux program. It runs unprivileged; the installed
+# linux/capture-helper.sh owns /etc/hosts and runs the installed root-owned capture-relay for the 127.0.0.1:443 relay, and
+# the supervisor uses Wine's reg.exe only for the game prefix's Root store.
+Write-Output 'Publishing capture-linux'
+dotnet publish (Join-Path $project 'src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj') -c Release -f net10.0 -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'capture-linux')
+if($LASTEXITCODE){throw 'Publishing capture-linux failed.'}
+# app/cli-linux: the native Linux build agent hellforge-linux.sh runs before a session to compile source mods, and the
+# launcher's Build now runs for one mod. Self-contained, like the launcher.
+Write-Output 'Publishing cli-linux'
+dotnet publish (Join-Path $project 'src/HellForge.Cli/HellForge.Cli.csproj') -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'cli-linux')
+if($LASTEXITCODE){throw 'Publishing cli-linux failed.'}
+# app/backend-linux: the local backend's profile commands (account import preview, import, restore) for the native
+# launcher. Self-contained like cli-linux; NativeAOT does not cross-compile to Linux, so it is a normal .NET publish.
+Write-Output 'Publishing backend-linux'
+dotnet publish (Join-Path $project 'src/HellForge.LocalBackend/HellForge.LocalBackend.csproj') -c Release -r linux-x64 --self-contained true -p:PublishAot=false -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging 'backend-linux')
+if($LASTEXITCODE){throw 'Publishing backend-linux failed.'}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -69,6 +91,7 @@ foreach($entry in $engine.files.PSObject.Properties){
 foreach($folder in @('session','backend','sdk-shims','scripts')){Move-Item -LiteralPath (Join-Path $engineFolder $folder) -Destination $staging}
 Copy-Item -LiteralPath (Join-Path $engineFolder 'engine.json') -Destination $staging
 Remove-Item -LiteralPath $engineFolder -Recurse -Force
+Copy-Item -LiteralPath $EnginePackage -Destination (Join-Path $staging 'engine-package.zip')
 # The mod SDK (docs/modding/first-mod.md): the headers, CMake helpers and tool pins, the mod template, and the docs a modder needs.
 # Its tools (Zig, CMake, Ninja) are fetched into <installation>/tools on request (HellForge.Cli mod-tools), outside app/.
 $sdkTarget=New-Item -ItemType Directory (Join-Path $staging 'sdk')
@@ -135,16 +158,38 @@ Copy-Item -LiteralPath (Join-Path $project 'data/progression-data.json') -Destin
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
 Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
-# "HellForge.exe" at the top of the installation starts app\launcher\HellForge.Launcher.exe (native/launcher-stub).
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
+# The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and
+# shipped beside the Linux scripts. The installer makes both executable after extraction
+# (LinuxAppInstaller.MakeExecutable). -s strips the debug information, as the other native builds do: it names the build
+# PC's folders, which the payload must not.
+$sandboxFolder=Join-Path $project 'native/linux-sandbox'
+$sandboxCommon=Join-Path $sandboxFolder 'hf-sandbox-common.c'
+$sandboxProbe=Join-Path $linuxTarget 'hf-sandbox-probe'
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s $sandboxCommon `
+    (Join-Path $sandboxFolder 'hf-sandbox-probe-checks.c') (Join-Path $sandboxFolder 'hf-sandbox-probe.c') -o $sandboxProbe
+if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandboxProbe)){throw 'Building the Linux sandbox probe failed.'}
+$sandbox=Join-Path $linuxTarget 'hf-sandbox'
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s $sandboxCommon `
+    (Join-Path $sandboxFolder 'hf-sandbox.c') (Join-Path $sandboxFolder 'hf-sandbox-paths.c') `
+    (Join-Path $sandboxFolder 'hf-sandbox-domain.c') (Join-Path $sandboxFolder 'hf-sandbox-view.c') `
+    (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
+if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
+# Sync Inventory's 443 relay: one static program built the same way, installed root-owned beside capture-helper.sh by
+# allow-capture.sh and executed only from /usr/local/lib/hellforge, never from the Wine-writable installation.
+$captureRelay=Join-Path $linuxTarget 'capture-relay'
+& $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s (Join-Path $project 'native/linux-capture/capture-relay.c') -o $captureRelay
+if($LASTEXITCODE -or -not(Test-Path -LiteralPath $captureRelay)){throw 'Building the Linux capture relay failed.'}
+# "HellForge.exe" at the top of the installation starts app\launcher\HellForge.Launcher.exe (native/launcher-stub).
 $stub=Join-Path $staging 'HellForge.exe'
 & $zig cc -target x86_64-windows-gnu -O2 -Wall -Werror -Wno-unused-parameter -municode '-Wl,--subsystem,windows' -s (Join-Path $project 'native/launcher-stub/launcher_stub.c') `
     (Join-Path $project 'native/launcher-stub/launcher_stub.rc') -o $stub # the .rc: its icon, HellForge's
 if($LASTEXITCODE){throw 'Building the launcher program failed.'}
 Get-ChildItem -LiteralPath $staging -File|Where-Object {$_.Extension -in @('.pdb','.lib')}|Remove-Item
+$version=([xml](Get-Content -LiteralPath (Join-Path $project 'Directory.Build.props') -Raw)).Project.PropertyGroup.Version
 $commit=(git -C $project rev-parse --short HEAD 2>$null)
 $dirty=[bool](git -C $project status --porcelain 2>$null)
-[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|
+[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');version=$version;commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|
     Set-Content -LiteralPath (Join-Path $staging 'app-build.json') -Encoding UTF8
 
 $top=if($InstallRoot){$InstallRoot}else{

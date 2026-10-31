@@ -438,7 +438,7 @@ static const char* InstallVista(DifficultyInstall* d)
     DWORD vistaProtect;
     VirtualProtect(vista, 0x80, PAGE_EXECUTE_READ, &vistaProtect);
     uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
-    rel = (int32_t)((uintptr_t)vista - (game + DIF_VISTA_POSE + 5)); memcpy(jump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_VISTA_POSE, (uintptr_t)vista); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_VISTA_POSE, jump, 7)) return "the vista level could not be widened";
     return NULL;
 }
@@ -459,7 +459,7 @@ static const char* InstallCull(DifficultyInstall* d)
     DWORD cullProtect;
     VirtualProtect(cull, 0x40, PAGE_EXECUTE_READ, &cullProtect);
     uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
-    rel = (int32_t)((uintptr_t)cull - (game + DIF_CULL_RADIUS + 5)); memcpy(jump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_CULL_RADIUS, (uintptr_t)cull); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_CULL_RADIUS, jump, 8)) return "the playable area's cull could not be widened";
     return NULL;
 }
@@ -497,7 +497,7 @@ static const char* JumpToStructured(DifficultyInstall* d)
         uint8_t jump[11];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)(d->structured + 0x40 * i) - (game + kReVoronoiStubs[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kReVoronoiStubs[i].site, (uintptr_t)(d->structured + 0x40 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kReVoronoiStubs[i].site, jump, kReVoronoiStubs[i].length)) return "the structured maps could not be given the larger map";
     }
     for (int i = 0; i < 8; i++)
@@ -506,7 +506,7 @@ static const char* JumpToStructured(DifficultyInstall* d)
     uint8_t flagsJump[32];
     memset(flagsJump, 0x90, sizeof flagsJump);
     flagsJump[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)(d->structured + 0xC0) - (game + DIF_FLAGS_CLEAR + 5)); memcpy(flagsJump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_FLAGS_CLEAR, (uintptr_t)(d->structured + 0xC0)); memcpy(flagsJump + 1, &rel, 4);
     uint8_t load = 0x8B;
     uint32_t flagsCap = 0x400;
     if (ApiWrite(game + DIF_FLAGS_CLEAR, flagsJump, 32) || ApiWrite(game + DIF_FLAGS_READ + 1, &load, 1) ||
@@ -515,7 +515,7 @@ static const char* JumpToStructured(DifficultyInstall* d)
     for (int i = 0; i < 3; i++)
     {
         uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
-        rel = (int32_t)((uintptr_t)(d->structured + 0x100 + 0x20 * i) - (game + kFlagsWrites[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kFlagsWrites[i].site, (uintptr_t)(d->structured + 0x100 + 0x20 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kFlagsWrites[i].site, jump, kFlagsWrites[i].length)) return "the city locations' flags could not be moved";
     }
     return NULL;
@@ -543,7 +543,7 @@ static const char* InstallClusterGuards(DifficultyInstall* d)
         uint8_t jump[13];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)(clusters + 0x40 * i) - (game + kClusterSites[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kClusterSites[i].site, (uintptr_t)(clusters + 0x40 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kClusterSites[i].site, jump, kClusterSites[i].length)) return "the location clusters could not be guarded";
     }
     return NULL;
@@ -635,7 +635,7 @@ static const char* InstallAppendGuards(DifficultyInstall* d)
         uint8_t jump[21];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)(appends + 0x40 * i) - (game + kClusterAppends[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kClusterAppends[i].site, (uintptr_t)(appends + 0x40 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kClusterAppends[i].site, jump, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc))
             return "the location clusters could not be guarded";
     }

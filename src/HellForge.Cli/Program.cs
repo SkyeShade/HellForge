@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HellForge.Cli;
 using HellForge.Core;
 using HellForge.Core.GameData;
 
@@ -19,9 +20,10 @@ try
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             create-install --root <folder>
-            prepare-session --install <folder> --profile <name> [--user-data <root>]
+            prepare-session --install <folder> --profile <name> [--user-data <root>] [--verify-all yes | no]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
             mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--sandbox yes|no]
+            build-source-mods --install <folder> [--progress <file>]
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
             sdk-headers --repo <HellForge source folder> [--mode write | check]
@@ -33,11 +35,12 @@ try
             verified-list-sign --list <verified-mods.json> --key <private key file>
             verified-list-check --list <verified-mods.json> [--signature <file>]
             mod-tools --install <installation or source folder> [--ide yes]
+            steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                 [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
+                 [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
@@ -52,7 +55,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--strangers yes | no] [--game-options <options>]
+                     [--steam-udp yes | no] [--strangers yes | no] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -67,12 +70,17 @@ try
             new-mod makes a code mod from the SDK's template: in the installation's mods folder (built there, it is
             installed) or in --out. build-mod compiles a code mod with the SDK's pinned Zig: in an installation's mods
             folder into the build a session loads (temp/mod-builds; sessions build source mods themselves), elsewhere into
-            the DLL its manifest names. package-mod compiles a source mod, then zips it to share (the installation's exports
+            the DLL its manifest names. build-source-mods builds every enabled source mod into temp/mod-builds before a
+            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine.
+            package-mod compiles a source mod, then zips it to share (the installation's exports
             folder, or --out): sources and files, no DLL a player's HellForge would rebuild, no IDE leftovers.
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
             mod-tools downloads that Zig (and CMake and Ninja for IDEs with --ide yes), pinned and checksummed.
+            steam-bridge is the Linux wrapper's relay to Steam instead of socat: host exposes Steam's loopback ports as
+            hf-steam-*.sock files, inner recreates them inside the offline network namespace, and check exits 0 when a
+            bridge or the named socket answers.
             play starts a session as HellForge.exe's PLAY does, with the launcher's saved choices unless an option
             replaces one; the engine's session runner does every check and cleanup itself. Without --wait it prints the
             run once started and returns; with it, one JSON line per status until the session ends (exit code 0 when it
@@ -81,11 +89,23 @@ try
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
             issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            sandbox-readiness --install <folder>
+            sandbox-prefix-case --install <folder>
+            sandbox-supervise --install <folder> --prefix <compatdata> --session-file <play-session.json> --parent-pid <pid>
+            sandbox-copy-back --install <folder> --run <session folder> --profile <name>
+            The sandbox commands are native Linux only: sandbox-readiness runs the wrapper's self-test and records the
+            result for the installed app build and kernel (first making HellForge's prefix case-sensitive, as
+            sandbox-prefix-case does alone, when Proton made its drive_c case-insensitive); hf-inner.sh starts the supervisor, which builds the game
+            domain and performs the hardened copy-back after the domain is gone. The supervisor and copy-back never
+            invoke a shell or start an unsandboxed game.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
         return 0;
     }
+    // Before the --option parser: host and inner take a subcommand, not options.
+    if (args[0] == "steam-bridge") return SteamBridgeCommand.Run(args);
+    if (SandboxCommands.TryRun(args, out var sandboxExit)) return sandboxExit;
     var allowed = args[0] switch
     {
         "discover" => new[] { "--steam-root" },
@@ -99,9 +119,10 @@ try
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
         "create-install" => ["--root"],
-        "prepare-session" => ["--install", "--profile", "--user-data"],
+        "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
         "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked"],
+        "build-source-mods" => ["--install", "--progress"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
@@ -114,7 +135,7 @@ try
         "verified-list-sign" => ["--list", "--key"],
         "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
@@ -123,7 +144,7 @@ try
         "mod-switch" => ["--install", "--id", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--game-options"],
+        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--game-options"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
@@ -142,6 +163,17 @@ try
         return value.ToUpperInvariant();
     }
     object result;
+    // --progress: a JSON file the launcher reads for its "compiling mods" bar (written whole, then moved in place).
+    void WriteProgress(string? file, ModBuildProgress p)
+    {
+        if (file == null) return;
+        try
+        {
+            File.WriteAllText(file + ".partial", JsonSerializer.Serialize(new { stage = p.Stage, done = p.Done, total = p.Total, mod = p.Mod }));
+            File.Move(file + ".partial", file, overwrite: true);
+        }
+        catch (IOException) { } /* the launcher is reading it: the next one */
+    }
     switch (args[0])
     {
         case "play":
@@ -231,7 +263,13 @@ try
             var install = new InstallLayout(Required("--install"));
             if (!install.Exists) throw new InvalidDataException($"{install.Root} is not a HellForge installation.");
             var vanilla = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
-            var prepared = GameSettings.PrepareSession(install, Required("--profile"), vanilla, options.GetValueOrDefault("--user-data"));
+            var verifyAll = options.GetValueOrDefault("--verify-all") switch
+            {
+                null or "no" => false,
+                "yes" => true,
+                _ => throw new ArgumentException("--verify-all is yes or no.")
+            };
+            var prepared = GameSettings.PrepareSession(install, Required("--profile"), vanilla, options.GetValueOrDefault("--user-data"), verifyAll);
             Console.WriteLine(JsonSerializer.Serialize(prepared, CopyPreparer.JsonOptions));
             return prepared.Problems.Count == 0 ? 0 : 2;
         case "mods-stage":
@@ -285,20 +323,9 @@ try
             var (active, dataProblems) = ModDataCache.Prepare(modInstall, loadOrder, Console.Error.WriteLine);
             modProblems.AddRange(dataProblems);
             // Source mods are built (or their cached build reused) for this session; one that does not compile stays off.
-            // --progress: a JSON file the launcher reads for its "compiling mods" bar (written whole, then moved in place)
             var progressFile = options.GetValueOrDefault("--progress");
-            void Progress(ModBuildProgress p)
-            {
-                if (progressFile == null) return;
-                try
-                {
-                    File.WriteAllText(progressFile + ".partial", System.Text.Json.JsonSerializer.Serialize(new { stage = p.Stage, done = p.Done, total = p.Total, mod = p.Mod }));
-                    File.Move(progressFile + ".partial", progressFile, overwrite: true);
-                }
-                catch (IOException) { } /* the launcher is reading it: the next one */
-            }
             var (built, buildProblems) = ModBuilds.Prepare(modInstall, ModSdk.Find(modInstall.Root), active, SupportedBuild.Current.BuildId, Console.Error.WriteLine,
-                progress: Progress);
+                progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
             var staged = ModStaging.Stage(modInstall, active);
@@ -322,6 +349,22 @@ try
                 // the session's mods with network type edits (after a mod sync, the host's), for the session's native applier
                 nativeFolders = active.Where(m => m.NetworkFieldTypes.Count > 0).Select(m => Path.GetFullPath(m.Folder))
             };
+            break;
+        }
+        case "build-source-mods":
+        {
+            // The Linux wrapper's native agent: every enabled source mod built into temp/mod-builds before the session,
+            // with the same key and record the session checks. A mod that fails is reported, and the session leaves it off.
+            var buildInstall = new InstallLayout(Path.GetFullPath(Required("--install")));
+            if (!buildInstall.Exists) throw new InvalidDataException($"{buildInstall.Root} is not a HellForge installation.");
+            var (mods, loadProblems) = ModCatalog.Load(buildInstall.Mods);
+            foreach (var problem in loadProblems) Console.Error.WriteLine(problem);
+            var activeMods = ModCatalog.Active(mods);
+            var sourceMods = activeMods.Count(m => m.HasSource);
+            var progressFile = options.GetValueOrDefault("--progress");
+            var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
+                Console.Error.WriteLine, installTools: false, progress: p => WriteProgress(progressFile, p));
+            result = new { install = buildInstall.Root, sourceMods, built = prebuilt.Count(m => m.HasSource), problems = buildProblems };
             break;
         }
         case "check-stats":
@@ -440,7 +483,7 @@ try
             var sdk = ModSdk.Find(Required("--install")) ?? throw new IOException("The mod SDK was not found there.");
             var ide = options.GetValueOrDefault("--ide") is { } flag ? flag == "yes" ? true : flag == "no" ? false : throw new ArgumentException("--ide is yes or no.") : false;
             ModKit.InstallToolsAsync(sdk, ide, Console.Error.WriteLine).GetAwaiter().GetResult();
-            result = new { tools = sdk.Tools, zig = sdk.Zig, ide };
+            result = new { tools = sdk.Tools, zig = OperatingSystem.IsLinux() ? sdk.NativeZig : sdk.Zig, ide };
             break;
         }
         case "editor-data":
@@ -507,7 +550,7 @@ try
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "HD2BeyondTheStars"));
             break;
         case "crash-dump":
-            // A crashed game's full memory dump, from outside it (CrashDump.cs; started by the mod loader's crash note).
+            // A crashed game's memory dump, from outside it (CrashDump.cs; started by the mod loader's crash note).
             result = CrashDump.Write(int.Parse(Required("--pid"), System.Globalization.CultureInfo.InvariantCulture),
                 uint.Parse(Required("--thread"), System.Globalization.CultureInfo.InvariantCulture),
                 ulong.Parse(Required("--pointers"), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture),

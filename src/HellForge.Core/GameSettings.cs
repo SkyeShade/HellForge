@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace HellForge.Core;
 
 public sealed record PreparedSession(string BuildId, IReadOnlyList<string> Problems, string ProfileData, bool ProfileSeeded,
-    IReadOnlyList<string> GameFiles);
+    IReadOnlyList<string> GameFiles, int HashedFiles);
 
 // The build's data/settings.ini names %APPDATA%/Arrowhead/Helldivers2 for everything the game writes: settings, saves,
 // shader cache, logs and crash dumps. A session points them into the installation's userdata folder instead, with the
@@ -40,7 +40,8 @@ public static partial class GameSettings
     // profile starts from the normal game's settings (graphics, controls, answered first-run prompts), read from
     // vanillaUserData; nothing is written there. Returns the problems instead of preparing when the game is not the
     // supported build. userData is the root the settings point at: the installation's, or a sandboxed session's copy.
-    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData, string? userData = null)
+    public static PreparedSession PrepareSession(InstallLayout install, string profile, string? vanillaUserData, string? userData = null,
+        bool fullVerify = false)
     {
         var root = userData ?? install.UserData;
         if (!ProfileName().IsMatch(profile)) throw new ArgumentException("Profile names use 1-32 lowercase letters, digits or hyphens.");
@@ -51,22 +52,40 @@ public static partial class GameSettings
         {
             if (!File.Exists(settingsFile) || !SupportedBuild.Sha1(settingsFile).Equals(settings.Sha1, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("data/settings.ini was changed and its original is missing; repair the game copy.");
-            File.Copy(settingsFile, install.OriginalSettings);
+            CopyOriginalAtomically(settingsFile, install.OriginalSettings);
         }
         var problems = new List<string>();
         if (!SupportedBuild.Sha1(install.OriginalSettings).Equals(settings.Sha1, StringComparison.OrdinalIgnoreCase))
             problems.Add("changed: " + SettingsPath + " (kept original)");
         Directory.CreateDirectory(install.Temp);
         var others = build with { Files = build.Files.Where(file => file.Path != SettingsPath).ToList() };
-        problems.AddRange(others.Verify(install.Game, install.VerifyCache));
+        var verification = others.VerifyDetailed(install.Game, install.VerifyCache, useCache: !fullVerify);
+        problems.AddRange(verification.Problems);
+        var hashedFiles = 1 + verification.HashedFiles;
         var profileData = Path.Combine(root, "profiles", profile);
         var files = build.Files.Select(file => file.Path).ToList();
-        if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files);
+        if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files, hashedFiles);
 
         var seeded = SeedProfile(profileData, vanillaUserData);
         var original = Utf8.GetString(File.ReadAllBytes(install.OriginalSettings));
         File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, root, profile)));
-        return new(build.BuildId, problems, profileData, seeded, files);
+        return new(build.BuildId, problems, profileData, seeded, files, hashedFiles);
+    }
+
+    // The kept original is either absent or whole: a kill during the copy leaves only the .partial file.
+    internal static void CopyOriginalAtomically(string settingsFile, string original)
+    {
+        var partial = original + ".partial";
+        try
+        {
+            File.Copy(settingsFile, partial, overwrite: true);
+            File.Move(partial, original, overwrite: true);
+        }
+        finally
+        {
+            try { if (File.Exists(partial)) File.Delete(partial); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     // A new profile's user data: its saves folder, with the normal game's settings when there are any. True when the
@@ -130,29 +149,23 @@ public static partial class GameSettings
     private static partial Regex LibraryPath();
 
     // The key bindings the signed-in Steam account keeps for HELLDIVERS 2 in its Steam Cloud folder
-    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. Under Wine the
-    // registry has no Steam account, so the Linux Steam client's userdata is searched: the most recently changed file.
+    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. The account comes
+    // from SteamAccount: under Wine the native side passes it, never from the most recently changed userdata folder.
     public static string? SteamControls()
     {
+        if (SteamAccount.Current() is not { } steamId) return null;
+        var account = SteamAccount.AccountId(steamId).ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (LinuxNetworkBlock.UnderWine)
         {
-            var found = new List<string>();
             foreach (var library in LinuxSteamLibraries())
             {
-                var userdata = WineZ(library + "/userdata");
-                if (!Directory.Exists(userdata)) continue;
-                foreach (var accountFolder in Directory.EnumerateDirectories(userdata).Where(a => Path.GetFileName(a) != "0"))
-                {
-                    var bindings = Path.Combine(accountFolder, "553850", "remote", ControlsFile);
-                    if (File.Exists(bindings)) found.Add(bindings);
-                }
+                var bindings = Path.Combine(WineZ(library), "userdata", account, "553850", "remote", ControlsFile);
+                if (File.Exists(bindings)) return bindings;
             }
-            return found.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
-        }
-        if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam ||
-            Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null) is not int account || account == 0)
             return null;
-        var file = Path.Combine(steam, "userdata", account.ToString(System.Globalization.CultureInfo.InvariantCulture), "553850", "remote", ControlsFile);
+        }
+        if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam) return null;
+        var file = Path.Combine(steam, "userdata", account, "553850", "remote", ControlsFile);
         return File.Exists(file) ? file : null;
     }
 

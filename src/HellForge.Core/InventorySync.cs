@@ -10,12 +10,16 @@ namespace HellForge.Core;
 // snapshot. The local backend takes premium ownership from it on every start; the rest reaches the profile only through
 // an import the player reviews (AccountImportSettings, HellForge.LocalBackend AccountImport).
 //
-// The capture proxy (app/capture/HellForge.CaptureProxy.exe) runs elevated: it maps the live API host to loopback in the
-// hosts file, trusts a per-run CA, terminates TLS for the normal game's login and, with that login's session, reads
-// /api/Progression and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as
-// the inventory is in, keeps forwarding the game's traffic until the game exits, and then removes the hosts line and the
-// CA. The files land in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/
-// once the capture's state (CaptureState) says they are sealed, while the game plays on.
+// The capture proxy terminates TLS for the normal game's login and, with that login's session, reads /api/Progression
+// and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as the inventory
+// is in, keeps forwarding the game's traffic until the game exits, and then removes its redirect and CA. The files land
+// in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/ once the
+// capture's state (CaptureState) says they are sealed, while the game plays on.
+//
+// Windows keeps the elevated app/capture/HellForge.CaptureProxy.exe, its hosts file and its LocalMachine Root store.
+// Native Linux starts the unprivileged app/capture-linux proxy below the installed root helper, which owns the marked
+// /etc/hosts lines and the 127.0.0.1:443 relay, and the supervisor imports the proxy's public CA into HELLDIVERS 2's
+// prefix Root store through Wine's reg.exe.
 public static class InventorySync
 {
     public const string SnapshotFolder = "account-snapshot";
@@ -27,13 +31,17 @@ public static class InventorySync
     // The proxy's own line in the hosts file, above its mapping.
     public const string HostsMarker = CaptureHosts.Marker;
     public const string ProxyExe = "HellForge.CaptureProxy.exe";
+    public const string LinuxProxyExe = "HellForge.CaptureProxy";
     public const int TimeoutMinutes = 10;
     const string GameProcess = "helldivers2";
 
     public static string? FindCaptureProxy(string? installRoot)
     {
         if (installRoot == null) return null;
-        var path = Path.Combine(new InstallLayout(installRoot).App, "capture", ProxyExe);
+        var app = new InstallLayout(installRoot).App;
+        var path = OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine
+            ? Path.Combine(app, "capture-linux", LinuxProxyExe)
+            : Path.Combine(app, "capture", ProxyExe);
         return File.Exists(path) ? path : null;
     }
 
@@ -84,18 +92,27 @@ public static class InventorySync
     public static bool IsGameRunning()
     {
         var running = Process.GetProcessesByName(GameProcess);
+        if (OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine)
+            running = [.. running, .. Process.GetProcessesByName(GameProcess + ".exe")];
         foreach (var process in running) process.Dispose();
         return running.Length > 0;
     }
 
+    // The hosts file the running platform reads. Wine programs resolve through the host resolver (review-C3.md Part 2),
+    // so native Linux checks /etc/hosts; Windows keeps its system hosts path byte-for-byte.
+    public static string HostsPath => OperatingSystem.IsWindows() && !LinuxNetworkBlock.UnderWine
+        ? Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts")
+        : "/etc/hosts";
+
     // A capture that was killed before its cleanup leaves the live API host pointed at loopback, so the normal game
-    // cannot reach Arrowhead's servers until the proxy runs again (it removes leftovers first) or with --cleanup.
-    public static bool HasLeftoverRedirect()
+    // cannot reach Arrowhead's servers until the helper cleans up.
+    public static bool HasLeftoverRedirect() => HasLeftoverRedirect(HostsPath);
+
+    public static bool HasLeftoverRedirect(string hostsPath)
     {
         try
         {
-            var hosts = Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts");
-            return File.Exists(hosts) && File.ReadLines(hosts).Any(line => line.Contains(HostsMarker, StringComparison.OrdinalIgnoreCase));
+            return File.Exists(hostsPath) && File.ReadLines(hostsPath).Any(line => line.Contains(HostsMarker, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -103,18 +120,185 @@ public static class InventorySync
         }
     }
 
-    // Starts the proxy elevated (one UAC prompt), sealing what it captures for steamAccount. Blocks until the prompt is
-    // answered, so call it off the UI thread. Returns null when elevation was declined.
-    public static Process? StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount)
+    // Starts the platform's proxy, sealing what it captures for steamAccount. Windows blocks until its one UAC prompt is
+    // answered. Native Linux starts the unprivileged proxy, proves its CA is in the game's prefix, then starts the root
+    // relay. Call it off the UI thread.
+    public static CaptureRun? StartCaptureProxy(string installRoot, string proxyPath, string syncDir, string snapshotDir,
+        ulong steamAccount, bool sessionRunning)
     {
         Directory.CreateDirectory(syncDir);
-        return StartElevated(proxyPath, [
+        if (OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine)
+            return StartLinuxCapture(installRoot, proxyPath, syncDir, snapshotDir, steamAccount, sessionRunning);
+        var started = StartElevated(proxyPath, [
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)]);
+        return started == null ? null : new CaptureRun(started, null, null);
+    }
+
+    // The early check runs before Steam or DNS is touched, so a running game or session refuses without side effects; the
+    // second check closes the race between that look and the prefix change.
+    internal static CaptureRun StartLinuxCapture(string installRoot, string proxyPath, string syncDir, string snapshotDir,
+        ulong steamAccount, bool sessionRunning, Func<bool>? gameRunning = null)
+    {
+        gameRunning ??= IsGameRunning;
+        if (LinuxCapture.RunRefusal(gameRunning(), sessionRunning) is { } running)
+            throw new InvalidOperationException(running);
+        var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
+        var prefix = LinuxCapture.FindPrefix(steamRoot);
+        var resolution = LinuxCapture.FindProtonForGame(steamRoot);
+        var proton = resolution.Proton;
+        var address = LinuxCapture.CurrentAddress();
+        if (steamRoot == null)
+            throw new InvalidOperationException("Steam was not found: start Steam and sign in, then sync again.");
+        InventorySync.Note(syncDir, "HELLDIVERS 2's Proton: " + resolution.Source +
+            (proton == null ? "" : " -> " + proton));
+        if (LinuxCapture.StartRefusal(installRoot, prefix, proton, address, gameRunning(), sessionRunning) is { } refusal)
+            throw new InvalidOperationException(refusal);
+
+        LinuxCapture.RestrictPrivateDirectory(syncDir);
+        var certificatePath = LinuxCapture.CertificatePath(syncDir);
+        Process? proxy = null;
+        LinuxCapture.HelperRun? helper = null;
+        LinuxCapture.CertificateRecord? record = null;
+        try
+        {
+            proxy = Process.Start(LinuxProxyStartInfo(proxyPath, syncDir, snapshotDir, steamAccount, address!, certificatePath))
+                ?? throw new InvalidOperationException("The Linux capture proxy did not start.");
+            WaitForLinuxProxy(proxy, certificatePath, syncDir);
+            record = new(prefix!, proton!, steamRoot, certificatePath,
+                LinuxCapture.CertificateThumbprint(File.ReadAllBytes(certificatePath)));
+            LinuxCapture.WriteCertificateRecord(syncDir, record);
+            LinuxCapture.InstallCertificate(record);
+            helper = LinuxCapture.StartHelper(installRoot, proxy.Id, syncDir);
+            return new CaptureRun(proxy!, helper, syncDir);
+        }
+        catch
+        {
+            AbortLinuxCapture(proxy, helper, record, syncDir);
+            throw;
+        }
+    }
+
+    static ProcessStartInfo LinuxProxyStartInfo(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount,
+        string address, string certificatePath)
+    {
+        var start = new ProcessStartInfo(proxyPath) { WorkingDirectory = syncDir, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in new[]
+        {
+            "--host", LinuxCapture.ApiHost,
+            "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
+            "--output", Path.Combine(syncDir, InventoryFile),
+            "--progression", Path.Combine(syncDir, ProgressionFile),
+            "--evidence", syncDir,
+            "--seal-key", SealKeyFor(snapshotDir),
+            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
+            "--no-hosts", "--listen-port", LinuxCapture.ProxyPort.ToString(CultureInfo.InvariantCulture),
+            "--real-ip", address, "--ca-cert", certificatePath
+        })
+            start.ArgumentList.Add(argument);
+        return start;
+    }
+
+    static void WaitForLinuxProxy(Process proxy, string certificatePath, string syncDir)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (!File.Exists(certificatePath) || !IsListening(syncDir))
+        {
+            if (proxy.HasExited) throw new InvalidOperationException("The Linux capture proxy stopped before it listened. " + ProxyLogTail(syncDir));
+            if (DateTime.UtcNow >= deadline) throw new InvalidOperationException("The Linux capture proxy did not start within 20 seconds. " + ProxyLogTail(syncDir));
+            Thread.Sleep(100);
+        }
+    }
+
+    static void AbortLinuxCapture(Process? proxy, LinuxCapture.HelperRun? helper, LinuxCapture.CertificateRecord? record, string syncDir)
+    {
+        try { if (proxy is { HasExited: false }) proxy.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+        proxy?.Dispose();
+        helper?.Dispose();
+        if (record != null && LinuxCapture.RemoveCertificate(record) == null)
+            LinuxCapture.DeleteCertificateRecord(syncDir);
+    }
+
+    static string ProxyLogTail(string syncDir)
+    {
+        var path = Path.Combine(syncDir, "proxy.log");
+        try
+        {
+            return File.Exists(path) ? "Last log: " + string.Join(" | ", File.ReadLines(path).TakeLast(3)) : "It wrote no log.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "Its log could not be read."; }
+    }
+
+    // Removes the Linux host helper's leftovers and every recorded prefix certificate. Null on success.
+    public static string? CleanupLinux(string installRoot) => LinuxCapture.Cleanup(installRoot);
+
+    public static bool HasPendingLinuxCleanup(string installRoot) =>
+        HasLeftoverRedirect() || LinuxCapture.PendingCertificateFolders(installRoot).Count > 0;
+
+    // A Windows capture proxy, or the native Linux proxy plus the root relay that owns /etc/hosts and 443. The launcher
+    // treats either as one run: HasExited and ExitCode read the proxy; Dispose ends the Linux helper and removes its CA.
+    public sealed class CaptureRun : IDisposable
+    {
+        readonly Process proxy;
+        readonly string? syncDir;
+        LinuxCapture.HelperRun? helper;
+        int disposed;
+
+        internal CaptureRun(Process proxy, LinuxCapture.HelperRun? helper, string? syncDir)
+        {
+            this.proxy = proxy;
+            this.helper = helper;
+            this.syncDir = syncDir;
+        }
+
+        public bool HasExited => proxy.HasExited;
+        public int ExitCode => proxy.ExitCode;
+        public int Id => proxy.Id;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) == 1) return;
+            proxy.Dispose();
+            if (syncDir == null) { helper?.Dispose(); helper = null; return; }
+            string? stop = null;
+            try { stop = LinuxCapture.StopHelper(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                stop = error.Message;
+            }
+            helper?.Dispose();
+            helper = null;
+            var folder = syncDir;
+            _ = Task.Run(async () =>
+            {
+                // The capture usually ends while the game is still open, and the prefix is not changed then. Wait for it
+                // to close so the CA leaves the prefix as the sync card promises; the next launcher start removes it if
+                // this launcher closes first.
+                if (IsGameRunning()) Note(folder, "waiting for HELLDIVERS 2 to close before removing the capture CA");
+                await WaitForGameExit(GameExitPoll, GameExitWait);
+                var problem = stop == null ? LinuxCapture.RemoveRecordedCertificate(folder) : LinuxCapture.Finish(folder);
+                Note(folder, problem == null ? "capture CA removed from HELLDIVERS 2's prefix" : "Linux capture cleanup: " + problem);
+            });
+        }
+    }
+
+    static readonly TimeSpan GameExitPoll = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan GameExitWait = TimeSpan.FromHours(12);
+
+    // True once the game is closed; false when it is still running after the bound.
+    public static async Task<bool> WaitForGameExit(TimeSpan poll, TimeSpan bound)
+    {
+        var deadline = DateTime.UtcNow + bound;
+        while (IsGameRunning())
+        {
+            if (DateTime.UtcNow >= deadline) return false;
+            await Task.Delay(poll);
+        }
+        return true;
     }
 
     // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
@@ -146,12 +330,26 @@ public static class InventorySync
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Trace.WriteLine("sync note lost: " + error.Message); }
     }
 
+    // The normal game's %APPDATA%. Windows uses this process's profile. Native Linux must use the game's Proton prefix:
+    // the launcher's own ApplicationData is ~/.config, not drive_c/users/steamuser/AppData/Roaming.
+    static string GameAppData()
+    {
+        if (OperatingSystem.IsLinux() && !LinuxNetworkBlock.UnderWine)
+            try
+            {
+                if (LinuxCapture.FindPrefix() is { } prefix)
+                    return Path.Combine(LinuxCapture.WinePrefix(prefix), "drive_c", "users", "steamuser", "AppData", "Roaming");
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    }
+
     // Copies Easy Anti-Cheat's launcher logs written since the sync started (under %APPDATA%\EasyAntiCheat, one per game
     // deployment) into the sync folder as eac-<deployment>.log, and says whether the game wrote a crash report. Returns
     // what it found, for launcher.log.
     public static IReadOnlyList<string> CollectGameLogs(string syncDir, DateTime sinceUtc, string? appData = null)
     {
-        appData ??= Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        appData ??= GameAppData();
         var found = new List<string>();
         var eac = Path.Combine(appData, "EasyAntiCheat");
         var logs = Directory.Exists(eac) ? Directory.EnumerateFiles(eac, "anticheatlauncher.log", SearchOption.AllDirectories) : [];
@@ -188,7 +386,8 @@ public static class InventorySync
     {
         if (ReadInventory(Path.Combine(syncDir, InventoryFile), out var items) is { } inventoryProblem) return inventoryProblem;
         if (ReadProgression(Path.Combine(syncDir, ProgressionFile), out var experience) is { } progressionProblem) return progressionProblem;
-        if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir)) == null) return "The capture is not sealed for this PC. Sync again.";
+        if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir), out var sealProblem) == null)
+            return sealProblem ?? "The capture is not sealed for this PC. Sync again.";
         // A capture without progression is a failed sync: the last complete snapshot keeps the level and unlocks it imported.
         if (!File.Exists(Path.Combine(syncDir, ProgressionFile)) && ReadMetadata(snapshotDir) is { Progression: true } kept)
             return "The capture got your inventory but not your progression, and the snapshot from " +

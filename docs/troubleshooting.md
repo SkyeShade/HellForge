@@ -50,6 +50,9 @@ Setup found no Steam installation. Install Steam and HELLDIVERS 2, then start se
 Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is not code-signed; choose More info > Run
 anyway.
 
+On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
+[linux.md](linux.md#setting-it-up).
+
 ### Setup cannot find the supported build
 
 Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, setup finds the
@@ -67,7 +70,7 @@ build through Steam, with one `download_depot 553850 <depot> <manifest>` command
    command, one at a time.
 3. Watch the wizard's progress bar: Steam shows no progress in its library for this download. Steam puts it in
    `<Steam>/steamapps/content/app_553850/` (about 24 GB). On Linux the bar stays empty, and setup reads the download
-   only once `hellforge-linux.sh` has moved it into the prefix: see
+   directly from Steam's content folder; do not move it into the prefix: see
    [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.
@@ -141,7 +144,8 @@ Windows Firewall does not need to be on.
 
 Antivirus programs sometimes flag or quarantine HellForge's files. That is a false positive. Add an exclusion for the
 HellForge installation folder in your antivirus, then restore anything it quarantined. Running `HellForge-Setup.exe`
-again over the installation puts the app back and keeps your game copy, profiles and settings.
+again over the installation puts the app back and keeps your game copy, profiles and settings. On Linux, run the
+graphical installer again over the same prefix instead; see [linux.md](linux.md#updating).
 
 Cases HellForge already recognises:
 
@@ -177,7 +181,11 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
-| "The session runner exited before starting." | The launcher points to `logs\session-runner.log`, which says why. |
+| "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
+| "HellForge: Steam Linux Runtime: host mode: ..." | Information, not an error: Proton runs on the host for the reason shown (the Proton names no runtime, the runtime is not installed, or `HELLFORGE_STEAM_RUNTIME=off`). To use the runtime, start any game with that Proton once in Steam so Steam installs the runtime it names, and do not set `HELLFORGE_STEAM_RUNTIME=off`. See [linux.md](linux.md#proton-in-the-steam-linux-runtime). |
+| "the Linux sandbox self-test was run in host mode, but this session uses the Steam Linux Runtime container" (or the reverse), or "... belongs to another Steam Linux Runtime" | The sandbox self-test must run in the mode the session uses, and again after Steam updates the runtime. Run Setup again (it runs the self-test), or start the session again: the wrapper refreshes the record. |
+| "the Linux sandbox self-test could not identify the Steam Linux Runtime (VERSIONS.txt is missing or unreadable)" | The runtime's folder is damaged. In Steam, find the runtime under Library > Tools (for example Steam Linux Runtime 4.0), use Properties > Installed Files > Verify integrity, then run Setup again. |
+| "HellForge was started inside the Flatpak application ...", "... the Snap ..." or "... Steam's runtime container ..." | Start HellForge on the host: from its own shortcut, or `app/launcher-linux/HellForge.Launcher`. For Steam's runtime container, untick **Force the use of a specific Steam Play compatibility tool** in the Steam entry's Properties > Compatibility. See [linux.md](linux.md#started-from-inside-a-container). |
 | "Mod left out of this session: ..." (in the Console) | The session still runs without that mod. The Mods page shows why on the mod's row ([using mods](mods.md)). |
 | "HellForge's file ... could not be held read-only for the session ..." | Another program has that file of the installation's `app` folder open for writing. Close it (or restart the PC), then press PLAY. |
 | "Mod file ... could not be held read-only for the session ..." | Another program (an editor, an archive tool) has that file in `mods` open for writing. Close it, then press PLAY. |
@@ -187,6 +195,34 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 | "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
 | "Cleanup failed." | Check the session logs before playing again. |
+
+On Linux, **Sync Inventory** can stop before the game opens with these messages. `logs/sync-*/launcher.log` now holds
+`reg.exe`'s stdout and stderr separately, with Proton's OpenXR-Loader/xrizer/fsync/pfx-upgrade lines marked
+`[known Proton noise]`:
+
+| Message | What it means |
+|---|---|
+| "A Windows program is still running in HELLDIVERS 2's Proton prefix (...)" or "Cannot tell whether ..." | Steam's game or a tool still has that prefix's wineserver open, and the capture will not change the prefix under it. Close the game and any Steam tool using that prefix, then sync again. |
+| "Wine reg import could not add the capture CA to HELLDIVERS 2's prefix (exit ..., see launcher.log)" | The import itself failed. Both streams are in `launcher.log`; `reg query` output is not used as proof. |
+| "Wine could not confirm the capture CA ...: Wine reg export did not confirm the capture CA (exit ...): ...; system.reg holds the expected Blob" | The import exited 0 and `system.reg` has the key, but `reg export` produced no readable export file or Blob. That is the added check; send `launcher.log`. |
+| "Wine could not confirm the capture CA ...: reg export holds the expected Blob; the key is not in system.reg: the import did not land" | The export file has the Blob but the prefix's `system.reg` does not. The import did not reach the store. |
+| "Wine could not confirm the capture CA ...: ... the export file's Blob does not match the certificate ..." | The export succeeded but its Blob differs from the one written. Close Steam's game/tools in that prefix, then sync again; send `launcher.log`. |
+| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam actually uses, then sync again. |
+| "The prefix version changed from ... to ... during the import" | Evidence that a Proton upgraded the prefix while the CA was being imported. If the sync failed, close Steam's game/tools in that prefix and sync again. |
+| "Wine reg import could not remove the capture CA (exit ..., see launcher.log)", "The capture CA removal is not proven: reg export ...", or "Wine reg export did not find the capture CA key, but the key is in system.reg after the flush; the key is not proven gone." | Cleanup kept the `capture-ca.json` record so the next launcher start retries. Empty `reg export` output alone is never "removed"; close the game/tools in that prefix, then use **Clean up** again. |
+| "The Proton that opens HELLDIVERS 2's prefix could not be resolved..." | HellForge looked for Steam's `CompatToolMapping` for 553850 or its `0` default, then the prefix's `compatdata/553850/config_info` and `version`. Start HELLDIVERS 2 once through Steam: running it writes `config_info`, and the next sync can follow it. |
+| "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
+| "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
+| "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
+| "The helper installer finished, but the installed copies still do not match..." | The install ran but the helper/relay hashes still differ. The message includes the terminal installer command; run it, then sync again. |
+
+On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
+Steam's runtime container. The launcher shows the reason the wrapper wrote, and setup's "Check the Linux sandbox" row
+records it as the reason the sandbox stays off, so Settings > Sandbox shows it too. See
+[linux.md](linux.md#started-from-inside-a-container).
+
+On Linux, a message ending in "reinstall HellForge" means running the graphical installer again over the same prefix;
+see [linux.md](linux.md#updating).
 
 ### The game could not be prepared or connected
 

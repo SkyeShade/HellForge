@@ -332,7 +332,7 @@ static const char* RaiseClusterCounts(uintptr_t game)
     for (int i = 0; i < 2; i++)
     {
         uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-        int32_t to = (int32_t)((uintptr_t)(counts + 0x40 * i) - (game + kClusterCountSites[i].site + 5)); memcpy(jump + 1, &to, 4);
+        int32_t to = DifficultyJumpRel(game + kClusterCountSites[i].site, (uintptr_t)(counts + 0x40 * i)); memcpy(jump + 1, &to, 4);
         if (ApiWrite(game + kClusterCountSites[i].site, jump, kClusterCountSites[i].length)) return "the location clusters' count could not be raised";
     }
     return NULL;

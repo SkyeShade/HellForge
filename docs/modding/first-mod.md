@@ -82,8 +82,9 @@ and `"dll"` to anything; if you rename the source file, change it in `CMakeLists
 
 ## 3. Install the mod tools
 
-Code mods are compiled by Zig. HellForge fetches it once into `<installation>\tools`: about 90 MB from ziglang.org,
-pinned to one version and checked against its checksum. Nothing is installed system-wide.
+Code mods are compiled by Zig. HellForge fetches it once into `<installation>\tools`: about 90 MB on Windows, or the
+pinned native Linux Zig (about 55 MB, a `.tar.xz`) on Linux, from ziglang.org, pinned to one version and checked
+against its checksum. Nothing is installed system-wide.
 
 1. On the Mods page, a MOD TOOLS card shows above the mod list while a mod with sources waits for the compiler.
 2. Press **Install mod tools**. The card shows each step, and the CONSOLE page says `Mod tools installed in ...` when it

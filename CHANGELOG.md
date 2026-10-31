@@ -10,6 +10,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- **Experimental native Linux launcher and setup.** The launcher runs natively while the game stays under Proton in
+  HellForge's offline network namespace. Setup confirms Steam ownership before copying the game and fetching the
+  mod tools; Settings can remove the HellForge installation and its desktop shortcut without deleting the
+  Proton prefix (#90).
+
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.

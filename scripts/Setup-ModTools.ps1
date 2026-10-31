@@ -30,8 +30,10 @@ function Install-Archive([string]$Archive,[string]$Destination){
     [IO.File]::WriteAllText($marker,$sha)
 }
 
-# The pins are shared with HellForge.Cli mod-tools (installations): native/mod-sdk/tools.json.
+# The pins are shared with HellForge.Cli mod-tools (installations): native/mod-sdk/tools.json. This Windows setup keeps
+# the Windows-host tools; zig-linux is for a Linux host (HellForge.Cli mod-tools there).
 $pins=@((Get-Content -LiteralPath (Join-Path $project 'native/mod-sdk/tools.json') -Raw|ConvertFrom-Json).tools|
+    Where-Object {$_.platform -eq 'windows-x64'}|
     ForEach-Object {@{name=$_.name;url=$_.url;sha=$_.sha256;exe=$_.exe}})
 foreach($tool in $pins){
     $destination=Join-Path $tools $tool.name

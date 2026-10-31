@@ -22,8 +22,12 @@ public static class SteamDepotDownload
     // <Steam>/steamapps/content (GitHub issue 11).
     static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64"];
 
-    static IEnumerable<string> ContentFolders(string steamRoot, SupportedBuild build) =>
-        [ContentFolder(steamRoot, build), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps", "content", "app_" + build.AppId))];
+    // Steam's steamapps folders: its own and the ones under the client folders its download_depot runs from.
+    public static IReadOnlyList<string> SteamAppsFolders(string steamRoot) =>
+        [Path.Combine(steamRoot, "steamapps"), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps"))];
+
+    public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
+        [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
 
     // The depot's folder: the first place Steam put it, else the usual one (while nothing is there yet).
     public static string DepotFolder(string steamRoot, SupportedBuild build, uint depot) =>
@@ -55,17 +59,59 @@ public static class SteamDepotDownload
 
     public static bool IsComplete(string steamRoot, SupportedBuild build) => Status(steamRoot, build).All(depot => depot.Complete);
 
-    // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it).
-    public static void Delete(string steamRoot, SupportedBuild build)
+    // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it). With
+    // callbacks, a failed path is reported and the rest are still attempted; without one, a failure is thrown as before.
+    // On Linux a depot folder that is a link is refused, never followed or removed; links inside a depot folder are
+    // removed with it, because Directory.Delete(recursive: true) unlinks them without following them.
+    public static void Delete(string steamRoot, SupportedBuild build, Action<string, Exception>? failed = null,
+        Action<string>? removed = null)
     {
+        if (OperatingSystem.IsLinux()) steamRoot = LocalInstall.ResolveLinks(steamRoot);
         foreach (var app in ContentFolders(steamRoot, build))
         {
             foreach (var depot in build.Depots)
-            {
-                var folder = Path.Combine(app, "depot_" + depot.Id);
-                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
-            }
-            if (Directory.Exists(app) && !Directory.EnumerateFileSystemEntries(app).Any()) Directory.Delete(app);
+                DeleteFolder(steamRoot, Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteEmptyApp(steamRoot, app, failed, removed);
         }
+    }
+
+    static void DeleteFolder(string steamRoot, string folder, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(folder)) return;
+        try
+        {
+            RefuseLinks(folder, steamRoot);
+            Directory.Delete(folder, recursive: true);
+            removed?.Invoke(folder);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(folder, error);
+        }
+    }
+
+    static void DeleteEmptyApp(string steamRoot, string app, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(app)) return;
+        try
+        {
+            RefuseLinks(app, steamRoot);
+            if (Directory.EnumerateFileSystemEntries(app).Any()) return;
+            Directory.Delete(app);
+            removed?.Invoke(app);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(app, error);
+        }
+    }
+
+    // Linux uninstall refuses links inside Steam so a depot download can never lead outside Steam's folders; a link above
+    // Steam's folder (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
+    static void RefuseLinks(string path, string steamRoot)
+    {
+        if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path, steamRoot);
     }
 }

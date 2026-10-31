@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -21,7 +22,8 @@ public sealed class Privacy
     static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".log", ".txt", ".json", ".jsonl", ".tsv", ".csv", ".ini", ".config", ".xml", ".md" };
 
-    static readonly Lazy<Privacy> current = new(() => new Privacy(CurrentProfile(), CurrentComputerNames(), CurrentUnixHome()));
+    static readonly Lazy<Privacy> current = new(() => new Privacy(CurrentProfile(), CurrentComputerNames(), CurrentUnixHome(),
+        OperatingSystem.IsLinux() ? RuntimeInformation.OSDescription : null));
 
     public static Privacy Current => current.Value;
 
@@ -30,11 +32,15 @@ public sealed class Privacy
     public static string ScrubJson(JsonNode node) => Current.ApplyJson(node);
 
     readonly Regex? pattern;
+    readonly string? operatingSystem;
 
     // profile: the Windows user folder; computerNames: the names this PC goes by (NetBIOS, DNS); unixHome: the Linux
-    // home folder a Wine/Proton session sees (HOME). Names shorter than 3 characters are not replaced (too common).
-    public Privacy(string? profile, IEnumerable<string?> computerNames, string? unixHome = null)
+    // home folder a Wine/Proton session sees (HOME); operatingSystem: this PC's OS name, which stays readable even when a
+    // computer name is one of its words (Fedora's default hostname is "fedora"). Names shorter than 3 characters are not
+    // replaced (too common).
+    public Privacy(string? profile, IEnumerable<string?> computerNames, string? unixHome = null, string? operatingSystem = null)
     {
+        this.operatingSystem = string.IsNullOrWhiteSpace(operatingSystem) ? null : operatingSystem;
         var parts = new List<string>();
         if (FolderPattern(profile) is { } user) parts.Add("(?<profile>" + user + ")");
         if (unixHome != null && unixHome.StartsWith('/') && FolderPattern(unixHome) is { } home) parts.Add("(?<home>" + home + ")");
@@ -59,7 +65,22 @@ public sealed class Privacy
     public string Apply(string? text)
     {
         if (string.IsNullOrEmpty(text) || pattern == null) return text ?? "";
-        return pattern.Replace(text, m => m.Groups["profile"].Success ? ProfileMark : m.Groups["home"].Success ? HomeMark : ComputerMark);
+        return pattern.Replace(text, m => m.Groups["profile"].Success ? ProfileMark
+            : m.Groups["home"].Success ? HomeMark
+            : m.Groups["pc"].Success && InOperatingSystem(text, m) ? m.Value
+            : ComputerMark);
+    }
+
+    // The OS name is public and often contains the PC's name (Fedora's default hostname is "fedora"): a computer-name
+    // match inside it is left as it is. Everywhere else the name is still replaced.
+    bool InOperatingSystem(string text, Match match)
+    {
+        var system = operatingSystem;
+        if (system == null) return false;
+        for (var at = text.IndexOf(system, StringComparison.OrdinalIgnoreCase); at >= 0;
+             at = text.IndexOf(system, at + 1, StringComparison.OrdinalIgnoreCase))
+            if (match.Index >= at && match.Index + match.Length <= at + system.Length) return true;
+        return false;
     }
 
     // JSON as text with every string scrubbed. Non-ASCII stays unescaped, so a user folder with an accented name is found.

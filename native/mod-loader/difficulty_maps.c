@@ -585,7 +585,7 @@ static const char* InstallSpreadGuard(DifficultyInstall* d)
     DWORD spreadProtect;
     VirtualProtect(spread, 0x100, PAGE_EXECUTE_READ, &spreadProtect);
     uint8_t spreadJump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
-    rel = (int32_t)((uintptr_t)spread - (game + DIF_SPREAD_REFERENCE + 5)); memcpy(spreadJump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_SPREAD_REFERENCE, (uintptr_t)spread); memcpy(spreadJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_SPREAD_REFERENCE, spreadJump, 10)) return "the location spreading could not be guarded";
     return NULL;
 }
@@ -601,7 +601,7 @@ static const char* InstallHashInsertGuard(DifficultyInstall* d)
     DWORD insertProtect;
     VirtualProtect(insertEnd, 0x1000, PAGE_EXECUTE_READ, &insertProtect);
     uint8_t insertJump[12] = {0xE9, 0, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
-    int32_t rel = (int32_t)((uintptr_t)insertEnd - (game + DIF_HASH_INSERT_END + 5)); memcpy(insertJump + 1, &rel, 4);
+    int32_t rel = DifficultyJumpRel(game + DIF_HASH_INSERT_END, (uintptr_t)insertEnd); memcpy(insertJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_HASH_INSERT_END, insertJump, 12)) return "the game's hash insert could not be guarded";
     return NULL;
 }
@@ -617,7 +617,7 @@ static const char* JumpToMapStubs(DifficultyInstall* d)
     for (size_t i = 0; i < 6; i++)
     {
         uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-        int32_t rel = (int32_t)((uintptr_t)mapSites[i].stub - (game + mapSites[i].rva + 5));
+        int32_t rel = DifficultyJumpRel(game + mapSites[i].rva, (uintptr_t)mapSites[i].stub);
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + mapSites[i].rva, jump, mapSites[i].length)) return "the map generator could not be given the larger map";
     }
@@ -639,14 +639,14 @@ static const char* MoveZoneTable(DifficultyInstall* d)
     uint8_t clear[21], height[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90}, load = 0x8B;
     memset(clear, 0x90, sizeof clear);
     clear[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)d->zoneStubs - (game + DIF_ZONE_CLEAR + 5)); memcpy(clear + 1, &rel, 4);
-    rel = (int32_t)((uintptr_t)(d->zoneStubs + 0xC0) - (game + DIF_ZONE_HEIGHT + 5)); memcpy(height + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_ZONE_CLEAR, (uintptr_t)d->zoneStubs); memcpy(clear + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_ZONE_HEIGHT, (uintptr_t)(d->zoneStubs + 0xC0)); memcpy(height + 1, &rel, 4);
     if (ApiWrite(game + DIF_ZONE_CLEAR, clear, sizeof clear) || ApiWrite(game + DIF_ZONE_TABLE_LEA + 1, &load, 1) ||
         ApiWrite(game + DIF_ZONE_HEIGHT, height, sizeof height))
         return "the height zones' table could not be moved";
     memset(jump, 0x90, sizeof jump);
     jump[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)d->convoyStub - (game + DIF_CONVOY_SITE + 5));
+    rel = DifficultyJumpRel(game + DIF_CONVOY_SITE, (uintptr_t)d->convoyStub);
     memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_CONVOY_SITE, jump, 12)) return "the preview's convoy route could not be limited";
     for (int i = 0; i < 7; i++)
@@ -671,7 +671,7 @@ static const char* InstallFootprintWatch(DifficultyInstall* d)
     DWORD footprintProtect;
     VirtualProtect(footprints, 0x100, PAGE_EXECUTE_READ, &footprintProtect);
     uint8_t check[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-    rel = (int32_t)((uintptr_t)footprints - (game + DIF_FOOTPRINT_CHECK + 5)); memcpy(check + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_FOOTPRINT_CHECK, (uintptr_t)footprints); memcpy(check + 1, &rel, 4);
     if (ApiWrite(game + DIF_FOOTPRINT_CHECK, check, 9)) return "the city generator's check could not be watched";
     return NULL;
 }
@@ -717,9 +717,9 @@ static const char* InstallNavGrid(DifficultyInstall* d)
     uint8_t navJump[15];
     memset(navJump, 0x90, sizeof navJump);
     navJump[0] = 0xE9;
-    int32_t rel = (int32_t)((uintptr_t)nav - (game + DIF_NAV_SITE + 5)); memcpy(navJump + 1, &rel, 4);
+    int32_t rel = DifficultyJumpRel(game + DIF_NAV_SITE, (uintptr_t)nav); memcpy(navJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_NAV_SITE, navJump, 15)) return "the navigation grid could not be widened";
-    rel = (int32_t)((uintptr_t)(nav + 0x100) - (game + DIF_NAV_SHIP_SITE + 5)); memcpy(navJump + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + DIF_NAV_SHIP_SITE, (uintptr_t)(nav + 0x100)); memcpy(navJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_NAV_SHIP_SITE, navJump, 10)) return "the navigation grid could not be restored for the ship";
     return NULL;
 }

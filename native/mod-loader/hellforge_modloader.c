@@ -127,6 +127,33 @@ static void Note(const char* format, ...)
     va_end(arguments);
 }
 
+/* The engine's own log option (--log-to-file on the game's command line, PlaySession.LaunchGame). The difficulty
+ * diagnostics below are written only with it, so a session without the engine log behaves as it did. */
+static int DiagnosticLog(void)
+{
+    static int on = -1;
+    if (on < 0)
+    {
+        const wchar_t* command = GetCommandLineW();
+        on = g_log != INVALID_HANDLE_VALUE && command != NULL && wcsstr(command, L"--log-to-file") != NULL;
+    }
+    return on;
+}
+
+/* A diagnostic line: the existing log path (WriteLog), only with the engine log on. */
+static void NoteDiagnostic(const char* format, ...)
+{
+    if (!DiagnosticLog()) return;
+    va_list arguments;
+    va_start(arguments, format);
+    WriteLog(g_log, "", format, arguments);
+    va_end(arguments);
+}
+
+/* ---- patch sites (the difficulty diagnostics) ------------------------------------------------------------------- */
+
+#include "patch_registry.c" /* B.2: the writes the difficulty install makes, for the site audit */
+
 static HANDLE OpenLog(const wchar_t* name)
 {
     wchar_t path[MAX_PATH];
@@ -203,6 +230,7 @@ static int ApiWrite(uintptr_t address, const void* data, size_t size)
     VirtualProtect((void*)address, size, previous, &previous);
     FlushInstructionCache(GetCurrentProcess(), (void*)address, size);
     NoteRewrite(address, size);
+    RecordPatch(address, data, size);
     return 0;
 }
 
@@ -234,6 +262,8 @@ static uintptr_t ApiModuleBase(const char* module, size_t* size)
     }
     return (uintptr_t)handle;
 }
+
+#include "patch_audit.c" /* B.2: the difficulty install's recorded sites and their byte audit */
 
 static int Hex(char c)
 {
@@ -743,7 +773,7 @@ static void WatchDifficulty(void)
     static ULONGLONG difficultySeen;
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     if (game == 0) return;
-    if (difficultySeen == 0) difficultySeen = GetTickCount64();
+    if (difficultySeen == 0) { difficultySeen = GetTickCount64(); g_difficultySeen = difficultySeen; }
     if (g_game == 0) g_game = game;
     InstallDifficulty(game, GetTickCount64() - difficultySeen >= 20000);
 }
@@ -852,8 +882,10 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
     if (g_difficultyState == 1) DifficultyWatch();
+    FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
+    AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }
 

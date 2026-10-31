@@ -76,6 +76,33 @@ static class CosmeticPacksTests
             check(loaded.Count == 0 && problems.Single().Contains("Pistol includes a folder outside the pack"), "Refused: " + string.Join(" | ", problems));
         });
 
+        test("Cosmetic packs: folders named as Windows matches them (other case, a trailing dot) load; a missing one is named as written", () =>
+        {
+            // Packs from Nexus mods 11057 and 5466: "Reticle (55)/RL-77/PGO-7V3." is stored without its dot, and a folder's
+            // case differs from the manifest's. Windows opens both; native Linux refused them.
+            var mods = Directory.CreateDirectory(Path.Combine(root, "windows-names-mods")).FullName;
+            var folder = Pack(mods, "scopes", "33333333-2222-3333-4444-555555555555");
+            var manifest = Path.Combine(folder, CosmeticPacks.ManifestName);
+            Directory.Move(Path.Combine(folder, "Pistol"), Path.Combine(folder, "PGO-7V3"));
+            Directory.Move(Path.Combine(folder, "Rifle A"), Path.Combine(folder, "rifle a"));
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["Pistol"]""", """["PGO-7V3."]""")
+                .Replace(""".jpgs/icon.png""", """.JPGS/Icon.PNG"""));
+            var (loaded, problems) = ModCatalog.Load(mods);
+            var pack = loaded.SingleOrDefault();
+            // Windows opens the manifest's own spelling, so only Linux is given the name as stored.
+            check(problems.Count == 0 && pack != null && pack.PackFolders.Count == 2 && pack.PackFolders.All(Directory.Exists) &&
+                (!OperatingSystem.IsLinux() || pack.PackFolders.SequenceEqual([Path.Combine(folder, "rifle a"), Path.Combine(folder, "PGO-7V3")])),
+                "Loads, staging the folders as stored: " + string.Join(" | ", problems) + " " + string.Join(", ", pack?.PackFolders ?? []));
+            check(pack?.Icon is { } icon && File.Exists(icon) && (!OperatingSystem.IsLinux() || icon == Path.Combine(folder, ".jpgs", "icon.png")),
+                "The icon is found whatever its case: " + pack?.Icon);
+            check(pack != null && pack.PackFolders.Sum(f => CosmeticPacks.PatchFiles(f).Count()) == 6, "Each folder's patches are found.");
+
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["PGO-7V3."]""", """["Reticle (55)/RL-77"]"""));
+            (loaded, problems) = ModCatalog.Load(mods);
+            check(loaded.Count == 0 && problems.Single().Contains($"an option includes {Path.Combine("Reticle (55)", "RL-77")}, which the pack does not have"),
+                "A folder no name matches is still refused, named as the manifest names it: " + string.Join(" | ", problems));
+        });
+
         test("The Mods page's order: gameplay then cosmetic, saved, new mods on top; sessions load it bottom first", () =>
         {
             var mods = Directory.CreateDirectory(Path.Combine(root, "order-mods")).FullName;
@@ -197,8 +224,14 @@ static class CosmeticPacksTests
                 "Loaded from the zip: " + string.Join(" | ", loadProblems));
         });
 
-        test("A .7z (Windows' tar writes it) is unpacked and added as a folder: a pack with its files at the root, a mod in a folder", () =>
+        test("A .7z (the system's tar writes it) is unpacked and added as a folder: a pack with its files at the root, a mod in a folder", () =>
         {
+            if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) ||
+                (OperatingSystem.IsLinux() && !File.Exists("/usr/bin/bsdtar")))
+            {
+                Console.WriteLine("  (skipped: no libarchive tar)");
+                return;
+            }
             var install = new InstallLayout(Path.Combine(root, "pack-7z-install"));
             install.Create("25480438");
             Directory.CreateDirectory(install.Mods);
@@ -209,7 +242,7 @@ static class CosmeticPacksTests
             File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(mod, "data")).FullName, "9ba626afa44a3aa3.patch_0"), "mod");
             static void SevenZip(string from, string what, string archive)
             {
-                var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+                var tar = OperatingSystem.IsLinux() ? "bsdtar" : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
                 using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tar) { ArgumentList = { "--format", "7zip", "-cf", archive, "-C", from, what }, UseShellExecute = false, CreateNoWindow = true })!;
                 process.WaitForExit();
                 if (process.ExitCode != 0) throw new InvalidOperationException("tar could not write " + archive);

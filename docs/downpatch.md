@@ -36,7 +36,9 @@ The list only tells setup which pack to try; the pack itself is checked:
 - The pack must match its SHA-256.
 - Its manifest must name exactly the supported build's files, and every file it writes must have that file's size and
   Steam SHA-1 from `supported-build.json`.
-- The patch tool (`hpatchz` from HDiffPatch 5.1.3) is pinned by hash.
+- The patch tool (`hpatchz` from HDiffPatch 5.1.3) is pinned by hash. On Linux setup fetches and runs the native Linux
+  `hpatchz`; if it cannot be fetched and checked, the selected Proton runs the pinned Windows `hpatchz.exe` instead,
+  through Wine's `start /wait /b` so no patch console window opens.
 
 A file that does not come out with its hash is never kept. If the patch fails for any reason (its download, a changed
 Steam file, the pack itself), setup keeps the files it already wrote correctly and switches to the Steam console download

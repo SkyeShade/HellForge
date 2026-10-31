@@ -123,13 +123,39 @@ public static partial class CosmeticPacks
     static string? Text(JsonElement e, string name) =>
         e.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
-    // A path the manifest names, inside the pack, or null.
+    // A path the manifest names, inside the pack, or null. Packs are made on Windows, where a name matches whatever its
+    // case, and a folder written as "PGO-7V3." is stored as "PGO-7V3"; each part is found on disk the same way.
     static string? Inside(string folder, string? relative)
     {
         if (string.IsNullOrWhiteSpace(relative)) return null;
         var path = Path.GetFullPath(Path.Combine(folder, relative.Replace('\\', '/')));
-        return LocalInstall.Within(path, folder) ? path : null;
+        return LocalInstall.Within(path, folder) ? AsOnDisk(Path.GetFullPath(folder), path) : null;
     }
+
+    // path below folder, with each part replaced by the entry Windows would open: the same name, else the one that differs
+    // only in case or in trailing dots and spaces (the first in ordinal order, when several do). The first part with no
+    // such entry, and the rest, stay as written, so a missing folder is still named the way the manifest names it.
+    internal static string AsOnDisk(string folder, string path)
+    {
+        var current = folder;
+        var parts = Path.GetRelativePath(folder, path).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var exact = Path.Combine(current, parts[i]);
+            if (Directory.Exists(exact) || File.Exists(exact)) { current = exact; continue; }
+            var wanted = WindowsName(parts[i]);
+            var match = Directory.Exists(current)
+                ? Directory.EnumerateFileSystemEntries(current).Select(Path.GetFileName).OfType<string>()
+                    .Where(name => string.Equals(WindowsName(name), wanted, StringComparison.OrdinalIgnoreCase))
+                    .Order(StringComparer.Ordinal).FirstOrDefault()
+                : null;
+            if (match == null) return Path.Combine([current, .. parts[i..]]);
+            current = Path.Combine(current, match);
+        }
+        return current;
+    }
+
+    static string WindowsName(string name) => name.TrimEnd('.', ' ');
 
     static string Slug(string name)
     {

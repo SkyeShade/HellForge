@@ -20,7 +20,12 @@ public sealed record DownpatchProgress(Action<long, long>? Download = null, Acti
 // the downloaded pack at PackPath, which Pack lists, into Build, with the patch tool (Hpatchz); Http fetches
 // DownloadOverrides' files (null: none can be).
 public sealed record DownpatchJob(string SteamGame, string GameDestination, string PackPath, DownpatchPack Pack, SupportedBuild Build,
-    string Hpatchz, HttpClient? Http);
+    string Hpatchz, HttpClient? Http)
+{
+    // Linux runs the native hpatchz directly. When it cannot be fetched, the selected Proton runs hpatchz.exe instead;
+    // this is null on Windows and for the native tool.
+    public string? Proton { get; init; }
+}
 
 // Patches HELLDIVERS 2 as Steam has it into the supported build. Packs are listed in downpatch/index.json on
 // files.hf-mod.com (scripts/New-DownpatchPack.ps1 builds one for each new Steam build), so a game update needs a new pack,
@@ -122,10 +127,10 @@ public static partial class Downpatcher
         DownpatchProgress? progress = null,
         CancellationToken cancellation = default)
     {
-        steamGame = LocalInstall.FullPath(steamGame);
-        gameDestination = LocalInstall.FullPath(gameDestination);
-        LocalInstall.NoLinks(steamGame);
-        LocalInstall.NoLinks(gameDestination);
+        // Steam's game and the copy being patched are protected: links above them are resolved, a link at or inside
+        // either would read or write through it.
+        steamGame = LocalInstall.NoLinks(steamGame, steamGame);
+        gameDestination = LocalInstall.NoLinks(gameDestination, gameDestination);
         Directory.CreateDirectory(gameDestination);
         Directory.CreateDirectory(tempFolder);
         // before the download: room for the pack and every game file not yet in place (ApplyPack checks again with the
@@ -135,9 +140,58 @@ public static partial class Downpatcher
         DiskSpace.Require((gameDestination, build.Files.Where(f => !GameCopier.Present(Path.Combine(gameDestination, f.Path), f)).Sum(f => f.Size)),
             (tempFolder, packThere.Exists && packThere.Length == pack.Size ? 0 : pack.Size));
 
-        var hpatchz = await EnsureHpatchz(tempFolder, http, cancellation);
+        var (hpatchz, native) = await EnsurePatchTool(tempFolder, http, cancellation);
         var packPath = await DownloadPack(tempFolder, pack, http, progress?.Download, cancellation);
-        ApplyPack(new(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http), progress?.Apply, cancellation);
+        var job = new DownpatchJob(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http);
+        if (!native && OperatingSystem.IsLinux())
+            job = job with { Proton = LinuxProton(gameDestination) ?? throw new InvalidDataException(
+                "The native Linux patch tool could not be fetched, and the Proton needed to run the Windows fallback was not found.") };
+        ApplyPack(job, progress?.Apply, cancellation);
+    }
+
+    // The Proton that runs the Windows hpatchz fallback when setup's launcher is native (Linux): the installation's setup
+    // choice, else Steam's default. Null on Windows, where hpatchz starts directly.
+    static string? LinuxProton(string gameDestination)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        var root = Path.GetDirectoryName(Path.GetFullPath(gameDestination));
+        return root == null ? null : SteamLocator.SelectedProtonScript(new InstallLayout(root)) ?? SteamLocator.ProtonScript();
+    }
+
+    // Prefer the pinned native Linux tool. If its pin is still a placeholder, its download fails, or its archive is not
+    // intact, say why and use the pinned Windows tool through Proton; a failed native attempt never leaves a file that is
+    // later run without the archive checksum and marker.
+    static async Task<(string Path, bool Native)> EnsurePatchTool(string tempFolder, HttpClient http, CancellationToken cancellation)
+    {
+        if (!OperatingSystem.IsLinux()) return (await EnsureHpatchz(tempFolder, http, cancellation), false);
+        try { return (await EnsureNativeHpatchz(tempFolder, http, cancellation), true); }
+        catch (Exception error) when (CanFallBack(error, cancellation))
+        {
+            Console.Error.WriteLine($"The native Linux hpatchz is unavailable ({error.Message}); using the Windows tool through Proton instead.");
+            return (await EnsureHpatchz(tempFolder, http, cancellation), false);
+        }
+    }
+
+    static bool CanFallBack(Exception error, CancellationToken cancellation) =>
+        error is HttpRequestException or InvalidDataException or JsonException or IOException or UnauthorizedAccessException or
+            KeyNotFoundException or InvalidOperationException or FormatException or NotSupportedException or
+            System.ComponentModel.Win32Exception ||
+        error is OperationCanceledException && !cancellation.IsCancellationRequested;
+
+    // The installation's app/sdk/tools.json pin, installed and verified by the same code as the mod tools. The tool stays
+    // in <installation>/tools/hpatchz-linux so later patch runs reuse it.
+    static async Task<string> EnsureNativeHpatchz(string tempFolder, HttpClient http, CancellationToken cancellation)
+    {
+        var install = InstallLayout.Find(tempFolder) ?? throw new InvalidDataException("The build patch is not running in a HellForge installation.");
+        var sdk = ModSdk.Find(install.Root) ?? throw new InvalidDataException("The installation's mod SDK is missing (app/sdk).");
+        var tool = ModKit.Tools(sdk).FirstOrDefault(t => t.Name == "hpatchz-linux")
+            ?? throw new InvalidDataException("tools.json has no hpatchz-linux pin.");
+        if (tool.Version != "5.1.3") throw new InvalidDataException($"The native hpatchz pin is {tool.Version}, not HDiffPatch 5.1.3.");
+        if (!ModKit.HasCompletePin(tool)) throw new InvalidDataException("The native hpatchz release is not pinned yet.");
+        await ModKit.InstallToolAsync(http, sdk, tool, _ => { }, cancellation);
+        var path = ModKit.ToolPath(sdk, tool);
+        if (!File.Exists(path)) throw new InvalidDataException("The native hpatchz is missing after installation.");
+        return path;
     }
 
     static string Sha256(string path)
@@ -250,6 +304,7 @@ public static partial class Downpatcher
             cancellation.ThrowIfCancellationRequested();
             var expected = listed[file.Path];
             var destPath = Destination(job.GameDestination, file);
+            if (OperatingSystem.IsLinux()) destPath = LocalInstall.NoLinks(destPath, job.GameDestination);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
             if (!Matches(destPath, expected)) WriteFile(zip, job, file, expected, destPath, cancellation);
@@ -304,8 +359,12 @@ public static partial class Downpatcher
     {
         var partial = destPath + ".partial";
         var src = Path.Combine(job.SteamGame, file.Path.Replace('/', Path.DirectorySeparatorChar));
-        string FromSteam() => File.Exists(src) ? src
-            : throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+        string FromSteam()
+        {
+            if (!File.Exists(src))
+                throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+            return OperatingSystem.IsLinux() ? LocalInstall.NoLinks(src, job.SteamGame) : src;
+        }
 
         if (DownloadOverrides.TryGetValue(file.Path, out var overrideUrl) && file.Op != "add")
             DownloadOverride(job.Http, file, overrideUrl, partial, cancellation);
@@ -358,8 +417,7 @@ public static partial class Downpatcher
         {
             patchEntry.ExtractToFile(patchTemp, overwrite: true);
             // hpatchz writes progress to its console: not redirected, so a full pipe never stalls it
-            var psi = new ProcessStartInfo(job.Hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
-            using var proc = Process.Start(psi) ?? throw new InvalidOperationException("hpatchz did not start.");
+            using var proc = Process.Start(ToolStart(job, from, patchTemp, partial)) ?? throw new InvalidOperationException("hpatchz did not start.");
             proc.WaitForExit();
             if (proc.ExitCode != 0)
             {
@@ -373,12 +431,43 @@ public static partial class Downpatcher
         }
     }
 
+    // Without Proton, hpatchz starts directly: the native Linux tool, or hpatchz.exe on Windows. The Linux fallback runs
+    // the Windows tool in the installation's prefix. ProtonToolArguments returns the tail after waitforexitandrun; the
+    // one invocation helper adds that verb, the host/container chain and the environment. start.exe uses /wait so this
+    // process gets hpatchz's exit code, and /b so Wine does not allocate a console window.
+    static ProcessStartInfo ToolStart(DownpatchJob job, string from, string patchTemp, string partial)
+    {
+        if (job.Proton == null)
+        {
+            var direct = new ProcessStartInfo(job.Hpatchz) { UseShellExecute = false, CreateNoWindow = true };
+            foreach (var argument in NativeToolArguments(from, patchTemp, partial)) direct.ArgumentList.Add(argument);
+            return direct;
+        }
+        var prefix = WinePath.PrefixFromInstallRoot(job.GameDestination);
+        var steamRoot = SteamLocator.SteamRoot() ?? throw new InvalidDataException("Steam was not found to run the build patch.");
+        var invocation = LinuxProtonInvocation.Create(job.Proton, steamRoot, prefix, "waitforexitandrun",
+            ProtonToolArguments(job.Hpatchz, prefix, from, patchTemp, partial), new(InstallPath: job.GameDestination));
+        return invocation.StartInfo(Path.GetDirectoryName(job.Proton)!);
+    }
+
+    // hpatchz's arguments are the same natively, on Windows and in the Wine fallback.
+    public static IReadOnlyList<string> NativeToolArguments(string from, string patch, string output) => ["-f", from, patch, output];
+
+    // The fallback under Proton. waitforexitandrun is the verb Steam uses for games; it waits for the prefix's wineserver
+    // and returns the program's exit code. start.exe /wait /b then starts hpatchz.exe without a separate Wine console
+    // window; /wait makes start.exe return hpatchz's exit code (24 included). "run" can return as soon as a program starts
+    // (linux/hellforge-linux.sh and hf-inner.sh wait for processes for the same reason), which would leave ApplyPack
+    // reading a partly written file or a wrong exit code.
+    public static IReadOnlyList<string> ProtonToolArguments(string hpatchz, string prefix, string from, string patch, string output) =>
+        ["C:\\windows\\system32\\start.exe", "/wait", "/b", WinePath.ToWinePath(hpatchz, prefix),
+            .. NativeToolArguments(WinePath.ToWinePath(from, prefix), WinePath.ToWinePath(patch, prefix), WinePath.ToWinePath(output, prefix))];
+
     static bool Matches(string path, SupportedFile file) => SupportedBuild.Accepts(path, file);
 
     // hpatchz's failure (HDiffPatch 5.1.3, hpatchz.c THPatchResult): 24 is HPATCH_FILEWRITE_NO_SPACE_ERROR, the drive it
     // wrote `output` to filled up; anything else is Steam's copy or the patch.
     public static Exception PatchFailed(string file, int exitCode, string output) => exitCode == 24
-        ? new NotEnoughSpaceException($"{new DriveInfo(Path.GetPathRoot(Path.GetFullPath(output))!).Name} ran out of space while patching {file} " +
+        ? new NotEnoughSpaceException($"{DiskSpace.ForFolder(output).Name} ran out of space while patching {file} " +
             $"(hpatchz exit code 24).")
         : new InvalidDataException($"Patching {file} failed (hpatchz exit code {exitCode}): validate the game in Steam and start setup again.");
 

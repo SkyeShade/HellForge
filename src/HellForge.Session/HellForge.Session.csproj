@@ -5,7 +5,12 @@
        Published with NativeAOT (scripts/Build-Engine.ps1): one native program, no .NET installation needed. -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <OutputType>Exe</OutputType>
+    <!-- The Windows GUI subsystem, so no console window is made for it. Every caller already starts it without one
+         (Windows: CreateNoWindow) and reads nothing from its console; it writes session.log and result.json. Under
+         Proton a console program gets a visible Wine console window (measured 2026-10-29, on the host and inside the
+         Steam Linux Runtime), and closing that window, which a grouped taskbar "Close" does, ended the session runner
+         before it copied the sandboxed session back. A GUI-subsystem program gets no conhost at all. -->
+    <OutputType>WinExe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishAot>true</PublishAot>
