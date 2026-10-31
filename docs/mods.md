@@ -85,8 +85,13 @@ puts those in the PER PLAYER group ("Only on your PC: friends do not need them, 
 and they do not change the modlist code. A manifest can also force `"coop": "shared"`; one that declares per-player
 but changes the wire (network field types) or numbered resources (a data spec) is refused. The Mods page shows the
 modlist code to compare. With no shared gameplay mods there is nothing to compare, and you can play with friends who
-have none. Bundled HellForge mods count by their manifest's `"coopLevel"` rather than their files, so the same level
-can differ between HellForge releases while a level change splits players.
+have none. A mod whose manifest has a `"coopLevel"` counts by that level rather than its files (bundled HellForge mods
+all have one), so friends on different releases of it play together while a level change splits them.
+
+Players of HellForge 0.3 can join you and you them: their lobbies appear in the Galactic Map and the lobby browser, and
+HellForge speaks their version's protocol. If your mods differ, the MOD SYNC prompt works as with anyone. A lobby with
+one of HellForge's bundled gameplay mods on (Hell Forge's difficulty, Vanilla Plus) is not listed for 0.3 players;
+friends who run the same mod still join it.
 
 When a friend's code is not the host's, the join is refused and both games say why, over the game:
 

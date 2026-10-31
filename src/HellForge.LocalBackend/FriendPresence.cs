@@ -17,7 +17,8 @@ namespace HellForge.LocalBackend;
 // hosts too, after friends: the map asks /lobby/accounts for the hosts of the lobbies its search returned.
 public sealed class FriendPresence
 {
-    public sealed record Friend(ulong SteamId, string Name);
+    // Protocol: the HellForge protocol the friend's backend gives in its Steam presence (null: not known).
+    public sealed record Friend(ulong SteamId, string Name, string? Protocol = null);
     // Listings: the digests (DirectoryData.Digest) of the directory listings the friend's backend says it published, the
     // newest first (the one before stays good while Steam may still hold it).
     sealed record Lobby(string LobbyId, string ConnectionString, JsonObject Body, DateTime Heard, string[] Listings);

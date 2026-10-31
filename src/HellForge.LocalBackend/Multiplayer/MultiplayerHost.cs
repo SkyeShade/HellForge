@@ -159,6 +159,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
             ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
         Sync = sync;
         Lobby.ModsRefused = sync.OfferMods;
+        Lobby.LegacyAdmits = sync.LegacyAdmits;
+        Lobby.JoinAs = sync.JoinAs;
         sync.Expected = Lobby.JoinedRecently;
         // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
         // differences in the corner.
@@ -184,8 +186,9 @@ public sealed class MultiplayerHost : IAsyncDisposable
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
     void StartRejoin(string file, string modDigest)
     {
-        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow);
+        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow, Sync?.Own);
         if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
+        if (target.Legacy) Sync?.Rejoining(target.Host, target.Digest);
         var rejoin = Rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
             (kind, title, lines) =>
             {
@@ -345,6 +348,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (presence == null || transport is not IFriendSource source) return;
         var friends = source.HellForgeFriends;
         presence.SetFriends(friends);
+        // a friend whose presence gives HellForge 0.3's protocol is joined with it (ModSync.JoinAs)
+        foreach (var friend in friends.Where(f => f.Protocol != null))
+            if (friend.Protocol == LobbyService.LegacyProtocol) Sync?.LegacyHost(friend.SteamId, null);
+            else Sync?.NotLegacy(friend.SteamId);
         List<ulong> hello, periodic = [];
         lock (presenceGate)
         {

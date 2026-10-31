@@ -36,7 +36,14 @@ On `dev`, since 0.3.0-beta.
   - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
     Settings > MULTIPLAYER still wins, and "Use default" goes back to it. The first time it applies, the launcher
     shows the stranger warning once.
-  - Players on HellForge versions from before this change can't join you, and you can't join them.
+  - **Players on HellForge 0.3 still play with you.** Their lobbies show on the Galactic Map and in the lobby browser,
+    yours show in theirs, and joins work both ways, MOD SYNC included. A lobby with Hell Forge's difficulty or Vanilla
+    Plus on is not listed for 0.3 players, though 0.3 friends who run the same mod still join it. Versions before 0.3
+    can't join you, and you can't join them.
+  - A mod's author can give it a `"coopLevel"` in its manifest: players whose copies have the same level play together,
+    whatever version of the mod each has, so a fix release no longer splits them.
+  - With more than 50 HellForge lobbies listed (the most Steam returns in one search), lobbies you can join right away,
+    with your mods or after a download, are searched for and shown first.
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the

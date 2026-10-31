@@ -610,8 +610,9 @@ try
     results.Add(new { mode = "lobby-privacy", outcome = "passed" });
     Console.WriteLine("PASS lobby privacy: Public, Friends only and Invite only against friends, strangers and invited players; kicks and no rejoin; invitations; frame limits; the stranger gate's limits and memory");
     await ModSyncTests.Run(root, Check);
+    await ModSyncTests.Legacy(root, Check);
     results.Add(new { mode = "mod-sync", outcome = "passed" });
-    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's only when sandboxed; the live pipe");
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's only when sandboxed; the live pipe; HellForge 0.3 joiners and hosts");
     await RejoinTests.Run(root, Check);
     results.Add(new { mode = "rejoin", outcome = "passed" });
     Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");

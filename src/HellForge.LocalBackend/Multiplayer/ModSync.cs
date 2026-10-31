@@ -52,7 +52,7 @@ public sealed class ModSync : IAsyncDisposable
     readonly IPeerTransport transport;
     readonly string modsFolder;
     readonly ModSet? own;
-    readonly string? ownWire;
+    readonly string? ownWire, legacyWire;
     readonly string runDirectory, evidenceDirectory, sessionFile;
     readonly Func<ulong, string> nameOf;
     readonly Action<string> log;
@@ -72,6 +72,7 @@ public sealed class ModSync : IAsyncDisposable
         modsFolder = paths.ModsFolder;
         this.own = own;
         ownWire = own?.ToJson(local: false).ToJsonString();
+        legacyWire = own?.Legacy()?.ToJson(local: false).ToJsonString();
         runDirectory = paths.RunDirectory;
         evidenceDirectory = paths.EvidenceDirectory;
         sessionFile = paths.SessionFile;
@@ -174,9 +175,12 @@ public sealed class ModSync : IAsyncDisposable
     // A joiner with other gameplay mods is about to be refused (LobbyService.ModsRefused): this session's mod set goes to
     // them first, and they may download it for GrantTime. True when they may (this player shares, and the set is known).
     // A grant still running stays as it is: joining again does not extend it or refill its budget.
-    public bool OfferMods(ulong joiner, string lobbyId)
+    // legacy: the joiner's HellForge is 0.3 (LobbyService.LegacyProtocol): it gets the set it can read (ModSet.Legacy) when
+    // there is one; with a shared bundled mod on there is none, and it sees another HellForge version.
+    public bool OfferMods(ulong joiner, string lobbyId, bool legacy = false)
     {
-        if (ownWire == null) return false;
+        var wire = legacy ? legacyWire ?? ownWire : ownWire;
+        if (wire == null) return false;
         var share = Shares();
         var now = DateTime.UtcNow;
         Grant? grant = null;
@@ -186,7 +190,7 @@ public sealed class ModSync : IAsyncDisposable
                 foreach (var ended in grants.Where(g => g.Value.Until <= now).Select(g => g.Key).ToList()) grants.Remove(ended);
                 if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, GrantBudget);
             }
-        Send(joiner, new Frame("mods.offer").Add(lobbyId).Add(ownWire).Add(share ? "1" : "0"));
+        Send(joiner, new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0"));
         log($"Mod sync: {LobbyService.EntityId(joiner)} lacks this session's mods; " + (grant == null ? "sharing is off."
             : $"they may download them until {grant.Until:HH:mm:ss} UTC ({Megabytes(grant.Left)} left)."));
         return share;
@@ -200,6 +204,85 @@ public sealed class ModSync : IAsyncDisposable
     public string? OwnSetWire => ownWire;
     public string OwnDigest => own?.Digest ?? "none";
     public bool Sharing => Shares();
+    public ModSet? Own => own;
+    // The set as HellForge 0.3 reads it, for its listing and offers (ModSet.Legacy); null when a shared bundled mod is on.
+    public string? LegacySetWire => legacyWire;
+
+    // Whether any HellForge player could join after a download, without trust or installing by hand: this player shares,
+    // and every shared mod is content or verified (the directory's hf.open, a search's second pass).
+    public bool Open => own != null && Shares() && own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled)
+        .All(m => !ModSets.NeedsVerified(m.Class) || verified(m.Id, m.Hash));
+
+    // ---- HellForge 0.3 (LobbyService.LegacyProtocol) ----------------------------------------------------------------
+
+    // Hosts heard to run HellForge 0.3 (their listing, their Steam presence), with their mod set once known (a listing's or
+    // an offer's).
+    readonly Dictionary<ulong, ModSet?> legacyHosts = [];
+
+    public void LegacyHost(ulong host, ModSet? set)
+    {
+        lock (gate)
+            if (set != null || !legacyHosts.ContainsKey(host)) legacyHosts[host] = set;
+    }
+
+    public void NotLegacy(ulong host)
+    {
+        lock (gate)
+        {
+            legacyHosts.Remove(host);
+            if (rejoining?.Host == host) rejoining = null;
+        }
+    }
+
+    public bool IsLegacy(ulong host)
+    {
+        lock (gate) return legacyHosts.ContainsKey(host);
+    }
+
+    // What a join to that host sends (LobbyService.JoinAs): null for a host of this HellForge; for a 0.3 host its protocol,
+    // with the host's own digest when this session plays exactly the host's shared mods (every one had, none of this
+    // player's turned off), else this session's digest (the host refuses it and offers its mods).
+    public (string Digest, string Protocol)? JoinAs(ulong host)
+    {
+        ModSet? set;
+        lock (gate)
+        {
+            if (rejoining is { } back && back.Host == host) return (back.Digest, LobbyService.LegacyProtocol);
+            if (!legacyHosts.TryGetValue(host, out set)) return null;
+        }
+        if (set == null) return (OwnDigest, LobbyService.LegacyProtocol);
+        var plan = Plan(set, shares: false, host);
+        return (plan.Items.All(i => i.Action == SyncAction.Have) ? set.Digest : OwnDigest, LobbyService.LegacyProtocol);
+    }
+
+    // The session after a sync with a 0.3 host (AutoRejoin.Target.Legacy): its mods were checked one by one, so its joins
+    // to that host carry the host's digest.
+    (ulong Host, string Digest)? rejoining;
+
+    public void Rejoining(ulong host, string digest)
+    {
+        lock (gate)
+        {
+            rejoining = (host, digest);
+            legacyHosts[host] = null;
+        }
+    }
+
+    // Host: whether a 0.3 joiner plays this session's shared mods: its digest is the legacy digest (ModSet.LegacyDigest: it
+    // plays exactly the set it was offered), or its mods one by one (theirs) hold each shared mod (a mod that is not bundled
+    // with the same content; a bundled one by id, which that HellForge compares by files) and nothing else but mods this
+    // session runs per player.
+    public bool LegacyAdmits(string digest, IReadOnlyList<ModFingerprint>? theirs)
+    {
+        if (own == null) return false;
+        if (own.LegacyDigest != null && digest == own.LegacyDigest) return true;
+        if (theirs == null) return false;
+        var shared = own.Mods.Where(m => m.Tier == CoopTier.Shared).ToList();
+        if (shared.Any(m => m.Class == ModClass.Bundled && m.Hash != ModSets.Hash(ModSets.BundledLine(m.Id, ModSets.LegacyBundledLevel)))) return false;
+        foreach (var mod in shared)
+            if (!theirs.Any(t => t.Id == mod.Id && (mod.Class == ModClass.Bundled || t.Hash == mod.Hash[..16]))) return false;
+        return theirs.All(t => own.Mods.Any(m => m.Id == t.Id && (m.Tier == CoopTier.Shared || m.Class == ModClass.Bundled || t.Hash == m.Hash[..16])));
+    }
 
     ModLocator? locator;
     ModLocator Locator { get { lock (gate) return locator ??= new ModLocator(modsFolder); } }
@@ -223,14 +306,21 @@ public sealed class ModSync : IAsyncDisposable
         var settings = ModSettings.Read(modsFolder);
         if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats)
             return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
-        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return new(true, "", null, []);
+        // a 0.3 host's listing (DirectoryService.Legacy) is remembered: a join to it then speaks its protocol (JoinAs)
+        var legacy = DirectoryService.Legacy(listing);
+        if (legacy) LegacyHost(listing.Host, null);
+        else NotLegacy(listing.Host);
+        if (!legacy && listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
+        // this HellForge's whole set; a listing 0.3 can read too carries that one's in hf.mods
+        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, legacy ? DirectoryKeys.Mods : DirectoryKeys.ModSet) ?? DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire)
+            return new(true, "", null, []);
         ModSet set;
         try { set = ModSet.Parse(wire, local: false); }
         catch (InvalidDataException) { return new(false, "its mod list is malformed", null, []); }
+        if (legacy) LegacyHost(listing.Host, set);
         var shares = listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1";
         var trust = Trust(listing.Host, settings);
-        var plan = ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), Locator.Find, settings.Blocked, trust);
+        var plan = ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), Locator.Find, settings.Blocked, trust, legacy);
         var why = plan.Verdict switch
         {
             SyncVerdict.Blocked => "it runs a blocked mod",
@@ -383,8 +473,10 @@ public sealed class ModSync : IAsyncDisposable
 
     // ---- Joiner -------------------------------------------------------------------------------------------------------
 
-    sealed class Offer(int version, ulong host, string hostName, string connection, ModSet set, bool shares, ModSyncPlan plan)
+    sealed class Offer(int version, ulong host, string hostName, string connection, ModSet set, bool shares, ModSyncPlan plan, bool legacy)
     {
+        // the host's HellForge is 0.3: the next session is checked mod by mod and rejoins with its protocol
+        public bool Legacy { get; } = legacy;
         public int Version { get; } = version;
         public ulong Host { get; } = host;
         public string HostName { get; } = hostName;
@@ -416,7 +508,12 @@ public sealed class ModSync : IAsyncDisposable
         var (set, shares) = (frame.Text(1), frame.Text(2) == "1");
         _ = Task.Run(() =>
         {
-            try { MakeOffer(host, connection, ModSet.Parse(set, local: false), shares); }
+            try
+            {
+                var parsed = ModSet.Parse(set, local: false);
+                if (IsLegacy(host)) LegacyHost(host, parsed);
+                MakeOffer(host, connection, parsed, shares);
+            }
             catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
             {
                 log("Mod sync: the host's mod list could not be used: " + error.Message);
@@ -483,7 +580,7 @@ public sealed class ModSync : IAsyncDisposable
         {
             downloading?.Cancel();
             downloading = null;
-            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan);
+            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, IsLegacy(host));
             (made.State, made.Message) = Describe(made);
         }
         log($"Mod sync: {made.HostName}'s lobby: {plan.Verdict}, " + string.Join(", ", plan.Items.Select(i => $"{i.Mod.Id} {ModSyncPlan.ActionName(i.Action)}")) + ".");
@@ -496,7 +593,7 @@ public sealed class ModSync : IAsyncDisposable
     ModSyncPlan Plan(ModSet set, bool shares, ulong host)
     {
         var settings = ModSettings.Read(modsFolder);
-        return ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), new ModLocator(modsFolder).Find, settings.Blocked, Trust(host, settings));
+        return ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), new ModLocator(modsFolder).Find, settings.Blocked, Trust(host, settings), IsLegacy(host));
     }
 
     SyncTrust Trust(ulong host, ModSettings.State settings) =>
@@ -595,7 +692,7 @@ public sealed class ModSync : IAsyncDisposable
             downloading?.Cancel();
             downloading = null;
             offer = null;
-            closed = new Offer(++versions, current.Host, current.HostName, current.Connection, new ModSet("none", []), false, new ModSyncPlan([])) { State = "none" };
+            closed = new Offer(++versions, current.Host, current.HostName, current.Connection, new ModSet("none", []), false, new ModSyncPlan([]), false) { State = "none" };
         }
         log("Mod sync: the offer was closed.");
         _ = PublishAsync(closed, withMods: true);
@@ -881,8 +978,10 @@ public sealed class ModSync : IAsyncDisposable
             Update(current, "failed", "Some of the host's mods are no longer here: " + string.Join(", ", plan.Items.Where(i => i.Action != SyncAction.Have && i.Action != SyncAction.Off).Select(i => i.Mod.Name)) + ".");
             return;
         }
+        // each mod as this machine has it: a copy matched by coop level (or an older HellForge's bundled mod) has its own hash
         new ModSyncSession(LobbyService.EntityId(current.Host), current.HostName, current.Connection, current.Set.Digest,
-            [.. current.Set.Mods.Where(m => m.Tier == CoopTier.Shared).Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(sessionFile);
+            [.. plan.Items.Where(i => i.Action == SyncAction.Have && i.Mod.Tier == CoopTier.Shared).Select(i => new ModSyncSession.Mod(i.Mod.Id, i.LocalHash ?? i.Mod.Hash, i.Mod.Order))])
+            { Legacy = current.Legacy }.Write(sessionFile);
         Update(current, "ready", $"Restarting with {current.HostName}'s mods...");
         File.WriteAllText(Path.Combine(runDirectory, StopSignal), StopReason);
         log($"Mod sync: the next session plays {current.HostName}'s mods ({sessionFile}); this session stops for the launcher to restart it.");

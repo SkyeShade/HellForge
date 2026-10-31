@@ -55,6 +55,8 @@ static partial class ModSyncTests
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
             Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed) { Display = Shown };
             Lobby.ModsRefused = Sync.OfferMods;
+            Lobby.LegacyAdmits = Sync.LegacyAdmits;
+            Lobby.JoinAs = Sync.JoinAs;
             Sync.Expected = Lobby.JoinedRecently;
             Lobby.ModSetWire = Sync.OwnWire;
             Lobby.LocalJoinStarted += (host, lobbyId) => Sync.JoinStarted(host, lobbyId);

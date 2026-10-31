@@ -62,8 +62,8 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Whether friends need the same copy (CoopTier.Shared) or each player keeps their own (CoopTier.PerPlayer), from the
     // manifest's "coop" or what the mod changes (ModCatalog.Tier).
     public CoopTier Coop { get; init; } = CoopTier.Shared;
-    // A bundled mod's co-op level: changes other machines see or need raise it (the manifest's "coopLevel"). Only a bundled
-    // mod uses it; one without it is compared by its files, as before.
+    // The mod's co-op level: changes other machines see or need raise it (the manifest's "coopLevel"). Copies of a mod with
+    // the same level play together whatever their files (ModSets.MatchLines); one without it is compared by its files.
     public int? CoopLevel { get; init; }
     // The picture the Mods page shows for it (a manifest's "icon", a pack's IconPath): a file in its folder, or null.
     public string? Icon { get; init; }
@@ -356,7 +356,7 @@ public static partial class ModCatalog
         };
     }
 
-    // The manifest's "coopLevel" for a bundled mod: a non-negative integer other machines' copies are compared by, or null
+    // The manifest's "coopLevel": a non-negative integer other machines' copies are compared by, or null
     // when the mod does not say (then its files are compared).
     static int? ReadCoopLevel(JsonElement root)
     {
@@ -500,9 +500,8 @@ public static partial class ModCatalog
     // name, version and a hash of its part of the digest.
     public static (string Digest, List<ModFingerprint> Mods) Modlist(IEnumerable<ModManifest> mods)
     {
-        var compared = Compared(mods).ToList();
-        var lines = string.Concat(compared.Select(m => m.Lines));
-        var digest = lines.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lines)))[..32].ToLowerInvariant();
+        var compared = Compared(mods).Select(m => (m.Mod, Lines: ModSets.MatchLines(m.Mod, m.Lines))).ToList();
+        var digest = ModSet.DigestOf(string.Concat(compared.Select(m => m.Lines)));
         return (digest, [.. compared.Select(m => new ModFingerprint(m.Mod.Id, m.Mod.Name, m.Mod.Version,
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(m.Lines)))[..16].ToLowerInvariant()))]);
     }

@@ -29,7 +29,8 @@ public sealed class AutoRejoin : IDisposable
     public enum Stage { Waiting, Settling, Asking, Invited, Joining, Done, GaveUp }
 
     // Whom to rejoin: the host's machine and name, the lobby it refused this machine from, and the host's modlist digest.
-    public sealed record Target(ulong Host, string HostName, string LobbyId, string Digest);
+    // Legacy: the host's HellForge is 0.3 (ModSyncSession.Legacy): the rejoin speaks its protocol, with its digest.
+    public sealed record Target(ulong Host, string HostName, string LobbyId, string Digest, bool Legacy = false);
 
     readonly Target target;
     readonly string ownDigest;
@@ -65,8 +66,9 @@ public sealed class AutoRejoin : IDisposable
 
     // The rejoin file a session after a mod sync passes (ModSyncSession), or why this session does not rejoin: written by
     // this machine's backend, but checked as if it were not (the host and lobby from its connection string, its age), and
-    // only when this session plays the host's mods (its modlist digest is the host's: mods-stage found them all).
-    public static (Target? Target, string? Reason) Read(string path, ulong localId, string ownDigest, DateTime now)
+    // only when this session plays the host's mods (its modlist digest is the host's: mods-stage found them all; for a 0.3
+    // host, whose digest counts its own bundled mods' files, this session's shared mods are the file's, one by one: own).
+    public static (Target? Target, string? Reason) Read(string path, ulong localId, string ownDigest, DateTime now, ModSet? own = null)
     {
         ModSyncSession session;
         try
@@ -83,9 +85,16 @@ public sealed class AutoRejoin : IDisposable
             !LobbyService.TryNode(parts[2], out var host) || !LobbyService.TryNode(session.Host, out var named) || named != host)
             return (null, "the mod sync file names no host's lobby.");
         if (host == localId) return (null, "the mod sync file names this player's own lobby.");
-        if (session.Digest != ownDigest) return (null, "this session plays its own mods, not the host's (see the session's mod problems).");
-        return (new Target(host, session.HostName.Length > 0 ? session.HostName : "the host", parts[1], session.Digest), null);
+        if (session.Legacy ? !PlaysAll(session, own) : session.Digest != ownDigest)
+            return (null, "this session plays its own mods, not the host's (see the session's mod problems).");
+        return (new Target(host, session.HostName.Length > 0 ? session.HostName : "the host", parts[1], session.Digest, session.Legacy), null);
     }
+
+    // Every mod of the file is this session's (a 0.3 host's stats mod is per-player here), and every shared mod of this
+    // session is the file's.
+    static bool PlaysAll(ModSyncSession session, ModSet? own) =>
+        own != null && session.Mods.All(m => own.Find(m.Id, m.Hash) != null) &&
+        own.Mods.Where(m => m.Tier == CoopTier.Shared).All(o => session.Mods.Any(m => m.Id == o.Id && m.Hash == o.Hash));
 
     // Follows this machine's lobby service: its game's own lobby, its joins, and the host's answer.
     public void Attach(LobbyService lobby)
@@ -133,7 +142,8 @@ public sealed class AutoRejoin : IDisposable
                 case Stage.Settling:
                     (stage, due) = (Stage.Asking, now + AnswerTimeout);
                     log($"Rejoin: asking {LobbyService.EntityId(target.Host)} whether this player may rejoin lobby {target.LobbyId}.");
-                    send(target.Host, new Frame("lobby.rejoin").Add(target.LobbyId).Add(ownDigest).Add(LobbyService.Protocol));
+                    send(target.Host, new Frame("lobby.rejoin").Add(target.LobbyId).Add(target.Legacy ? target.Digest : ownDigest)
+                        .Add(target.Legacy ? LobbyService.LegacyProtocol : LobbyService.Protocol));
                     return;
                 case Stage.Asking:
                     GiveUp($"{LobbyService.EntityId(target.Host)} did not answer within {AnswerTimeout.TotalSeconds:0} s.",

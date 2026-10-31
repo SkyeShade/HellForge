@@ -104,6 +104,7 @@ static class DirectoryTests
             many.Contains("M7 1 (test.m7)") && !many.Contains("test.m8") && many.EndsWith(", and 2 more.", StringComparison.Ordinal), "The left-out line: " + many);
         check(DirectoryService.LeftOutLine(OtherId, "the game's filter", null) == LobbyService.EntityId(OtherId) + ": the game's filter.", "A reason without mods.");
         root = Path.Combine(root, "directory");
+        await Saturated(root, check);
         Filters(check);
         Values(check);
 
@@ -126,7 +127,9 @@ static class DirectoryTests
         var (lobbyId, connection) = (created.Text(3), created.Text(4));
         host.Directory.Publish(now);
         var listing = listings.All.Single();
-        check(listing.Host == HostId && listing.Data[DirectoryKeys.Protocol] == LobbyService.Protocol &&
+        // HellForge 0.3 can join it too (no shared bundled mod): it searches by 0.3's protocol, this one's is in hf.protocol
+        check(listing.Host == HostId && listing.Data[DirectoryKeys.Protocol] == LobbyService.LegacyProtocol && listing.Data[DirectoryKeys.Feature] == LobbyService.Protocol &&
+            listing.Data.ContainsKey(DirectoryKeys.ModSet) && listing.Data[DirectoryKeys.Open] == "1" &&
             listing.Data[DirectoryKeys.Wire] == LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture) && listing.Data[DirectoryKeys.LobbyId] == lobbyId &&
             listing.Data[DirectoryKeys.Connection] == connection && listing.Data[DirectoryKeys.Host] == HostId.ToString(CultureInfo.InvariantCulture) &&
             listing.Data[DirectoryKeys.Members] == "1" && listing.Data[DirectoryKeys.Slots] == "3" && listing.Data["number_key3"] == "261" &&
@@ -136,10 +139,26 @@ static class DirectoryTests
         check(DirectoryData.Matches(listing, new DirectoryQuery(wire, new Dictionary<string, string>())) &&
             !DirectoryData.Matches(listing, new DirectoryQuery("2", new Dictionary<string, string>())), "A search does not go by hf.wire.");
         check(DirectoryService.Valid(listing, out _, out _, out _, out _, out var listingWhy), "The current listing is not valid: " + listingWhy);
-        var older = new DirectoryListing(listing.Host, new Dictionary<string, string>(listing.Data, StringComparer.Ordinal) { [DirectoryKeys.Protocol] = "hellforge-mp-8" });
-        check(!DirectoryService.Valid(older, out _, out _, out _, out _, out var olderWhy) && olderWhy == "protocol",
-            "An mp-8 listing was taken: " + olderWhy);
-        check(ModSet.Parse(DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods))!, local: false).Mods.Single().Id == "test.ammo", "The listing carries the mod set.");
+        // 0.3's listing (its protocol, no hf.protocol) is taken and known as 0.3's; 0.2's (mp-7) and a listing claiming
+        // an unknown protocol are not
+        DirectoryListing Speaking(string? feature, string protocol)
+        {
+            var data = new Dictionary<string, string>(listing.Data, StringComparer.Ordinal) { [DirectoryKeys.Protocol] = protocol };
+            if (feature == null) data.Remove(DirectoryKeys.Feature);
+            else data[DirectoryKeys.Feature] = feature;
+            return new DirectoryListing(listing.Host, data);
+        }
+        var older = Speaking(null, LobbyService.LegacyProtocol);
+        check(DirectoryService.Valid(older, out _, out _, out _, out _, out var olderWhy) && DirectoryService.Legacy(older) && !DirectoryService.Legacy(listing),
+            "A 0.3 listing was left out or not known as one: " + olderWhy);
+        check(!DirectoryService.Valid(Speaking(null, "hellforge-mp-7"), out _, out _, out _, out _, out var oldestWhy) && oldestWhy == "protocol" &&
+            !DirectoryService.Valid(Speaking("hellforge-mp-99", LobbyService.LegacyProtocol), out _, out _, out _, out _, out _), "An mp-7 listing was taken: " + oldestWhy);
+        check(DirectoryData.Matches(listing, new DirectoryQuery(LobbyService.LegacyProtocol, new Dictionary<string, string>(), WireKey: DirectoryKeys.Protocol)),
+            "0.3's search does not find a listing it can join.");
+        // this HellForge's whole set in hf.modset, 0.3's in hf.mods (the same here: no per-player or bundled mod)
+        check(ModSet.Parse(DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.ModSet))!, local: false).Mods.Single().Id == "test.ammo" &&
+            ModSet.Parse(DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods))!, local: false) is { } legacySet &&
+            legacySet.Mods.Single().Id == "test.ammo" && legacySet.Digest == hostSet.LegacyDigest, "The listing carries the mod sets.");
         host.Presence.SetLocalLobby(JsonDocument.Parse(Record(HostId)).RootElement);
         host.Directory.Publish(now + TimeSpan.FromSeconds(1));
         check(!listings.All.Single().Data.ContainsKey(DirectoryKeys.Record), "A change waits for the publish interval.");
@@ -237,6 +256,7 @@ static class DirectoryTests
             [DirectoryKeys.Host] = OtherId.ToString(CultureInfo.InvariantCulture), [DirectoryKeys.Digest] = code.Digest
         };
         DirectoryData.Put(other, DirectoryKeys.Mods, DirectoryData.Pack(code.ToJson(local: false).ToJsonString()));
+        DirectoryData.Put(other, DirectoryKeys.ModSet, DirectoryData.Pack(code.ToJson(local: false).ToJsonString()));
         DirectoryData.Put(other, DirectoryKeys.Record, DirectoryData.Pack(DirectoryService.Public(JsonNode.Parse(Record(OtherId))!.AsObject(), OtherId).ToJsonString()));
         check(DirectoryService.Valid(new DirectoryListing(OtherId, other), out _, out _, out _, out _, out var otherWhy), "The other host's listing is valid: " + otherWhy);
         listings.For(OtherId).Publish(new DirectoryListing(OtherId, other));
@@ -610,7 +630,70 @@ static class DirectoryTests
         await Task.Delay(SameSearchPause);
     }
 
-    // The lobby ids a lobby.found answer shows, in order.
+    // Steam's directory in a fixed order, its cut at a query's count, every query counted.
+    sealed class OrderedDirectory(List<DirectoryListing> listings) : ILobbyDirectory
+    {
+        public readonly List<DirectoryQuery> Queries = [];
+        public void Publish(DirectoryListing? listing) { }
+        public Task<IReadOnlyList<DirectoryListing>> SearchAsync(DirectoryQuery query, CancellationToken cancellation)
+        {
+            lock (Queries) Queries.Add(query);
+            return Task.FromResult<IReadOnlyList<DirectoryListing>>([.. listings.Where(l => DirectoryData.Matches(l, query)).Take(query.Count)]);
+        }
+    }
+
+    // More listings than Steam returns: the lobbies with the searcher's mods, then the ones anyone can join after a download,
+    // are searched for and shown first; below the cut one search (and 0.3's) does.
+    static async Task Saturated(string root, Action<bool, string> check)
+    {
+        var hostMods = Path.Combine(root, "saturated", "mods");
+        Directory.CreateDirectory(Path.Combine(hostMods, "ammo"));
+        File.WriteAllText(Path.Combine(hostMods, "ammo", ModCatalog.ManifestName),
+            """{"format":1,"id":"test.ammo","name":"Ammo","version":"1","native":{"networkFieldTypes":[{"name":"deposit_value","expect":{"kind":1,"bits":10,"min":0},"bits":14}]}}""");
+        var mods = ModSet.Of(ModCatalog.LoadOrder(ModCatalog.Load(hostMods).Mods));
+        var network = new InMemoryNetwork();
+        var memory = new MemoryLobbyDirectory();
+        var host = new Node(network, memory, HostId, Path.Combine(root, "saturated", "host"), mods);
+        host.Lobby.FromLocal(Create("c1", HostId, PublicSearch));
+        host.Next("lobby.result", check);
+        host.Directory.Publish(DateTime.UtcNow);
+        var template = memory.All.Single().Data;
+        DirectoryListing Listing(int n, string digest, string open)
+        {
+            var id = OtherId + 100 + (ulong)n;
+            var lobby = Guid.NewGuid().ToString("D");
+            return new DirectoryListing(id, new Dictionary<string, string>(template, StringComparer.Ordinal)
+            {
+                [DirectoryKeys.LobbyId] = lobby, [DirectoryKeys.Connection] = LobbyService.ConnectionPrefix + lobby + ";" + LobbyService.EntityId(id),
+                [DirectoryKeys.Host] = id.ToString(CultureInfo.InvariantCulture), [DirectoryKeys.Digest] = digest, [DirectoryKeys.Open] = open
+            });
+        }
+        var other = new string('f', 32);
+        var full = Enumerable.Range(0, DirectoryQuery.MaxResults).Select(n => Listing(n, other, "0")).ToList();
+        var same = Listing(98, mods.Digest, "0");
+        var open = Listing(99, other, "1");
+        full.AddRange([open, same]);
+        var listings = new OrderedDirectory(full);
+        var guest = new Node(network, memory, GuestId, Path.Combine(root, "saturated", "guest"), mods, listings);
+        var found = Shown(await guest.Directory.SearchAsync("s1", MapFilter, 50));
+        check(found.Count == 50 && found[0] == same.Data[DirectoryKeys.LobbyId] && found[1] == open.Data[DirectoryKeys.LobbyId],
+            "Past Steam's cut, the lobby with the searcher's mods and the open one are not shown first.");
+        check(listings.Queries.Count == 4 && listings.Queries.Count(q => q.Equal.GetValueOrDefault(DirectoryKeys.Digest) == mods.Digest) == 1 &&
+            listings.Queries.Count(q => q.Equal.GetValueOrDefault(DirectoryKeys.Open) == "1") == 1 &&
+            listings.Queries.Count(q => q.WireKey == DirectoryKeys.Protocol && q.Wire == LobbyService.LegacyProtocol) == 1,
+            "The searches past the cut: " + string.Join(" / ", listings.Queries.Select(q => q.WireKey + "=" + q.Wire + " " + string.Join(",", q.Equal.Keys))));
+        await Task.Delay(SameSearchPause);
+        full.RemoveRange(10, DirectoryQuery.MaxResults - 10);
+        listings.Queries.Clear();
+        found = Shown(await guest.Directory.SearchAsync("s2", MapFilter, 50));
+        check(found.Count == 12 && listings.Queries.Count == 2, $"Below the cut: {found.Count} shown after {listings.Queries.Count} searches.");
+        await host.Directory.DisposeAsync();
+        await guest.Directory.DisposeAsync();
+        await host.Sync.DisposeAsync();
+        await guest.Sync.DisposeAsync();
+    }
+
+    // The lobby ids a lobby.found answer shows, in order.    // The lobby ids a lobby.found answer shows, in order.
     static List<string> Shown(Frame found)
     {
         var ids = new List<string>();

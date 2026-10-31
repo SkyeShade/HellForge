@@ -155,15 +155,27 @@ public sealed partial class DirectoryService : IAsyncDisposable
             [DirectoryKeys.Lock] = hosted.Locked ? "1" : "0",
             [DirectoryKeys.Stats] = editedStats() ? "1" : "0",
             [DirectoryKeys.Digest] = sync?.OwnDigest ?? "none",
-            [DirectoryKeys.Share] = sync?.Sharing == true ? "1" : "0"
+            [DirectoryKeys.Share] = sync?.Sharing == true ? "1" : "0",
+            [DirectoryKeys.Open] = sync?.Open == true ? "1" : "0"
         };
         foreach (var (key, value) in hosted.SearchProperties.Take(LobbyService.MaxProperties))
             if (LobbyService.SearchValue(key, value)) data[key] = value;
         var (_, body, _, _) = presence.Local;
         if (body != null) DirectoryData.Put(data, DirectoryKeys.Record, DirectoryData.Pack(Public(body, localId).ToJsonString()));
         if (presence.LocalLive is { } live) DirectoryData.Put(data, DirectoryKeys.Live, DirectoryData.Pack(live.ToJsonString()));
-        if (sync?.OwnSetWire is { } mods) DirectoryData.Put(data, DirectoryKeys.Mods, DirectoryData.Pack(mods));
+        PutMods(data);
         return data;
+    }
+
+    // The mod set in hf.mods. A listing HellForge 0.3 can join too, when there is a set it can read (ModSync.LegacySetWire),
+    // gives 0.3's protocol (which 0.3 searches by) with this HellForge's in hf.protocol, and 0.3's set in hf.mods with the
+    // whole one in hf.modset.
+    void PutMods(Dictionary<string, string> data)
+    {
+        var legacy = sync?.LegacySetWire;
+        if (legacy != null) (data[DirectoryKeys.Protocol], data[DirectoryKeys.Feature]) = (LobbyService.LegacyProtocol, LobbyService.Protocol);
+        if (sync?.OwnSetWire is { } mods) DirectoryData.Put(data, legacy != null ? DirectoryKeys.ModSet : DirectoryKeys.Mods, DirectoryData.Pack(mods));
+        if (legacy != null) DirectoryData.Put(data, DirectoryKeys.Mods, DirectoryData.Pack(legacy));
     }
 
     // The game's lobby record as the directory publishes it (decided 2026-10-22): rebuilt from the schema's fields alone
@@ -201,8 +213,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     public async Task<Frame> SearchAsync(string op, string filterText, int count)
     {
         var filter = LobbyFilter.Parse(filterText);
-        var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), filter.Equalities());
-        var listings = await Listings(query);
+        var listings = await Gather(filter.Equalities());
         var answer = new Frame("lobby.found").Add(op).Add(0);
         var kept = new List<DirectoryListing>();
         var refused = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -242,8 +253,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // on, and is not contacted. A listing under a friend's id that the friend does not vouch for is a stranger's.
     public async Task<IReadOnlyList<BrowseLobby>> BrowseAsync()
     {
-        var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), new Dictionary<string, string>(StringComparer.Ordinal));
-        var listings = await Listings(query);
+        var listings = await Gather(new Dictionary<string, string>(StringComparer.Ordinal));
         var strangers = strangersAllowed?.Invoke() != false;
         var friends = presence.Friends.Select(f => f.SteamId).ToHashSet();
         var lobbies = new List<BrowseLobby>();
@@ -259,7 +269,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
                 : sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
             if (!join.Joinable) { Count(refused, join.Why); leftOut.Add(LeftOutLine(listing.Host, join.Why, join)); }
             lobbies.Add(new BrowseLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], listing.Host,
-                friend, "directory", check.Members, SquadSize(check.Max), check.Locked, check.Props, record, join));
+                friend, "directory", check.Members, SquadSize(check.Max), check.Locked, check.Props, record, join) { Older = Legacy(listing) });
             if (join.Fix != JoinCheck.FixStrangers) Remember(listing); // as before: not a stranger's, with strangers off
         }
         var summary = $"Directory: browse: {lobbies.Count} listed, {lobbies.Count(l => l.Join.Joinable)} joinable" +
@@ -351,6 +361,38 @@ public sealed partial class DirectoryService : IAsyncDisposable
         return unambiguous;
     }
 
+    // A search's listings, each once: every listing at this wire level with the coarse filters (equal); when the directory
+    // gave as many as it gives (DirectoryQuery.MaxResults), the joinable ones may be past its cut, so lobbies with this
+    // session's mods (hf.digest) and lobbies anyone can join after a download (hf.open) are searched for and put first;
+    // then HellForge 0.3's listings, which carry its protocol instead of the wire level. Below the cut the first search
+    // holds the others' results, and costs one more search (0.3's) than before.
+    async Task<IReadOnlyList<DirectoryListing>> Gather(IReadOnlyDictionary<string, string> equal)
+    {
+        var wire = LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture);
+        var all = await Listings(new DirectoryQuery(wire, equal));
+        var passes = new List<IReadOnlyList<DirectoryListing>>();
+        if (all.Count >= DirectoryQuery.MaxResults)
+        {
+            passes.Add(await Listings(new DirectoryQuery(wire, With(equal, DirectoryKeys.Digest, sync?.OwnDigest ?? "none"))));
+            passes.Add(await Listings(new DirectoryQuery(wire, With(equal, DirectoryKeys.Open, "1"))));
+        }
+        passes.Add(all);
+        passes.Add(await Listings(new DirectoryQuery(LobbyService.LegacyProtocol, equal, WireKey: DirectoryKeys.Protocol)));
+        // a listing an earlier search found is dropped; copies within one are left to Unambiguous, which counts them
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var merged = new List<DirectoryListing>();
+        foreach (var pass in passes)
+        {
+            var found = pass.Select(l => (Listing: l, Digest: DirectoryData.Digest(l.Data))).Where(l => !seen.Contains(l.Digest)).ToList();
+            merged.AddRange(found.Select(l => l.Listing));
+            seen.UnionWith(found.Select(l => l.Digest));
+        }
+        return merged;
+    }
+
+    static Dictionary<string, string> With(IReadOnlyDictionary<string, string> equal, string key, string value) =>
+        new(equal.Append(KeyValuePair.Create(key, value)), StringComparer.Ordinal);
+
     // The game sends two searches about 30 ms apart per scan: one directory search serves both (not longer: a listing that
     // appeared or went would be missed; the smoke test saw 3 s of stale results with a 3 s window).
     Task<IReadOnlyList<DirectoryListing>> Listings(DirectoryQuery query)
@@ -365,7 +407,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     }
 
     static bool Same(DirectoryQuery a, DirectoryQuery b) =>
-        a.Wire == b.Wire && a.Count == b.Count && a.Equal.Count == b.Equal.Count && a.Equal.All(e => b.Equal.TryGetValue(e.Key, out var v) && v == e.Value);
+        a.Wire == b.Wire && a.WireKey == b.WireKey && a.Count == b.Count && a.Equal.Count == b.Equal.Count && a.Equal.All(e => b.Equal.TryGetValue(e.Key, out var v) && v == e.Value);
 
     // A listing a search can show (see the top of this file): its HellForge keys, its search properties and its records,
     // all checked; why: what was wrong, for the log.
@@ -395,7 +437,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         if (!data.TryGetValue(DirectoryKeys.LobbyId, out var id) || !Guid.TryParseExact(id, "D", out _)) why = "lobby id";
         else if (data.GetValueOrDefault(DirectoryKeys.Host) != listing.Host.ToString(CultureInfo.InvariantCulture) ||
             data.GetValueOrDefault(DirectoryKeys.Connection) != LobbyService.ConnectionPrefix + id + ";" + LobbyService.EntityId(listing.Host)) why = "host";
-        else if (!LobbyService.Compatible(data.GetValueOrDefault(DirectoryKeys.Protocol) ?? "")) why = "protocol";
+        else if (!LobbyService.Compatible(FeatureOf(listing))) why = "protocol";
         else if (!int.TryParse(data.GetValueOrDefault(DirectoryKeys.Members), NumberStyles.None, CultureInfo.InvariantCulture, out members) ||
             !int.TryParse(data.GetValueOrDefault(DirectoryKeys.MaxMembers), NumberStyles.None, CultureInfo.InvariantCulture, out max) ||
             members is < 1 or > MaxListedMembers || max is < 2 or > MaxListedLimit || members >= max) why = "member counts";
@@ -409,6 +451,13 @@ public sealed partial class DirectoryService : IAsyncDisposable
         else if (Json(data, DirectoryKeys.Live).Value is { } liveJson) live = LobbyRecords.CleanLive(liveJson);
         return new ListingCheck(props, members, max, locked, why, record, live);
     }
+
+    // The listing's HellForge protocol: its own key when it is one 0.3 can join too (Desired), else the one 0.3 searches by.
+    static string FeatureOf(DirectoryListing listing) =>
+        listing.Data.GetValueOrDefault(DirectoryKeys.Feature) ?? listing.Data.GetValueOrDefault(DirectoryKeys.Protocol) ?? "";
+
+    // A HellForge 0.3 host's listing (LobbyService.LegacyProtocol).
+    public static bool Legacy(DirectoryListing listing) => FeatureOf(listing) == LobbyService.LegacyProtocol;
 
     // A record is a few KB: a stranger's is not unpacked or parsed past RecordUnpackBytes.
     public const int RecordUnpackBytes = 64 << 10;
@@ -477,5 +526,9 @@ public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bo
 
 // One lobby the browse API lists: from the directory, or a friend's lobby heard through presence (Source "friend": no
 // listing, so no mod set until a join; Join is then an empty check). Record is the lobby record as the schema rebuilt it.
+// Older: its host runs HellForge 0.3 (DirectoryService.Legacy), which this one joins with that HellForge's protocol.
 public sealed record BrowseLobby(string LobbyId, string ConnectionString, ulong Host, bool Friend, string Source, int Members, int MaxMembers,
-    bool Locked, IReadOnlyDictionary<string, string> SearchProperties, JsonObject Record, JoinCheck Join);
+    bool Locked, IReadOnlyDictionary<string, string> SearchProperties, JsonObject Record, JoinCheck Join)
+{
+    public bool Older { get; init; }
+}

@@ -202,11 +202,12 @@ static class RejoinTests
         _ = back;
     }
 
-    // The protocol split (M.4): this build speaks mp-9 at wire level 1; a joiner on mp-8 is refused as another HellForge.
+    // The protocol split (M.4): this build speaks mp-9 at wire level 1 and meets 0.3's mp-8 (its frames are the same); a
+    // joiner on mp-7 is refused as another HellForge.
     static void Compatibility(Action<bool, string> check)
     {
         check(LobbyService.Protocol == "hellforge-mp-9" && LobbyService.WireLevel == 1 &&
-            LobbyService.Compatible("hellforge-mp-9") && !LobbyService.Compatible("hellforge-mp-8"),
+            LobbyService.Compatible("hellforge-mp-9") && LobbyService.Compatible("hellforge-mp-8") && !LobbyService.Compatible("hellforge-mp-7"),
             "The protocol's feature version or wire level is wrong.");
         var network = new InMemoryNetwork();
         var host = new Node(network, HostId, HostMods);
@@ -227,10 +228,11 @@ static class RejoinTests
             check(false, "The host did not answer the " + op + " join.");
             return new Frame("lobby.result").Add(op).Add("join").Add("none");
         }
-        var old = Join("old", "hellforge-mp-8", out var oldSeen);
+        var old = Join("old", "hellforge-mp-7", out var oldSeen);
         check(old.Text(2) == LobbyService.LobbyNotJoinable.ToString() &&
             oldSeen.Any(f => f.Type == "lobby.refused" && Enumerable.Range(0, f.Count).Any(i => f.Text(i).Contains("different HellForge versions"))),
-            "An mp-8 joiner was not refused as another HellForge: " + string.Join(" | ", oldSeen.Select(f => f.Type)));
+            "An mp-7 joiner was not refused as another HellForge: " + string.Join(" | ", oldSeen.Select(f => f.Type)));
+        check(Join("legacy", LobbyService.LegacyProtocol, out _).Text(2) == "0", "An mp-8 (0.3) joiner with the host's digest was refused.");
         check(Join("new", LobbyService.Protocol, out _).Text(2) == "0", "An mp-9 joiner was refused.");
     }
 
@@ -255,7 +257,10 @@ static class RejoinTests
         check(ok.Text(1) == "ok" && ok.Text(2) == lobby && ok.Text(3) == connection, "A friend may rejoin the Friends only lobby it asked for.");
         check(Ask(lobby, digest: OwnMods).Text(1) == "mods", "The host's mods changed: \"mods\".");
         check(Ask(lobby, protocol: "hellforge-mp-1").Text(1) == "version", "Another HellForge: \"version\".");
-        check(Ask(lobby, protocol: "hellforge-mp-8").Text(1) == "version", "An mp-8 HellForge may not rejoin an mp-9 host.");
+        check(Ask(lobby, protocol: "hellforge-mp-7").Text(1) == "version", "An mp-7 HellForge may not rejoin an mp-9 host.");
+        // HellForge 0.3 rejoins with the host's digest (it plays the host's mods), or its mods are not this host's
+        check(Ask(lobby, protocol: LobbyService.LegacyProtocol).Text(1) == "ok", "A 0.3 HellForge playing the host's mods may not rejoin.");
+        check(Ask(lobby, digest: OwnMods, protocol: LobbyService.LegacyProtocol).Text(1) == "mods", "A 0.3 HellForge with other mods rejoined.");
         var third = new Node(network, ThirdId, HostMods);
         check(third.Join("t1", connection, check) == "0", "A third player fills the lobby of two.");
         check(Ask(lobby).Text(1) == "full", "A full lobby: \"full\".");

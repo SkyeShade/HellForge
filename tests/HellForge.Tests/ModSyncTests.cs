@@ -377,6 +377,70 @@ static class ModSyncTests
                 "The plan made a per-player mod a download or an off: " + string.Join(", ", noTiers.Items.Select(i => i.Mod.Id + " " + i.Action)));
         });
 
+        test("Mod sync: copies of a mod with one coopLevel play together whatever their files, and the synced session plays the joiner's copy", () =>
+        {
+            ModSet Player(string name, string version, int level, out string mods)
+            {
+                mods = Path.Combine(root, "sync-level-" + name);
+                Write(Path.Combine(mods, "ammo"), ModCatalog.ManifestName, Ammo.Replace("\"1.0.0\"", $"\"{version}\",\"coopLevel\":{level}"));
+                var (loaded, problems) = ModCatalog.Load(mods);
+                check(problems.Count == 0 && loaded.Single().CoopLevel == level, $"{name}'s mod loads: " + string.Join(" | ", problems));
+                return ModSet.Of(ModCatalog.LoadOrder(loaded));
+            }
+            var host = Player("host", "1.0.0", 2, out _);
+            var joiner = Player("joiner", "1.0.1", 2, out var joinerMods);
+            var (h, j) = (host.Mods.Single(), joiner.Mods.Single());
+            check(host.Digest == joiner.Digest && h.Hash != j.Hash && h.MatchHash == j.MatchHash && h.CoopLevel == 2 &&
+                host.Fingerprints().Select(f => f.Hash).SequenceEqual(joiner.Fingerprints().Select(f => f.Hash)), "Two copies at one coopLevel split players.");
+            var wire = ModSet.Parse(host.ToJson(local: false).ToJsonString(), local: false);
+            check(wire.Mods.Single().CoopLevel == 2 && wire.Mods.Single().Hash == h.Hash, "The coopLevel did not cross the wire.");
+            var plan = ModSyncPlan.Make(wire, hostShares: true, joiner, new ModLocator(joinerMods).Find, new HashSet<string>());
+            check(plan.Verdict == SyncVerdict.Ready && plan.Items.Single() is { Action: SyncAction.Have } had && had.LocalHash == j.Hash && had.Folder == j.Folder,
+                "The joiner's copy at the host's level is not had: " + string.Join(", ", plan.Items.Select(i => i.Action)));
+            var session = new ModSyncSession("1100001DEADBEEF", "Host", "hellforge1-lobby;x;1100001DEADBEEF", host.Digest,
+                [.. plan.Items.Select(i => new ModSyncSession.Mod(i.Mod.Id, i.LocalHash!, i.Mod.Order))]);
+            var (order, problem) = session.Resolve(joinerMods, ModCatalog.Load(joinerMods).Mods);
+            check(order?.Single().Version == "1.0.1", "The synced session does not play the joiner's copy: " + problem);
+            var bumped = Player("bumped", "1.0.2", 3, out var bumpedMods);
+            check(bumped.Digest != host.Digest && ModSyncPlan.Make(wire, hostShares: true, bumped, new ModLocator(bumpedMods).Find, new HashSet<string>()).Verdict == SyncVerdict.Download,
+                "A raised coopLevel still plays with the old one.");
+        });
+
+        test("Mod sync: HellForge 0.3 reads a set without per-player or bundled mods, by their files (the legacy digest), and its bundled mods are the joiner's own", () =>
+        {
+            var mods = Path.Combine(root, "sync-legacy");
+            Write(Path.Combine(mods, "ammo"), ModCatalog.ManifestName, Ammo.Replace("\"1.0.0\"", "\"1.0.0\",\"coopLevel\":1"));
+            Write(Path.Combine(mods, "stats"), ModCatalog.ManifestName, Manifest("test.stats-only", "1"));
+            Write(Path.Combine(mods, "stats"), StatsData.FileName, """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}}}""");
+            var (loaded, problems) = ModCatalog.Load(mods);
+            check(problems.Count == 0, "The mods load: " + string.Join(" | ", problems));
+            var set = ModSet.Of(ModCatalog.LoadOrder(loaded));
+            // 0.3 counted every gameplay mod by its files: the legacy set leaves the per-player one out, and its digest is
+            // what 0.3 makes of the shared one (by files, the coopLevel unknown to it)
+            var legacy = set.Legacy();
+            check(legacy != null && legacy.Mods.Single() is { Id: "test.ammo", CoopLevel: null } && legacy.Digest == set.LegacyDigest &&
+                set.LegacyDigest == DigestBefore(loaded.Where(m => m.Id == "test.ammo")) && set.LegacyDigest != set.Digest,
+                "The legacy set or digest is not 0.3's.");
+            var local = ModSet.Parse(set.ToJson(local: true).ToJsonString(), local: true);
+            check(local.LegacyDigest == set.LegacyDigest && ModSet.Parse(set.ToJson(local: false).ToJsonString(), local: false).LegacyDigest == null,
+                "The legacy digest is not kept in the session's file only.");
+
+            // a 0.3 host's bundled mod (counted by its 0.3 files) is the joiner's own at LegacyBundledLevel
+            var bundledHere = new ModSetEntry("test.bundled", "Bundled", "1", ModSets.Hash(ModSets.BundledLine("test.bundled", ModSets.LegacyBundledLevel)), 1, ModClass.Bundled, 0)
+                { Folder = Path.Combine(mods, "bundled") };
+            var own = new ModSet("x", [bundledHere]);
+            var host = new ModSet("0123456789abcdef0123456789abcdef", [bundledHere with { Hash = new string('b', 64), Folder = null }]);
+            var asLegacy = ModSyncPlan.Make(host, hostShares: true, own, (_, _) => null, new HashSet<string>(), legacyHost: true);
+            check(asLegacy.Verdict == SyncVerdict.Ready && asLegacy.Items.Single().LocalHash == bundledHere.Hash,
+                "A 0.3 host's bundled mod is not the joiner's own: " + asLegacy.Verdict);
+            check(ModSyncPlan.Make(host, hostShares: true, own, (_, _) => null, new HashSet<string>()).Verdict == SyncVerdict.Unjoinable,
+                "Another bundled mod of this HellForge was had.");
+            var session = new ModSyncSession("1100001DEADBEEF", "Host", "hellforge1-lobby;x;1100001DEADBEEF", host.Digest, []) { Legacy = true };
+            var path = Path.Combine(root, "sync-legacy-session.json");
+            session.Write(path);
+            check(ModSyncSession.Read(path).Legacy, "A 0.3 host's sync session lost its legacy mark.");
+        });
+
         test("Mod sync: a Steam friend's unverified code and raw mods wait for the player's trust, that exact content; a stranger's too in a sandboxed session, else the player installs them", () =>
         {
             var (hostMods, _) = ModCatalog.Load(Mods(root, "sync-trust-host"));
