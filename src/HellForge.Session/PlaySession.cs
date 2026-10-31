@@ -1190,6 +1190,8 @@ sealed partial class PlaySession(PlayOptions options)
     {
         if (!File.Exists(Path.Combine(run, "stop-observation.signal"))) return false;
         result["observationStoppedBySignal"] = true;
+        // "stop-now" (SessionRunner.SignalStop now: true): the game is ended at once, without asking it to close
+        if (ReadSignal() == SessionRunner.StopNowSignal) endGameNow = true;
         // The backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
         if (ReadSignal() == "mod-sync") result["restart"] = "mod-sync";
         return true;

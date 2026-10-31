@@ -14,31 +14,43 @@ static class GameClose
     [DllImport("user32.dll")] static extern bool IsWindowVisible(nint window);
     [DllImport("user32.dll")] static extern nint GetWindow(nint window, uint command);
     [DllImport("user32.dll", SetLastError = true)] static extern bool PostMessageW(nint window, uint message, nint wparam, nint lparam);
+    [DllImport("user32.dll")] static extern bool IsHungAppWindow(nint window);
 
     const uint WM_CLOSE = 0x0010, GW_OWNER = 4;
 
-    // Posts WM_CLOSE to the process's visible, unowned top-level windows; returns how many.
-    public static int Request(int processId)
+    // How a close request went. NoWindow and Hung are never waited for: a game without a window (stuck quitting, or still
+    // starting) or with a window that does not respond would not read the request, so the session ends it at once.
+    public enum Outcome { AlreadyExited, NoWindow, Hung, ClosedByItself, TimedOut }
+
+    // The process's visible, unowned top-level windows (at most 8), and whether one is hung.
+    static (List<nint> Windows, bool Hung) Windows(int processId)
     {
         var windows = new List<nint>();
+        var hung = false;
         EnumWindows((window, _) =>
         {
             if (GetWindowThreadProcessId(window, out var pid) != 0 && pid == (uint)processId && IsWindowVisible(window) &&
                 GetWindow(window, GW_OWNER) == 0 && windows.Count < 8)
+            {
                 windows.Add(window);
+                hung |= IsHungAppWindow(window);
+            }
             return true;
         }, 0);
-        return windows.Count(window => PostMessageW(window, WM_CLOSE, 0, 0));
+        return (windows, hung);
     }
 
-    // Asks the game to close and waits for it, up to `timeout`; true when it exited by itself.
-    public static bool CloseAndWait(Process game, TimeSpan timeout, out int windows)
+    // Asks the game to close (WM_CLOSE to each of its windows) and waits for it, up to `timeout`.
+    public static Outcome CloseAndWait(Process game, TimeSpan timeout, out int windows)
     {
         windows = 0;
         game.Refresh();
-        if (game.HasExited) return true;
-        windows = Request(game.Id);
-        if (windows == 0) return false;
-        return game.WaitForExit(timeout);
+        if (game.HasExited) return Outcome.AlreadyExited;
+        var (found, hung) = Windows(game.Id);
+        windows = found.Count;
+        if (found.Count == 0) return Outcome.NoWindow;
+        if (hung) return Outcome.Hung;
+        if (found.Count(window => PostMessageW(window, WM_CLOSE, 0, 0)) == 0) return Outcome.NoWindow;
+        return game.WaitForExit(timeout) ? Outcome.ClosedByItself : Outcome.TimedOut;
     }
 }

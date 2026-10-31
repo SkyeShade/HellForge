@@ -169,6 +169,15 @@ static class ModsHoldTests
                 !ShaderCache.Building(State("[]")), "Unknown: not said.");
         });
 
+        test("Stop signal: a plain stop lets the game close first, a stop now ends it at once", () =>
+        {
+            var run = Directory.CreateDirectory(Path.Combine(root, "stop-signal")).FullName;
+            SessionRunner.SignalStop(run);
+            check(File.ReadAllText(Path.Combine(run, "stop-observation.signal")) == "stop", "A plain stop.");
+            SessionRunner.SignalStop(run, now: true);
+            check(File.ReadAllText(Path.Combine(run, "stop-observation.signal")) == SessionRunner.StopNowSignal, "A stop now.");
+        });
+
         test("Sandboxed editor saves: changes are applied onto the files as they are now, each checked", () =>
         {
             var mods = Folder(root, "sandbox-stats");

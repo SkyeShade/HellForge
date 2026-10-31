@@ -88,8 +88,9 @@ On `dev`, since 0.3.0-beta.
 
 - A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
   `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
-  to its first backend request) and, after a stop asked for, `gameClose` (`windows`, `closedByItself`, `seconds`). A
-  stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by itself.
+  to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
+  `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
+  itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
