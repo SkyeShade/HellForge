@@ -16,10 +16,12 @@ public static class WindowsSupport
 
     // A plain message when HellForge's programs would close as they start on this Windows, null when they run.
     // build: the Windows build (Environment.OSVersion); ntdll: System32\ntdll.dll's file version; shadowStacks: the
-    // processor has CET shadow stacks (CPUID 7, ECX bit 7).
+    // processor has CET shadow stacks (CPUID 7, ECX bit 7). Only an ntdll numbered as Windows 10's (10.0.19041.x) is
+    // judged: Wine's and Proton's (6.1.7601.x, reporting Windows 10 19045) run HellForge, CET or not.
     public static string? Problem(int build, Version? ntdll, bool shadowStacks)
     {
-        if (!shadowStacks || build < FirstCetBuild || build >= Windows11 || ntdll == null || ntdll >= FixedNtdll) return null;
+        if (!shadowStacks || build < FirstCetBuild || build >= Windows11 || ntdll == null || ntdll >= FixedNtdll ||
+            ntdll.Major != FixedNtdll.Major || ntdll.Minor != FixedNtdll.Minor || ntdll.Build != FixedNtdll.Build) return null;
         var windows = $"Windows 10 version {Release(build)} (build {build})";
         const string why = "HellForge's programs need Windows updates from October 2024 or later on this PC's processor: without them they " +
             "close as soon as they start, before they can show anything.";

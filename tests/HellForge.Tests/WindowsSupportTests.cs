@@ -23,6 +23,8 @@ static class WindowsSupportTests
             check(WindowsSupport.Problem(22631, new Version(10, 0, 22621, 1000), true) == null, "Windows 11 refused.");
             check(WindowsSupport.Problem(17763, new Version(10, 0, 17763, 100), true) == null, "1809 (no user shadow stacks) refused.");
             check(WindowsSupport.Problem(19043, null, true) == null, "An unreadable ntdll refused.");
+            check(WindowsSupport.Problem(19045, new Version(6, 1, 7601, 24059), true) == null, "Proton 11's ntdll (live test) refused.");
+            check(WindowsSupport.Problem(19043, new Version(6, 1, 7601, 24059), true) == null, "Wine set to 19043 refused.");
         });
     }
 }
