@@ -22,7 +22,7 @@ On `dev`, since 0.3.0-beta.
   already has is copied, not downloaded, and every file is checked against Steam's hashes. With the QR code HellForge
   never sees your password, and nothing of the sign-in is kept. HellForge no longer downloads build patches from
   files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
-  Sharing) or on Linux, setup shows the Steam console commands as before.
+  Sharing) or on Linux, setup shows the Steam console commands as before (#205).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
@@ -89,7 +89,7 @@ On `dev`, since 0.3.0-beta.
 
 - `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
   that signs in (a QR code on standard error, or `--sign-in password`), as setup does; `--file` fetches one file of the
-  build and `--dry-run yes` prints the plan only.
+  build and `--dry-run yes` prints the plan only (#205).
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
