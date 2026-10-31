@@ -41,6 +41,8 @@ sealed partial class PlaySession(PlayOptions options)
     string[] erlBefore = [];
     FileStream? lease;
     HostBoundedProcess? job;
+    // The backend and the broker end with this runner, however it ends (HelperJob).
+    readonly HelperJob helpers = new();
     Process? server, broker;
     nint lowToken;
     Thread? applier;
@@ -885,6 +887,8 @@ sealed partial class PlaySession(PlayOptions options)
         // backend's folder, which the low-integrity game cannot write
         brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
         broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
+        helpers.Add(broker);
+        if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
         broker.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (brokerLog) brokerLog.WriteLine(e.Data); };
         broker.BeginErrorReadLine();
@@ -999,6 +1003,8 @@ sealed partial class PlaySession(PlayOptions options)
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
             throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
         server = Process.Start(start) ?? throw new SessionFailure("The local backend did not start.");
+        helpers.Add(server);
+        if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };
         var stderr = new StreamWriter(Path.Combine(run, "backend-stderr.txt")) { AutoFlush = true };
         server.OutputDataReceived += (_, e) => { if (e.Data != null) lock (stdout) stdout.WriteLine(Privacy.Scrub(e.Data)); };
@@ -1087,11 +1093,14 @@ sealed partial class PlaySession(PlayOptions options)
         var observations = Path.Combine(run, "observations.jsonl");
         long nextSample = 0, nextBlockCheck = 10000, requestOffset = 0;
         var requestCount = 0;
+        var quit = new QuitWatch();
+        var hung = false;
         Say("Play session running. Close the game or press Stop in the launcher to end it.");
         while (true)
         {
             job!.Process.Refresh();
             if (job.Process.HasExited) break;
+            if (WatchQuit(quit, clock, ref hung)) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
             RecordRedirect(playFab);
             // clearMatchmaking holds the game to the genuine sign-in; ClearPlatformMatchmaking runs each loop.
@@ -1104,10 +1113,49 @@ sealed partial class PlaySession(PlayOptions options)
                 WriteSample(observations, clock.ElapsedMilliseconds, requestCount, matchmaking);
                 nextSample = clock.ElapsedMilliseconds + 30000;
             }
-            if (StopRequested()) break;
+            if (StopRequested())
+            {
+                // Stop pressed on a game without a window, or with a hung one: what it was doing, for the logs.
+                if (hung || quit.WindowlessMilliseconds(clock.ElapsedMilliseconds) > 0)
+                    result["gameAtStop"] = GameWindows.Snapshot(job.Process, gameStarted ?? DateTime.UtcNow);
+                break;
+            }
             Thread.Sleep(1000);
         }
         RecordEnd(clock);
+    }
+
+    // The game closed its window and did not exit (QuitWatch): true when the session should end it now. A hung window
+    // is noted once per hang. Either way, what the game's threads were doing goes into the result.
+    bool WatchQuit(QuitWatch quit, Stopwatch clock, ref bool hung)
+    {
+        var (visible, isHung) = GameWindows.Visible(job!.Process.Id);
+        hung = isHung;
+        switch (quit.Update(clock.ElapsedMilliseconds, visible, isHung))
+        {
+            case QuitWatch.Verdict.HungNote:
+                Say($"The game's window has not responded for {QuitWatch.HungNoteMilliseconds / 1000} s (still waiting; press Stop in the launcher to end it).");
+                result["gameHung"] = GameWindows.Snapshot(job.Process, gameStarted ?? DateTime.UtcNow);
+                Save();
+                return false;
+            case QuitWatch.Verdict.StuckQuitting:
+                var snapshot = GameWindows.Snapshot(job.Process, gameStarted ?? DateTime.UtcNow);
+                result["stuckQuitting"] = snapshot;
+                var holders = (snapshot["holders"] as JsonArray)?.Select(h => (string?)h?["name"]).ToList() ?? [];
+                Say($"The game closed its window but was still running {QuitWatch.GraceMilliseconds / 1000} s later: HellForge ends it and finishes " +
+                    $"the session ({snapshot["threadCount"]} thread(s) left{(holders.Count > 0 ? ", held open by " + string.Join(", ", holders) : "")}).");
+                // Ended here, at once: the game has no window left to ask to close, so the graceful close STOP gives a
+                // game (the clean-up's, for a stop the player asked for) would only add its wait.
+                try
+                {
+                    result["jobActiveAtStop"] = job.ActiveProcesses;
+                    job.Stop();
+                }
+                catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; } // the clean-up stops it again
+                return true;
+            default:
+                return false;
+        }
     }
 
     // The persistent block is re-read every 10 seconds; the game is stopped if a rule or profile goes away.

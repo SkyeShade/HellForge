@@ -459,7 +459,10 @@ public partial class MainWindow : Window
     void ShowObserved(JsonElement state, bool stopped)
     {
         RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-        if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
+        // the game closed its window and kept running: the session runner ended it (QuitWatch) and finished as after STOP
+        var stuck = state.TryGetProperty("stuckQuitting", out _)
+            ? "The game closed its window but did not exit, so HellForge ended it and finished the session as usual. " : "";
+        if (stopped) SetStatus("Session ended.", Phase.Ended, stuck + Cleanup(state) + "Press PLAY to start another session.");
         else SetStatus("Ending the session...", Phase.Busy);
     }
 

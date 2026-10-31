@@ -166,6 +166,15 @@ Console page and in Settings) shows the session's folder; `session.log` there li
 The first launch of a new installation can stop in the cryo pod. The launcher notices and says "The game seems stuck in
 the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 
+### The game does not close
+
+If the game closes its window but keeps running, HellForge ends it 30 seconds later and finishes the session as STOP
+does; the Play page says so when the session ends. If the window stays open but stops responding, press STOP in the
+launcher: it ends the game and everything the session started. Either way, the session's `result.json` records what the
+game was still doing (`stuckQuitting`, `gameHung` or `gameAtStop`), and Save logs to Desktop adds
+`processes-now.txt`, the session's programs that were still running when you saved the logs. When you report it, send
+that zip; if you can, save it while the game is still stuck.
+
 ### Messages before the game starts
 
 | Message | What to do |
