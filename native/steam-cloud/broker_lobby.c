@@ -61,15 +61,33 @@ static void PathOf(const BrokerLobbies* s, uint64_t lobby, const wchar_t* suffix
     swprintf(path, capacity, L"%ls\\%016llX%ls", s->folder, (unsigned long long)lobby, suffix);
 }
 
-/* The lobby's lock: a file only one broker can hold, gone when closed. Waits up to a second. */
+/* A lock file is held for milliseconds: one older than this was left by a broker that died with it (on Linux a killed
+ * wineserver does not delete it). */
+#define LOCK_STALE_MS 5000
+
+static bool LockStale(const wchar_t* path)
+{
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &data)) return false;
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    ULARGE_INTEGER made = { .LowPart = data.ftLastWriteTime.dwLowDateTime, .HighPart = data.ftLastWriteTime.dwHighDateTime };
+    ULARGE_INTEGER at = { .LowPart = now.dwLowDateTime, .HighPart = now.dwHighDateTime };
+    return at.QuadPart > made.QuadPart && (at.QuadPart - made.QuadPart) / 10000 > LOCK_STALE_MS;
+}
+
+/* The lobby's lock: a file only one broker can hold, gone when closed. Waits up to a second. CREATE_NEW, not a share
+ * mode: on Linux each installation's game runs in its own Wine prefix, whose wineservers do not see each other's share
+ * modes, while an exclusive create holds across them (docs/multi-instance.md). A stale one is taken over. */
 static HANDLE Lock(const BrokerLobbies* s, uint64_t lobby)
 {
     wchar_t path[600];
     PathOf(s, lobby, L".lock", path, 600);
     for (int i = 0; i < 200; i++)
     {
-        HANDLE lock = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+        HANDLE lock = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE, NULL);
         if (lock != INVALID_HANDLE_VALUE) return lock;
+        if (GetLastError() == ERROR_FILE_EXISTS && LockStale(path)) DeleteFileW(path);
         Sleep(5);
     }
     return INVALID_HANDLE_VALUE;

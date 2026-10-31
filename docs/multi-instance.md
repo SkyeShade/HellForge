@@ -82,10 +82,41 @@ Fedora, 2026-10-30:
 - **What works:** each backend lists its lobby in the shared folder, under `HELLFORGE_IDENTITY`. The other session's
   browse API and in-game browser list it as a stranger's ("Ready to join"), and Quick Play hands that game the
   invitation.
-- **What does not: the game's join.** The sandboxed Steam broker (`broker_lobby.c`), which gives each game its own
-  SteamID, is Windows-only. On Linux both games are the same Steam account, and a second game signing in sends the
-  first back to its title screen. A join between two installations on one Linux PC therefore needs two PCs, or the
-  broker on Linux.
+- **What needs the test broker: the game's join.** Without it both games are the same Steam account, and a second
+  game signing in sends the first back to its title screen.
 
 The full test notes are in
 [the earlier version of this page](https://github.com/SkyeShade/HellForge/blob/8960d58f03787264e3ce88aa68cffaaf8af0d8ff/docs/multi-instance.md#on-linux-2026-10-30-the-lobby-browser).
+
+## On Linux: the test broker
+
+On Linux the sandbox is a separate Wine prefix and wineserver, which the broker's pipe cannot reach, so the steps above
+need `HELLFORGE_TEST_BROKER=1` instead of `--sandbox`. Each installation needs its own Wine prefix too: a second
+session's wrapper refuses a prefix whose wineserver runs outside its network namespace (`hellforge-offline.sh`).
+
+1. Make the second installation in a copy of the prefix (for example `~/.local/share/hellforge-prefix-b`), with its game
+   data hard-linked as on Windows.
+2. Set the variables of step 3 and `HELLFORGE_TEST_BROKER=1`, and start `HellForge.Session play --multiplayer` without
+   `--sandbox`. The session uses the Steam bridge and starts the broker at the player's integrity (no low token;
+   `PlaySession.LinuxTestBroker`, the session's `"testBroker": true`). With `--sandbox` it refuses to start. The build
+   needs the bridge and broker (`scripts/Build-Engine.ps1` with the Steamworks SDK, not `-NoSteamApi`).
+3. Each session has its own network namespace, so loopback does not reach the other one. Once both games run, start the
+   relay in each session's namespace, giving the other installation's backend link port and broker P2P port
+   (48000 + its SteamID mod 1000):
+
+   ```sh
+   nsenter -t <first game pid> -U -n --preserve-credentials python3 -I app/linux/hf-mi-relay.py a b 47003 48003
+   nsenter -t <second game pid> -U -n --preserve-credentials python3 -I app/linux/hf-mi-relay.py b a 47002 48002
+   ```
+
+The lobby folder is shared through files, which cross namespaces.
+
+- Its lock is an exclusive create (`CREATE_NEW`, in `broker_lobby.c`): two prefixes' wineservers do not see each
+  other's share modes. The second prefix is refused until the first lets go, and the file goes with the handle.
+- A stale lock (older than 5 s, left by a wineserver that was killed) is taken over.
+- The broker's pipe security (a low label, the owner's SID) works under Wine as it is: a client at the player's
+  integrity connects, and the broker reads its pid.
+
+**Not yet run with two games.** The bridge and broker are not in the Linux builds made so far, which had no Steamworks
+SDK. Whether two brokers signed in to one Steam account keep each other's game at its title screen (as two games with
+Valve's DLL did) is still to be seen.
