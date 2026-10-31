@@ -29,11 +29,14 @@ static void ArmoryDiagFixture(void)
     ArmoryCard(m, 1, 5, 15, 2, 2);              /* scrolled to: every request submitted, none done */
     ArmoryPut32(m, 1 * ARMORY_CARD_STRIDE + ARMORY_REQUESTS + 3 * ARMORY_REQUEST_STRIDE + 104, 4);
 
-    /* Off the thumbnail screens, or no manager: nothing. */
+    /* Off the thumbnail screens: nothing. On one with no manager: one line a session. */
     assert(!ArmoryDiagStep(&d, 3, m, 1000, line, sizeof line));
-    assert(!ArmoryDiagStep(&d, 5, NULL, 1000, line, sizeof line));
-    /* Standing still below the threshold: nothing; at it: one line naming the waiting requests (not the done one). */
-    assert(!ArmoryDiagStep(&d, 5, m, 2000, line, sizeof line));
+    assert(ArmoryDiagStep(&d, 5, NULL, 1000, line, sizeof line) && strstr(line, "the Armory is open but its thumbnail manager could not be read"));
+    assert(!ArmoryDiagStep(&d, 5, NULL, 1500, line, sizeof line));
+    /* The first screen watched: one line with its cards; standing still below the threshold: nothing; at it: one line
+     * naming the waiting requests (not the done one). */
+    assert(ArmoryDiagStep(&d, 5, m, 2000, line, sizeof line) && strstr(line, "watching the Armory (cards state:count 8:15 5:15 0:0 0:0 0:0 0:0)"));
+    assert(!ArmoryDiagStep(&d, 5, m, 2500, line, sizeof line));
     assert(!ArmoryDiagStep(&d, 5, m, 2000 + ARMORY_STALL_MS - 1, line, sizeof line));
     assert(ArmoryDiagStep(&d, 5, m, 2000 + ARMORY_STALL_MS, line, sizeof line));
     assert(strstr(line, "no progress for 10 s on the Armory") && strstr(line, "active card 1, phase 5"));

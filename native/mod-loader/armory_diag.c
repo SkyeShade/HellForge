@@ -13,6 +13,8 @@
  * queued or generating and nothing the generator moves (cards' states and counts, the requests' stages, the active card,
  * its phase) has changed for ARMORY_STALL_MS, modloader.log gets one line with the cards and the requests still waiting
  * (kind, id, stage); a later change gets one line saying how long it stood. At most ARMORY_REPORTS stalls a session.
+ * The first screen watched gets one line with its cards, and a thumbnail screen whose manager cannot be read or is not
+ * laid out as reviewed one line saying it is not watched (once a session each).
  * Manager layout (u32 words of the 11112 bytes read): card c's state at +1832+1816c, its count at +1836+1816c, its
  * requests of 120 bytes from +32+1816c (+24 the item's id, +100 its kind 0..4, +104 its stage: 1 waiting admission,
  * 2 submitted, 3 unit available, 4 done); +11064 the active card (~0 none), +11068/+11072 the preview slots' occupancy,
@@ -42,6 +44,7 @@ typedef struct ArmoryDiag
 {
     uint32_t last[ARMORY_SIGNATURE];
     int has, stalled, reports, toaster, toasterChecked;
+    int watched, unwatched;              /* the session's one line each: the first screen watched, or one not readable */
     uint32_t screen;
     ULONGLONG since, next;
 } ArmoryDiag;
@@ -129,9 +132,22 @@ static int ArmoryDiagStep(ArmoryDiag* d, uint32_t screen, const uint8_t* m, ULON
                 ArmoryScreen(d->screen), (unsigned long long)((now - d->since) / 1000));
             report = 1;
         }
+        else if ((screen == 5 || screen == 14) && !d->unwatched)
+        {
+            snprintf(line, size, "armory thumbnails: the %s is open but its thumbnail manager %s; not watched", ArmoryScreen(screen),
+                m == NULL ? "could not be read" : "is not laid out as on build 25480438");
+            d->unwatched = report = 1;
+        }
         d->has = d->stalled = 0;
         d->screen = 0;
         return report;
+    }
+    if (!d->watched)
+    {
+        snprintf(line, size, "armory thumbnails: watching the %s (cards state:count %u:%u %u:%u %u:%u %u:%u %u:%u %u:%u)",
+            ArmoryScreen(screen), signature[2], signature[3], signature[4], signature[5], signature[6], signature[7], signature[8],
+            signature[9], signature[10], signature[11], signature[12], signature[13]);
+        d->watched = report = 1;
     }
     int changed = !d->has || d->screen != screen || memcmp(signature, d->last, sizeof signature) != 0;
     if (changed || !pending)
