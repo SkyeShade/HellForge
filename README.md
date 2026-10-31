@@ -116,6 +116,12 @@ Each step in detail, the installation's folders, updating and uninstalling are i
   [Zig](https://ziglang.org) compiles native code and mods. All three are downloaded at build time, pinned, and their
   licences ship with what uses them. Microsoft's public PlayFab Party and PlayFab Multiplayer SDK packages are downloaded
   at build time for their headers (the stand-ins' signatures); nothing from them is committed or shipped.
+- [SteamKit2](https://github.com/SteamRE/SteamKit) (LGPL-2.1) signs in to Steam and downloads the supported build, with
+  [protobuf-net](https://github.com/protobuf-net/protobuf-net) (Apache-2.0),
+  [ZstdSharp](https://github.com/oleg-st/ZstdSharp) (MIT, a port of Zstandard: BSD) and
+  [System.IO.Hashing](https://github.com/dotnet/runtime) (MIT); [QRCoder](https://github.com/Shane32/QRCoder) (MIT)
+  draws the sign-in's QR code. Each is its own, unchanged DLL beside the launcher and the CLI, with its licence and
+  where its source is in `licences/` there.
 - The live war comes from the community [Helldivers 2 API](https://github.com/helldivers-2/api).
 - Linux support was worked out by DreamyBranch and joshua-software-dev
   ([issue 1](https://github.com/SkyeShade/HellForge/issues/1)).

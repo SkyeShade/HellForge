@@ -344,6 +344,21 @@ static class SteamDownloadTests
             check(session.Contains("IsPersistentSession = false") && session.Contains("ShouldRememberPassword = false"), "The session is not marked non-persistent.");
         });
 
+        test("The Steam download's libraries ship with their licences, and the notices name the versions referenced", () =>
+        {
+            var licences = Path.Combine(AppContext.BaseDirectory, "licences");
+            foreach (var name in new[] { "THIRD-PARTY-NOTICES.txt", "SteamKit2-LICENSE.txt", "Apache-2.0.txt", "protobuf-net-LICENSE.txt", "QRCoder-LICENSE.txt",
+                "ZstdSharp.Port-LICENSE.txt", "zstd-LICENSE.txt", "System.IO.Hashing-LICENSE.txt", "System.IO.Hashing-THIRD-PARTY-NOTICES.txt" })
+                check(File.Exists(Path.Combine(licences, name)), "Missing licences/" + name);
+            check(File.ReadAllText(Path.Combine(licences, "SteamKit2-LICENSE.txt")).Contains("GNU LESSER GENERAL PUBLIC LICENSE"), "SteamKit2's licence is not the LGPL text.");
+            var notices = File.ReadAllText(Path.Combine(licences, "THIRD-PARTY-NOTICES.txt"));
+            foreach (var reference in Regex.Matches(File.ReadAllText(Source("HellForge.SteamDownload/HellForge.SteamDownload.csproj")),
+                "PackageReference Include=\"([^\"]+)\" Version=\"([^\"]+)\"").Cast<Match>())
+                check(notices.Contains($"{reference.Groups[1].Value} {reference.Groups[2].Value}"), $"The notices do not name {reference.Groups[1].Value} {reference.Groups[2].Value}.");
+            foreach (var library in new[] { "SteamKit2", "protobuf-net", "protobuf-net.Core", "ZstdSharp", "System.IO.Hashing", "QRCoder" })
+                check(notices.Contains(library + ".dll"), "The notices do not name " + library + ".dll");
+        });
+
         test("The sign-in QR code has its quiet zone and finder patterns, and draws in a terminal", () =>
         {
             var modules = QrCode.Modules("https://s.team/q/1/1234567890123456789");

@@ -28,8 +28,10 @@ sign-in shows passes through a scrubber that hides the password and the tokens, 
 sign-in code that shows, logs, writes or throws text names one. The sign-in is a separate Steam session, so the Steam
 client stays signed in. Steam may email the account about a new sign-in.
 
-The download runs on [SteamKit2](https://github.com/SteamRE/SteamKit) (LGPL-2.1, as its own DLL beside HellForge's).
-The code on top of it is HellForge's own.
+The download runs on [SteamKit2](https://github.com/SteamRE/SteamKit) (LGPL-2.1, as its own unchanged DLL beside
+HellForge's, which a player may replace). The code on top of it is HellForge's own. SteamKit2's licence, those of the
+libraries it uses and QRCoder's, and where each one's source is, ship in `licences/` beside the launcher and the CLI
+(`src/HellForge.SteamDownload/licences/THIRD-PARTY-NOTICES.txt`).
 
 ## What is downloaded
 
