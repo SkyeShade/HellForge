@@ -1,9 +1,11 @@
 # In-game tests
 
 Checks that need the real game, run unattended by the development harness (CowboyBingus's BingusDevelopmentHarness,
-its `modtest` command): it copies the test mods into a HellForge installation with every other mod off, plays a
-session to the ship and into a solo mission and back, checks the logs the session wrote against an expectations file,
-and puts the installation back as it was.
+with a `modtest` command that is not in its published repository yet): it copies the test mods into a HellForge
+installation with every other mod off, plays a session to the ship and into a solo mission and back, checks the logs
+the session wrote against an expectations file, and puts the installation back as it was. Without it, the same test
+runs by hand: add `sdk-probe` to a test installation, play to the ship and into a mission and back, and compare the
+probe's log (`mod-hellforge.sdk-probe.log` in the session's folder) with `sdk16.json`.
 
 | File | What |
 | --- | --- |
