@@ -1053,6 +1053,20 @@ int main(int argc, char** argv)
             warnedFirst ? "yes" : "NO", held ? "yes" : "NO", allowed ? "yes" : "NO", quick ? "yes" : "NO");
         if (!idle || !shown || !joined || !invited || !escaped || !warnedFirst || !held || !allowed || !quick)
         { puts("FAIL the lobby browser did not open, join, warn, quick-join or close as expected"); failures++; }
+        /* claimed by another mod (browse_state's owner): the terminal no longer opens the editor's browser; released, it does */
+        snprintf(g_browseNow.owner, sizeof g_browseNow.owner, "echelon.browser");
+        frames(40);
+        int claimedAlone = g_lobbiesAlone, claimedRefreshes = g_browseRefreshes;
+        g_browseNow.terminal = 3; frames(40);
+        bool stepsAside = g_lobbiesAlone == claimedAlone && g_browseRefreshes == claimedRefreshes;
+        g_browseNow.owner[0] = 0; frames(40);
+        g_browseNow.terminal = 4; frames(40);
+        bool reopened = g_lobbiesAlone == claimedAlone + 1;
+        armed();
+        Key(window, VK_ESCAPE); armed();
+        printf("  lobby browser: claimed by a mod, the terminal leaves it to the mod %s; released, the terminal opens it %s\n",
+            stepsAside ? "yes" : "NO", reopened ? "yes" : "NO");
+        if (!stepsAside || !reopened) { puts("FAIL the editor's lobby browser did not step aside for a mod's claim"); failures++; }
     }
     HRESULT removed = d3d11 ? device11->GetDeviceRemovedReason() : device->GetDeviceRemovedReason();
     if (removed != S_OK) { printf("FAIL device removed 0x%08lx\n", (unsigned long)removed); failures++; }

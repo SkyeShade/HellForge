@@ -109,7 +109,8 @@ On `dev`, since 0.3.0-beta.
   keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
   setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`; show the player the
   launcher's warning before turning strangers on; `HF_LOBBY_FIX_SANDBOX` has no ask: the launcher's Sandbox setting,
-  for the next session).
+  for the next session). A mod that draws a browser of its own asks `HF_BROWSE_CLAIM`, and HellForge's in-game editor
+  then shows none (`HfBrowseState.owner`). How to build one: [docs/lobby-browser.md](docs/lobby-browser.md).
 
 ### For launcher developers
 

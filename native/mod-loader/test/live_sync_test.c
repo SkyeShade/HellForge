@@ -226,7 +226,7 @@ static void LiveSyncFixture(void)
 
 /* SDK 16, the lobby browser: a list's browselobby lines wait for its browsestate; a search under way and a join's outcome
  * keep the lobbies; malformed lines refused; asks queued only with a backend, a join only for a lobby id; the terminal's
- * count carried with the state; the list gone with the backend. */
+ * count carried with the state; the list gone with the backend; the first mod to claim the browser holding it. */
 static void LiveBrowseFixture(void)
 {
     char reply[512];
@@ -305,4 +305,27 @@ static void LiveBrowseFixture(void)
     BrowseClear();
     assert(!ApiBrowseState(NULL, &state) && state.state == HF_BROWSE_NONE && state.version == 0 && state.terminal == 2);
     InterlockedExchange(&g_terminalOpens, 0);
+
+    /* a claim: the first mod holds the browser until it releases it, and only it moves the terminal's camera; no backend
+     * needed, and the owner stays when the backend goes */
+    HfMod first = {0}, second = {0};
+    snprintf(first.id, sizeof first.id, "echelon.browser");
+    snprintf(second.id, sizeof second.id, "other.browser");
+    assert(!ApiBrowseAsk(NULL, HF_BROWSE_CLAIM, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_CLAIM, NULL) && ApiBrowseAsk(&first, HF_BROWSE_CLAIM, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_CLAIM, NULL));
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(state.owner, "echelon.browser"));
+    assert(!ApiBrowseAsk(&second, HF_BROWSE_SHOWN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_HIDDEN, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_SHOWN, NULL) && ApiBrowseAsk(&first, HF_BROWSE_HIDDEN, NULL));
+    BrowseClear();
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(state.owner, "echelon.browser"));
+    HfBrowseState older = {offsetof(HfBrowseState, owner)}; /* a mod built before the owner: the loader writes no further */
+    memset(older.owner, 'x', sizeof older.owner);
+    ApiBrowseState(NULL, &older);
+    assert(older.owner[0] == 'x' && older.size == offsetof(HfBrowseState, owner));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_RELEASE, NULL) && !ApiBrowseAsk(&first, HF_BROWSE_RELEASE, NULL));
+    ApiBrowseState(NULL, &state);
+    assert(state.owner[0] == 0 && ApiBrowseAsk(NULL, HF_BROWSE_HIDDEN, NULL));
+    assert(ApiBrowseAsk(&second, HF_BROWSE_CLAIM, NULL) && ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
 }

@@ -8,7 +8,8 @@
  * As mod sync's lines do, a version's browselobby lines come first and wait in g_browseNext (the pipe's thread alone
  * touches it); its browsestate line publishes them. A browsestate of the version already published (a search under way,
  * a join's outcome) keeps its lobbies. The terminal count is terminal.c's: how many times the ship's information
- * terminal opened the browser. Included by live.c after LiveQueue. */
+ * terminal opened the browser. A mod that draws a browser of its own claims it (HF_BROWSE_CLAIM; the first claim holds
+ * until released), and HellForge's editor then shows none (browse_state's owner). Included by live.c after LiveQueue. */
 #define BROWSE_MAX_LOBBIES 128
 static const char* const kBrowseStates[] = {"none", "searching", "ready", "unavailable", "invited", "failed"};
 static const char* const kBrowseVerdicts[] = {"ready", "download", "trust", "unjoinable", "blocked", "full", "locked", "unknown"};
@@ -19,6 +20,7 @@ static HfBrowseLobby g_browseLobbies[BROWSE_MAX_LOBBIES];
 static HfBrowseLobby g_browseNext[BROWSE_MAX_LOBBIES];
 static uint32_t g_browseNextVersion;
 static uint64_t g_browseNextSeen[BROWSE_MAX_LOBBIES / 64]; /* the indices of g_browseNext that arrived, a bit each */
+static HfMod* g_browseOwner; /* the mod that claimed the browser (HF_BROWSE_CLAIM), or NULL: under g_browseLock */
 
 /* A lobby id as the backend lists it: 1 to 64 printable ASCII characters, no spaces. */
 static int BrowseLobbyId(const char* text)
@@ -132,12 +134,38 @@ static void BrowseStateLine(char* line, char* reply, size_t size)
     snprintf(reply, size, "%s\tok\tnow", f[1]);
 }
 
-/* The backend is gone: no list stands (the terminal count stays). */
+/* The backend is gone: no list stands (the terminal count and the browser's owner stay). */
 static void BrowseClear(void)
 {
     AcquireSRWLockExclusive(&g_browseLock);
     memset(&g_browse, 0, sizeof g_browse);
     ReleaseSRWLockExclusive(&g_browseLock);
+}
+
+/* HF_BROWSE_CLAIM and HF_BROWSE_RELEASE: the first mod to claim the browser holds it until it releases it. */
+static int BrowseClaim(HfMod* mod, int claim)
+{
+    if (mod == NULL) return 0;
+    AcquireSRWLockExclusive(&g_browseLock);
+    HfMod* was = g_browseOwner;
+    if (claim && was == NULL) g_browseOwner = mod;
+    if (!claim && was == mod) g_browseOwner = NULL;
+    ReleaseSRWLockExclusive(&g_browseLock);
+    if (claim && was == NULL) Note("lobby browser: %s draws it; HellForge's editor shows none of its own", mod->id);
+    else if (claim && was != mod) Note("lobby browser: %s asked to draw it, but %s does", mod->id, was->id);
+    else if (!claim && was == mod) Note("lobby browser: %s gave it back to HellForge's editor", mod->id);
+    return claim ? was == NULL || was == mod : was == mod;
+}
+
+/* HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN: the terminal's camera, moved by any mod while none holds the browser, else only
+ * by its owner. */
+static int BrowseCamera(HfMod* mod, int shown)
+{
+    AcquireSRWLockShared(&g_browseLock);
+    int may = g_browseOwner == NULL || g_browseOwner == mod;
+    ReleaseSRWLockShared(&g_browseLock);
+    if (may) TcamBrowser(shown);
+    return may;
 }
 
 /* SDK 16, browse_state: the list as the backend last sent it, with the terminal count. At most out->size bytes are
@@ -149,6 +177,7 @@ static int ApiBrowseState(HfMod* mod, HfBrowseState* out)
     uint32_t size = out->size;
     AcquireSRWLockShared(&g_browseLock);
     HfBrowseState now = g_browse;
+    if (g_browseOwner != NULL) SyncCopy(now.owner, sizeof now.owner, g_browseOwner->id);
     ReleaseSRWLockShared(&g_browseLock);
     now.size = sizeof now;
     now.terminal = (uint32_t)g_terminalOpens;
@@ -183,8 +212,8 @@ static int ApiBrowseLobby(HfMod* mod, uint32_t index, HfBrowseLobby* out)
  * backend. */
 static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
 {
-    (void)mod;
-    if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) { TcamBrowser(ask == HF_BROWSE_SHOWN); return 1; }
+    if (ask == HF_BROWSE_CLAIM || ask == HF_BROWSE_RELEASE) return BrowseClaim(mod, ask == HF_BROWSE_CLAIM);
+    if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) return BrowseCamera(mod, ask == HF_BROWSE_SHOWN);
     const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" :
         ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS ? "allow" : NULL;
     if (verb == NULL) return 0;

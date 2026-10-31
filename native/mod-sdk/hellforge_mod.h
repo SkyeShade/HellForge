@@ -872,6 +872,8 @@ typedef struct HfBrowseState
     char message[192];  /* what the backend says about it (UTF-8), or "" */
     uint32_t camera;    /* HF_BROWSE_CAMERA_...: the terminal's camera, which zooms into its screen; an editor shows its
                          * browser once it is HELD there (or at once with NONE), and says so with HF_BROWSE_SHOWN */
+    char owner[80];     /* the id of the mod that claimed the browser (HF_BROWSE_CLAIM), or "": HellForge's in-game editor
+                         * shows its own browser only while no mod has claimed it */
 } HfBrowseState;
 #define HF_BROWSE_CAMERA_NONE 0u      /* no terminal camera (another build, or turned off) */
 #define HF_BROWSE_CAMERA_IDLE 1u      /* the player's own view */
@@ -926,6 +928,9 @@ typedef struct HfBrowseLobby
 #define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on (HF_LOBBY_FIX_STRANGERS): ask only after showing the
                                         * player the warning HellForge's launcher shows; a new list follows */
 #define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) */
+#define HF_BROWSE_CLAIM 8u   /* this mod draws the lobby browser: HellForge's editor's own steps aside (browse_state's owner).
+                              * 1 when this mod holds it, 0 when another mod claimed it first; this machine only */
+#define HF_BROWSE_RELEASE 9u /* gives the browser back to HellForge's editor; 1 when this mod held it */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1288,7 +1293,8 @@ typedef struct HfApi
      * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id
      * NULL). HfBrowseLobby.fix HF_LOBBY_FIX_SANDBOX has no ask: the sandbox is the launcher's setting, for the next
      * session; say so. HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no
-     * backend. */
+     * backend; while a mod holds the browser (HF_BROWSE_CLAIM), only that mod's count. A guide to building a browser of
+     * one's own: docs/lobby-browser.md. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;
 

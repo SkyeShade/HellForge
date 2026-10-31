@@ -573,7 +573,10 @@ publishes them, as mod sync's `syncmod` and `syncstate` do. A search under way (
 redirect, and `browse_state`'s `terminal` carries the count: the in-game editor opens its LOBBY BROWSER panel when it
 goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. The panel asks for a
 new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
-It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API.
+It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API
+([lobby-browser.md](lobby-browser.md)). A mod that draws its own asks `HF_BROWSE_CLAIM` (the first claim holds until
+released; `browse_state`'s `owner` names it): the editor then opens no browser, from the terminal or Ctrl+L, closes
+one that shows, and only the owner's `HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN` move the terminal's camera.
 
 **Quick Play and the hidden lobbies.** `browseask quick -` (Q or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
 lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invited` with the host's name, or `failed`

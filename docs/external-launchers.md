@@ -270,7 +270,8 @@ none removed or changed in meaning. A change that breaks this goes to `/hellforg
 A browser drawn inside the game (a code mod's, as HellForge's in-game editor draws its own) gets the same list and
 joins through the SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)),
 over the session's live-edit pipe, with no HTTP of its own. `browse_state`'s `terminal` count goes up each time the
-ship's information terminal opens the browser.
+ship's information terminal opens the browser. [lobby-browser.md](lobby-browser.md) is the guide to building one, and
+`HF_BROWSE_CLAIM` makes HellForge's own step aside for it.
 
 ### Logs
 

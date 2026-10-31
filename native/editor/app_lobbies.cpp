@@ -12,7 +12,8 @@ namespace editorapp
  * browse_lobby) and the player's asks back (browse_ask). The ship's information terminal opens it (the loader counts
  * each time, browse_state's terminal), and so does Ctrl+L in the window. Like the MOD SYNC prompt it shows alone over the
  * game, holding its input, or in the window when that is open. A join hands the game the lobby's invitation, which the
- * player accepts in game, so the browser closes once it is there. A placeholder: Echelon's own browser replaces it. */
+ * player accepts in game, so the browser closes once it is there. A placeholder: a mod that draws a browser of its own
+ * claims it (HF_BROWSE_CLAIM, browse_state's owner; docs/lobby-browser.md), and this one then never shows. */
 LobbyDialog g_lobbies;
 /* The key or click that opened it (the terminal's interact key) must not answer it: its keys wait this long. */
 const double LOBBY_ARM = 0.5;
@@ -55,6 +56,11 @@ void ShowLobbiesAlone(bool on)
 void OpenLobbies(const char* why)
 {
     if (!HasBrowse()) { if (g_windowShown) Toast("This HellForge has no lobby browser (SDK 16)", ERROR_); return; }
+    if (!g_lobbies.owner.empty())
+    {
+        if (g_windowShown) Toast("The lobby browser is " + g_lobbies.owner + "'s: use the ship's information terminal", OK);
+        return;
+    }
     g_host.api->log(g_host.mod, "editor: the lobby browser opens (%s)", why);
     bool fresh = !g_lobbies.on;
     g_lobbies.on = true;
@@ -134,6 +140,16 @@ static void JoinAnswered(const HfBrowseState& now)
     }
 }
 
+/* The mod that claimed the browser (browse_state's owner): while there is one, this browser closes and never opens. */
+static void ReadOwner(const HfBrowseState& now)
+{
+    if (g_lobbies.owner == now.owner) return;
+    g_lobbies.owner = now.owner;
+    if (g_lobbies.owner.empty()) return;
+    g_host.api->log(g_host.mod, "editor: the lobby browser is %s's: the editor shows none of its own", now.owner);
+    if (g_lobbies.on) CloseLobbies();
+}
+
 /* Every 15 frames (Tick): the terminal's count (it opens the browser), the list when it changed, and a new list every
  * LOBBY_REFRESH seconds while it shows. */
 void ReadLobbies()
@@ -144,11 +160,12 @@ void ReadLobbies()
     HfBrowseState now{};
     now.size = sizeof now;
     g_host.api->browse_state(g_host.mod, &now);
+    ReadOwner(now);
     if (!g_lobbies.terminalRead) { g_lobbies.terminalRead = true; g_lobbies.terminal = now.terminal; }
     else if (now.terminal != g_lobbies.terminal)
     {
         g_lobbies.terminal = now.terminal;
-        OpenLobbies("the ship's information terminal");
+        if (g_lobbies.owner.empty()) OpenLobbies("the ship's information terminal");
         g_lobbies.camera = g_lobbies.on && now.camera == HF_BROWSE_CAMERA_MOVING; /* the screen powers on when it arrives */
     }
     if (g_lobbies.camera && now.camera != HF_BROWSE_CAMERA_MOVING)
