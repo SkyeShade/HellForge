@@ -448,7 +448,7 @@ try
             // The in-game editor's catalogue, and its icons and fonts from the game data of --install (its game copy) or --game.
             var outFolder = Path.GetFullPath(Required("--out"));
             Directory.CreateDirectory(outFolder);
-            File.WriteAllText(Path.Combine(outFolder, EditorCatalog.FileName), EditorCatalog.Text());
+            EditorCatalog.Write(outFolder);
             var gameData = options.TryGetValue("--game", out var game) ? Path.GetFullPath(game)
                 : options.TryGetValue("--install", out var editorInstall) ? Path.Combine(new InstallLayout(Path.GetFullPath(editorInstall)).Game, "data") : null;
             object icons = "skipped (no --install or --game)";
@@ -457,7 +457,7 @@ try
                 var (count, missing) = HellForge.Core.GameData.EditorIcons.Write(gameData, Path.Combine(outFolder, HellForge.Core.GameData.EditorIcons.FileName));
                 icons = new { count, missing, fonts = HellForge.Core.GameData.EditorFonts.Write(gameData, outFolder) };
             }
-            result = new { folder = outFolder, catalog = EditorCatalog.FileName, icons };
+            result = new { folder = outFolder, catalog = EditorCatalog.FileName, files = EditorCatalog.Files().Select(f => f.Name).ToArray(), icons };
             break;
         }
         case "sdk-headers":

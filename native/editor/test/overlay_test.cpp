@@ -10,7 +10,7 @@
  * must get in front of it again and still draw, the overlay still called, and the shared method table left alone (with
  * a real RivaTuner in the process, RivaTuner is that overlay). Then the overlay takes its hook off, the code put back as
  * it was before the editor: the editor must put its own hook back.
- * Usage: overlay_test.exe <hellforge_editor.dll> [<screenshot.bmp> [<editor folder: editor-catalog.json, game-icons.bin>]]
+ * Usage: overlay_test.exe <hellforge_editor.dll> [<screenshot.bmp> [<editor folder: editor-catalog*.json, game-icons.bin>]]
  * HELLFORGE_EDITOR_TEST_D3D11=1: the window presents with Direct3D 11 instead, as the game does with --use-d3d11.
  * HELLFORGE_EDITOR_TEST_NO_OVERLAY_QUEUE=1: no overlay queue (a real overlay, RivaTuner say, tried on its own).
  * HELLFORGE_EDITOR_HDR=pq:200: the editor draws in HDR10 at 200 nits (the editor reads it), and its colours on screen must
@@ -300,7 +300,17 @@ int main(int argc, char** argv)
     {
         CreateDirectoryA(mods, NULL);
         CreateDirectoryA(g_folder, NULL);
-        catalogued = CopyInto(argv[3], g_folder, "editor-catalog.json");
+        /* the catalogue: its index and every category's file */
+        char pattern[MAX_PATH];
+        snprintf(pattern, sizeof pattern, "%s\\editor-catalog*.json", argv[3]);
+        WIN32_FIND_DATAA found;
+        if (HANDLE find = FindFirstFileA(pattern, &found); find != INVALID_HANDLE_VALUE)
+        {
+            do CopyInto(argv[3], g_folder, found.cFileName); while (FindNextFileA(find, &found));
+            FindClose(find);
+        }
+        snprintf(pattern, sizeof pattern, "%s\\editor-catalog.json", g_folder);
+        catalogued = GetFileAttributesA(pattern) != INVALID_FILE_ATTRIBUTES;
         CopyInto(argv[3], g_folder, "game-icons.bin");
         /* the mod: its data names its icon's image (a 4 x 4 BMP here); a cooldown the editor saved for its stratagem */
         snprintf(g_modDir, sizeof g_modDir, "%s\\test-mod", mods);
