@@ -1286,7 +1286,9 @@ typedef struct HfApi
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
      * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
      * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id
-     * NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. */
+     * NULL). HfBrowseLobby.fix HF_LOBBY_FIX_SANDBOX has no ask: the sandbox is the launcher's setting, for the next
+     * session; say so. HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no
+     * backend. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;
 
