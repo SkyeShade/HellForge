@@ -3545,6 +3545,36 @@ static void HookChainFixture(void)
     assert(((volatile ChainFn)ChainTarget2)(5) == 2 * 5 + 7 + 110 && !strcmp(g_trail, "ba"));
 }
 
+/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset or anything else,
+ * FieldWatch arms no thread (another thread's debug registers stay clear) and records no watched field. */
+static DWORD WINAPI FieldWatchIdle(void* event) { WaitForSingleObject(event, INFINITE); return 0; }
+static void FieldWatchFixture(void)
+{
+    static float fields[0x10];
+    HANDLE event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchIdle, event, 0, NULL);
+    assert(event != NULL && thread != NULL);
+    const wchar_t* offValues[] = {NULL, L"0", L"yes"};
+    for (int i = 0; i < 3; i++)
+    {
+        SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", offValues[i]);
+        assert(!FieldWatchEnabled());
+        FieldWatch((uintptr_t)fields);
+        assert(g_fieldWatched == 0);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & 0x3F) == 0);
+    }
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1");
+    assert(FieldWatchEnabled());
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    SetEvent(event);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    CloseHandle(event);
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -3552,6 +3582,7 @@ int main(int argc, char** argv)
     strcpy(g_mods[0].id, "a"); strcpy(g_mods[1].id, "b");
     g_modCount = 2;
     FieldsFixture();
+    FieldWatchFixture();
     LiveFixture();
     LiveSyncFixture();
     LuaBridgeFixture();
