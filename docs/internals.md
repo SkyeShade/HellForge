@@ -718,9 +718,13 @@ bytes are checked.
 The in-game editor (`native/editor`, F8; built by `scripts/Build-Editor.ps1`) is a code mod on these calls, with the HD2R
 Editor's layout and look.
 
-Its catalogue (`editor-catalog.json`, from `HellForge.Cli editor-data`) holds the primaries, secondaries, throwables,
+Its catalogue (from `HellForge.Cli editor-data`, `EditorCatalog.cs`) holds the primaries, secondaries, throwables,
 stratagems and boosters with their stats fields, and the armor perks (two choice rows with a picker, kept in the
-editor's settings and set again at every boot). Its weapon and grenade silhouettes are the game's own HUD sprites, and
+editor's settings and set again at every boot). It is an index, `editor-catalog.json` (the categories, the references
+and HD2R Editor's ids), and a file per category, `editor-catalog-<category>.json`: the editor reads no file of 64 MB or
+more, and the whole catalogue in one file was 48 MB. The editor reads every file at start, because rows on the same
+bytes are linked across categories (a damage type on a weapon's page and on the Damage Types page). A test keeps every
+file under a quarter of the limit. Its weapon and grenade silhouettes are the game's own HUD sprites, and
 its text is in the game's own FS Sinclair, both extracted from the installation's game copy into the editor's folder
 (`game-icons.bin`, `fs-sinclair*.ttf`; never published). Its buttons play the game's menu sounds through the game's own
 UI sound path (checked byte for byte; silent on another build).

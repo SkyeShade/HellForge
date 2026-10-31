@@ -38,7 +38,11 @@ struct Value
 bool Parse(const std::string& text, Value* out, std::string* error);
 /* Two-space indented, as the launcher writes its files. */
 std::string Write(const Value& value);
-bool ReadFile(const std::wstring& path, std::string* text);
+/* The editor reads no file of this size or more (HellForge's EditorCatalog.MaxFileBytes). */
+constexpr long long MAX_FILE_BYTES = 64ll << 20;
+/* The file's bytes; false when it cannot be read, with *why ("is missing", "is 70 MB, over the 64 MB the editor reads",
+ * "could not be read") where given. */
+bool ReadFile(const std::wstring& path, std::string* text, std::string* why = nullptr);
 bool WriteAtomically(const std::wstring& path, const std::string& text);
 std::wstring Wide(const std::string& text);
 } // namespace hfjson
