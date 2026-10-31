@@ -75,6 +75,26 @@ On `dev`, since 0.3.0-beta.
 
 ### For mod makers
 
+- SDK 16: game functions by name. `HF_HOOK(mod, SpawnEntity, detour, &original)` hooks a game function HellForge has
+  mapped (`mappings/functions.json`, generated into `hellforge_functions.h`), and `hf_fn_<Name>(mod)` gives one to
+  call. The compiler checks the detour against the function's signature, IDEs complete the names, and HellForge keeps
+  the addresses and checks, so a game update doesn't mean rebuilding the mod. A hook can be asked for from
+  `hellforge_mod_init`; HellForge puts it in once the game's code is ready. The first ten names: the damage consumer,
+  kill dispatch, beacon activation, entity spawner and explosion request to hook or call, and five functions behind
+  the SDK's actions to call ([docs/modding/hooks.md](docs/modding/hooks.md#hooking-by-name)). `hook`, `hook_ex` and
+  `find_pattern` work as before (#179).
+- Game globals by name: `hf_global_ExplosionQueue(mod)` gives one of the game's objects (its managers and queues,
+  what the functions above take) as a struct with its named fields, so `queue->count` instead of an offset. 15 to
+  start (the players, the local user, the game mode, entities, health, motion, explosion, projectile and combat queues,
+  scores, wielders, inventories, destructibles), each checked against an instruction of the game's code that loads it
+  ([docs/modding/hooks.md](docs/modding/hooks.md#game-globals), #179).
+- Typed events: `hf_on_spawn(mod, listener, user, priority)` and one call per event, whose listener takes the event's
+  own struct (`const HfSpawnEvent*`), so there is nothing to cast and a listener for the wrong event doesn't compile.
+  Only `hf_on_damage_pre`'s struct is writable. The load events are under the same prefix (`hf_on_game_loaded` and the
+  rest), and so is the game thread: `hf_on_game_thread`, which answers 0 when it runs, as every `hf_on_` call does.
+  They come with SDK 16's header and run on any HellForge from SDK 7 on; `subscribe` and `on` work as before
+  ([docs/modding/runtime.md](docs/modding/runtime.md#game-events), #179).
+- A renamed game function or global keeps its old name as an alias, so mods written or built with it keep working (#179).
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
 

@@ -1,0 +1,285 @@
+{
+  "about": "SDK 16 in the real game: hooks by name, typed events, game functions and globals (tests/in-game/README.md).",
+  "mods": [
+    "sdk-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {
+      "name": "the mod loads with SDK 16",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE sdk ok"
+    },
+    {
+      "name": "HF_HOOK SpawnEntity is taken from init",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE hook asked SpawnEntity ok"
+    },
+    {
+      "name": "the hook on SpawnEntity goes in once the game is loaded",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "hooked SpawnEntity by name"
+    },
+    {
+      "name": "HF_HOOK RequestExplosion is taken from init",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE hook asked RequestExplosion ok"
+    },
+    {
+      "name": "the hook on RequestExplosion goes in once the game is loaded",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "hooked RequestExplosion by name"
+    },
+    {
+      "name": "HF_HOOK KillDispatch is taken from init",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE hook asked KillDispatch ok"
+    },
+    {
+      "name": "the hook on KillDispatch goes in once the game is loaded",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "hooked KillDispatch by name"
+    },
+    {
+      "name": "HF_HOOK ConsumeDamageEvent is taken from init",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE hook asked ConsumeDamageEvent ok"
+    },
+    {
+      "name": "the hook on ConsumeDamageEvent goes in once the game is loaded",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "hooked ConsumeDamageEvent by name"
+    },
+    {
+      "name": "HF_HOOK ActivateStratagemBeacon is taken from init",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE hook asked ActivateStratagemBeacon ok"
+    },
+    {
+      "name": "the hook on ActivateStratagemBeacon goes in once the game is loaded",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "hooked ActivateStratagemBeacon by name"
+    },
+    {
+      "name": "hf_on_game_loaded listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen game_loaded ok"
+    },
+    {
+      "name": "hf_on_state listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen state ok"
+    },
+    {
+      "name": "hf_on_mission_start listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen mission_start ok"
+    },
+    {
+      "name": "hf_on_mission_end listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen mission_end ok"
+    },
+    {
+      "name": "hf_on_spawn listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen spawn ok"
+    },
+    {
+      "name": "hf_on_player_spawn listens",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE listen player_spawn ok"
+    },
+    {
+      "name": "on_game_thread runs the checks",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE game_thread ok"
+    },
+    {
+      "name": "hf_on_game_loaded is called",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE event game_loaded ok"
+    },
+    {
+      "name": "hf_fn_ConsumeDamageEvent resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn ConsumeDamageEvent ok"
+    },
+    {
+      "name": "hf_fn_KillDispatch resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn KillDispatch ok"
+    },
+    {
+      "name": "hf_fn_ActivateStratagemBeacon resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn ActivateStratagemBeacon ok"
+    },
+    {
+      "name": "hf_fn_SpawnEntity resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn SpawnEntity ok"
+    },
+    {
+      "name": "hf_fn_RequestExplosion resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn RequestExplosion ok"
+    },
+    {
+      "name": "hf_fn_AddHealthFraction resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn AddHealthFraction ok"
+    },
+    {
+      "name": "hf_fn_RestoreZone resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn RestoreZone ok"
+    },
+    {
+      "name": "hf_fn_QueueStatusRequest resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn QueueStatusRequest ok"
+    },
+    {
+      "name": "hf_fn_SetVelocity resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn SetVelocity ok"
+    },
+    {
+      "name": "hf_fn_FireProjectile resolves on the ship",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE fn FireProjectile ok"
+    },
+    {
+      "name": "global Game state holds on the ship and in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global Game state ok"
+    },
+    {
+      "name": "global LocalUser peer holds on the ship and in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global LocalUser peer ok"
+    },
+    {
+      "name": "global PlayerManager count holds on the ship and in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global PlayerManager count ok"
+    },
+    {
+      "name": "the ship's checks end when the mission starts",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE phase ship over"
+    },
+    {
+      "name": "hf_on_mission_start is called",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE event mission_start ok"
+    },
+    {
+      "name": "hf_on_player_spawn gives the local player",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE event player_spawn ok"
+    },
+    {
+      "name": "global LocalUser peer is the local player's holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global LocalUser peer is the local player's ok"
+    },
+    {
+      "name": "global GameMode mode holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global GameMode mode ok"
+    },
+    {
+      "name": "global ProjectileSystem running holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global ProjectileSystem running ok"
+    },
+    {
+      "name": "global ExplosionQueue count holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global ExplosionQueue count ok"
+    },
+    {
+      "name": "global CombatQueues counts holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global CombatQueues counts ok"
+    },
+    {
+      "name": "global HealthManager count and records holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global HealthManager count and records ok"
+    },
+    {
+      "name": "global MotionManager count and records holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global MotionManager count and records ok"
+    },
+    {
+      "name": "global Destructibles count holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global Destructibles count ok"
+    },
+    {
+      "name": "global EntityManager holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global EntityManager ok"
+    },
+    {
+      "name": "global ScoreManager holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global ScoreManager ok"
+    },
+    {
+      "name": "global WielderManager holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global WielderManager ok"
+    },
+    {
+      "name": "global InventoryManager holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global InventoryManager ok"
+    },
+    {
+      "name": "global DestructionRecords holds in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE global DestructionRecords ok"
+    },
+    {
+      "name": "the SpawnEntity detour runs in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE detour SpawnEntity ran ok"
+    },
+    {
+      "name": "hf_on_spawn hears spawns in the mission",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE event spawn heard ok"
+    },
+    {
+      "name": "hf_on_mission_end is called",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE event mission_end ok"
+    },
+    {
+      "name": "the mission's checks end when it does",
+      "log": "mod-hellforge.sdk-probe.log",
+      "contains": "PROBE phase mission over"
+    },
+    {
+      "name": "no probe check failed",
+      "log": "mod-hellforge.sdk-probe.log",
+      "absent": " FAIL"
+    },
+    {
+      "name": "no hook by name was refused",
+      "log": "mod-hellforge.sdk-probe.log",
+      "absent_regex": "hook \\S+ refused"
+    },
+    {
+      "name": "the loader set the probe up",
+      "log": "modloader.log",
+      "contains": "hellforge.sdk-probe: loaded"
+    }
+  ]
+}

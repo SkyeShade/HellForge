@@ -2542,6 +2542,34 @@ static uint64_t FakeConsume(void* system, uint8_t* event, uint64_t r8, uint64_t 
     return r9 + 1;
 }
 
+/* Typed events (hf_on_<event>, hellforge_mod.h): the listener gets its kind's struct; a damage-pre one changes the hit. */
+static HfDamageEvent g_typedDamage;
+static int g_typedCalls;
+static void TypedDamage(HfMod* mod, const HfDamageEvent* damage, void* user) { g_typedDamage = *damage; g_typedCalls++; }
+static void TypedPre(HfMod* mod, HfDamagePreEvent* pre, void* user) { pre->damage.amount = *(const int32_t*)user; }
+
+static void TypedEvents(HfMod* mod, uint8_t* event)
+{
+    HfApi api = {0};
+    api.size = (uint32_t)sizeof api;
+    api.subscribe = ApiSubscribe;
+    const HfApi* was = mod->api;
+    mod->api = &api;
+    static const int32_t halved = 75;
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 0 && hf_on_damage_pre(mod, TypedPre, (void*)&halved, 0) == 0);
+    assert(hf_on_damage(mod, NULL, NULL, 0) == 1); /* refused */
+    api.size = (uint32_t)offsetof(HfApi, subscribe); /* a loader before SDK 7: refused, nothing called */
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 1);
+    api.size = (uint32_t)sizeof api;
+    g_typedCalls = 0;
+    ConsumeDamageDetour(NULL, event, 0, 0, 0, 0);
+    int32_t applied;
+    memcpy(&applied, event + 0x2C, 4);
+    assert(applied == 75 && g_typedCalls == 1 && g_typedDamage.info.kind == HF_ON_DAMAGE && g_typedDamage.amount == 75 &&
+        g_typedDamage.target == 0x400777 && g_typedDamage.position[1] == 2.0f);
+    mod->api = was;
+}
+
 static void EventsFixture(void)
 {
     HfMod* mod = &g_mods[0];
@@ -2600,6 +2628,8 @@ static void EventsFixture(void)
     assert(g_heardCount == 1 && g_queued == 1);
     EventsTick();
     assert(g_heardCount == 2 && g_queued == 0 && g_lastDamage.info.update == g_updates);
+    g_gameThread = thread;
+    TypedEvents(mod, event);
 
     g_listenerCount = 0; g_listening = 0; g_eventsGame = 0; g_playerCount = 0; g_lastState = 0; g_consumeDamage = NULL;
     free(player); free(peers); free(players); free(gameState); free(game);

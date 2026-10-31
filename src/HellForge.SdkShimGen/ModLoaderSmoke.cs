@@ -27,6 +27,7 @@ public static unsafe class ModLoaderSmoke
         var pin = NativeLibrary.GetExport(game, "hellforge_fake_pin");
         var target = (delegate* unmanaged<int, int>)NativeLibrary.GetExport(game, "hellforge_fake_target");
         Expect(target(5) == 16, "The fake target works before hooking");
+        var byName = ByNamePlan(game, Expect, out var named);
 
         // The engine's field types (not yet "loaded"): bool, then deposit_value as the game has it.
         var rows = (byte*)NativeMemory.AllocZeroed(2 * 0x18);
@@ -75,6 +76,7 @@ public static unsafe class ModLoaderSmoke
             .Append("build\tsmoke\n").Append($"logs\t{root}\n")
             .Append($"game_pin\tfake_game.dll\t{(long)pin - gameBase:x}\t7575488b15fafc06024881c2e4030000\n")
             .Append($"network_config\tfake_game.dll\t{(long)holder - gameBase:x}\n")
+            .Append(byName)
             .Append($"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader}\n")
             .Append($"component\tDepositComponentData\t{schema.Offset}\t{schema.Header}\t{schema.Index}\t{schema.Indices}\t{schema.Records}\t{schema.RecordOffset}\t{schema.Stride}\n")
             .Append($"mod\ttest.hook\t{hookFolder}\t{Path.Combine(hookFolder, "hook_test_mod.dll")}\n")
@@ -130,6 +132,7 @@ public static unsafe class ModLoaderSmoke
         }
         Expect(Log("mod-test.hook.log").Contains("pattern found the pin"), "find_pattern finds the pin");
         Expect(target(5) == 2016, "Both detours run, each calling the next, then the original");
+        ExpectByName(Log, WaitFor, named, Expect);
         Expect(WaitFor(() => Marshal.ReadInt32(record) == 10000 && Marshal.ReadInt32(record + 4) == 10000 && Marshal.ReadInt32(record + 8) == 5000),
             "The Machine Gun mod fills the backpack's deposit record once the entity data is ready");
 
@@ -161,6 +164,46 @@ public static unsafe class ModLoaderSmoke
     {
         using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
         return reader.ReadToEnd();
+    }
+
+    // Functions and globals by name (SDK 16): plan lines mapping two of the fake game's functions, one to hook, one only
+    // to call, and its global cell, witnessed by its user's load of it (mov reg, [rip+disp32]). named: the one to hook.
+    static string ByNamePlan(nint game, Action<bool, string> expect, out nint named)
+    {
+        static string Code(nint at) => string.Join(' ', Enumerable.Range(0, 12).Select(i => Marshal.ReadByte(at + i).ToString("X2")));
+        named = NativeLibrary.GetExport(game, "hellforge_fake_named");
+        var callOnly = NativeLibrary.GetExport(game, "hellforge_fake_call_only");
+        expect(((delegate* unmanaged<int, int>)named)(5) == 10, "The fake named function works before hooking");
+        var fakeGlobal = NativeLibrary.GetExport(game, "hellforge_fake_global");
+        var globalUser = NativeLibrary.GetExport(game, "hellforge_fake_global_user");
+        var witness = Enumerable.Range(0, 32).Select(i => globalUser + i).FirstOrDefault(at =>
+            Marshal.ReadByte(at) is 0x48 or 0x4C && Marshal.ReadByte(at + 1) == 0x8B && (Marshal.ReadByte(at + 2) & 0xC7) == 0x05 &&
+            at + 7 + Marshal.ReadInt32(at + 3) == fakeGlobal);
+        expect(witness != 0, "The fake game's global user loads the global RIP-relative");
+        var gameBase = (long)game;
+        return $"function\tFakeNamed\tfake_game.dll\t{(long)named - gameBase:x}\t1\t{Code(named)}\n" +
+            $"function\tFakeCallOnly\tfake_game.dll\t{(long)callOnly - gameBase:x}\t0\t{Code(callOnly)}\n" +
+            $"global\tFakeGlobal\tfake_game.dll\t{(long)fakeGlobal - gameBase:x}\t{(long)witness - gameBase:x}\t{Code(witness)}\n";
+    }
+
+    // Hooks by name, asked for in init before the game loaded: both go in once it is, each adding 100; function and global
+    // find what the plan maps, and refuse what it does not.
+    static void ExpectByName(Func<string, string> log, Func<Func<bool>, bool> waitFor, nint named, Action<bool, string> expect)
+    {
+        var hook = log("mod-test.hook.log");
+        expect(hook.Contains("named hook asked for") && hook.Contains("unknown name refused") && hook.Contains("call-only refused"),
+            "hook_function takes a mapped name and refuses an unknown one and a call-only one: " + hook);
+        expect(waitFor(() => log("mod-test.hook.log").Contains("hooked FakeNamed by name") && log("mod-test.hook2.log").Contains("hooked FakeNamed by name")),
+            "Both hooks by name go in once the game is loaded");
+        expect(((delegate* unmanaged<int, int>)named)(5) == 210, "Both hooks by name run, each calling the next, then the original");
+        hook = log("mod-test.hook.log");
+        expect(hook.Contains("function by name found"), "function finds a mapped function once the game is loaded");
+        var loader = log("modloader.log");
+        expect(loader.Contains("the session's is smoke: only the plan's 2 function(s) by name") &&
+            loader.Contains("the session's is smoke: only the plan's 1 global(s) by name"),
+            "On a build the mappings are not for, only the plan's functions and globals are named, and the log says so");
+        expect(hook.Contains("global by name found") && hook.Contains("unknown global refused"),
+            "global finds a mapped global's cell once its witness reads as reviewed, and refuses an unknown name: " + hook);
     }
 
     [DllImport("kernel32.dll", SetLastError = true)] static extern nint VirtualAlloc(nint address, nuint size, uint type, uint protect);
