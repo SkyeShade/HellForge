@@ -73,6 +73,7 @@ static class VisualCppRuntimesTests
             check(VisualCppRuntimes.ExitCodeProblem(1618)!.Contains("another installation"), "1618");
             check(VisualCppRuntimes.ExitCodeProblem(1223)!.Contains("permission prompt"), "1223");
             check(VisualCppRuntimes.ExitCodeProblem(1603)!.Contains("1603"), "1603");
+            check(VisualCppRuntimes.ExitCodeProblem(unchecked((int)0x800736B7))!.Contains("0x800736B7"), "A Burn HRESULT reads as one.");
         });
 
         // A runtime pinned to a synthetic installer, served by a fake Microsoft.

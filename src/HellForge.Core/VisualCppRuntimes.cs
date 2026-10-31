@@ -125,7 +125,7 @@ public static class VisualCppRuntimes
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            return error is InvalidDataException ? error.Message : "the download from Microsoft failed (" + error.Message + ")";
+            return error is InvalidDataException ? error.Message : "the download from Microsoft failed (" + error.Message.TrimEnd('.') + ")";
         }
         // Held open, unwritable, from the hash check until the installer has run, so what Windows runs as administrator
         // is the file that was checked.
@@ -157,7 +157,8 @@ public static class VisualCppRuntimes
         1602 => "its installer was cancelled",
         1618 => "another installation (Windows Update or another installer) was running; wait for it to finish",
         1223 => "the Windows permission prompt was declined",
-        _ => $"its installer stopped with code {code}",
+        // Burn reports its own failures as HRESULTs (0x800736B7 when it cannot create its hidden window)
+        _ => code < 0 ? $"its installer stopped with error 0x{code:X8}" : $"its installer stopped with code {code}",
     };
 
     // The installer at path: fetched unless it is there with its pinned size and checksum.
