@@ -267,7 +267,7 @@ Setup still needs a full run through its GUI on a fresh PC.
 
 | Issue | Workaround |
 |---|---|
-| Smart App Control blocks the unsigned session exe (exit code `0xC0000428`) | Turn Smart App Control off. Windows can't turn it back on without a reset ([troubleshooting.md](troubleshooting.md)) |
+| Smart App Control blocks HellForge's unsigned programs and DLLs ("An Application Control policy has blocked this file"). Setup and the launcher warn, and name the blocked file; signing is being decided ([code-signing.md](code-signing.md)) | Turn Smart App Control off. Windows may not let you turn it back on without a reset ([troubleshooting.md](troubleshooting.md#smart-app-control)) |
 | HellForge's editor and the HD2R Editor clash | Use one at a time |
 | Antivirus programs can quarantine HellForge's files | Add an exclusion for the install folder ([troubleshooting.md](troubleshooting.md#antivirus)) |
 | A crash at `helldivers2.exe+0x626296` when the game closes | Nothing to fix: it's the game's own crash on quitting |

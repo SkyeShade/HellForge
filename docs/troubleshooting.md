@@ -153,8 +153,35 @@ Cases HellForge already recognises:
 - When the first source mod fetches the mod compiler, the antivirus scans the unpacked files and HellForge waits: "waiting
   for the antivirus to finish scanning the unpacked files...".
 - The game exits with `0xC0000022` ("Windows or security software denied the game access") or `0xC0000428` ("Windows
-  blocked an unsigned DLL (Smart App Control or a code-integrity policy)"). See the exit codes under
-  [the game could not be prepared](#the-game-could-not-be-prepared-or-connected).
+  blocked an unsigned DLL the game loads ..."). See the exit codes under
+  [the game could not be prepared](#the-game-could-not-be-prepared-or-connected), and
+  [Smart App Control](#smart-app-control) for the second.
+
+## Smart App Control
+
+"An Application Control policy has blocked this file" is Windows 11's Smart App Control blocking one of HellForge's
+files. Smart App Control lets a program or DLL run only when Microsoft's cloud service knows it, or a publisher Windows
+trusts has signed it. HellForge's files are not signed yet, so while Smart App Control is on, HellForge cannot run, and
+HellForge cannot add an exception for itself: Smart App Control has none.
+
+Setup and the launcher warn when it is on. When Windows blocks a file, the launcher says which one ("Windows blocked
+HellForge.Session.exe ...") and what you can do:
+
+- Play HELLDIVERS 2 without HellForge for now.
+- Or turn Smart App Control off: Windows Security > App & browser control > Smart App Control settings. **Windows may
+  not let you turn it back on afterwards** without resetting or reinstalling Windows. Decide with that in mind.
+
+Smart App Control in evaluation mode blocks nothing; Windows may turn it on by itself later. When a block still happens
+with Smart App Control off, an App Control policy set by your organisation (a work or school PC) is blocking the file,
+and only its administrator can change that.
+
+Mods with code are blocked as well, even once HellForge is signed: the mod compiler builds them on your PC, unsigned.
+The session's `modloader.log` then says the mod was "not loaded (... Windows error 4551, an Application Control policy
+such as Smart App Control blocked it)".
+
+When reporting it, add the CodeIntegrity entries that name the blocked file: Event Viewer > Applications and Services
+Logs > Microsoft > Windows > CodeIntegrity > Operational, events 3077, 3033 and 3089 (right-click > Save Selected
+Events, or copy their General tab), along with [the session's logs](#collecting-logs).
 
 ## Sessions that fail
 
@@ -211,7 +238,7 @@ means:
 | `0xC0000005` | the game crashed (access violation) |
 | `0xC0000409` | the game stopped itself after detecting a problem |
 | `0xC0000022` | Windows or security software denied the game access |
-| `0xC0000428` | Windows blocked an unsigned DLL (Smart App Control or a code-integrity policy) |
+| `0xC0000428` | Windows blocked an unsigned DLL the game loads, such as HellForge's mod loader or SDK stand-ins (Smart App Control or a code-integrity policy): see [Smart App Control](#smart-app-control) |
 | `0xC0000361` | a Windows policy blocked a file the game loads |
 
 For a damaged or missing DLL, check the [Visual C++ runtimes](#microsoft-visual-c-runtimes) first, then run Settings >

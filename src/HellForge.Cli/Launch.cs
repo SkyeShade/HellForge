@@ -74,6 +74,10 @@ static class Launch
         var runner = new SessionRunner();
         var startedUtc = DateTime.UtcNow;
         try { runner.Start(paths, profile, session); }
+        catch (System.ComponentModel.Win32Exception error) when (HellForge.Core.SmartAppControl.IsBlock(error.NativeErrorCode))
+        {
+            throw new InvalidDataException(HellForge.Core.SmartAppControl.BlockedMessage(paths.Session, HellForge.Core.SmartAppControl.Current));
+        }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
             throw new InvalidDataException("Could not start the session runner: " + error.Message);

@@ -38,6 +38,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- When Windows 11's Smart App Control blocked HellForge, the launcher showed only Windows' "An Application Control
+  policy has blocked this file". It now says which file Windows blocked, that it is because HellForge's files aren't
+  signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
+  off. Setup and the launcher warn before you install or play while Smart App Control is on, a mod whose DLL Windows
+  blocked says so in its log, and the session log says whether Smart App Control was on.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only

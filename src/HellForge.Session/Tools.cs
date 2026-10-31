@@ -28,7 +28,7 @@ static class Tools
         var start = new ProcessStartInfo(program) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         if (workingDirectory != null) start.WorkingDirectory = workingDirectory;
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new SessionFailure($"{Path.GetFileName(program)} did not start.");
+        using var process = Starting(program, () => Process.Start(start)) ?? throw new SessionFailure($"{Path.GetFileName(program)} did not start.");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(timeoutMs))
@@ -38,6 +38,15 @@ static class Tools
         }
         process.WaitForExit();
         return (process.ExitCode, output.Result, error.Result);
+    }
+
+    // Starts `program` (or creates the game's process); when Windows' code integrity refuses it (Smart App Control or another
+    // App Control policy), a session failure that names the file and says what the player can do (SmartAppControl).
+    public static T Starting<T>(string program, Func<T> start)
+    {
+        try { return start(); }
+        catch (System.ComponentModel.Win32Exception error) when (HellForge.Core.SmartAppControl.IsBlock(error.NativeErrorCode))
+        { throw new SessionFailure(HellForge.Core.SmartAppControl.BlockedMessage(program, HellForge.Core.SmartAppControl.Current)); }
     }
 
     // A PowerShell command (Windows PowerShell 5.1, as the scripts expect), without a profile.
@@ -82,7 +91,7 @@ static class Tools
         0xC0000005 => "the game crashed (access violation)",
         0xC0000409 => "the game stopped itself after detecting a problem",
         0xC0000022 => "Windows or security software denied the game access",
-        0xC0000428 => "Windows blocked an unsigned DLL (Smart App Control or a code-integrity policy)",
+        0xC0000428 => "Windows blocked an unsigned DLL the game loads, such as HellForge's mod loader or SDK stand-ins (Smart App Control or a code-integrity policy)",
         0xC0000361 => "a Windows policy blocked a file the game loads",
         _ => ""
     };
