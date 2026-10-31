@@ -5,7 +5,7 @@ to do. The launcher's messages are quoted as it shows them. If your problem is n
 and [ask](#where-to-ask).
 
 - [Steam](#steam)
-- [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
+- [Setup](#setup): the folder, the supported build, the Steam download, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
 - [Playing with friends](#playing-with-friends)
@@ -52,15 +52,23 @@ anyway.
 
 ### Setup cannot find the supported build
 
-Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, setup finds the
-supported build one of two ways.
+Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, or no
+HELLDIVERS 2, setup downloads the supported build from Steam's servers for your account.
 
-When HellForge has a build patch for the build Steam has, setup downloads it (about 1.7 GB) and makes the copy by
-patching your Steam files. Your Steam install is only read. If HellForge has no patch for that build yet, the wizard
-says so: "HellForge has no patch for build ... yet; once one is published, Check again uses it."
+The wizard shows a card headed Sign in to Steam to download the supported build:
 
-Otherwise, Steam downloads the supported build for your account. The wizard shows a card headed Download the supported
-build through Steam, with one `download_depot 553850 <depot> <manifest>` command per depot. To use it:
+- Scan its QR code with the Steam app on your phone (the Steam Guard shield, then the QR code scanner) and approve the
+  sign-in in the app. HellForge never sees your password this way.
+- Or press Sign in with account name and password instead, sign in, and enter the Steam Guard code Steam sends by
+  email or shows in the Steam app.
+
+HellForge keeps nothing of the sign-in, so the next download asks again. Setup then downloads what your Steam install
+does not have and copies the rest from it, every file checked against Steam's hashes. Your Steam install is only read.
+Pause download stops it; setup continues where it stopped the next time, after you sign in again.
+
+When Steam does not allow that download (below), and always on Linux, the Steam client downloads the supported build
+for your account instead. The wizard shows a card headed Download the supported build through Steam, with one
+`download_depot 553850 <depot> <manifest>` command per depot. To use it:
 
 1. Press Open the Steam console, or open `steam://open/console` yourself.
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
@@ -78,18 +86,20 @@ build's file: delete it and run that depot's `download_depot` command again.
 If the wizard says "HELLDIVERS 2 is in Steam, but setup cannot use it right now", Steam is updating the game or the game
 is running. Let Steam finish, close the game, and press Try again.
 
-### The build patch did not download or did not work
+### The Steam download did not work
 
-A failed download says "Could not download the build patch: ... Something on this PC may be blocking or inspecting HTTPS
-(an antivirus web shield, a VPN or a proxy); allow it, then try again."
+| Message | What to do |
+|---|---|
+| "Steam sign-in did not work: the account name or password is wrong." (or "the Steam Guard code was wrong.") | Check them and sign in again on the card. |
+| "Steam sign-in did not work: the sign-in expired before it was approved; try again." | The QR code was not approved in time. The card shows a new code: scan it and approve the sign-in in the Steam app. |
+| "Steam sign-in did not work: Steam has had too many sign-in attempts; wait a while and try again." | Wait a while, then sign in again on the card. |
+| "Steam did not let this account download depot ... This happens when HELLDIVERS 2 is borrowed through Steam Family Sharing ..." | The account that signed in does not own the game. Sign in with the account that owns it, or use the Steam console steps the wizard shows. |
+| "The download from Steam stopped: ..." | A lost connection or Steam's servers refused. Press Check again to sign in and continue (the files already downloaded are kept), or use the Steam console steps the wizard shows. |
+| "... did not come out as the supported build's file; it was not kept. Start setup again." | Start setup again. It is downloaded again, and the files already in place are kept. |
 
-When a patch fails for any reason, setup shows Steam's own download of the build instead (the steps above). Files it
-already patched are kept, so the copy only needs the rest. Restarting the launcher tries the failed patch again.
-
-Except when the drive is full: setup checks for room before it downloads the patch and again before it patches, and
-says "Not enough free space on D:\: ... more is needed" (or "D:\ ran out of space while patching ...", which older
-versions showed as "hpatchz exit code 24" with advice to validate the game). Free that much on the drive HellForge is
-installed on and press Check again; the files already patched are kept. Steam's download would need the same room.
+On a full drive, setup asks for space before it writes anything: "Not enough free space on D:\: ... more is needed".
+Free that much on the drive HellForge is installed on and press Check again; the files already downloaded are kept.
+The Steam console's download would need the same room and more.
 
 ### Pausing and interrupted copies
 
@@ -148,8 +158,6 @@ Cases HellForge already recognises:
 - The network block's check program, `network-block\NetworkProbe.exe`, is missing. A session then fails with "The network
   block's check program is missing (...). Antivirus programs sometimes remove it: restore it from quarantine and exclude
   the HellForge folder, or run Settings > Installation again to put the block back."
-- The build patch download fails because an antivirus web shield inspects HTTPS (see
-  [the build patch](#the-build-patch-did-not-download-or-did-not-work)).
 - When the first source mod fetches the mod compiler, the antivirus scans the unpacked files and HellForge waits: "waiting
   for the antivirus to finish scanning the unpacked files...".
 - The game exits with `0xC0000022` ("Windows or security software denied the game access") or `0xC0000428` ("Windows

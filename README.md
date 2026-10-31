@@ -40,9 +40,13 @@ check (binary data patches, raw stats) download only when HellForge has verified
 running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
 unless you show them on the Mods page.
 
-Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
-follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
-HellForge's frozen war, or open every planet to liberation (Settings > Galactic war).
+Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
+template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
+account's inventory and progression from the normal game. Premium items (premium warbonds, Superstore items, Steam DLC
+gear) are there only once a sync has found them on the Steam account signed in now, and Super Credits never are. The
+galactic war can follow the live war read-only from the community mirror
+[api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
+(Settings > Galactic war).
 
 ## Requirements
 
@@ -50,8 +54,8 @@ HellForge's frozen war, or open every planet to liberation (Settings > Galactic 
 - Steam running and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing.
 - The Microsoft Visual C++ 2012 and 2015-2022 Redistributables (x64), which the game needs. Setup checks for both and
   links Microsoft's downloads when one is missing ([troubleshooting](docs/troubleshooting.md#microsoft-visual-c-runtimes)).
-- About 25 GB free on the drive you install to. Add about 2 GB while a patch pack is applied, or plan on about 50 GB in
-  total if Steam has to download the supported build.
+- About 25 GB free on the drive you install to. Plan on about 50 GB in total if the Steam client has to download the
+  supported build through its console (the fallback below).
 - Permission to approve one Windows administrator prompt, for the network block. Windows Firewall does not need to be on:
   the block lives in the Windows Filtering Platform and holds even when a security suite has switched the firewall off.
 
@@ -66,9 +70,12 @@ HellForge's frozen war, or open every planet to liberation (Settings > Galactic 
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
-HellForge runs one game build (Steam build 25480438). When Steam has a newer build that HellForge has a patch pack for,
-setup downloads the pack (about 1.7 GB) and makes the copy by patching your own Steam files. Otherwise the wizard shows
-commands to paste into the Steam console, and Steam itself downloads the supported build for your account.
+HellForge runs one game build (Steam build 25480438). When Steam has another build, setup asks you to sign in to Steam
+(a QR code you approve in the Steam app, or your account name and password) and downloads that build from Steam's own
+servers for your account, copying whatever your Steam install already has. HellForge never sees your password with
+the QR code and keeps nothing of the sign-in ([how it works](docs/steam-download.md)). If Steam does not allow that
+download, for a game borrowed through Steam Family Sharing for example, the wizard shows commands to paste into the
+Steam console, and the Steam client downloads the supported build for your account. HellForge hosts no game files.
 
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
