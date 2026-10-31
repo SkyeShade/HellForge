@@ -132,6 +132,10 @@ static class SandboxWireTests
                 var missingMode = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
                 check(!missingMode.Passed && missingMode.Reason.Contains("did not report", StringComparison.Ordinal),
                     "A self-test that exited 0 without a mode file was recorded as a pass.");
+                // one that failed before it wrote the mode file (bash never started, issue 112) keeps its own reason
+                var notStarted = LinuxSandboxReadiness.EvaluateSelfTest(install, 1, "the Linux sandbox self-test could not run: no such folder");
+                check(!notStarted.Passed && notStarted.Reason == "the Linux sandbox self-test could not run: no such folder",
+                    "A self-test that failed without a mode file lost its reason: " + notStarted.Reason);
 
                 Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE", "container");
                 Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", "/runtime|ABC");

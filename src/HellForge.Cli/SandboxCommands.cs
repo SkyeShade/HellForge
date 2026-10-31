@@ -110,7 +110,13 @@ static class SandboxCommands
         if (prefix == null || !LinuxPrefixCase.Needed(prefix)) return null;
         if (own == null || own != prefix)
             return "the sandbox's prefix (" + prefix + ") has a case-insensitive drive_c, which the kernel's overlay cannot sandbox; HellForge converts only its own prefix";
+        // The conversion rebuilds folders under the same names, this process's working folder among them (the launcher
+        // starts it in the installation): it is entered again by its name, or the self-test's bash never starts (#112).
+        var workingFolder = Environment.CurrentDirectory;
         var (converted, problem) = LinuxPrefixCase.Convert(prefix, () => LinuxPrefixCase.WineRunning(prefix));
+        foreach (var folder in new[] { workingFolder, install.Root })
+            try { Directory.SetCurrentDirectory(folder); break; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         if (problem != null) return "the prefix's drive_c is case-insensitive and could not be made case-sensitive yet: " + problem;
         Console.Error.WriteLine("HellForge: made the prefix's drive_c case-sensitive for the sandbox (" + converted + " folders).");
         return null;
