@@ -38,6 +38,12 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Sync Inventory's "The capture could not start: see proxy.log" now says why and what to do: a security program
+  blocking or stopping the capture (named, with the exact file to add to its exclusions), another program on port 443
+  (named), the hosts file held open by another program (named, after waiting ten seconds for it), the certificate
+  refused, no internet, or the administrator prompt declined. A capture slow to start is reported after a minute. An
+  earlier sync's capture still running is stopped by the next sync, so restarting the PC is no longer needed for it
+  (#160).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
