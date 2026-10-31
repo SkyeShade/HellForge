@@ -40,6 +40,11 @@ On `dev`, since 0.3.0-beta.
 
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- On a standard (non-administrator) Windows account, Sync Inventory never opened the game, or said "The capture
+  finished without an inventory" after a capture that worked, until the launcher was run as administrator. The capture
+  runs as the administrator who answers the prompt and kept its folder to that account; it now shares it with yours.
+  A sync that ends without an inventory now also says whether the game never started, closed before logging in, or
+  ran without reaching the title screen, and says so while the sync still waits.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
   some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
   a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left

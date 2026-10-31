@@ -105,17 +105,89 @@ public static class InventorySync
 
     // Starts the proxy elevated (one UAC prompt), sealing what it captures for steamAccount. Blocks until the prompt is
     // answered, so call it off the UI thread. Returns null when elevation was declined.
-    public static Process? StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount)
+    public static Process? StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount) =>
+        StartElevated(proxyPath, CaptureProxyArguments(syncDir, snapshotDir, steamAccount, CurrentUserSid()));
+
+    // The proxy's arguments. launcherSid is this launcher's Windows account: on a standard account the UAC prompt runs the
+    // capture as the administrator who answered it, and the capture makes the sync folder private to its own account, so
+    // it must grant the launcher's account too, or the launcher never sees it listen (and never opens the game) nor sees
+    // the inventory it captured ("The capture finished without an inventory").
+    public static string[] CaptureProxyArguments(string syncDir, string snapshotDir, ulong steamAccount, string? launcherSid)
     {
         Directory.CreateDirectory(syncDir);
-        return StartElevated(proxyPath, [
+        string[] arguments = [
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
-            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)]);
+            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)];
+        return launcherSid != null && CaptureAccess.IsSid(launcherSid) ? [.. arguments, "--grant-sid", launcherSid] : arguments;
     }
+
+    // This process's Windows account as a SID string (S-1-5-21-...), or null off Windows.
+    public static string? CurrentUserSid()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return identity.User?.Value;
+    }
+
+    // Whether this launcher can list the sync folder. False when the capture made it private to another Windows account
+    // (a capture from before --grant-sid, or a grant that failed): then neither its listening state nor its inventory is
+    // visible here, however the capture went.
+    public static bool CanReadSyncFolder(string syncDir)
+    {
+        try
+        {
+            _ = Directory.EnumerateFileSystemEntries(syncDir).Any();
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return false; }
+        // Missing or otherwise broken is not a refusal: the steps that read it say what is missing.
+        catch (IOException) { return true; }
+    }
+
+    // How long Steam gets to start the game before the launcher says it has not.
+    public static readonly TimeSpan GameStartGrace = TimeSpan.FromSeconds(90);
+
+    // What the launcher saw of the game since it asked Steam to open it: whether it ever ran and whether it runs now.
+    public static SyncGameState GameState(bool askedSteam, bool gameSeen, bool gameRunning) =>
+        !askedSteam ? SyncGameState.NotAsked
+        : gameRunning ? SyncGameState.Running
+        : gameSeen ? SyncGameState.Closed
+        : SyncGameState.NotStarted;
+
+    // While the capture waits for the login: what is wrong so far, or null while it is on track.
+    public static string? WaitingProblem(SyncGameState state, TimeSpan sinceAsked) => state switch
+    {
+        SyncGameState.NotStarted when sinceAsked >= GameStartGrace =>
+            "Steam has not started HELLDIVERS 2. Start it from Steam yourself and pass the title screen: the sync still waits for it.",
+        SyncGameState.Closed =>
+            "HELLDIVERS 2 closed before its login reached the sync. Start it again from Steam and pass the title screen: the sync still waits for it.",
+        _ => null
+    };
+
+    // A capture that ended with nothing: which step stopped it, from what the launcher saw of the game.
+    public static string NothingCaptured(SyncGameState state, int timeoutMinutes, string proxyLog) => state switch
+    {
+        SyncGameState.NotStarted =>
+            $"HELLDIVERS 2 never started: Steam was asked to open it, but no game ran in {timeoutMinutes} minutes. " +
+            "Check Steam for an update or a prompt it is waiting on, then sync again.",
+        SyncGameState.Closed =>
+            "HELLDIVERS 2 started but closed before its login reached the sync, so no inventory was read. " +
+            "Sync again; if the game keeps closing, send " + proxyLog + ".",
+        SyncGameState.Running =>
+            $"HELLDIVERS 2 ran, but its login never reached the sync in {timeoutMinutes} minutes: pass the title screen once the game opens. " +
+            "Close the game and sync again; if you did pass it, send " + proxyLog + ".",
+        _ => "The capture could not start: see " + proxyLog + "."
+    };
+
+    // Shown when this launcher cannot read the capture's folder. Its proxy.log is in that folder, which this account
+    // cannot open either, so it names who can.
+    public const string UnreadableFolderMessage = "This launcher cannot read the sync's folder: the capture runs as the Windows account that " +
+        "answered the administrator prompt, and it could not share the folder with your account. Sync again; if this repeats, " +
+        "sign in to that administrator account and send the newest logs\\sync-... folder's proxy.log.";
 
     // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
     public static Process? StartCleanup(string proxyPath) => StartElevated(proxyPath, ["--cleanup"]);
@@ -137,7 +209,7 @@ public static class InventorySync
     public static bool IsListening(string syncDir) => File.Exists(Path.Combine(syncDir, ListeningFile));
 
     // The launcher's side of a sync, beside the capture's proxy.log: one timestamped line per step. A folder the launcher
-    // cannot write (a standard account, where the capture runs as the administrator) only loses these lines.
+    // cannot write (the capture's grant to it failed; see CaptureProxyArguments) only loses these lines.
     public const string LauncherLogFile = "launcher.log";
 
     public static void Note(string syncDir, string message)
@@ -186,6 +258,7 @@ public static class InventorySync
     // inventory-only capture (a failed sync) replaces one without progression, never one with it.
     public static string? FinalizeCapture(string syncDir, string snapshotDir)
     {
+        if (!CanReadSyncFolder(syncDir)) return UnreadableFolderMessage;
         if (ReadInventory(Path.Combine(syncDir, InventoryFile), out var items) is { } inventoryProblem) return inventoryProblem;
         if (ReadProgression(Path.Combine(syncDir, ProgressionFile), out var experience) is { } progressionProblem) return progressionProblem;
         if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir)) == null) return "The capture is not sealed for this PC. Sync again.";
@@ -257,6 +330,9 @@ public static class InventorySync
         }
     }
 }
+
+// The game during a sync: Steam not asked yet (the capture is not listening), asked but no game ran, running, or ran and closed.
+public enum SyncGameState { NotAsked, NotStarted, Running, Closed }
 
 // Progression: the capture got the account's progression too; without it only the inventory can be imported.
 public sealed record SnapshotInfo(DateTime? CapturedUtc, int Items, long? Experience, bool Progression);
