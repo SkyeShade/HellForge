@@ -352,7 +352,7 @@ sealed partial class PlaySession(PlayOptions options)
             if (ShaderCache.Seed(install.UserData, GameSettings.VanillaUserData()) is { } seeded)
             {
                 cache["seededFromGame"] = new JsonObject { ["files"] = seeded.Files, ["bytes"] = seeded.Bytes, ["skipped"] = seeded.Skipped };
-                Say($"Shader cache: started from the normal game's ({seeded.Bytes / (1024 * 1024)} MB).");
+                Say($"Shader cache: started from the normal game's ({seeded.Bytes / (1024.0 * 1024):0.0} MB).");
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { cache["seedError"] = error.Message; }
