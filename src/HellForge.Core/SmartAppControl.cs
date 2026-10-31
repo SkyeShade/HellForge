@@ -25,12 +25,13 @@ public static class SmartAppControl
         _ => SmartAppControlState.NotPresent
     };
 
-    // This PC's state; NotPresent off Windows, under Wine, or on a Windows without Smart App Control.
+    // This PC's state; NotPresent off Windows or on a Windows without Smart App Control. Wine has no such value (unless
+    // one is set by hand, as the live test does), so under Wine and Proton it is NotPresent too.
     public static SmartAppControlState Current
     {
         get
         {
-            if (!OperatingSystem.IsWindows() || LinuxNetworkBlock.UnderWine) return SmartAppControlState.NotPresent;
+            if (!OperatingSystem.IsWindows()) return SmartAppControlState.NotPresent;
             try { return Read(); }
             catch (Exception error) when (error is System.Security.SecurityException or IOException or UnauthorizedAccessException)
             { return SmartAppControlState.NotPresent; }
