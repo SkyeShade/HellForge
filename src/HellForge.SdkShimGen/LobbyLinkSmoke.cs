@@ -11,13 +11,14 @@ namespace HellForge.SdkShimGen;
 // copies of each stand-in, each connected to one backend. The "host" copies create a lobby and a Party network through
 // the PlayFab C APIs; the "friend" copies join the lobby with its connection string, update their member data, connect
 // to the network with its descriptor, create an endpoint, and exchange messages with the host, exactly as two games on
-// two machines would, except that Steam networking is replaced by loopback UDP. Then the host invites the friend (who
+// two machines would, except that Steam networking is replaced by loopback UDP. A third player joins and leaves again
+// (SquadFlow): nobody is replaced, and the joiners list each other as co-op peers. Then the host invites the friend (who
 // listens for invitations) and kicks it: the kicked game is removed and disconnected, and its join back is refused. Last,
 // the friend comes back as after a mod sync: a new backend given --rejoin and a new stand-in copy, whose game is invited
 // back into the host's new lobby once it has one of its own, and joins.
 public static unsafe class LobbyLinkSmoke
 {
-    const string HostId = "110000100000001", FriendId = "110000100000002";
+    const string HostId = "110000100000001", FriendId = "110000100000002", ThirdId = "110000100000003";
 
     [StructLayout(LayoutKind.Sequential)] internal struct EntityKey { public byte* Id; public byte* Type; }
     [StructLayout(LayoutKind.Sequential)] internal struct CreateConfiguration
@@ -71,11 +72,12 @@ public static unsafe class LobbyLinkSmoke
         void Expect(bool condition, string description) { if (!condition) problems.Add(description); }
         Environment.SetEnvironmentVariable("HELLFORGE_SHIM_LOG_DIR", Path.Combine(root, "logs"));
         var ports = (FreePort(), FreePort());
+        var thirdPort = FreePort();
         var pipes = ($"hellforge-link-host-{Guid.NewGuid():N}", $"hellforge-link-friend-{Guid.NewGuid():N}");
         var processes = new List<Process>();
         try
         {
-            processes.Add(StartBackend(backend, Path.Combine(root, "host"), pipes.Item1, $"udp:{HostId}:{ports.Item1}:{FriendId}={ports.Item2}"));
+            processes.Add(StartBackend(backend, Path.Combine(root, "host"), pipes.Item1, $"udp:{HostId}:{ports.Item1}:{FriendId}={ports.Item2},{ThirdId}={thirdPort}"));
             processes.Add(StartBackend(backend, Path.Combine(root, "friend"), pipes.Item2, $"udp:{FriendId}:{ports.Item2}:{HostId}={ports.Item1}"));
             foreach (var directory in new[] { "host", "friend" })
             {
@@ -137,21 +139,10 @@ public static unsafe class LobbyLinkSmoke
                 Expect(host.Player.WaitFor("2"), "The host sees the friend join");
                 Expect(hostMembers(hostLobby, &count, &list) == 0 && count == 2, "The host sees two members");
                 // each backend lists the other as a co-op peer for a sandboxed game's Steam P2P (MultiplayerHost.PeersFileName)
-                static bool Lists(string file, string hexId)
-                {
-                    for (var i = 0; i < 40; i++)
-                    {
-                        try
-                        {
-                            if (File.Exists(file) && File.ReadAllLines(file).Contains(ulong.Parse(hexId, NumberStyles.HexNumber).ToString(CultureInfo.InvariantCulture))) return true;
-                        }
-                        catch (IOException) { }
-                        Thread.Sleep(100);
-                    }
-                    return false;
-                }
                 Expect(Lists(Path.Combine(root, "host", "p2p-peers.txt"), FriendId) && Lists(Path.Combine(root, "friend", "p2p-peers.txt"), HostId),
                     "Each backend lists the other among its co-op peers for Steam P2P");
+                SquadFlow((standIns, backend, root), (thirdPort, ports.Item1), connectionString, (host.Player, hostLobby, hostLibrary),
+                    (friend.Player, friendLobby, friendLibrary), processes, Expect);
 
                 var friendValues = stackalloc byte*[] { friendPlatform };
                 var memberUpdate = new JoinConfiguration { Count = 1, Keys = memberKeys, Values = friendValues };
@@ -366,6 +357,72 @@ public static unsafe class LobbyLinkSmoke
             expect(friend.WaitFor("3:0") && friend.WaitFor("14") && friend.WaitFor("16"), "A returning friend sees the host's machine created again");
             expect(host.WaitFor("14") && host.WaitFor("16"), "The host sees the returning friend's machine created again");
             expect(leave(rejoinNetwork, 0x203) == 0 && friend.WaitFor("19:0"), "The returning friend leaves again");
+        }
+    }
+
+    // Whether the co-op peers file lists that machine (MultiplayerHost.PeersFileName), or no longer does (listed: false),
+    // within four seconds.
+    static bool Lists(string file, string hexId, bool listed = true)
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            try
+            {
+                if (File.Exists(file) && File.ReadAllLines(file).Contains(ulong.Parse(hexId, NumberStyles.HexNumber).ToString(CultureInfo.InvariantCulture)) == listed)
+                    return true;
+            }
+            catch (IOException) { }
+            Thread.Sleep(100);
+        }
+        return false;
+    }
+
+    // A third player joins the lobby of two (a third backend, linked to the host only, and a third copy of the stand-in):
+    // the host and the friend see it join and nobody is removed (0.3.0-beta's known issue: a third player joining a lobby
+    // of two replaced the second), all three games see three members, and the friend's and the third's backends list
+    // each other as co-op peers, though their backends never talk. Then the third leaves, and the lobby is two again.
+    static void SquadFlow((string StandIns, string Backend, string Root) setup, (int Third, int Host) ports, string connectionString,
+        (Player Player, nint Lobby, nint Library) host, (Player Player, nint Lobby, nint Library) friend, List<Process> processes,
+        Action<bool, string> expect)
+    {
+        var (standIns, backend, root) = setup;
+        var hostMembers = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(host.Library, "PFLobbyGetMembers");
+        var friendMembers = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(friend.Library, "PFLobbyGetMembers");
+        var pipe = $"hellforge-link-third-{Guid.NewGuid():N}";
+        processes.Add(StartBackend(backend, Path.Combine(root, "third"), pipe, $"udp:{ThirdId}:{ports.Third}:{HostId}={ports.Host}"));
+        var ready = Path.Combine(root, "third", "ready.json");
+        var clock = Stopwatch.StartNew();
+        while (!File.Exists(ready) && clock.ElapsedMilliseconds < 20000) Thread.Sleep(50);
+        expect(File.Exists(ready), "The third backend starts");
+        if (!File.Exists(ready)) return;
+        var (library, third) = Load(Path.Combine(standIns, "PlayFabMultiplayerWin.dll"), Path.Combine(root, "lobby-third.dll"), pipe, "third");
+        var join = (delegate* unmanaged<nint, EntityKey*, byte*, JoinConfiguration*, nint, nint*, int>)NativeLibrary.GetExport(library, "PFMultiplayerJoinLobby");
+        var members = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(library, "PFLobbyGetMembers");
+        var leave = (delegate* unmanaged<nint, EntityKey*, nint, int>)NativeLibrary.GetExport(library, "PFLobbyLeave");
+        fixed (byte* thirdId = Encoding.ASCII.GetBytes(ThirdId + "\0"), type = "title_player_account\0"u8, connection = Encoding.UTF8.GetBytes(connectionString + "\0"))
+        {
+            var key = new EntityKey { Id = thirdId, Type = type };
+            var none = new JoinConfiguration { Count = 0 };
+            nint lobby = 0, list = 0;
+            uint count = 0;
+            expect(join(third.Handle, &key, connection, &none, 0x23, &lobby) == 0 && lobby != 0, "The third player starts joining");
+            expect(third.WaitFor("1:0"), "The third player joins the lobby of two");
+            expect(members(lobby, &count, &list) == 0 && count == 3, "The third player sees three members");
+            expect(host.Player.WaitFor("2") && friend.Player.WaitFor("2"), "The host and the friend see the third player join");
+            expect(hostMembers(host.Lobby, &count, &list) == 0 && count == 3 && friendMembers(friend.Lobby, &count, &list) == 0 && count == 3,
+                "The host and the friend see three members");
+            expect(!host.Player.WaitFor("4", 500) && !friend.Player.WaitFor("4", 500) && !friend.Player.WaitFor("9", 200),
+                "Nobody was removed when the third player joined (the friend stays in the lobby)");
+            expect(Lists(Path.Combine(root, "friend", "p2p-peers.txt"), ThirdId) && Lists(Path.Combine(root, "third", "p2p-peers.txt"), FriendId) &&
+                Lists(Path.Combine(root, "third", "p2p-peers.txt"), HostId) && Lists(Path.Combine(root, "host", "p2p-peers.txt"), ThirdId),
+                "The friend and the third player list each other as co-op peers (and the host and the third each other)");
+            expect(leave(lobby, &key, 0x24) == 0 && third.WaitFor("10"), "The third player leaves");
+            expect(host.Player.WaitFor("4") && friend.Player.WaitFor("4"), "The host and the friend see the third player leave");
+            expect(Lists(Path.Combine(root, "friend", "p2p-peers.txt"), ThirdId, listed: false) &&
+                Lists(Path.Combine(root, "third", "p2p-peers.txt"), FriendId, listed: false),
+                "The friend's and the third's co-op peers no longer list each other");
+            expect(hostMembers(host.Lobby, &count, &list) == 0 && count == 2 && friendMembers(friend.Lobby, &count, &list) == 0 && count == 2,
+                "The lobby is two again");
         }
     }
 

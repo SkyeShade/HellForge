@@ -69,6 +69,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
         Lobby.HostedChanged += () => Task.Run(WritePeers);
         Lobby.PeerAdmitted += ListPeer;
+        // the squad's other joiners too (three or more players): a game may talk to each of them, not only to the host
+        Lobby.MateAdded += ListPeer;
+        // and out again at once when they leave (not after PinnedFor)
+        Lobby.MateRemoved += peer => { lock (peersGate) pinned.Remove(peer); Task.Run(WritePeers); };
         Lobby.LocalJoinStarted += (owner, _) => { ListPeer(owner); Task.Run(WritePeers); };
         // A refused join, in both games (the in-game editor shows it over the game): the joiner's says why, the host's who,
         // briefly, in a corner.
@@ -239,17 +243,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
         throw new ArgumentException("--link must be none, steam:<steam_api64.dll> or udp:<id>:<port>:<peer>=<port>,...");
     }
 
-    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, and the peers
-    // listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read just before an
-    // admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach peersGate in any
-    // order: one whose list was read before a later one's is not written after it, so a list from before a kick cannot put
-    // the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
+    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, the other
+    // members of a friend's lobby this game is in (LobbyService.LobbyMates; one who left is written out at once,
+    // MateRemoved), and the peers listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read
+    // just before an admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach
+    // peersGate in any order: one whose list was read before a later one's is not written after it, so a list from
+    // before a kick cannot put the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
     void WritePeers()
     {
         try
         {
             var ticket = Interlocked.Increment(ref peersTicket);
-            var listed = Lobby.Peers().Concat(Party.Peers()).ToHashSet();
+            var listed = Lobby.Peers().Concat(Party.Peers()).Concat(Lobby.LobbyMates()).ToHashSet();
             lock (peersGate)
             {
                 if (ticket < peersWrittenTicket) return;
