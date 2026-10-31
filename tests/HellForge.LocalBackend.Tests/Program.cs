@@ -465,7 +465,67 @@ try
                 var held = json.RootElement.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("mixId").GetUInt32(), i => i.GetProperty("amount").GetInt64());
                 Check(held.GetValueOrDefault(commonSamples) == 5 && held.GetValueOrDefault(MissionService.RequisitionMixId) == MissionService.Rewards.Requisition(4),
                     "Looted samples or requisition not saved.");
+                Check(held.GetValueOrDefault(MissionService.MedalsMixId) == MissionService.Rewards.Medals(4), "A won mission's medals not saved.");
             }
+            // Level 11 pays half as much XP and medals again as level 10; the operation's card shows its medals; heavy loot
+            // is granted but its reply list stays empty (the client refuses {mixId, amount} there).
+            Check(MissionService.Rewards.Experience(11, true, 0) * 2 == MissionService.Rewards.Experience(10, true, 0) * 3 &&
+                MissionService.Rewards.Medals(11) * 2 == MissionService.Rewards.Medals(10) * 3, "Level 11 does not pay 50% more XP and medals than level 10.");
+            using (var created = await Post("/Operation/Create", "{\"operations\":[{\"id\":8,\"difficulty\":11,\"missions\":[{\"index\":0},{\"index\":1},{\"index\":2}]}]}"))
+            {
+                var card = created.RootElement.GetProperty("operations")[0].GetProperty("rewards")[0];
+                Check(card.GetProperty("id32").GetUInt32() == MissionService.MedalRewardMixId && card.GetProperty("amount").GetInt64() == 3 * MissionService.Rewards.Medals(11) &&
+                    card.GetProperty("isFullReward").GetBoolean(), "The operation's medal card is wrong.");
+            }
+            for (var mission = 0; mission < 2; mission++)
+                using (var ended = await Post("/Operation/Mission/end", "{\"operationId\":8,\"missionIndex\":" + mission + ",\"missionSuccess\":true,\"difficultyType\":11," +
+                    "\"objectives\":[],\"heavyLootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":2}]}"))
+                {
+                    var reply = ended.RootElement;
+                    Check(reply.GetProperty("lootedHeavyItemRewards").GetArrayLength() == 0 &&
+                        reply.GetProperty("rewards").EnumerateArray().Any(r => r.GetProperty("mixId").GetUInt32() == MissionService.MedalsMixId &&
+                            r.GetProperty("amount").GetInt64() == MissionService.Rewards.Medals(11)), "A level 11 mission's reply is wrong.");
+                }
+            Dictionary<uint, long> Inventory()
+            {
+                using var response = client.GetAsync("/Progression/inventory").Result;
+                using var json = JsonDocument.Parse(response.Content.ReadAsStringAsync().Result);
+                return json.RootElement.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("mixId").GetUInt32(), i => i.GetProperty("amount").GetInt64());
+            }
+            var afterMissions = Inventory();
+            Check(afterMissions[MissionService.MedalsMixId] == MissionService.Rewards.Medals(4) + 2 * MissionService.Rewards.Medals(11) &&
+                afterMissions[commonSamples] == 5 + 4, "Rewards of a second and third mission were not saved (each mission pays, not only the first).");
+            // Purchases: a warbond item for medals (Helldivers Mobilize item 1, page 0, 1 medal), once only; a stratagem for
+            // requisition; a ship module level for samples; refused when the balance is short or the item is paid.
+            async Task<(HttpStatusCode Status, string Body)> Buy(string path, string body)
+            {
+                using var response = await client.PostAsync(path, new StringContent(body, Encoding.UTF8, "application/json"));
+                return (response.StatusCode, await response.Content.ReadAsStringAsync());
+            }
+            var warbondBuy = await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":1,\"warId\":801}");
+            Check(warbondBuy.Status == HttpStatusCode.OK && warbondBuy.Body.Contains("1861407750") && warbondBuy.Body.Contains("659494344"), "Warbond item purchase failed: " + warbondBuy.Body);
+            var afterWarbond = Inventory();
+            Check(afterWarbond[MissionService.MedalsMixId] == afterMissions[MissionService.MedalsMixId] - 1 && afterWarbond.GetValueOrDefault(659494344u) == afterMissions.GetValueOrDefault(659494344u) + 1 &&
+                afterWarbond.ContainsKey(1861407750), "Warbond purchase not saved (medals, medals spent, item).");
+            Check((await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":1,\"warId\":801}")).Status == HttpStatusCode.BadRequest,
+                "A warbond item was sold twice.");
+            const uint stratagem = 2273387135;
+            var requisition = afterWarbond[MissionService.RequisitionMixId];
+            var storeBuy = await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":3608481516,\"amount\":4000}]}");
+            Check(storeBuy.Status == (requisition >= 4000 ? HttpStatusCode.OK : HttpStatusCode.BadRequest), "Store purchase answered wrongly: " + storeBuy.Body);
+            if (storeBuy.Status == HttpStatusCode.OK)
+            {
+                using var reply = JsonDocument.Parse(storeBuy.Body);
+                Check(reply.RootElement.ValueKind == JsonValueKind.Array && reply.RootElement[0].GetProperty("mixId").GetUInt32() == stratagem &&
+                    reply.RootElement[1].GetProperty("amount").GetInt64() == -4000 && Inventory()[MissionService.RequisitionMixId] == requisition - 4000,
+                    "Store purchase reply or balance wrong.");
+            }
+            Check((await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest ||
+                Inventory()[MissionService.RequisitionMixId] >= 4000, "A store purchase went through without the requisition.");
+            var shipModule = await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":1,\"expectedCost\":[{\"mixId\":3992382197,\"amount\":60}]}");
+            Check(shipModule.Status == HttpStatusCode.BadRequest, "A ship module was sold without its 60 samples.");
+            Check((await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":2,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest,
+                "A ship module level was skipped.");
             using (var response = await client.GetAsync("/WarSeason/801/timeSinceStart"))
             using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
                 Check(response.StatusCode == HttpStatusCode.OK && json.RootElement.GetProperty("secondsSinceStart").GetInt64() >= 0,

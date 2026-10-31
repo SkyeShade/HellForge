@@ -10,12 +10,18 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- **Medals and spending what you earn.** A won mission now pays medals (2 at Trivial up to 10 at Super Helldive), and
+  the operation's card on the war table shows what its missions pay. Medals unlock warbond pages and items, requisition
+  buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
+  purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
+  from the map. Premium warbonds still need to be owned in the normal game.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
 
 ### Changed
 
+- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission.
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
@@ -38,6 +44,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
+  up empty. Heavy loot is still added to your profile.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only

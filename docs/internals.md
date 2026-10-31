@@ -367,7 +367,8 @@ the lower of it and its own maximum. With a difficulty registered, the backend s
 
 ### Rewards
 
-Level 11 pays 1800 XP and 2200 requisition per mission.
+Level 11 pays half as much XP and medals again as level 10: 2250 XP and 15 medals for a won mission (level 10: 1500
+and 10), and 2200 requisition (`src/HellForge.LocalBackend/MissionService.cs`).
 
 ### Patrols
 

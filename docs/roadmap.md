@@ -207,8 +207,10 @@ Status: planned. The design isn't decided yet.
 
 A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
 (everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
-XP based on difficulty, success and objectives, requisition based on difficulty, and whatever samples the game reports
-you looted. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
+XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
+game reports you looted. What a profile earns can be spent (`Purchases.cs`): medals on warbond pages, requisition on
+stratagems and the store, samples on ship modules, and requisition on weapon attachments, each checked against the
+game's prices and the profile's balance. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
 plan:
 
 1. Make the whole loop work. Everything a profile earns should be spendable on what the game sells for it (stratagems,

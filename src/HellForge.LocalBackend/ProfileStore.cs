@@ -310,33 +310,62 @@ public sealed class ProfileStore : IDisposable
         foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
     }
 
-    // Mission end: adds experience and item amounts (samples, requisition). Amounts are clamped to the catalogue
+    // Mission end: adds experience and item amounts (samples, requisition, medals). Amounts are clamped to the catalogue
     // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
     // whatever the mission report claims was found.
-    public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items)
+    public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items) =>
+        TryChange((progression, inventory) =>
+        {
+            progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
+            foreach (var (mix, amount) in items) AddItem(inventory, mix, amount);
+            return true;
+        });
+
+    // A change to progression and inventory together (a purchase, a reward): edit works on copies and returns whether to
+    // keep them; false changes nothing. The result is validated and saved before it is served.
+    public bool TryChange(Func<JsonObject, JsonArray, bool> edit)
     {
-        var caps = new Dictionary<uint, long>();
-        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
-            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
         lock (gate)
         {
             var updated = profile.DeepClone().AsObject();
-            var progression = (JsonObject)updated["progression"]!;
-            progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             var inventory = (JsonObject)updated["inventory"]!;
             if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
-            foreach (var (mix, amount) in items.Where(item => !PaidContentSet.IsSuperCredits(item.Key)))
-            {
-                var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
-                if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));
-                var total = Number(entry["amount"]!) + amount;
-                entry["amount"] = Math.Min(caps.TryGetValue(mix, out var cap) ? cap : uint.MaxValue, total);
-            }
+            if (!edit((JsonObject)updated["progression"]!, list)) return false;
             Validate(updated);
             if (FilePath != null) Save(FilePath, updated);
             profile["progression"] = updated["progression"]!.DeepClone();
             profile["inventory"] = updated["inventory"]!.DeepClone();
+            return true;
         }
+    }
+
+    static readonly Lazy<Dictionary<uint, long>> Caps = new(() =>
+    {
+        var caps = new Dictionary<uint, long>();
+        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
+            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
+        return caps;
+    });
+
+    // How many of an item an inventory list holds.
+    public static long Held(JsonArray inventory, uint mixId) =>
+        inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId) is { } entry ? Number(entry["amount"]!) : 0;
+
+    // Adds (or with a negative amount takes) an item in an inventory list, within 0 and the catalogue maxCap. Super Credits
+    // are never added. Returns the change made.
+    public static long AddItem(JsonArray inventory, uint mixId, long amount)
+    {
+        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId)) return 0;
+        var entry = inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId);
+        if (entry == null)
+        {
+            if (amount < 0) return 0;
+            inventory.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mixId, ["amount"] = 0, ["isDiscovered"] = true }));
+        }
+        var before = Number(entry["amount"]!);
+        var after = Math.Clamp(before + amount, 0, Caps.Value.TryGetValue(mixId, out var cap) ? cap : uint.MaxValue);
+        entry["amount"] = after;
+        return after - before;
     }
 
     // JSON numbers in the profile may be stored as any integer type; read them uniformly.
