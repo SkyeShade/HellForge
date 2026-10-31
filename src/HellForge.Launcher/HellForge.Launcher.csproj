@@ -13,6 +13,8 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <!-- setup's download of the supported build from Steam (SteamSignInFlow, SetupFlow) -->
+  <ItemGroup><ProjectReference Include="../HellForge.SteamDownload/HellForge.SteamDownload.csproj" /></ItemGroup>
   <!-- HellForge's icon (scripts/Build-LauncherIcon.ps1): the window's and the sidebar's -->
   <ItemGroup><AvaloniaResource Include="Assets\**" /></ItemGroup>
 </Project>

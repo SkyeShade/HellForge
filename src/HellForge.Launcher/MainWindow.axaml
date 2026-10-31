@@ -484,6 +484,36 @@
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>
+            <!-- Sign-in for setup's download of the supported build from Steam's servers (SteamSignInFlow.cs) -->
+            <Border x:Name="SignInCard" Classes="card" IsVisible="False">
+              <StackPanel Spacing="10">
+                <TextBlock Text="SIGN IN TO STEAM TO DOWNLOAD THE SUPPORTED BUILD" Classes="h2" Margin="0" />
+                <TextBlock x:Name="SignInIntro" Classes="muted" TextWrapping="Wrap" />
+                <StackPanel x:Name="SignInQrPanel" Orientation="Horizontal" Spacing="16">
+                  <Border Background="White" Padding="14" HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <Panel Width="200" Height="200">
+                      <Path x:Name="SignInQr" Fill="Black" Stretch="Uniform" RenderOptions.EdgeMode="Aliased" />
+                      <TextBlock x:Name="SignInQrWait" Text="Asking Steam for a code..." Foreground="#606060" FontSize="12"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Panel>
+                  </Border>
+                  <TextBlock TextWrapping="Wrap" MaxWidth="320" VerticalAlignment="Center"
+                             Text="Open the Steam app on your phone, tap the Steam Guard shield, then the QR code scanner, and scan this code. Then approve the sign-in in the app." />
+                </StackPanel>
+                <StackPanel x:Name="SignInPasswordPanel" Spacing="8" IsVisible="False" MaxWidth="360" HorizontalAlignment="Left">
+                  <TextBox x:Name="SignInAccount" Watermark="Steam account name" />
+                  <TextBox x:Name="SignInPassword" Watermark="Password" PasswordChar="•" />
+                  <Button x:Name="SignInPasswordButton" Content="Sign in" Classes="primary" HorizontalAlignment="Left" />
+                </StackPanel>
+                <StackPanel x:Name="SignInCodePanel" Spacing="8" IsVisible="False" MaxWidth="360" HorizontalAlignment="Left">
+                  <TextBlock x:Name="SignInCodeText" TextWrapping="Wrap" />
+                  <TextBox x:Name="SignInCode" Watermark="Steam Guard code" />
+                  <Button x:Name="SignInCodeButton" Content="Continue" Classes="primary" HorizontalAlignment="Left" />
+                </StackPanel>
+                <Button x:Name="SignInSwitchButton" Classes="ghost" HorizontalAlignment="Left" />
+                <TextBlock x:Name="SignInStatus" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
             <Border x:Name="DownloadCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
                 <TextBlock Text="DOWNLOAD THE SUPPORTED BUILD THROUGH STEAM" Classes="h2" Margin="0" />
