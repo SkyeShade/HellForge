@@ -501,6 +501,7 @@ CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
+VisualCppRuntimesTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);

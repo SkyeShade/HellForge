@@ -38,6 +38,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
