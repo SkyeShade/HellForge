@@ -1,7 +1,7 @@
 {
   "format": 1,
   "build": "25480438",
-  "note": "Each premium warbond's art (seasonPassDetails id32 in progression-data): 2048 x 1024 BC1 textures with one mip, all in archive 4b7bd0cbf5b59fcf. list: the art without the warbond's title, the card Acquisitions shows (the game draws the title over it); titled: the same art with the title drawn in (more than one when the game has two). A warbond the player does not own gets both locked (WarbondLocks). Matched by the warbond's items (progression-data pages, mappings/catalog.json names) and the title drawn on the art; the game itself links them only in memory. unmatched: art whose warbond is not settled yet, left alone. Helldivers Mobilize (1929468580: list 0x4BCA007A5214D66F, titled 0x0556261F3EC61698) is everyone's and has no entry.",
+  "note": "Each premium warbond's art (seasonPassDetails id32 in progression-data): 2048 x 1024 BC1 textures with one mip, all in archive 4b7bd0cbf5b59fcf. list: the art without the warbond's title, the card Acquisitions shows (the game draws the title over it); titled: the same art with the title drawn in (more than one when the game has two). A warbond the player does not own gets both locked (WarbondLocks). Matched by the warbond's items (progression-data pages, mappings/catalog.json names) and the title drawn on the art; the game itself links them only in memory. The newer ones by their items as the warbonds' announcements list them and the announcements' key art: Ironclad Democracy's titled art still reads \"Turrets of Tolerance\", and Castellan's Creed has untitled art only. 0x978FE4F6E8AF2231 is a \"TEMP\" placeholder of the same form and no warbond's. Helldivers Mobilize (1929468580: list 0x4BCA007A5214D66F, titled 0x0556261F3EC61698) is everyone's and has no entry.",
   "archive": "4b7bd0cbf5b59fcf",
   "warbonds": {
     "610512218": { "name": "Steeled Veterans", "titled": ["0x4705C5EB3797FFF0"], "list": "0xDA2176742E3F1FB2" },
@@ -22,12 +22,11 @@
     "1579552700": { "name": "Dust Devils", "titled": ["0xFF48FD6EB06DED9C"], "list": "0x727127AF704261F9" },
     "593507300": { "name": "Python Commandos", "titled": ["0x1A1EA2F60923092C"], "list": "0x12474C6659479645" },
     "2248848355": { "name": "Helldivers x Killzone", "titled": ["0x0A4F01E71A5CB5B8"], "list": "0xF97339399EADE991" },
-    "1452732551": { "name": "Redacted Regiment", "titled": ["0x5A0172B628BD3113"], "list": "0x0289F3C5CFBB8554" }
-  },
-  "unmatched": {
-    "Entrenched Division": { "titled": ["0x14134068CA0D850C", "0x50FD110163CB3A02"], "list": "0x92E4CF91D9ACEDCF" },
-    "Turrets of Tolerance": { "titled": ["0x2BB94F5E63B731E9"], "list": "0x1891576636B364F7" },
-    "Exo Experts": { "titled": ["0x3C2700F5292A7B3B"], "list": "0x948EF4C77CB2FCEF" },
-    "Siege Breakers": { "titled": ["0x9ECB2BAF1AF11E80"], "list": "0x3814FEF4191B1DA7" }
+    "1452732551": { "name": "Redacted Regiment", "titled": ["0x5A0172B628BD3113"], "list": "0x0289F3C5CFBB8554" },
+    "1193171589": { "name": "Siege Breakers", "titled": ["0x9ECB2BAF1AF11E80"], "list": "0x3814FEF4191B1DA7" },
+    "3978214801": { "name": "Entrenched Division", "titled": ["0x14134068CA0D850C", "0x50FD110163CB3A02"], "list": "0x92E4CF91D9ACEDCF" },
+    "4228295283": { "name": "Exo Experts", "titled": ["0x3C2700F5292A7B3B"], "list": "0x948EF4C77CB2FCEF" },
+    "3224975204": { "name": "Helldivers x Warhammer 40,000: Castellan's Creed", "titled": [], "list": "0xB309C180045646FF" },
+    "3884062529": { "name": "Ironclad Democracy", "titled": ["0x2BB94F5E63B731E9"], "list": "0x1891576636B364F7" }
   }
 }

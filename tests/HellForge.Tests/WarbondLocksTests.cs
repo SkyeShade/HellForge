@@ -15,10 +15,11 @@ static class WarbondLocksTests
             using var data = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Repository(), "data", "progression-data.json")));
             var details = data.RootElement.GetProperty("seasonPassDetails");
             var mapping = WarbondLocks.Mapping();
-            check(mapping.Count >= 19, $"The mapping has {mapping.Count} warbonds.");
+            var premium = details.EnumerateObject().Count(d => d.Name != PremiumContent.FreeWarbond.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            check(mapping.Count == premium, $"The mapping has {mapping.Count} warbonds, the progression data {premium} premium ones.");
             foreach (var art in mapping)
                 check(art.Id != PremiumContent.FreeWarbond && details.TryGetProperty(art.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), out _) &&
-                    art.Textures.Length >= 2 && art.Name.Length > 0, $"{art.Name} ({art.Id}) is not a premium warbond of the progression data.");
+                    art.Textures.Length >= 1 && art.Name.Length > 0, $"{art.Name} ({art.Id}) is not a premium warbond of the progression data.");
             var textures = mapping.SelectMany(a => a.Textures).ToList();
             check(textures.Distinct().Count() == textures.Count, "A texture is named twice.");
         });

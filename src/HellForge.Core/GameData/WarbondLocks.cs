@@ -15,8 +15,8 @@ namespace HellForge.Core.GameData;
 public static class WarbondLocks
 {
     // Part of the cache key: raise it whenever the same warbonds would build different bytes.
-    // 2: the untitled art too, which is what Acquisitions shows.
-    public const int Version = 2;
+    // 2: the untitled art too, which is what Acquisitions shows; 3: the five newest warbonds' art.
+    public const int Version = 3;
     const string DoneFile = "done";
     const int Bc1 = 71;
 
