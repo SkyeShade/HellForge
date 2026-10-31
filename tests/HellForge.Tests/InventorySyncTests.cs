@@ -54,12 +54,73 @@ static class InventorySyncTests
         test("The capture's diagnostics give shapes, causes and a tally without values, and a sync collects the game's anti-cheat and crash logs", () =>
             Diagnostics(root, check));
 
+        test("The capture grants the launcher's Windows account its sync folder, by SID, so a standard account's launcher sees it", () =>
+            Grants(root, check));
+
+        test("A sync that ends or stalls without an inventory says whether the game never started, closed, or ran without logging in", () =>
+            Outcomes(check));
+
         test("Steam's 32-bit account id is the SteamID64 of an individual account", () =>
             check(SteamAccount.FromAccountId(39734273) == 76561198000000001, "Wrong SteamID64."));
 
         test("Profile backups are kept newest first, ten at most, and only profile copies count", () => Backups(root, check));
 
         test("Import choices default per category, keep what the file sets and refuse rules a category does not offer", () => Settings(root, check));
+    }
+
+    static void Grants(string root, Action<bool, string> check)
+    {
+        const string Launcher = "S-1-5-21-1004336348-1177238915-682003330-1001", Admin = "S-1-5-21-1004336348-1177238915-682003330-500";
+        var sync = Path.Combine(root, "sync-grants", "logs", "sync-1");
+        var snapshot = Path.Combine(root, "sync-grants", InventorySync.SnapshotFolder, "player");
+        var arguments = InventorySync.CaptureProxyArguments(sync, snapshot, Account, Launcher);
+        var at = Array.IndexOf(arguments, "--grant-sid");
+        check(at >= 0 && at + 1 < arguments.Length && arguments[at + 1] == Launcher, "The launcher's account is not passed to the capture.");
+        check(Directory.Exists(sync), "The sync folder is not made before the capture starts.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, null).Contains("--grant-sid"), "A grant without an account.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, "Everyone").Contains("--grant-sid"), "A name passed as a SID.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, Launcher + " *S-1-1-0:F").Contains("--grant-sid"), "A SID with an extra grant passed.");
+
+        check(CaptureAccess.IsSid(Launcher) && CaptureAccess.IsSid("S-1-5-18"), "A real SID refused.");
+        foreach (var bad in new[] { "", "S-1", "S-1-5-", "*S-1-5-18", "S-1-5-18:F", "S-1-5-18 /grant", "S-1-5-18\n", "BUILTIN\\Users" })
+            check(!CaptureAccess.IsSid(bad), "Not a SID accepted: " + bad);
+
+        var other = CaptureAccess.SyncFolderAclArguments(@"C:\HF\logs\sync-1", Admin, Launcher);
+        check(other == $"\"C:\\HF\\logs\\sync-1\" /inheritance:r /grant:r *{Admin}:(OI)(CI)F *{Launcher}:(OI)(CI)F",
+            "A capture under another account does not grant the launcher's: " + other);
+        var same = CaptureAccess.SyncFolderAclArguments(@"C:\HF\logs\sync-1", Launcher, Launcher);
+        check(same == $"\"C:\\HF\\logs\\sync-1\" /inheritance:r /grant:r *{Launcher}:(OI)(CI)F", "The same account granted twice: " + same);
+        check(CaptureAccess.SyncFolderAclArguments("x", Admin, null).EndsWith($"*{Admin}:(OI)(CI)F", StringComparison.Ordinal), "No grant without a launcher account.");
+
+        check(InventorySync.CanReadSyncFolder(sync), "An ordinary folder is unreadable.");
+        // Only a refusal is another account's folder; a missing one is reported by what reads it.
+        check(InventorySync.CanReadSyncFolder(Path.Combine(sync, "missing")), "A missing folder is reported as another account's.");
+        check(InventorySync.FinalizeCapture(Path.Combine(sync, "missing"), snapshot) == "The capture finished without an inventory.",
+            "A missing capture is not reported as one without an inventory.");
+    }
+
+    static void Outcomes(Action<bool, string> check)
+    {
+        check(InventorySync.GameState(false, false, false) == SyncGameState.NotAsked, "Not asked.");
+        check(InventorySync.GameState(true, false, false) == SyncGameState.NotStarted, "Not started.");
+        check(InventorySync.GameState(true, true, true) == SyncGameState.Running, "Running.");
+        check(InventorySync.GameState(true, true, false) == SyncGameState.Closed, "Closed.");
+
+        check(InventorySync.WaitingProblem(SyncGameState.NotStarted, TimeSpan.FromSeconds(10)) == null, "Steam was not given time to start the game.");
+        check(InventorySync.WaitingProblem(SyncGameState.NotStarted, InventorySync.GameStartGrace)?.Contains("Steam has not started", StringComparison.Ordinal) == true,
+            "A game Steam never started is not said.");
+        check(InventorySync.WaitingProblem(SyncGameState.Closed, TimeSpan.Zero)?.Contains("closed before", StringComparison.Ordinal) == true, "A closed game is not said.");
+        check(InventorySync.WaitingProblem(SyncGameState.Running, TimeSpan.FromHours(1)) == null, "A running game is a problem.");
+
+        const string Log = @"C:\HF\logs\sync-1\proxy.log";
+        var messages = new[] { SyncGameState.NotAsked, SyncGameState.NotStarted, SyncGameState.Closed, SyncGameState.Running }
+            .Select(state => InventorySync.NothingCaptured(state, 10, Log)).ToList();
+        check(messages.Distinct().Count() == 4, "Two outcomes read the same.");
+        check(messages[0].Contains("could not start", StringComparison.Ordinal) && messages[0].Contains(Log, StringComparison.Ordinal), "A capture that never listened.");
+        check(messages[1].Contains("never started", StringComparison.Ordinal), "A game that never started.");
+        check(messages[2].Contains("closed before", StringComparison.Ordinal), "A game that closed.");
+        check(messages[3].Contains("title screen", StringComparison.Ordinal), "A game that ran without logging in.");
+        check(messages.All(message => !message.Contains("administrator", StringComparison.OrdinalIgnoreCase)), "A message tells the player to run as administrator.");
     }
 
     static void Hosts(string root, Action<bool, string> check)
