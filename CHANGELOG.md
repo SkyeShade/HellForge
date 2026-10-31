@@ -38,6 +38,12 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
+  game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
+  to close and waits up to 30 seconds for it before ending it.
+- The first start of a new installation built the shader cache from nothing even when the normal game already had
+  one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running".
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -80,6 +86,10 @@ On `dev`, since 0.3.0-beta.
 
 ### For launcher developers
 
+- A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
+  `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
+  to its first backend request) and, after a stop asked for, `gameClose` (`windows`, `closedByItself`, `seconds`). A
+  stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by itself.
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
