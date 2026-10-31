@@ -1012,6 +1012,7 @@ sealed partial class PlaySession(PlayOptions options)
     // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
     void WarArguments(ProcessStartInfo start)
     {
+        if (options.WarScript != null) { start.ArgumentList.Add("--war-script"); start.ArgumentList.Add(Path.GetFullPath(options.WarScript)); result["warScript"] = true; }
         if (options.OpenWar)
         {
             start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";

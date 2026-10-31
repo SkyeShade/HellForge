@@ -141,7 +141,9 @@ try
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf,
+        // --war-script <file>: major orders, dispatches, reward mail and war additions (WarServices); read again as it changes
+        WarScript = options.GetValueOrDefault("--war-script") is { } warScript ? Path.GetFullPath(warScript) : null
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");

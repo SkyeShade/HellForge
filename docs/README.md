@@ -10,6 +10,7 @@ Every HellForge document, by who it is for, and what an installation holds. To i
   fail), how to collect logs and where to ask.
 - [Using mods](mods.md): adding and removing mods, the Mods page, load order and playing with friends.
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
+- [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
 - [Linux (Proton)](linux.md): the experimental Linux setup, its network namespace and what is still untested.
 - [Your installation](#your-installation) (below): what setup does, the installation's folders, updating, repairing and
   uninstalling.

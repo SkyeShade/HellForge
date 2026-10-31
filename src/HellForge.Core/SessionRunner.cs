@@ -48,11 +48,14 @@ public sealed class SessionRunner
     }
 
     // The galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing.
+    // A war script beside it (war-script.json: major orders, dispatches, reward mail; docs/war-script.md) goes with any war.
     static List<string> WarArguments(ISessionPaths paths, string war)
     {
-        if (war == ProfileStore.WarLive) return ["--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
-        if (war != ProfileStore.WarOpen) return [];
-        var arguments = new List<string> { "--open-war" };
+        var script = Path.Combine(paths.HostRoot, "war-script.json");
+        List<string> scripted = File.Exists(script) ? ["--war-script", script] : [];
+        if (war == ProfileStore.WarLive) return [.. scripted, "--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
+        if (war != ProfileStore.WarOpen) return scripted;
+        var arguments = new List<string>(scripted) { "--open-war" };
         // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)
         if (ProfileStore.LoadSubfactionSeed(paths) is var seed and not 0) arguments.AddRange(["--war-seed", seed.ToString(CultureInfo.InvariantCulture)]);
         if (!ProfileStore.LoadDealSubfactions(paths)) arguments.AddRange(["--war-subfactions", "no"]);

@@ -27,6 +27,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // A war script (WarServices, docs/war-script.md): major orders, dispatches, reward mail and additions to the war.
+    public string? WarScript { get; init; }
 }
 
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
@@ -138,6 +140,12 @@ public static partial class LocalBackend
             return null;
         }
         var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
+        // The war's polled services (major orders, dispatches, mail...), with the war script's content when there is one.
+        var warLog = Path.Combine(settings.EvidenceDirectory, "war-script.log");
+        var warServices = settings.StartupFixtures ? new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
+        {
+            lock (warLog) File.AppendAllText(warLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
+        }) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -155,7 +163,7 @@ public static partial class LocalBackend
         var app = builder.Build();
         var requests = new Requests
         {
-            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
+            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, War = warServices, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
             AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath
         };

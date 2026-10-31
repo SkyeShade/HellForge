@@ -43,6 +43,7 @@ for (var i = 1; i < args.Length; i++)
         case "--profile": options.Profile = Value(); break;
         case "--template": options.Template = Value(); break;
         case "--live-war": options.LiveWar = Value(); break;
+        case "--war-script": options.WarScript = Value(); break;
         case "--open-war": options.OpenWar = true; break;
         case "--war-seed": options.WarSeed = uint.Parse(Value(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture); break;
         case "--war-subfactions": options.DealSubfactions = YesNo(Value(), "--war-subfactions"); break;
@@ -82,6 +83,7 @@ sealed class PlayOptions
     public string? Profile { get; set; }
     public string? Template { get; set; }
     public string? LiveWar { get; set; }
+    public string? WarScript { get; set; } /* major orders, dispatches, reward mail (backend --war-script) */
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
     public uint WarSeed { get; set; } /* its seed for subfactions and SEAF allies (backend --war-seed) */
     public bool DealSubfactions { get; set; } = true; /* deal its subfactions from the seed (backend --war-subfactions) */

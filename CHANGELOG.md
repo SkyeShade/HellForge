@@ -15,6 +15,10 @@ On `dev`, since 0.3.0-beta.
   buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
   purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
   from the map. Premium warbonds still need to be owned in the normal game.
+- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
+  planet modifiers (such as an extra stratagem for everyone on a planet) to the war, and edits show in game within a
+  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
+  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
