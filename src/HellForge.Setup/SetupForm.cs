@@ -18,6 +18,8 @@ sealed class SetupForm : Form
     readonly Button install = new() { Text = "Install", AutoSize = true, MinimumSize = new(96, 0) };
     readonly Button cancel = new() { Text = "Cancel", AutoSize = true, MinimumSize = new(96, 0) };
     bool busy;
+    // Smart App Control blocks HellForge's unsigned programs (SmartAppControl): said before installing.
+    readonly SmartAppControlState appControl = SmartAppControl.Current;
 
     public SetupForm()
     {
@@ -117,6 +119,7 @@ sealed class SetupForm : Form
         {
             error = "Enter a valid folder path.";
         }
+        if (error.Length == 0 && SmartAppControl.Warning(appControl) is { } warning) message = message.Length > 0 ? message + "\n\n" + warning : warning;
         note.Text = Privacy.Scrub(error.Length > 0 ? error : message);
         note.ForeColor = error.Length > 0 ? Color.Firebrick : Color.DarkOrange;
         install.Enabled = error.Length == 0 && !busy;
@@ -148,6 +151,8 @@ sealed class SetupForm : Form
             MessageBox.Show(this, "Close HellForge (launcher and any session) first.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        if (appControl == SmartAppControlState.On && MessageBox.Show(this, SmartAppControl.Warning(appControl) + "\n\nInstall HellForge anyway?", Text,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         busy = true;
         install.Enabled = browse.Enabled = folder.Enabled = cancel.Enabled = false;
         try
@@ -166,7 +171,11 @@ sealed class SetupForm : Form
         {
             busy = false;
             status.Text = "";
-            MessageBox.Show(this, "Setup could not finish: " + exception.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // HellForge is unpacked, but Windows refused to start its launcher: say who and why rather than Windows' one line
+            var why = exception is System.ComponentModel.Win32Exception blocked && SmartAppControl.IsBlock(blocked.NativeErrorCode)
+                ? "HellForge is unpacked, but its launcher could not start. " + SmartAppControl.BlockedMessage(Path.Combine(target, ProgramName), appControl)
+                : "Setup could not finish: " + exception.Message;
+            MessageBox.Show(this, why, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             browse.Enabled = folder.Enabled = cancel.Enabled = true;
             Check();
         }
