@@ -46,8 +46,9 @@ sealed class ContentServers(SteamContent content)
             if (list is not { Count: > 0 })
             {
                 var all = await content.GetServersForSteamPipe(cellId, 20).WaitAsync(TimeSpan.FromSeconds(30), cancellation);
-                list = [.. all.Where(s => s.Type is "SteamCache" or "CDN" && !s.SteamChinaOnly && (s.AllowedAppIds is not { Length: > 0 } || s.AllowedAppIds.Contains(app)))
-                    .OrderBy(s => s.WeightedLoad)];
+                // Steam's own caches and CDNs first; a proxy only rewrites requests for another server, so it is left out
+                list = [.. all.Where(s => !s.UseAsProxy && !s.SteamChinaOnly && (s.AllowedAppIds is not { Length: > 0 } || s.AllowedAppIds.Contains(app)))
+                    .OrderBy(s => s.Type is "SteamCache" or "CDN" ? 0 : 1).ThenBy(s => s.WeightedLoad)];
                 if (list.Count == 0) throw new IOException("Steam named no content server to download from.");
             }
             lock (list) return list[0];

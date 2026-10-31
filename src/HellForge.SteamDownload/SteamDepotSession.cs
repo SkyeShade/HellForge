@@ -65,7 +65,12 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         }
         catch (Exception error) when (error is not OperationCanceledException and not SteamSignInException)
         {
-            var reason = session.scrubber.Clean(error is AuthenticationException auth ? Describe(auth.Result) : error.Message);
+            var reason = session.scrubber.Clean(error switch
+            {
+                AuthenticationException auth => Describe(auth.Result),
+                TimeoutException => "Steam did not answer in time; check the internet connection and try again.",
+                _ => error.Message,
+            });
             await session.DisposeAsync();
             throw new SteamSignInException($"Steam sign-in did not work: {reason}");
         }
