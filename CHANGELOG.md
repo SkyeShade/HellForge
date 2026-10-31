@@ -17,7 +17,7 @@ On `dev`, since 0.3.0-beta.
 ### Changed
 
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
-  which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones.
+  which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
