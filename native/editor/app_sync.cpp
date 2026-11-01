@@ -125,7 +125,9 @@ void ReadSync()
     g_host.api->sync_state(g_host.mod, &now);
     HfSyncState& was = g_sync.state;
     bool turned = now.version != was.version || now.state != was.state;
-    if (!turned && now.done == was.done && now.bytes == was.bytes && !strcmp(now.message, was.message) && !strcmp(now.host, was.host)) return;
+    /* the flags too: HF_SYNC_LIVE changing alone relabels the dialog's buttons */
+    bool same = now.done == was.done && now.bytes == was.bytes && now.flags == was.flags && !strcmp(now.message, was.message) && !strcmp(now.host, was.host);
+    if (!turned && same) return;
     if (now.version != was.version || now.mods != g_sync.mods.size()) ReadSyncMods(now.mods);
     g_sync.state = now;
     if (turned) SyncTurned(now);
