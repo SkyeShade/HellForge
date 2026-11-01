@@ -33,6 +33,13 @@ try
         "backfill" => Backfill(),
         "names" => Names(),
         "resolve" => Resolve(),
+        "probe-range" => ProbeRange(),
+        "chunk-stats" => ChunkStats(),
+        "checksum-probe" => ChecksumProbe(),
+        "steam-chunks" => SteamChunks(),
+        "scan" => Scan(),
+        "chunk-delta" => ChunkDelta(),
+        "local-check" => LocalCheck(),
         _ => Usage(),
     };
 }
@@ -148,7 +155,23 @@ IGameResources Game(string label, string where)
     return files.List().Any(n => n.Length == 16 && !n.Contains('.')) ? new MixedGameResources(files, label) : new GameResources(files, label);
 }
 
-SteamDepots Steam() => steam ??= SteamDepots.Connect().GetAwaiter().GetResult();
+SteamDepots Steam()
+{
+    if (steam is not null) return steam;
+    steam = SteamDepots.Connect().GetAwaiter().GetResult();
+    foreach (var (manifest, install) in Installed()) steam.Local.Add(manifest, install);
+    if (steam.Local.Count > 0) Console.WriteLine($"Steam: {steam.Local.Count:N0} chunks are read from the builds installed here, not downloaded.");
+    return steam;
+}
+
+// --local <depot>:<manifest>=<install folder>: a build installed on this PC (the folder holding data/), by its manifest.
+List<(SteamKit2.DepotManifest Manifest, string Install)> Installed() => All("--local").Select(spec =>
+{
+    var (id, install) = (spec[..spec.IndexOf('=')], spec[(spec.IndexOf('=') + 1)..]);
+    var parts = id.Split(':');
+    var manifest = SteamDepots.Cached(uint.Parse(parts[0]), ulong.Parse(parts[1])) ?? throw new IOException($"manifest {id} is not cached.");
+    return (manifest, install);
+}).ToList();
 
 DepotFiles Depot(string where)
 {
@@ -192,7 +215,8 @@ int Names()
         // The tables of archives the map does not know yet are fetched in parallel first; reading them is then local.
         if (lastDepot is { } files)
         {
-            var fresh = files.List().Where(n => n.Length == 16 && !n.Contains('.') && (game.ArchiveHash(n) is not { } hash || !map.Knows(hash))).ToList();
+            var fresh = files.List().Where(n => n.Length == 16 && !n.Contains('.') && (game.TableHash(n) is not { } hash || !map.Knows(hash))).ToList();
+            Console.Write($"\r{h.Time:yyyy-MM-dd} {label}: fetching {fresh.Count:N0} new tables   ");
             files.PrefetchFirstChunks(fresh);
         }
         map.Add(game, n => Console.Write($"\r{h.Time:yyyy-MM-dd} {label}: {n:N0} archives   "));
@@ -213,7 +237,9 @@ int Resolve()
 {
     var indexPath = One("--index");
     var index = SourceIndex.Load(indexPath);
-    var names = NameMap.Load(One("--map"));
+    var names = All("--map").Count > 0 ? NameMap.Load(One("--map")) : null;
+    var chunks = All("--chunks").Count > 0 ? SteamChunkIndex.Load(One("--chunks")) : null;
+    if (names is null && chunks is null) throw new ArgumentException("resolve needs --map (the name map), --chunks (the Steam chunk index), or both.");
     var catalog = BuildCatalog.LoadWithHistory(One("--catalog"));
     var modFolder = Path.GetFullPath(One("--mod"));
     var files = Directory.EnumerateFiles(modFolder, "*", SearchOption.AllDirectories)
@@ -222,27 +248,73 @@ int Resolve()
     var games = Games();
     games.AddRange(SteamBuilds(index, games.Select(g => g.Build).ToList()));
     var (_, _, report) = new Migrator(index, games).Migrate(files);
-    var wanted = report.Resources.Where(r => !r.InIndex && r.Literal > 0 && names.Has(r.Key)).Select(r => r.Key).Distinct().ToList();
-    Console.WriteLine($"{wanted.Count} leftover resources are the game's by name.");
+    var left = report.Resources.Where(r => r.Literal > 0).ToList();
     DateTime When(string build) => catalog.History?.FirstOrDefault(h => $"{catalog.DataDepot}:{h.Manifest}" == build)?.Time ?? DateTime.MinValue;
-    var plan = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-    foreach (var key in wanted)
+    // Per build: the archives to fingerprint, and (when known) just the resources of them that are needed.
+    var plan = new Dictionary<string, (HashSet<string> Archives, HashSet<ResourceKey>? Keys)>(StringComparer.Ordinal);
+    var opened = new Dictionary<string, IGameResources>(StringComparer.Ordinal);
+    IGameResources Open(string build)
     {
-        var found = names.Find(key).ToList();
-        var pick = found.FirstOrDefault(f => plan.ContainsKey(f.Build));
-        if (pick.Build is null) pick = found.OrderByDescending(f => When(f.Build)).First();
-        if (!plan.TryGetValue(pick.Build, out var set)) plan[pick.Build] = set = new(StringComparer.Ordinal);
-        set.Add(pick.Archive);
-    }
-    foreach (var (build, archives) in plan)
-    {
+        if (opened.TryGetValue(build, out var game)) return game;
         var parts = build.Split(':');
         var branch = catalog.History?.FirstOrDefault(h => h.Manifest.ToString() == parts[1])?.Branch ?? "public";
+        return opened[build] = Game(build, $"steam:{parts[0]}:{parts[1]}:{branch}");
+    }
+
+    // The Steam chunks the leftover bytes are: each is found in a build (the latest that has it, or one already
+    // planned), at a place in a game file; the game resources at that place, and the leftover resources of the same mod
+    // file, are fingerprinted from that archive alone.
+    if (chunks is not null)
+    {
+        var clock = Stopwatch.StartNew();
+        foreach (var (path, bytes) in files)
+        {
+            var mine = left.Where(r => r.File == path).ToList();
+            var whole = report.Files.FirstOrDefault(f => f.Path == path) is { Literal: > 0 } && !report.Resources.Any(r => r.File == path);
+            if (mine.Count == 0 && !whole) continue;
+            foreach (var m in chunks.Scan(bytes))
+            {
+                if (!whole && !mine.Any(r => r.Start < m.Offset + m.Length && m.Offset < r.Start + r.Size)) continue;
+                var ids = chunks.BuildIdsOf(m.Chunk).ToList();
+                var pick = ids.Where(b => plan.ContainsKey(chunks.Builds[b].Label)).DefaultIfEmpty(ids.MaxBy(b => chunks.Builds[b].Time)).First();
+                var build = chunks.Builds[pick].Label;
+                if (index.Builds.Contains(build) && !index.PartialBuilds.Contains(build)) continue;
+                if (chunks.Locate(m.Chunk, pick) is not { } at || !at.File.StartsWith("data/", StringComparison.Ordinal)) continue;
+                var game = Open(build);
+                var found = game.At(at.File["data/".Length..], at.Offset, m.Length).ToList();
+                if (found.Count == 0) continue;
+                if (!plan.TryGetValue(build, out var entry)) plan[build] = entry = (new(StringComparer.Ordinal), new());
+                foreach (var (key, archive) in found)
+                {
+                    entry.Archives.Add(archive);
+                    entry.Keys!.Add(key);
+                }
+                foreach (var r in mine) entry.Keys!.Add(r.Key);
+            }
+        }
+        Console.WriteLine($"Steam chunks: {plan.Sum(p => p.Value.Keys?.Count ?? 0)} game resources to fingerprint, in {plan.Sum(p => p.Value.Archives.Count)} archives of {plan.Count} builds ({clock.Elapsed.TotalSeconds:F1} s).");
+    }
+    if (names is not null)
+    {
+        var wanted = left.Where(r => !r.InIndex && names.Has(r.Key)).Select(r => r.Key).Distinct().ToList();
+        Console.WriteLine($"{wanted.Count} leftover resources are the game's by name.");
+        foreach (var key in wanted)
+        {
+            var found = names.Find(key).ToList();
+            var pick = found.FirstOrDefault(f => plan.ContainsKey(f.Build));
+            if (pick.Build is null) pick = found.OrderByDescending(f => When(f.Build)).First();
+            if (!plan.TryGetValue(pick.Build, out var entry)) plan[pick.Build] = entry = (new(StringComparer.Ordinal), new());
+            entry.Archives.Add(pick.Archive);
+            entry.Keys?.Add(key);
+        }
+    }
+    foreach (var (build, (archives, keys)) in plan)
+    {
         var clock = Stopwatch.StartNew();
         var downloaded = Steam().BytesDownloaded;
-        var game = Game(build, $"steam:{parts[0]}:{parts[1]}:{branch}");
-        index.Add(game, (n, bytes) => Console.Write($"\r  {When(build):yyyy-MM-dd} {build}: {archives.Count} archives, {n:N0} resources, {bytes / 1e9:F2} GB read   "), archives);
-        Console.WriteLine($"\r  {When(build):yyyy-MM-dd} {build}: fingerprinted {archives.Count} archives in {clock.Elapsed.TotalSeconds:F0} s, {(Steam().BytesDownloaded - downloaded) / 1e9:F2} GB downloaded");
+        index.Add(Open(build), (n, bytes) => Console.Write($"\r  {When(build):yyyy-MM-dd} {build}: {n:N0} resources, {bytes / 1e6:F1} MB read   "), archives, keys);
+        Console.WriteLine($"\r  {When(build):yyyy-MM-dd} {build}: fingerprinted {keys?.Count.ToString("N0") ?? "all"} resources of {archives.Count} archives " +
+            $"in {clock.Elapsed.TotalSeconds:F0} s, {(Steam().BytesDownloaded - downloaded) / 1e6:F1} MB downloaded");
     }
     if (plan.Count > 0)
     {
@@ -250,6 +322,181 @@ int Resolve()
         File.Move(indexPath + ".tmp", indexPath, true);
     }
     return Migrate();
+}
+
+// steam-chunks --out <file> --depot <id> --history <file>: the Steam chunk index of every manifest in the depot's history
+// (from the cached manifests; any not cached are fetched, which needs the Steam login). No game content is read.
+int SteamChunks()
+{
+    var depot = uint.Parse(One("--depot"));
+    var history = DepotHistory.Load(One("--history")).OrderBy(h => h.Time).ToList();
+    var index = new SteamChunkIndex();
+    var clock = Stopwatch.StartNew();
+    foreach (var h in history)
+    {
+        var m = SteamDepots.Cached(depot, h.Manifest);
+        if (m is null)
+        {
+            try { m = Steam().Manifest(depot, h.Manifest, h.Branch ?? "public").GetAwaiter().GetResult(); }
+            catch (Exception e) when (e is IOException or InvalidOperationException) { Console.WriteLine($"  {h.Time:yyyy-MM-dd} {h.Manifest}: {e.Message}"); continue; }
+        }
+        index.AddBuild($"{depot}:{h.Manifest}", h.Time, (m.Files ?? []).Select(f => (f.FileName.Replace('\\', '/'),
+            f.Chunks.Select(c => ((long)c.Offset, (int)c.UncompressedLength, c.ChunkID!, c.Checksum)))));
+    }
+    index.Save(One("--out"));
+    Console.WriteLine($"Steam chunk index: {index.Builds.Count} builds, {index.ChunkCount:N0} distinct chunks ({index.ChunkBytes / 1e12:F2} TB of game data described), " +
+        $"{new FileInfo(One("--out")).Length / 1e6:F0} MB, in {clock.Elapsed.TotalSeconds:F0} s.");
+    return 0;
+}
+
+// chunk-delta --chunks <file> --have <label>...: per build, its chunk bytes and those none of the have builds (the ones
+// installed here) has: what indexing that build would download.
+int ChunkDelta()
+{
+    var index = SteamChunkIndex.Load(One("--chunks"));
+    var have = All("--have").Select(index.BuildIndex).ToList();
+    if (have.Any(h => h < 0)) throw new ArgumentException("a --have build is not in the chunk index.");
+    long sumTotal = 0, sumMissing = 0;
+    foreach (var (b, i) in index.Builds.Select((b, i) => (b, i)).OrderBy(x => x.b.Time))
+    {
+        var (total, missing) = index.Delta(i, have);
+        sumTotal += total;
+        sumMissing += missing;
+        Console.WriteLine($"{b.Time:yyyy-MM-dd} {b.Label,-30} {total / 1e9,7:F1} GB, {missing / 1e9,7:F2} GB not in the builds here ({100.0 * missing / Math.Max(1, total),5:F1}%)");
+    }
+    Console.WriteLine($"All {index.Builds.Count} builds: {sumTotal / 1e12:F2} TB, {sumMissing / 1e12:F2} TB not in the builds here.");
+    foreach (var from in All("--from").Select(DateTime.Parse))
+    {
+        var wanted = index.Builds.Select((b, i) => (b, i)).Where(x => x.b.Time >= from).Select(x => x.i).ToList();
+        Console.WriteLine($"The {wanted.Count} builds since {from:yyyy-MM-dd} together: {index.MissingUnion(wanted, have) / 1e9:F1} GB not in the builds here.");
+    }
+    return 0;
+}
+
+// local-check --local <depot>:<manifest>=<install folder> [--sample N]: how many of the installed build's chunks read
+// back from its files with the right SHA-1 (a random sample). No login.
+int LocalCheck()
+{
+    var sample = All("--sample").Select(int.Parse).DefaultIfEmpty(400).First();
+    foreach (var (manifest, install) in Installed())
+    {
+        var local = new LocalChunks();
+        local.Add(manifest, install);
+        var all = (manifest.Files ?? []).SelectMany(f => f.Chunks).ToList();
+        var pick = all.OrderBy(_ => Random.Shared.Next()).Take(sample).ToList();
+        var known = pick.Count(local.Has);
+        var ok = pick.Count(c => local.TryRead(c) is not null);
+        Console.WriteLine($"{manifest.DepotID}:{manifest.ManifestGID} at {install}: {local.Count:N0} of {all.Select(c => Convert.ToHexString(c.ChunkID!)).Distinct().Count():N0} chunks mapped to files here; " +
+            $"sample of {pick.Count}: {known} mapped, {ok} read back with the right SHA-1, {local.Failed} failed.");
+    }
+    return 0;
+}
+
+// scan --chunks <file> --mod <folder>: the runs of each mod file that are chunks Steam shipped, with the builds and game
+// files they are from. Reads nothing from Steam.
+int Scan()
+{
+    var index = SteamChunkIndex.Load(One("--chunks"));
+    var mod = Path.GetFullPath(One("--mod"));
+    long total = 0, matched = 0;
+    var clock = Stopwatch.StartNew();
+    using var list = All("--out").SingleOrDefault() is { } outPath ? new StreamWriter(outPath) : null;
+    foreach (var file in Directory.EnumerateFiles(mod, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+    {
+        var data = File.ReadAllBytes(file);
+        total += data.Length;
+        var found = index.Scan(data);
+        foreach (var m in found)
+            list?.WriteLine($"{Path.GetRelativePath(mod, file)}\t{m.Offset}\t{m.Length}\t{index.FileOf(m.Chunk)}\t{string.Join(",", index.BuildsOf(m.Chunk).Select(b => b.Label))}");
+        if (found.Count == 0) continue;
+        var bytes = found.Sum(m => (long)m.Length);
+        matched += bytes;
+        var builds = found.SelectMany(m => index.BuildsOf(m.Chunk)).Distinct().OrderBy(b => b.Time).ToList();
+        var sources = found.GroupBy(m => index.FileOf(m.Chunk)).OrderByDescending(g => g.Sum(m => (long)m.Length)).Take(3)
+            .Select(g => $"{g.Key} ({g.Sum(m => (long)m.Length) / 1e6:F1} MB)");
+        Console.WriteLine($"{Path.GetRelativePath(mod, file)}: {bytes / 1e6:F1} of {data.Length / 1e6:F1} MB are Steam chunks ({found.Count} chunks), " +
+            $"in {builds.Count} builds {builds.First().Time:yyyy-MM-dd} to {builds.Last().Time:yyyy-MM-dd}; from {string.Join(", ", sources)}");
+    }
+    Console.WriteLine($"{matched / 1e6:F1} of {total / 1e6:F1} MB proven to be bytes Steam shipped, in {clock.Elapsed.TotalSeconds:F1} s.");
+    return 0;
+}
+
+// checksum-probe <depot> <manifest>: which checksum the manifest's chunk "Checksum" is, tried against cached chunks.
+int ChecksumProbe()
+{
+    var m = SteamDepots.Cached(uint.Parse(args_[1]), ulong.Parse(args_[2])) ?? throw new ArgumentException("That manifest is not cached.");
+    static uint Adler(ReadOnlySpan<byte> d, uint a, uint b)
+    {
+        foreach (var x in d) { a = (a + x) % 65521; b = (b + a) % 65521; }
+        return (b << 16) | a;
+    }
+    int tried = 0, seed0 = 0, seed1 = 0, crc = 0;
+    foreach (var c in (m.Files ?? []).SelectMany(f => f.Chunks))
+    {
+        var id = Convert.ToHexString(c.ChunkID!).ToLowerInvariant();
+        var file = Path.Combine(SteamDepots.CacheFolder, "chunks", id[..2], id);
+        if (!File.Exists(file)) continue;
+        var data = File.ReadAllBytes(file);
+        tried++;
+        if (Adler(data, 0, 0) == c.Checksum) seed0++;
+        if (Adler(data, 1, 0) == c.Checksum) seed1++;
+        if (System.IO.Hashing.Crc32.HashToUInt32(data) == c.Checksum) crc++;
+        if (tried == 40) break;
+    }
+    Console.WriteLine($"{tried} cached chunks: Adler-32 seeded 0 matches {seed0}, standard Adler-32 {seed1}, CRC-32 {crc}");
+    return 0;
+}
+
+// chunk-stats <depot> <manifest>: how Steam cut the manifest's files into chunks (from the cached manifest; no login).
+int ChunkStats()
+{
+    var m = SteamDepots.Cached(uint.Parse(args_[1]), ulong.Parse(args_[2])) ?? throw new ArgumentException("That manifest is not cached.");
+    var chunks = (m.Files ?? []).SelectMany(f => f.Chunks.OrderBy(c => c.Offset).Select((c, i) => (f, c, i, last: i == f.Chunks.Count - 1))).ToList();
+    var inner = chunks.Where(x => !x.last).ToList();
+    Console.WriteLine($"{m.Files?.Count} files, {chunks.Count:N0} chunks; {inner.Count:N0} not last in their file");
+    Console.WriteLine($"  inner chunk lengths: {string.Join(", ", inner.GroupBy(x => x.c.UncompressedLength).OrderByDescending(g => g.Count()).Take(6).Select(g => $"{g.Key:N0} x{g.Count():N0}"))}");
+    Console.WriteLine($"  inner chunk offsets that are multiples of 1 MiB: {inner.Count(x => x.c.Offset % 1048576 == 0):N0} of {inner.Count:N0}");
+    var gaps = chunks.GroupBy(x => x.f).Count(g => g.OrderBy(x => x.c.Offset).Select(x => x.c).Zip(g.OrderBy(x => x.c.Offset).Select(x => x.c).Skip(1)).Any(p => p.First.Offset + p.First.UncompressedLength != p.Second.Offset));
+    Console.WriteLine($"  files whose chunks leave gaps or overlap: {gaps}");
+    return 0;
+}
+
+// probe-range steam:<depot>:<manifest> <file> [bytes]: asks the content servers for only the first bytes of the file's
+// first chunk (an HTTP range), decrypts that prefix and says what compression the chunk uses. Diagnostic.
+int ProbeRange()
+{
+    var files = Depot(args_[1]);
+    var name = args_[2];
+    var want = args_.Count > 3 ? int.Parse(args_[3]) : 16384;
+    var chunk = files.File(name).Chunks.OrderBy(c => c.Offset).First();
+    var id = Convert.ToHexString(chunk.ChunkID!).ToLowerInvariant();
+    var key = Steam().Key(files.Manifest.DepotID).GetAwaiter().GetResult();
+    Console.WriteLine($"{name}: first chunk {id}, {chunk.CompressedLength:N0} bytes stored, {chunk.UncompressedLength:N0} uncompressed");
+    using var http = new HttpClient();
+    foreach (var server in Steam().Servers.Take(4))
+    {
+        var scheme = server.Protocol == SteamKit2.CDN.Server.ConnectionProtocol.HTTPS ? "https" : "http";
+        var url = $"{scheme}://{server.VHost}:{server.Port}/depot/{files.Manifest.DepotID}/chunk/{id}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, want - 1);
+        try
+        {
+            using var response = http.Send(request);
+            var body = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"  {server.Type} {server.VHost}: HTTP {(int)response.StatusCode}, {body.Length:N0} bytes, range {response.Content.Headers.ContentRange}");
+            if (body.Length < 32) continue;
+            using var aes = System.Security.Cryptography.Aes.Create();
+            aes.Key = key;
+            var iv = aes.DecryptEcb(body.AsSpan(0, 16), System.Security.Cryptography.PaddingMode.None);
+            var blocks = (body.Length - 16) / 16 * 16;
+            var plain = aes.DecryptCbc(body.AsSpan(16, blocks), iv, System.Security.Cryptography.PaddingMode.None);
+            var head = plain.AsSpan(0, 16).ToArray();
+            Console.WriteLine($"    decrypted prefix: {Convert.ToHexString(head)}  \"{new string(head.Select(b => b is >= 32 and < 127 ? (char)b : '.').ToArray())}\"");
+            return 0;
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException) { Console.WriteLine($"  {server.VHost}: {e.Message}"); }
+    }
+    return 1;
 }
 
 // backfill --index <file> --depot <id> --history <file> [--limit <n>]: indexes the depot's manifests from Steam, oldest
@@ -388,6 +635,12 @@ int Migrate()
     var clock = Stopwatch.StartNew();
     var (recipe, literals, report) = new Migrator(index, games).Migrate(files, Console.WriteLine);
     Console.WriteLine($"Matched in {clock.Elapsed.TotalSeconds:F1} s.");
+    if (All("--chunks").Count > 0)
+    {
+        clock.Restart();
+        report.Shipped.AddRange(SteamChunkIndex.Load(One("--chunks")).Runs(files));
+        Console.WriteLine($"Steam chunks: {report.Shipped.Sum(r => r.Length) / 1e6:F1} MB of the mod are chunks Steam shipped ({clock.Elapsed.TotalSeconds:F1} s).");
+    }
 
     // The gate: the game content is only taken out of the mod once the recipe has rebuilt every file, from the game
     // folders alone, byte for byte (SHA-256). If anything fails, the mod is kept exactly as it was.
@@ -539,6 +792,21 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
             s.AppendLine($"| {ResourceTypes.Describe(r.Key.Type)} `{r.Key.Name:x16}` | {r.Part} | {Size(r.Size)} | {Pct(r.FromGame, r.Size)} | {Pct(r.Literal, r.Size)} | {(builds.Length == 0 ? "-" : builds)} | {SameKey(r)} |");
         }
     }
+    var (leftBytes, leftRuns) = report.ShippedLeft();
+    if (leftBytes > 0)
+    {
+        s.AppendLine();
+        s.AppendLine("## Still shipped, but bytes Steam shipped");
+        s.AppendLine();
+        s.AppendLine($"{Size(leftBytes)} of the bytes the mod still ships are chunks of the game's depot: their SHA-1 is in the depot manifests of these builds. " +
+            "resolve --chunks fingerprints the game resources at those places and migrates again.");
+        s.AppendLine();
+        s.AppendLine("| Mod file | At | Run | Still shipped | Game file | Builds | From | To |");
+        s.AppendLine("|---|---|---|---|---|---|---|---|");
+        foreach (var (r, bytes) in leftRuns.Take(40))
+            s.AppendLine($"| `{r.File}` | {r.Offset:N0} | {Size(r.Length)} | {Size(bytes)} | `{r.GameFile}` | {r.Builds} | {r.First:yyyy-MM-dd} | {r.Last:yyyy-MM-dd} |");
+        if (leftRuns.Count > 40) s.AppendLine($"| ... and {leftRuns.Count - 40} more | | | | | | | |");
+    }
     s.AppendLine();
     s.AppendLine("## Game content the mod reuses");
     s.AppendLine();
@@ -561,5 +829,8 @@ sealed class LazyGame(string label, Func<IGameResources> open) : IGameResources
     public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive, Func<HellForge.Core.GameData.ResourceParts> Read)> All() => Game.All();
     public string? ArchiveHash(string archive) => Game.ArchiveHash(archive);
     public IEnumerable<(string Archive, Func<IReadOnlyList<HellForge.Core.GameData.ResourceKey>> Keys)> Tables() => Game.Tables();
+    public string? TableHash(string archive) => Game.TableHash(archive);
     public byte[]? Read(HellForge.Core.GameData.ResourceKey key, PartKind part) => Game.Read(key, part);
+    public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive, Func<HellForge.Core.GameData.ResourceParts> Read)> In(IReadOnlySet<string> archives) => Game.In(archives);
+    public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive)> At(string file, long offset, long length) => Game.At(file, offset, length);
 }

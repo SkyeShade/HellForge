@@ -314,5 +314,118 @@ static class AssetMigrationTests
                 check(report.Files[0].FromGame == 10_000, $"shift {shift}: {report.Files[0].FromGame}");
             }
         });
+
+        test("Padding between game pieces is a fill, however short: the mod ships none of it", () =>
+        {
+            var file = Concat(skinGpu[..20_000], new byte[8], rifleGpu[..20_000], [0x11, 0x11], skinGpu[30_000..40_000], [0x42]);
+            var (recipe, literals, report) = new Migrator(Index(), [oldBuild, newBuild]).Migrate([("x", file)]);
+            check(report.Files[0].Literal == 1 && report.Kept["x"].Sum(k => k.Length) == 1 && literals.Length == 1, $"literal {report.Files[0].Literal}");
+            check(RecipeRebuilder.Rebuild(recipe, literals, [oldBuild, newBuild])["x"].AsSpan().SequenceEqual(file), "padding does not rebuild");
+        });
+
+        // A depot manifest's view of a game file: its chunks' offsets, lengths, SHA-1s and Adler-32s. Steam cuts files
+        // into 1 MiB chunks and keeps old chunks at any offset, so a manifest has odd-length chunks too.
+        const int MiB = SteamChunkIndex.Window;
+        static IEnumerable<(long, int, byte[], uint)> Chunks(byte[] file, params (int Offset, int Length)[] at) =>
+            at.Select(c => ((long)c.Offset, c.Length, System.Security.Cryptography.SHA1.HashData(file.AsSpan(c.Offset, c.Length)), SteamChunkIndex.Adler32(file.AsSpan(c.Offset, c.Length))));
+        var shippedFile = Noise(60, 3 * MiB + 300_001);
+        (int, int)[] cuts = [(0, MiB), (MiB, MiB), (2 * MiB, 300_001), (2 * MiB + 300_001, MiB)];
+
+        test("Chunks Steam shipped are found anywhere in a mod, under any name, from the depot manifests alone", () =>
+        {
+            var index = new SteamChunkIndex();
+            index.AddBuild("553853:1", new DateTime(2024, 2, 8), [("data/00000000000000aa.stream", Chunks(shippedFile, cuts))]);
+            var other = Noise(61, MiB);
+            index.AddBuild("553853:2", new DateTime(2024, 3, 26), [("data/00000000000000aa.stream", Chunks(shippedFile, cuts)), ("data/00000000000000bb", Chunks(other, (0, MiB)))]);
+            var file = Path.Combine(root, "chunks.hfsc");
+            index.Save(file);
+            index = SteamChunkIndex.Load(file);
+
+            // The game file from part-way into its first chunk, at an odd offset, in a mod file of another name.
+            var mod = Concat(Noise(62, 777), shippedFile[300_000..], Noise(63, 1234));
+            var found = index.Scan(mod);
+            check(found.Count == 3 && found.Sum(m => (long)m.Length) == 2L * MiB + 300_001, $"found {found.Count} chunks, {found.Sum(m => (long)m.Length)} bytes");
+            check(found[0].Offset == 777 + MiB - 300_000, $"first chunk at {found[0].Offset}");
+            var runs = index.Runs([("data/x.patch_0.stream", mod)]);
+            check(runs.Count == 1 && runs[0].GameFile == "data/00000000000000aa.stream" && runs[0].Builds == 2 && runs[0].First == new DateTime(2024, 2, 8) && runs[0].Last == new DateTime(2024, 3, 26),
+                string.Join("; ", runs));
+            check(index.Locate(found[0].Chunk, index.BuildIndex("553853:2")) == ("data/00000000000000aa.stream", (long)MiB), $"{index.Locate(found[0].Chunk, 1)}");
+
+            // An edit inside a chunk loses that chunk only: the next whole chunk is found, then its neighbour behind it.
+            var edited = (byte[])mod.Clone();
+            edited[777 + MiB] ^= 0xff;
+            found = index.Scan(edited);
+            check(found.Count == 2 && found[0].Length == 300_001 && found[1].Length == MiB, $"edited: {string.Join(", ", found.Select(m => m.Length))}");
+            check(index.Scan(Concat(Noise(64, 5000), shippedFile[..(MiB - 1)], Noise(65, 5000))).Count == 0, "a partial chunk was matched");
+            check(index.Scan(other).Count == 1 && index.Scan(Noise(66, 3 * MiB)).Count == 0, "the other file or noise was wrong");
+        });
+
+        test("Bytes still shipped that are chunks Steam shipped hold the mod, even under names no build has", () =>
+        {
+            var builds = History();
+            var map = new NameMap();
+            foreach (var (game, _) in builds) map.Add(game);
+            var index = Index();
+            var report = new MigrationReport();
+            report.Files.Add(new MigrationReport.FileLine("data/ee.patch_0.stream", 2 * MiB, 0, 2 * MiB, 0, false));
+            report.Resources.Add(new MigrationReport.ResourceLine("data/ee.patch_0.stream", unknownKey, PartKind.Stream, 0, 2 * MiB, 0, 2 * MiB, 0, [], false));
+            report.Kept["data/ee.patch_0.stream"] = [(0, 2 * MiB)];
+            var clean = MigrationVerdict.Decide(report, index, HistoryCatalog(), 0, null, map);
+            check(clean.Kind == VerdictKind.NoGameContent, clean.Text);
+            report.Shipped.Add(new SteamChunkIndex.Run("data/ee.patch_0.stream", 4096, MiB, "data/00000000000000aa.stream", new DateTime(2024, 2, 8), new DateTime(2024, 3, 26), 17));
+            check(report.ShippedLeft().Bytes == MiB, $"{report.ShippedLeft().Bytes}");
+            foreach (var held in new[] { MigrationVerdict.Decide(report, index, HistoryCatalog(), 0, null, map), MigrationVerdict.Decide(report, index, HistoryCatalog(), 0, null) })
+                check(held.Kind == VerdictKind.PartlyMigrated && held.Text.Contains("chunks Steam shipped") && held.Text.Contains("2024-02-08"), held.Text);
+        });
+
+        test("A kitbash's own edit next to Steam chunks the recipe takes from the game is not counted as shipped game bytes", () =>
+        {
+            // The resource holds a 2 MiB run of a Steam chunk the recipe copies from the game, and 5,000 bytes of the
+            // author's own just after it: only those 5,000 bytes ship, and none of them are the chunk.
+            var report = new MigrationReport();
+            report.Files.Add(new MigrationReport.FileLine("data/kb.patch_0.stream", 3 * MiB, 2 * MiB, 5000, MiB - 5000, true));
+            report.Resources.Add(new MigrationReport.ResourceLine("data/kb.patch_0.stream", skin, PartKind.Stream, 0, 3 * MiB, 2 * MiB, 5000, MiB - 5000, [], true));
+            report.Kept["data/kb.patch_0.stream"] = [(2 * MiB, 5000)];
+            report.Shipped.Add(new SteamChunkIndex.Run("data/kb.patch_0.stream", 0, 2 * MiB, "data/00000000000000aa.stream", new DateTime(2026, 2, 3), new DateTime(2026, 2, 10), 2));
+            check(report.ShippedLeft().Bytes == 0, $"{report.ShippedLeft().Bytes} bytes counted");
+            // A chunk run reaching 100 bytes into the edit counts those 100 bytes only.
+            report.Shipped.Add(new SteamChunkIndex.Run("data/kb.patch_0.stream", 2 * MiB - MiB + 100, MiB, "data/00000000000000aa.stream", new DateTime(2026, 2, 3), new DateTime(2026, 2, 10), 2));
+            check(report.ShippedLeft().Bytes == 100 && report.ShippedLeft().Runs.Count == 1, $"{report.ShippedLeft().Bytes} bytes counted");
+        });
+
+        test("A targeted fetch reads only the archives it names, and only the resources at a place in a game file", () =>
+        {
+            var folder = Path.Combine(root, "targeted");
+            Directory.CreateDirectory(folder);
+            var tank = new ResourceKey(ResourceTypes.Unit, 0x7777);
+            var tankParts = new ResourceParts(Noise(71, 900), Noise(72, 40_000), Noise(73, 9000));
+            foreach (var (name, resources) in new[]
+            {
+                ("00000000000000aa", new Dictionary<ResourceKey, ResourceParts> { [rifle] = new(Noise(4, 4000), rifleGpu, []) }),
+                ("00000000000000bb", new Dictionary<ResourceKey, ResourceParts> { [apcKey] = apcParts, [tank] = tankParts }),
+            })
+            {
+                var (archive, gpu, stream) = ResourceArchive.Write(resources);
+                File.WriteAllBytes(Path.Combine(folder, name), archive);
+                File.WriteAllBytes(Path.Combine(folder, name + ".gpu_resources"), gpu);
+                File.WriteAllBytes(Path.Combine(folder, name + ".stream"), stream);
+            }
+            var files = new HashedFolder(folder);
+            var game = new LooseGameResources(files, "553853:9");
+            var keys = game.In(new HashSet<string> { "00000000000000bb" }).Select(r => r.Key).ToList();
+            check(files.Opened == 1 && keys.Count == 2 && keys.Contains(tank) && keys.Contains(apcKey), $"opened {files.Opened}, keys {keys.Count}");
+
+            var bbStream = File.ReadAllBytes(Path.Combine(folder, "00000000000000bb.stream"));
+            var at = bbStream.AsSpan().IndexOf(tankParts.Stream);
+            var hit = game.At("00000000000000bb.stream", at + 10, 100).ToList();
+            check(hit.Count == 1 && hit[0] == (tank, "00000000000000bb"), string.Join(", ", hit));
+            check(game.At("00000000000000bb.stream", 0, bbStream.Length).Count() == 2 && !game.At("00000000000000aa.stream", 0, 10).Any(), "the wrong resources are at those places");
+
+            var index = new SourceIndex();
+            index.Add(game, null, new HashSet<string> { "00000000000000bb" }, new HashSet<ResourceKey> { tank });
+            check(index.Contents.Count == 3 && index.Contents.All(c => c.Places.All(p => p.Key == tank)), $"{index.Contents.Count} contents");
+            index.Add(game, null, new HashSet<string> { "00000000000000bb" }, new HashSet<ResourceKey> { apcKey });
+            check(index.Contents.Count == 6 && index.PartialBuilds.Contains("553853:9"), $"{index.Contents.Count} contents after the second fetch");
+        });
     }
 }

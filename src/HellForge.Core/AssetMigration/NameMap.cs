@@ -25,7 +25,7 @@ public sealed class NameMap
 
     public int ArchiveCount => tables.Count;
 
-    // Whether an archive with this ArchiveHash is already in the map (its table need not be read).
+    // Whether an archive with this TableHash is already in the map (its table need not be read).
     public bool Knows(string archiveHash) => tableIds.ContainsKey("file:" + archiveHash);
 
     public void Add(IGameResources game, Action<int>? progress = null)
@@ -34,7 +34,7 @@ public sealed class NameMap
         var ids = new List<int>();
         foreach (var (archive, keys) in game.Tables())
         {
-            var known = game.ArchiveHash(archive);
+            var known = game.TableHash(archive);
             int id;
             if (known is not null && tableIds.TryGetValue("file:" + known, out id)) TablesReused++;
             else

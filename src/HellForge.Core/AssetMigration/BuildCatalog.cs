@@ -140,6 +140,7 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
         if (names is null) return Decide(report, index, catalog, recipeFiles, rebuildError);
         if (rebuildError is not null) return new(VerdictKind.NotMigrated, $"NOT MIGRATED: {rebuildError} The mod is kept as it was, for review.");
         if (report.Unreadable.Count > 0) return Decide(report, index, catalog, recipeFiles, rebuildError);
+        if (ShippedBySteam(report) is { } shipped) return shipped;
         var unknown = report.Resources.Where(r => !r.InIndex && r.Literal > 0).ToList();
         var byName = unknown.Where(r => names.Has(r.Key)).ToList();
         var own = unknown.Except(byName).ToList();
@@ -165,6 +166,19 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
             : new(VerdictKind.Verified, $"VERIFIED: all {recipeFiles} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.{rest}");
     }
 
+    // Bytes still shipped that are chunks Steam shipped are the game's (proven by SHA-1 against the depot manifests),
+    // however the resource is named: the mod is held until resolve fingerprints them from that build.
+    static MigrationVerdict? ShippedBySteam(MigrationReport report)
+    {
+        var (bytes, runs) = report.ShippedLeft();
+        if (bytes == 0) return null;
+        var files = runs.GroupBy(r => r.Run.GameFile).OrderByDescending(g => g.Sum(r => r.Bytes)).ToList();
+        var where = string.Join("; ", files.Take(3).Select(g => $"{g.Key} ({g.Sum(r => r.Bytes):N0} bytes), in {g.Max(r => r.Run.Builds)} builds from {g.Min(r => r.Run.First):yyyy-MM-dd} to {g.Max(r => r.Run.Last):yyyy-MM-dd}"));
+        return new(VerdictKind.PartlyMigrated,
+            $"PARTLY MIGRATED, NEEDS REVIEW: {bytes:N0} bytes the mod still ships are chunks Steam shipped in the game's depot (proven by SHA-1 against the depot manifests): " +
+            $"{where}{(files.Count > 3 ? $"; and {files.Count - 3} more game files" : "")}. resolve --chunks fingerprints them from that build and migrates again.");
+    }
+
     public static MigrationVerdict Decide(MigrationReport report, SourceIndex index, BuildCatalog catalog, int recipeFiles, string? rebuildError)
     {
         if (rebuildError is not null) return new(VerdictKind.NotMigrated, $"NOT MIGRATED: {rebuildError} The mod is kept as it was, for review.");
@@ -173,6 +187,7 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
             var builds = report.Unreadable.SelectMany(c => index.Contents[c].Places).Select(p => index.Builds[p.Build]).Distinct();
             return new(VerdictKind.NeedsReview, $"NEEDS REVIEW: the mod shares content with {report.Unreadable.Count} game resource parts from builds not given here ({string.Join(", ", builds)}); it is kept as it was.");
         }
+        if (ShippedBySteam(report) is { } shipped) return shipped;
         var unknown = report.Resources.Where(r => !r.InIndex && r.Literal > 0).ToList();
         long unknownBytes = unknown.Sum(r => r.Literal);
         var covered = catalog.Covers(index);

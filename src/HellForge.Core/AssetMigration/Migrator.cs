@@ -18,6 +18,28 @@ public sealed class MigrationReport
     // Game parts the mod shares content with that none of the given game folders could supply: their bytes stay in the
     // mod, so it needs a review (or the build they come from).
     public HashSet<int> Unreadable { get; } = [];
+    // The byte ranges of each file the mod still ships: its literal bytes, or the whole file when it ships as it is.
+    public Dictionary<string, List<(long Start, long Length)>> Kept { get; } = new(StringComparer.Ordinal);
+    // Runs of the mod's files that are chunks Steam shipped (from the Steam chunk index, when one was given).
+    public List<SteamChunkIndex.Run> Shipped { get; } = [];
+
+    // The bytes the mod still ships that are chunks Steam shipped (exactly: the runs' overlap with the kept ranges), and
+    // those runs: game content, whatever the resource is called and whether or not an indexed build has a resource by
+    // that name. A run whose bytes the recipe already takes from the game is not counted.
+    public (long Bytes, List<(SteamChunkIndex.Run Run, long Bytes)> Runs) ShippedLeft()
+    {
+        long total = 0;
+        var runs = new List<(SteamChunkIndex.Run, long)>();
+        foreach (var run in Shipped)
+        {
+            if (!Kept.TryGetValue(run.File, out var kept)) continue;
+            var bytes = kept.Sum(k => Math.Max(0, Math.Min(k.Start + k.Length, run.Offset + run.Length) - Math.Max(k.Start, run.Offset)));
+            if (bytes == 0) continue;
+            total += bytes;
+            runs.Add((run, bytes));
+        }
+        return (total, runs.OrderByDescending(r => r.Item2).ToList());
+    }
 }
 
 // Turns a mod into a recipe. Each file's content-defined anchors are looked up in the source index; the game contents
@@ -56,10 +78,23 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 cursor = r.Start + r.Length;
             }
             if (cursor < bytes.Length) candidates += Match(bytes, (int)cursor, bytes.Length, [], report.Unreadable, ops);
+            Pad(bytes, ops);
             long fromGame = ops.Where(o => o.Kind == Recipe.Copy).Sum(o => o.Length);
             long fill = ops.Where(o => o.Kind == Recipe.Fill).Sum(o => o.Length);
             var inRecipe = fromGame > 0;
             report.Files.Add(new(path, bytes.Length, fromGame, bytes.Length - fromGame - fill, fill, inRecipe));
+            var kept = new List<(long Start, long Length)>();
+            if (!inRecipe) kept.Add((0, bytes.Length));
+            else
+            {
+                long position = 0;
+                foreach (var op in ops)
+                {
+                    if (op.Kind == Recipe.Literal) kept.Add((position, op.Length));
+                    position += op.Length;
+                }
+            }
+            report.Kept[path] = kept;
             log?.Invoke($"{path}: {bytes.Length:N0} bytes, {fromGame:N0} from the game ({candidates} game parts compared)");
             // Every archive's resources are reported, with game content in it or not: one with none may still hold
             // resources the game has by name (cut content from a build the index does not hold).
@@ -117,6 +152,20 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
 
     // Kind is Copy (Source, Offset), Literal or Fill (Offset holds the byte value).
     public readonly record struct Op(int Kind, int Source, int Offset, int Length);
+
+    // Literal runs of one byte value (the padding between resources, shorter than a fill would otherwise take) become
+    // fills: an op either way, and no byte of them is anyone's content.
+    static void Pad(byte[] bytes, List<Op> ops)
+    {
+        var at = 0;
+        for (var i = 0; i < ops.Count; i++)
+        {
+            var op = ops[i];
+            if (op.Kind == Recipe.Literal && op.Length >= 2 && bytes.AsSpan(at + 1, op.Length - 1).IndexOfAnyExcept(bytes[at]) < 0)
+                ops[i] = new Op(Recipe.Fill, 0, bytes[at], op.Length);
+            at += op.Length;
+        }
+    }
 
     // Matches data[from, to) and appends its operations; returns how many game parts it compared.
     int Match(byte[] data, int from, int to, ResourceKey[] keys, HashSet<int> unreadable, List<Op> ops)

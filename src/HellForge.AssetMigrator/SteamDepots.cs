@@ -163,11 +163,13 @@ sealed class SteamDepots : IDisposable
         using var a = callbacks.Subscribe<SteamUser.LoggedOnCallback>(cb => done.TrySetResult(cb.Result));
         user.LogOn(new SteamUser.LogOnDetails { Username = login.AccountName, AccessToken = login.RefreshToken, ShouldRememberPassword = true });
         var result = await done.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        // The saved login is never deleted here: a refusal can be passing (rate limits, Steam maintenance), and a new
+        // login overwrites it anyway.
         if (result != EResult.OK)
-        {
-            if (result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired) File.Delete(LoginFile);
-            throw new InvalidOperationException($"Steam refused the saved login ({result}); run the login command again.");
-        }
+            throw new InvalidOperationException($"Steam refused the saved login: EResult {result} ({(int)result}). " +
+                (result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired or EResult.Revoked
+                    ? "The saved token is no longer accepted; run the login command again."
+                    : "This may pass; try again later before logging in again."));
         servers = (await content.GetServersForSteamPipe()).Where(s => s.Type is "SteamCache" or "CDN").ToList();
         if (servers.Count == 0) throw new IOException("Steam gave no content servers.");
     }
@@ -182,20 +184,31 @@ sealed class SteamDepots : IDisposable
 
     Server NextServer() => servers[Interlocked.Increment(ref nextServer) % servers.Count];
 
+    public Task<byte[]> Key(uint depot) => DepotKey(depot);
+    public IReadOnlyList<Server> Servers => servers;
+
+    // A manifest from the disk cache alone, without logging in (null when it is not cached or its names are encrypted).
+    public static DepotManifest? Cached(uint depot, ulong manifest)
+    {
+        var file = Path.Combine(CacheFolder, "manifests", $"{depot}_{manifest}.manifest");
+        var m = File.Exists(file) ? DepotManifest.LoadFromFile(file) : null;
+        return m is { FilenamesEncrypted: false } ? m : null;
+    }
+
     // A depot manifest (cached on disk after the first download), with its file names decrypted.
     public async Task<DepotManifest> Manifest(uint depot, ulong manifest, string branch = "public")
     {
         var file = Path.Combine(CacheFolder, "manifests", $"{depot}_{manifest}.manifest");
-        var key = await DepotKey(depot);
         if (File.Exists(file))
         {
             var cached = DepotManifest.LoadFromFile(file);
             if (cached is not null)
             {
-                if (cached.FilenamesEncrypted) cached.DecryptFilenames(key);
+                if (cached.FilenamesEncrypted) cached.DecryptFilenames(await DepotKey(depot));
                 return cached;
             }
         }
+        var key = await DepotKey(depot);
         Exception? last = null;
         foreach (var b in branch == "public" ? new[] { "public" } : new[] { branch, "public" })
             for (var attempt = 0; attempt < 4; attempt++)
@@ -216,6 +229,9 @@ sealed class SteamDepots : IDisposable
     }
 
     // One chunk's bytes (decrypted and decompressed), from the disk cache or from Steam.
+    // Chunks this PC already has in an installed build's files: read from there instead of downloaded.
+    public LocalChunks Local { get; } = new();
+
     public async Task<byte[]> Chunk(uint depot, DepotManifest.ChunkData chunk)
     {
         var id = Convert.ToHexString(chunk.ChunkID!).ToLowerInvariant();
@@ -225,6 +241,7 @@ sealed class SteamDepots : IDisposable
             var bytes = await File.ReadAllBytesAsync(file);
             if (bytes.Length == chunk.UncompressedLength) { Interlocked.Increment(ref ChunksFromDisk); return bytes; }
         }
+        if (Local.TryRead(chunk) is { } local) return local;
         var key = await DepotKey(depot);
         Exception? last = null;
         for (var attempt = 0; attempt < 6; attempt++)
@@ -407,4 +424,45 @@ sealed class DepotStream : Stream
     public override void Flush() { }
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+// The chunks of builds installed on this PC, by their depot manifests: each chunk ID (the SHA-1 of its bytes) with the
+// installed file and offset that hold it. A chunk an older or newer build shares with an installed one is read from the
+// installed file and checked by SHA-1 (a file changed since, by a patch or a mod, simply fails the check and the chunk is
+// downloaded), the way a Steam update reuses what is on disk.
+sealed class LocalChunks
+{
+    readonly Dictionary<string, (string Path, long Offset, int Length)> chunks = new(StringComparer.Ordinal);
+    public long Read, Failed;
+
+    public int Count => chunks.Count;
+
+    // install: the folder the depot's files are in (the one holding data/).
+    public void Add(DepotManifest manifest, string install)
+    {
+        foreach (var f in manifest.Files ?? [])
+        {
+            var path = Path.Combine(install, f.FileName.Replace('\\', '/'));
+            if ((f.Flags & EDepotFileFlag.Directory) != 0 || !File.Exists(path) || new FileInfo(path).Length != (long)f.TotalSize) continue;
+            foreach (var c in f.Chunks) chunks.TryAdd(Convert.ToHexString(c.ChunkID!), (path, (long)c.Offset, (int)c.UncompressedLength));
+        }
+    }
+
+    public bool Has(DepotManifest.ChunkData chunk) => chunks.ContainsKey(Convert.ToHexString(chunk.ChunkID!));
+
+    public byte[]? TryRead(DepotManifest.ChunkData chunk)
+    {
+        if (!chunks.TryGetValue(Convert.ToHexString(chunk.ChunkID!), out var at) || at.Length != chunk.UncompressedLength) return null;
+        var bytes = new byte[at.Length];
+        try
+        {
+            using var s = File.OpenRead(at.Path);
+            s.Position = at.Offset;
+            s.ReadExactly(bytes);
+        }
+        catch (IOException) { Interlocked.Increment(ref Failed); return null; }
+        if (!System.Security.Cryptography.SHA1.HashData(bytes).AsSpan().SequenceEqual(chunk.ChunkID)) { Interlocked.Increment(ref Failed); return null; }
+        Interlocked.Increment(ref Read);
+        return bytes;
+    }
 }

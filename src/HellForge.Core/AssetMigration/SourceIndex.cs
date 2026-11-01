@@ -28,9 +28,19 @@ public interface IGameResources
     // Every resource with the archive that holds it, its parts read only when asked for. Resources come grouped by
     // archive.
     IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All();
+    // The resources of just these archives, each archive with every entry it has (a loose build reads only their tables,
+    // where All reads every table of the build first).
+    IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> In(IReadOnlySet<string> archives) =>
+        All().Where(r => archives.Contains(r.Archive));
+    // The resources whose bytes lie in this range of one of the build's data files (by its name in the data folder), or
+    // none when the layout does not say.
+    IEnumerable<(ResourceKey Key, string Archive)> At(string file, long offset, long length) => [];
     // A hash of the archive's files known without reading them (a depot manifest's SHA-1s), or null: an archive with
     // the same hash in an earlier build holds the same resources, so the index takes them without reading.
     string? ArchiveHash(string archive) => null;
+    // A hash of just the file that holds the archive's table (its main file), or null: the name map needs only that,
+    // so an archive whose textures or sounds changed but whose table did not is not read again.
+    string? TableHash(string archive) => ArchiveHash(archive);
     // Each archive with its resource keys, read only when asked for (a loose build reads just that archive's table).
     IEnumerable<(string Archive, Func<IReadOnlyList<ResourceKey>> Keys)> Tables() =>
         All().GroupBy(r => r.Archive).Select(g => (g.Key, (Func<IReadOnlyList<ResourceKey>>)(() => g.Select(r => r.Key).ToList())));
@@ -127,11 +137,12 @@ public sealed class SourceIndex
 
     // Adds a build; with archives, only those archives (a partial build, for targeted indexing). A partial build added
     // again takes the archives it did not have yet.
-    public void Add(IGameResources game, Action<long, long>? progress = null, IReadOnlySet<string>? archives = null)
+    // With keys too, only those resources of those archives: the archives are not counted as done.
+    public void Add(IGameResources game, Action<long, long>? progress = null, IReadOnlySet<string>? archives = null, IReadOnlySet<ResourceKey>? keys = null)
     {
         if (archives is not null || PartialBuilds.Contains(game.Build))
         {
-            AddPartial(game, archives, progress);
+            AddPartial(game, archives, keys, progress);
             return;
         }
         if (Builds.Contains(game.Build)) throw new InvalidOperationException($"Build {game.Build} is already in the index.");
@@ -200,7 +211,7 @@ public sealed class SourceIndex
 
     readonly Dictionary<string, HashSet<string>> partialArchives = new(StringComparer.Ordinal);
 
-    void AddPartial(IGameResources game, IReadOnlySet<string>? archives, Action<long, long>? progress)
+    void AddPartial(IGameResources game, IReadOnlySet<string>? archives, IReadOnlySet<ResourceKey>? keys, Action<long, long>? progress)
     {
         Unseal();
         var build = Builds.IndexOf(game.Build);
@@ -212,9 +223,10 @@ public sealed class SourceIndex
         }
         if (!partialArchives.TryGetValue(game.Build, out var done)) partialArchives[game.Build] = done = new(StringComparer.Ordinal);
         long resources = 0, bytes = 0;
-        foreach (var (key, archiveName, read) in game.All())
+        foreach (var (key, archiveName, read) in archives is null ? game.All() : game.In(archives))
         {
             if (archives is not null && !archives.Contains(archiveName) || done.Contains(archiveName) && (archives is null || !archives.Contains(archiveName))) continue;
+            if (keys is not null && !keys.Contains(key)) continue;
             resources++;
             if (!archiveIds.TryGetValue(archiveName, out var archive))
             {
@@ -243,7 +255,7 @@ public sealed class SourceIndex
             }
             progress?.Invoke(resources, bytes);
         }
-        if (archives is not null) done.UnionWith(archives);
+        if (archives is not null && keys is null) done.UnionWith(archives);
         byKey = null;
     }
 
@@ -483,6 +495,27 @@ public sealed class LooseGameResources(IDataFiles files, string build) : IGameRe
             yield return (key, e.Archive, () => new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)));
     }
 
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> In(IReadOnlySet<string> archives)
+    {
+        foreach (var archive in archives.Where(files.Exists).Order(StringComparer.Ordinal))
+            foreach (var (key, offsets, sizes) in TableOf(archive))
+            {
+                var e = (archive, offsets, sizes);
+                yield return (key, archive, () => new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)));
+            }
+    }
+
+    public IEnumerable<(ResourceKey Key, string Archive)> At(string file, long offset, long length)
+    {
+        var kind = Array.FindLastIndex(Suffix, x => file.EndsWith(x, StringComparison.Ordinal));
+        var archive = file[..^Suffix[kind].Length];
+        if (!System.Text.RegularExpressions.Regex.IsMatch(archive, "^[0-9a-f]{16}$") || !files.Exists(archive)) yield break;
+        foreach (var (key, offsets, sizes) in TableOf(archive))
+            if (sizes[kind] > 0 && offsets[kind] < offset + length && offset < offsets[kind] + sizes[kind]) yield return (key, archive);
+    }
+
+    public string? TableHash(string archive) => files.Hash(archive) is { } h ? "main:" + h : null;
+
     public string? ArchiveHash(string archive)
     {
         var hashes = Suffix.Select(x => archive + x).Where(files.Exists).Select(files.Hash).ToList();
@@ -509,6 +542,12 @@ public sealed class MixedGameResources(IDataFiles files, string build) : IGameRe
     }
 
     public string? ArchiveHash(string archive) => ((IGameResources)loose).ArchiveHash(archive);
+    public string? TableHash(string archive) => loose.TableHash(archive);
+
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> In(IReadOnlySet<string> archives) =>
+        ((IGameResources)packed).In(archives).Concat(loose.In(archives));
+
+    public IEnumerable<(ResourceKey Key, string Archive)> At(string file, long offset, long length) => loose.At(file, offset, length);
 
     public byte[]? Read(ResourceKey key, PartKind part) => packed.Read(key, part) ?? loose.Read(key, part);
 

@@ -32,6 +32,29 @@ command line). Tests: `tests/HellForge.Tests/AssetMigrationTests.cs` (synthetic 
    build's archives are files of their own) and the `download_depot` commands for that build's manifests, the way
    HellForge's setup already fetches its supported build. Nothing half-built is used.
 
+### Steam chunk index: every build since release, from the depot manifests alone
+
+A depot manifest lists each file of a build as chunks of about 1 MiB, with each chunk's SHA-1 (of its uncompressed
+bytes) and its Adler-32 (rsync's rolling checksum, seeded with 0). Steam cuts a new build's files around the chunks it
+already shipped, at any byte offset, with that rolling checksum, which is why most chunks of later builds start at odd
+offsets. `steam-chunks` turns the manifests of every build in `data/depot-history/553853.txt` into one index (107 builds,
+546,459 distinct chunks describing 0.45 TB of game data, 55 MB, built in 4 s from the cached manifests). It holds
+hashes only.
+
+`scan` (and `migrate --chunks`) rolls the Adler-32 over each mod file, checks every candidate's SHA-1, and then checks
+the neighbouring chunks of the same game file in place, whatever their length. Any run of the game's bytes as Steam
+shipped them, of about 2 MiB or more (one whole chunk), is found under any name and at any position, and attributed to
+the game file and the builds that have it. Nothing is downloaded and no login is needed, so an uploader's launcher can
+run it. It covers the loose-archive builds (February 2024 to February 2026), where cut content comes from. The packed
+builds ship `bundles.*.nxa` chunks compressed, which a mod never holds.
+
+Bytes the mod still ships that the scan proves are Steam's hold the mod (`PARTLY MIGRATED, NEEDS REVIEW`), even under a
+resource name no build has. Only the exact ranges the mod still ships are counted. A kitbash's own edit next to a chunk
+the recipe already takes from the game does not count, and neither does padding (runs of one byte are fills).
+`resolve --chunks` then finds each such chunk in a build that has it and reads that archive's table there. It
+fingerprints only the game resources at those places, plus the mod's leftover resources of the same name, and migrates
+again. Only the chunks those resources sit in are downloaded, not the archive and not the build.
+
 ## Run it
 
 ```sh
@@ -44,6 +67,12 @@ dotnet $M index   --add-to hd2.hfsi --game "<old build id>=<old build's data fol
 dotnet $M migrate --index hd2.hfsi --catalog data/game-builds.json --game "$PINNED" --game "$STEAM" --mod <mod folder> --out out/<mod>
 dotnet $M rebuild --mod out/<mod>/mod --catalog data/game-builds.json --game "$PINNED" --game "$STEAM" --out rebuilt/<mod>
 dotnet $M compare <mod folder> rebuilt/<mod>
+
+# Steam chunk index (no login with the manifests cached), scan, and the targeted fetch (login needed)
+dotnet $M steam-chunks --out steam-chunks.hfsc --depot 553853 --history data/depot-history/553853.txt
+dotnet $M scan    --chunks steam-chunks.hfsc --mod <mod folder>
+dotnet $M migrate --index hd2.hfsi --catalog data/game-builds.json --game "$PINNED" --game "$STEAM" --chunks steam-chunks.hfsc --mod <mod folder> --out out/<mod>
+dotnet $M resolve --index hd2.hfsi --catalog data/game-builds.json --game "$PINNED" --game "$STEAM" --chunks steam-chunks.hfsc --mod <mod folder> --out out/<mod>
 ```
 
 `migrate` writes `out/<mod>/mod` (what would be uploaded), `migration-report.md` and `verdict.txt`.
