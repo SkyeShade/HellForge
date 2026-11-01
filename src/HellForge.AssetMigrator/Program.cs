@@ -28,6 +28,8 @@ try
         "catalog-import" => CatalogImport(),
         "login" => Login(),
         "depot-files" => DepotFilesCommand(),
+        "manifests" => ManifestsCommand(),
+        "backfill" => Backfill(),
         _ => Usage(),
     };
 }
@@ -122,7 +124,9 @@ List<IGameResources> Games() => All("--game").Select(g =>
 IGameResources Game(string label, string where)
 {
     IDataFiles files = where.StartsWith("steam:", StringComparison.Ordinal) ? Depot(where) : new FolderFiles(where);
-    return files.Exists(GameDataReader.IndexFile) ? new GameResources(files, label) : new LooseGameResources(files, label);
+    if (!files.Exists(GameDataReader.IndexFile)) return new LooseGameResources(files, label);
+    // The transition builds (December 2025 to January 2026) have both bundles.nxa and loose archives.
+    return files.List().Any(n => n.Length == 16 && !n.Contains('.')) ? new MixedGameResources(files, label) : new GameResources(files, label);
 }
 
 SteamDepots Steam() => steam ??= SteamDepots.Connect().GetAwaiter().GetResult();
@@ -144,6 +148,88 @@ int Login()
         : throw new ArgumentException("login takes --qr (scan a code in the Steam mobile app) or --password (account name, password and Steam Guard code).");
     using var s = SteamDepots.Connect(method).GetAwaiter().GetResult();
     Console.WriteLine("Logged in to Steam; the login is saved for the migrator's other commands.");
+    return 0;
+}
+
+// backfill --index <file> --depot <id> --history <file> [--limit <n>]: indexes the depot's manifests from Steam, oldest
+// first (each build mostly reuses the chunks the one before it downloaded), as builds labelled "<depot>:<manifest>".
+// The index is saved after every build, so a stopped backfill resumes where it was; manifests Steam refuses are noted
+// in <index>.refused and skipped.
+int Backfill()
+{
+    var path = One("--index");
+    var depot = uint.Parse(One("--depot"));
+    var history = DepotHistory.Load(One("--history")).OrderBy(h => h.Time).ToList();
+    var limit = All("--limit").Count > 0 ? int.Parse(One("--limit")) : int.MaxValue;
+    var index = File.Exists(path) ? SourceIndex.Load(path) : new SourceIndex();
+    var refusedFile = path + ".refused";
+    var refused = File.Exists(refusedFile) ? File.ReadAllLines(refusedFile).ToHashSet() : [];
+    var done = 0;
+    foreach (var h in history)
+    {
+        var label = $"{depot}:{h.Manifest}";
+        if (index.Builds.Contains(label) || refused.Contains(label)) continue;
+        if (done++ >= limit) break;
+        var clock = Stopwatch.StartNew();
+        long downloaded = Steam().BytesDownloaded, reused = index.ArchivesReused;
+        IGameResources game;
+        try { game = Game(label, $"steam:{depot}:{h.Manifest}:{h.Branch ?? "public"}"); }
+        catch (IOException e)
+        {
+            Console.WriteLine($"{h.Time:yyyy-MM-dd} {label}: refused by Steam ({e.Message}); skipped.");
+            File.AppendAllLines(refusedFile, [label]);
+            continue;
+        }
+        index.Add(game, (resources, bytes) => Console.Write($"\r{h.Time:yyyy-MM-dd} {label}: {resources:N0} resources, {bytes / 1e9:F1} GB of new parts read, {(Steam().BytesDownloaded - downloaded) / 1e9:F1} GB downloaded   "));
+        (game as IDisposable)?.Dispose();
+        var temp = path + ".tmp";
+        index.Save(temp);
+        File.Move(temp, path, true);
+        Steam().TrimCache();
+        Console.WriteLine($"\r{h.Time:yyyy-MM-dd} {label}{(h.Branch is null ? "" : " " + h.Branch)}: done in {clock.Elapsed.TotalMinutes:F1} min, {(Steam().BytesDownloaded - downloaded) / 1e9:F1} GB downloaded, " +
+            $"{index.ArchivesReused - reused:N0} unchanged archives reused; index {index.Builds.Count} builds, {index.Contents.Count:N0} parts, {new FileInfo(path).Length / 1e9:F2} GB");
+    }
+    return 0;
+}
+
+// manifests --depot <id> --history <data/depot-history/<id>.txt>: fetches every manifest of the depot's history (file
+// lists only, cached for later) and says which Steam serves, with each one's layout and data size.
+int ManifestsCommand()
+{
+    var depot = uint.Parse(One("--depot"));
+    var history = DepotHistory.Load(One("--history"));
+    int ok = 0, refused = 0;
+    long total = 0, unique = 0, chunkBytes = 0, chunkCompressed = 0;
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    var chunkSeen = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var h in history)
+    {
+        try
+        {
+            var m = Steam().Manifest(depot, h.Manifest, h.Branch ?? "public").GetAwaiter().GetResult();
+            var files = new DepotFiles(Steam(), m);
+            var size = files.List().Sum(n => (long)files.File(n).TotalSize);
+            long added = 0;
+            foreach (var n in files.List())
+            {
+                if (seen.Add(files.Hash(n) ?? n + h.Manifest)) added += (long)files.File(n).TotalSize;
+                foreach (var c in files.File(n).Chunks)
+                    if (chunkSeen.Add(Convert.ToHexString(c.ChunkID!))) { chunkBytes += c.UncompressedLength; chunkCompressed += c.CompressedLength; }
+            }
+            total += size;
+            unique += added;
+            ok++;
+            var layout = files.Exists(GameDataReader.IndexFile) ? files.List().Count() > 40 ? "both" : "nxa" : "loose";
+            Console.WriteLine($"{h.Time:yyyy-MM-dd} {h.Manifest,20} {h.Branch,-11} {layout,-5} {files.List().Count(),5} files {size / 1e9,6:F1} GB, {added / 1e9,6:F1} GB in files no earlier-listed manifest has");
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException)
+        {
+            refused++;
+            Console.WriteLine($"{h.Time:yyyy-MM-dd} {h.Manifest,20} {h.Branch,-11} REFUSED: {e.Message}");
+        }
+    }
+    Console.WriteLine($"{ok} manifests served, {refused} refused; {total / 1e12:F2} TB of data across the served ones, {unique / 1e12:F2} TB in distinct files, " +
+        $"{chunkBytes / 1e12:F2} TB in distinct Steam chunks ({chunkCompressed / 1e12:F2} TB to download).");
     return 0;
 }
 
@@ -206,7 +292,7 @@ int Migrate()
             if (!rebuilt[path].AsSpan().SequenceEqual(bytes)) throw new InvalidDataException($"{path} rebuilt differently.");
     }
     catch (InvalidDataException e) { rebuildError = e.Message; }
-    var decided = MigrationVerdict.Decide(report, index, BuildCatalog.Load(One("--catalog")), recipe.Files.Count, rebuildError);
+    var decided = MigrationVerdict.Decide(report, index, BuildCatalog.LoadWithHistory(One("--catalog")), recipe.Files.Count, rebuildError);
     if (decided.Kind is VerdictKind.NotMigrated or VerdictKind.NeedsReview) recipe = new Recipe();
     var verdict = decided.Text;
     Console.WriteLine(verdict);

@@ -9,6 +9,9 @@ public interface IDataFiles
     bool Exists(string name);
     Stream Open(string name);
     IEnumerable<string> List();
+    // The file's hash when the source knows it without reading the file (a Steam depot manifest lists each file's
+    // SHA-1); null when it does not.
+    string? Hash(string name) => null;
 }
 
 public sealed class FolderFiles(string folder) : IDataFiles

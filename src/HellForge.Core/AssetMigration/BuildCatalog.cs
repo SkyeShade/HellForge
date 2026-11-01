@@ -26,10 +26,40 @@ public sealed class BuildCatalog
 
     public Build? Find(string buildId) => Builds.FirstOrDefault(b => b.BuildId == buildId);
 
-    // The catalog's builds the index does not hold yet.
-    public List<Build> Missing(SourceIndex index) => Builds.Where(b => !index.Builds.Contains(b.BuildId)).ToList();
+    // The data depot (553853 holds the game's data) and its manifest history since release: the index covers the game
+    // once every manifest in it that Steam serves is indexed. Without a history the catalog's builds are the list.
+    public uint DataDepot { get; init; } = 553853;
+    [System.Text.Json.Serialization.JsonIgnore] public List<DepotHistory>? History { get; set; }
+    // Manifests Steam refuses to serve (the launch-week builds): nobody can index them, so they are a known gap.
+    [System.Text.Json.Serialization.JsonIgnore] public HashSet<ulong> Unavailable { get; set; } = [];
 
-    // Every build since release is in the index: content found in none of them is not the game's.
+    // Loads the catalog with the data depot's history beside it (data/depot-history/<depot>.txt, and the manifests Steam
+    // refused, <depot>.unavailable), when they are there.
+    public static BuildCatalog LoadWithHistory(string path)
+    {
+        var catalog = Load(path);
+        var folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, "depot-history");
+        var history = Path.Combine(folder, $"{catalog.DataDepot}.txt");
+        if (File.Exists(history)) catalog.History = DepotHistory.Load(history);
+        var unavailable = Path.Combine(folder, $"{catalog.DataDepot}.unavailable");
+        if (File.Exists(unavailable))
+            catalog.Unavailable = File.ReadLines(unavailable).Select(l => l.Split('#')[0].Trim()).Where(l => l.Length > 0).Select(ulong.Parse).ToHashSet();
+        return catalog;
+    }
+
+    // What the index still lacks: data manifests of the history (or catalog builds, without one) it holds neither as
+    // "<depot>:<manifest>" nor through a catalog build with that manifest.
+    public List<string> Missing(SourceIndex index)
+    {
+        if (History is null) return Builds.Where(b => !index.Builds.Contains(b.BuildId)).Select(b => b.BuildId).ToList();
+        var indexed = index.Builds.ToHashSet();
+        foreach (var b in Builds.Where(b => indexed.Contains(b.BuildId)))
+            foreach (var d in b.Depots.Where(d => d.Id == DataDepot)) indexed.Add($"{DataDepot}:{d.ManifestId}");
+        return History.Where(h => !Unavailable.Contains(h.Manifest) && !indexed.Contains($"{DataDepot}:{h.Manifest}"))
+            .Select(h => $"{h.Time:yyyy-MM-dd} ({DataDepot}:{h.Manifest}{(h.Branch is null ? "" : ", " + h.Branch)})").ToList();
+    }
+
+    // Every build since release that can be indexed is: content found in none of them is not the game's.
     public bool Covers(SourceIndex index) => HistoryComplete && Missing(index).Count == 0;
 
     // Builds from Steam's content log (Steam/logs/content_log*.txt): every update Steam finished installing is logged as
@@ -108,7 +138,7 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
         {
             var missing = catalog.Missing(index);
             var why = missing.Count > 0
-                ? $"{missing.Count} known builds are not indexed yet ({string.Join(", ", missing.Select(b => b.BuildId))})"
+                ? $"{missing.Count} known builds are not indexed yet ({string.Join(", ", missing.Take(6))}{(missing.Count > 6 ? ", ..." : "")})"
                 : "the build catalog does not list every build since release yet";
             return new(VerdictKind.PartlyMigrated,
                 $"PARTLY MIGRATED, NEEDS REVIEW: the recipe rebuilds all {recipeFiles} files byte for byte (SHA-256) and the content of the {index.Builds.Count} indexed builds is purged, " +
@@ -120,4 +150,18 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
             : "";
         return new(VerdictKind.Verified, $"VERIFIED: all {recipeFiles} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.{rest}");
     }
+}
+
+// A depot's manifest history (data/depot-history/<depot>.txt, from SteamDB): "<UTC time> <manifest> [branch]" lines,
+// newest first; '#' starts a comment.
+public sealed record DepotHistory(DateTime Time, ulong Manifest, string? Branch)
+{
+    public static List<DepotHistory> Load(string path) => Parse(File.ReadLines(path));
+
+    public static List<DepotHistory> Parse(IEnumerable<string> lines) => lines
+        .Select(l => l.Trim())
+        .Where(l => l.Length > 0 && !l.StartsWith('#'))
+        .Select(l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        .Select(p => new DepotHistory(DateTime.Parse(p[0], null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal), ulong.Parse(p[1]), p.Length > 2 ? p[2] : null))
+        .ToList();
 }

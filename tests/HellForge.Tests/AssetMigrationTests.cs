@@ -8,8 +8,20 @@ static class AssetMigrationTests
     sealed class FakeGame(string build, Dictionary<ResourceKey, ResourceParts> resources) : IGameResources
     {
         public string Build => build;
-        public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All() => resources.Select(r => (r.Key, r.Value, "00000000000000ff"));
+        public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All() => resources.Select(r => (r.Key, "00000000000000ff", (Func<ResourceParts>)(() => r.Value)));
         public byte[]? Read(ResourceKey key, PartKind part) => resources.TryGetValue(key, out var p) ? Parts.Of(p, part) : null;
+    }
+
+    // A folder whose files report their SHA-1, as a depot manifest does.
+    sealed class HashedFolder(string folder) : IDataFiles
+    {
+        readonly FolderFiles inner = new(folder);
+        public int Opened;
+        public string Name => inner.Name;
+        public bool Exists(string name) => inner.Exists(name);
+        public Stream Open(string name) { Opened++; return inner.Open(name); }
+        public IEnumerable<string> List() => inner.List();
+        public string? Hash(string name) => Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(File.ReadAllBytes(Path.Combine(inner.Folder, name))));
     }
 
     static byte[] Noise(int seed, int length)
@@ -200,6 +212,33 @@ static class AssetMigrationTests
             check(index.Builds.SequenceEqual(["100", "200"]) && index.AnchorCount > before, $"builds {string.Join(",", index.Builds)}, anchors {index.AnchorCount}");
             var (_, _, report) = new Migrator(index, [oldBuild, newBuild]).Migrate([("x", scopeGpu)]);
             check(report.Files[0].FromGame == scopeGpu.Length, "the added build's content is not found");
+        });
+
+        test("An archive unchanged since an earlier build is taken from the index without reading it", () =>
+        {
+            var (archive, gpu, stream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [rifle] = new(Noise(4, 4000), rifleGpu, []) });
+            var folders = new[] { "memo-a", "memo-b" }.Select(n => Path.Combine(root, n)).ToArray();
+            foreach (var f in folders)
+            {
+                Directory.CreateDirectory(f);
+                File.WriteAllBytes(Path.Combine(f, "00000000000000cc"), archive);
+                File.WriteAllBytes(Path.Combine(f, "00000000000000cc.gpu_resources"), gpu);
+                File.WriteAllBytes(Path.Combine(f, "00000000000000cc.stream"), stream);
+            }
+            var first = new HashedFolder(folders[0]);
+            var second = new HashedFolder(folders[1]);
+            var index = new SourceIndex();
+            index.Add(new LooseGameResources(first, "1"));
+            var file = Path.Combine(root, "memo.hfsi");
+            index.Save(file);
+            index = SourceIndex.Load(file);
+            var opened = second.Opened;
+            index.Add(new LooseGameResources(second, "2"));
+            index.Seal();
+            check(index.ArchivesReused == 1, $"reused {index.ArchivesReused}");
+            check(second.Opened - opened <= 1, $"the unchanged archive was read ({second.Opened - opened} opens beyond its table)");
+            var content = index.Contents.Single(c => c.Size == rifleGpu.Length);
+            check(content.Places.Select(p => index.Builds[p.Build]).Distinct().SequenceEqual(["1", "2"]), "the second build is not a place of the rifle");
         });
 
         test("The same piece at any byte offset is found", () =>

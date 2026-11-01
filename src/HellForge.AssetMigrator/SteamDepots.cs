@@ -18,7 +18,10 @@ sealed class SteamDepots : IDisposable
     public const uint AppId = 553850;
     static readonly string ConfigFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "hellforge-migrator");
     static readonly string LoginFile = Path.Combine(ConfigFolder, "steam-login.json");
-    public static readonly string CacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hellforge-migrator");
+    // HF_MIGRATOR_CACHE moves the manifest and chunk cache (it can grow to the disk cache limit).
+    public static readonly string CacheFolder = Environment.GetEnvironmentVariable("HF_MIGRATOR_CACHE") is { Length: > 0 } custom
+        ? custom
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hellforge-migrator");
 
     readonly SteamClient client = new();
     readonly CallbackManager callbacks;
@@ -200,6 +203,7 @@ sealed class SteamDepots : IDisposable
                 try
                 {
                     var code = await content.GetManifestRequestCode(depot, AppId, manifest, b);
+                    if (Environment.GetEnvironmentVariable("HF_STEAM_DEBUG") == "1") Console.Error.WriteLine($"  manifest {manifest} branch {b}: request code {code}");
                     var m = await cdn.DownloadManifestAsync(depot, manifest, code, NextServer(), key);
                     if (m.FilenamesEncrypted) m.DecryptFilenames(key);
                     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
@@ -304,6 +308,7 @@ sealed class DepotFiles : IDataFiles
     public Stream Open(string name) => new DepotStream(this, files.TryGetValue(name, out var f) ? f : throw new FileNotFoundException(name));
 
     // The file's SHA-1 as the manifest lists it: the same bytes in another build have the same hash.
+    string? IDataFiles.Hash(string name) => Hash(name);
     public string? Hash(string name) => files.TryGetValue(name, out var f) && f.FileHash is { } h ? Convert.ToHexString(h).ToLowerInvariant() : null;
 
     internal byte[] Chunk(DepotManifest.ChunkData chunk, IEnumerable<DepotManifest.ChunkData> next)
@@ -359,7 +364,7 @@ sealed class DepotStream : Stream
             var i = Find(position);
             if (i < 0) break;
             var c = chunks[i];
-            var data = owner.Chunk(c, chunks.Skip(i + 1).Take(4));
+            var data = owner.Chunk(c, chunks.Skip(i + 1).Take(12));
             var within = (int)(position - (long)c.Offset);
             var n = Math.Min(buffer.Length, data.Length - within);
             if (n <= 0) break;

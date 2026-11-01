@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "appId": "553850",
-  "historyComplete": false,
+  "historyComplete": true,
   "builds": [
     {
       "buildId": "23218694",
@@ -180,7 +180,7 @@
           "manifestId": "9065746766815828060"
         }
       ],
-      "note": "HellForge\u0027s supported build (src/HellForge.Core/supported-build.json).",
+      "note": "HellForge's supported build (src/HellForge.Core/supported-build.json).",
       "seen": "2026-09-24"
     },
     {
@@ -240,8 +240,9 @@
           "manifestId": "70283813008461964"
         }
       ],
-      "note": "Steam\u0027s build on 2026-10-31.",
+      "note": "Steam's build on 2026-10-31.",
       "seen": "2026-10-29"
     }
-  ]
+  ],
+  "dataDepot": 553853
 }

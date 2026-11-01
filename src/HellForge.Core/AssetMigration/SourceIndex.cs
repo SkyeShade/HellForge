@@ -25,7 +25,12 @@ public sealed class Content(byte[] sha256, int size)
 public interface IGameResources
 {
     string Build { get; }
-    IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All();
+    // Every resource with the archive that holds it, its parts read only when asked for. Resources come grouped by
+    // archive.
+    IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All();
+    // A hash of the archive's files known without reading them (a depot manifest's SHA-1s), or null: an archive with
+    // the same hash in an earlier build holds the same resources, so the index takes them without reading.
+    string? ArchiveHash(string archive) => null;
     byte[]? Read(ResourceKey key, PartKind part);
 }
 
@@ -54,7 +59,7 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
     // Parts the reader cannot read whole (over its 256 MB limit) are left out and counted.
     public int Skipped { get; private set; }
 
-    public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All()
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All()
     {
         foreach (var (key, at) in reader.Resources())
         {
@@ -63,10 +68,10 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
                 try { return Parts.Of(reader.Read(only), kind); }
                 catch (InvalidDataException) { Skipped++; return []; }
             }
-            yield return (key, new ResourceParts(
+            yield return (key, at.Archive, () => new ResourceParts(
                 Part(at with { GpuSize = 0, StreamSize = 0 }, PartKind.Main),
                 Part(at with { MainSize = 0, StreamSize = 0 }, PartKind.Gpu),
-                Part(at with { MainSize = 0, GpuSize = 0 }, PartKind.Stream)), at.Archive);
+                Part(at with { MainSize = 0, GpuSize = 0 }, PartKind.Stream)));
         }
     }
 
@@ -93,7 +98,7 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
 public sealed class SourceIndex
 {
     const string Magic = "HFSI";
-    const int Version = 3;
+    const int Version = 4;
     // An anchor found in more contents than this (shared headers, common tables) is kept only for the first ones.
     const int MaxPerChunk = 16;
 
@@ -108,6 +113,9 @@ public sealed class SourceIndex
     int[] owners = [];
     int[] offsets = [];
     Dictionary<ResourceKey, List<int>>? byKey;
+    // What each archive (by ArchiveHash) was found to hold: its resources' parts, as contents.
+    readonly Dictionary<string, List<(ResourceKey Key, PartKind Part, int Content)>> archiveMemo = new(StringComparer.Ordinal);
+    public long ArchivesReused { get; private set; }
 
     public int AnchorCount => hashes.Length;
 
@@ -118,15 +126,40 @@ public sealed class SourceIndex
         var build = Builds.Count;
         Builds.Add(game.Build);
         long resources = 0, bytes = 0;
-        foreach (var (key, parts, archiveName) in game.All())
+        string? current = null;
+        var archive = -1;
+        List<(ResourceKey, PartKind, int)>? recording = null;
+        string? recordingHash = null;
+        var reuse = false;
+        void Finish()
+        {
+            if (recording is not null && recordingHash is not null) archiveMemo[recordingHash] = recording;
+            recording = null;
+        }
+        foreach (var (key, archiveName, read) in game.All())
         {
             resources++;
-            if (!archiveIds.TryGetValue(archiveName, out var archive))
+            if (archiveName != current)
             {
-                archive = Archives.Count;
-                Archives.Add(archiveName);
-                archiveIds[archiveName] = archive;
+                Finish();
+                current = archiveName;
+                if (!archiveIds.TryGetValue(archiveName, out archive))
+                {
+                    archive = Archives.Count;
+                    Archives.Add(archiveName);
+                    archiveIds[archiveName] = archive;
+                }
+                recordingHash = game.ArchiveHash(archiveName);
+                reuse = recordingHash is not null && archiveMemo.ContainsKey(recordingHash);
+                if (reuse)
+                {
+                    ArchivesReused++;
+                    foreach (var (k, part, content) in archiveMemo[recordingHash!]) Contents[content].Places.Add(new Place(build, k, part, archive));
+                }
+                else if (recordingHash is not null) recording = [];
             }
+            if (reuse) continue;
+            var parts = read();
             foreach (var kind in Parts.Kinds)
             {
                 var data = Parts.Of(parts, kind);
@@ -143,9 +176,11 @@ public sealed class SourceIndex
                     foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
                 }
                 Contents[id].Places.Add(new Place(build, key, kind, archive));
+                recording?.Add((key, kind, id));
             }
             if (resources % 20000 == 0) progress?.Invoke(resources, bytes);
         }
+        Finish();
         progress?.Invoke(resources, bytes);
         byKey = null;
     }
@@ -233,6 +268,19 @@ public sealed class SourceIndex
                 w.Write(p.Archive);
             }
         }
+        w.Write(archiveMemo.Count);
+        foreach (var (hash, entries) in archiveMemo)
+        {
+            w.Write(hash);
+            w.Write(entries.Count);
+            foreach (var (k, part, content) in entries)
+            {
+                w.Write(k.Type);
+                w.Write(k.Name);
+                w.Write((byte)part);
+                w.Write(content);
+            }
+        }
         w.Write(hashes.Length);
         foreach (var h in hashes) w.Write(h);
         foreach (var o in owners) w.Write(o);
@@ -264,6 +312,15 @@ public sealed class SourceIndex
             index.bySha[Convert.ToHexString(c.Sha256)] = i;
             index.Contents.Add(c);
             index.IndexedBytes += c.Size;
+        }
+        var memos = r.ReadInt32();
+        for (var i = 0; i < memos; i++)
+        {
+            var hash = r.ReadString();
+            var n = r.ReadInt32();
+            var entries = new List<(ResourceKey, PartKind, int)>(n);
+            for (var e = 0; e < n; e++) entries.Add((new ResourceKey(r.ReadUInt64(), r.ReadUInt64()), (PartKind)r.ReadByte(), r.ReadInt32()));
+            index.archiveMemo[hash] = entries;
         }
         var count = r.ReadInt32();
         index.hashes = new ulong[count];
@@ -329,11 +386,40 @@ public sealed class LooseGameResources(IDataFiles files, string build) : IGameRe
     byte[] Part((string Archive, long[] Offsets, int[] Sizes) e, PartKind kind) =>
         Slice(e.Archive + Suffix[(int)kind], e.Offsets[(int)kind], e.Sizes[(int)kind]);
 
-    public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All()
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All()
     {
         foreach (var (key, e) in Entries())
-            yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)), e.Archive);
+            yield return (key, e.Archive, () => new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)));
+    }
+
+    public string? ArchiveHash(string archive)
+    {
+        var hashes = Suffix.Select(x => archive + x).Where(files.Exists).Select(files.Hash).ToList();
+        return hashes.Count == 0 || hashes.Any(h => h is null) ? null : string.Join("+", hashes);
     }
 
     public byte[]? Read(ResourceKey key, PartKind part) => Entries().TryGetValue(key, out var e) ? Part(e, part) : null;
+}
+
+// A data folder with both layouts (the transition builds of December 2025 to January 2026): what bundles.nxa lists, then
+// the loose archives it does not.
+public sealed class MixedGameResources(IDataFiles files, string build) : IGameResources, IDisposable
+{
+    readonly GameResources packed = new(files, build);
+    readonly LooseGameResources loose = new(files, build);
+
+    public string Build => build;
+
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All()
+    {
+        var seen = new HashSet<ResourceKey>();
+        foreach (var r in packed.All()) if (seen.Add(r.Key)) yield return r;
+        foreach (var r in loose.All()) if (seen.Add(r.Key)) yield return r;
+    }
+
+    public string? ArchiveHash(string archive) => ((IGameResources)loose).ArchiveHash(archive);
+
+    public byte[]? Read(ResourceKey key, PartKind part) => packed.Read(key, part) ?? loose.Read(key, part);
+
+    public void Dispose() => packed.Dispose();
 }
