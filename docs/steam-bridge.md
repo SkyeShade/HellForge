@@ -459,6 +459,14 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
     no PlayFab fallback. After at least 45 s without a pong, the connection fails with `PongTimeout` ("Pong timeout for
     %llx", exe `0x2A5D0A`). Only a session that was active once falls back to PlayFab Party on a pong timeout
     ("Platform pong timeout ... Falling back to playfab").
+  - The other way to the fallback is Steam's `P2PSessionConnectFail_t` (1203) for that player (exe `0x751B80`): the
+    next send to them fails, and the game falls back to PlayFab Party (exe `0x2A9A9B`). It tells the other game, which
+    falls back too (a packet whose first byte is 5, exe `0x2A6BA2`). HellForge's Party relays through the host's
+    backend, so the pair keeps playing. A refused `SendP2PPacket` never reaches Steam, so a game whose own bridge
+    refused the send never gets that callback. A game outside the sandbox should get it (Steam's timeout error, "target
+    isn't responding, perhaps not calling AcceptP2PSessionWithUser()"), since the sandboxed game's bridge refuses to
+    accept its session. That fits #202's report that unsandboxing one player let everyone join, if that player was one
+    of the two joiners.
   - The failure is reported to the host's game session. 20 s after the first report, it votes one of the pair out (exe
     `0x296AB0`): a player accused twice, else the one of the two that joined the session first. The host then removes
     that player (game.dll `0x108A9CB`, "Peer %llx was voted out").

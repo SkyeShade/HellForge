@@ -76,7 +76,7 @@ On `dev`, since 0.3.0-beta.
   other players who joined: the sandbox let the game's Steam connection through to the host alone. In a squad of three
   or four, each player's game now reaches every other player in the lobby too. This is a likely cause of the known
   issue where a third player joining a lobby of two pushed the second player out (#202). Every sandboxed player in the
-  squad needs this version: one still on 0.3.0-beta can reach only the host.
+  squad needs this version: on 0.3.0-beta, the sandbox still lets that player's game reach only the host.
 
 ### For mod makers
 
