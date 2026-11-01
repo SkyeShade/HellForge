@@ -17,7 +17,8 @@ not submit the game's files or code taken from the game, or code from other proj
 
 ## Branches and pull requests
 
-- **`dev`** is where work comes together: open pull requests against `dev`. Development builds are made from it.
+- **`dev`** is where work comes together: open pull requests against `dev`. Development builds are made from it,
+  among them a nightly build ([below](#nightly-builds)).
 - **`main`** holds releases. It changes only by a release pull request from `dev`, once that release has been checked
   (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`); a pull request into `main` from any other branch fails
   its checks.
@@ -41,6 +42,31 @@ not submit the game's files or code taken from the game, or code from other proj
 - **Launchers:** if you change a `HellForge.Cli` command, an option or its JSON output, update
   [docs/external-launchers.md](docs/external-launchers.md) in the same pull request and say so in it. Launchers built
   on the CLI read that page.
+
+## Nightly builds
+
+Each night that `dev` changed, `.github/workflows/nightly.yml` builds its newest commit and publishes it as the
+**nightly** pre-release: [releases/tag/nightly](https://github.com/SkyeShade/HellForge/releases/tag/nightly), with
+`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-scripts.zip` and their SHA-256 sums. Each nightly replaces the
+one before, and its `nightly` tag moves to the commit it was built from.
+
+- **For testers, not for playing:** nobody tests a nightly in game before it is published. Install it into a folder of
+  its own. It is never GitHub's "latest" release, and its notes list what changed since the previous nightly and the
+  changelog's Unreleased section.
+- **Its version says so:** the next release's number with `-nightly.<date>`, and the commit, as in
+  `HellForge 0.4.0-nightly.20261102 (e092804)`, wherever HellForge shows its version: the launcher's corner, Setup's
+  title, crash reports and session logs. The next release's number is `Version` in `Directory.Build.props` without its
+  label, or the next minor version once that one is released (`scripts/nightly/nightly.py version`). The workflow
+  writes it into the props file on the build machine only.
+- **Built as a release is,** with `scripts/Package-HellForge.ps1` and its checks, on CI's toolchain
+  (`.github/actions/build-tools`), and also refused if any file in it is one of the game's (`supported-build.json`'s
+  hashes). GitHub's build machine has no game files and no Steamworks SDK: the engine's `steam_api64.dll` stand-in is
+  generated from `data/steam-export-manifest.json`, the text-only list of the game DLL's exports, and there is no Steam
+  bridge or broker, so on Windows a nightly does not offer the sandbox.
+- **By hand:** Actions > Nightly > Run workflow; leave "publish" unticked for a dry run, which keeps the files as the
+  run's artifact for a week. GitHub schedules and offers this button only for the workflow on `main`, the default
+  branch; until the workflow is there, a change to it on `dev` runs it once as a dry run, and "Re-run all jobs" on that
+  run dry-runs `dev` as it is then.
 
 ## Changelog
 
