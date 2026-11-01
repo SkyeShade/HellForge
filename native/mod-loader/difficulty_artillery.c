@@ -13,7 +13,8 @@
  * fire these types. A row is set again when it no longer holds what was written (the game reloaded its list, or a
  * stats mod changed it: its value is then the one scaled), and put back in a mission at another level only while it
  * still holds what was written. Every player runs it on their own machine, as each simulates the shell. The level is
- * the world's level generator's (lg+0xF9), as the mission stubs read it. */
+ * the world's level generator's (lg+0xF9), as the mission stubs read it; with no level (a mission being torn down) the
+ * rows wait for the next one. */
 
 #define DIF_ARTILLERY_SHELLS 6
 #define DIF_ARTILLERY_POLL_MS 500u
@@ -34,13 +35,14 @@ static uintptr_t ArtilleryRowOf(uintptr_t game, uint32_t type)
     return row;
 }
 
-/* 1 in a mission at the added level (the world's level generator, set before its objectives spawn). */
+/* 1 in a mission at the added level (the world's level generator, set before its objectives spawn), 0 at another level,
+ * -1 with no level (being torn down or not made yet: the rows are left as they are). */
 static int ArtilleryLevel(uintptr_t game)
 {
     uint64_t world = 0, level = 0;
     uint8_t difficulty = 0;
     if (SafeRead(game + DIF_WORLD, &world, 8) || world == 0 || SafeRead(world + 0xAE288, &level, 8) || level == 0 ||
-        SafeRead(level + 0xF9, &difficulty, 1)) return 0;
+        SafeRead(level + 0xF9, &difficulty, 1)) return -1;
     return difficulty == DIF_VANILLA + 1;
 }
 
@@ -85,7 +87,7 @@ static void DifficultyArtillery(void)
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     if (game == 0) return;
     int want = ArtilleryLevel(game);
-    if (!want && !g_artilleryScaled) return;
+    if (want < 0 || (!want && !g_artilleryScaled)) return;
     for (int s = 0; s < DIF_ARTILLERY_SHELLS; s++)
     {
         uintptr_t row = ArtilleryRowOf(game, kArtilleryShells[s]);
