@@ -287,15 +287,40 @@ static void TxnModRenew(HfMod* m)
     InterlockedExchange(&m->removing, 0);
 }
 
+/* The entry a change's mod takes without a new one: a stats mod's (fresh 0) running entry of its id or a taken-out one,
+ * a code mod's set-up's (fresh 1) a taken-out one it may take again (TxnModAgain). NULL: it needs a new one. */
+static HfMod* TxnModExisting(const TxnMod* t, int fresh)
+{
+    if (fresh) return TxnModAgain(t->id);
+    HfMod* mod = TxnSessionMod(t->id);
+    for (int i = 0; i < g_modCount && mod == NULL; i++)
+        if (!g_mods[i].lua && g_mods[i].removed && !wcscmp(g_mods[i].dll, L"-") && !strcmp(g_mods[i].id, t->id)) mod = &g_mods[i];
+    return mod;
+}
+
+/* A new entry at the end of the session's mods, taking *log; NULL when they are full. Under g_luaLock. */
+static HfMod* TxnModNew(const TxnMod* t, int fresh, HANDLE* log)
+{
+    if (g_modCount >= MAX_MODS) return NULL;
+    HfMod* m = &g_mods[g_modCount];
+    memset(m, 0, sizeof *m);
+    m->api = &g_api;
+    snprintf(m->id, sizeof m->id, "%s", t->id);
+    wcscpy(m->dll, L"-");
+    m->log = *log;
+    *log = INVALID_HANDLE_VALUE;
+    m->order = g_modCount;
+    m->staging = fresh;
+    MemoryBarrier(); /* the entry is whole before anything counting the mods sees it */
+    g_modCount++;
+    return m;
+}
+
 static HfMod* TxnModEntry(const TxnMod* t, int fresh)
 {
-    HfMod* mod = fresh ? NULL : TxnSessionMod(t->id);
-    if (mod == NULL && !fresh)
-        for (int i = 0; i < g_modCount && mod == NULL; i++)
-            if (!g_mods[i].lua && g_mods[i].removed && !wcscmp(g_mods[i].dll, L"-") && !strcmp(g_mods[i].id, t->id)) mod = &g_mods[i];
-    HfMod* again = fresh ? TxnModAgain(t->id) : NULL;
+    HfMod* mod = TxnModExisting(t, fresh);
     HANDLE log = INVALID_HANDLE_VALUE;
-    if (mod == NULL && again == NULL)
+    if (mod == NULL)
     {
         /* opened before the lock: the game's thread queues Lua events under it */
         wchar_t logName[128];
@@ -303,26 +328,8 @@ static HfMod* TxnModEntry(const TxnMod* t, int fresh)
         log = OpenLog(logName);
     }
     AcquireSRWLockExclusive(&g_luaLock);
-    if (again != NULL)
-    {
-        TxnModRenew(again);
-        mod = again;
-    }
-    if (mod == NULL && g_modCount < MAX_MODS)
-    {
-        HfMod* m = &g_mods[g_modCount];
-        memset(m, 0, sizeof *m);
-        m->api = &g_api;
-        snprintf(m->id, sizeof m->id, "%s", t->id);
-        wcscpy(m->dll, L"-");
-        m->log = log;
-        log = INVALID_HANDLE_VALUE;
-        m->order = g_modCount;
-        m->staging = fresh;
-        MemoryBarrier(); /* the entry is whole before anything counting the mods sees it */
-        g_modCount++;
-        mod = m;
-    }
+    if (mod != NULL && fresh) TxnModRenew(mod);
+    if (mod == NULL) mod = TxnModNew(t, fresh, &log);
     if (mod != NULL)
     {
         snprintf(mod->folder, sizeof mod->folder, "%s", t->folder);

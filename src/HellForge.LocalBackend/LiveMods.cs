@@ -86,7 +86,7 @@ public sealed class LiveMods
         // one change at a time: a change the game has not reported yet holds it until it settles; another waits as long as
         // a change may take, then is answered busy
         if (!await one.WaitAsync(PrepareTimeout + DataResultTimeout, cancel)) return new(true, false, [], ["Another change is under way."], "Try again in a moment.", "");
-        var settling = false;
+        Change? change = null;
         try
         {
             var current = Current();
@@ -104,44 +104,55 @@ public sealed class LiveMods
             var txn = "live" + Interlocked.Increment(ref changes).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var (prepared, problem) = await PrepareAsync(plan, txn, set.Digest, cancel);
             if (problem != null) return new(false, false, described, [problem], "Applies to the next session.", "");
-            var waiter = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            lock (gate) waiting[txn] = waiter;
-            Changing?.Invoke(true);
-            Result? refused;
-            try { refused = await SendAsync(plan, txn, sync, set.Digest, prepared); }
-            catch (Exception)
-            {
-                lock (gate) waiting.Remove(txn);
-                Changing?.Invoke(false);
-                throw;
-            }
-            if (refused != null)
-            {
-                lock (gate) waiting.Remove(txn);
-                Changing?.Invoke(false);
-                return refused with { Changes = described };
-            }
-            var change = new Change(txn, plan, active, set, sync ? syncedWith : current.SyncedWith, described);
-            var settled = SettleAsync(change, waiter.Task);
-            settling = true;
-            var timeout = prepared?.Data.Count > 0 ? DataResultTimeout : ResultWait;
-            try { return await settled.WaitAsync(timeout, cancel); }
-            catch (Exception error) when (error is TimeoutException or OperationCanceledException)
-            {
-                log(error is TimeoutException ? $"Live mods {txn}: the game did not report its result within {timeout.TotalSeconds} s; the session follows it when it does."
-                    : $"Live mods {txn}: the request was withdrawn; the session follows the game's result when it comes.");
-                return new(true, false, described, ["The game has not finished the change yet."],
-                    "This session follows it once the game reports it; until then friends cannot join.", "");
-            }
+            change = new Change(txn, plan, active, set, sync ? syncedWith : current.SyncedWith, described);
+            return await CommitAsync(change, sync, prepared, cancel);
         }
         finally
         {
-            if (!settling) one.Release();
+            if (change?.Settling != true) one.Release(); /* else the change's settling releases it */
         }
     }
 
-    // A change the game took, until its result: the session's view after it.
-    sealed record Change(string Txn, LiveModPlan Plan, List<ModManifest> Active, ModSet Set, string SyncedWith, List<string> Described);
+    // A change for the game, and the session's view after it. Settling: it went to the game, whose result settles it
+    // (SettleAsync), which then lets the next change begin.
+    sealed record Change(string Txn, LiveModPlan Plan, List<ModManifest> Active, ModSet Set, string SyncedWith, List<string> Described)
+    {
+        public bool Settling { get; set; }
+    }
+
+    // The change sent to the game, then its result awaited for ResultWait: what it did, or that it has not finished yet
+    // (the session follows it when it does). Joins wait meanwhile (Changing).
+    async Task<Result> CommitAsync(Change change, bool sync, LivePrepared? prepared, CancellationToken cancel)
+    {
+        var waiter = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (gate) waiting[change.Txn] = waiter;
+        Changing?.Invoke(true);
+        Result? refused;
+        try { refused = await SendAsync(change.Plan, change.Txn, sync, change.Set.Digest, prepared); }
+        catch (Exception)
+        {
+            lock (gate) waiting.Remove(change.Txn);
+            Changing?.Invoke(false);
+            throw;
+        }
+        if (refused != null)
+        {
+            lock (gate) waiting.Remove(change.Txn);
+            Changing?.Invoke(false);
+            return refused with { Changes = change.Described };
+        }
+        change.Settling = true;
+        var settled = SettleAsync(change, waiter.Task);
+        var timeout = prepared?.Data.Count > 0 ? DataResultTimeout : ResultWait;
+        try { return await settled.WaitAsync(timeout, cancel); }
+        catch (Exception error) when (error is TimeoutException or OperationCanceledException)
+        {
+            log(error is TimeoutException ? $"Live mods {change.Txn}: the game did not report its result within {timeout.TotalSeconds} s; the session follows it when it does."
+                : $"Live mods {change.Txn}: the request was withdrawn; the session follows the game's result when it comes.");
+            return new(true, false, change.Described, ["The game has not finished the change yet."],
+                "This session follows it once the game reports it; until then friends cannot join.", "");
+        }
+    }
 
     // The game's result for a change, whenever it comes: a change it made (ok, or failed: made, but something of a mod
     // taken out may be left) is the session's from then on, its files written and its set given to Changed; one it refused
