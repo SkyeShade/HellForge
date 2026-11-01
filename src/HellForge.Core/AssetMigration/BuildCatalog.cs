@@ -8,7 +8,8 @@ namespace HellForge.Core.AssetMigration;
 public sealed class BuildCatalog
 {
     public sealed record Depot(uint Id, string ManifestId);
-    public sealed record Build(string BuildId, string Layout, List<Depot> Depots, string? Note = null);
+    // Seen: the earliest date this build was seen installed (yyyy-MM-dd), for ordering; Layout "" when not known yet.
+    public sealed record Build(string BuildId, string Layout, List<Depot> Depots, string? Note = null, string? Seen = null);
 
     public int SchemaVersion { get; init; } = 1;
     public string AppId { get; init; } = "553850";
@@ -30,6 +31,50 @@ public sealed class BuildCatalog
 
     // Every build since release is in the index: content found in none of them is not the game's.
     public bool Covers(SourceIndex index) => HistoryComplete && Missing(index).Count == 0;
+
+    // Builds from Steam's content log (Steam/logs/content_log*.txt): every update Steam finished installing is logged as
+    //   [date time] AppID 553850 finished update, 3 mounted depots (BuildID 23354408) : 553851 (3449...),553853 (1424...),
+    // which gives the build with each depot's manifest. Builds already in the catalog are left as they are.
+    static readonly System.Text.RegularExpressions.Regex Finished = new(
+        @"^\[(?<date>\d{4}-\d{2}-\d{2})[^\]]*\] AppID (?<app>\d+) finished update, \d+ mounted depots \(BuildID (?<build>\d+)\) : (?<depots>.*)$");
+    static readonly System.Text.RegularExpressions.Regex DepotEntry = new(@"(?<depot>\d+) \((?<manifest>\d+)\)");
+
+    public static List<Build> FromSteamLog(IEnumerable<string> lines, string appId)
+    {
+        var found = new Dictionary<string, Build>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var m = Finished.Match(line.TrimEnd());
+            if (!m.Success || m.Groups["app"].Value != appId) continue;
+            var depots = DepotEntry.Matches(m.Groups["depots"].Value).Select(d => new Depot(uint.Parse(d.Groups["depot"].Value), d.Groups["manifest"].Value)).ToList();
+            var id = m.Groups["build"].Value;
+            if (depots.Count > 0 && !found.ContainsKey(id)) found[id] = new Build(id, "", depots, "from a Steam content log", m.Groups["date"].Value);
+        }
+        return [.. found.Values];
+    }
+
+    // The catalog with these builds added (those it does not have yet), in order of when they were seen.
+    public BuildCatalog Merge(IEnumerable<Build> builds)
+    {
+        var all = Builds.ToList();
+        foreach (var b in builds)
+            if (all.All(x => x.BuildId != b.BuildId)) all.Add(b);
+            else
+            {
+                var i = all.FindIndex(x => x.BuildId == b.BuildId);
+                if (all[i].Seen is null && b.Seen is not null) all[i] = all[i] with { Seen = b.Seen };
+            }
+        return new BuildCatalog
+        {
+            SchemaVersion = SchemaVersion, AppId = AppId, HistoryComplete = HistoryComplete,
+            Builds = all.OrderBy(b => b.Seen ?? "9999").ThenBy(b => long.Parse(b.BuildId)).ToList(),
+        };
+    }
+
+    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions(Json)
+    {
+        WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    }) + "\n");
 
     public IEnumerable<string> Commands(Build build) => build.Depots.Select(d => $"download_depot {AppId} {d.Id} {d.ManifestId}");
 }

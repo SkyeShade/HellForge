@@ -4,24 +4,244 @@
   "historyComplete": false,
   "builds": [
     {
+      "buildId": "23218694",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "4801190569929959114"
+        },
+        {
+          "id": 553853,
+          "manifestId": "920274029393751517"
+        },
+        {
+          "id": 553854,
+          "manifestId": "423505390143418208"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-05-21"
+    },
+    {
+      "buildId": "23354408",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "3449157206677913537"
+        },
+        {
+          "id": 553853,
+          "manifestId": "1424637832511046305"
+        },
+        {
+          "id": 553854,
+          "manifestId": "423505390143418208"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-05-29"
+    },
+    {
+      "buildId": "23564993",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "4912112960936795879"
+        },
+        {
+          "id": 553853,
+          "manifestId": "2590179562727971281"
+        },
+        {
+          "id": 553854,
+          "manifestId": "423505390143418208"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-06-09"
+    },
+    {
+      "buildId": "23670869",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "7455222202877157939"
+        },
+        {
+          "id": 553853,
+          "manifestId": "1802474089616733239"
+        },
+        {
+          "id": 553854,
+          "manifestId": "4578968234246670885"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-06-16"
+    },
+    {
+      "buildId": "24601870",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "3115173675505021070"
+        },
+        {
+          "id": 553853,
+          "manifestId": "7669628172356516538"
+        },
+        {
+          "id": 553854,
+          "manifestId": "6929803021334100650"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-08-13"
+    },
+    {
+      "buildId": "24720993",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "7334976887293886999"
+        },
+        {
+          "id": 553853,
+          "manifestId": "4415764739386073154"
+        },
+        {
+          "id": 553854,
+          "manifestId": "6929803021334100650"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-08-17"
+    },
+    {
+      "buildId": "24826606",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "5937460960958490081"
+        },
+        {
+          "id": 553853,
+          "manifestId": "9020691380707780829"
+        },
+        {
+          "id": 553854,
+          "manifestId": "6929803021334100650"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-08-25"
+    },
+    {
+      "buildId": "25327279",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "4376562253430864477"
+        },
+        {
+          "id": 553853,
+          "manifestId": "3808327898058099648"
+        },
+        {
+          "id": 553854,
+          "manifestId": "9065746766815828060"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-09-22"
+    },
+    {
       "buildId": "25480438",
       "layout": "nxa",
       "depots": [
-        { "id": 553851, "manifestId": "1883032874832282552" },
-        { "id": 553853, "manifestId": "2566883558412717494" },
-        { "id": 553854, "manifestId": "9065746766815828060" }
+        {
+          "id": 553851,
+          "manifestId": "1883032874832282552"
+        },
+        {
+          "id": 553853,
+          "manifestId": "2566883558412717494"
+        },
+        {
+          "id": 553854,
+          "manifestId": "9065746766815828060"
+        }
       ],
-      "note": "HellForge's supported build (src/HellForge.Core/supported-build.json)."
+      "note": "HellForge\u0027s supported build (src/HellForge.Core/supported-build.json).",
+      "seen": "2026-09-24"
+    },
+    {
+      "buildId": "25988413",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "7774581279695892805"
+        },
+        {
+          "id": 553853,
+          "manifestId": "5996577238119267958"
+        },
+        {
+          "id": 553854,
+          "manifestId": "993215155468609051"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-10-20"
+    },
+    {
+      "buildId": "26088801",
+      "layout": "",
+      "depots": [
+        {
+          "id": 553851,
+          "manifestId": "4154210698372506742"
+        },
+        {
+          "id": 553853,
+          "manifestId": "8819133488728851306"
+        },
+        {
+          "id": 553854,
+          "manifestId": "993215155468609051"
+        }
+      ],
+      "note": "from a Steam content log",
+      "seen": "2026-10-22"
     },
     {
       "buildId": "26251122",
       "layout": "nxa",
       "depots": [
-        { "id": 553851, "manifestId": "7905209952798545820" },
-        { "id": 553853, "manifestId": "87932884035420122" },
-        { "id": 553854, "manifestId": "70283813008461964" }
+        {
+          "id": 553851,
+          "manifestId": "7905209952798545820"
+        },
+        {
+          "id": 553853,
+          "manifestId": "87932884035420122"
+        },
+        {
+          "id": 553854,
+          "manifestId": "70283813008461964"
+        }
       ],
-      "note": "Steam's build on 2026-10-31."
+      "note": "Steam\u0027s build on 2026-10-31.",
+      "seen": "2026-10-29"
     }
   ]
 }

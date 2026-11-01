@@ -24,6 +24,7 @@ try
         "rebuild" => Rebuild(),
         "compare" => Compare(args_[1], args_[2]),
         "kitbash-fixture" => KitbashFixture(),
+        "catalog-import" => CatalogImport(),
         _ => Usage(),
     };
 }
@@ -65,6 +66,20 @@ int KitbashFixture()
     File.WriteAllBytes(Path.Combine(data, "c0ffee00c0ffee00.patch_0.stream"), stream);
     Console.WriteLine($"Kitbash: unit {units[0].Key:x16} ({a.Gpu.Length:N0} B mesh data) with {b.Gpu.Length * 4 / 10:N0} B of unit {units[1].Key:x16} spliced in; " +
         $"texture {texture.Key:x16} with 64 KB repainted; 20 KB of the author's own.");
+    return 0;
+}
+
+// catalog-import --catalog <game-builds.json> --log <Steam content_log.txt> [--log ...]: adds the builds Steam logged
+// installing (with their depot manifests) to the catalog.
+int CatalogImport()
+{
+    var path = One("--catalog");
+    var catalog = BuildCatalog.Load(path);
+    var found = All("--log").Where(File.Exists).SelectMany(log => BuildCatalog.FromSteamLog(File.ReadLines(log), catalog.AppId)).ToList();
+    var merged = catalog.Merge(found);
+    merged.Save(path);
+    Console.WriteLine($"{found.Select(b => b.BuildId).Distinct().Count()} builds in the logs; the catalog now lists {merged.Builds.Count} (was {catalog.Builds.Count}).");
+    foreach (var b in merged.Builds) Console.WriteLine($"  {b.Seen ?? "?",-10} {b.BuildId,-9} {(b.Layout.Length == 0 ? "?" : b.Layout),-5} {string.Join(" ", b.Depots.Select(d => $"{d.Id}:{d.ManifestId}"))}");
     return 0;
 }
 
