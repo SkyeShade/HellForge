@@ -40,6 +40,10 @@ public sealed class SteamChunkIndex
     readonly List<int[]> buildFiles = [];
     Dictionary<uint, List<int>>? byAdler;
     readonly Dictionary<int, Dictionary<int, (int File, long Offset)>> located = [];
+    // Every place each chunk is in (file and position), across every version of every file: a chunk's neighbours differ
+    // between builds, and odd-length chunks are only found as neighbours. Built when first needed.
+    int[]? placeStart;
+    long[]? places;
 
     public int ChunkCount => sha.Count;
     public long ChunkBytes => length.Sum(l => (long)l);
@@ -179,8 +183,34 @@ public sealed class SteamChunkIndex
         return (b << 16) | a;
     }
 
+    void Places()
+    {
+        if (places is not null) return;
+        var count = new int[sha.Count + 1];
+        foreach (var (_, chunks) in files) foreach (var c in chunks) count[c + 1]++;
+        for (var i = 0; i < sha.Count; i++) count[i + 1] += count[i];
+        var at = (int[])count.Clone();
+        var list = new long[count[sha.Count]];
+        for (var f = 0; f < files.Count; f++)
+            for (var i = 0; i < files[f].Chunks.Length; i++) list[at[files[f].Chunks[i]]++] = ((long)f << 32) | (uint)i;
+        placeStart = count;
+        places = list;
+    }
+
+    // The chunks next to this one (step +1 after it, -1 before it) in any version of any file that has it.
+    IEnumerable<int> Neighbours(int chunk, int step)
+    {
+        Places();
+        var seen = new HashSet<int>();
+        for (var k = placeStart![chunk]; k < placeStart[chunk + 1]; k++)
+        {
+            var (file, position) = ((int)(places![k] >> 32), (int)(uint)places[k] + step);
+            if (position >= 0 && position < files[file].Chunks.Length && seen.Add(files[file].Chunks[position])) yield return files[file].Chunks[position];
+        }
+    }
+
     // The runs of data that are chunks Steam shipped: 1 MiB chunks found by the rolling checksum at any position and
-    // proven by SHA-1, then their neighbours in the same game file (any length) checked in place.
+    // proven by SHA-1, then their neighbours (any length, in any version of a file that has them) checked in place.
     public List<Match> Scan(byte[] data)
     {
         var found = new List<Match>();
@@ -219,28 +249,28 @@ public sealed class SteamChunkIndex
                     if (Is(c, p)) { hit = c; break; }
                 if (hit >= 0)
                 {
-                    // Neighbours before (down to the previous match) and after, in the file where the chunk was first seen.
-                    var (file, position) = first[hit];
-                    var chain = files[file].Chunks;
+                    // Neighbours before (down to the previous match) and after.
                     var start = p;
                     var before = new List<Match>();
-                    for (var k = position - 1; k >= 0; k--)
+                    for (var last = hit; ;)
                     {
-                        var c = chain[k];
-                        if (start - length[c] < matchedEnd || !Is(c, start - length[c])) break;
-                        start -= length[c];
-                        before.Add(new Match(start, length[c], c));
+                        var next = Neighbours(last, -1).FirstOrDefault(c => start - length[c] >= matchedEnd && Is(c, start - length[c]), -1);
+                        if (next < 0) break;
+                        start -= length[next];
+                        before.Add(new Match(start, length[next], next));
+                        last = next;
                     }
                     before.Reverse();
                     found.AddRange(before);
                     found.Add(new Match(p, Window, hit));
                     var end = p + Window;
-                    for (var k = position + 1; k < chain.Length; k++)
+                    for (var last = hit; ;)
                     {
-                        var c = chain[k];
-                        if (!Is(c, end)) break;
-                        found.Add(new Match(end, length[c], c));
-                        end += length[c];
+                        var next = Neighbours(last, 1).FirstOrDefault(c => Is(c, end), -1);
+                        if (next < 0) break;
+                        found.Add(new Match(end, length[next], next));
+                        end += length[next];
+                        last = next;
                     }
                     matchedEnd = end;
                     p = end;
