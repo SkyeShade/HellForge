@@ -117,6 +117,9 @@ static HfEvent g_fireOrder[4];
 static volatile LONG g_fireCount;
 /* The mod a live change is setting up (live_code.c): on() calls it back after its init, not inside it. */
 static HfMod* g_liveSetup;
+/* The mod whose hellforge_mod_init or event callback this thread is running, or NULL: a write's mod when the write was a
+ * tail call (live_code.c ModOfWrite). */
+static _Thread_local HfMod* g_callingMod;
 /* A mod being taken out by a live change: what it asks to add is refused (live_code.c). */
 static int ModGone(const HfMod* mod) { return mod != NULL && mod->removing; }
 /* Numbered content a live set-up registers (live_content.c): the kinds numbered in call order, where a registration's
@@ -628,7 +631,10 @@ static void DeliverTo(HfEvent event, const HfMod* only)
     for (int i = 0; i < n; i++)
     {
         Note("event %d -> %s", (int)event, copy[i].mod->id);
+        HfMod* outer = g_callingMod;
+        g_callingMod = copy[i].mod;
         copy[i].function(copy[i].mod, event, copy[i].user);
+        g_callingMod = outer;
     }
     ReleaseSRWLockExclusive(&copying);
 }
@@ -1126,7 +1132,9 @@ static void SetupMod(HfMod* mod)
     }
     Note("%s: initializing", mod->id);
     mod->loaded = 1;
+    g_callingMod = mod;
     int result = init(&g_api, mod);
+    g_callingMod = NULL;
     if (result != 0)
     {
         mod->loaded = 0;

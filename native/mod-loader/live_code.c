@@ -96,11 +96,25 @@ static void JournalNote(HfMod* mod, uintptr_t address, const uint8_t* before, co
     if (bytes == NULL) WritesLose(mod, "the journal of writes is full");
 }
 
-/* HfApi.write: the caller is the mod whose DLL the call returns into. Only a live mod's writes are kept: no other mod
- * is ever taken out while the game runs (CodeRemovable), so theirs are written as before SDK 16. */
+/* The mod a write through the API came from: the one whose DLL the call returns into. A write a mod made as a tail call
+ * returns into its caller instead: then the first mod's code on the stack (a helper of the mod's own), else the mod
+ * whose init or event callback this thread runs (g_callingMod). NULL when none: a tail call from a function HellForge
+ * calls in some other way (a game-thread callback, a hook's detour) is not found, and its write is not kept. */
+static HfMod* ModOfWrite(uintptr_t returnAddress)
+{
+    HfMod* mod = ModAt(returnAddress);
+    void* frames[16];
+    USHORT count = mod == NULL ? RtlCaptureStackBackTrace(1, 16, frames, NULL) : 0;
+    for (USHORT i = 0; i < count && mod == NULL; i++) mod = ModAt((uintptr_t)frames[i]);
+    if (mod == NULL && g_callingMod != NULL && !g_callingMod->lua && !g_callingMod->removed) mod = g_callingMod;
+    return mod;
+}
+
+/* HfApi.write: the caller is the mod whose DLL the call returns into (ModOfWrite). Only a live mod's writes are kept: no
+ * other mod is ever taken out while the game runs (CodeRemovable), so theirs are written as before SDK 16. */
 __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* data, size_t size)
 {
-    HfMod* mod = ModAt((uintptr_t)__builtin_return_address(0));
+    HfMod* mod = ModOfWrite((uintptr_t)__builtin_return_address(0));
     if (mod == NULL || !mod->live) return ApiWrite(address, data, size);
     if (ModGone(mod)) { ApiLog(mod, "write refused: the mod is being taken out"); return 1; }
     uint8_t small[256];
@@ -457,7 +471,9 @@ static const char* CodeInit(HfMod* mod, char* why, size_t size)
     mod->loaded = 1;
     Note("%s: initializing while the game runs", mod->id);
     g_liveSetup = mod;
+    g_callingMod = mod;
     int result = init(&g_api, mod);
+    g_callingMod = NULL;
     g_liveSetup = NULL;
     if (result == 0) return NULL;
     snprintf(why, size, "capability\t%s declined to set up while the game runs (%d): %s", mod->id, result, mod->last[0] ? mod->last : "its log says why");

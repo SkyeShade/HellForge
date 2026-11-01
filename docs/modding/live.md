@@ -51,6 +51,10 @@ Then your mod may be set up after the game has started, and taken out before it 
   a new file (HellForge loads each build from its own path).
 - **Writes outside `api->write`** (a raw `memcpy` into game code) cannot be put back: a mod that made one is never taken
   out live.
+- **Use `api->write`'s result** in a game-thread callback or a hook's detour. HellForge knows whose write it is from
+  where the call returns; a call the compiler turns into a tail call (a function that ends with it) returns elsewhere.
+  From your init, an event callback or a helper of your own HellForge still finds you; from a game-thread callback or a
+  detour it cannot, and that write is not put back when the mod is taken out.
 
 ## Content added live
 
