@@ -452,7 +452,28 @@ static void LiveCodeFixture(void)
     TxnSend(line, reply, sizeof reply);
     TxnSend("modcommit\t29\tc5", reply, sizeof reply);
     assert(TxnResult("c5", "capability") && !g_mods[g_modCount - 1].loaded && g_mods[g_modCount - 1].removed && target(5) == 16 && *cell == 5);
-    printf("  live code mods: set up while the game runs (events replayed, hook and write in), replaced, taken out, 2 refusals\n");
+    assert(g_modCount == mods + 2); /* its set-up took a taken-out entry of its id again, not a new one */
+
+    /* set up again: a taken-out entry of its id again (the session's mods do not grow), then taken out again */
+    TxnSend("modbegin\t30\tc6\tsync\tdigest", reply, sizeof reply);
+    TxnSend("modorder\t31\tc6\t0\ta", reply, sizeof reply);
+    TxnSend("modorder\t32\tc6\t1\tb", reply, sizeof reply);
+    TxnSend("modorder\t33\tc6\t2\tlive.test", reply, sizeof reply);
+    snprintf(line, sizeof line, "modadd\t34\tc6\tlive.test\tcode,live\tfedcba9876543210\t%s\t%s", folder, path2);
+    TxnSend(line, reply, sizeof reply);
+    TxnSend("modcommit\t35\tc6", reply, sizeof reply);
+    TxnSent(sent, sizeof sent);
+    assert(strstr(sent, "modresult\tc6\tok\n") && g_modCount == mods + 2 && g_mods[mods].loaded && !g_mods[mods].removed && !g_mods[mods].staging &&
+        g_mods[mods].module == second && target(5) == 23 && *cell == 42);
+    TxnSend("modbegin\t36\tc7\tsync\tdigest", reply, sizeof reply);
+    TxnSend("modorder\t37\tc7\t0\ta", reply, sizeof reply);
+    TxnSend("modorder\t38\tc7\t1\tb", reply, sizeof reply);
+    TxnSend("modremove\t39\tc7\tlive.test", reply, sizeof reply);
+    TxnSend("modcommit\t40\tc7", reply, sizeof reply);
+    TxnSent(sent, sizeof sent);
+    assert(strstr(sent, "modresult\tc7\tok\n") && g_mods[mods].removed && target(5) == 16 && *cell == 5);
+    printf("  live code mods: set up while the game runs (events replayed, hook and write in), replaced, taken out, 2 refusals, set up again in "
+        "its old entry\n");
 
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
     g_liveGameState = LiveGameState;

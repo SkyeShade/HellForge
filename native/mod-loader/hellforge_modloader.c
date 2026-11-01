@@ -53,6 +53,7 @@ struct HfMod
     volatile LONG removing;
     int removed;
     int staging; /* a new version set up beside the running one until the change is made (live_mods.c) */
+    int leftover; /* taken out with something of it possibly left (live_code.c CodeRemove): its entry is never set up again */
     uintptr_t imageBase, imageEnd;
     int (*unload)(const HfApi* api, HfMod* mod, uint32_t reason);
 };

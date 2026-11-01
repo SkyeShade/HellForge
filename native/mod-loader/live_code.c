@@ -31,11 +31,13 @@ static SRWLOCK g_writesLock = SRWLOCK_INIT;
 static HfMod* g_writesLost[MAX_MODS];
 static int g_writesLostCount;
 
-/* The code mod whose DLL holds this address (a write's return address), or NULL. */
+/* The code mod whose DLL holds this address (a write's return address), or NULL. Not one taken out: the same DLL set up
+ * again later is another entry's (its DLL is never freed). */
 static HfMod* ModAt(uintptr_t address)
 {
     for (int i = 0; i < g_modCount; i++)
-        if (!g_mods[i].lua && g_mods[i].imageBase && address >= g_mods[i].imageBase && address < g_mods[i].imageEnd) return &g_mods[i];
+        if (!g_mods[i].lua && !g_mods[i].removed && g_mods[i].imageBase && address >= g_mods[i].imageBase && address < g_mods[i].imageEnd)
+            return &g_mods[i];
     return NULL;
 }
 
@@ -421,6 +423,7 @@ static int CodeRemove(HfMod* mod, uint32_t reason)
     int passives = g_passivesMod == mod;
     ReleaseSRWLockExclusive(&g_passivesLock);
     if (passives) ApiSetPassives(mod, HF_PASSIVE_KIT, HF_PASSIVE_KIT);
+    mod->leftover = failed;
     mod->loaded = 0;
     mod->removed = 1;
     Note("%s: taken out (%d hook(s), %d write(s) put back%s%s)", mod->id, hooks, reverted, kept ? ", some bytes changed since and left alone" : "",
