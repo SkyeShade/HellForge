@@ -212,8 +212,9 @@ public partial class MainWindow
     static string SteamHas(SteamGame? game, string? unusable = null) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
         : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 setup can copy from";
 
-    // Signs in to Steam and downloads the supported build into the installation (the copy step's row). A full drive asks
-    // for space; a refused or failed download also offers Steam's console download. Files already written are kept.
+    // Gets the supported build into the installation the way the player chooses on the card (SteamSignInFlow), on the copy
+    // step's row. A full drive asks for space; a refused or failed download shows the Steam app's console download.
+    // Files already written are kept.
     async Task SteamDownloadStep(InstallLayout install, SetupSource found)
     {
         var build = found.Build;
@@ -227,24 +228,20 @@ public partial class MainWindow
             SetupSteps.Children.Remove(copyRow);
             SetupSteps.Children.Insert(SetupSteps.Children.IndexOf(ownershipRow), copyRow);
         }
-        SetRow(SetupStep.Copy, null, $"Choose below how Steam sends build {build.BuildId}.", running: true);
+        SetRow(SetupStep.Copy, null, $"Choose below how to get build {build.BuildId} from Steam.", running: true);
         setupCancel = new();
         var token = setupCancel.Token;
-        SetupPauseButton.Content = "Cancel sign-in";
+        SetupPauseButton.Content = "Cancel";
         SetupPauseButton.IsVisible = true;
         try
         {
-            await using var steam = await SignInForDownload(build, token);
-            SetRow(SetupStep.Copy, null, $"Downloading build {build.BuildId} from Steam...", running: true);
-            var (downloaded, copied) = await DownloadFromSteam(steam, install, found, token);
-            SetRow(SetupStep.Copy, true, $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB) from Steam for your account: {downloaded / 1e9:0.0} GB " +
-                $"downloaded, {copied / 1e9:0.0} GB copied from your Steam install. Each file verified against Steam's hashes.");
+            SetRow(SetupStep.Copy, true, await GetBuildFromSteam(install, found, token));
         }
-        catch (SteamClientChosen)
+        catch (SteamAppChosen)
         {
-            // the player's choice: the Steam client downloads it through its console, and setup copies it from there
+            // the player's choice: the Steam app downloads it through its console, and setup copies it from there
             ShowDownload(found.SteamRoot, SteamHas(found.Game));
-            throw new SetupWaiting($"The Steam client downloads build {build.BuildId} for your account: follow the steps below. Setup " +
+            throw new SetupWaiting($"The Steam app downloads build {build.BuildId} for your account: follow the steps below. Setup " +
                 "continues by itself when the download is complete, and copies it into this folder.");
         }
         catch (Exception error) when (DownloadFailures.Describe(error, build.BuildId) is { } failure)
@@ -311,7 +308,6 @@ public partial class MainWindow
             await Task.Run(() => SteamDepotDownload.Delete(found.SteamRoot, found.Build));
             copied += " Steam's download was deleted.";
         }
-        DownloadCard.IsVisible = false;
         SignInCard.IsVisible = false;
         SetRow(SetupStep.Copy, true, copied);
     }
@@ -374,29 +370,36 @@ public partial class MainWindow
         setupCancel = new();
         var token = setupCancel.Token;
         var clock = Stopwatch.StartNew();
+        var progress = GameFilesProgress(clock);
+        await Task.Run(() =>
+        {
+            if (source != null) GameCopier.Copy(source, install.Game, SupportedBuild.Current, progress, token);
+            else GameCopier.CopyFromDepots(steamRoot, install.Game, SupportedBuild.Current, progress, token);
+        }, token);
+        CopyProgress.Value = 1000;
+        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+    }
+
+    // A copy's (or a move's) progress on the game files card: bytes done, bytes total, the file. At most five updates a
+    // second reach the window.
+    Action<long, long, string> GameFilesProgress(Stopwatch clock)
+    {
         long shown = -1;
         var lastUpdate = TimeSpan.Zero;
-        void Progress(long done, long total, string file)
+        return (done, total, file) =>
         {
-            // At most five updates a second reach the window.
             if (clock.Elapsed - lastUpdate < TimeSpan.FromMilliseconds(200) && done < total) return;
             lastUpdate = clock.Elapsed;
             Dispatcher.UIThread.Post(() =>
             {
                 if (done == shown) return;
                 shown = done;
+                CopyCard.IsVisible = true;
                 CopyProgress.Value = total > 0 ? done * 1000.0 / total : 0;
                 var rate = clock.Elapsed.TotalSeconds > 1 ? done / clock.Elapsed.TotalSeconds / 1e6 : 0;
                 CopyText.Text = $"{done / 1e9:0.0} of {total / 1e9:0.0} GB  ·  {rate:0} MB/s  ·  {file}";
             });
-        }
-        await Task.Run(() =>
-        {
-            if (source != null) GameCopier.Copy(source, install.Game, SupportedBuild.Current, Progress, token);
-            else GameCopier.CopyFromDepots(steamRoot, install.Game, SupportedBuild.Current, Progress, token);
-        }, token);
-        CopyProgress.Value = 1000;
-        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+        };
     }
 
     // The download from Steam's servers into the installation, its progress on the game files card. Returns the bytes
@@ -430,12 +433,22 @@ public partial class MainWindow
         return (last?.Downloaded ?? 0, last?.Copied ?? 0);
     }
 
-    // The download card: the console commands for the pinned depot manifests, and the download's progress, checked every
-    // 2 s. When every depot is complete, setup runs again and copies from the download.
+    // The Steam app's way, on the card (SteamSignInFlow): the console commands for the pinned depot manifests, and the
+    // download's progress on the game files card, checked every 2 s. When every depot is complete, setup runs again and
+    // copies from the download.
     void ShowDownload(string steamRoot, string have)
     {
         var build = SupportedBuild.Current;
         downloadSteamRoot = steamRoot;
+        WireSignIn();
+        downloadChoice = DownloadChoice.SteamClient;
+        ShowChoice();
+        SignInIntro.Text = OfferedChoices.Count > 1
+            ? $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). Steam can send that build " +
+              "to your own account, under your own licence; your normal game and Steam stay as they are."
+            : $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). On Linux, setup runs " +
+              "inside HellForge's network namespace and cannot reach Steam itself, so the Steam app downloads that build for your account.";
+        SignInCard.IsVisible = true;
         DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
             "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +
             $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.ContentFolder(steamRoot, build)} (your normal game is not touched). " +
@@ -462,7 +475,6 @@ public partial class MainWindow
             row.Children.Add(text);
             DownloadCommands.Children.Add(row);
         }
-        DownloadCard.IsVisible = true;
         downloadTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, async (_, _) => await CheckDownload());
         downloadTimer.Start();
         _ = CheckDownload();
@@ -478,25 +490,32 @@ public partial class MainWindow
         {
             var root = downloadSteamRoot;
             var states = await Task.Run(() => SteamDepotDownload.Status(root, SupportedBuild.Current));
-            long done = states.Sum(s => s.Done), total = states.Sum(s => s.Total);
-            DownloadProgress.Value = total > 0 ? done * 1000.0 / total : 0;
-            DownloadText.Text = string.Join("   ", states.Select(s => $"depot {s.Depot.Id}: {(s.Complete ? "done" : $"{s.Done / 1e9:0.0} of {s.Total / 1e9:0.0} GB")}"));
-            // Near the end (a few files left, which the rounded GB cannot show), the files it still waits for, by name: a file
-            // Steam did not write, or wrote at another size (another build's), would otherwise hold the setup with no word.
-            var left = states.Where(s => !s.Complete).SelectMany(s => s.Waiting).ToList();
-            if (left.Count is > 0 and <= 5)
-                DownloadText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
-                    : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
-                    : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
+            ShowDepotProgress(states, "Steam");
             if (states.All(s => s.Complete))
             {
                 downloadTimer?.Stop();
-                DownloadText.Text = "Download complete. Copying it into this installation...";
+                CopyText.Text = "Download complete. Copying it into this installation...";
                 if (!setupRunning) await RunSetup();
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { DownloadText.Text = "Could not check the download: " + Privacy.Scrub(error.Message); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { CopyText.Text = "Could not check the download: " + Privacy.Scrub(error.Message); }
         finally { checkingDownload = false; }
+    }
+
+    // A depot download's progress (the Steam app's or SteamCMD's, by who) on the game files card, where every way's
+    // progress shows. Near the end (a few files left, which the rounded GB cannot show) it names the files it still waits
+    // for: a file not written, or written at another size (another build's), would otherwise hold the setup with no word.
+    void ShowDepotProgress(IReadOnlyList<SteamDepotDownload.DepotState> states, string who)
+    {
+        long done = states.Sum(s => s.Done), total = states.Sum(s => s.Total);
+        CopyCard.IsVisible = true;
+        CopyProgress.Value = total > 0 ? done * 1000.0 / total : 0;
+        CopyText.Text = $"{who} downloads: " + string.Join("   ", states.Select(s => $"depot {s.Depot.Id}: {(s.Complete ? "done" : $"{s.Done / 1e9:0.0} of {s.Total / 1e9:0.0} GB")}"));
+        var left = states.Where(s => !s.Complete).SelectMany(s => s.Waiting).ToList();
+        if (left.Count is > 0 and <= 5)
+            CopyText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
+                : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
+                : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
     }
 
     static void OpenSteamConsole()

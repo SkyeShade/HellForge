@@ -484,16 +484,26 @@
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>
-            <!-- How setup gets the supported build from Steam (SteamSignInFlow.cs): three equal choices, the QR code first -->
+            <!-- How setup gets the supported build from Steam (SteamSignInFlow.cs): one of three ways, the QR code first. Each way
+                 has a "Choose another way" back to the three; the progress of every way shows on the game files card below. -->
             <Border x:Name="SignInCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="10">
                 <TextBlock Text="GET THE SUPPORTED BUILD FROM STEAM" Classes="h2" Margin="0" />
                 <TextBlock x:Name="SignInIntro" Classes="muted" TextWrapping="Wrap" />
-                <WrapPanel>
-                  <Button x:Name="ChoiceQrButton" Margin="0,0,8,8" />
-                  <Button x:Name="ChoicePasswordButton" Margin="0,0,8,8" />
-                  <Button x:Name="ChoiceClientButton" Margin="0,0,8,8" />
-                </WrapPanel>
+                <StackPanel x:Name="ChoicesPanel" Spacing="12" IsVisible="False">
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceQrButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceQrHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceSteamCmdButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceSteamCmdHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceClientButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceClientHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                </StackPanel>
                 <TextBlock x:Name="SignInChoiceText" TextWrapping="Wrap" />
                 <Border x:Name="SignInQrPanel" Background="White" Padding="14" HorizontalAlignment="Left">
                   <Panel Width="200" Height="200">
@@ -502,35 +512,25 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Panel>
                 </Border>
-                <StackPanel x:Name="SignInPasswordPanel" Spacing="8" IsVisible="False" MaxWidth="360" HorizontalAlignment="Left">
-                  <TextBox x:Name="SignInAccount" Watermark="Steam account name" />
-                  <TextBox x:Name="SignInPassword" Watermark="Password" PasswordChar="•" />
-                  <Button x:Name="SignInPasswordButton" Content="Sign in" Classes="primary" HorizontalAlignment="Left" />
+                <StackPanel x:Name="SteamCmdPanel" Spacing="8" IsVisible="False" MaxWidth="420" HorizontalAlignment="Left">
+                  <TextBox x:Name="SteamCmdAccount" Watermark="Steam account name (the name you sign in with)" />
+                  <Button x:Name="SteamCmdButton" Content="Start SteamCMD" Classes="primary" HorizontalAlignment="Left" />
                 </StackPanel>
-                <StackPanel x:Name="SignInCodePanel" Spacing="8" IsVisible="False" MaxWidth="360" HorizontalAlignment="Left">
-                  <TextBlock x:Name="SignInCodeText" TextWrapping="Wrap" />
-                  <TextBox x:Name="SignInCode" Watermark="Steam Guard code" />
-                  <Button x:Name="SignInCodeButton" Content="Continue" Classes="primary" HorizontalAlignment="Left" />
+                <StackPanel x:Name="ClientPanel" Spacing="8" IsVisible="False">
+                  <TextBlock x:Name="DownloadIntro" Classes="muted" TextWrapping="Wrap" />
+                  <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
+                  <StackPanel x:Name="DownloadCommands" Spacing="6" />
+                  <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
                 </StackPanel>
                 <TextBlock x:Name="SignInStatus" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-              </StackPanel>
-            </Border>
-            <Border x:Name="DownloadCard" Classes="card" IsVisible="False">
-              <StackPanel Spacing="8">
-                <TextBlock Text="DOWNLOAD THE SUPPORTED BUILD THROUGH STEAM" Classes="h2" Margin="0" />
-                <TextBlock x:Name="DownloadIntro" Classes="muted" TextWrapping="Wrap" />
-                <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
-                <StackPanel x:Name="DownloadCommands" Spacing="6" />
-                <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1000" Height="8" />
-                <TextBlock x:Name="DownloadText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
+                <Button x:Name="ChooseAnotherButton" Content="Choose another way" Classes="ghost" HorizontalAlignment="Left" IsVisible="False" />
               </StackPanel>
             </Border>
             <Border x:Name="CopyCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
                 <TextBlock Text="GAME FILES" Classes="h2" Margin="0" />
                 <ProgressBar x:Name="CopyProgress" Minimum="0" Maximum="1000" Height="8" />
-                <TextBlock x:Name="CopyText" Classes="muted" FontSize="12" />
+                <TextBlock x:Name="CopyText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
             <Border Classes="card">
