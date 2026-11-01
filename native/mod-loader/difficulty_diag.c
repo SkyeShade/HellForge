@@ -489,6 +489,7 @@ static void DifficultyWatch(void)
     WatchOutposts();
     WatchFootprints();
     WatchTowns();
+    WatchTerrain();
     WatchNavGrid();
     if (logged >= 40) return;
     logged += WatchLevel();

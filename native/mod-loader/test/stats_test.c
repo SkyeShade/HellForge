@@ -354,6 +354,8 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
     memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
     for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    memcpy(game + DIF_TERRAIN_RAMP_SITE, kTerrainRampPin, 9);
+    for (int i = 0; i < 2; i++) memcpy(game + kTerrainStores[i].site, kTerrainStores[i].pin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -1520,6 +1522,48 @@ static void TownsFixture(void)
 {
     TownsFixtureOnce(1);
     TownsFixtureOnce(0);
+}
+
+/* Terrain on larger maps: an area within an objective's stamp radius + 16 m is found, through a location-group item and
+ * through a direct one; outside it, or for a location with no item, it is not. */
+static void TerrainFixture(void)
+{
+    uint8_t* level = calloc(1, 0x3000);
+    uint8_t* block = calloc(1, DIF_OBJECTIVE_COUNT + 4);
+    uint8_t* items = calloc(2, 0x1C8);
+    uint8_t groups[2][0x18] = {{0}}, set[0x38] = {0};
+    assert(level != NULL && block != NULL && items != NULL);
+    uint64_t pointer = (uint64_t)(uintptr_t)block;
+    memcpy(level + 0x2C8, &pointer, 8);
+    float radius[2] = {50.0f, 20.0f};
+    memcpy(items + 0xD8, &radius[0], 4);                 /* group 1, item 0: 50 m */
+    memcpy(items + 0x1C8 + 0xD8, &radius[1], 4);         /* the direct item: 20 m */
+    pointer = (uint64_t)(uintptr_t)items; memcpy(groups[1] + 8, &pointer, 8);
+    uint32_t one = 1, two = 2; memcpy(groups[1] + 0x10, &one, 4);
+    pointer = (uint64_t)(uintptr_t)groups; memcpy(set + 0x28, &pointer, 8); memcpy(set + 0x30, &two, 4);
+    uint64_t direct = (uint64_t)(uintptr_t)(items + 0x1C8);
+    uint8_t* locations = block + DIF_OBJECTIVE_LOCATIONS;
+    const float at[3][2] = {{100.0f, 100.0f}, {500.0f, 500.0f}, {900.0f, 900.0f}};
+    for (int i = 0; i < 3; i++) memcpy(locations + 0x108 * i + 0xA4, at[i], 8);
+    pointer = (uint64_t)(uintptr_t)set; memcpy(locations, &pointer, 8);
+    uint32_t kind = DIF_LOCATION_GROUP_SET; memcpy(locations + 8, &kind, 4);
+    locations[0xA1] = 1; locations[0xA2] = 0;
+    pointer = (uint64_t)(uintptr_t)&direct; memcpy(locations + 0x108, &pointer, 8);
+    locations[0x108 + 0xA2] = 0;
+    memcpy(locations + 0x210, &pointer, 8);
+    locations[0x210 + 0xA2] = 0xFF;                      /* no item: skipped */
+    uint32_t count = 3; memcpy(block + DIF_OBJECTIVE_COUNT, &count, 4);
+    uint8_t area[0x90] = {0};
+    const struct { float x, y; int inside; } cases[6] = {{140, 100, 1}, {165, 100, 1}, {167, 100, 0}, {510, 530, 1}, {537, 500, 0}, {900, 900, 0}};
+    LONG before = g_terrainRaised;
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(area + 0x80, &cases[i].x, 4); memcpy(area + 0x84, &cases[i].y, 4);
+        assert(TerrainNearObjective((uintptr_t)level, area) == cases[i].inside);
+    }
+    assert(g_terrainRaised - before == 3);
+    assert(TerrainNearObjective(0, area) == 0);
+    free(items); free(block); free(level);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -3750,6 +3794,7 @@ int main(int argc, char** argv)
     DifficultyFixture();
     ClusterRingsFixture();
     TownsFixture();
+    TerrainFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     NetworkWidthFixture();
