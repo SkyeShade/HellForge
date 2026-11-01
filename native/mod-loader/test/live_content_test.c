@@ -435,6 +435,21 @@ static void ContentInstallFixture(void)
     FakeCatalogue();
     for (int event = HF_EVENT_GAME_LOADED; event <= HF_EVENT_PROJECTILES_READY; event++) InterlockedExchange(&g_fired[event], 1);
 
+    /* refused while it is prepared (the game has not installed its stratagems yet): what the set-up registered goes
+     * again, its texts with it */
+    HfMod* r = ContentMod("r");
+    ContentChange(NULL, r);
+    g_stratagemState = 0;
+    int texts = g_textCount;
+    HfStratagem rs = {sizeof rs, .base = 1, .name = "s", .title = "Refused", .description = "Never installed"};
+    g_liveSetup = r;
+    assert(ApiAddStratagem(r, &rs) == STR_VANILLA && g_stratagemCount == 1 && g_textCount > texts);
+    g_liveSetup = NULL;
+    assert(!ContentCommit() && g_stratagemCount == 0 && g_textCount == texts && !g_lcOpen);
+    r->loaded = 0;
+    r->removed = 1;
+    g_stratagemState = 1;
+
     /* the first move of each list, with a new stratagem, damage and projectile */
     HfMod* m = ContentMod("m");
     ContentChange(NULL, m);
@@ -511,7 +526,8 @@ static void ContentInstallFixture(void)
     assert(ScrubReady(g) != NULL);
     g_scrubPush = NULL;
     free(history); free(profile); free(peers);
-    printf("  live content: stratagem, damage and projectile lists moved under one freeze, a later stratagem raised, one taken out (out of the loadout too); items owned and given back\n");
+    printf("  live content: one refused while prepared taken out again; stratagem, damage and projectile lists moved under one freeze, a later "
+        "stratagem raised, one taken out (out of the loadout too); items owned and given back\n");
 
     VirtualFree(game, 0, MEM_RELEASE);
     g_lcFixtureGame = 0;

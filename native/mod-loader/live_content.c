@@ -770,17 +770,27 @@ static int LiveFreezeNeeded(void)
     return 0;
 }
 
-/* Every kind prepared: rows built, writes queued, the registry hooked, the loadout checked. NULL, or "<reason>\t<why>". */
+/* Whether the writes queued so far fit the freeze (its pool and its pages). */
+static const char* LiveWritesFit(LivePlan* plan, char* why, size_t size)
+{
+    (void)plan;
+    if (!g_lcWriteFailed && LivePagesPlan()) return NULL;
+    snprintf(why, size, "capacity\tthe change's writes do not fit");
+    return why;
+}
+
+/* Every kind prepared: rows built, writes queued, the registry hooked, the loadout checked. NULL, or "<reason>\t<why>".
+ * The difficulty last, the other kinds' writes checked before it: its install changes loader state, so after it only
+ * its own writes not fitting can refuse the change. */
 static const char* LivePrepare(LivePlan* plan, char* why, size_t size)
 {
     static const char* (*const kinds[])(LivePlan*, char*, size_t) = {LiveDamage, LiveProjectiles, LiveStratagems, LiveBehaviours, LiveAbilities,
-        LiveRegistryPrepare, LiveScrubCheck, LiveDifficulty}; /* the difficulty last: its install changes loader state */
+        LiveRegistryPrepare, LiveScrubCheck, LiveWritesFit, LiveDifficulty, LiveWritesFit};
     for (size_t k = 0; k < sizeof kinds / sizeof kinds[0]; k++)
     {
         const char* refused = kinds[k](plan, why, size);
         if (refused != NULL) return refused;
     }
-    if (g_lcWriteFailed || !LivePagesPlan()) { snprintf(why, size, "capacity\tthe change's writes do not fit"); return why; }
     return NULL;
 }
 
@@ -846,13 +856,12 @@ static int LiveSteps(LivePlan* plan)
 }
 
 /* The change's content, once every check passed: prepared, one freeze, the stubs, one game-thread step. NULL, or
- * "<reason>\t<why>" when it could not be prepared (nothing changed); *failed when something went wrong after the game
- * changed. */
+ * "<reason>\t<why>" when it could not be prepared (nothing changed: the set-ups' content stays staged, and the refusal
+ * takes it out again, LiveContentUnstage); *failed when something went wrong after the game changed. */
 static const char* LiveContentMake(char* why, size_t size, int* failed)
 {
     *failed = 0;
-    g_lcOpen = 0;
-    if (!LiveContentAny()) return NULL;
+    if (!LiveContentAny()) { g_lcOpen = 0; return NULL; }
     static LivePlan plan;
     memset(&plan, 0, sizeof plan);
     size_t image = g_lcFixtureGameSize;
@@ -864,6 +873,7 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     g_lcPoolUsed = 0;
     const char* refused = LivePrepare(&plan, why, size);
     if (refused != NULL) return refused;
+    g_lcOpen = 0; /* made from here on: the set-ups' content stays */
     if (plan.items.count > 0 && !OwnProve()) Note("items: the game's catalogue functions are not the reviewed ones; new items are not owned until the next session");
     LiveRegistryCarry(&plan);
     LiveRetire(&plan);
