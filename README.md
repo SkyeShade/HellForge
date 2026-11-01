@@ -54,8 +54,8 @@ galactic war can follow the live war read-only from the community mirror
 - Steam running and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing.
 - The Microsoft Visual C++ 2012 and 2015-2022 Redistributables (x64), which the game needs. Setup checks for both and
   links Microsoft's downloads when one is missing ([troubleshooting](docs/troubleshooting.md#microsoft-visual-c-runtimes)).
-- About 25 GB free on the drive you install to. Plan on about 50 GB in total if the Steam client has to download the
-  supported build through its console (the fallback below).
+- About 25 GB free on the drive you install to. Plan on about 50 GB in total if the Steam app has to download the
+  supported build through its console (one of the ways below).
 - Permission to approve one Windows administrator prompt, for the network block. Windows Firewall does not need to be on:
   the block lives in the Windows Filtering Platform and holds even when a security suite has switched the firewall off.
 
@@ -71,13 +71,12 @@ galactic war can follow the live war read-only from the community mirror
    administrator prompt) and creates shortcuts.
 
 HellForge runs one game build (Steam build 25480438). When Steam has another build, setup offers three ways to get
-that build for your account. You can scan a QR code with the Steam app. With no phone, you can sign in with your account
-name and password; Steam emails you a code if your account has Steam Guard by email. After either sign-in, setup
-downloads the build from Steam's own servers, copying whatever your Steam install already has. Or you can let the
-Steam client download it through its console, with no sign-in in HellForge, and setup copies it from there. Your
-password goes only to Steam, and nothing of the sign-in is kept ([how it works](docs/steam-download.md)). If Steam
-does not allow the download after a sign-in, for a game borrowed through Steam Family Sharing for example, the wizard
-shows the Steam console commands. HellForge hosts no game files.
+that build for your account. You can scan a QR code with the Steam app on your phone: setup then downloads the build
+from Steam's own servers, copying whatever your Steam install already has. With no phone, Valve's own SteamCMD can
+download it: you type your password into SteamCMD's window, never into HellForge. Or the Steam app on your PC can
+download it through its console, with no sign-in in HellForge, and setup copies it from there. Nothing of a sign-in
+is kept ([how it works](docs/steam-download.md)). If Steam does not allow the download, for a game borrowed through
+Steam Family Sharing for example, the wizard shows the Steam console commands. HellForge hosts no game files.
 
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).

@@ -259,9 +259,9 @@ Linux support shipped in 0.2.0 as experimental ([linux.md](linux.md)). Testers i
 Proton, but co-op on Linux, the Steam ownership check under Proton, and Steam as a Flatpak or on the Steam Deck are
 still untested.
 
-Setup downloads the supported build from Steam's servers for the player's account (a QR code or password sign-in that
-keeps nothing), copying what Steam's install shares with it. Steam's console download is the third choice, with no
-sign-in in HellForge, and the fallback. A new
+Setup downloads the supported build from Steam's servers for the player's account (a QR code sign-in that keeps
+nothing), copying what Steam's install shares with it. With no phone, Valve's SteamCMD downloads it, the password typed
+into SteamCMD's window. Steam's console download is the third way, with no sign-in in HellForge, and the fallback. A new
 Steam build of HD2 needs nothing published. It replaced the build patches, which carried game data from
 files.hf-mod.com; it still needs a full run with a real account.
 

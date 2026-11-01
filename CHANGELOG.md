@@ -17,15 +17,15 @@ On `dev`, since 0.3.0-beta.
 ### Changed
 
 - **Setup gets the supported game build from Steam itself.** When Steam has another HELLDIVERS 2 build, setup offers
-  three equal ways to get the build HellForge runs for your own account: scan a QR code with the Steam app (the
-  default); with no phone, sign in with your account name and password (Steam emails you a code if your account has
-  Steam Guard by email); or let the Steam client download it through its console, with no sign-in in HellForge. After
-  a sign-in, setup downloads it from Steam's servers and copies whatever your Steam install already has instead of
-  downloading it. Either way every file is checked against Steam's hashes. Your password goes only to Steam, and
-  nothing of the sign-in is kept. Setup also finds the Steam client's download in the Linux client's `steamrt64`
-  folder. HellForge no longer downloads build patches from files.hf-mod.com, so it hosts no game files. When Steam
-  won't allow the download after a sign-in (a game borrowed through Family Sharing) or on Linux, setup shows the Steam
-  console commands (#205).
+  three ways to get the build HellForge runs for your own account. Scan a QR code with the Steam app on your phone
+  (the default): setup downloads the build from Steam's servers and copies whatever your Steam install already has.
+  With no phone, sign in with SteamCMD: setup gets Valve's own SteamCMD and opens it with everything filled in, and you
+  type your password into SteamCMD's window, never into HellForge. Or use the Steam app on your PC, which downloads
+  it through its console. Every file is checked against Steam's hashes, and nothing of a sign-in is kept: SteamCMD's
+  remembered sign-in is removed after it runs, and SteamCMD itself once the build is in place. Setup also finds the
+  Steam app's download in the Linux client's `steamrt64` folder. HellForge no longer downloads build patches from
+  files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
+  Sharing), when SteamCMD can't be set up, or on Linux, setup shows the Steam console commands (#205).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
@@ -91,8 +91,9 @@ On `dev`, since 0.3.0-beta.
 ### For launcher developers
 
 - `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
-  that signs in (a QR code on standard error, or `--sign-in password`), as setup does; `--file` fetches one file of the
-  build and `--dry-run yes` prints the plan only (#205).
+  that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
+  `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
+  `--steamcmd`, default `<out>-steamcmd`), which asks for the password itself (#205).
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
