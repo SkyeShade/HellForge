@@ -6,8 +6,10 @@ namespace HellForge.Core.AssetMigration;
 
 public enum PartKind : byte { Main, Gpu, Stream }
 
-// Where a piece of the game's content is: a build (an index into SourceIndex.Builds), a resource and one of its parts.
-public readonly record struct Place(int Build, ResourceKey Key, PartKind Part);
+// Where a piece of the game's content is: a build (an index into SourceIndex.Builds), a resource, one of its parts, and
+// the archive that holds it (an index into SourceIndex.Archives: the 16-hex-digit archive name), so a player's launcher
+// knows which of an old build's files it needs.
+public readonly record struct Place(int Build, ResourceKey Key, PartKind Part, int Archive);
 
 // One distinct resource part of the game, by its SHA-256: the same bytes in two builds (or two resources) are one content
 // with several places.
@@ -23,7 +25,7 @@ public sealed class Content(byte[] sha256, int size)
 public interface IGameResources
 {
     string Build { get; }
-    IEnumerable<(ResourceKey Key, ResourceParts Parts)> All();
+    IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All();
     byte[]? Read(ResourceKey key, PartKind part);
 }
 
@@ -50,7 +52,7 @@ public sealed class GameResources(string folder, string build) : IGameResources,
     // Parts the reader cannot read whole (over its 256 MB limit) are left out and counted.
     public int Skipped { get; private set; }
 
-    public IEnumerable<(ResourceKey Key, ResourceParts Parts)> All()
+    public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All()
     {
         foreach (var (key, at) in reader.Resources())
         {
@@ -62,7 +64,7 @@ public sealed class GameResources(string folder, string build) : IGameResources,
             yield return (key, new ResourceParts(
                 Part(at with { GpuSize = 0, StreamSize = 0 }, PartKind.Main),
                 Part(at with { MainSize = 0, StreamSize = 0 }, PartKind.Gpu),
-                Part(at with { MainSize = 0, GpuSize = 0 }, PartKind.Stream)));
+                Part(at with { MainSize = 0, GpuSize = 0 }, PartKind.Stream)), at.Archive);
         }
     }
 
@@ -89,11 +91,13 @@ public sealed class GameResources(string folder, string build) : IGameResources,
 public sealed class SourceIndex
 {
     const string Magic = "HFSI";
-    const int Version = 2;
+    const int Version = 3;
     // An anchor found in more contents than this (shared headers, common tables) is kept only for the first ones.
     const int MaxPerChunk = 16;
 
     public List<string> Builds { get; } = [];
+    public List<string> Archives { get; } = [];
+    readonly Dictionary<string, int> archiveIds = new(StringComparer.Ordinal);
     public List<Content> Contents { get; } = [];
     public long IndexedBytes { get; private set; }
     readonly Dictionary<string, int> bySha = new(StringComparer.Ordinal);
@@ -107,13 +111,20 @@ public sealed class SourceIndex
 
     public void Add(IGameResources game, Action<long, long>? progress = null)
     {
-        if (pending is null) throw new InvalidOperationException("The index is sealed.");
+        if (Builds.Contains(game.Build)) throw new InvalidOperationException($"Build {game.Build} is already in the index.");
+        Unseal();
         var build = Builds.Count;
         Builds.Add(game.Build);
         long resources = 0, bytes = 0;
-        foreach (var (key, parts) in game.All())
+        foreach (var (key, parts, archiveName) in game.All())
         {
             resources++;
+            if (!archiveIds.TryGetValue(archiveName, out var archive))
+            {
+                archive = Archives.Count;
+                Archives.Add(archiveName);
+                archiveIds[archiveName] = archive;
+            }
             foreach (var kind in Parts.Kinds)
             {
                 var data = Parts.Of(parts, kind);
@@ -127,14 +138,25 @@ public sealed class SourceIndex
                     Contents.Add(new Content(sha, data.Length));
                     bySha[hex] = id;
                     IndexedBytes += data.Length;
-                    foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending.Add((hash, id, offset));
+                    foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
                 }
-                Contents[id].Places.Add(new Place(build, key, kind));
+                Contents[id].Places.Add(new Place(build, key, kind, archive));
             }
             if (resources % 20000 == 0) progress?.Invoke(resources, bytes);
         }
         progress?.Invoke(resources, bytes);
         byKey = null;
+    }
+
+    // A loaded (sealed) index takes more builds: its anchors go back to the unsorted list.
+    void Unseal()
+    {
+        if (pending is not null) return;
+        pending = new List<(ulong, int, int)>(hashes.Length);
+        for (var i = 0; i < hashes.Length; i++) pending.Add((hashes[i], owners[i], offsets[i]));
+        hashes = [];
+        owners = [];
+        offsets = [];
     }
 
     public void Seal()
@@ -192,6 +214,8 @@ public sealed class SourceIndex
         w.Write(Version);
         w.Write(Builds.Count);
         foreach (var build in Builds) w.Write(build);
+        w.Write(Archives.Count);
+        foreach (var archive in Archives) w.Write(archive);
         w.Write(Contents.Count);
         foreach (var c in Contents)
         {
@@ -204,6 +228,7 @@ public sealed class SourceIndex
                 w.Write(p.Key.Type);
                 w.Write(p.Key.Name);
                 w.Write((byte)p.Part);
+                w.Write(p.Archive);
             }
         }
         w.Write(hashes.Length);
@@ -221,13 +246,19 @@ public sealed class SourceIndex
         var index = new SourceIndex { pending = null };
         var builds = r.ReadInt32();
         for (var i = 0; i < builds; i++) index.Builds.Add(r.ReadString());
+        var archives = r.ReadInt32();
+        for (var i = 0; i < archives; i++)
+        {
+            index.archiveIds[r.ReadString()] = i;
+        }
+        index.Archives.AddRange(index.archiveIds.OrderBy(a => a.Value).Select(a => a.Key));
         var contents = r.ReadInt32();
         for (var i = 0; i < contents; i++)
         {
             var c = new Content(r.ReadBytes(32), r.ReadInt32());
             var places = r.ReadInt32();
             for (var p = 0; p < places; p++)
-                c.Places.Add(new Place(r.ReadByte(), new ResourceKey(r.ReadUInt64(), r.ReadUInt64()), (PartKind)r.ReadByte()));
+                c.Places.Add(new Place(r.ReadByte(), new ResourceKey(r.ReadUInt64(), r.ReadUInt64()), (PartKind)r.ReadByte(), r.ReadInt32()));
             index.bySha[Convert.ToHexString(c.Sha256)] = i;
             index.Contents.Add(c);
             index.IndexedBytes += c.Size;
@@ -294,9 +325,10 @@ public sealed class LooseGameResources(string folder, string build) : IGameResou
     byte[] Part((string Archive, long[] Offsets, int[] Sizes) e, PartKind kind) =>
         Slice(e.Archive + Suffix[(int)kind], e.Offsets[(int)kind], e.Sizes[(int)kind]);
 
-    public IEnumerable<(ResourceKey Key, ResourceParts Parts)> All()
+    public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All()
     {
-        foreach (var (key, e) in Entries()) yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)));
+        foreach (var (key, e) in Entries())
+            yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)), Path.GetFileName(e.Archive));
     }
 
     public byte[]? Read(ResourceKey key, PartKind part) => Entries().TryGetValue(key, out var e) ? Part(e, part) : null;

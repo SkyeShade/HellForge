@@ -9,7 +9,8 @@ namespace HellForge.Core.AssetMigration;
 public sealed class MigrationReport
 {
     public sealed record FileLine(string Path, long Size, long FromGame, long Literal, long Fill, bool InRecipe);
-    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Start, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources);
+    // InIndex: some indexed build has a resource with this key and part (with these bytes or others).
+    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Start, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources, bool InIndex);
 
     public List<FileLine> Files { get; } = [];
     public List<ResourceLine> Resources { get; } = [];
@@ -107,6 +108,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 Type = p.Key.Type.ToString("x16"),
                 Name = p.Key.Name.ToString("x16"),
                 Part = p.Part.ToString().ToLowerInvariant(),
+                Archive = p.Archive >= 0 && p.Archive < index.Archives.Count ? index.Archives[p.Archive] : null,
             }).ToList(),
         };
     }
@@ -284,7 +286,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         return ranges;
     }
 
-    static void Attribute(MigrationReport report, IEnumerable<Range> ranges, List<Op> ops)
+    void Attribute(MigrationReport report, IEnumerable<Range> ranges, List<Op> ops)
     {
         foreach (var r in ranges)
         {
@@ -302,7 +304,8 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                     default: fill += overlap; break;
                 }
             }
-            report.Resources.Add(new(r.File, r.Key, r.Part, r.Start, r.Length, fromGame, literal, fill, sources));
+            var inIndex = index.WithKey(r.Key).Any(c => index.Contents[c].Places.Any(p => p.Key == r.Key && p.Part == r.Part));
+            report.Resources.Add(new(r.File, r.Key, r.Part, r.Start, r.Length, fromGame, literal, fill, sources, inIndex));
         }
     }
 }

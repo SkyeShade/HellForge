@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "appId": "553850",
+  "historyComplete": false,
+  "builds": [
+    {
+      "buildId": "25480438",
+      "layout": "nxa",
+      "depots": [
+        { "id": 553851, "manifestId": "1883032874832282552" },
+        { "id": 553853, "manifestId": "2566883558412717494" },
+        { "id": 553854, "manifestId": "9065746766815828060" }
+      ],
+      "note": "HellForge's supported build (src/HellForge.Core/supported-build.json)."
+    },
+    {
+      "buildId": "26251122",
+      "layout": "nxa",
+      "depots": [
+        { "id": 553851, "manifestId": "7905209952798545820" },
+        { "id": 553853, "manifestId": "87932884035420122" },
+        { "id": 553854, "manifestId": "70283813008461964" }
+      ],
+      "note": "Steam's build on 2026-10-31."
+    }
+  ]
+}

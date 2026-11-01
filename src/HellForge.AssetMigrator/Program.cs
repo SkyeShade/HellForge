@@ -7,9 +7,10 @@ using HellForge.Core.GameData;
 // Proof of concept of the asset migrator: a mod that ships the game's own resources becomes a mod that ships only what
 // its author made, plus a recipe that rebuilds the original files from the player's own game files.
 //
-//   index   --game <build>=<data folder> [--game ...] --out <index file>
-//   migrate --index <index file> --game <build>=<data folder> [...] --mod <mod folder> --out <folder>
-//   rebuild --mod <migrated mod folder> --game <build>=<data folder> [...] --out <folder>
+//   index   --game <build>=<data folder> [--game ...] [--add-to <index file>] --out <index file>
+//   migrate --index <index file> --catalog <game-builds.json> --game <build>=<data folder> [...] --mod <mod folder> --out <folder>
+//   rebuild --mod <migrated mod folder> [--catalog <game-builds.json>] --game <build>=<data folder> [...] --out <folder>
+// A --game folder without bundles.nxa is read as an older build's loose archives.
 //   compare <folder> <folder>
 //   kitbash-fixture --game <build>=<data folder> --out <mod folder>   (a test kitbash made from real game resources)
 var args_ = args.ToList();
@@ -95,7 +96,8 @@ List<IGameResources> Games() => All("--game").Select(g =>
 
 int Index()
 {
-    var index = new SourceIndex();
+    // --add-to: add builds to an existing index (each build once) instead of starting a new one.
+    var index = All("--add-to").Count > 0 ? SourceIndex.Load(One("--add-to")) : new SourceIndex();
     foreach (var game in Games())
     {
         var clock = Stopwatch.StartNew();
@@ -130,35 +132,18 @@ int Migrate()
 
     // The gate: the game content is only taken out of the mod once the recipe has rebuilt every file, from the game
     // folders alone, byte for byte (SHA-256). If anything fails, the mod is kept exactly as it was.
-    string verdict;
+    string? rebuildError = null;
     try
     {
         var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games);
         foreach (var (path, bytes) in files.Where(f => rebuilt.ContainsKey(f.Item1)))
             if (!rebuilt[path].AsSpan().SequenceEqual(bytes)) throw new InvalidDataException($"{path} rebuilt differently.");
-        verdict = report.Unreadable.Count > 0
-            ? $"NEEDS REVIEW: the mod shares content with {report.Unreadable.Count} game resource parts from builds not given here ({string.Join(", ", report.Unreadable.SelectMany(c => index.Contents[c].Places).Select(p => index.Builds[p.Build]).Distinct())}); it is kept as it was."
-            : rebuilt.Count == 0
-                ? "NO GAME CONTENT FOUND: the mod ships as it is."
-                : Unaccounted() is var (parts, kept) && kept >= 256 * 1024 // less (headers, small new resources) needs no review on its own
-                    ? $"PARTLY MIGRATED, NEEDS REVIEW: the recipe rebuilds all {rebuilt.Count} files byte for byte (SHA-256) and the content of the indexed builds is purged, " +
-                      $"but {parts} resource parts ({Size(kept)}) are resources that no indexed build has, and they stay in the mod. They may be cut content from an older build: index it, or review them."
-                    : $"VERIFIED: all {rebuilt.Count} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.";
-        if (report.Unreadable.Count > 0) recipe = new Recipe();
     }
-    catch (InvalidDataException e)
-    {
-        verdict = $"NOT MIGRATED: {e.Message} The mod is kept as it was, for review.";
-        recipe = new Recipe();
-    }
+    catch (InvalidDataException e) { rebuildError = e.Message; }
+    var decided = MigrationVerdict.Decide(report, index, BuildCatalog.Load(One("--catalog")), recipe.Files.Count, rebuildError);
+    if (decided.Kind is VerdictKind.NotMigrated or VerdictKind.NeedsReview) recipe = new Recipe();
+    var verdict = decided.Text;
     Console.WriteLine(verdict);
-
-    // Resource parts of the mod's archives whose resource no indexed build has, and how many of their bytes still ship.
-    (int Parts, long Bytes) Unaccounted()
-    {
-        var lines = report.Resources.Where(r => !index.WithKey(r.Key).Any(c => index.Contents[c].Places.Any(p => p.Key == r.Key && p.Part == r.Part))).ToList();
-        return (lines.Count(r => r.Literal > 0), lines.Sum(r => r.Literal));
-    }
     File.WriteAllText(Path.Combine(outFolder, "verdict.txt"), verdict + Environment.NewLine);
 
     foreach (var (path, bytes) in files)
@@ -199,6 +184,17 @@ int Rebuild()
     var (recipe, literals) = Recipe.Load(mod);
     var clock = Stopwatch.StartNew();
     var games = Games();
+    var plan = RecipeRebuilder.FetchPlan(recipe, games.Select(g => g.Build).ToList(), All("--catalog").Count > 0 ? BuildCatalog.Load(One("--catalog")) : new BuildCatalog());
+    if (plan.Count > 0)
+    {
+        Console.WriteLine("The recipe needs game files these game folders do not have:");
+        foreach (var (build, needed, commands) in plan)
+        {
+            Console.WriteLine($"  build {build}: {string.Join(", ", needed)}");
+            foreach (var command in commands) Console.WriteLine($"    Steam console: {command}");
+        }
+        return 1;
+    }
     var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games, Console.WriteLine);
     foreach (var (path, bytes) in rebuilt)
     {

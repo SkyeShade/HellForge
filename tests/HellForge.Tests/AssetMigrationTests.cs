@@ -8,7 +8,7 @@ static class AssetMigrationTests
     sealed class FakeGame(string build, Dictionary<ResourceKey, ResourceParts> resources) : IGameResources
     {
         public string Build => build;
-        public IEnumerable<(ResourceKey Key, ResourceParts Parts)> All() => resources.Select(r => (r.Key, r.Value));
+        public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All() => resources.Select(r => (r.Key, r.Value, "00000000000000ff"));
         public byte[]? Read(ResourceKey key, PartKind part) => resources.TryGetValue(key, out var p) ? Parts.Of(p, part) : null;
     }
 
@@ -131,6 +131,75 @@ static class AssetMigrationTests
             var (recipe, literals, report) = new Migrator(index, [old, newBuild]).Migrate([("data/apc.bin", cut)]);
             check(report.Files[0].FromGame == apcParts.Gpu.Length, $"from game {report.Files[0].FromGame}");
             check(RecipeRebuilder.Rebuild(recipe, literals, [old, newBuild])["data/apc.bin"].AsSpan().SequenceEqual(cut), "the cut content does not rebuild");
+        });
+
+        // A mod archive with one resource the newer build has and one no build has (cut content, or the author's own).
+        var unknownKey = new ResourceKey(ResourceTypes.Texture, 0x5555);
+        var unknownParts = new ResourceParts(Noise(15, 400), Noise(16, 60_000), []);
+        var (modArchive, modGpu, modStream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts>
+        {
+            [scope] = new(Noise(6, 3000), scopeGpu, []),
+            [unknownKey] = unknownParts,
+        });
+        IReadOnlyList<(string, byte[])> archiveMod = [("data/abcd.patch_0", modArchive), ("data/abcd.patch_0.gpu_resources", modGpu), ("data/abcd.patch_0.stream", modStream)];
+        string Catalog(bool complete, params string[] builds) =>
+            $$"""{"schemaVersion": 1, "appId": "553850", "historyComplete": {{(complete ? "true" : "false")}}, "builds": [{{string.Join(",", builds.Select(b => $$"""{"buildId": "{{b}}", "layout": "{{(b == "50" ? "loose" : "nxa")}}", "depots": [{"id": 553851, "manifestId": "{{b}}0001"}]}"""))}}]}""";
+        MigrationVerdict Verdict(SourceIndex index, IReadOnlyList<IGameResources> games, string catalog)
+        {
+            var (recipe, literals, report) = new Migrator(index, games).Migrate(archiveMod);
+            RecipeRebuilder.Rebuild(recipe, literals, games);
+            return MigrationVerdict.Decide(report, index, BuildCatalog.Parse(catalog), recipe.Files.Count, null);
+        }
+
+        test("Content no indexed build has needs a review until every build since release is indexed", () =>
+        {
+            var index = Index();
+            var partly = Verdict(index, [oldBuild, newBuild], Catalog(false, "100", "200"));
+            check(partly.Kind == VerdictKind.PartlyMigrated && !partly.Publishable, partly.Text);
+            var missing = Verdict(index, [oldBuild, newBuild], Catalog(true, "50", "100", "200"));
+            check(missing.Kind == VerdictKind.PartlyMigrated && missing.Text.Contains("(50)"), missing.Text);
+            var covered = Verdict(index, [oldBuild, newBuild], Catalog(true, "100", "200"));
+            check(covered.Kind == VerdictKind.Verified && covered.Publishable && covered.Text.Contains("author's own"), covered.Text);
+        });
+
+        test("A player without an old build is told which of its archive files the recipe needs, and how to fetch them", () =>
+        {
+            var folder = Path.Combine(root, "loose-plan");
+            Directory.CreateDirectory(folder);
+            var (archive, gpu, stream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [unknownKey] = unknownParts });
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000bb"), archive);
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000bb.gpu_resources"), gpu);
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000bb.stream"), stream);
+            var old = new LooseGameResources(folder, "50");
+            var index = new SourceIndex();
+            index.Add(old);
+            index.Add(oldBuild);
+            index.Add(newBuild);
+            index.Seal();
+            var (recipe, literals, report) = new Migrator(index, [old, oldBuild, newBuild]).Migrate(archiveMod);
+            var catalog = BuildCatalog.Parse(Catalog(true, "50", "100", "200"));
+            check(MigrationVerdict.Decide(report, index, catalog, recipe.Files.Count, null).Kind == VerdictKind.Verified, "the cut content was not found in the old build");
+            var plan = RecipeRebuilder.FetchPlan(recipe, ["100", "200"], catalog);
+            check(plan.Count == 1 && plan[0].Build == "50", $"plan: {string.Join("; ", plan.Select(p => p.Build))}");
+            check(plan[0].Files.SetEquals(["data/00000000000000bb", "data/00000000000000bb.gpu_resources"]), string.Join(", ", plan[0].Files));
+            check(plan[0].Commands.SequenceEqual(["download_depot 553850 553851 500001"]), string.Join(", ", plan[0].Commands));
+            check(RecipeRebuilder.FetchPlan(recipe, ["50", "100", "200"], catalog).Count == 0, "a player with every build needs nothing");
+        });
+
+        test("A saved index takes another build and finds its content", () =>
+        {
+            var first = new SourceIndex();
+            first.Add(oldBuild);
+            var file = Path.Combine(root, "add-to.hfsi");
+            first.Save(file);
+            var index = SourceIndex.Load(file);
+            var before = index.AnchorCount;
+            index.Add(newBuild);
+            index.Save(file);
+            index = SourceIndex.Load(file);
+            check(index.Builds.SequenceEqual(["100", "200"]) && index.AnchorCount > before, $"builds {string.Join(",", index.Builds)}, anchors {index.AnchorCount}");
+            var (_, _, report) = new Migrator(index, [oldBuild, newBuild]).Migrate([("x", scopeGpu)]);
+            check(report.Files[0].FromGame == scopeGpu.Length, "the added build's content is not found");
         });
 
         test("The same piece at any byte offset is found", () =>

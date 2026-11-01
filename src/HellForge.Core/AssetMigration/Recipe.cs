@@ -58,6 +58,8 @@ public sealed class RecipePlace
     public string Type { get; set; } = "";
     public string Name { get; set; } = "";
     public string Part { get; set; } = "";
+    // The archive that holds it in that build (its 16-hex-digit name), for fetching an old build's files.
+    public string? Archive { get; set; }
 
     [JsonIgnore] public ResourceKey Key => new(Convert.ToUInt64(Type, 16), Convert.ToUInt64(Name, 16));
     [JsonIgnore] public PartKind Kind => Enum.Parse<PartKind>(Part, ignoreCase: true);
@@ -120,6 +122,26 @@ public static class RecipeRebuilder
                     return bytes;
             }
         return null;
+    }
+
+    // What a player who has only the given builds still needs, per build: each build the recipe can use for the parts
+    // the player lacks (the first place's build of each such part), with the archive files that hold them and the
+    // download_depot commands that fetch that build. A loose build's archives are files of their own; a packed build's
+    // are inside bundles.*.nxa, so the whole build's data is needed.
+    public static List<(string Build, SortedSet<string> Files, List<string> Commands)> FetchPlan(Recipe recipe, IReadOnlyCollection<string> have, BuildCatalog catalog)
+    {
+        var plan = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        foreach (var source in recipe.Sources)
+        {
+            if (source.Places.Any(p => have.Contains(p.Build))) continue;
+            var place = source.Places[0];
+            var layout = catalog.Find(place.Build)?.Layout ?? "loose";
+            if (!plan.TryGetValue(place.Build, out var files)) plan[place.Build] = files = new(StringComparer.Ordinal);
+            if (layout == "nxa") files.Add("data/bundles.*.nxa");
+            else if (place.Archive is not null)
+                files.Add("data/" + place.Archive + place.Kind switch { PartKind.Gpu => ".gpu_resources", PartKind.Stream => ".stream", _ => "" });
+        }
+        return plan.Select(p => (p.Key, p.Value, catalog.Find(p.Key) is { } b ? catalog.Commands(b).ToList() : [])).ToList();
     }
 
     public static string Describe(RecipePlace place) =>
