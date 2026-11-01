@@ -45,7 +45,7 @@ try
 }
 catch (Exception e) when (e is InvalidDataException or IOException or ArgumentException or InvalidOperationException or TimeoutException)
 {
-    Console.Error.WriteLine($"error: {e.Message}");
+    Console.Error.WriteLine(Environment.GetEnvironmentVariable("HF_MIGRATOR_DEBUG") is { Length: > 0 } ? $"error: {e}" : $"error: {e.Message}");
     return 1;
 }
 finally
@@ -187,9 +187,10 @@ int Login()
 {
     var method = args_.Contains("--qr") ? SteamDepots.LoginMethod.Qr
         : args_.Contains("--password") ? SteamDepots.LoginMethod.Password
-        : throw new ArgumentException("login takes --qr (scan a code in the Steam mobile app) or --password (account name, password and Steam Guard code).");
+        : args_.Contains("--check") ? SteamDepots.LoginMethod.Saved
+        : throw new ArgumentException("login takes --qr (scan a code in the Steam mobile app), --password (account name, password and Steam Guard code) or --check (the saved login).");
     using var s = SteamDepots.Connect(method).GetAwaiter().GetResult();
-    Console.WriteLine("Logged in to Steam; the login is saved for the migrator's other commands.");
+    Console.WriteLine(method == SteamDepots.LoginMethod.Saved ? "The saved Steam login works." : "Logged in to Steam; the login is saved for the migrator's other commands.");
     return 0;
 }
 

@@ -286,7 +286,10 @@ sealed class SteamDepots : IDisposable
     public void Dispose()
     {
         running = false;
-        client.Disconnect();
+        // SteamKit2 3.5.0's WebSocket disconnect calls RunSynchronously on an async task and throws; the connection is
+        // being dropped either way.
+        try { client.Disconnect(); }
+        catch (InvalidOperationException) { }
     }
 }
 
