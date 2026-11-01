@@ -721,14 +721,8 @@ the list of added content. The game's host can change mid-mission, while HellFor
 
 ### GameGuard
 
-GameGuard, the anti-cheat the supported build shipped with, does not run in a session, because the session turns it
-off. While the copied game starts, the session runner pauses it at an early point and changes its exe in memory (never
-on disk) so that it skips the static constructor that starts GameGuard and the three checks of GameGuard's status that
-would otherwise end the game: one at start-up and two later (`src/HellForge.Session/EarlyConstructor.cs`, applied as
-`SkipConstructorAndMainCheck` in `PlaySession.cs`). Each place is checked byte for byte before it is changed and read
-back after. On a mismatch the change is undone, or the game is ended, and the session stops. HellForge no longer copies
-GameGuard's files into an installation. The copy is also blocked from the internet, and HELLDIVERS 2 builds after the
-one HellForge runs (25480438) use Easy Anti-Cheat instead.
+GameGuard, the anti-cheat the supported build shipped with, does not run in a HellForge session, which is offline and
+blocked from the internet, and HellForge does not copy GameGuard's files into an installation.
 
 ### Tests
 
