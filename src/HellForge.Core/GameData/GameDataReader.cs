@@ -154,6 +154,19 @@ public sealed class GameDataReader : IDisposable
         return found;
     }
 
+    // Every resource of every type, each key once (the first archive in name order that has it, as Find).
+    public IEnumerable<(ResourceKey Key, Location At)> Resources()
+    {
+        var seen = new HashSet<ResourceKey>();
+        foreach (var (archive, table, at) in TableEntries())
+        {
+            var key = new ResourceKey(BinaryPrimitives.ReadUInt64LittleEndian(table.AsSpan(at + 8)), BinaryPrimitives.ReadUInt64LittleEndian(table.AsSpan(at)));
+            if (!seen.Add(key)) continue;
+            var location = LocationOf(archive, table.AsSpan(at, 80));
+            yield return (key, location);
+        }
+    }
+
     // The resource table entries of the archives, in archive name order: each archive's table (read as its entries are
     // asked for) and where an 80-byte entry starts in it.
     IEnumerable<(string Archive, byte[] Table, int Entry)> TableEntries()
