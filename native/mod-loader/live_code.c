@@ -94,16 +94,18 @@ static void JournalNote(HfMod* mod, uintptr_t address, const uint8_t* before, co
     if (bytes == NULL) WritesLose(mod, "the journal of writes is full");
 }
 
-/* HfApi.write: the caller is the mod whose DLL the call returns into. */
+/* HfApi.write: the caller is the mod whose DLL the call returns into. Only a live mod's writes are kept: no other mod
+ * is ever taken out while the game runs (CodeRemovable), so theirs are written as before SDK 16. */
 __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* data, size_t size)
 {
     HfMod* mod = ModAt((uintptr_t)__builtin_return_address(0));
+    if (mod == NULL || !mod->live) return ApiWrite(address, data, size);
     if (ModGone(mod)) { ApiLog(mod, "write refused: the mod is being taken out"); return 1; }
     uint8_t small[256];
-    uint8_t* before = mod == NULL || size <= sizeof small ? small : (uint8_t*)malloc(size);
-    int known = mod != NULL && before != NULL && size > 0 && !SafeRead(address, before, size);
+    uint8_t* before = size <= sizeof small ? small : (uint8_t*)malloc(size);
+    int known = before != NULL && size > 0 && !SafeRead(address, before, size);
     int result = ApiWrite(address, data, size);
-    if (!result && mod != NULL)
+    if (!result)
     {
         if (known) JournalNote(mod, address, before, data, size);
         else WritesLose(mod, "a write whose bytes could not be read first is not kept");
@@ -112,14 +114,15 @@ __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* 
     return result;
 }
 
-/* HfApi.write_u32_if. */
+/* HfApi.write_u32_if; kept, as write's, for a live mod only. */
 static int ApiModWriteU32If(HfMod* mod, uintptr_t address, uint32_t expect, uint32_t value)
 {
+    if (mod == NULL || !mod->live) return ApiWriteU32If(mod, address, expect, value);
     if (ModGone(mod)) { ApiLog(mod, "write_u32_if refused: the mod is being taken out"); return 1; }
     uint32_t before = 0;
     int known = address != 0 && !SafeRead(address, &before, 4);
     int result = ApiWriteU32If(mod, address, expect, value);
-    if (!result && known && before != value && mod != NULL) JournalNote(mod, address, (const uint8_t*)&before, &value, 4);
+    if (!result && known && before != value) JournalNote(mod, address, (const uint8_t*)&before, &value, 4);
     return result;
 }
 
