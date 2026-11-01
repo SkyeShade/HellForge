@@ -14,8 +14,16 @@ public static class DownloadChoices
     public static IReadOnlyList<DownloadChoice> All { get; } = [DownloadChoice.QrCode, DownloadChoice.SteamCmd, DownloadChoice.SteamClient];
 
     // The ways setup can offer. reachesSteam: setup can reach Steam's servers itself (not under Wine, inside HellForge's
-    // network namespace, which has no route out); else only the Steam app on this PC can download.
-    public static IReadOnlyList<DownloadChoice> Offered(bool reachesSteam) => reachesSteam ? All : [DownloadChoice.SteamClient];
+    // network namespace, which has no route out); else only the Steam app on this PC can download. steamCmdWindow:
+    // SteamCMD can get a window to ask for the password in (the native Linux launcher needs a terminal program to open
+    // one, SteamCmdTerminal); else SteamCMD is not offered, and the card says why (NoTerminal).
+    public static IReadOnlyList<DownloadChoice> Offered(bool reachesSteam, bool steamCmdWindow = true) =>
+        !reachesSteam ? [DownloadChoice.SteamClient] : steamCmdWindow ? All : [DownloadChoice.QrCode, DownloadChoice.SteamClient];
+
+    // Under SteamCMD's button when the PC has no terminal program to open its window (Linux).
+    public const string NoTerminal = "Not on this PC: SteamCMD asks for your password in a terminal window, and HellForge found no " +
+        "terminal program to open one (such as Konsole, GNOME Terminal or xterm). Install one and start setup again, or use the QR code " +
+        "or the Steam app.";
 
     // Whether HellForge signs in to Steam itself (only with the QR code; SteamCMD and the Steam app sign in on their own).
     public static bool SignsIn(DownloadChoice choice) => choice == DownloadChoice.QrCode;
@@ -42,7 +50,7 @@ public static class DownloadChoices
         DownloadChoice.QrCode => "Open the Steam app on your phone, tap the Steam Guard shield, then the QR code scanner, and scan this " +
             "code. Then approve the sign-in in the app. HellForge never sees your password, and nothing of the sign-in is kept.",
         DownloadChoice.SteamCmd => "No phone needed. HellForge gets SteamCMD, Valve's own command-line Steam tool, from Valve and starts " +
-            "it in a window of its own, with everything filled in except your password. Type your password in the SteamCMD window; it " +
+            "it in a window of its own (a terminal window on Linux), with everything filled in except your password. Type your password in the SteamCMD window; it " +
             "goes to Valve's own tool, not HellForge. If Steam asks for a Steam Guard code (by email), type it there too. SteamCMD then " +
             $"downloads build {buildId} to your own account, and HellForge checks every file against Steam's hashes and moves it into " +
             "this folder. Afterwards HellForge removes SteamCMD and what it remembered of the sign-in.",

@@ -662,6 +662,7 @@ WinePathTests.Register(Test, Check, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 SteamDownloadTests.Register(Test, Check, Reject, root);
+SteamCmdTerminalTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 SetupSourceTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);

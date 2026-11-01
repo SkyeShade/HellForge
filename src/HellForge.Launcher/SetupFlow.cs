@@ -775,8 +775,9 @@ public partial class MainWindow
         SignInIntro.Text = OfferedChoices.Count > 1
             ? $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). Steam can send that build " +
               "to your own account, under your own licence; your normal game and Steam stay as they are."
-            : $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). On Linux, setup runs " +
-              "inside HellForge's network namespace and cannot reach Steam itself, so the Steam app downloads that build for your account.";
+            : $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). Under Wine, setup runs " +
+              "inside HellForge's network namespace and cannot reach Steam itself, so the Steam app downloads that build for your account. " +
+              "The native Linux launcher offers every way.";
         SignInCard.IsVisible = true;
         DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
             "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +

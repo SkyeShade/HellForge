@@ -325,7 +325,8 @@ static class SteamDownloadTests
             // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, the
             // session is never persistent, nothing is saved, and Steam Guard data is never read back
             string[] sources = ["HellForge.SteamDownload/SignIn.cs", "HellForge.SteamDownload/SteamDepotSession.cs", "HellForge.SteamDownload/SteamCmd.cs",
-                "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs"];
+                "HellForge.SteamDownload/SteamCmd.Linux.cs", "HellForge.SteamDownload/SteamCmdTerminal.cs", "HellForge.Cli/SteamDownloadCommand.cs",
+                "HellForge.Launcher/SteamSignInFlow.cs"];
             var sink = new Regex(@"\b(Status|WriteLine|Write|Append|Exception|Log|Trace|Debug|Print|Show\w*)\s*\(|\.Text\s*=(?!\s*""""\s*;)|\$""");
             var secret = new Regex(@"\b\w*(Password|password|RefreshToken|refreshToken|AccessToken|accessToken|NewGuardData|GuardData)\b");
             foreach (var relative in sources)
@@ -355,6 +356,11 @@ static class SteamDownloadTests
                 "The choices or the default.");
             check(DownloadChoices.Offered(reachesSteam: true).SequenceEqual(DownloadChoices.All) &&
                 DownloadChoices.Offered(reachesSteam: false).SequenceEqual([DownloadChoice.SteamClient]), "What setup offers inside the network namespace.");
+            // the native Linux launcher with no terminal program for SteamCMD's window: the QR code and the Steam app, and why
+            check(DownloadChoices.Offered(reachesSteam: true, steamCmdWindow: false).SequenceEqual([DownloadChoice.QrCode, DownloadChoice.SteamClient]) &&
+                DownloadChoices.Offered(reachesSteam: false, steamCmdWindow: false).SequenceEqual([DownloadChoice.SteamClient]) &&
+                DownloadChoices.NoTerminal.Contains("terminal window") && DownloadChoices.NoTerminal.Contains("QR code"),
+                "SteamCMD offered with no window to type the password into, or not said why: " + DownloadChoices.NoTerminal);
             check(DownloadChoices.SignsIn(DownloadChoice.QrCode) && !DownloadChoices.SignsIn(DownloadChoice.SteamCmd) && !DownloadChoices.SignsIn(DownloadChoice.SteamClient),
                 "Only the QR code signs in to HellForge.");
             check(DownloadChoices.All.Select(DownloadChoices.Title).Distinct().Count() == 3 && DownloadChoices.All.Select(DownloadChoices.Hint).Distinct().Count() == 3,

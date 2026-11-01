@@ -34,7 +34,15 @@ public partial class MainWindow
     ];
 
     // The ways this setup can offer: under Wine, inside HellForge's network namespace, only the Steam app can reach Steam.
-    static IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested);
+    // The native Linux launcher offers SteamCMD only with a terminal program to open its window in.
+    static IReadOnlyList<DownloadChoice> OfferedChoices =>
+        DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested, steamCmdWindow: SteamCmdHasWindow);
+
+    // Linux: the terminal programs that can open SteamCMD's window, in the order they are tried (SteamCmdTerminal).
+    static IReadOnlyList<Terminal> SteamCmdTerminals => OperatingSystem.IsLinux() ? SteamCmdTerminal.Available() : [];
+
+    // Windows gives SteamCMD a console window of its own; the native Linux launcher needs a terminal program for one.
+    static bool SteamCmdHasWindow => !OperatingSystem.IsLinux() || SteamCmdTerminals.Count > 0;
 
     void WireSignIn()
     {
@@ -72,7 +80,9 @@ public partial class MainWindow
         SignInIntro.Text = $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {found.Build.BuildId}). Steam " +
             "can send that build to your own account, under your own licence. Choose how; nothing of a sign-in is kept, and your normal " +
             "game and Steam stay as they are.";
-        if (downloadChoice is { } chosen && !OfferedChoices.Contains(chosen)) downloadChoice = DownloadChoice.SteamClient;
+        // a way not offered here (SteamCMD with no terminal program): the first one that is, the QR code
+        var offered = OfferedChoices;
+        if (downloadChoice is { } chosen && !offered.Contains(chosen)) downloadChoice = offered[0];
         ShowChoice();
         SignInCard.IsVisible = true;
         try
@@ -157,17 +167,19 @@ public partial class MainWindow
             SignInStatus.Text = "SteamCMD updates itself from Valve the first time; this takes a minute.";
             await steamCmd.UpdateAsync(line => Dispatcher.UIThread.Post(() => SignInStatus.Text = "SteamCMD: " + line), attempt);
             await Task.Run(steamCmd.ForgetSignIn, attempt);
-            SteamCmdButton.Content = "SteamCMD is running...";
-            SignInStatus.Text = "Type your password in the SteamCMD window; it goes to Valve's own tool, not HellForge. If Steam asks for " +
-                "a Steam Guard code, type that there too. The download's progress shows under Game files.";
+            var linux = OperatingSystem.IsLinux();
+            SteamCmdButton.Content = linux ? "Opening a terminal window for SteamCMD..." : "SteamCMD is running...";
+            SignInStatus.Text = (linux ? "SteamCMD opens in a terminal window. " : "") + "Type your password in the SteamCMD window; it goes " +
+                "to Valve's own tool, not HellForge. If Steam asks for a Steam Guard code, type that there too. The download's progress " +
+                "shows under Game files.";
             SetupPauseButton.Content = "Stop SteamCMD";
             SetRow(SetupStep.Copy, null, $"SteamCMD downloads build {build.BuildId} for your account...", running: true);
             using var watching = CancellationTokenSource.CreateLinkedTokenSource(attempt);
             var watch = WatchDepots(steamCmd.Folder, watching.Token);
             try
             {
-                using var process = steamCmd.Start(SteamCmd.Arguments(account, build), visible: true);
-                exitCode = await steamCmd.WaitAsync(process, attempt);
+                exitCode = linux ? await RunSteamCmdInTerminal(steamCmd, SteamCmd.Arguments(account, build), attempt)
+                    : await RunSteamCmdWindow(steamCmd, SteamCmd.Arguments(account, build), attempt);
             }
             finally
             {
@@ -201,6 +213,27 @@ public partial class MainWindow
         await MoveSteamCmdDownload(steamCmd, install, attempt);
         return $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), downloaded by SteamCMD for your account, each verified against " +
             "Steam's hashes. SteamCMD and what it remembered of the sign-in were removed.";
+    }
+
+    // Windows: SteamCMD in a console window of its own. Returns its exit code once it has ended.
+    static async Task<int> RunSteamCmdWindow(SteamCmd steamCmd, IReadOnlyList<string> arguments, CancellationToken attempt)
+    {
+        using var process = steamCmd.Start(arguments, visible: true);
+        return await steamCmd.WaitAsync(process, attempt);
+    }
+
+    // The native Linux launcher has no terminal of its own: SteamCMD runs in a terminal window it opens (the first
+    // terminal program found that starts it), away from the UI thread. Returns its exit code, -1 when the window was closed.
+    async Task<int> RunSteamCmdInTerminal(SteamCmd steamCmd, IReadOnlyList<string> arguments, CancellationToken attempt)
+    {
+        var terminals = SteamCmdTerminals;
+        void Opened(Terminal terminal) => Dispatcher.UIThread.Post(() =>
+        {
+            SteamCmdButton.Content = "SteamCMD is running...";
+            SignInStatus.Text = $"SteamCMD runs in a {terminal.Name} window. Type your password in the SteamCMD window; it goes to Valve's " +
+                "own tool, not HellForge. If Steam asks for a Steam Guard code, type that there too. The download's progress shows under Game files.";
+        });
+        return await Task.Run(() => steamCmd.RunInTerminalAsync(terminals, arguments, Opened, attempt), attempt);
     }
 
     // SteamCMD may still hold its files for a moment after it ends (and an antivirus scans them): waits for that.
@@ -256,17 +289,26 @@ public partial class MainWindow
         }
         SteamCmdButton.IsEnabled = false;
         SteamCmdButton.Content = "Getting SteamCMD from Valve...";
-        SignInStatus.Text = "Getting SteamCMD from Valve and checking its signature...";
+        SignInStatus.Text = OperatingSystem.IsWindows() ? "Getting SteamCMD from Valve and checking its signature..."
+            : "Getting SteamCMD from Valve and checking its files...";
         steamCmdStarted.TrySetResult(account);
     }
 
-    // The card as the choice says: the three ways (choosing), or the chosen way's words and steps.
+    // The card as the choice says: the three ways (choosing), or the chosen way's words and steps. SteamCMD with no terminal
+    // program to open its window (Linux) stays in the list, not clickable, saying why.
     void ShowChoice()
     {
         var offered = OfferedChoices;
         var choosing = downloadChoice == null;
+        var noWindow = !LinuxNetworkBlock.Requested && !SteamCmdHasWindow;
         ChoicesPanel.IsVisible = choosing;
-        foreach (var (button, _, choice) in Choices) ((Control)button.Parent!).IsVisible = offered.Contains(choice);
+        foreach (var (button, hint, choice) in Choices)
+        {
+            var unavailable = choice == DownloadChoice.SteamCmd && noWindow;
+            ((Control)button.Parent!).IsVisible = offered.Contains(choice) || unavailable;
+            button.IsEnabled = !unavailable;
+            hint.Text = unavailable ? DownloadChoices.NoTerminal : DownloadChoices.Hint(choice);
+        }
         SignInChoiceText.IsVisible = !choosing;
         SignInChoiceText.Text = downloadChoice is { } chosen ? DownloadChoices.Explanation(chosen, SupportedBuild.Current.BuildId) : "";
         SignInQrPanel.IsVisible = downloadChoice == DownloadChoice.QrCode;
