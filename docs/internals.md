@@ -151,6 +151,15 @@ inventory (`registered-items.json` in the session folder, or its `game` folder w
 
 In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
 
+**Network types past 2,048.** Every weapon and entity a mod adds takes a network type, a copy of its base's. The game
+sends a type in 11 bits (the network configuration's width byte, and network field type 431, which names a corpse's
+source type), so 2,048 types fit, 1,855 of them vanilla. For a mod set with more (HellForge allows 512 weapons and
+entities together), the loader widens both to 12 bits (4,096 types) when it adds the types, and only then: a set that
+fits keeps the game's own wire format. Every player in a game runs the same mods, so every one widens or none does. If
+the widths are not the ones reviewed, or the set needs more than 4,096, the first types that fit get one and the rest
+are logged (`registry_load.c` `AddNetworkTypes`). Other limits come first for many sets, each refused on its own: a
+component table's compiled slots, the loadout index (193 more weapons) and the game's 4,096 catalogue items.
+
 ### Projectiles and damage
 
 A weapon gets its own projectile through `HfWeapon.projectile`. This gives the weapon its own
@@ -438,6 +447,20 @@ diagram (jc_voronoi). Level 10 nearly fills its unchecked arrays (5672 of 5680 s
 spacing grows with the disk too (0xF3FB04), rounded up to a quarter metre so the grid points stay exact in float. An
 inexact spacing makes near-degenerate circles and extra vertices, overruns the vertex array, and the pass retries
 forever (the war table's "Receiving Geodetic Data"). At 2 x the spacing is 24.5 m.
+
+The SEAF Artillery fires the projectile of the shell at the head of its queue. Its six shells' rows (71, 339, 99, 145,
+10, 92) fly alike: 300 m/s, gravity x 10, drag 0.5. That reaches about 710 m, and a 2 x map is up to 1550 m across. The
+aim (0x617E50, solver 0x13B1BD0) and the landing prediction (0x13B18B0) read speed and gravity from the row the shell
+flies with. Above 1, a watch poll (difficulty_artillery.c) sets each row in a mission at the level (the world's level
+generator, +0xF9): speed x sqrt(map_scale) and drag x 1 / map_scale. That keeps k v^2 / g, so the arc scales by
+map_scale and the aim follows it. In a mission at another level the rows are put back where they still hold what was
+written.
+
+`HF_DIFFICULTY_HEAVY_ARTILLERY` changes the side objective's shells. Its stamps place 12 to 28 spawn points (unit
+C5A8CB32B972E580), and each rolls one shell (0x9F3250) from the unit's script data table 0x3268FC21 of {shell kind
+(ObjectiveShell +0x10), weight}: Explosive 20, Napalm, Smoke and Static Field 10, High-Yield 5, Mini Nuke 1. The roll
+skips weights of 0 or less and picks by weight with the objective's seeded random numbers. A stub at the weight's load
+(0x9F342F) gives a level-11 mission Explosive 10, High-Yield 5 and Mini Nuke 5, and every other kind 0.
 
 GenerateRouteCellVoronoi (op 3, 0xF93800) fills each route cell with points at its type's size / 2 or / 4. Level 10
 makes 11954 areas of 13224, in proportion to the generated area, so that spacing grows with the disk too (0xF9420F,
