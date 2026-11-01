@@ -313,10 +313,8 @@ static class SteamDownloadTests
             check(SteamBuildDownload.InstalledDepots(fixture.AppManifest).SequenceEqual([(Bin, 11UL), (Data, 21UL)]), "Installed depots.");
         });
 
-        test("Sign-in keeps nothing: no password in text, no token, no persistent session, no Steam Guard data, no SteamKit2 log", () =>
+        test("Sign-in keeps nothing: no password typed into HellForge, no token in text, no persistent session, no Steam Guard data, no SteamKit2 log", () =>
         {
-            var request = new PasswordSignIn("someone", "hunter2-correct-horse");
-            check(!request.ToString().Contains("hunter2"), "The password sign-in prints its password.");
             var scrubber = new SecretScrubber();
             scrubber.Add("hunter2-correct-horse");
             scrubber.Add("eyJ.refresh.token");
@@ -326,7 +324,7 @@ static class SteamDownloadTests
             check(!SteamKit2.DebugLog.Enabled, "SteamKit2's debug log is on.");
             // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, the
             // session is never persistent, nothing is saved, and Steam Guard data is never read back
-            string[] sources = ["HellForge.SteamDownload/SignIn.cs", "HellForge.SteamDownload/SteamDepotSession.cs",
+            string[] sources = ["HellForge.SteamDownload/SignIn.cs", "HellForge.SteamDownload/SteamDepotSession.cs", "HellForge.SteamDownload/SteamCmd.cs",
                 "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs"];
             var sink = new Regex(@"\b(Status|WriteLine|Write|Append|Exception|Log|Trace|Debug|Print|Show\w*)\s*\(|\.Text\s*=(?!\s*""""\s*;)|\$""");
             var secret = new Regex(@"\b\w*(Password|password|RefreshToken|refreshToken|AccessToken|accessToken|NewGuardData|GuardData)\b");
@@ -342,26 +340,146 @@ static class SteamDownloadTests
             }
             var session = File.ReadAllText(Source("HellForge.SteamDownload/SteamDepotSession.cs"));
             check(session.Contains("IsPersistentSession = false") && session.Contains("ShouldRememberPassword = false"), "The session is not marked non-persistent.");
+            // no password is ever typed into HellForge: no password sign-in, no password box, no hidden prompt
+            var everything = string.Join("\n", new[] { "HellForge.SteamDownload", "HellForge.Cli", "HellForge.Launcher" }
+                .SelectMany(project => Directory.EnumerateFiles(Source(project), "*.*", SearchOption.AllDirectories))
+                .Where(path => path.EndsWith(".cs") || path.EndsWith(".axaml")).Where(path => !path.Contains("/obj/") && !path.Contains("\\obj\\"))
+                .Select(File.ReadAllText));
+            foreach (var gone in new[] { "BeginAuthSessionViaCredentialsAsync", "PasswordSignIn", "PasswordChar", "ReadHidden", "GetEmailCodeAsync", "IAuthenticator" })
+                check(!everything.Contains(gone), "A password still goes into HellForge: " + gone);
         });
 
-        test("Three equal ways to get the build: the QR code first, a password with no phone, or the Steam client with no sign-in", () =>
+        test("Three ways to get the build, in order: the QR code (the default), SteamCMD with no phone, the Steam app", () =>
         {
-            check(DownloadChoices.Default == DownloadChoice.QrCode && DownloadChoices.All.SequenceEqual([DownloadChoice.QrCode, DownloadChoice.Password, DownloadChoice.SteamClient]),
+            check(DownloadChoices.Default == DownloadChoice.QrCode && DownloadChoices.All.SequenceEqual([DownloadChoice.QrCode, DownloadChoice.SteamCmd, DownloadChoice.SteamClient]),
                 "The choices or the default.");
-            check(DownloadChoices.SignsIn(DownloadChoice.QrCode) && DownloadChoices.SignsIn(DownloadChoice.Password) && !DownloadChoices.SignsIn(DownloadChoice.SteamClient),
-                "Which choices sign in.");
-            check(DownloadChoices.Request(DownloadChoice.QrCode, null, null) is QrSignIn, "The QR choice does not start a QR sign-in.");
-            check(DownloadChoices.Request(DownloadChoice.Password, "  someone ", "secret") is PasswordSignIn { AccountName: "someone" }, "The password choice.");
-            check(DownloadChoices.Request(DownloadChoice.Password, "someone", "") == null && DownloadChoices.Request(DownloadChoice.Password, " ", "secret") == null,
-                "A password sign-in started without both.");
-            check(DownloadChoices.Request(DownloadChoice.SteamClient, "someone", "secret") == null, "The Steam client's choice signed in.");
-            check(DownloadChoices.All.Select(DownloadChoices.Title).Distinct().Count() == 3, "Two choices share a title.");
-            var password = DownloadChoices.Explanation(DownloadChoice.Password, "100");
-            check(DownloadChoices.Title(DownloadChoice.Password).Contains("No phone") && password.Contains("emails you a code") &&
-                password.Contains("goes only to Steam") && password.Contains("never keeps it"), "The password choice's words: " + password);
+            check(DownloadChoices.Offered(reachesSteam: true).SequenceEqual(DownloadChoices.All) &&
+                DownloadChoices.Offered(reachesSteam: false).SequenceEqual([DownloadChoice.SteamClient]), "What setup offers inside the network namespace.");
+            check(DownloadChoices.SignsIn(DownloadChoice.QrCode) && !DownloadChoices.SignsIn(DownloadChoice.SteamCmd) && !DownloadChoices.SignsIn(DownloadChoice.SteamClient),
+                "Only the QR code signs in to HellForge.");
+            check(DownloadChoices.All.Select(DownloadChoices.Title).Distinct().Count() == 3 && DownloadChoices.All.Select(DownloadChoices.Hint).Distinct().Count() == 3,
+                "Two choices share their words.");
+            var steamCmd = DownloadChoices.Explanation(DownloadChoice.SteamCmd, "100");
+            check(DownloadChoices.Title(DownloadChoice.SteamCmd) == "No phone: sign in with SteamCMD" && steamCmd.Contains("Type your password in the SteamCMD window") &&
+                steamCmd.Contains("Valve's own tool, not HellForge") && steamCmd.Contains("build 100") && steamCmd.Contains("removes SteamCMD"),
+                "SteamCMD's words: " + steamCmd);
             var client = DownloadChoices.Explanation(DownloadChoice.SteamClient, "100");
-            check(client.Contains("No sign-in in HellForge") && client.Contains("Steam client") && client.Contains("build 100") && client.Contains("copies it"),
-                "The Steam client choice's words: " + client);
+            check(DownloadChoices.Title(DownloadChoice.SteamClient) == "Use the Steam app" && client.Contains("No sign-in in HellForge") && client.Contains("build 100") &&
+                client.Contains("copies it"), "The Steam app's words: " + client);
+            check(DownloadChoices.Explanation(DownloadChoice.QrCode, "100").Contains("never sees your password"), "The QR code's words.");
+            check(DownloadFailures.Describe(new SteamCmdException("it could not be set up (no route)."), "100") is { Fallback: DownloadFallback.SteamConsole } failure &&
+                failure.Message.Contains("Steam app"), "SteamCMD unavailable does not lead to the Steam app.");
+        });
+
+        test("SteamCMD's command line: the account name only, every pinned depot at its manifest, and quit; no password anywhere", () =>
+        {
+            var fixture = new Fixture(root, "steamcmd-arguments");
+            var arguments = SteamCmd.Arguments("some_one1", fixture.Build);
+            string[] expected = ["+@ShutdownOnFailedCommand", "1", "+login", "some_one1",
+                .. fixture.Build.Depots.SelectMany(d => new[] { "+download_depot", fixture.Build.AppId, d.Id.ToString(), d.ManifestId }), "+quit"];
+            check(arguments.SequenceEqual(expected), "Arguments: " + string.Join(" ", arguments));
+            check(arguments.Count(a => a == "+login") == 1 && arguments[arguments.ToList().IndexOf("+login") + 1] == "some_one1" &&
+                arguments[arguments.ToList().IndexOf("+login") + 2].StartsWith('+'), "Something follows the account name in +login (a password).");
+            check(!arguments.Any(a => a.Contains("password", StringComparison.OrdinalIgnoreCase) || a.Contains("@NoPromptForPassword")), "A password setting on the command line.");
+            var one = SteamCmd.Arguments("someone", fixture.Build, [Data]);
+            check(one.Count(a => a == "+download_depot") == 1 && one.Contains(Data.ToString()) && !one.Contains(Bin.ToString()), "Only the depot asked for: " + string.Join(" ", one));
+            foreach (var bad in new[] { "", "two words", "x\"+quit", "name+quit", "a;b", "name\nsecond", new string('a', 65) })
+            {
+                check(!SteamCmd.IsAccountName(bad), "Taken as an account name: " + bad);
+                try
+                {
+                    SteamCmd.Arguments(bad, fixture.Build);
+                    check(false, "A command line made for the account name " + bad);
+                }
+                catch (ArgumentException) { }
+            }
+            check(SteamCmd.IsAccountName("Some_Name_42"), "A real account name refused.");
+            var steamCmd = SteamCmd.In(new InstallLayout(Path.Combine(fixture.Home, "HellForge")));
+            check(steamCmd.Folder == Path.Combine(fixture.Home, "HellForge", "tools", "steamcmd"), "SteamCMD's folder: " + steamCmd.Folder);
+            // never in a Steam library, whether or not Steam's own folder is known
+            foreach (var library in new[] { Path.Combine(fixture.Home, "Steam", "steamapps", "x"), Path.Combine(fixture.Home, "Lib", "SteamApps", "common", "y") })
+            {
+                check(SteamCmd.InSteamapps(library), "Not seen as in steamapps: " + library);
+                try
+                {
+                    _ = new SteamCmd(library);
+                    check(false, "SteamCMD would live in a Steam library: " + library);
+                }
+                catch (ArgumentException) { }
+            }
+            check(!SteamCmd.InSteamapps(Path.Combine(fixture.Home, "steamappsx", "tools")), "A folder merely named like steamapps refused.");
+            check(SteamCmd.WindowsArchive.Host == "steamcdn-a.akamaihd.net" && SteamCmd.LinuxArchive.AbsolutePath.EndsWith("/steamcmd_linux.tar.gz") &&
+                SteamCmd.WindowsArchive.Scheme == "https", "SteamCMD is not fetched from Valve.");
+        });
+
+        test("SteamCMD's remembered sign-in is removed after it runs; SteamCMD and its download stay until the build is moved out", () =>
+        {
+            var fixture = new Fixture(root, "steamcmd-forget");
+            var steamCmd = new SteamCmd(Path.Combine(fixture.Home, "tools", "steamcmd"));
+            void Put(string relative) { var path = Path.Combine(steamCmd.Folder, relative); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, "x"); }
+            string[] remembered = ["config/config.vdf", "config/loginusers.vdf", "ssfn1234567890", "userdata/1/config/localconfig.vdf", "logs/connection_log.txt",
+                "home/Steam/config/config.vdf", "home/.steam/registry.vdf"];
+            string[] kept = ["steamcmd.exe", "steamcmd.sh", "linux32/steamcmd", "package/steam_cmd_win32.manifest",
+                $"steamapps/content/app_553850/depot_{Data}/data/a.bin"];
+            foreach (var path in remembered.Concat(kept)) Put(path);
+            steamCmd.ForgetSignIn();
+            foreach (var path in remembered) check(!File.Exists(Path.Combine(steamCmd.Folder, path)), "Still remembered: " + path);
+            foreach (var path in kept) check(File.Exists(Path.Combine(steamCmd.Folder, path)), "Removed too early: " + path);
+            check(!Directory.Exists(Path.Combine(steamCmd.Folder, "config")) && !Directory.Exists(Path.Combine(steamCmd.Folder, "home")), "A remembered folder stayed.");
+            steamCmd.ForgetSignIn(); // again, and with nothing there: no error
+            steamCmd.Remove();
+            check(!Directory.Exists(steamCmd.Folder), "SteamCMD was not removed.");
+            steamCmd.ForgetSignIn();
+            steamCmd.Remove();
+            check(SteamCmd.Unfinished(5, []).Contains("Nothing of the sign-in was kept") && SteamCmd.Unfinished(5, []).Contains("type your password") &&
+                SteamCmd.Unfinished(5, []).Contains("Steam app"), "A failed sign-in's words: " + SteamCmd.Unfinished(5, []));
+        });
+
+        test("SteamCMD is started only when Valve signed it: Valve and Valve Corp. are Valve's, nothing else is", () =>
+        {
+            static System.Security.Cryptography.X509Certificates.X500DistinguishedName Name(string text) => new(text);
+            check(Authenticode.IsValve(Name("CN=Valve, OU=Digital ID Class 3 - Microsoft Software Validation v2, O=Valve, ST=Washington, C=US")),
+                "steamcmd.exe's own signer refused.");
+            check(Authenticode.IsValve(Name("CN=Valve Corp., O=Valve Corp., L=Bellevue, ST=Washington, C=US")), "Valve Corp. refused.");
+            foreach (var other in new[] { "CN=Valve, O=Not Valve, C=US", "CN=Valve, C=US", "CN=x, O=Valve Software Ltd, C=US", "CN=x, O=Valve, O=Other, C=US",
+                "CN=x, O=valve, C=US", "CN=x, O=\"Valve, Inc.\", C=US" })
+                check(!Authenticode.IsValve(Name(other)), "Taken for Valve: " + other);
+            check(!Authenticode.IsValve(null), "No signature taken for Valve.");
+        });
+
+        test("SteamCMD's download is picked up from its own folder (linux32 too), checked, and moved; a wrong file is never moved", () =>
+        {
+            var fixture = new Fixture(root, "steamcmd-pickup");
+            foreach (var platform in new[] { "", "linux32" })
+            {
+                var steamCmd = new SteamCmd(Path.Combine(fixture.Home, "steamcmd-" + (platform.Length > 0 ? platform : "windows")));
+                var content = Path.Combine(steamCmd.Folder, platform, "steamapps", "content", "app_553850");
+                void Put(string path, byte[] bytes)
+                {
+                    var file = fixture.Build.Files.Single(f => f.Path == path);
+                    var target = Path.Combine(content, $"depot_{file.Depot}", path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.WriteAllBytes(target, bytes);
+                }
+                Put("bin/b.dll", fixture.Contents["bin/b.dll"]);
+                Put("data/empty", []);
+                check(!SteamDepotDownload.IsComplete(steamCmd.Folder, fixture.Build), "Half a download counted as complete.");
+                check(SteamCmd.Unfinished(0, SteamDepotDownload.Status(steamCmd.Folder, fixture.Build)).Contains("Start it again to continue"), "A half download's words.");
+                Put("data/a.bin", fixture.Contents["data/a.bin"]);
+                check(SteamDepotDownload.IsComplete(steamCmd.Folder, fixture.Build), $"SteamCMD's download ({platform}) was not found.");
+                // a wrong file: refused, nothing of it moved
+                var wrong = Path.Combine(fixture.Home, "steamcmd-wrong-" + platform.Length);
+                File.WriteAllBytes(Path.Combine(content, $"depot_{Bin}", "bin/b.dll"), Bytes(78, fixture.C3.Length));
+                reject(() => GameCopier.MoveFromDepots(steamCmd.Folder, wrong, fixture.Build));
+                check(!File.Exists(Path.Combine(wrong, "bin/b.dll")), "A wrong file was moved.");
+                Put("bin/b.dll", fixture.Contents["bin/b.dll"]);
+                var destination = Path.Combine(fixture.Home, "steamcmd-game-" + platform.Length);
+                GameCopier.MoveFromDepots(steamCmd.Folder, destination, fixture.Build);
+                fixture.CheckOutput(destination, check);
+                check(!File.Exists(Path.Combine(content, $"depot_{Data}", "data/a.bin")), "The file was copied, not moved.");
+                reject(() => GameCopier.MoveFromDepots(steamCmd.Folder, Path.Combine(steamCmd.Folder, "game"), fixture.Build));
+                steamCmd.Remove();
+            }
         });
 
         test("The Steam client's download is picked up where Steam put it, past an empty leftover folder, and copied verified", () =>
