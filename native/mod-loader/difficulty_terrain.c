@@ -57,7 +57,8 @@ static const uint8_t kTerrainStoreStub[88] = {
 #define DIF_OBJECTIVE_COUNT 0x11A715Cu    /* G+: their count, at most 256 */
 #define DIF_OBJECTIVE_MARGIN 16.0f        /* m past the stamp's radius */
 #define DIF_LOCATION_GROUP_SET 0xADC32FAAu
-static volatile LONG g_terrainRaised;
+static volatile LONG g_terrainRaised, g_terrainChecked; /* heights raised, and below 0 m checked */
+static volatile LONG g_terrainObjectives, g_terrainSized;  /* the last check's objectives, and those with a radius */
 
 static int TerrainRampWanted(void)
 {
@@ -123,6 +124,8 @@ static int TerrainNearObjective(uintptr_t level, const uint8_t* area)
     memcpy(&x, area + 0x80, 4);
     memcpy(&y, area + 0x84, 4);
     if (count > 256) count = 256;
+    InterlockedIncrement(&g_terrainChecked);
+    LONG sized = 0;
     for (uint32_t i = 0; i < count; i++)
     {
         const uint8_t* location = (const uint8_t*)(uintptr_t)(block + DIF_OBJECTIVE_LOCATIONS + 0x108 * (uint64_t)i);
@@ -131,14 +134,18 @@ static int TerrainNearObjective(uintptr_t level, const uint8_t* area)
         memcpy(&ly, location + 0xA8, 4);
         float reach = ObjectiveRadius(location);
         if (reach <= 0.0f) continue;
+        sized++;
         reach += DIF_OBJECTIVE_MARGIN;
         float dx = x - lx, dy = y - ly;
         if (dx * dx + dy * dy <= reach * reach)
         {
             InterlockedIncrement(&g_terrainRaised);
+            InterlockedExchange(&g_terrainObjectives, (LONG)count);
             return 1;
         }
     }
+    InterlockedExchange(&g_terrainObjectives, (LONG)count);
+    InterlockedExchange(&g_terrainSized, sized);
     return 0;
 }
 
@@ -208,14 +215,18 @@ static const char* InstallTerrain(DifficultyInstall* d)
     return NULL;
 }
 
-/* DifficultyWatch: the heights raised near objectives, once they stop changing (one generation's worth). */
+/* DifficultyWatch: the heights below 0 m checked near objectives and those raised, once they stop changing (one
+ * generation's worth), with the objectives the last check saw and how many had a stamp radius. */
 static void WatchTerrain(void)
 {
-    static LONG seen, logged;
-    LONG now = g_terrainRaised;
+    static LONG seen, logged, raised;
+    LONG now = g_terrainChecked;
     int moving = now != seen;
     seen = now;
     if (moving || now == logged) return;
-    Note("difficulty: terrain: %ld area height(s) below 0 m raised to 0 within objectives' stamps", now - logged);
+    LONG up = g_terrainRaised;
+    Note("difficulty: terrain: %ld area height(s) below 0 m checked against %ld objectives (%ld with a stamp radius); %ld raised to 0 "
+        "within their stamps", now - logged, (long)g_terrainObjectives, (long)g_terrainSized, up - raised);
     logged = now;
+    raised = up;
 }
