@@ -453,9 +453,22 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
   dropped, so they never pile up in Steam. The stand-in puts each whole packet in a queue of 32 (a static array, no
   allocation). `ReadP2PPacket` and `IsP2PPacketAvailable` answer from the queue with no system call. A full ring or
   queue loses the packet, and it is logged.
+- **A squadmate the game cannot reach** (static reading of the game's 2026-10-30 memory dumps, not confirmed live):
+  - Co-op is a full mesh. Each game opens its own Steam P2P session to every other player, not only to the host.
+  - A session that never becomes active (`GetP2PSessionState`, which the bridge refuses for a SteamID not listed) gets
+    no PlayFab fallback. After at least 45 s without a pong, the connection fails with `PongTimeout` ("Pong timeout for
+    %llx", exe `0x2A5D0A`). Only a session that was active once falls back to PlayFab Party on a pong timeout
+    ("Platform pong timeout ... Falling back to playfab").
+  - The failure is reported to the host's game session. 20 s after the first report, it votes one of the pair out (exe
+    `0x296AB0`): a player accused twice, else the one of the two that joined the session first. The host then removes
+    that player (game.dll `0x108A9CB`, "Peer %llx was voted out").
+  - With the joiners not listed (0.3.0-beta), this is issue #202. The third player waits. About a minute later the
+    second player is pushed out, and then the third gets in. When the second rejoins, the third is pushed out.
 - Tests: `bridge_test.c` covers a send to the entered lobby's host, a refused one to anyone else, a peer the backend
   lists mid-session, more than 7000 bytes, session state, accept, a 3000-byte packet in pieces, a stranger's packet
   dropped, and a second channel. `smoke-lobby-link` checks each backend lists the other after a join.
+  `SquadTests` (HellForge.LocalBackend.Tests) runs three backends over loopback UDP and checks each one's
+  `p2p-peers.txt` as a third player joins, the second leaves and rejoins, and the host kicks the third.
 - Unmeasured: how much P2P co-op sends, and whether 8192 bytes and 60 ring slots are enough for it.
 
 ## Cost
