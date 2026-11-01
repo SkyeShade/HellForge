@@ -9,8 +9,9 @@ namespace HellForge.Core;
 // (HellForge-Engine native/mod-loader/live_mods.c). Stats, componentWrites and "own" records, network field types, code
 // that declares "live": true (SDK 16; source mods built for the change), and game data (the change's hot package,
 // LiveData, built with the source mods by HellForge.Cli mods-live) change live. Code without "live", Lua mods, cosmetic
-// packs and a new order wait for the next session, as does whatever the loader refuses (numbered content a restart has to
-// number, a difficulty with larger maps).
+// packs, a new order and a mod built on premium content the player does not own (LiveModPlan.WithPremium: a restart locks
+// its items) wait for the next session, as does whatever the loader refuses (numbered content a restart has to number, a
+// difficulty with larger maps).
 
 // A mod as the session runs it: its content hash and pack choice tell whether the mod on disk is still the one that runs.
 // Live: it can be taken out while the game runs; Data: it put patches in the game's data (a live change restores them).
@@ -135,6 +136,20 @@ public sealed record LiveModPlan(IReadOnlyList<LiveModChange> Changes, IReadOnly
         var stays = target.Where(m => was.ContainsKey(m.Id)).Select(m => m.Id).ToList();
         if (!stayed.SequenceEqual(stays, StringComparer.Ordinal)) blocking.Add("The mods' order changed");
         return new LiveModPlan(changes, blocking, target);
+    }
+
+    // The plan with the mods it adds or changes that build on premium content this player does not own (PremiumMods) held
+    // back: a session's start loads such a mod with its weapons and stratagems locked (the backend's --premium-locked), which
+    // a live change cannot do, so they wait for a restart. The mods that stay keep the start's lock. owned is read only when
+    // a mod the change brings declares premium content.
+    public LiveModPlan WithPremium(Func<PremiumContent> owned)
+    {
+        var premium = Changes.Select(c => c.Mod).OfType<ModManifest>().Where(m => m.Premium.Count > 0).ToList();
+        if (premium.Count == 0) return this;
+        var ownership = owned();
+        List<string> held = [.. premium.Select(m => (m.Name, Missing: ownership.Missing(m.Premium))).Where(m => m.Missing.Count > 0)
+            .Select(m => $"{m.Name}: it uses {string.Join(", ", m.Missing.Select(PremiumContent.Describe))}, which this Steam account has not synced, so it needs a restart")];
+        return held.Count == 0 ? this : this with { Blocking = [.. Blocking, .. held] };
     }
 
     // What the loader is told a mod carries ("stats,code,live,net"; LiveModsRequest's kinds), or null when it carries

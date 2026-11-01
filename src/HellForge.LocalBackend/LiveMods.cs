@@ -6,14 +6,14 @@ namespace HellForge.LocalBackend;
 
 // Changes the running session's mods without a restart (HellForge-Open docs/mods.md "Changing mods while you play"): the
 // Mods page's changes (the launcher asks: GET and POST /hellforge/live-mods) or, after a mod sync, the host's set. It plans
-// the change (LiveModPlan), sends it to the game's loader over the live pipe (native/mod-loader/live_mods.c) and waits
-// for the loader's result. A change with source mods or game data is prepared first by HellForge.Cli mods-live (the
-// backend cannot build them itself): the builds' DLLs and the change's hot package (LivePrepared). Then the session runs
-// the new mods: its session-mods.json and modset.json say so, and Changed gives the new set to the lobby, mod sync and the
-// directory, so joins are checked against the new digest. From the change's first line until the game's result the
-// session's mods are not known (Changing): joins wait rather than be checked against a digest the game may no longer
-// play. A result that comes after the wait for it still settles the session (the files, Changed), so the backend's view
-// and digest follow what the game ends up running.
+// the change (LiveModPlan; a mod built on premium content the player does not own waits for a restart: Premium), sends it
+// to the game's loader over the live pipe (native/mod-loader/live_mods.c) and waits for the loader's result. A change with
+// source mods or game data is prepared first by HellForge.Cli mods-live (the backend cannot build them itself): the
+// builds' DLLs and the change's hot package (LivePrepared). Then the session runs the new mods: its session-mods.json and
+// modset.json say so, and Changed gives the new set to the lobby, mod sync and the directory, so joins are checked against
+// the new digest. From the change's first line until the game's result the session's mods are not known (Changing): joins
+// wait rather than be checked against a digest the game may no longer play. A result that comes after the wait for it
+// still settles the session (the files, Changed), so the backend's view and digest follow what the game ends up running.
 public sealed class LiveMods
 {
     public sealed record Result(bool Live, bool Applied, IReadOnlyList<string> Changes, IReadOnlyList<string> Blocking, string Detail, string Digest);
@@ -48,6 +48,11 @@ public sealed class LiveMods
     // settles the session when it comes); a change with game data waits DataResultTimeout.
     public TimeSpan ResultWait { get; init; } = ResultTimeout;
 
+    // What this player owns of Arrowhead's premium content, by the rule the session's start used (PremiumMods.ForLiveChange:
+    // the profile's sealed snapshot for the Steam account). A mod the change brings that builds on content not owned waits
+    // for a restart, which loads it with its items locked (LiveModPlan.WithPremium). Unset: nothing is owned.
+    public Func<PremiumContent>? Premium { get; init; }
+
     // The mod set the session plays with after a change.
     public event Action<ModSet>? Changed;
 
@@ -69,11 +74,15 @@ public sealed class LiveMods
     // The installation's mods as its Mods page has them, in load order.
     public List<ModManifest> Installation() => ModCatalog.LoadOrder(ModCatalog.Active(ModCatalog.Load(modsFolder).Mods));
 
+    // The change from the session's mods to `target`, a mod built on premium content the player does not own held back.
+    LiveModPlan Plan(SessionMods current, IReadOnlyList<ModManifest> target) =>
+        LiveModPlan.Make(current, target).WithPremium(Premium ?? (() => PremiumContent.Nothing));
+
     // What a change to `target` (the Mods page's mods when null) would do, without making it.
     public Result Preview(IReadOnlyList<ModManifest>? target = null)
     {
         var current = Current();
-        var plan = LiveModPlan.Make(current, target ?? Installation());
+        var plan = Plan(current, target ?? Installation());
         var mine = current.SyncedWith.Length > 0 && target == null ? SyncedRefusal(current) : null;
         return new(plan.Live && mine == null, false, Describe(plan), mine != null ? [mine] : plan.Blocking,
             plan.Empty ? "Nothing changed." : plan.Live && mine == null ? "Applies now." : "Applies to the next session.", "");
@@ -91,7 +100,7 @@ public sealed class LiveMods
         {
             var current = Current();
             if (!sync && current.SyncedWith.Length > 0) return new(false, false, [], [SyncedRefusal(current)], "Applies to the next session.", "");
-            var plan = LiveModPlan.Make(current, target ?? Installation());
+            var plan = Plan(current, target ?? Installation());
             var described = Describe(plan);
             if (plan.Empty) return new(true, false, [], [], "Nothing changed.", "");
             if (!plan.Live) return new(false, false, described, plan.Blocking, "Applies to the next session.", "");
@@ -260,7 +269,7 @@ public sealed class LiveMods
     {
         if (HostOrder(sync) is not { } order) return false;
         var current = Current();
-        var plan = LiveModPlan.Make(current, order);
+        var plan = Plan(current, order);
         if (!plan.Live && !plan.Empty) return false;
         var active = plan.Target.Where(m => !current.Skipped.Any(s => s.Id == m.Id && s.Hash == ModSets.ContentHash(m))).ToList();
         return ModSet.Of(active).Digest == sync.Digest;

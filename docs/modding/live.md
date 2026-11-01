@@ -20,6 +20,7 @@ mod that does not take part still works: it just needs a restart to change.
 | code with `"live": true` (SDK 16) | yes | set up and taken out while the game runs, as below |
 | code without `"live"` | no | next session |
 | Lua mods, cosmetic packs | no | next session (they are not part of mod sync either) |
+| a `premium` list the player's synced account does not own all of | no | next session, which loads it with its weapons and stratagems locked ([premium content](concepts.md#premium-content)); a mod already running keeps the lock it started with |
 
 Everything happens only while no friend is in the game, on the ship or the title screen (stats alone also in a mission).
 

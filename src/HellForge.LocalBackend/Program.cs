@@ -90,11 +90,13 @@ try
     using var profile = startupFixtures ? ProfileStore.Open(profileDirectory, profileTemplate) : null;
     // Premium items (OwnershipFilter): served only from the profile's account snapshot, when it is sealed on this PC for
     // the Steam account signed in now. The rest of a snapshot reaches the profile only through an import the player
-    // chose (AccountCommands), never at start.
+    // chose (AccountCommands), never at start. The same snapshot and account decide which mods built on premium content
+    // a live change may bring (LiveMods.Premium).
+    var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
+    var steamAccount = HellForge.Core.SteamAccount.Current();
     if (profile != null)
     {
-        var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
-        profile.Ownership = OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, HellForge.Core.SteamAccount.Current(), out var refusal);
+        profile.Ownership = OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, steamAccount, out var refusal);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }
@@ -167,10 +169,15 @@ try
     {
         var liveLog = Path.Combine(evidence, "live-mods.log");
         var liveLogLock = new object();
+        // the installation is the one whose mods folder this is (mods-stage's --install)
+        var liveInstall = new HellForge.Core.InstallLayout(Path.GetDirectoryName(Path.GetFullPath(liveModsFolder))!);
         liveMods.Service = new LiveMods(livePipe, liveModsFolder, sessionModsFile, liveModSetFile, message =>
         {
             lock (liveLogLock) File.AppendAllText(liveLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
-        }, options.GetValueOrDefault("--cli"));
+        }, options.GetValueOrDefault("--cli"))
+        {
+            Premium = () => HellForge.Core.PremiumMods.ForLiveChange(liveInstall, snapshotDir, steamAccount)
+        };
         if (multiplayer != null)
         {
             liveMods.Service.Changed += multiplayer.ModsChanged;

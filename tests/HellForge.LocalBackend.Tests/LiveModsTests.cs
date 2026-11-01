@@ -8,10 +8,22 @@ using HellForge.LocalBackend;
 // sent as one change and, once the game reports it done, the session's mods, mod set and digest are the new ones; a code
 // mod waits for the next session and sends nothing; the game's refusal leaves the session as it was; a result that comes
 // after the wait still settles the session, and joins wait meanwhile; a change made with something left over is the
-// session's too; a session playing a host's mods keeps them; no game connected, no change.
+// session's too; a session playing a host's mods keeps them; no game connected, no change. A mod built on premium content
+// this Steam account has not synced waits for a restart, from the Mods page and from a host's set, and reaches the game
+// once the snapshot owns it.
 static class LiveModsTests
 {
     const string Rpm = """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}}}""";
+    const uint PremiumWarbond = 610512218, PremiumToken = 2021502022, Knight = 2161995568;
+
+    // The free warbond, one premium warbond with its token, and the Super Citizen Edition's package (with the Knight).
+    static string ProgressionData(string folder)
+    {
+        var path = Path.Combine(folder, "progression-data.json");
+        File.WriteAllText(path, "{\"seasonPassDetails\":{\"a\":{\"id32\":" + PremiumContent.FreeWarbond + ",\"premiumTokenMixIds\":[]},\"b\":{\"id32\":" +
+            PremiumWarbond + ",\"premiumTokenMixIds\":[" + PremiumToken + "]}},\"itemPackages\":[{\"itemMixId32\":1542124658,\"items\":[{\"mixId\":" + Knight + "}]}]}");
+        return path;
+    }
 
     static void Mod(string mods, string id, string? stats, string extra = "")
     {
@@ -37,7 +49,10 @@ static class LiveModsTests
         await using var live = new LiveEditServer(runId);
         live.Start();
         var log = new List<string>();
-        var service = new LiveMods(live, mods, sessionFile, modSetFile, message => { lock (log) log.Add(message); }) { ResultWait = TimeSpan.FromSeconds(1) };
+        // what the session's snapshot owns of premium content: nothing at first (mods without premium content go live anyway)
+        var owned = PremiumContent.Nothing;
+        var service = new LiveMods(live, mods, sessionFile, modSetFile, message => { lock (log) log.Add(message); })
+            { ResultWait = TimeSpan.FromSeconds(1), Premium = () => owned };
         ModSet? changed = null;
         service.Changed += set => changed = set;
         var changing = new List<bool>();
@@ -138,12 +153,31 @@ static class LiveModsTests
             "A change the game made with something left over was not recorded: " + string.Join(" | ", leftover.Blocking));
         outcome = "ok";
 
+        // a mod built on premium content this Steam account has not synced waits for a restart (which locks its items), and
+        // nothing reaches the game; once the snapshot owns it, it goes live
+        var progression = ProgressionData(folder);
+        Mod(mods, "p1", Rpm.Replace("900", "500"), ",\"premium\":[\"dlc:super-citizen-edition\"]");
+        owned = PremiumContent.Load(progression, []);
+        lock (lines) lines.Clear();
+        var notOwned = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        check(!notOwned.Live && !notOwned.Applied && notOwned.Detail == "Applies to the next session." &&
+            notOwned.Blocking.SequenceEqual(["p1 mod: it uses the Super Citizen Edition, which this Steam account has not synced, so it needs a restart"]) &&
+            !service.Preview().Live && SessionMods.Read(sessionFile).Mods.All(m => m.Id != "p1"), "A premium mod not owned went live: " + string.Join(" | ", notOwned.Blocking));
+        lock (lines) check(lines.Count == 0, "A premium mod not owned reached the game: " + string.Join(" | ", lines));
+        owned = PremiumContent.Load(progression, [Knight]);
+        var ownedNow = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        now = SessionMods.Read(sessionFile);
+        check(ownedNow.Applied && now.Mods.Any(m => m.Id == "p1"), "A premium mod the snapshot owns did not go live: " + string.Join(" | ", ownedNow.Blocking));
+        lock (lines) check(lines.Contains("modadd p1"), "The owned premium mod's lines: " + string.Join(" | ", lines));
+        owned = PremiumContent.Nothing;
+
         // a session playing a host's mods keeps them: the Mods page applies to the next session
         new SessionMods(now.Mods, now.Skipped, "Host Diver").Write(sessionFile);
         var synced = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
         check(!synced.Applied && synced.Blocking.Single().Contains("Host Diver's mods"), "A synced session took the Mods page's change.");
 
         // mod sync: the host plays s1 and s2 but not this player's s3, so the running game drops s3 and plays the host's set
+        // (p1, built on premium content, stays as the session started with it, so it is not checked again)
         Mod(mods, "s3", Rpm.Replace("900", "600"));
         var own = ModCatalog.LoadOrder(ModCatalog.Active(ModCatalog.Load(mods).Mods));
         SessionMods.Of(own, own, "").Write(sessionFile);
@@ -157,8 +191,26 @@ static class LiveModsTests
         check(why == null && after.SyncedWith == "Host Diver" && after.Mods.All(m => m.Id != "s3") && changed?.Digest == hostSet.Digest,
             "The host's set did not replace the session's: " + why);
         lock (lines) check(lines.Contains("modbegin sync") && lines.Contains("modremove s3"), "The game's lines: " + string.Join(" | ", lines));
+
+        // mod sync: a host's set that brings a mod built on premium content this account has not synced is not taken live
+        // (the session restarts with it, its items locked); once the snapshot owns it, it is
+        Mod(mods, "p2", Rpm.Replace("900", "400"), ",\"premium\":[\"warbond:" + PremiumWarbond + "\"]");
+        var premiumSet = ModSet.Of(ModCatalog.LoadOrder(ModCatalog.Active(ModCatalog.Load(mods).Mods)).Where(m => m.Id != "s3").ToList());
+        var premiumHost = new ModSyncSession("76561198000000001", "Host Diver", "connection", premiumSet.Digest,
+            [.. premiumSet.Mods.Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]);
+        lock (lines) lines.Clear();
+        check(!service.CanApplySync(premiumHost), "A host's premium mod not owned could change the running game.");
+        var heldBack = await service.ApplySyncAsync(premiumHost, CancellationToken.None);
+        check(heldBack != null && heldBack.Contains("p2 mod: it uses warbond " + PremiumWarbond + ", which this Steam account has not synced", StringComparison.Ordinal) &&
+            SessionMods.Read(sessionFile).Mods.All(m => m.Id != "p2"), "A host's premium mod not owned went live: " + heldBack);
+        lock (lines) check(lines.Count == 0, "A host's premium mod not owned reached the game: " + string.Join(" | ", lines));
+        owned = PremiumContent.Load(progression, [PremiumToken]);
+        check(service.CanApplySync(premiumHost), "A host's premium mod the snapshot owns could not change the running game.");
+        var ownedSync = await service.ApplySyncAsync(premiumHost, CancellationToken.None);
+        check(ownedSync == null && SessionMods.Read(sessionFile).Mods.Any(m => m.Id == "p2") && changed?.Digest == premiumSet.Digest,
+            "A host's premium mod the snapshot owns did not go live: " + ownedSync);
         stop.Cancel();
         Console.WriteLine("PASS live mods: a stats mod changed live and recorded, a code mod held for the next session, the game's refusal, a late result settled (joins waiting meanwhile), " +
-            "a change made with something left over, a synced session, no game, a host's set taken live");
+            "a change made with something left over, a synced session, no game, a host's set taken live, premium mods not owned held for a restart (Mods page and mod sync) and owned ones live");
     }
 }
