@@ -111,6 +111,28 @@ static class AssetMigrationTests
             check(recipe.Files.Count == 0 && literals.Length == 0 && !report.Files[0].InRecipe, "an original mod was put in a recipe");
         });
 
+        test("An older build's loose archives are read and indexed like the packed ones", () =>
+        {
+            var folder = Path.Combine(root, "loose-build");
+            Directory.CreateDirectory(folder);
+            var apc = new ResourceKey(ResourceTypes.Unit, 0x4444);
+            var apcParts = new ResourceParts(Noise(11, 2000), Noise(12, 80_000), Noise(13, 5000));
+            var (archive, gpu, stream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [apc] = apcParts, [rifle] = new(Noise(4, 4000), rifleGpu, []) });
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000aa"), archive);
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000aa.gpu_resources"), gpu);
+            File.WriteAllBytes(Path.Combine(folder, "00000000000000aa.stream"), stream);
+            var old = new LooseGameResources(folder, "50");
+            check(old.Read(apc, PartKind.Gpu)!.AsSpan().SequenceEqual(apcParts.Gpu) && old.Read(apc, PartKind.Stream)!.AsSpan().SequenceEqual(apcParts.Stream), "the loose parts read back wrong");
+            var index = new SourceIndex();
+            index.Add(old);
+            index.Add(newBuild);
+            index.Seal();
+            var cut = Concat(apcParts.Gpu, Noise(14, 3000));
+            var (recipe, literals, report) = new Migrator(index, [old, newBuild]).Migrate([("data/apc.bin", cut)]);
+            check(report.Files[0].FromGame == apcParts.Gpu.Length, $"from game {report.Files[0].FromGame}");
+            check(RecipeRebuilder.Rebuild(recipe, literals, [old, newBuild])["data/apc.bin"].AsSpan().SequenceEqual(cut), "the cut content does not rebuild");
+        });
+
         test("The same piece at any byte offset is found", () =>
         {
             for (var shift = 0; shift < 20; shift++)

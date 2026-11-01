@@ -9,7 +9,7 @@ namespace HellForge.Core.AssetMigration;
 public sealed class MigrationReport
 {
     public sealed record FileLine(string Path, long Size, long FromGame, long Literal, long Fill, bool InRecipe);
-    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources);
+    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Start, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources);
 
     public List<FileLine> Files { get; } = [];
     public List<ResourceLine> Resources { get; } = [];
@@ -42,8 +42,19 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         var layout = Layout(files);
         foreach (var (path, bytes) in files)
         {
-            var keys = layout.Where(l => l.File == path).Select(l => l.Key).ToHashSet();
-            var (ops, candidates) = Match(bytes, keys, report.Unreadable);
+            // An archive is matched one resource part at a time (with that resource's own candidates), and the bytes
+            // between parts (the table, padding) on their own; any other file is matched whole.
+            var ops = new List<Op>();
+            var candidates = 0;
+            long cursor = 0;
+            foreach (var r in layout.Where(l => l.File == path && l.Start + l.Length <= bytes.Length).OrderBy(l => l.Start))
+            {
+                if (r.Start < cursor) continue;
+                if (r.Start > cursor) candidates += Match(bytes, (int)cursor, (int)r.Start, [], report.Unreadable, ops);
+                candidates += Match(bytes, (int)r.Start, (int)(r.Start + r.Length), [r.Key], report.Unreadable, ops);
+                cursor = r.Start + r.Length;
+            }
+            if (cursor < bytes.Length) candidates += Match(bytes, (int)cursor, bytes.Length, [], report.Unreadable, ops);
             long fromGame = ops.Where(o => o.Kind == Recipe.Copy).Sum(o => o.Length);
             long fill = ops.Where(o => o.Kind == Recipe.Fill).Sum(o => o.Length);
             var inRecipe = fromGame > 0;
@@ -103,10 +114,11 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
     // Kind is Copy (Source, Offset), Literal or Fill (Offset holds the byte value).
     public readonly record struct Op(int Kind, int Source, int Offset, int Length);
 
-    (List<Op> Ops, int Candidates) Match(byte[] data, HashSet<ResourceKey> keys, HashSet<int> unreadable)
+    // Matches data[from, to) and appends its operations; returns how many game parts it compared.
+    int Match(byte[] data, int from, int to, ResourceKey[] keys, HashSet<int> unreadable, List<Op> ops)
     {
         var hits = new Dictionary<int, int>();
-        foreach (var (_, anchor) in ContentChunks.Anchors(data))
+        foreach (var (_, anchor) in ContentChunks.Anchors(data.AsSpan(from, to - from)))
             foreach (var (content, _) in index.Lookup(anchor))
                 hits[content] = hits.GetValueOrDefault(content) + 1;
         foreach (var key in keys)
@@ -140,17 +152,16 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         table.Sort((a, b) => a.Hash.CompareTo(b.Hash));
         var keysSorted = table.Select(t => t.Hash).ToArray();
 
-        var ops = new List<Op>();
-        int literalStart = 0, pos = 0;
+        int literalStart = from, pos = from;
         ulong hash = 0;
         var valid = false;
         void Flush(int end)
         {
             if (end > literalStart) ops.Add(new(Recipe.Literal, 0, literalStart, end - literalStart));
         }
-        while (pos < data.Length)
+        while (pos < to)
         {
-            var run = Run(data, pos);
+            var run = Run(data, pos, to);
             if (run >= MinFill)
             {
                 Flush(pos);
@@ -160,7 +171,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 valid = false;
                 continue;
             }
-            if (pos + Window > data.Length) break;
+            if (pos + Window > to) break;
             if (!valid) { hash = HashAt(data, pos); valid = true; }
 
             int bestLength = 0, bestBack = 0, bestCandidate = -1, bestOffset = 0;
@@ -173,7 +184,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                     var (_, c, off) = table[at];
                     var src = candidates[c].Bytes;
                     if (!data.AsSpan(pos, Window).SequenceEqual(src.AsSpan(off, Window))) continue;
-                    var forward = Window + Common(data.AsSpan(pos + Window), src.AsSpan(off + Window));
+                    var forward = Window + Common(data.AsSpan(pos + Window, to - pos - Window), src.AsSpan(off + Window));
                     var back = 0;
                     while (pos - back > literalStart && off - back > 0 && data[pos - back - 1] == src[off - back - 1]) back++;
                     if (forward + back > bestLength) (bestLength, bestBack, bestCandidate, bestOffset) = (forward + back, back, c, off);
@@ -193,19 +204,19 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 valid = false;
                 continue;
             }
-            if (pos + Window < data.Length) hash = Roll(hash, data[pos], data[pos + Window]);
+            if (pos + Window < to) hash = Roll(hash, data[pos], data[pos + Window]);
             else valid = false;
             pos++;
         }
-        Flush(data.Length);
-        return (ops, candidates.Count);
+        Flush(to);
+        return candidates.Count;
     }
 
     static int Common(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => a.CommonPrefixLength(b);
 
-    static int Run(byte[] data, int pos)
+    static int Run(byte[] data, int pos, int to)
     {
-        var rest = data.AsSpan(pos);
+        var rest = data.AsSpan(pos, to - pos);
         var other = rest.IndexOfAnyExcept(rest[0]);
         return other < 0 ? rest.Length : other;
     }
@@ -291,7 +302,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                     default: fill += overlap; break;
                 }
             }
-            report.Resources.Add(new(r.File, r.Key, r.Part, r.Length, fromGame, literal, fill, sources));
+            report.Resources.Add(new(r.File, r.Key, r.Part, r.Start, r.Length, fromGame, literal, fill, sources));
         }
     }
 }

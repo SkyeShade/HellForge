@@ -82,11 +82,15 @@ List<string> All(string flag)
 
 string One(string flag) => All(flag).SingleOrDefault() ?? throw new ArgumentException($"{flag} is required.");
 
-List<GameResources> Games() => All("--game").Select(g =>
+// A data folder with bundles.nxa is read as Steam ships it today; one without, as the loose archives of older builds.
+List<IGameResources> Games() => All("--game").Select(g =>
 {
     var split = g.IndexOf('=');
     if (split <= 0) throw new ArgumentException("--game takes <build>=<data folder>.");
-    return new GameResources(g[(split + 1)..], g[..split]);
+    var folder = g[(split + 1)..];
+    return File.Exists(Path.Combine(folder, GameDataReader.IndexFile))
+        ? (IGameResources)new GameResources(folder, g[..split])
+        : new LooseGameResources(folder, g[..split]);
 }).ToList();
 
 int Index()
@@ -96,8 +100,8 @@ int Index()
     {
         var clock = Stopwatch.StartNew();
         index.Add(game, (resources, bytes) => Console.Write($"\r  build {game.Build}: {resources:N0} resources, {bytes / 1e9:F1} GB read"));
-        Console.WriteLine($" ({clock.Elapsed.TotalSeconds:F0} s{(game.Skipped > 0 ? $", {game.Skipped} parts over 256 MB skipped" : "")})");
-        game.Dispose();
+        Console.WriteLine($" ({clock.Elapsed.TotalSeconds:F0} s{(game is GameResources { Skipped: > 0 } g ? $", {g.Skipped} parts over 256 MB skipped" : "")})");
+        (game as IDisposable)?.Dispose();
     }
     index.Seal();
     var output = One("--out");
@@ -121,7 +125,7 @@ int Migrate()
         .Select(f => (Path.GetRelativePath(modFolder, f).Replace('\\', '/'), File.ReadAllBytes(f)))
         .OrderBy(f => f.Item1, StringComparer.Ordinal).ToList();
     var clock = Stopwatch.StartNew();
-    var (recipe, literals, report) = new Migrator(index, games.Cast<IGameResources>().ToList()).Migrate(files, Console.WriteLine);
+    var (recipe, literals, report) = new Migrator(index, games).Migrate(files, Console.WriteLine);
     Console.WriteLine($"Matched in {clock.Elapsed.TotalSeconds:F1} s.");
 
     // The gate: the game content is only taken out of the mod once the recipe has rebuilt every file, from the game
@@ -129,7 +133,7 @@ int Migrate()
     string verdict;
     try
     {
-        var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games.Cast<IGameResources>().ToList());
+        var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games);
         foreach (var (path, bytes) in files.Where(f => rebuilt.ContainsKey(f.Item1)))
             if (!rebuilt[path].AsSpan().SequenceEqual(bytes)) throw new InvalidDataException($"{path} rebuilt differently.");
         verdict = report.Unreadable.Count > 0
@@ -185,7 +189,7 @@ int Rebuild()
     var (recipe, literals) = Recipe.Load(mod);
     var clock = Stopwatch.StartNew();
     var games = Games();
-    var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games.Cast<IGameResources>().ToList(), Console.WriteLine);
+    var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games, Console.WriteLine);
     foreach (var (path, bytes) in rebuilt)
     {
         var target = Path.Combine(outFolder, path);
@@ -224,6 +228,17 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
     long fromGame = report.Files.Sum(f => f.FromGame);
     long fill = report.Files.Sum(f => f.Fill);
     long shippedBytes = Directory.EnumerateFiles(shipped, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+    // Whether the game has a resource with this name and part, and whether its bytes are the mod's.
+    string SameKey(MigrationReport.ResourceLine r)
+    {
+        var bytes = files.Single(f => f.Path == r.File).Bytes.AsSpan((int)r.Start, (int)r.Size);
+        var sha = SHA256.HashData(bytes);
+        var places = index.WithKey(r.Key).SelectMany(c => index.Contents[c].Places.Where(p => p.Key == r.Key && p.Part == r.Part).Select(p => (c, p.Build))).ToList();
+        if (places.Count == 0) return "not in indexed builds";
+        var identical = places.Where(x => index.Contents[x.c].Sha256.AsSpan().SequenceEqual(sha)).Select(x => index.Builds[x.Build]).Distinct().ToList();
+        var differs = places.Where(x => !index.Contents[x.c].Sha256.AsSpan().SequenceEqual(sha)).Select(x => index.Builds[x.Build]).Distinct().ToList();
+        return string.Join("; ", new[] { identical.Count > 0 ? $"identical in {string.Join(", ", identical)}" : null, differs.Count > 0 ? $"different bytes in {string.Join(", ", differs)}" : null }.Where(x => x is not null));
+    }
     string Builds(int content) => string.Join(" + ", index.Contents[content].Places.Select(p => index.Builds[p.Build]).Distinct());
 
     s.AppendLine($"# Migration report: {name}");
@@ -250,12 +265,12 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
         s.AppendLine();
         s.AppendLine("## Resources in the mod's archives");
         s.AppendLine();
-        s.AppendLine("| Resource | Part | Size | From game | Still shipped | Comes from build(s) |");
-        s.AppendLine("|---|---|---|---|---|---|");
+        s.AppendLine("| Resource | Part | Size | From game | Still shipped | Comes from build(s) | Same resource in the game |");
+        s.AppendLine("|---|---|---|---|---|---|---|");
         foreach (var r in report.Resources.OrderBy(r => ResourceTypes.Describe(r.Key.Type)).ThenBy(r => r.Key.Name).ThenBy(r => r.Part))
         {
             var builds = string.Join(", ", r.Sources.OrderByDescending(x => x.Value).Select(x => Builds(x.Key)).Distinct());
-            s.AppendLine($"| {ResourceTypes.Describe(r.Key.Type)} `{r.Key.Name:x16}` | {r.Part} | {Size(r.Size)} | {Pct(r.FromGame, r.Size)} | {Pct(r.Literal, r.Size)} | {(builds.Length == 0 ? "-" : builds)} |");
+            s.AppendLine($"| {ResourceTypes.Describe(r.Key.Type)} `{r.Key.Name:x16}` | {r.Part} | {Size(r.Size)} | {Pct(r.FromGame, r.Size)} | {Pct(r.Literal, r.Size)} | {(builds.Length == 0 ? "-" : builds)} | {SameKey(r)} |");
         }
     }
     s.AppendLine();

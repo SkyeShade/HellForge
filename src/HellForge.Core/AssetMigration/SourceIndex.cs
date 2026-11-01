@@ -242,3 +242,62 @@ public sealed class SourceIndex
         return index;
     }
 }
+
+// A data folder in the layout older builds shipped (before bundles.nxa): one Stingray archive per file, named by its
+// 16-hex-digit hash, with <name>.gpu_resources and <name>.stream beside it. Each resource key is taken from the first
+// archive in name order that has it, as GameDataReader does.
+public sealed class LooseGameResources(string folder, string build) : IGameResources
+{
+    const uint Magic = 0xF0000011;
+    Dictionary<ResourceKey, (string Archive, long[] Offsets, int[] Sizes)>? entries;
+
+    public string Build => build;
+
+    Dictionary<ResourceKey, (string Archive, long[] Offsets, int[] Sizes)> Entries()
+    {
+        if (entries is not null) return entries;
+        entries = [];
+        foreach (var file in Directory.EnumerateFiles(folder).Where(f => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(f), "^[0-9a-f]{16}$")).Order(StringComparer.Ordinal))
+        {
+            using var s = File.OpenRead(file);
+            var head = new byte[72];
+            if (s.Read(head) < 72 || BitConverter.ToUInt32(head, 0) != Magic) continue;
+            var types = BitConverter.ToInt32(head, 4);
+            var count = BitConverter.ToInt32(head, 8);
+            var table = new byte[80L * count];
+            s.Position = 72 + 32L * types;
+            if (s.Read(table) < table.Length) continue;
+            for (var i = 0; i < count; i++)
+            {
+                var at = 80 * i;
+                var key = new ResourceKey(BitConverter.ToUInt64(table, at + 8), BitConverter.ToUInt64(table, at));
+                entries.TryAdd(key, (file,
+                    [BitConverter.ToInt64(table, at + 16), BitConverter.ToInt64(table, at + 32), BitConverter.ToInt64(table, at + 24)],
+                    [BitConverter.ToInt32(table, at + 56), BitConverter.ToInt32(table, at + 64), BitConverter.ToInt32(table, at + 60)]));
+            }
+        }
+        return entries;
+    }
+
+    static byte[] Slice(string file, long offset, int size)
+    {
+        if (size <= 0 || !File.Exists(file)) return [];
+        using var s = File.OpenRead(file);
+        var bytes = new byte[size];
+        s.Position = offset;
+        s.ReadExactly(bytes);
+        return bytes;
+    }
+
+    static readonly string[] Suffix = ["", ".gpu_resources", ".stream"];
+
+    byte[] Part((string Archive, long[] Offsets, int[] Sizes) e, PartKind kind) =>
+        Slice(e.Archive + Suffix[(int)kind], e.Offsets[(int)kind], e.Sizes[(int)kind]);
+
+    public IEnumerable<(ResourceKey Key, ResourceParts Parts)> All()
+    {
+        foreach (var (key, e) in Entries()) yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)));
+    }
+
+    public byte[]? Read(ResourceKey key, PartKind part) => Entries().TryGetValue(key, out var e) ? Part(e, part) : null;
+}
