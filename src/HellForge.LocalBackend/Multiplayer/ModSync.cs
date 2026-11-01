@@ -850,7 +850,7 @@ public sealed class ModSync : IAsyncDisposable
             File.WriteAllText(Path.Combine(evidenceDirectory, OfferFile), new JsonObject
             {
                 ["version"] = view.Version, ["state"] = view.State, ["host"] = view.Host, ["connection"] = current.Connection, ["bytes"] = view.Bytes, ["done"] = view.Done,
-                ["message"] = view.Message, ["live"] = current.Live, ["live"] = view.Live, ["stranger"] = view.Stranger,
+                ["message"] = view.Message, ["live"] = view.Live, ["stranger"] = view.Stranger,
                 ["mods"] = new JsonArray([.. view.Items.Select(i => (JsonNode?)new JsonObject
                 {
                     ["id"] = i.Mod.Id, ["name"] = i.Mod.Name, ["version"] = i.Mod.Version, ["class"] = ModSets.ClassName(i.Mod.Class),
