@@ -78,11 +78,11 @@ static class SquadTests
         return members;
     }
 
-    public static Task Run(Action<bool, string> check)
+    public static async Task Run(string root, Action<bool, string> check)
     {
         InSequence(check);
         AtOnce(check);
-        return Task.CompletedTask;
+        await AcrossBackends(Path.Combine(root, "squad"), check);
     }
 
     // Host, second and third join one after another, then a fourth, then a fifth into the full squad.
@@ -164,6 +164,70 @@ static class SquadTests
         check(new[] { host, second, third, winner }.All(p => !p.Removed()), "The race for the last place removed nobody.");
         check(Poll.Until(() => Mates(second, [ThirdId, winner.Id])) && loser.Lobby.LobbyMates().Count == 0,
             "The refused player is no one's mate and lists none.");
+    }
+
+    // Three backends as the session starts them (MultiplayerHost), linked over loopback UDP as three PCs are: each joiner
+    // to the host only. What a sandboxed game's Steam broker reads is checked, each backend's co-op peers file
+    // (p2p-peers.txt), through the cycle of issue #202 (0.3.0-beta): the third player joins a lobby of two, the second is
+    // pushed out, then rejoins. The lobby requests go straight to each backend's lobby service, as its stand-in would send
+    // them; no game is needed.
+    static async Task AcrossBackends(string root, Action<bool, string> check)
+    {
+        var ports = new Dictionary<ulong, int> { [HostId] = FreePort(), [SecondId] = FreePort(), [ThirdId] = FreePort() };
+        string Link(ulong id, params ulong[] peers) =>
+            $"udp:{LobbyService.EntityId(id)}:{ports[id]}:" + string.Join(",", peers.Select(p => $"{LobbyService.EntityId(p)}={ports[p]}"));
+        MultiplayerHost Start(ulong id, string link)
+        {
+            var evidence = Directory.CreateDirectory(Path.Combine(root, LobbyService.EntityId(id))).FullName;
+            return MultiplayerHost.Start(new MultiplayerSettings($"hellforge-squad-{Guid.NewGuid():N}", link, "mods-a", evidence));
+        }
+        string File(ulong id) => Path.Combine(root, LobbyService.EntityId(id), MultiplayerHost.PeersFileName);
+        await using var host = Start(HostId, Link(HostId, SecondId, ThirdId));
+        await using var second = Start(SecondId, Link(SecondId, HostId));
+        await using var third = Start(ThirdId, Link(ThirdId, HostId));
+
+        host.Lobby.FromLocal(MultiplayerTests.Create("c1", HostId));
+        check(Poll.Until(() => host.Lobby.HostedLobbies().Count == 1), "Across backends: the host's lobby is created.");
+        var lobby = host.Lobby.HostedLobbies().Single();
+        second.Lobby.FromLocal(MultiplayerTests.Join("s1", SecondId, lobby.ConnectionString));
+        check(Poll.Until(() => Peers(File(HostId), SecondId) && Peers(File(SecondId), HostId)),
+            "Across backends, a lobby of two: the host and the second player list each other, and only each other.");
+
+        third.Lobby.FromLocal(MultiplayerTests.Join("t1", ThirdId, lobby.ConnectionString));
+        check(Poll.Until(() => Peers(File(HostId), SecondId, ThirdId) && Peers(File(SecondId), HostId, ThirdId) && Peers(File(ThirdId), HostId, SecondId)),
+            "Across backends, a third player joins: every backend's co-op peers file lists the other two, the joiners each other too.");
+
+        // the second player is pushed out (its game leaves the lobby): the others' files drop it at once, not after a pin
+        second.Lobby.FromLocal(new Frame("lobby.leave").Add("l1").Add(lobby.Id).Add(LobbyService.EntityId(SecondId)));
+        check(Poll.Until(() => Peers(File(ThirdId), HostId) && Peers(File(HostId), ThirdId) && Peers(File(SecondId))),
+            "Across backends, the second player leaves: it is out of the host's and the third's files, and lists no one itself.");
+
+        // and comes back: the squad is three again, joiners listing each other (in 0.3.0-beta the third was pushed out now)
+        second.Lobby.FromLocal(MultiplayerTests.Join("s2", SecondId, lobby.ConnectionString));
+        check(Poll.Until(() => Peers(File(HostId), SecondId, ThirdId) && Peers(File(SecondId), HostId, ThirdId) && Peers(File(ThirdId), HostId, SecondId)),
+            "Across backends, the second player rejoins: every file lists the whole squad again.");
+
+        // the host kicks the third: out of every file at once (the kicked machine's own file empties with its lobby)
+        host.Lobby.FromLocal(new Frame("lobby.kick").Add("k1").Add(lobby.Id).Add(LobbyService.EntityId(ThirdId)).Add(1));
+        check(Poll.Until(() => Peers(File(HostId), SecondId) && Peers(File(SecondId), HostId) && Peers(File(ThirdId))),
+            "Across backends, a kicked joiner is out of the host's and the other joiner's files, and lists no one itself.");
+    }
+
+    // Whether a co-op peers file lists exactly those machines (decimal SteamIDs, one a line).
+    static bool Peers(string file, params ulong[] expected)
+    {
+        try
+        {
+            var listed = System.IO.File.Exists(file) ? System.IO.File.ReadAllLines(file).Where(l => l.Length > 0).Select(ulong.Parse).ToHashSet() : [];
+            return listed.SetEquals(expected);
+        }
+        catch (IOException) { return false; }
+    }
+
+    static int FreePort()
+    {
+        using var probe = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0));
+        return ((System.Net.IPEndPoint)probe.Client.LocalEndPoint!).Port;
     }
 
     static string Open(Player host, Action<bool, string> check)
