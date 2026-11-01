@@ -91,8 +91,9 @@ public sealed class LobbyService
     readonly Action<Frame> toLocal;
     readonly Action<string> log;
     // The session's modlist digest and its mods one by one (ModlistDiff's form, null when the session did not give them),
-    // swapped whole when a live change of the session's mods changes them (SetMods).
-    sealed record ModsNow(string Digest, string? List);
+    // swapped whole when a live change of the session's mods changes them (SetMods); Changing while one is being made
+    // (ModsChanging), when the game's mods are not known.
+    sealed record ModsNow(string Digest, string? List, bool Changing = false);
     volatile ModsNow mods;
     readonly WarClock? warClock;
     readonly Dictionary<string, HostedLobby> hosted = new(StringComparer.Ordinal);
@@ -145,6 +146,10 @@ public sealed class LobbyService
 
     // The session's mods changed while it runs (LiveMods): joins are checked against the new digest from now on.
     public void SetMods(string digest, string? list) => mods = new ModsNow(digest, list);
+
+    // A live change of the session's mods is being made (true) or ended without changing them (false): meanwhile a
+    // friend's join is refused for now, never checked against a digest the game may no longer play.
+    public void ModsChanging(bool changing) => mods = mods with { Changing = changing };
 
     // A friend's lobby refused this machine's join (the host's machine, and lines saying why for this player), and this
     // host refused a friend's (their machine, and lines for this host); the game is told (MultiplayerHost). Raised under
@@ -571,6 +576,12 @@ public sealed class LobbyService
                 ["Their HellForge version is not yours: both players need the same HellForge installer."]);
             return;
         }
+        if (hosting.Changing && node != LocalNode)
+        {
+            Refuse(node, op, lobby.Id, "the host's gameplay mods are changing; try again in a moment.",
+                ["The host's gameplay mods are changing.", "Join them again in a moment."], ["A friend tried to join while your mods were changing."]);
+            return;
+        }
         if (digest != hosting.Digest)
         {
             RefuseForMods(node, frame, op, lobby, index, hosting.List);
@@ -782,7 +793,9 @@ public sealed class LobbyService
         if (lobby == null) { Tell("gone", ["The host's lobby has closed."]); return; }
         if (Admission(lobby, node) is { } refusal) { Tell("refused", refusal.JoinerLines); return; }
         if (protocol != Protocol) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
-        if (digest != mods.Digest) { Tell("mods", ["The host's gameplay mods changed since you were refused.", "Join them again to see which differ."]); return; }
+        var hosting = mods;
+        if (hosting.Changing) { Tell("mods", ["The host's gameplay mods are changing.", "Join them again in a moment."]); return; }
+        if (digest != hosting.Digest) { Tell("mods", ["The host's gameplay mods changed since you were refused.", "Join them again to see which differ."]); return; }
         if (lobby.Lock == 1) { Tell("locked", ["The host's lobby is locked."]); return; }
         if (lobby.Members.Count(m => m.Node != node) >= lobby.MaxMembers) { Tell("full", ["The host's lobby is full."]); return; }
         Expect(lobby, node, RejoinGrace);

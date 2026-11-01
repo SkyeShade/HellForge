@@ -154,6 +154,14 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"The session's mods changed live; their digest is now {set.Digest}.");
     }
 
+    // A live change of the session's mods is being made (true), or ended without changing them (false): friends' joins
+    // wait for it (LobbyService.ModsChanging).
+    public void ModsChanging(bool changing)
+    {
+        Lobby.ModsChanging(changing);
+        Log(changing ? "The session's mods are changing live; friends' joins wait until the game reports the change." : "The live change left the session's mods as they were.");
+    }
+
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
     void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory, bool sandboxed)
     {

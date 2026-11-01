@@ -10,7 +10,10 @@ namespace HellForge.LocalBackend;
 // for the loader's result. A change with source mods or game data is prepared first by HellForge.Cli mods-live (the
 // backend cannot build them itself): the builds' DLLs and the change's hot package (LivePrepared). Then the session runs
 // the new mods: its session-mods.json and modset.json say so, and Changed gives the new set to the lobby, mod sync and the
-// directory, so joins are checked against the new digest.
+// directory, so joins are checked against the new digest. From the change's first line until the game's result the
+// session's mods are not known (Changing): joins wait rather than be checked against a digest the game may no longer
+// play. A result that comes after the wait for it still settles the session (the files, Changed), so the backend's view
+// and digest follow what the game ends up running.
 public sealed class LiveMods
 {
     public sealed record Result(bool Live, bool Applied, IReadOnlyList<string> Changes, IReadOnlyList<string> Blocking, string Detail, string Digest);
@@ -26,8 +29,7 @@ public sealed class LiveMods
     readonly Action<string> log;
     readonly SemaphoreSlim one = new(1, 1);
     readonly object gate = new();
-    TaskCompletionSource<string[]>? result;
-    string? waitingFor;
+    readonly Dictionary<string, TaskCompletionSource<string[]>> waiting = new(StringComparer.Ordinal);
     int changes;
 
     // cli: HellForge.Cli.exe, for changes that need builds or game data (null: those wait for the next session).
@@ -42,14 +44,24 @@ public sealed class LiveMods
         live.Received += Heard;
     }
 
+    // How long a change waits for the game's result before it answers that the game has not finished (the result still
+    // settles the session when it comes); a change with game data waits DataResultTimeout.
+    public TimeSpan ResultWait { get; init; } = ResultTimeout;
+
     // The mod set the session plays with after a change.
     public event Action<ModSet>? Changed;
+
+    // true: a change is being made, so the session's mods are not known until it settles; false: it settled without
+    // changing them (Changed when it changed them).
+    public event Action<bool>? Changing;
 
     void Heard(string[] parts)
     {
         if (parts.Length >= 6 && parts[0] == "modstate") log($"Live mods {parts[1]}: {parts[2]} {parts[3]}, {parts[4]} stats edit(s) applied, {parts[5]} refused.");
         if (parts.Length < 3 || parts[0] != "modresult") return;
-        lock (gate) if (parts[1] == waitingFor) result?.TrySetResult(parts);
+        TaskCompletionSource<string[]>? waiter;
+        lock (gate) waiting.Remove(parts[1], out waiter);
+        waiter?.TrySetResult(parts);
     }
 
     public SessionMods Current() => SessionMods.Read(sessionFile);
@@ -71,7 +83,10 @@ public sealed class LiveMods
     // expectDigest: the digest the change must give (mod sync: the host's), else it is not made.
     public async Task<Result> ApplyAsync(IReadOnlyList<ModManifest>? target, bool sync, string syncedWith, CancellationToken cancel, string? expectDigest = null)
     {
-        await one.WaitAsync(cancel);
+        // one change at a time: a change the game has not reported yet holds it until it settles; another waits as long as
+        // a change may take, then is answered busy
+        if (!await one.WaitAsync(PrepareTimeout + DataResultTimeout, cancel)) return new(true, false, [], ["Another change is under way."], "Try again in a moment.", "");
+        var settling = false;
         try
         {
             var current = Current();
@@ -89,27 +104,78 @@ public sealed class LiveMods
             var txn = "live" + Interlocked.Increment(ref changes).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var (prepared, problem) = await PrepareAsync(plan, txn, set.Digest, cancel);
             if (problem != null) return new(false, false, described, [problem], "Applies to the next session.", "");
-            var refused = await SendAsync(plan, txn, sync, set.Digest, prepared, cancel);
-            if (refused != null) return refused with { Changes = described };
-            SessionMods.Of(plan.Target, active, sync ? syncedWith : current.SyncedWith).Write(sessionFile);
-            set.Write(modSetFile);
-            log($"Live mods {txn}: {string.Join("; ", described)}. The mods' digest is now {set.Digest}.");
-            Changed?.Invoke(set);
-            return new(true, true, described, [], "Applied.", set.Digest);
+            var waiter = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (gate) waiting[txn] = waiter;
+            Changing?.Invoke(true);
+            Result? refused;
+            try { refused = await SendAsync(plan, txn, sync, set.Digest, prepared); }
+            catch (Exception)
+            {
+                lock (gate) waiting.Remove(txn);
+                Changing?.Invoke(false);
+                throw;
+            }
+            if (refused != null)
+            {
+                lock (gate) waiting.Remove(txn);
+                Changing?.Invoke(false);
+                return refused with { Changes = described };
+            }
+            var change = new Change(txn, plan, active, set, sync ? syncedWith : current.SyncedWith, described);
+            var settled = SettleAsync(change, waiter.Task);
+            settling = true;
+            var timeout = prepared?.Data.Count > 0 ? DataResultTimeout : ResultWait;
+            try { return await settled.WaitAsync(timeout, cancel); }
+            catch (Exception error) when (error is TimeoutException or OperationCanceledException)
+            {
+                log(error is TimeoutException ? $"Live mods {txn}: the game did not report its result within {timeout.TotalSeconds} s; the session follows it when it does."
+                    : $"Live mods {txn}: the request was withdrawn; the session follows the game's result when it comes.");
+                return new(true, false, described, ["The game has not finished the change yet."],
+                    "This session follows it once the game reports it; until then friends cannot join.", "");
+            }
         }
         finally
         {
-            lock (gate) { result = null; waitingFor = null; }
-            one.Release();
+            if (!settling) one.Release();
         }
     }
 
-    // The change sent to the loader, then its result awaited: null when it was made, else the refusal (its Changes filled
-    // in by the caller).
-    async Task<Result?> SendAsync(LiveModPlan plan, string txn, bool sync, string digest, LivePrepared? prepared, CancellationToken cancel)
+    // A change the game took, until its result: the session's view after it.
+    sealed record Change(string Txn, LiveModPlan Plan, List<ModManifest> Active, ModSet Set, string SyncedWith, List<string> Described);
+
+    // The game's result for a change, whenever it comes: a change it made (ok, or failed: made, but something of a mod
+    // taken out may be left) is the session's from then on, its files written and its set given to Changed; one it refused
+    // leaves the session as it was. Then the next change may begin.
+    async Task<Result> SettleAsync(Change change, Task<string[]> result)
     {
-        var waiter = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (gate) { result = waiter; waitingFor = txn; }
+        try
+        {
+            var done = await result;
+            if (done[2] is not ("ok" or "failed"))
+            {
+                Changing?.Invoke(false);
+                return new(false, false, change.Described, [Explain(string.Join('\t', done[3..]))], "Applies to the next session.", "");
+            }
+            SessionMods.Of(change.Plan.Target, change.Active, change.SyncedWith).Write(sessionFile);
+            change.Set.Write(modSetFile);
+            log($"Live mods {change.Txn}: {string.Join("; ", change.Described)}. The mods' digest is now {change.Set.Digest}." +
+                (done[2] == "failed" ? " Something of a mod taken out may be left." : ""));
+            Changed?.Invoke(change.Set);
+            return done[2] == "ok" ? new(true, true, change.Described, [], "Applied.", change.Set.Digest)
+                : new(true, false, change.Described, ["Something of a mod taken out may be left."], "Restart the session to be sure of its mods.", change.Set.Digest);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            log($"Live mods {change.Txn}: the session's mods could not be recorded: {error.Message}");
+            return new(true, false, change.Described, ["The session's mods could not be recorded."], "Restart the session to be sure of its mods.", "");
+        }
+        finally { one.Release(); }
+    }
+
+    // The change sent to the loader: null when it took every line (its result comes later: Heard), else the refusal (its
+    // Changes filled in by the caller).
+    async Task<Result?> SendAsync(LiveModPlan plan, string txn, bool sync, string digest, LivePrepared? prepared)
+    {
         foreach (var (verb, fields) in plan.Lines(txn, sync, digest, prepared))
         {
             var reply = await live.ModAsync(verb, fields);
@@ -118,15 +184,7 @@ public sealed class LiveMods
             log($"Live mods {txn} refused at {verb}: {reply.Detail.Replace('\t', ' ')}");
             return new(false, false, [], [Explain(reply.Detail)], "Applies to the next session.", "");
         }
-        var timeout = prepared?.Data.Count > 0 ? DataResultTimeout : ResultTimeout;
-        string[] done;
-        try { done = await waiter.Task.WaitAsync(timeout, cancel); }
-        catch (TimeoutException)
-        {
-            log($"Live mods {txn}: the game did not report its result within {timeout.TotalSeconds} s.");
-            return new(false, false, [], ["The game did not finish the change."], "Restart the session to be sure of its mods.", "");
-        }
-        return done[2] == "ok" ? null : new(false, false, [], [Explain(string.Join('\t', done[3..]))], "Applies to the next session.", "");
+        return null;
     }
 
     // What HellForge.Cli mods-live made for a change that needs it (source builds, the hot package): null with no problem

@@ -171,7 +171,11 @@ try
         {
             lock (liveLogLock) File.AppendAllText(liveLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
         }, options.GetValueOrDefault("--cli"));
-        if (multiplayer != null) liveMods.Service.Changed += multiplayer.ModsChanged;
+        if (multiplayer != null)
+        {
+            liveMods.Service.Changed += multiplayer.ModsChanged;
+            liveMods.Service.Changing += multiplayer.ModsChanging;
+        }
         // mod sync: the running game takes the host's mods when it can, instead of restarting, and is invited back into
         // the host's lobby at once (AutoRejoin from the ship)
         if (multiplayer?.Sync is { } sync)

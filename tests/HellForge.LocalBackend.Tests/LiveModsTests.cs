@@ -6,8 +6,9 @@ using HellForge.LocalBackend;
 
 // Changing a running session's mods (LiveMods) against a game played by this test on the live pipe: a stats mod changed is
 // sent as one change and, once the game reports it done, the session's mods, mod set and digest are the new ones; a code
-// mod waits for the next session and sends nothing; the game's refusal leaves the session as it was; a session playing a
-// host's mods keeps them; no game connected, no change.
+// mod waits for the next session and sends nothing; the game's refusal leaves the session as it was; a result that comes
+// after the wait still settles the session, and joins wait meanwhile; a change made with something left over is the
+// session's too; a session playing a host's mods keeps them; no game connected, no change.
 static class LiveModsTests
 {
     const string Rpm = """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}}}""";
@@ -36,9 +37,11 @@ static class LiveModsTests
         await using var live = new LiveEditServer(runId);
         live.Start();
         var log = new List<string>();
-        var service = new LiveMods(live, mods, sessionFile, modSetFile, message => { lock (log) log.Add(message); });
+        var service = new LiveMods(live, mods, sessionFile, modSetFile, message => { lock (log) log.Add(message); }) { ResultWait = TimeSpan.FromSeconds(1) };
         ModSet? changed = null;
         service.Changed += set => changed = set;
+        var changing = new List<bool>();
+        service.Changing += now => { lock (changing) changing.Add(now); };
 
         // no game yet: nothing is sent
         File.WriteAllText(Path.Combine(mods, "s1", StatsData.FileName), Rpm.Replace("900", "1000"));
@@ -52,9 +55,13 @@ static class LiveModsTests
         await writer.WriteLineAsync($"hello\t{LiveEditServer.Protocol}\t{StatsSchema.Current.Build}\t{StatsSchema.Fingerprint}");
         var waited = Stopwatch.StartNew();
         while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
-        // the game: answers as live_mods.c does; refuses the next commit while `refuse` is set
+        // the game: answers as live_mods.c does; refuses the next commit while `refuse` is set, keeps its result back while
+        // `hold` is (the change's id in `held`), and reports `outcome`
         var lines = new List<string>();
         var refuse = false;
+        var hold = false;
+        string? held = null;
+        var outcome = "ok";
         using var stop = new CancellationTokenSource();
         var game = Task.Run(async () =>
         {
@@ -65,8 +72,9 @@ static class LiveModsTests
                 if (parts[0] != "modcommit") { await writer.WriteLineAsync(parts[1] + "\tok\tnow"); continue; }
                 if (refuse) { await writer.WriteLineAsync(parts[1] + "\trefused\tcoop\tanother player is in the game"); continue; }
                 await writer.WriteLineAsync(parts[1] + "\tok\tqueued");
+                if (hold) { lock (lines) held = parts[2]; continue; }
                 await writer.WriteLineAsync($"modstate\t{parts[2]}\ts1\treplaced\t1\t0");
-                await writer.WriteLineAsync($"modresult\t{parts[2]}\tok");
+                await writer.WriteLineAsync($"modresult\t{parts[2]}\t{outcome}");
             }
         });
 
@@ -96,7 +104,39 @@ static class LiveModsTests
         var refused = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
         check(!refused.Applied && refused.Blocking.SequenceEqual(["Friends are in the game: another player is in the game."]) &&
             SessionMods.Read(sessionFile).Mods.SequenceEqual(now.Mods), "A refused change was recorded: " + string.Join(" | ", refused.Blocking));
+        // joins waited for each change sent: the made one until Changed, the refused one until it ended
+        lock (changing) check(changing.SequenceEqual([true, true, false]), "Joins did not wait for each change, or kept waiting: " + string.Join(',', changing));
         refuse = false;
+
+        // the game reports after the wait: the change answers that it has not finished, joins keep waiting, and the result
+        // when it comes settles the session (its mods, mod set and digest the new ones)
+        hold = true;
+        changed = null;
+        var late = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        check(late.Live && !late.Applied && late.Blocking.SequenceEqual(["The game has not finished the change yet."]) && changed == null &&
+            SessionMods.Read(sessionFile).Mods.SequenceEqual(now.Mods), "A change the game had not finished was recorded: " + late.Detail);
+        lock (changing) check(changing[^1], "Joins did not wait for the unfinished change.");
+        string lateTxn;
+        lock (lines) lateTxn = held!;
+        await writer.WriteLineAsync($"modresult\t{lateTxn}\tok");
+        waited.Restart();
+        while (changed == null && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
+        var s2 = ModCatalog.Load(mods).Mods.Single(m => m.Id == "s2");
+        now = SessionMods.Read(sessionFile);
+        check(changed != null && now.Mods.Single(m => m.Id == "s2").Hash == ModSets.ContentHash(s2) &&
+            ModSet.Parse(File.ReadAllText(modSetFile), local: true).Digest == changed.Digest, "The game's late result did not settle the session.");
+        hold = false;
+
+        // made with something of a mod taken out left: the session plays it (a restart makes sure), joins check the new digest
+        File.WriteAllText(Path.Combine(mods, "s1", StatsData.FileName), Rpm.Replace("900", "1100"));
+        outcome = "failed\tsomething of a mod taken out may be left; restart the session to be sure";
+        changed = null;
+        var leftover = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        now = SessionMods.Read(sessionFile);
+        check(!leftover.Applied && leftover.Blocking.SequenceEqual(["Something of a mod taken out may be left."]) && changed?.Digest == leftover.Digest &&
+            now.Mods.Single(m => m.Id == "s1").Hash == ModSets.ContentHash(ModCatalog.Load(mods).Mods.Single(m => m.Id == "s1")),
+            "A change the game made with something left over was not recorded: " + string.Join(" | ", leftover.Blocking));
+        outcome = "ok";
 
         // a session playing a host's mods keeps them: the Mods page applies to the next session
         new SessionMods(now.Mods, now.Skipped, "Host Diver").Write(sessionFile);
@@ -118,6 +158,7 @@ static class LiveModsTests
             "The host's set did not replace the session's: " + why);
         lock (lines) check(lines.Contains("modbegin sync") && lines.Contains("modremove s3"), "The game's lines: " + string.Join(" | ", lines));
         stop.Cancel();
-        Console.WriteLine("PASS live mods: a stats mod changed live and recorded, a code mod held for the next session, the game's refusal, a synced session, no game, a host's set taken live");
+        Console.WriteLine("PASS live mods: a stats mod changed live and recorded, a code mod held for the next session, the game's refusal, a late result settled (joins waiting meanwhile), " +
+            "a change made with something left over, a synced session, no game, a host's set taken live");
     }
 }
