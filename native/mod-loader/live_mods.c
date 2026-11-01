@@ -254,9 +254,6 @@ static const char* TxnCheck(char* why, size_t size)
     return NULL;
 }
 
-/* A new entry in g_mods for a mod added or replaced (a code mod's new version is set up beside the old one: staging),
- * or, for a stats mod, the one it had (a mod removed earlier in the session, its slot kept). NULL when the mods are
- * full. */
 /* A taken-out entry of this id a code mod's set-up takes again, instead of a new one (the session holds MAX_MODS): one
  * taken out whole (nothing of it left, every write it made put back) and not staged. Only under the same id: what still
  * names the entry (the tombstones of its content, its old DLL) then names that mod again, as a mod back this session
@@ -316,6 +313,9 @@ static HfMod* TxnModNew(const TxnMod* t, int fresh, HANDLE* log)
     return m;
 }
 
+/* The entry in g_mods for a mod added or replaced: a code mod's set-up (fresh) is staged beside the running version, in
+ * a taken-out entry of its id (TxnModAgain) or a new one; a stats mod takes the one it had (a mod removed earlier in the
+ * session, its slot kept). NULL when the mods are full. */
 static HfMod* TxnModEntry(const TxnMod* t, int fresh)
 {
     HfMod* mod = TxnModExisting(t, fresh);
