@@ -381,7 +381,7 @@
                 <TextBlock Text="SANDBOX" Classes="h2" />
                 <CheckBox x:Name="SandboxBox" Content="Run the game sandboxed" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Applies to the next session." />
+                           Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Without the overlay there is no Steam Input either: a Steam Controller, the Steam Deck's controls and other controllers that work only through Steam Input do not work sandboxed, and the session says so. Xbox controllers work. Applies to the next session." />
                 <TextBlock x:Name="SandboxUnavailable" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False"
                            Text="This HellForge was built without the Steam bridge, so the game cannot run sandboxed." />
               </StackPanel>

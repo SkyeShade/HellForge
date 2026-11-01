@@ -42,6 +42,9 @@ sealed partial class PlaySession(PlayOptions options)
     FileStream? lease;
     HostBoundedProcess? job;
     Process? server, broker;
+    // The controllers Steam Input handles, as the broker last logged them (SteamInputNote; set on its log's thread), and
+    // the list result.json has.
+    IReadOnlyList<int>? steamInput, steamInputRecorded;
     nint lowToken;
     Thread? applier;
     DateTime? gameStarted;
@@ -886,7 +889,12 @@ sealed partial class PlaySession(PlayOptions options)
         brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
         broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
         var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
-        broker.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (brokerLog) brokerLog.WriteLine(e.Data); };
+        broker.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data == null) return;
+            lock (brokerLog) brokerLog.WriteLine(e.Data);
+            if (SteamInputNote.Parse(e.Data) is { } controllers) Volatile.Write(ref steamInput, controllers);
+        };
         broker.BeginErrorReadLine();
         result["brokerPid"] = broker.Id;
     }
@@ -1094,6 +1102,7 @@ sealed partial class PlaySession(PlayOptions options)
             if (job.Process.HasExited) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
             RecordRedirect(playFab);
+            RecordSteamInput();
             // clearMatchmaking holds the game to the genuine sign-in; ClearPlatformMatchmaking runs each loop.
             var matchmaking = clearMatchmaking ? ClearMatchmaking() : null;
             requestCount += Tools.BackendRequests(requestLog, ref requestOffset).Count;
@@ -1124,6 +1133,19 @@ sealed partial class PlaySession(PlayOptions options)
         if (!Debug || playFab == null || result["playFabRedirect"] != null || playFab.Outcome == "waiting") return;
         result["playFabRedirect"] = new JsonObject { ["outcome"] = playFab.Outcome, ["foundMilliseconds"] = playFab.FoundMilliseconds, ["samples"] = playFab.Samples };
         Save();
+    }
+
+    // Sandboxed: the controllers Steam Input handles, which cannot reach the game (docs/steam-bridge.md, "Controllers and
+    // Steam Input"), from the broker's log into result.json for the launcher and the CLI, and the note into the log.
+    void RecordSteamInput()
+    {
+        var controllers = Volatile.Read(ref steamInput);
+        if (controllers == null || ReferenceEquals(controllers, steamInputRecorded)) return;
+        steamInputRecorded = controllers;
+        var record = SteamInputNote.Record(controllers);
+        result["steamInput"] = record;
+        Save();
+        if ((string?)record["note"] is { } note) Say(note);
     }
 
     string? ClearMatchmaking()
