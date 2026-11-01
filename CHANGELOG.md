@@ -21,7 +21,7 @@ On `dev`, since 0.3.0-beta.
 - **Nightly builds** for testers: each night that the `dev` branch changed, an untested build of it is published on
   GitHub as the Nightly pre-release (`HellForge-Nightly-Setup.exe`). Its version, as the launcher shows it, reads
   `-nightly.<date>` (`0.4.0-nightly.20261102`), so it is never taken for a release. Releases stay the builds to play
-  on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)).
+  on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)) (#211).
 
 ### Changed
 
