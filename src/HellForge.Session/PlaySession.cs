@@ -33,8 +33,8 @@ sealed partial class PlaySession(PlayOptions options)
     // the run folder, for development. Normal sessions keep only what happened, not how.
     static readonly bool Debug = Environment.GetEnvironmentVariable("HELLFORGE_DEBUG") == "1";
     InstallLayout install = null!;
-    // gameOut: where the game writes its logs and the editor its sandboxed saves (run, or run/game labelled low when sandboxed)
-    string SandboxUserData => Path.Combine(gameOut, "userdata");
+    // gameOut: where the game writes its logs and the editor its sandboxed saves (run, or run/game when sandboxed). On
+    // Linux it is the Z: path of <hostRun>/game: the overlay masks the installation through C:, so only Z: exposes it.
     string profileName = "";
     string gameOut = "", run = "", copy = "", exe = "", gameDll = "", bundle = "", shimOriginals = "", app = "";
     string? normal, hint, erlBackup, profileFolder;
@@ -48,6 +48,9 @@ sealed partial class PlaySession(PlayOptions options)
     TextWriter? log;
     // Whether this session asked Steam itself (Ownership): its second check then does too.
     bool fullOwnershipCheckRan;
+    // A force-ended previous session makes this launch hash every build file instead of trusting the verification cache.
+    bool fullVerify;
+    IReadOnlyList<string> dataExtras = [];
 
     string Shims => Path.Combine(app, "sdk-shims");
     string Scripts => Path.Combine(app, "scripts");
@@ -75,11 +78,19 @@ sealed partial class PlaySession(PlayOptions options)
     {
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
+        ConfigureLinuxSandbox();
         // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
         // search at Steam's lobbies, where vanilla games list theirs under the same build string (docs/multiplayer.md step
         // 7). Multiplayer goes through the stand-ins and the backend's directory only.
         if (options.Multiplayer && !options.LocalPlayFab)
             throw new SessionFailure("Multiplayer needs Local PlayFab: turn on Experiments > Local PlayFab in the launcher and start again.");
+        var (profileDirectory, runId) = PrepareSessionFolders();
+        InitializeResult(runId);
+        return ExecuteSession(profileDirectory);
+    }
+
+    (string ProfileDirectory, string RunId) PrepareSessionFolders()
+    {
         app = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
         copy = install.Game;
         exe = Path.GetFullPath(Path.Combine(copy, "bin", "helldivers2.exe"));
@@ -92,12 +103,41 @@ sealed partial class PlaySession(PlayOptions options)
         var profileDirectory = Path.GetFullPath(options.Profile ?? Path.Combine(install.Root, "profiles", "default"));
         var runId = Guid.NewGuid().ToString("N");
         run = Directory.CreateDirectory(Path.Combine(install.Sessions, runId)).FullName;
-        // Sandboxed, the game may write only into folders labelled low: its logs go to run/game, and the rest of the run
-        // folder (this runner's files, the backend's evidence and the DLL it loads) stays out of its reach.
-        gameOut = options.Sandbox ? LowIntegrityHelper.CreateLowFolder(Path.Combine(run, "game")) : run;
+        if (linuxSandbox)
+        {
+            hostRun = Path.Combine(hostInstall, "logs", "sessions", runId);
+            hostGameOut = Path.Combine(hostRun, "game");
+            if (!string.Equals(WinePath.ToHostPath(run, hostPrefix), hostRun, StringComparison.Ordinal))
+                throw new SessionFailure("The Linux sandbox session folder does not match the installation's host folder.");
+            gameOut = WinePath.ToZPath(hostGameOut);
+            Directory.CreateDirectory(gameOut);
+        }
+        else
+        {
+            // Windows sandbox: the game may write only into a folder labelled low; its logs go to run/game, and the rest of
+            // the run folder (this runner's files, the backend's evidence and the DLL it loads) stays out of its reach.
+            gameOut = options.Sandbox ? LowIntegrityHelper.CreateLowFolder(Path.Combine(run, "game")) : run;
+        }
+        return (profileDirectory, runId);
+    }
+
+    void InitializeResult(string runId)
+    {
         log = new StreamWriter(Path.Combine(run, "session.log"), append: true, new UTF8Encoding(false));
         result["runId"] = runId;
         result["status"] = "preparing";
+        result["sandboxed"] = options.Sandbox;
+        result["sandboxMode"] = linuxSandbox ? "linux-domain" : options.Sandbox ? "windows-low-integrity" : "none";
+        if (linuxSandbox)
+        {
+            result["sandbox"] = true;
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HELLFORGE_CRASH_DUMP")))
+            {
+                const string unavailable = "Crash dump is unavailable while sandboxed (Settings > Crash dump): the loader may not start a helper in the game's process domain.";
+                result["crashDumpUnavailable"] = unavailable;
+                Say(unavailable);
+            }
+        }
         result["gameLaunched"] = false;
         result["launchPrepared"] = false;
         result["ownershipConfirmed"] = false;
@@ -106,24 +146,44 @@ sealed partial class PlaySession(PlayOptions options)
         result["play"] = true;
         result["installRoot"] = install.Root;
         result["engine"] = typeof(PlaySession).Assembly.GetName().Version?.ToString();
+        result["fullVerify"] = fullVerify;
+        result["hashedFiles"] = 0;
+        result["dataExtras"] = new JsonArray();
+        if (linuxSandbox) result["sandboxGameOut"] = gameOut;
+        else if (!options.Sandbox && LinuxNetworkBlock.UnderWine) SayLinuxSandboxNotice();
         RecordFacts(options);
         File.WriteAllText(Path.Combine(install.Logs, "play-session.json"),
             new JsonObject { ["runId"] = runId, ["run"] = run, ["startedUtc"] = (string?)result["startedUtc"] }.ToJsonString());
+    }
+
+    int ExecuteSession(string profileDirectory)
+    {
         try
         {
             Prepare(profileDirectory);
             Play();
             result["status"] = "observed";
         }
-        catch (Exception error) when (error is SessionFailure or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException or JsonException)
+        catch (SessionStopped)
+        {
+            result["status"] = "observed";
+            result["stoppedBeforeLaunch"] = gameStarted == null;
+            Say("Session stopped by the launcher before observation started.");
+        }
+        catch (Exception error) when (error is SessionFailure or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException or InvalidDataException or JsonException)
         {
             result["status"] = "failed";
             result["failure"] = error.Message;
             Say("Session stopped: " + error.Message);
         }
-        finally { CleanUp(); }
+        finally
+        {
+            CleanUp();
+            sandboxHeartbeat?.Dispose();
+            sandboxHeartbeat = null;
+        }
         Say("Session result: " + Path.Combine(run, "result.json"));
-        log.Dispose();
+        log?.Dispose();
         return (string?)result["status"] == "observed" ? 0 : 1;
     }
 
@@ -148,12 +208,33 @@ sealed partial class PlaySession(PlayOptions options)
         catch (IOException) { return false; }
     }
 
-    // Runs HellForge.Cli: its JSON output, or null (its messages go to the run's cli-output.txt).
+    // Runs HellForge.Cli: its JSON output, or null (its messages go to the run's cli-output.txt). This can take minutes
+    // (mod staging, a full hash pass), so it polls the stop signal instead of making STOP wait for it.
     string? HellForgeCli(params string[] arguments)
     {
-        var (exit, output, error) = Tools.Run(Cli, arguments, timeoutMs: 30 * 60 * 1000);
-        File.AppendAllText(Path.Combine(run, "cli-output.txt"), Privacy.Scrub(error));
-        return exit == 0 || (exit == 2 && arguments[0] == "prepare-session") ? output : null;
+        var start = new ProcessStartInfo(Cli) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new SessionFailure("HellForge.Cli did not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var errors = process.StandardError.ReadToEndAsync();
+        var clock = Stopwatch.StartNew();
+        while (!process.WaitForExit(1000))
+        {
+            if (StopRequested())
+            {
+                try { process.Kill(entireProcessTree: true); } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                File.AppendAllText(Path.Combine(run, "cli-output.txt"), "Stopped while " + arguments[0] + " was running.");
+                throw new SessionStopped();
+            }
+            if (clock.ElapsedMilliseconds < 30 * 60 * 1000) continue;
+            try { process.Kill(entireProcessTree: true); } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            File.AppendAllText(Path.Combine(run, "cli-output.txt"), arguments[0] + " timed out.");
+            return null;
+        }
+        process.WaitForExit();
+        var errorText = errors.Result;
+        File.AppendAllText(Path.Combine(run, "cli-output.txt"), Privacy.Scrub(errorText));
+        return process.ExitCode == 0 || (process.ExitCode == 2 && arguments[0] == "prepare-session") ? output.Result : null;
     }
 
     // HellForge's published verified list (VerifiedMods), fetched for this session's mods-stage and backend, which read the
@@ -168,19 +249,38 @@ sealed partial class PlaySession(PlayOptions options)
     void Prepare(string profileDirectory)
     {
         CheckPreconditions();
+        ThrowIfStopRequested();
         FindNormalGame();
         result["normalGame"] = normal;
         profileName = Path.GetFileName(profileDirectory);
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
         RecoverStandIns();
+        ThrowIfStopRequested();
         RefreshVerifiedMods();
         StageMods(profileDirectory);
+        ThrowIfStopRequested();
+        if (OperatingSystem.IsLinux())
+        {
+            var audit = GameDataAudit.Quarantine(install, SupportedBuild.Current);
+            dataExtras = audit.Extras;
+            result["dataExtras"] = new JsonArray(dataExtras.Select(extra => (JsonNode?)JsonValue.Create(extra)).ToArray());
+            result["dataExtraCount"] = dataExtras.Count;
+            if (dataExtras.Count > 0) Say("Moved extra game data files out of game/data: " + string.Join(", ", dataExtras));
+            if (audit.Problems.Count > 0)
+            {
+                result["gameCopyProblem"] = audit.Problems[0];
+                throw new SessionFailure("The game copy has a data file that cannot be used (" + audit.Problems[0] +
+                    "); use Check and repair in the launcher.");
+            }
+        }
         // The player's mods are held read-only so nothing the game runs can change or plant a mod.
         try { modsHold = ModsHold.Take(install.Mods); }
         catch (IOException error) { throw new SessionFailure(error.Message); }
         result["modsHeld"] = modsHold.Held;
         HoldGameFiles();
+        ThrowIfStopRequested();
         PrepareSessionData(profileDirectory);
+        ThrowIfStopRequested();
     }
 
     void CheckPreconditions()
@@ -213,24 +313,13 @@ sealed partial class PlaySession(PlayOptions options)
             }
     }
 
-    // A session that was cut short leaves the stand-ins in the copy: put the saved originals back first. Their pins
+    // A session that was cut short leaves the stand-ins in the copy: Core puts the saved originals back first. Their pins
     // are the originals the stand-ins were built from; the verification below ties those to the build.
     void RecoverStandIns()
     {
-        var build = Tools.ReadJson(Path.Combine(Shims, "build.json")) ?? throw new SessionFailure("The SDK stand-ins are missing; reinstall HellForge.");
-        foreach (var name in ShimNames.Append(CloudName))
-        {
-            shimPins[name] = (string?)build["originals"]?[name] ?? throw new SessionFailure("The stand-ins' build record is incomplete; reinstall HellForge.");
-            var target = Path.Combine(copy, "bin", name);
-            var saved = Path.Combine(shimOriginals, name);
-            if (Tools.Sha256(target) != shimPins[name] && File.Exists(saved) && Tools.Sha256(saved) == shimPins[name])
-            {
-                File.Copy(saved, target, overwrite: true);
-                result["sdkShimOriginalsRecovered"] = true;
-            }
-        }
-        var leftover = Path.Combine(copy, "bin", CloudReal);
-        if (File.Exists(leftover)) File.Delete(leftover);
+        var recovery = SdkShimRecovery.Recover(install);
+        foreach (var (name, pin) in recovery.Originals) shimPins[name] = pin;
+        if (recovery.Recovered.Count > 0) result["sdkShimOriginalsRecovered"] = true;
     }
 
     // Mods: stage data mods (and remove the last session's) before the copy's files are locked; --progress lets the
@@ -251,9 +340,13 @@ sealed partial class PlaySession(PlayOptions options)
         {
             var loader = Path.Combine(Shims, "hellforge_modloader.dll");
             if (!File.Exists(loader)) throw new SessionFailure("The HellForge mod loader is missing; reinstall HellForge.");
-            // The game inherits this environment (HostBoundedProcess).
-            Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER", Path.GetFullPath(loader));
-            Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER_PLAN", loaderPlan);
+            if (linuxSandbox) PrepareSandboxModInputs(loaderPlan, loader);
+            else
+            {
+                // The game inherits this environment (HostBoundedProcess).
+                Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER", Path.GetFullPath(loader));
+                Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER_PLAN", loaderPlan);
+            }
         }
         modDigest = (string?)plan["digest"] ?? "none";
         modList = (string?)plan["modlist"];
@@ -310,6 +403,7 @@ sealed partial class PlaySession(PlayOptions options)
         // Sandboxed, the game's user data is a copy in gameOut, which carries the low label (SandboxFolders): the profile's
         // settings and saves and the shader cache go in now and come back once the game is gone.
         string[] prepare = ["prepare-session", "--install", install.Root, "--profile", profileName];
+        if (fullVerify) prepare = [.. prepare, "--verify-all", "yes"];
         if (options.Sandbox)
         {
             var copiedIn = SandboxFolders.Copy(install.UserData, SandboxUserData, SandboxFolders.UserDataParts(profileName));
@@ -318,8 +412,12 @@ sealed partial class PlaySession(PlayOptions options)
         }
         var prepared = Tools.ParseJson(HellForgeCli(prepare) ?? "")
             ?? throw new SessionFailure("Session preparation failed; see cli-output.txt in this session's log folder.");
+        result["hashedFiles"] = (int?)prepared["hashedFiles"] ?? 0;
         if (prepared["problems"] is JsonArray { Count: > 0 } problems)
+        {
+            result["gameCopyProblem"] = (string?)problems[0];
             throw new SessionFailure($"The game copy is not the supported build ({(string?)problems[0]}); repair it from the launcher.");
+        }
         var settingsPath = Path.GetFullPath(Path.Combine(copy, "data", "settings.ini"));
         locks.Add(new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.Read));
         result["verifiedFiles"] = (prepared["gameFiles"] as JsonArray)?.Count ?? 0;
@@ -526,13 +624,23 @@ sealed partial class PlaySession(PlayOptions options)
         if (File.Exists(evidence)) File.Delete(evidence);
         if (LinuxNetworkBlock.UnderWine)
         {
+            // Reusing the ownership record needs the account first. The launcher passes one only when it has a fresh
+            // probe result; without one this full check asks Steam, and adopts the account from that same answer before
+            // the backend or game starts. It does not run a second probe just to find the account.
+            var privateAccount = SteamAccount.Current() == null
+                ? Path.Combine(install.Temp, "ownership", Guid.NewGuid().ToString("N") + ".account.json")
+                : null;
             int exit;
             try
             {
                 exit = SteamOwnershipCheck.RunProbe(Path.Combine(app, "steamprobe", "HellForge.SteamProbe.exe"), steamApi,
-                    Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(15));
+                    Path.Combine(install.Temp, "ownership"), evidence, TimeSpan.FromSeconds(15), privateAccount);
             }
             catch (InvalidDataException error) { throw new SessionFailure("Steam ownership was not confirmed: " + error.Message); }
+            finally
+            {
+                if (privateAccount != null) AdoptSessionAccount(privateAccount);
+            }
             if (exit != 0) throw new SessionFailure("Steam ownership was not confirmed (the probe exited with " + exit + ").");
         }
         else
@@ -545,29 +653,54 @@ sealed partial class PlaySession(PlayOptions options)
         if (SteamOwnershipCheck.Problem(evidence, started) is { } problem) throw new SessionFailure("Steam ownership was not confirmed: " + problem + ".");
     }
 
+    // The account from this session's own ownership probe: read and delete the private handoff, then put its low 32 bits
+    // in this process's environment for the backend, the game and the session's later SteamAccount calls.
+    static void AdoptSessionAccount(string privateAccount)
+    {
+        if (SteamAccount.TakeProbeResult(privateAccount) is not { } account) return;
+        Environment.SetEnvironmentVariable(SteamAccount.EnvironmentVariable,
+            SteamAccount.AccountId(account).ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     void Play()
     {
+        ThrowIfStopRequested();
         BackUpGameGuard();
         var build = Tools.ReadJson(Path.Combine(Shims, "build.json"))!;
         result["sdkShims"] = options.Multiplayer;
         if (options.Multiplayer) SwapInShims(build);
+        ThrowIfStopRequested();
         Ownership(Path.Combine(copy, "bin", CloudName), Path.Combine(run, "ownership.json"));
         result["ownershipConfirmed"] = true;
         var realTarget = SwapInCloud(build);
         var authorization = Stopwatch.StartNew();
+        ThrowIfStopRequested();
         HoldInstalledGame();
         WriteAppIdHint();
         StartBackend(realTarget);
         result["steamOnline"] = true;
+        ThrowIfStopRequested();
         var blockRules = SetUpNetworkBlock(out var linuxNamespace, out var wfpOnly);
         ProveNetworkBlock(linuxNamespace, wfpOnly);
         // Confirm genuine Steam sign-in and ownership with the game's rules active.
         Ownership(realTarget, Path.Combine(run, "ownership-with-firewall.json"));
         result["steamOwnershipWithRules"] = true;
         if (authorization.Elapsed.TotalSeconds >= 120) throw new SessionFailure("Ownership authorization expired.");
+        ThrowIfStopRequested();
         var requestLog = PrepareProfileFolder();
+        if (linuxSandbox)
+        {
+            var started = StartSandboxDomain();
+            result["status"] = "observing";
+            Save();
+            Say($"The game is running in the Linux sandbox (PID {started.GamePid}).");
+            ObserveSandbox(started, requestLog, blockRules);
+            return;
+        }
         LaunchGame();
+        ThrowIfStopRequested();
         var playFab = ApplyLaunchEdits();
+        ThrowIfStopRequested();
         // The local backend enables from the genuine sign-in; kept aligned each second below. With the local PlayFab
         // stand-in the sign-in completes on loopback, so this is left as it is.
         var clearMatchmaking = !options.LocalPlayFab;
@@ -614,13 +747,16 @@ sealed partial class PlaySession(PlayOptions options)
     // loads in the game. Returns the path where the verified original is kept (real).
     string SwapInCloud(JsonNode build)
     {
-        var cloudStandIn = Path.Combine(Shims, options.Sandbox ? "steam_api64_bridge.dll" : CloudName);
-        var cloudPin = options.Sandbox ? (string?)build["steamBridge"] : (string?)build["standIns"]?[CloudName];
-        if (options.Sandbox && cloudPin == null)
+        // The Windows low-integrity topology uses the bridge build and the broker. The Linux domain keeps the forwarding
+        // stand-in: the broker's pipe lives in the real prefix's wineserver and cannot cross to the overlay (review-F4c 4).
+        var windowsSandbox = options.Sandbox && !linuxSandbox;
+        var cloudStandIn = Path.Combine(Shims, windowsSandbox ? "steam_api64_bridge.dll" : CloudName);
+        var cloudPin = windowsSandbox ? (string?)build["steamBridge"] : (string?)build["standIns"]?[CloudName];
+        if (windowsSandbox && cloudPin == null)
             throw new SessionFailure("This HellForge was built without the Steam bridge (it needs the Steamworks SDK), so a sandboxed session cannot start.");
         if (cloudPin == null || !File.Exists(cloudStandIn)) throw new SessionFailure("The Steam Cloud stand-in is missing; reinstall HellForge.");
         if (Tools.Sha256(cloudStandIn) != cloudPin) throw new SessionFailure("Stand-in changed since it was built: " + Path.GetFileName(cloudStandIn));
-        result["steamBridge"] = options.Sandbox;
+        result["steamBridge"] = windowsSandbox;
         var realTarget = Path.GetFullPath(Path.Combine(copy, "bin", CloudReal));
         if (Tools.Sha256(Path.Combine(copy, "bin", CloudName)) != shimPins[CloudName]) throw new SessionFailure("The copy's steam_api64.dll is not the verified original.");
         SwapIn(CloudName, cloudStandIn, cloudPin, realTarget);
@@ -631,13 +767,8 @@ sealed partial class PlaySession(PlayOptions options)
         if (!Directory.Exists(cloudDirectory))
         {
             Directory.CreateDirectory(cloudDirectory);
-            var steamRoot = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
-            var steamUser = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null);
-            if (steamRoot != null && steamUser != null)
-            {
-                var controls = Path.Combine(steamRoot, "userdata", steamUser.ToString()!, "553850", "remote", "input_settings.config");
-                if (File.Exists(controls)) { File.Copy(controls, Path.Combine(cloudDirectory, "input_settings.config")); cloudSeeded = true; }
-            }
+            var controls = GameSettings.SteamControls();
+            if (controls != null) { File.Copy(controls, Path.Combine(cloudDirectory, "input_settings.config")); cloudSeeded = true; }
         }
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_DIR", Path.GetFullPath(cloudDirectory));
         Environment.SetEnvironmentVariable("HELLFORGE_CLOUD_LOG", Path.Combine(gameOut, "steam-cloud.log"));
@@ -806,24 +937,6 @@ sealed partial class PlaySession(PlayOptions options)
         var network = Tools.ReadJson(networkReport);
         result["networkControl"] = network?.DeepClone();
         return NetworkBlockProbe.Problem(network, otherPort != null) ?? (probeExit != 0 ? $"the network block's check ended with exit code {probeExit}" : null);
-    }
-
-    // The profile's environment folders (a sandbox copy when sandboxed), and the pre-launch backend request count.
-    // Returns the backend's request log.
-    string PrepareProfileFolder()
-    {
-        profileFolder = Path.Combine(install.UserData, "environment");
-        if (options.Sandbox)
-        {
-            // the game's AppData and temp: a copy in gameOut too, back at the end
-            SandboxFolders.Copy(install.UserData, gameOut, ["environment"]);
-            profileFolder = Path.Combine(gameOut, "environment");
-        }
-        foreach (var folder in new[] { "Roaming", "Local", "Temp" }) Directory.CreateDirectory(Path.Combine(profileFolder, folder));
-        var requestLog = Path.Combine(run, "backend", "requests.jsonl");
-        long requestOffset = 0;
-        result["preLaunchBackendRequests"] = Tools.BackendRequests(requestLog, ref requestOffset).Count;
-        return requestLog;
     }
 
     // Starts the copied game in its job (low-integrity and brokered when sandboxed), then resumes it after the status is
@@ -1067,6 +1180,7 @@ sealed partial class PlaySession(PlayOptions options)
         // Up to 16 s of live war fetches (two requests, 8 s timeout each) come before ready.
         while (!File.Exists(ready))
         {
+            ThrowIfStopRequested();
             if (server!.HasExited || clock.Elapsed.TotalSeconds > 30) throw new SessionFailure("Backend did not become ready.");
             Thread.Sleep(100);
         }
@@ -1079,102 +1193,5 @@ sealed partial class PlaySession(PlayOptions options)
         result["backendOrigin"] = "http://127.0.0.1:" + origin.Port;
         result["profile"] = state["profile"]?.DeepClone();
         result["profileCreated"] = state["profileCreated"]?.DeepClone();
-    }
-
-    void Observe(HellForgeLocalRoutingPatch.PlayFabRedirect? playFab, bool clearMatchmaking, string requestLog, int blockRules)
-    {
-        var clock = Stopwatch.StartNew();
-        var observations = Path.Combine(run, "observations.jsonl");
-        long nextSample = 0, nextBlockCheck = 10000, requestOffset = 0;
-        var requestCount = 0;
-        Say("Play session running. Close the game or press Stop in the launcher to end it.");
-        while (true)
-        {
-            job!.Process.Refresh();
-            if (job.Process.HasExited) break;
-            CheckBlock(clock, blockRules, ref nextBlockCheck);
-            RecordRedirect(playFab);
-            // clearMatchmaking holds the game to the genuine sign-in; ClearPlatformMatchmaking runs each loop.
-            var matchmaking = clearMatchmaking ? ClearMatchmaking() : null;
-            requestCount += Tools.BackendRequests(requestLog, ref requestOffset).Count;
-            // Play sessions keep only the periodic samples so the log stays small; the engine's own diagnostics are kept
-            // only under HELLFORGE_DEBUG.
-            if (clock.ElapsedMilliseconds >= nextSample)
-            {
-                WriteSample(observations, clock.ElapsedMilliseconds, requestCount, matchmaking);
-                nextSample = clock.ElapsedMilliseconds + 30000;
-            }
-            if (StopRequested()) break;
-            Thread.Sleep(1000);
-        }
-        RecordEnd(clock);
-    }
-
-    // The persistent block is re-read every 10 seconds; the game is stopped if a rule or profile goes away.
-    void CheckBlock(Stopwatch clock, int blockRules, ref long nextBlockCheck)
-    {
-        if (clock.ElapsedMilliseconds < nextBlockCheck) return;
-        // blockRules is 0 only in the WFP-only mode, which has no firewall rules to re-read.
-        if (blockRules > 0 && BlockRuleCount() != blockRules) throw new SessionFailure("Network block rules or firewall profiles changed during the session.");
-        nextBlockCheck = clock.ElapsedMilliseconds + 10000;
-    }
-
-    void RecordRedirect(HellForgeLocalRoutingPatch.PlayFabRedirect? playFab)
-    {
-        if (!Debug || playFab == null || result["playFabRedirect"] != null || playFab.Outcome == "waiting") return;
-        result["playFabRedirect"] = new JsonObject { ["outcome"] = playFab.Outcome, ["foundMilliseconds"] = playFab.FoundMilliseconds, ["samples"] = playFab.Samples };
-        Save();
-    }
-
-    string? ClearMatchmaking()
-    {
-        try { return HellForgeLocalRoutingPatch.ClearPlatformMatchmaking(job!.Process.Id, gameDll); }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return "error"; }
-    }
-
-    void WriteSample(string observations, long elapsed, int requestCount, string? matchmaking)
-    {
-        var row = new JsonObject
-        {
-            ["utc"] = DateTime.UtcNow.ToString("o"),
-            ["elapsedMilliseconds"] = elapsed,
-            ["windows"] = new JsonArray(HostWindowText.Read(job!.Process.Id).Select(w => (JsonNode?)new JsonObject
-                { ["Title"] = w.Title, ["Controls"] = new JsonArray(w.Controls.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray()) }).ToArray()),
-            ["backendRequests"] = requestCount,
-            ["sampled"] = true
-        };
-        if (Debug)
-        {
-            row["routingSite"] = HellForgeLocalRoutingPatch.Inspect(job.Process.Id, gameDll);
-            row["backendState"] = HellForgeLocalRoutingPatch.Diagnose(job.Process.Id, gameDll);
-            row["catalogue"] = HellForgeLocalRoutingPatch.DiagnoseCatalogue(job.Process.Id, gameDll);
-            row["playFab"] = HellForgeLocalRoutingPatch.DiagnosePlayFab(job.Process.Id, exe);
-            if (matchmaking != null) row["platformMatchmaking"] = matchmaking;
-        }
-        File.AppendAllText(observations, row.ToJsonString() + "\n", new UTF8Encoding(false));
-    }
-
-    bool StopRequested()
-    {
-        if (!File.Exists(Path.Combine(run, "stop-observation.signal"))) return false;
-        result["observationStoppedBySignal"] = true;
-        // The backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
-        if (ReadSignal() == "mod-sync") result["restart"] = "mod-sync";
-        return true;
-    }
-
-    void RecordEnd(Stopwatch clock)
-    {
-        result["gameExitedNaturally"] = job!.Process.HasExited;
-        if (!job.Process.HasExited)
-        {
-            if (Debug)
-            {
-                result["routingSiteAtEnd"] = HellForgeLocalRoutingPatch.Inspect(job.Process.Id, gameDll);
-                result["backendStateAtEnd"] = HellForgeLocalRoutingPatch.Diagnose(job.Process.Id, gameDll);
-            }
-        }
-        else result["exitCode"] = job.Process.ExitCode;
-        result["observedSeconds"] = Math.Round(clock.Elapsed.TotalSeconds, 2);
     }
 }

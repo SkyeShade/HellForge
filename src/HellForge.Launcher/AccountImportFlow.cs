@@ -30,14 +30,30 @@ public partial class MainWindow
 
     void InitializeAccountImport()
     {
-        ReviewImportButton.Click += async (_, _) => await ShowReviewAsync(Selected);
-        ImportApplyButton.Click += async (_, _) => await ApplyReviewAsync();
+        ReviewImportButton.Click += async (_, _) => await WhileBusy(ReviewImportButton, "Reviewing...", () => ShowReviewAsync(Selected));
+        ImportApplyButton.Click += async (_, _) => await WhileBusy(ImportApplyButton, "Importing...", ApplyReviewAsync);
         ImportCancelButton.Click += (_, _) =>
         {
             ImportPanel.IsVisible = false;
             SetSyncStatus("Nothing imported. Premium items you own still follow the sync.", Light);
         };
-        RestoreBackupButton.Click += async (_, _) => await RestoreBackupAsync();
+        RestoreBackupButton.Click += async (_, _) => await WhileBusy(RestoreBackupButton, "Restoring...", RestoreBackupAsync);
+    }
+
+    // A button that starts slow work shows it at once: disabled, with its label saying what it is doing, until the work
+    // ends. A second click meanwhile does nothing.
+    static async Task WhileBusy(Button button, string busyLabel, Func<Task> work)
+    {
+        if (!button.IsEnabled) return;
+        var label = button.Content;
+        button.IsEnabled = false;
+        button.Content = busyLabel;
+        try { await work(); }
+        finally
+        {
+            button.Content = label;
+            button.IsEnabled = true;
+        }
     }
 
     // The review button when the selected profile has a snapshot; the backups it has.
@@ -53,16 +69,19 @@ public partial class MainWindow
         BackupCombo.IsVisible = RestoreBackupButton.IsVisible = backups.Count > 0;
     }
 
+    // The capture keeps the normal game connected after the sync; HellForge does not close the player's game for them.
+    string CloseGameNote => SyncCaptureId != null ? " Close HELLDIVERS 2 to finish: until then the sync keeps it connected." : "";
+
     // After a complete sync (inventory and progression): the review, or the saved choices.
     async Task AfterCaptureAsync(LocalProfile profile)
     {
         if (!AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder)).AutoApply)
         {
-            SetSyncStatus("Synced. Choose what to import below.", Green);
+            SetSyncStatus("Synced. Choose what to import below." + CloseGameNote, Green);
             await ShowReviewAsync(profile);
             return;
         }
-        if (await RunImportAsync(profile)) SetSyncStatus("Synced and imported with your saved choices. A backup was made first.", Green);
+        if (await RunImportAsync(profile)) SetSyncStatus("Synced and imported with your saved choices. A backup was made first." + CloseGameNote, Green);
     }
 
     async Task ShowReviewAsync(LocalProfile profile)
@@ -74,6 +93,7 @@ public partial class MainWindow
             return;
         }
         importBusy = true;
+        SetSyncStatus("Reading the snapshot" + AccountCheckNote() + "...", Gold);
         var (code, output, error) = await RunBackendAsync("profile", "import-preview", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -85,6 +105,7 @@ public partial class MainWindow
         {
             using var preview = JsonDocument.Parse(output);
             BuildReview(profile, preview.RootElement);
+            SetSyncStatus("Choose what to import below.", Green);
         }
         catch (Exception problem) when (problem is JsonException or KeyNotFoundException or InvalidOperationException)
         {
@@ -196,7 +217,7 @@ public partial class MainWindow
             return false;
         }
         importBusy = true;
-        SetSyncStatus("Importing...", Gold);
+        SetSyncStatus("Importing" + AccountCheckNote() + "...", Gold);
         var (code, _, error) = await RunBackendAsync("profile", "import", profile.Folder, profile.Template);
         importBusy = false;
         if (code != 0)
@@ -234,6 +255,10 @@ public partial class MainWindow
         UpdateImportControls();
     }
 
+    // On native Linux the backend confirms the signed-in Steam account with its own probe through Proton first, which
+    // takes a while; say so, so the click does not look ignored.
+    static string AccountCheckNote() => NativeLinux ? " (checking the signed-in Steam account first takes about 20 seconds)" : "";
+
     // The profile is in use while a session runs; the backend would refuse anyway.
     string? ImportRefusal() => runner.IsRunning ? "Stop the HellForge session first: it holds the profile." : SyncBusy ? "Wait for the sync to finish." : null;
 
@@ -243,10 +268,24 @@ public partial class MainWindow
         return line == null ? fallback : line.Replace("HellForge local backend: ", "", StringComparison.Ordinal);
     }
 
+    // The profile commands are plain file work. On native Linux they run in the native backend
+    // (app/backend-linux), which finds the signed-in Steam account with its own probe; the Windows backend is for Windows.
     async Task<(int Code, string Output, string Error)> RunBackendAsync(params string[] arguments)
     {
-        var start = new ProcessStartInfo(paths.Backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        string backend;
+        if (NativeLinux)
+        {
+            if (paths.InstallRoot is not { } installRoot)
+                return (-1, "", "HellForge local backend: account import runs in installations made with HellForge-Setup.");
+            backend = Path.Combine(new InstallLayout(installRoot).App, "backend-linux", "HellForge.LocalBackend");
+            if (!File.Exists(backend))
+                return (-1, "", "HellForge local backend: app/backend-linux/HellForge.LocalBackend is missing; update HellForge.");
+        }
+        else backend = paths.Backend;
+        var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        // A value inherited from elsewhere is never passed on; only a backend under Wine reads it.
+        start.Environment.Remove(SteamAccount.EnvironmentVariable);
         try
         {
             using var process = Process.Start(start) ?? throw new IOException("The local backend did not start.");

@@ -22,8 +22,8 @@ not submit the game's files or code taken from the game, or code from other proj
   (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`); a pull request into `main` from any other branch fails
   its checks.
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
-  (`py -3 scripts/lint/lint.py check`, [scripts/lint/README.md](scripts/lint/README.md)), the build, where warnings
-  are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
+  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where
+  its warnings are errors too, the build, where warnings are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
   editor are built and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's
   version (below).
 - **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`, bumped with
@@ -82,6 +82,24 @@ Downloads are pinned by SHA-256 and kept in the ignored `tools/` folder (`script
 Build outputs and test fixtures go to the ignored `artifacts/` folder. The supported build's file list
 (`src/HellForge.Core/supported-build.json`, names and hashes only) comes from Steam's depot manifests via
 `HellForge.Cli supported-build`.
+
+### Linux
+
+You need the .NET 10 SDK and `bsdtar` (for the archive tests; `libarchive-tools` on Debian and Ubuntu, and `bsdtar` on
+Fedora). From the repository root:
+
+```bash
+./scripts/test.sh                # build and integration checks (no game needed)
+```
+
+- `scripts/test.sh` builds the launcher, the CLI and both test projects in Release, runs `tests/HellForge.Tests` and
+  `tests/HellForge.LocalBackend.Tests`, the structure lint and `bash -n linux/*.sh`.
+- It skips only the checks inside those projects that need Windows (snapshot seals use Windows DPAPI, for example) and
+  `scripts/Test.ps1`'s NTFS junction checks.
+- The engine, the in-game editor and the complete package need Windows. To build the package without a Windows PC, run
+  the **Build Linux package** workflow:
+  [docs/linux.md](docs/linux.md#building-the-linux-package-without-a-windows-pc).
+- Pull requests run the **Linux build and test** CI job too, so these checks run on every change.
 
 ## Where things are
 

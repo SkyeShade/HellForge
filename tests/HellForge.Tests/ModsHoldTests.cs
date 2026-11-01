@@ -34,6 +34,7 @@ static class ModsHoldTests
     {
         test("Mods hold: mod files are held read-only; the files HellForge writes during a session are not", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: Windows read-only file semantics)"); return; }
             var mods = Folder(root, "mods-hold");
             var editor = Path.Combine(mods, BundledMods.EditorFolder);
             using var hold = ModsHold.Take(mods);
@@ -105,6 +106,7 @@ static class ModsHoldTests
 
         test("Sandboxed sessions: the game's data is copied in and back, files only, never through a junction, and bounded", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: creates a Windows junction)"); return; }
             var install = Directory.CreateDirectory(Path.Combine(root, "sandbox-copy", "userdata")).FullName;
             var session = Path.Combine(root, "sandbox-copy", "run", "game", "userdata");
             Directory.CreateDirectory(Path.Combine(install, "profiles", "default", "saves"));
@@ -130,10 +132,10 @@ static class ModsHoldTests
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
                 made.WaitForExit();
             check(Directory.Exists(junction), "The junction was made.");
-            var back = SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"));
+            var back = SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), fromSession: true);
             check(File.ReadAllText(Path.Combine(install, "profiles", "default", "saves", "save.dat")) == "save 2" && back.Skipped == 1 &&
                 !File.Exists(Path.Combine(install, "profiles", "default", "link", "secret.txt")), "Back: the new save; the junction is not followed: " + back);
-            check(SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), maxBytes: 10) is { Skipped: > 0 }, "A copy stops at its byte limit.");
+            check(SandboxFolders.Copy(session, install, SandboxFolders.UserDataParts("default"), maxBytes: 10, fromSession: true) is { Skipped: > 0 }, "A copy stops at its byte limit.");
             Directory.Delete(junction);
         });
 

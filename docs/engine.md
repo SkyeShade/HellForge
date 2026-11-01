@@ -73,6 +73,7 @@ is checked against its pin and is never committed or shipped.
 | Parameter | What it does |
 |---|---|
 | `-SteamApi <path>` | the game's `bin/steam_api64.dll`. By default the script finds it in the Steam libraries listed under `HKCU:\Software\Valve\Steam`. |
+| `-SteamExports <path>` | a text-only export manifest created from the pinned DLL by `dotnet run --project src/HellForge.SdkShimGen -- manifest <steam_api64.dll> <manifest.json>`. For Windows runners without Steam, this avoids uploading or committing the DLL; the build validates its SHA-256 pin. Mutually exclusive with `-SteamApi`. |
 | `-SkipSmoke` | builds everything but skips running the native tests, the smoke tests and the NativeAOT backend comparison |
 
 In order, the script:

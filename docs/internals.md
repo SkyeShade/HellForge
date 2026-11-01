@@ -76,33 +76,42 @@ entities are numbered by their resource ids.
 This section explains how HellForge compiles code mods that ship their sources, and when it trusts a cached build.
 
 A code mod that ships its sources (C or C++ under `src/`) is built by HellForge, not by its author. Before every
-session that has it enabled, `HellForge.Cli mods-stage` compiles it with the SDK's pinned Zig and the same flags on
+session that has it enabled, `HellForge.Cli mods-stage` gets the build with the SDK's pinned Zig and the same flags on
 every machine, into `<installation>/temp/mod-builds/<mod id>/`, and the loader loads that build. A DLL in the mod's own
 folder (an IDE's build, say) is not used. The code is in `src/HellForge.Core/ModBuilds.cs`.
+
+On Linux the session runs under Wine, where the pinned `zig.exe` does not work (issue 81). The wrapper therefore runs a
+native build agent before it enters the namespace (`app/cli-linux/HellForge.Cli build-source-mods --install
+<installation>`, which calls the same `ModBuilds`); the session finds the build ready and does not compile. A source mod
+without a build there is reported and stays off, never compiled with `zig.exe` under Wine.
 
 ### The cache
 
 A build is kept under its key: a hash of the mod's manifest and every file under `src/`, the SDK's headers, the
-compiler (its pinned archive) and flags, and the game build. A change to any of them builds the mod again, so a mod
-follows a game update by itself as long as the names it uses still exist.
+compiler's identity (`zig 0.17.0 / x86_64-windows-gnu`, not its archive) and flags, and the game build. A change to any
+of them builds the mod again, so a mod follows a game update by itself as long as the names it uses still exist. The
+"hf-source-key-v2" salt marks the identity scheme: a native Linux build and a Windows session of the same sources and
+pin share one key.
 
 ### The check
 
-`record.json` beside the build holds its key, the sources' hash and the DLL's SHA-256. A session uses the build only
-when all three still match; a stale, corrupted or swapped DLL is built again and never loaded. This guards against
-accidents and casual swaps, not against someone with access to the installation (who could edit the sources or the
-record too).
+`record.json` beside the build holds its key, the sources' hash and the DLL's SHA-256 (an optional compiler and host
+say which build made it). A session uses the build only when all three still match; a stale, corrupted or swapped DLL
+is built again and never loaded. This guards against accidents and casual swaps, not against someone with access to the
+installation (who could edit the sources or the record too).
 
 ### Errors
 
 A mod that does not compile stays off for that session, and the session still runs. The record keeps the compiler's
 message (file and line), which the launcher's Mods page shows on the mod's card, and the same sources are not compiled
-again. Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once.
+again. Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once; on
+Linux it runs the native agent.
 
 ### Tools and friends
 
-The first source mod fetches the pinned Zig into `<installation>/tools` (checksummed) if it is not there. The modlist
-digest takes a source mod's sources, not a DLL, so friends who play together build identical mods.
+The first source mod fetches the pinned Zig into `<installation>/tools` (checksummed) if it is not there: `zig.exe` on
+Windows, and `zig-linux/zig` natively on Linux (both pinned in `app/sdk/tools.json`). The modlist digest takes a source
+mod's sources, not a DLL, so friends who play together build identical mods.
 
 ### Prebuilt DLLs
 
@@ -438,6 +447,20 @@ diagram (jc_voronoi). Level 10 nearly fills its unchecked arrays (5672 of 5680 s
 spacing grows with the disk too (0xF3FB04), rounded up to a quarter metre so the grid points stay exact in float. An
 inexact spacing makes near-degenerate circles and extra vertices, overruns the vertex array, and the pass retries
 forever (the war table's "Receiving Geodetic Data"). At 2 x the spacing is 24.5 m.
+
+The SEAF Artillery fires the projectile of the shell at the head of its queue. Its six shells' rows (71, 339, 99, 145,
+10, 92) fly alike: 300 m/s, gravity x 10, drag 0.5. That reaches about 710 m, and a 2 x map is up to 1550 m across. The
+aim (0x617E50, solver 0x13B1BD0) and the landing prediction (0x13B18B0) read speed and gravity from the row the shell
+flies with. Above 1, a watch poll (difficulty_artillery.c) sets each row in a mission at the level (the world's level
+generator, +0xF9): speed x sqrt(map_scale) and drag x 1 / map_scale. That keeps k v^2 / g, so the arc scales by
+map_scale and the aim follows it. In a mission at another level the rows are put back where they still hold what was
+written.
+
+`HF_DIFFICULTY_HEAVY_ARTILLERY` changes the side objective's shells. Its stamps place 12 to 28 spawn points (unit
+C5A8CB32B972E580), and each rolls one shell (0x9F3250) from the unit's script data table 0x3268FC21 of {shell kind
+(ObjectiveShell +0x10), weight}: Explosive 20, Napalm, Smoke and Static Field 10, High-Yield 5, Mini Nuke 1. The roll
+skips weights of 0 or less and picks by weight with the objective's seeded random numbers. A stub at the weight's load
+(0x9F342F) gives a level-11 mission Explosive 10, High-Yield 5 and Mini Nuke 5, and every other kind 0.
 
 GenerateRouteCellVoronoi (op 3, 0xF93800) fills each route cell with points at its type's size / 2 or / 4. Level 10
 makes 11954 areas of 13224, in proportion to the generated area, so that spacing grows with the disk too (0xF9420F,

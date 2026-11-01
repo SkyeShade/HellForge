@@ -569,9 +569,11 @@ try
     // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
     // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
     // repeated one is refused.
+    // The three methods are read by name and brace-matched, so moving other methods to partial files does not change
+    // what is read. A missing method leaves its part empty and the check below fails with its message.
     var runner = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session/PlaySession.cs"));
-    var startAt = runner.IndexOf("void StartBackend(", StringComparison.Ordinal);
-    var startBackend = startAt < 0 ? "" : runner[startAt..runner.IndexOf("void Observe(", startAt, StringComparison.Ordinal)];
+    var startBackend = string.Concat(new[] { "void StartBackend(", "void WarArguments(", "void MultiplayerArguments(" }
+        .Select(signature => MethodText(runner, signature)));
     var passed = System.Text.RegularExpressions.Regex.Matches(startBackend, "\"(--[a-z][a-z-]+)\"").Select(m => m.Groups[1].Value).Distinct().ToList();
     Check(passed.Contains("--mods") && passed.Contains("--pipe") && passed.Contains("--port") && passed.Contains("--mod-digest"),
         "The session runner's backend options were not found.");
@@ -618,3 +620,19 @@ await File.WriteAllTextAsync(Path.Combine(root, "result.json"), JsonSerializer.S
 }, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"{checks} checks; evidence: {root}");
 return failed ? 1 : 0;
+
+// The text of the method whose declaration starts with signature, through its matching closing brace; empty when absent.
+static string MethodText(string source, string signature)
+{
+    var start = source.IndexOf(signature, StringComparison.Ordinal);
+    if (start < 0) return "";
+    var open = source.IndexOf('{', start);
+    if (open < 0) return "";
+    var depth = 0;
+    for (var index = open; index < source.Length; index++)
+    {
+        if (source[index] == '{') depth++;
+        else if (source[index] == '}' && --depth == 0) return source[start..(index + 1)];
+    }
+    return "";
+}

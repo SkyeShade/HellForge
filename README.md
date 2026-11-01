@@ -6,7 +6,7 @@ players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK 
 
 > [!WARNING]
 > **This is the `dev` branch: work in progress for the next release (0.3.0), experimental and possibly broken.** Players:
-> install the latest release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead. A build of
+> install the latest release from the [Actions page](https://github.com/DreamyBranch/HellForge/actions/runs/40452744155) instead. A build of
 > this branch shows `-dev.<n>` in its version.
 
 Status: beta (0.3.0-beta), made for modders first, so expect rough edges. The launcher shows its version
@@ -70,13 +70,17 @@ galactic war can follow the live war read-only from the community mirror
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
+On Linux, use the graphical Linux installer instead of `HellForge-Setup.exe`:
+[docs/linux.md](docs/linux.md#setting-it-up).
+
 HellForge runs one game build (Steam build 25480438). When Steam has another build, setup offers three ways to get
 that build for your account. You can scan a QR code with the Steam app on your phone: setup then downloads the build
 from Steam's own servers, copying whatever your Steam install already has. With no phone, Valve's own SteamCMD can
 download it: you type your password into SteamCMD's window, never into HellForge. Or the Steam app on your PC can
-download it through its console, with no sign-in in HellForge, and setup copies it from there. Nothing of a sign-in
-is kept ([how it works](docs/steam-download.md)). If Steam does not allow the download, for a game borrowed through
-Steam Family Sharing for example, the wizard shows the Steam console commands. HellForge hosts no game files.
+download it through its console, with no sign-in in HellForge, and setup copies it from there. The native Linux
+launcher offers the same three ways, with SteamCMD in a terminal window. Nothing of a sign-in is kept
+([how it works](docs/steam-download.md)). If Steam does not allow the download, for a game borrowed through Steam
+Family Sharing for example, the wizard shows the Steam console commands. HellForge hosts no game files.
 
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).

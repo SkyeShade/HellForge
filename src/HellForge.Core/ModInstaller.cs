@@ -109,7 +109,7 @@ public static class ModInstaller
         if (!string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(install.Mods).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) ||
             Path.GetFileName(path).StartsWith('.'))
             throw new InvalidDataException($"{path} is not a mod in this installation's mods folder; nothing was deleted.");
-        LocalInstall.NoLinks(path);
+        path = LocalInstall.NoLinks(path, install.Mods);
         if (File.Exists(path)) File.Delete(path);
         else if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
     }

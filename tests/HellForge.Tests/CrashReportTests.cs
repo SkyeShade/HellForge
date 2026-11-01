@@ -67,6 +67,28 @@ static class CrashReportTests
             check(SystemFacts.Gpus().All(g => g.Name.Length > 0 && Privacy.Scrub(g.Name) == g.Name), "A GPU entry is empty or names the PC.");
         });
 
+        test("Crash reports keep the OS name when this PC is named fedora", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var scrub = new ReportPrivacy(fedora, []);
+            var line = "This PC now: " + system;
+            check(scrub.ApplyNames(line) == line, "The OS name was scrubbed: " + scrub.ApplyNames(line));
+            check(scrub.Apply(system + @" at C:\Users\Alex and /home/alex") == system + @" at %USERPROFILE% and ~",
+                "The OS line kept the user folders: " + scrub.Apply(system + @" at C:\Users\Alex and /home/alex"));
+        });
+
+        test("A PC named after a word of the OS name is still scrubbed in other text", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var line = system + " on host fedora";
+            check(new ReportPrivacy(fedora, []).Apply(line) == system + " on host PC", "The PC name outside the OS name was kept: " + fedora.Apply(line));
+            var gaming = new Privacy(@"C:\Users\Alex", ["fedora-gaming"], "/home/alex", system);
+            check(gaming.Apply(system + " on host fedora-gaming") == system + " on host PC",
+                "A longer PC name was kept: " + gaming.Apply(system + " on host fedora-gaming"));
+        });
+
         test("Mod lines carry each mod's version and content hash", () =>
         {
             using var modset = JsonDocument.Parse("""{"mods": [{"id": "skye.d11", "version": "1.2.0", "hash": "0123456789abcdef0123456789abcdef"}]}""");
@@ -94,6 +116,18 @@ static class CrashReportTests
             var noted = Session(new string('5', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
             File.WriteAllText(Path.Combine(noted, "game", "modloader.log"), "10:00:00.000 crash: fail-fast about to end the game (thread 7, asked from ucrtbase.dll+0x9a1b); stack:\n");
             check(CrashReport.Crashed(noted), "A crash the mod loader noted in a sandboxed session's log.");
+            check(CrashReport.FirstCrashLine(noted)?.Contains("crash: fail-fast", StringComparison.Ordinal) == true,
+                "The first crash note was not returned for result.json.");
+            if (OperatingSystem.IsLinux())
+            {
+                var linked = Session(new string('8', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
+                var outside = Path.Combine(root, "crash-report-links", "modloader.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+                File.WriteAllText(outside, "10:00:00.000 crash: c0000005 on thread 1 at game.dll+0x1\n");
+                File.CreateSymbolicLink(Path.Combine(linked, "game", "modloader.log"), outside);
+                check(CrashReport.LoaderLog(linked) == null && CrashReport.FirstCrashLine(linked) == null && !CrashReport.Crashed(linked),
+                    "CrashReport followed a linked modloader.log.");
+            }
             var dumped = Session(new string('6', 32), "{}");
             File.WriteAllBytes(Path.Combine(dumped, "crash-42.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(CrashReport.Crashed(dumped), "A session that left a dump.");

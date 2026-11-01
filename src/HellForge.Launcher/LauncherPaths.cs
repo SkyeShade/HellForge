@@ -57,6 +57,17 @@ sealed class LauncherPaths : ISessionPaths
     public static LauncherPaths? Find()
     {
         if (InstallLayout.Find(AppContext.BaseDirectory) is { } install) return ForInstall(install);
+        if (OperatingSystem.IsLinux())
+        {
+            var packageRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".."));
+            var app = Path.Combine(packageRoot, "app");
+            if (File.Exists(Path.Combine(app, "app-build.json")) && File.Exists(Path.Combine(app, "engine-package.zip")))
+            {
+                install = new InstallLayout(packageRoot);
+                install.Create(SupportedBuild.Current.BuildId);
+                return ForInstall(install);
+            }
+        }
         var root = AppContext.BaseDirectory;
         while (root != null && !File.Exists(Path.Combine(root, "HellForge.slnx")))
             root = Path.GetDirectoryName(root.TrimEnd(Path.DirectorySeparatorChar));

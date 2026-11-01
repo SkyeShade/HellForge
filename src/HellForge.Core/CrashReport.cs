@@ -40,12 +40,20 @@ public static partial class CrashReport
     // The game writes into the run folder, or into run/game when sandboxed.
     static IEnumerable<string> GameFolders(string run) => [run, Path.Combine(run, "game")];
 
-    public static string? LoaderLog(string run) =>
-        GameFolders(run).Select(f => Path.Combine(f, "modloader.log")).FirstOrDefault(File.Exists);
+    public static string? LoaderLog(string run)
+    {
+        try { return GameFolders(run).SelectMany(f => LocalInstall.FilesNoLinks(f, "modloader.log", recursive: false)).FirstOrDefault(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        { return null; }
+    }
 
-    // The crash dump the mod loader had written (crash-<process id>.dmp), or null.
-    public static string? Dump(string run) =>
-        GameFolders(run).Where(Directory.Exists).SelectMany(f => Directory.EnumerateFiles(f, "crash-*.dmp")).FirstOrDefault();
+    // The crash dump the mod loader had written (crash-<process id>.dmp), or null. A link is skipped, never opened.
+    public static string? Dump(string run)
+    {
+        try { return GameFolders(run).SelectMany(f => LocalInstall.FilesNoLinks(f, "crash-*.dmp", recursive: false)).FirstOrDefault(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        { return null; }
+    }
 
     // Whether a session ended in a crash: it was not stopped by the launcher, and the game left a dump, or it ended by
     // itself with an exit code other than 0 or after the mod loader noted a crash. Stopped comes first: the loader writes
@@ -81,6 +89,21 @@ public static partial class CrashReport
         0x80000003 => "breakpoint",
         _ => null
     };
+
+    // The first crash note line, for result.json; null when there is no loader log or no note.
+    public static string? FirstCrashLine(string run)
+    {
+        try
+        {
+            if (LoaderLog(run) is not { } log) return null;
+            var lines = Tail(log, int.MaxValue);
+            return FindFault(lines) is { } fault ? lines[fault.Line] : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            return null;
+        }
+    }
 
     // The first crash the mod loader noted, from its log's lines.
     public static Fault? FindFault(IReadOnlyList<string> lines)

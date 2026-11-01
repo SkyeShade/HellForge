@@ -8,6 +8,18 @@ namespace HellForge.LocalBackend;
 // backup back. Import and restore take the profile's lease, so the profile's server must be stopped.
 public static class AccountCommands
 {
+    // The Steam account the snapshot must belong to. Windows reads Steam's registry and a Windows backend under Wine takes
+    // the launcher's HELLFORGE_STEAM_ACCOUNT (SteamAccount.Current). The native Linux backend trusts only a probe it runs
+    // itself, through this installation's wrapper (profiles/<name> is two folders below the installation root).
+    public static ulong? SignedInAccount(string profileDir)
+    {
+        if (!OperatingSystem.IsLinux() || LinuxNetworkBlock.UnderWine) return SteamAccount.Current();
+        var profile = Path.GetFullPath(profileDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var root = Path.GetDirectoryName(Path.GetDirectoryName(profile)) ??
+            throw new InvalidOperationException("The profile folder is not inside a HellForge installation.");
+        return SteamAccount.Current(new InstallLayout(root));
+    }
+
     // Prints the review (AccountImport.Preview) as JSON. A profile not created yet is shown as its template makes it.
     public static int Preview(string profileDir, string? template, ulong? steamAccount, TextWriter output, TextWriter error)
     {
