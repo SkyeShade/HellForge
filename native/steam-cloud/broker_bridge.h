@@ -4,6 +4,7 @@
 #pragma once
 #include "bridge_broker.h"
 #include "broker_dispatch.h"
+#include "broker_input.h"
 #include "broker_lobby.h"
 
 #define BROKER_SNAPSHOT_MS 1000
@@ -51,6 +52,7 @@ typedef struct BrokerBridge {
     int snapshotDone;
     uint32_t refusals;
     struct { const char* name; void* object; } selves[16];  /* the accessors' objects, each looked up once */
+    BrokerInput input;          /* which controllers Steam Input handles (broker_input.h): logged, never the game's */
     void (*runFrame)(int hPipe);
     void* next;                 /* SteamAPI_ManualDispatch_GetNextCallback */
     void (*freeLast)(int hPipe);

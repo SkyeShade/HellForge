@@ -457,6 +457,7 @@ static void Pump(void* context, BrokerChannel* ch)
     CheckStrangers(b, 0);
     DWORD now = GetTickCount();
     if (!b->snapshotDone || now - b->lastSnapshot >= BROKER_SNAPSHOT_MS) BrokerBridgeSnapshot(b, ch);
+    BrokerInputPoll(&b->input, now);
 }
 
 static int IsRunning(void* context)
@@ -561,6 +562,7 @@ int BrokerBridgeOpen(BrokerBridge* b, HMODULE valve, int hPipe)
     b->next = (void*)GetProcAddress(valve, "SteamAPI_ManualDispatch_GetNextCallback");
     b->freeLast = (FreeFn)(void*)GetProcAddress(valve, "SteamAPI_ManualDispatch_FreeLastCallback");
     if (!b->runFrame || !b->next || !b->freeLast) return 0;
+    BrokerInputOpen(&b->input, valve, NULL);
     b->api = (BrokerApi){ b, Resolve, Self, OwnLobby, Refuse, LogValue, P2PPeer, Adjust, BrokerDispatchMethod };
     b->steam = (BrokerSteam){ b, Pump, IsRunning, &b->api };
     return 1;

@@ -130,6 +130,10 @@ uint32_t Hand_SteamUtils010_GetAppID(void* self) { (void)self; return GAME_APP_I
 void Hand_SteamUtils010_SetOverlayNotificationPosition(void* self, int32_t eNotificationPosition) { (void)self; (void)eNotificationPosition; }
 bool Hand_SteamUtils010_IsOverlayEnabled(void* self) { (void)self; return false; }
 
+/* Steam Input's emulated pads come with the overlay, so they are XInput pads of the broker's process (broker_input.h):
+ * none of the game's own pads is one. Asked of the broker, Steam could name a pad it emulates there. */
+uint64_t Hand_SteamInput006_GetControllerForGamepadIndex(void* self, int32_t nIndex) { (void)self; (void)nIndex; return 0; }
+
 bool Hand_SteamUtils010_IsSteamRunningOnSteamDeck(void* self)
 {
     (void)self;
