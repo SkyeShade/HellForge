@@ -476,5 +476,70 @@ static class AssetMigrationTests
             index.Add(game, null, new HashSet<string> { "00000000000000bb" }, new HashSet<ResourceKey> { apcKey });
             check(index.Contents.Count == 6 && index.PartialBuilds.Contains("553853:9"), $"{index.Contents.Count} contents after the second fetch");
         });
+
+        test("A mod in a folder is migrated one file at a time, with the literals written out, to the same recipe as in memory", () =>
+        {
+            var folder = Path.Combine(root, "folder-mod");
+            foreach (var (path, bytes) in archiveMod.Concat(mod))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(folder, path))!);
+                File.WriteAllBytes(Path.Combine(folder, path), bytes);
+            }
+            var index = Index();
+            var (recipe, literals, report) = new Migrator(index, [oldBuild, newBuild]).Migrate([.. archiveMod.Concat(mod).OrderBy(f => f.Item1, StringComparer.Ordinal)]);
+            using var written = new MemoryStream();
+            var files = ModFiles.InFolder(folder);
+            var (streamed, streamedReport) = new Migrator(index, [oldBuild, newBuild]).Migrate(files, written);
+            var json = System.Text.Json.JsonSerializer.Serialize(recipe);
+            check(System.Text.Json.JsonSerializer.Serialize(streamed) == json && written.ToArray().AsSpan().SequenceEqual(literals), "the streamed migration differs");
+            check(streamedReport.Resources.Count == report.Resources.Count && streamedReport.Resources.Count == 4, $"{streamedReport.Resources.Count} resources from the archive's table");
+            check(streamedReport.Resources.All(r => r.Sha256 is { Length: 32 }), "a resource has no SHA-256");
+            check(Migrator.Layout(files).Count == Migrator.Layout(archiveMod).Count, "the layout read from the table alone differs");
+            written.Position = 0;
+            var rebuilt = new Dictionary<string, byte[]>();
+            RecipeRebuilder.Rebuild(streamed, written, [oldBuild, newBuild], (file, bytes) => rebuilt[file.Path] = bytes);
+            check(rebuilt["data/kitbash.bin"].AsSpan().SequenceEqual(kitbash), "the rebuilt kitbash differs");
+            var count = 0;
+            RecipeRebuilder.Write(streamed, written, [oldBuild, newBuild], _ => Stream.Null, _ => count++);
+            check(count == streamed.Files.Count, "checking without writing did not check every file");
+        });
+
+        test("A recipe is untrusted: operations out of range are refused, not followed", () =>
+        {
+            var (recipe, literals, _) = new Migrator(Index(), [oldBuild, newBuild]).Migrate(mod);
+            var json = System.Text.Json.JsonSerializer.Serialize(recipe);
+            Recipe Altered(Action<RecipeFile> change)
+            {
+                var copy = System.Text.Json.JsonSerializer.Deserialize<Recipe>(json)!;
+                change(copy.Files[0]);
+                return copy;
+            }
+            var copy = recipe.Files[0].Ops.FindIndex(op => op[0] == Recipe.Copy);
+            var literal = recipe.Files[0].Ops.FindIndex(op => op[0] == Recipe.Literal);
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops[copy][2] = int.MaxValue), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops[copy][1] = 999), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops[literal][1] = literals.Length), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops[literal][^1] = -5), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops.Add([Recipe.Fill, 0, 1L << 40])), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Size = 1L << 40), literals, [oldBuild, newBuild]));
+            reject(() => RecipeRebuilder.Rebuild(Altered(f => f.Ops.Add([7, 0, 1])), literals, [oldBuild, newBuild]));
+        });
+
+        test("The chunk scan can look at just the bytes a mod still ships, and skips files that ship none", () =>
+        {
+            var index = new SteamChunkIndex();
+            index.AddBuild("553853:1", new DateTime(2024, 2, 8), [("data/00000000000000aa.stream", Chunks(shippedFile, cuts))]);
+            var mod = Concat(Noise(62, 777), shippedFile[300_000..], Noise(63, 1234));
+            var all = index.Scan(mod);
+            // A literal of 10 bytes in the middle of the second whole chunk: the whole run is still found from it.
+            var kept = new List<(long Start, long Length)> { (777 + 2 * MiB, 10) };
+            var some = index.Scan(mod, kept);
+            check(some.Count == all.Count && some.Sum(m => (long)m.Length) == all.Sum(m => (long)m.Length), $"{some.Count} of {all.Count} chunks from the kept range");
+            check(index.Scan(mod, [(0, 700)]).Count == 0, "a kept range of the author's own bytes matched a chunk");
+            var read = 0;
+            var runs = index.Runs([("data/x.patch_0.stream", () => { read++; return mod; }), ("data/y.patch_0.stream", () => { read++; return mod; })],
+                new Dictionary<string, List<(long Start, long Length)>> { ["data/x.patch_0.stream"] = kept, ["data/y.patch_0.stream"] = [] });
+            check(runs.Count == 1 && read == 1, $"{runs.Count} runs, {read} files read");
+        });
     }
 }

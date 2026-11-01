@@ -197,8 +197,11 @@ public sealed record MigrationVerdict(VerdictKind Kind, string Text)
             var why = missing.Count > 0
                 ? $"{missing.Count} known builds are not indexed yet ({string.Join(", ", missing.Take(6))}{(missing.Count > 6 ? ", ..." : "")})"
                 : "the build catalog does not list every build since release yet";
+            var done = recipeFiles > 0
+                ? $"the recipe rebuilds all {recipeFiles} files byte for byte (SHA-256) and the content of the {index.Builds.Count} indexed builds is purged"
+                : $"the mod has no content of the {index.Builds.Count} indexed builds";
             return new(VerdictKind.PartlyMigrated,
-                $"PARTLY MIGRATED, NEEDS REVIEW: the recipe rebuilds all {recipeFiles} files byte for byte (SHA-256) and the content of the {index.Builds.Count} indexed builds is purged, " +
+                $"PARTLY MIGRATED, NEEDS REVIEW: {done}, " +
                 $"but {unknown.Count} resource parts ({unknownBytes:N0} bytes) are resources no indexed build has, and {why}. They may be cut content from a build not indexed yet.");
         }
         if (recipeFiles == 0) return new(VerdictKind.NoGameContent, "NO GAME CONTENT FOUND: the mod ships as it is.");

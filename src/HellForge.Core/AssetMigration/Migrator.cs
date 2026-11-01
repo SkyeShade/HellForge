@@ -10,7 +10,8 @@ public sealed class MigrationReport
 {
     public sealed record FileLine(string Path, long Size, long FromGame, long Literal, long Fill, bool InRecipe);
     // InIndex: some indexed build has a resource with this key and part (with these bytes or others).
-    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Start, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources, bool InIndex);
+    // Sha256: of the mod's bytes of this part (null when the range runs past the file's end).
+    public sealed record ResourceLine(string File, ResourceKey Key, PartKind Part, long Start, long Size, long FromGame, long Literal, long Fill, Dictionary<int, long> Sources, bool InIndex, byte[]? Sha256 = null);
 
     public List<FileLine> Files { get; } = [];
     public List<ResourceLine> Resources { get; } = [];
@@ -42,35 +43,77 @@ public sealed class MigrationReport
     }
 }
 
-// Turns a mod into a recipe. Each file's content-defined anchors are looked up in the source index; the game contents
-// it shares anchors with (and the contents of the resources its archives replace) are read from the game folders
-// and matched against the file at every byte (32-byte windows, sampled every 16 bytes of each content), so a reused
-// range is found wherever it sits and however short the edit next to it. Ranges of 48 bytes or more become copies; runs
-// of one byte become fills; the rest is the mod's own bytes.
+// Turns a mod into a recipe, one stretch of a file at a time (a resource part of its archives, or the bytes between):
+//   1. Diagonals. The stretch's content-defined anchors are looked up in the source index. Each hit says a game part has
+//      the same 64 bytes at some offset, so it may hold the stretch's bytes shifted by (its offset - the stretch's); a
+//      part of the resource the stretch replaces is tried unshifted too. Along each such diagonal every run of 48 equal
+//      bytes or more is a copy, found with vector compares and no tables: that takes the long reused ranges.
+//   2. Small pieces. What no diagonal covers is matched at every byte against the parts the diagonals found (and the
+//      replaced resource's parts), with 32-byte windows sampled every 16 bytes of each part (a table per part, built
+//      once): that takes a short piece at any offset, however short the edit next to it.
+//   3. The copies that reach furthest are taken; runs of one byte become fills; the rest is the mod's own bytes.
+// Game parts are read as needed and kept within a memory budget.
 public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResources> games)
 {
-    const int Window = 32, Step = 16, MinCopy = 48, MinFill = 32, MaxCandidates = 96, TriesPerSource = 8, MaxSourcesTried = 64;
-    const long MaxCandidateBytes = 1L << 30;
+    // Step is half of Window (the window table hashes a window from its two halves).
+    const int Window = 32, Step = 16, MinCopy = 48, MinFill = 32, MaxCandidates = 96, TriesPerSource = 8;
     const ulong Base = 0x100000001B3;
     static readonly ulong Top = Pow(Base, Window - 1);
 
-    readonly Dictionary<int, byte[]?> loaded = [];
+    // Game parts read (null: none of the given game folders has it), newest use first, within CacheBytes.
+    readonly Dictionary<int, LinkedListNode<(int Content, byte[]? Bytes)>> cache = [];
+    readonly LinkedList<(int Content, byte[]? Bytes)> recent = new();
+    long cachedBytes;
+    // The windows of the game parts small pieces are matched with, within TableBudget windows (8 bytes each, twice that
+    // many slots).
+    WindowTable? windowTable;
+    WindowTable Windows => windowTable ??= new(TableBudget);
+
+    // Game parts kept between stretches (a stretch keeps the parts it compares with until it is done, so more can be
+    // held for a while). 384 MB costs a mod of 2 GB about 2 s of reading parts again against 768 MB, and saves ~700 MB.
+    public long CacheBytes { get; init; } = 384L << 20;
+    public long TableBudget { get; init; } = 8L << 20;
+    // Diagonals compared over a stretch's whole uncovered part, most anchors first; parts its small pieces are matched with.
+    public int MaxDiagonals { get; init; } = 8192;
+    public int Neighbours { get; init; } = 64;
+
+    // Where a migration spends its time and memory (printed by the command line).
+    public sealed class Profile
+    {
+        public readonly System.Diagnostics.Stopwatch Load = new(), Anchors = new(), Diagonals = new(), Small = new(), Tables = new();
+        public long Segments, Diagonal, DiagonalBytes, LoadedBytes, LoadedParts, TableEntries, SmallPositions, MaxCachedBytes;
+        public override string ToString() =>
+            $"{Segments:N0} segments; anchors {Anchors.Elapsed.TotalSeconds:F1} s; " +
+            $"read {LoadedParts:N0} game parts ({LoadedBytes / 1e9:F2} GB) in {Load.Elapsed.TotalSeconds:F1} s, at most {MaxCachedBytes / 1e6:F0} MB kept; " +
+            $"{Diagonal:N0} diagonals ({DiagonalBytes / 1e9:F2} GB compared) in {Diagonals.Elapsed.TotalSeconds:F1} s; " +
+            $"small pieces at {SmallPositions / 1e6:F1}M positions in {Small.Elapsed.TotalSeconds:F1} s ({TableEntries / 1e6:F1}M windows added in {Tables.Elapsed.TotalSeconds:F1} s)";
+    }
+    public Profile Stats { get; } = new();
 
     public (Recipe Recipe, byte[] Literals, MigrationReport Report) Migrate(IReadOnlyList<(string Path, byte[] Bytes)> files, Action<string>? log = null)
     {
-        var recipe = new Recipe();
         var literals = new MemoryStream();
+        var (recipe, report) = Migrate(ModFiles.InMemory(files), literals, log);
+        return (recipe, literals.ToArray(), report);
+    }
+
+    // Migrates the mod one file at a time (only that file is held), writing the literal bytes to the given stream.
+    public (Recipe Recipe, MigrationReport Report) Migrate(ModFiles mod, Stream literals, Action<string>? log = null)
+    {
+        var recipe = new Recipe();
         var report = new MigrationReport();
         var sourceIds = new Dictionary<int, int>();
-        var layout = Layout(files);
-        foreach (var (path, bytes) in files)
+        var layout = Layout(mod).ToLookup(l => l.File, StringComparer.Ordinal);
+        long written = 0;
+        foreach (var path in mod.Paths)
         {
+            var bytes = mod.Read(path);
             // An archive is matched one resource part at a time (with that resource's own candidates), and the bytes
             // between parts (the table, padding) on their own; any other file is matched whole.
             var ops = new List<Op>();
             var candidates = 0;
             long cursor = 0;
-            foreach (var r in layout.Where(l => l.File == path && l.Start + l.Length <= bytes.Length).OrderBy(l => l.Start))
+            foreach (var r in layout[path].Where(l => l.Start + l.Length <= bytes.Length).OrderBy(l => l.Start))
             {
                 if (r.Start < cursor) continue;
                 if (r.Start > cursor) candidates += Match(bytes, (int)cursor, (int)r.Start, [], report.Unreadable, ops);
@@ -98,7 +141,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
             log?.Invoke($"{path}: {bytes.Length:N0} bytes, {fromGame:N0} from the game ({candidates} game parts compared)");
             // Every archive's resources are reported, with game content in it or not: one with none may still hold
             // resources the game has by name (cut content from a build the index does not hold).
-            Attribute(report, layout.Where(l => l.File == path), ops);
+            Attribute(report, layout[path], bytes, ops);
             if (!inRecipe) continue;
             var file = new RecipeFile { Path = path, Size = bytes.Length, Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() };
             long at = 0;
@@ -117,8 +160,9 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                         report.SourceBytes[op.Source] = report.SourceBytes.GetValueOrDefault(op.Source) + op.Length;
                         break;
                     case Recipe.Literal:
-                        file.Ops.Add([Recipe.Literal, literals.Length, op.Length]);
+                        file.Ops.Add([Recipe.Literal, written, op.Length]);
                         literals.Write(bytes, (int)at, op.Length);
+                        written += op.Length;
                         break;
                     default:
                         file.Ops.Add([Recipe.Fill, op.Offset, op.Length]);
@@ -128,7 +172,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
             }
             recipe.Files.Add(file);
         }
-        return (recipe, literals.ToArray(), report);
+        return (recipe, report);
     }
 
     RecipeSource SourceOf(int content)
@@ -170,109 +214,260 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
     // Matches data[from, to) and appends its operations; returns how many game parts it compared.
     int Match(byte[] data, int from, int to, ResourceKey[] keys, HashSet<int> unreadable, List<Op> ops)
     {
+        Stats.Segments++;
+        Stats.Anchors.Start();
         var hits = new Dictionary<int, int>();
-        foreach (var (_, anchor) in ContentChunks.Anchors(data.AsSpan(from, to - from)))
-            foreach (var (content, _) in index.Lookup(anchor))
+        var anchorHits = new List<(int Content, int Diagonal)>();
+        foreach (var (offset, anchor) in ContentChunks.Anchors(data.AsSpan(from, to - from)))
+            foreach (var (content, at) in index.Lookup(anchor))
+            {
                 hits[content] = hits.GetValueOrDefault(content) + 1;
-        foreach (var key in keys)
-            foreach (var content in index.WithKey(key))
-                hits[content] = hits.GetValueOrDefault(content) + 1_000_000;
-
-        var candidates = new List<(int Content, byte[] Bytes)>();
-        long total = 0;
-        foreach (var (content, _) in hits.OrderByDescending(h => h.Value).ThenBy(h => h.Key))
-        {
-            if (candidates.Count >= MaxCandidates || total + index.Contents[content].Size > MaxCandidateBytes) continue;
-            var bytes = Load(content);
-            if (bytes is null) { unreadable.Add(content); continue; }
-            candidates.Add((content, bytes));
-            total += bytes.Length;
-        }
-
-        var table = new List<(ulong Hash, int Candidate, int Offset)>();
-        for (var c = 0; c < candidates.Count; c++)
-        {
-            var src = candidates[c].Bytes;
-            if (src.Length < Window) continue;
-            var h = HashAt(src, 0);
-            for (var i = 0; ; i++)
-            {
-                if (i % Step == 0 && !ContentChunks.Uniform(src.AsSpan(i, Window))) table.Add((h, c, i));
-                if (i + Window >= src.Length) break;
-                h = Roll(h, src[i], src[i + Window]);
+                anchorHits.Add((content, at - (from + offset)));
             }
-        }
-        table.Sort((a, b) => a.Hash != b.Hash ? a.Hash.CompareTo(b.Hash) : a.Candidate != b.Candidate ? a.Candidate.CompareTo(b.Candidate) : a.Offset.CompareTo(b.Offset));
-        var keysSorted = table.Select(t => t.Hash).ToArray();
-        // Where each run of one hash in one candidate ends: periodic data has the same window at many offsets of many
-        // candidates, and every candidate gets its own tries (else one similar candidate can use them all up).
-        var groupEnd = new int[table.Count];
-        for (var i = table.Count - 1; i >= 0; i--)
-            groupEnd[i] = i + 1 < table.Count && table[i + 1].Hash == table[i].Hash && table[i + 1].Candidate == table[i].Candidate ? groupEnd[i + 1] : i + 1;
+        var replaced = keys.SelectMany(index.WithKey).Distinct().ToList();
+        foreach (var content in replaced) hits[content] = hits.GetValueOrDefault(content) + 1_000_000;
+        var chosen = hits.OrderByDescending(h => h.Value).ThenBy(h => h.Key).Take(MaxCandidates).Select(h => h.Key).ToHashSet();
+        var support = new Dictionary<(int Content, int Diagonal), int>();
+        foreach (var hit in anchorHits)
+            if (chosen.Contains(hit.Content)) support[hit] = support.GetValueOrDefault(hit) + 1;
+        foreach (var content in replaced) support[(content, -from)] = support.GetValueOrDefault((content, -from)) + 1_000_000;
+        Stats.Anchors.Stop();
 
-        int literalStart = from, pos = from;
-        ulong hash = 0;
-        var valid = false;
-        void Flush(int end)
+        var intervals = new List<(int Start, int End, int Content, int Diagonal)>();
+        var covered = new Coverage();
+        var parts = new Dictionary<int, byte[]>();
+        Stats.Diagonals.Start();
+        foreach (var ((content, diagonal), _) in support.OrderByDescending(s => s.Value).ThenBy(s => s.Key.Content).ThenBy(s => s.Key.Diagonal).Take(MaxDiagonals))
         {
-            if (end > literalStart) ops.Add(new(Recipe.Literal, 0, literalStart, end - literalStart));
+            if (covered.Covers(from, to)) break;
+            var src = Part(content, parts, unreadable);
+            if (src is null) continue;
+            Stats.Diagonal++;
+            // The stretch's positions p that the diagonal maps into the part: 0 <= p + diagonal < its length.
+            int lo = Math.Max(from, -diagonal), hi = (int)Math.Min(to, (long)src.Length - diagonal);
+            if (hi - lo < MinCopy) continue;
+            foreach (var (g0, g1) in covered.Gaps(lo, hi))
+                Diagonal(data, src, content, diagonal, g0, g1, lo, hi, intervals, covered);
         }
-        while (pos < to)
+        Stats.Diagonals.Stop();
+
+        // Small pieces, in what is left: against the parts found here (most bytes first), the replaced resource's, then
+        // the other candidates (most anchors first), which may hold a piece no anchor of this stretch fell in.
+        var gaps = covered.Gaps(from, to);
+        if (gaps.Count > 0)
         {
-            var run = Run(data, pos, to);
-            if (run >= MinFill)
+            Stats.Small.Start();
+            var near = intervals.GroupBy(i => i.Content).OrderByDescending(g => g.Sum(i => (long)i.End - i.Start)).Select(g => g.Key)
+                .Concat(replaced).Concat(hits.Where(h => chosen.Contains(h.Key)).OrderByDescending(h => h.Value).ThenBy(h => h.Key).Select(h => h.Key))
+                .Where(parts.ContainsKey).Distinct().Take(Neighbours).ToList();
+            if (near.Count > 0) Small(data, from, to, gaps, near, parts, intervals, covered);
+            Stats.Small.Stop();
+        }
+
+        Cover(data, from, to, intervals, ops);
+        return parts.Count;
+    }
+
+    // Every run of MinCopy equal bytes or more along one diagonal that has a byte in [g0, g1); runs may reach outside it
+    // (back to lo, on to hi), so a short gap between two other copies is taken too when the bytes are the same.
+    // Such a run has MinCopy equal bytes within MinCopy - 1 bytes of the gap, and so a whole equal 16-byte block at a
+    // multiple of 16 from wherever the search starts there: the search compares 16 bytes at a time and follows only
+    // blocks that are equal throughout (unrelated bytes have single equal bytes everywhere, but almost never 16).
+    void Diagonal(byte[] data, byte[] src, int content, int diagonal, int g0, int g1, int lo, int hi,
+        List<(int Start, int End, int Content, int Diagonal)> intervals, Coverage covered)
+    {
+        Stats.DiagonalBytes += g1 - g0;
+        int s0 = Math.Max(lo, g0 - (MinCopy - 1)), s1 = Math.Min(hi, g1 + (MinCopy - 1));
+        var p = s0;
+        while (p + 16 <= s1)
+        {
+            var skip = EqualBlock(data.AsSpan(p, s1 - p), src.AsSpan(p + diagonal, s1 - p));
+            if (skip < 0) return;
+            p += skip;
+            var back = 0;
+            while (p - back > lo && data[p - back - 1] == src[p + diagonal - back - 1]) back++;
+            var forward = data.AsSpan(p, hi - p).CommonPrefixLength(src.AsSpan(p + diagonal, hi - p));
+            int start = p - back, end = p + forward;
+            if (end - start >= MinCopy && end > g0 && start < g1)
             {
-                Flush(pos);
-                ops.Add(new(Recipe.Fill, 0, data[pos], run));
-                pos += run;
-                literalStart = pos;
-                valid = false;
-                continue;
+                intervals.Add((start, end, content, diagonal));
+                covered.Add(start, end);
             }
-            if (pos + Window > to) break;
-            if (!valid) { hash = HashAt(data, pos); valid = true; }
+            p = end + 1;
+        }
+    }
 
-            int bestLength = 0, bestBack = 0, bestCandidate = -1, bestOffset = 0;
-            var at = Array.BinarySearch(keysSorted, hash);
-            if (at >= 0)
+    // The first multiple of 16 where the two spans hold the same 16 bytes, or -1.
+    static int EqualBlock(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        var n = Math.Min(a.Length, b.Length) - 16;
+        for (var i = 0; i <= n; i += 16)
+            if (System.Runtime.Intrinsics.Vector128.Create(a.Slice(i, 16)) == System.Runtime.Intrinsics.Vector128.Create(b.Slice(i, 16))) return i;
+        return -1;
+    }
+
+    // Matches every position of the gaps against the windows of these parts (one lookup per position). Of equally long
+    // matches the earlier part in near wins, then the earlier offset.
+    void Small(byte[] data, int from, int to, List<(int Start, int End)> gaps, List<int> near, Dictionary<int, byte[]> parts,
+        List<(int Start, int End, int Content, int Diagonal)> intervals, Coverage covered)
+    {
+        // The parts in order, up to four budgets' worth of windows (a stretch matched with that much is rare).
+        var chosen = new List<(int Content, byte[] Bytes)>();
+        long windows = 0;
+        foreach (var content in near)
+        {
+            var bytes = parts[content];
+            if (bytes.Length < Window) continue;
+            if (chosen.Count > 0 && windows + bytes.Length / Step > 4 * TableBudget) break;
+            chosen.Add((content, bytes));
+            windows += bytes.Length / Step;
+        }
+        if (chosen.Count == 0) return;
+        Stats.Tables.Start();
+        var table = Windows;
+        var numbers = table.Add(chosen);
+        Stats.TableEntries = table.Inserted;
+        Stats.Tables.Stop();
+        var rank = new int[256];
+        Array.Fill(rank, -1);
+        var sources = new byte[256][];
+        var contents = new int[256];
+        for (var i = 0; i < chosen.Count; i++) (rank[numbers[i]], sources[numbers[i]], contents[numbers[i]]) = (i, chosen[i].Bytes, chosen[i].Content);
+        var slots = table.Slots;
+        var mask = table.Mask;
+        // Positions are looked up a batch at a time: their hashes and home slots first (the slots read together, so
+        // their cache misses overlap), then each in turn. A copy found skips the rest of the batch.
+        Span<ulong> hashes = stackalloc ulong[WindowTable.Batch];
+        Span<int> homes = stackalloc int[WindowTable.Batch];
+        foreach (var (g0, g1) in gaps)
+        {
+            // A copy of MinCopy bytes or more over a byte of the gap holds a sampled window of its part that starts at
+            // most MinCopy - 1 bytes before that byte: start there, and keep what reaches into the gap.
+            var pos = Math.Max(from, g0 - (MinCopy - 1));
+            while (pos < g1 && pos + Window <= to)
             {
-                while (at > 0 && keysSorted[at - 1] == hash) at--;
-                for (var sources = 0; at < keysSorted.Length && keysSorted[at] == hash && sources < MaxSourcesTried; sources++)
+                var n = Math.Min(WindowTable.Batch, Math.Min(g1, to - Window + 1) - pos);
+                var hash = HashAt(data, pos);
+                uint touched = 0;
+                for (var k = 0; k < n; k++)
                 {
-                    var end = groupEnd[at];
-                    for (var k = at; k < Math.Min(end, at + TriesPerSource); k++)
+                    hashes[k] = hash;
+                    touched |= (uint)slots[homes[k] = table.Home(hash)];
+                    if (pos + k + Window < to) hash = Roll(hash, data[pos + k], data[pos + k + Window]);
+                }
+                table.Sink |= touched;
+                for (var k = 0; k < n; k++)
+                {
+                    Stats.SmallPositions++;
+                    int bestLength = 0, bestBack = 0, bestRank = int.MaxValue, bestNumber = -1, bestOffset = 0;
+                    var tag = WindowTable.Tag(hashes[k]);
+                    for (var at = homes[k]; slots[at] is var slot && slot != 0; at = (at + 1) & mask)
                     {
-                        var (_, c, off) = table[k];
-                        var src = candidates[c].Bytes;
+                        if ((uint)slot != tag) continue;
+                        var value = (uint)(slot >> 32);
+                        var number = (int)(value >> 24);
+                        var r = rank[number];
+                        if (r < 0) continue;
+                        var src = sources[number];
+                        var off = (int)(value & 0xFFFFFF) * Step;
                         if (!data.AsSpan(pos, Window).SequenceEqual(src.AsSpan(off, Window))) continue;
-                        var forward = Window + Common(data.AsSpan(pos + Window, to - pos - Window), src.AsSpan(off + Window));
+                        var forward = Window + data.AsSpan(pos + Window, to - pos - Window).CommonPrefixLength(src.AsSpan(off + Window));
                         var back = 0;
-                        while (pos - back > literalStart && off - back > 0 && data[pos - back - 1] == src[off - back - 1]) back++;
-                        if (forward + back > bestLength) (bestLength, bestBack, bestCandidate, bestOffset) = (forward + back, back, c, off);
+                        while (pos - back > from && off - back > 0 && data[pos - back - 1] == src[off - back - 1]) back++;
+                        var length = forward + back;
+                        if (length > bestLength || length == bestLength && (r < bestRank || r == bestRank && off < bestOffset))
+                            (bestLength, bestBack, bestRank, bestNumber, bestOffset) = (length, back, r, number, off);
                     }
-                    at = end;
+                    if (bestLength >= MinCopy && pos - bestBack + bestLength > g0)
+                    {
+                        int start = pos - bestBack, end = start + bestLength;
+                        intervals.Add((start, end, contents[bestNumber], bestOffset - pos));
+                        covered.Add(start, end);
+                        pos = end;
+                        break;
+                    }
+                    pos++;
                 }
             }
-            if (bestLength >= MinCopy)
+        }
+    }
+
+    // Takes the copies that reach furthest (the whole of what they cover between them), then fills and literals.
+    void Cover(byte[] data, int from, int to, List<(int Start, int End, int Content, int Diagonal)> intervals, List<Op> ops)
+    {
+        intervals.Sort((a, b) => a.Start.CompareTo(b.Start));
+        var cursor = from;
+        var k = 0;
+        (int End, int Content, int Diagonal) reach = (int.MinValue, -1, 0);
+        while (cursor < to)
+        {
+            for (; k < intervals.Count && intervals[k].Start <= cursor; k++)
+                if (intervals[k].End > reach.End) reach = (intervals[k].End, intervals[k].Content, intervals[k].Diagonal);
+            if (reach.End > cursor)
             {
-                var start = pos - bestBack;
-                Flush(start);
-                var content = candidates[bestCandidate].Content;
-                var srcStart = bestOffset - bestBack;
-                if (ops.Count > 0 && ops[^1] is { Kind: Recipe.Copy } last && last.Source == content && last.Offset + last.Length == srcStart)
-                    ops[^1] = last with { Length = last.Length + bestLength };
-                else ops.Add(new(Recipe.Copy, content, srcStart, bestLength));
-                pos = start + bestLength;
-                literalStart = pos;
-                valid = false;
+                var end = Math.Min(reach.End, to);
+                var srcStart = cursor + reach.Diagonal;
+                if (ops.Count > 0 && ops[^1] is { Kind: Recipe.Copy } last && last.Source == reach.Content && last.Offset + last.Length == srcStart)
+                    ops[^1] = last with { Length = last.Length + end - cursor };
+                else ops.Add(new(Recipe.Copy, reach.Content, srcStart, end - cursor));
+                cursor = end;
                 continue;
             }
-            if (pos + Window < to) hash = Roll(hash, data[pos], data[pos + Window]);
-            else valid = false;
-            pos++;
+            var next = k < intervals.Count ? Math.Min(intervals[k].Start, to) : to;
+            var literalStart = cursor;
+            while (cursor < next)
+            {
+                var run = Run(data, cursor, next);
+                if (run >= MinFill)
+                {
+                    if (cursor > literalStart) ops.Add(new(Recipe.Literal, 0, literalStart, cursor - literalStart));
+                    ops.Add(new(Recipe.Fill, 0, data[cursor], run));
+                    cursor += run;
+                    literalStart = cursor;
+                }
+                else cursor += run;
+            }
+            if (next > literalStart) ops.Add(new(Recipe.Literal, 0, literalStart, next - literalStart));
         }
-        Flush(to);
-        return candidates.Count;
+    }
+
+    // The covered ranges of a stretch, kept sorted and merged.
+    sealed class Coverage
+    {
+        readonly List<(int Start, int End)> spans = [];
+
+        public void Add(int start, int end)
+        {
+            var i = spans.FindIndex(s => s.End >= start);
+            if (i < 0) { spans.Add((start, end)); return; }
+            var j = i;
+            while (j < spans.Count && spans[j].Start <= end)
+            {
+                start = Math.Min(start, spans[j].Start);
+                end = Math.Max(end, spans[j].End);
+                j++;
+            }
+            spans.RemoveRange(i, j - i);
+            spans.Insert(i, (start, end));
+        }
+
+        public bool Covers(int lo, int hi) => spans.Any(s => s.Start <= lo && s.End >= hi);
+
+        public List<(int Start, int End)> Gaps(int lo, int hi)
+        {
+            var gaps = new List<(int, int)>();
+            var at = lo;
+            foreach (var (start, end) in spans)
+            {
+                if (end <= at) continue;
+                if (start >= hi) break;
+                if (start > at) gaps.Add((at, start));
+                at = Math.Max(at, end);
+                if (at >= hi) break;
+            }
+            if (at < hi) gaps.Add((at, hi));
+            return gaps;
+        }
     }
 
     static int Common(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => a.CommonPrefixLength(b);
@@ -300,9 +495,33 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         return r;
     }
 
+    // Drops the game parts and tables kept between stretches (once the matching is done).
+    public void ReleaseCaches()
+    {
+        cache.Clear();
+        recent.Clear();
+        cachedBytes = 0;
+        windowTable?.Release();
+    }
+
+    // A game part this stretch compares with (kept for the stretch, so the cache may drop it meanwhile).
+    byte[]? Part(int content, Dictionary<int, byte[]> parts, HashSet<int> unreadable)
+    {
+        if (parts.TryGetValue(content, out var bytes)) return bytes;
+        bytes = Load(content);
+        if (bytes is null) { unreadable.Add(content); return null; }
+        return parts[content] = bytes;
+    }
+
     byte[]? Load(int content)
     {
-        if (loaded.TryGetValue(content, out var cached)) return cached;
+        if (cache.TryGetValue(content, out var node))
+        {
+            recent.Remove(node);
+            recent.AddFirst(node);
+            return node.Value.Bytes;
+        }
+        Stats.Load.Start();
         byte[]? found = null;
         var c = index.Contents[content];
         foreach (var place in c.Places)
@@ -313,7 +532,19 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 .FirstOrDefault(bytes => bytes.Length == c.Size && SHA256.HashData(bytes).AsSpan().SequenceEqual(c.Sha256));
             if (found is not null) break;
         }
-        loaded[content] = found;
+        Stats.Load.Stop();
+        Stats.LoadedParts++;
+        Stats.LoadedBytes += found?.Length ?? 0;
+        cache[content] = recent.AddFirst((content, found));
+        cachedBytes += found?.Length ?? 0;
+        Stats.MaxCachedBytes = Math.Max(Stats.MaxCachedBytes, cachedBytes);
+        while (cachedBytes > CacheBytes && recent.Count > 1)
+        {
+            var old = recent.Last!.Value;
+            recent.RemoveLast();
+            cache.Remove(old.Content);
+            cachedBytes -= old.Bytes?.Length ?? 0;
+        }
         return found;
     }
 
@@ -323,15 +554,22 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
     public sealed record Range(string File, long Start, long Length, ResourceKey Key, PartKind Part);
 
     // Where each resource part of the mod's archives (<name>.patch_<n> with its .gpu_resources and .stream) lies.
-    public static List<Range> Layout(IReadOnlyList<(string Path, byte[] Bytes)> files)
+    public static List<Range> Layout(IReadOnlyList<(string Path, byte[] Bytes)> files) => Layout(ModFiles.InMemory(files));
+
+    // From each archive's table alone (its head), so no archive is read whole.
+    public static List<Range> Layout(ModFiles mod)
     {
         var ranges = new List<Range>();
-        foreach (var (path, a) in files)
+        foreach (var path in mod.Paths)
         {
-            if (!PatchName().IsMatch(path) || a.Length < 72 || BinaryPrimitives.ReadUInt32LittleEndian(a) != 0xF0000011) continue;
+            if (!PatchName().IsMatch(path) || mod.Size(path) < 72) continue;
+            var a = mod.Head(path, 72);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(a) != 0xF0000011) continue;
             var types = BinaryPrimitives.ReadInt32LittleEndian(a.AsSpan(4));
             var count = BinaryPrimitives.ReadInt32LittleEndian(a.AsSpan(8));
+            if (types is < 0 or > 1 << 16 || count is < 0 or > 1 << 24) continue;
             var start = 72 + 32 * types;
+            a = mod.Head(path, (int)Math.Min(mod.Size(path), Math.Min(int.MaxValue, start + 80L * count)));
             for (var i = 0; i < count && start + 80 * (i + 1) <= a.Length; i++)
             {
                 var e = start + 80 * i;
@@ -349,7 +587,7 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         return ranges;
     }
 
-    void Attribute(MigrationReport report, IEnumerable<Range> ranges, List<Op> ops)
+    void Attribute(MigrationReport report, IEnumerable<Range> ranges, byte[] bytes, List<Op> ops)
     {
         foreach (var r in ranges)
         {
@@ -368,7 +606,8 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 }
             }
             var inIndex = index.WithKey(r.Key).Any(c => index.Contents[c].Places.Any(p => p.Key == r.Key && p.Part == r.Part));
-            report.Resources.Add(new(r.File, r.Key, r.Part, r.Start, r.Length, fromGame, literal, fill, sources, inIndex));
+            var sha = r.Start + r.Length <= bytes.Length ? SHA256.HashData(bytes.AsSpan((int)r.Start, (int)r.Length)) : null;
+            report.Resources.Add(new(r.File, r.Key, r.Part, r.Start, r.Length, fromGame, literal, fill, sources, inIndex, sha));
         }
     }
 }

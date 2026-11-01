@@ -29,19 +29,34 @@ public sealed class Recipe
 
     public void Save(string folder, byte[] literals)
     {
+        Save(folder);
+        File.WriteAllBytes(Path.Combine(folder, LiteralsName), literals);
+    }
+
+    // The recipe alone (the literals file written by whoever wrote the literals).
+    public void Save(string folder)
+    {
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, FileName), JsonSerializer.Serialize(this, Json));
-        File.WriteAllBytes(Path.Combine(folder, LiteralsName), literals);
     }
 
     public static (Recipe Recipe, byte[] Literals) Load(string folder)
     {
+        var literals = Path.Combine(folder, LiteralsName);
+        return (LoadRecipe(folder), File.Exists(literals) ? File.ReadAllBytes(literals) : []);
+    }
+
+    // The recipe alone; its literals are read from the literals file as the rebuild needs them (OpenLiterals).
+    public static Recipe LoadRecipe(string folder)
+    {
         var recipe = JsonSerializer.Deserialize<Recipe>(File.ReadAllText(Path.Combine(folder, FileName)), Json)
             ?? throw new InvalidDataException("The recipe is empty.");
         if (recipe.Format != 1) throw new InvalidDataException($"Recipe format {recipe.Format} is not one this HellForge reads.");
-        var literals = Path.Combine(folder, LiteralsName);
-        return (recipe, File.Exists(literals) ? File.ReadAllBytes(literals) : []);
+        return recipe;
     }
+
+    public static Stream OpenLiterals(string folder) =>
+        File.Exists(Path.Combine(folder, LiteralsName)) ? File.OpenRead(Path.Combine(folder, LiteralsName)) : new MemoryStream([], false);
 }
 
 // A part of one of the game's resources, by content: any place that holds bytes with this SHA-256 will do.
@@ -79,37 +94,121 @@ public static class RecipeRebuilder
 {
     public static Dictionary<string, byte[]> Rebuild(Recipe recipe, byte[] literals, IReadOnlyList<IGameResources> games, Action<string>? log = null)
     {
-        var sources = new byte[recipe.Sources.Count][];
-        for (var i = 0; i < recipe.Sources.Count; i++)
-        {
-            var source = recipe.Sources[i];
-            sources[i] = Resolve(source, games)
-                ?? throw new InvalidDataException($"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
-        }
-        log?.Invoke($"Found all {sources.Length} game resource parts the recipe uses in the given game folders.");
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        Rebuild(recipe, literals, games, (file, bytes) => files[file.Path] = bytes, log);
+        return files;
+    }
+
+    // Rebuilds the files one at a time, each checked against the original's SHA-256, and hands each to the caller (to
+    // write or compare) before the next is built, so only one file is held. Game parts are read as the files need them
+    // and kept within cacheBytes. A part no given game folder has stops the rebuild there.
+    public static void Rebuild(Recipe recipe, byte[] literals, IReadOnlyList<IGameResources> games, Action<RecipeFile, byte[]> each,
+        Action<string>? log = null, long cacheBytes = 256L << 20) =>
+        Rebuild(recipe, new MemoryStream(literals, false), games, each, log, cacheBytes);
+
+    // The same, with the literals read from a stream (a file) as the files need them.
+    public static void Rebuild(Recipe recipe, Stream literals, IReadOnlyList<IGameResources> games, Action<RecipeFile, byte[]> each,
+        Action<string>? log = null, long cacheBytes = 256L << 20)
+    {
+        MemoryStream? current = null;
+        Write(recipe, literals, games, file =>
+        {
+            if (file.Size > Array.MaxLength) throw new InvalidDataException($"{file.Path}: {file.Size:N0} bytes is too big to rebuild in memory.");
+            return current = new MemoryStream();
+        }, file => each(file, current!.ToArray()), log, cacheBytes);
+    }
+
+    // Rebuilds the files one at a time into the streams open gives (Stream.Null to only check them), each checked
+    // against the original's SHA-256 as it is written, so no file is held whole. Game parts are read as the operations
+    // need them and kept within cacheBytes. A part no given game folder has, an operation out of range (a recipe is
+    // untrusted input) or a file that does not match stops the rebuild there, with that file incomplete: write to a
+    // staging folder. done is told of each file once it matches.
+    public static void Write(Recipe recipe, Stream literals, IReadOnlyList<IGameResources> games, Func<RecipeFile, Stream> open,
+        Action<RecipeFile>? done = null, Action<string>? log = null, long cacheBytes = 256L << 20)
+    {
+        var cache = new Dictionary<int, LinkedListNode<(int Source, byte[] Bytes)>>();
+        var recent = new LinkedList<(int Source, byte[] Bytes)>();
+        long cached = 0;
+        byte[] Source(int i)
+        {
+            if (cache.TryGetValue(i, out var node))
+            {
+                recent.Remove(node);
+                recent.AddFirst(node);
+                return node.Value.Bytes;
+            }
+            var source = recipe.Sources[i];
+            var bytes = Resolve(source, games)
+                ?? throw new InvalidDataException($"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
+            cache[i] = recent.AddFirst((i, bytes));
+            cached += bytes.Length;
+            while (cached > cacheBytes && recent.Count > 1)
+            {
+                var old = recent.Last!.Value;
+                recent.RemoveLast();
+                cache.Remove(old.Source);
+                cached -= old.Bytes.Length;
+            }
+            return bytes;
+        }
+        var buffer = new byte[1 << 20];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var file in recipe.Files)
         {
-            var output = new byte[file.Size];
             long at = 0;
-            foreach (var op in file.Ops)
+            using (var output = open(file))
             {
-                var length = op[^1];
-                switch (op[0])
+                void Put(ReadOnlySpan<byte> bytes)
                 {
-                    case Recipe.Copy: sources[op[1]].AsSpan((int)op[2], (int)length).CopyTo(output.AsSpan((int)at)); break;
-                    case Recipe.Literal: literals.AsSpan((int)op[1], (int)length).CopyTo(output.AsSpan((int)at)); break;
-                    case Recipe.Fill: output.AsSpan((int)at, (int)length).Fill((byte)op[1]); break;
-                    default: throw new InvalidDataException($"Unknown recipe operation {op[0]}.");
+                    output.Write(bytes);
+                    hash.AppendData(bytes);
+                    at += bytes.Length;
                 }
-                at += length;
+                InvalidDataException Bad(string what) => new($"{file.Path}: {what}");
+                foreach (var op in file.Ops)
+                {
+                    if (op.Length < 3) throw Bad("an operation is incomplete.");
+                    var length = op[^1];
+                    if (length < 0 || at + length > file.Size) throw Bad($"the recipe makes more than its {file.Size:N0} bytes.");
+                    switch (op[0])
+                    {
+                        case Recipe.Copy:
+                            if (op.Length != 4 || op[1] < 0 || op[1] >= recipe.Sources.Count) throw Bad("a copy names no source.");
+                            var src = Source((int)op[1]);
+                            if (op[2] < 0 || op[2] + length > src.Length) throw Bad("a copy runs past its source.");
+                            Put(src.AsSpan((int)op[2], (int)length));
+                            break;
+                        case Recipe.Literal:
+                            if (op.Length != 3 || op[1] < 0 || op[1] + length > literals.Length) throw Bad("a literal runs past the literals file.");
+                            literals.Position = op[1];
+                            for (var left = length; left > 0;)
+                            {
+                                var n = (int)Math.Min(left, buffer.Length);
+                                literals.ReadExactly(buffer, 0, n);
+                                Put(buffer.AsSpan(0, n));
+                                left -= n;
+                            }
+                            break;
+                        case Recipe.Fill:
+                            if (op.Length != 3) throw Bad("a fill is malformed.");
+                            buffer.AsSpan(0, (int)Math.Min(length, buffer.Length)).Fill((byte)op[1]);
+                            for (var left = length; left > 0;)
+                            {
+                                var n = (int)Math.Min(left, buffer.Length);
+                                Put(buffer.AsSpan(0, n));
+                                left -= n;
+                            }
+                            break;
+                        default: throw Bad($"unknown recipe operation {op[0]}.");
+                    }
+                }
+                if (at != file.Size) throw Bad($"the recipe makes {at:N0} bytes, not {file.Size:N0}.");
             }
-            if (at != file.Size) throw new InvalidDataException($"{file.Path}: the recipe makes {at} bytes, not {file.Size}.");
-            var sha = Convert.ToHexString(SHA256.HashData(output)).ToLowerInvariant();
+            var sha = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
             if (sha != file.Sha256) throw new InvalidDataException($"{file.Path}: rebuilt file does not match the original ({sha} != {file.Sha256}).");
-            files[file.Path] = output;
+            done?.Invoke(file);
         }
-        return files;
+        log?.Invoke($"Rebuilt {recipe.Files.Count} files from {recipe.Sources.Count} game resource parts in the given game folders.");
     }
 
     static byte[]? Resolve(RecipeSource source, IReadOnlyList<IGameResources> games)

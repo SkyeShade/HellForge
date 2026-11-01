@@ -17,8 +17,28 @@ public sealed class SteamChunkIndex
     const int Version = 2;
     public const int Window = 1 << 20;
     const uint Mod = 65521;
+    const int WindowMod = (int)(Window % Mod);
 
     public sealed record Build(string Label, DateTime Time);
+
+    // A SHA-1 and a set of up to 256 builds, held as values (not an object per chunk).
+    readonly record struct Sha1(ulong A, ulong B, uint C)
+    {
+        public static Sha1 Of(ReadOnlySpan<byte> s) =>
+            new(BitConverter.ToUInt64(s), BitConverter.ToUInt64(s[8..]), BitConverter.ToUInt32(s[16..]));
+        public void Write(BinaryWriter w) { w.Write(A); w.Write(B); w.Write(C); }
+    }
+
+    struct BuildBits
+    {
+        public ulong A, B, C, D;
+        public readonly bool Has(int b) => ((b >> 6) switch { 0 => A, 1 => B, 2 => C, _ => D } & (1UL << (b & 63))) != 0;
+        public void Set(int b)
+        {
+            var bit = 1UL << (b & 63);
+            switch (b >> 6) { case 0: A |= bit; break; case 1: B |= bit; break; case 2: C |= bit; break; default: D |= bit; break; }
+        }
+    }
     public readonly record struct Match(long Offset, int Length, int Chunk);
     // A run of a mod file that is chunks Steam shipped, back to back: the game file they are from (as first seen) and
     // the builds that have them.
@@ -27,18 +47,22 @@ public sealed class SteamChunkIndex
     public List<Build> Builds { get; } = [];
     // Distinct chunks: SHA-1, Adler-32, length, the builds that have them (a bit per build), and where the first one was
     // seen (a file and the chunk's position in it), for its neighbours.
-    readonly List<byte[]> sha = [];
+    readonly List<Sha1> sha = [];
     readonly List<uint> adler = [];
     readonly List<int> length = [];
-    readonly List<ulong[]> builds = [];
+    readonly List<BuildBits> builds = [];
     readonly List<(int File, int Position)> first = [];
-    readonly Dictionary<string, int> bySha = new(StringComparer.Ordinal);
+    readonly Dictionary<Sha1, int> bySha = [];
     // Files (each distinct file once: by its name and chunk list): their chunks in order.
     readonly List<(string Name, int[] Chunks)> files = [];
-    readonly Dictionary<string, int> fileIds = new(StringComparer.Ordinal);
+    // Each distinct file (its name and chunk list) once: only needed while builds are added.
+    Dictionary<string, int>? fileIds;
     // Per build, its files.
     readonly List<int[]> buildFiles = [];
     Dictionary<uint, List<int>>? byAdler;
+    // A bit per value of 24 bits of the Adler-32s of the whole-window chunks (2 MB): most positions of a scan stop here.
+    ulong[]? adlerBits;
+    static int Bit(uint adler) => (int)((adler * 0x9E3779B1u) >> 8);
     readonly Dictionary<int, Dictionary<int, (int File, long Offset)>> located = [];
     // Every place each chunk is in (file and position), across every version of every file: a chunk's neighbours differ
     // between builds, and odd-length chunks are only found as neighbours. Built when first needed.
@@ -52,6 +76,12 @@ public sealed class SteamChunkIndex
     public void AddBuild(string label, DateTime time, IEnumerable<(string File, IEnumerable<(long Offset, int Length, byte[] Sha1, uint Adler)> Chunks)> buildFiles)
     {
         if (Builds.Any(b => b.Label == label)) return;
+        if (Builds.Count == 256) throw new InvalidOperationException("A Steam chunk index holds at most 256 builds.");
+        if (fileIds is null)
+        {
+            fileIds = new(StringComparer.Ordinal);
+            for (var f = 0; f < files.Count; f++) fileIds[files[f].Name + ":" + string.Join(",", files[f].Chunks)] = f;
+        }
         var b = Builds.Count;
         Builds.Add(new Build(label, time));
         var inBuild = new List<int>();
@@ -60,18 +90,20 @@ public sealed class SteamChunkIndex
             var ids = new List<int>();
             foreach (var (_, len, sha1, sum) in chunks.OrderBy(c => c.Offset))
             {
-                var hex = Convert.ToHexString(sha1);
-                if (!bySha.TryGetValue(hex, out var id))
+                var digest = Sha1.Of(sha1);
+                if (!bySha.TryGetValue(digest, out var id))
                 {
                     id = sha.Count;
-                    bySha[hex] = id;
-                    sha.Add(sha1);
+                    bySha[digest] = id;
+                    sha.Add(digest);
                     adler.Add(sum);
                     length.Add(len);
-                    builds.Add(new ulong[4]);
+                    builds.Add(default);
                     first.Add((-1, -1));
                 }
-                builds[id][b / 64] |= 1UL << (b % 64);
+                var bits = builds[id];
+                bits.Set(b);
+                builds[id] = bits;
                 ids.Add(id);
             }
             var key = name + ":" + string.Join(",", ids);
@@ -89,6 +121,36 @@ public sealed class SteamChunkIndex
         byAdler = null;
     }
 
+    public long Verified;
+    // Positions the scans looked at.
+    public long Scanned;
+    public int FileCount => files.Count;
+    public long PlaceCount => files.Sum(f => (long)f.Chunks.Length);
+    public int UniformChunks;
+
+    // The distinct whole-window chunks by the kind of game file they were first seen in.
+    public Dictionary<string, int> WindowChunkKinds()
+    {
+        var kinds = new Dictionary<string, int>();
+        for (var i = 0; i < sha.Count; i++)
+        {
+            if (length[i] != Window) continue;
+            var kind = Kind(FileOf(i));
+            kinds[kind] = kinds.GetValueOrDefault(kind) + 1;
+        }
+        return kinds;
+    }
+
+    // A game data file's kind: a loose archive (main, gpu, stream), a packed bundle, or other.
+    public static string Kind(string file)
+    {
+        var name = file[(file.LastIndexOf('/') + 1)..];
+        var dot = name.IndexOf('.');
+        var stem = dot < 0 ? name : name[..dot];
+        var loose = stem.Length == 16 && stem.All(char.IsAsciiHexDigitLower);
+        return loose ? dot < 0 ? "loose main" : "loose " + name[(dot + 1)..] : name.StartsWith("bundles.", StringComparison.Ordinal) ? "packed bundle" : "other";
+    }
+
     public int BuildIndex(string label) => Builds.FindIndex(b => b.Label == label);
 
     // A build's distinct chunk bytes, and those of them no build in have has: what it costs to rebuild that build's
@@ -101,7 +163,7 @@ public sealed class SteamChunkIndex
         foreach (var build in wanted)
             foreach (var file in buildFiles[build])
                 foreach (var c in files[file].Chunks)
-                    if (seen.Add(c) && !have.Any(h => (builds[c][h / 64] & (1UL << (h % 64))) != 0)) missing += length[c];
+                    if (seen.Add(c) && !have.Any(builds[c].Has)) missing += length[c];
         return missing;
     }
 
@@ -114,7 +176,7 @@ public sealed class SteamChunkIndex
             {
                 if (!seen.Add(c)) continue;
                 total += length[c];
-                if (!have.Any(h => (builds[c][h / 64] & (1UL << (h % 64))) != 0)) missing += length[c];
+                if (!have.Any(builds[c].Has)) missing += length[c];
             }
         return (total, missing);
     }
@@ -122,7 +184,7 @@ public sealed class SteamChunkIndex
     public IEnumerable<int> BuildIdsOf(int chunk)
     {
         for (var b = 0; b < Builds.Count; b++)
-            if ((builds[chunk][b / 64] & (1UL << (b % 64))) != 0) yield return b;
+            if (builds[chunk].Has(b)) yield return b;
     }
 
     // Where a build has this chunk: the file and the chunk's offset in it (the first place, if it has it more than once).
@@ -144,13 +206,19 @@ public sealed class SteamChunkIndex
         return map.TryGetValue(chunk, out var at) ? (files[at.File].Name, at.Offset) : null;
     }
 
-    // Every run of these files that is chunks Steam shipped.
-    public List<Run> Runs(IEnumerable<(string Path, byte[] Bytes)> mod)
+    // Every run of these files that is chunks Steam shipped. With only, just the runs that have a whole chunk over a
+    // byte of those ranges of each file (the bytes a mod still ships), and files with none are not read.
+    public List<Run> Runs(IEnumerable<(string Path, byte[] Bytes)> mod) => Runs(mod.Select(f => (f.Path, (Func<byte[]>)(() => f.Bytes))), null);
+
+    public List<Run> Runs(IEnumerable<(string Path, Func<byte[]> Read)> mod, IReadOnlyDictionary<string, List<(long Start, long Length)>>? only)
     {
         var runs = new List<Run>();
-        foreach (var (path, bytes) in mod)
+        foreach (var (path, read) in mod)
         {
-            var found = Scan(bytes);
+            List<(long Start, long Length)>? ranges = null;
+            if (only is not null && (!only.TryGetValue(path, out ranges) || ranges.Count == 0)) continue;
+            var bytes = read();
+            var found = Scan(bytes, ranges);
             for (var i = 0; i < found.Count;)
             {
                 var j = i + 1;
@@ -167,7 +235,7 @@ public sealed class SteamChunkIndex
     public IEnumerable<Build> BuildsOf(int chunk)
     {
         for (var b = 0; b < Builds.Count; b++)
-            if ((builds[chunk][b / 64] & (1UL << (b % 64))) != 0) yield return Builds[b];
+            if (builds[chunk].Has(b)) yield return Builds[b];
     }
 
     public string FileOf(int chunk) => first[chunk].File >= 0 ? files[first[chunk].File].Name : "?";
@@ -211,81 +279,126 @@ public sealed class SteamChunkIndex
 
     // The runs of data that are chunks Steam shipped: 1 MiB chunks found by the rolling checksum at any position and
     // proven by SHA-1, then their neighbours (any length, in any version of a file that has them) checked in place.
-    public List<Match> Scan(byte[] data)
+    // Adler-32 is weak over a 1 MiB window (about one position in 10,000 of any data matches some chunk's), so finding
+    // the positions, each proven by SHA-1, runs on every core; the runs are then followed in order. Chunks of the packed
+    // bundles are left out: they are compressed, and a mod never holds them.
+    // With only, the runs are those with a whole chunk over a byte of those ranges (found from it in both directions).
+    public List<Match> Scan(byte[] data, IReadOnlyList<(long Start, long Length)>? only = null)
     {
         var found = new List<Match>();
         if (data.Length < Window) return found;
         if (byAdler is null)
         {
             byAdler = [];
+            adlerBits = new ulong[(1 << 24) / 64];
+            // A chunk of one byte value (padding) says nothing about where bytes came from, and in a long run of that
+            // byte every position would match it.
+            var uniform = new HashSet<int>();
+            var fill = new byte[Window];
+            for (var v = 0; v < 256; v++)
+            {
+                Array.Fill(fill, (byte)v);
+                if (bySha.TryGetValue(Sha1.Of(SHA1.HashData(fill)), out var id)) uniform.Add(id);
+            }
+            UniformChunks = uniform.Count;
             for (var i = 0; i < sha.Count; i++)
-                if (length[i] == Window)
+                if (length[i] == Window && !uniform.Contains(i) && Kind(FileOf(i)) != "packed bundle")
                 {
                     if (!byAdler.TryGetValue(adler[i], out var list)) byAdler[adler[i]] = list = [];
                     list.Add(i);
+                    var bit = Bit(adler[i]);
+                    adlerBits[bit >> 6] |= 1UL << bit;
                 }
         }
+
+        // 1. Every position whose window is a chunk (over a byte of the ranges asked for), in parallel pieces.
+        long positions = data.Length - Window + 1;
+        var wanted = new List<(long Lo, long Hi)>();
+        IEnumerable<(long Start, long Length)> asked = only is null ? [(0L, positions)] : only.OrderBy(r => r.Start);
+        foreach (var (start, length) in asked)
+        {
+            long lo = Math.Max(0, start - Window + 1), hi = Math.Min(positions, start + length);
+            if (hi <= lo) continue;
+            if (wanted.Count > 0 && lo <= wanted[^1].Hi) wanted[^1] = (wanted[^1].Lo, Math.Max(wanted[^1].Hi, hi));
+            else wanted.Add((lo, hi));
+        }
+        Scanned += wanted.Sum(w => w.Hi - w.Lo);
+        var piece = Math.Max(8L << 20, wanted.Sum(w => w.Hi - w.Lo) / Environment.ProcessorCount + 1);
+        var pieces = wanted.SelectMany(w => Enumerable.Range(0, (int)((w.Hi - w.Lo + piece - 1) / piece))
+            .Select(i => (Lo: w.Lo + i * piece, Hi: Math.Min(w.Hi, w.Lo + (i + 1) * piece)))).ToList();
+        var hits = new System.Collections.Concurrent.ConcurrentBag<(long At, int Chunk)>();
+        Parallel.ForEach(pieces, p =>
+        {
+            foreach (var hit in Positions(data, p.Lo, p.Hi)) hits.Add(hit);
+        });
+
+        // 2. In order: a hit that is not inside a run already found starts one, followed through its neighbours.
         var digest = new byte[20];
-        long p = 0, matchedEnd = 0;
-        uint a = 0, b = 0;
-        void Init(long at)
+        long matchedEnd = 0;
+        foreach (var (p, hit) in hits.OrderBy(h => h.At).ThenBy(h => h.Chunk))
         {
-            a = 0; b = 0;
-            for (var i = 0; i < Window; i++) { a = (a + data[at + i]) % Mod; b = (b + a) % Mod; }
-        }
-        bool Is(int chunk, long at)
-        {
-            if (at < 0 || at + length[chunk] > data.Length) return false;
-            SHA1.HashData(data.AsSpan((int)at, length[chunk]), digest);
-            return digest.SequenceEqual(sha[chunk]);
-        }
-        Init(0);
-        while (true)
-        {
-            if (byAdler.TryGetValue((b << 16) | a, out var candidates))
+            if (p < matchedEnd) continue;
+            var start = p;
+            var before = new List<Match>();
+            for (var last = hit; ;)
             {
-                var hit = -1;
-                foreach (var c in candidates)
-                    if (Is(c, p)) { hit = c; break; }
-                if (hit >= 0)
-                {
-                    // Neighbours before (down to the previous match) and after.
-                    var start = p;
-                    var before = new List<Match>();
-                    for (var last = hit; ;)
-                    {
-                        var next = Neighbours(last, -1).FirstOrDefault(c => start - length[c] >= matchedEnd && Is(c, start - length[c]), -1);
-                        if (next < 0) break;
-                        start -= length[next];
-                        before.Add(new Match(start, length[next], next));
-                        last = next;
-                    }
-                    before.Reverse();
-                    found.AddRange(before);
-                    found.Add(new Match(p, Window, hit));
-                    var end = p + Window;
-                    for (var last = hit; ;)
-                    {
-                        var next = Neighbours(last, 1).FirstOrDefault(c => Is(c, end), -1);
-                        if (next < 0) break;
-                        found.Add(new Match(end, length[next], next));
-                        end += length[next];
-                        last = next;
-                    }
-                    matchedEnd = end;
-                    p = end;
-                    if (p + Window > data.Length) break;
-                    Init(p);
-                    continue;
-                }
+                var next = Neighbours(last, -1).FirstOrDefault(c => start - length[c] >= matchedEnd && Is(data, c, start - length[c], digest), -1);
+                if (next < 0) break;
+                start -= length[next];
+                before.Add(new Match(start, length[next], next));
+                last = next;
             }
-            if (p + Window >= data.Length) break;
-            uint outgoing = data[p], incoming = data[p + Window];
-            a = (a + Mod - outgoing + incoming) % Mod;
-            b = (uint)(((long)b - (long)Window % Mod * outgoing % Mod + Mod * 2L + a) % Mod);
-            p++;
+            before.Reverse();
+            found.AddRange(before);
+            found.Add(new Match(p, Window, hit));
+            var end = p + Window;
+            for (var last = hit; ;)
+            {
+                var next = Neighbours(last, 1).FirstOrDefault(c => Is(data, c, end, digest), -1);
+                if (next < 0) break;
+                found.Add(new Match(end, length[next], next));
+                end += length[next];
+                last = next;
+            }
+            matchedEnd = end;
         }
         return found;
+    }
+
+    // The positions in [lo, hi) whose 1 MiB window is a chunk (the first one that proves by SHA-1).
+    List<(long At, int Chunk)> Positions(byte[] data, long lo, long hi)
+    {
+        var found = new List<(long, int)>();
+        var bits = adlerBits!;
+        var digest = new byte[20];
+        uint x = 0, y = 0;
+        for (var i = 0; i < Window; i++) { x = (x + data[lo + i]) % Mod; y = (y + x) % Mod; }
+        int a = (int)x, b = (int)y;
+        for (var p = lo; ; p++)
+        {
+            var sum = ((uint)b << 16) | (uint)a;
+            var bit = Bit(sum);
+            if ((bits[bit >> 6] & (1UL << bit)) != 0 && byAdler!.TryGetValue(sum, out var candidates))
+                foreach (var c in candidates)
+                    if (Is(data, c, p, digest)) { found.Add((p, c)); break; }
+            if (p + 1 >= hi) break;
+            // Rolled by one byte: a gains the incoming byte and loses the outgoing one; b loses Window times the outgoing
+            // byte (Window % Mod is 240, so 240 * 255 stays under Mod) and gains the new a. One correction each.
+            int outgoing = data[p], incoming = data[p + Window];
+            a += incoming - outgoing;
+            if (a < 0) a += (int)Mod; else if (a >= Mod) a -= (int)Mod;
+            b += a - WindowMod * outgoing;
+            if (b < 0) b += (int)Mod; else if (b >= Mod) b -= (int)Mod;
+        }
+        return found;
+    }
+
+    bool Is(byte[] data, int chunk, long at, byte[] digest)
+    {
+        if (at < 0 || at + length[chunk] > data.Length) return false;
+        Interlocked.Increment(ref Verified);
+        SHA1.HashData(data.AsSpan((int)at, length[chunk]), digest);
+        return Sha1.Of(digest) == sha[chunk];
     }
 
     public void Save(string path)
@@ -300,10 +413,10 @@ public sealed class SteamChunkIndex
             w.Write(sha.Count);
             for (var i = 0; i < sha.Count; i++)
             {
-                w.Write(sha[i]);
+                sha[i].Write(w);
                 w.Write(adler[i]);
                 w.Write(length[i]);
-                foreach (var m in builds[i]) w.Write(m);
+                w.Write(builds[i].A); w.Write(builds[i].B); w.Write(builds[i].C); w.Write(builds[i].D);
                 w.Write(first[i].File);
                 w.Write(first[i].Position);
             }
@@ -334,11 +447,12 @@ public sealed class SteamChunkIndex
         for (var i = 0; i < count; i++)
         {
             var s = r.ReadBytes(20);
-            index.bySha[Convert.ToHexString(s)] = i;
-            index.sha.Add(s);
+            var key = Sha1.Of(s);
+            index.bySha[key] = i;
+            index.sha.Add(key);
             index.adler.Add(r.ReadUInt32());
             index.length.Add(r.ReadInt32());
-            index.builds.Add([r.ReadUInt64(), r.ReadUInt64(), r.ReadUInt64(), r.ReadUInt64()]);
+            index.builds.Add(new BuildBits { A = r.ReadUInt64(), B = r.ReadUInt64(), C = r.ReadUInt64(), D = r.ReadUInt64() });
             index.first.Add((r.ReadInt32(), r.ReadInt32()));
         }
         count = r.ReadInt32();
@@ -347,7 +461,6 @@ public sealed class SteamChunkIndex
             var name = r.ReadString();
             var chunks = new int[r.ReadInt32()];
             for (var c = 0; c < chunks.Length; c++) chunks[c] = r.ReadInt32();
-            index.fileIds[name + ":" + string.Join(",", chunks)] = index.files.Count;
             index.files.Add((name, chunks));
         }
         foreach (var _ in index.Builds)

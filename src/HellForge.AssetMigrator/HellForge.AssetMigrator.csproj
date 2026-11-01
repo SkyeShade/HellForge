@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The asset migrator: turns a mod into a recipe that rebuilds it from the player's own game files. A maintainer and
        site tool; it reads past builds from Steam's depots (SteamKit2), and the launcher never ships it. -->
-  <PropertyGroup><OutputType>Exe</OutputType><ServerGarbageCollection>true</ServerGarbageCollection></PropertyGroup>
+  <!-- The collector a desktop app (the launcher) gets, told to compact the large-object heap when it fragments: the
+       migrator reads game parts and mod files of every size, and this keeps its peak memory near what it holds. -->
+  <PropertyGroup><OutputType>Exe</OutputType><ServerGarbageCollection>false</ServerGarbageCollection></PropertyGroup>
+  <ItemGroup><RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
   <ItemGroup>
     <PackageReference Include="SteamKit2" Version="3.5.0" />

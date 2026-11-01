@@ -40,6 +40,7 @@ try
         "scan" => Scan(),
         "chunk-delta" => ChunkDelta(),
         "local-check" => LocalCheck(),
+        "chunk-kinds" => ChunkKinds(),
         _ => Usage(),
     };
 }
@@ -242,13 +243,10 @@ int Resolve()
     var chunks = All("--chunks").Count > 0 ? SteamChunkIndex.Load(One("--chunks")) : null;
     if (names is null && chunks is null) throw new ArgumentException("resolve needs --map (the name map), --chunks (the Steam chunk index), or both.");
     var catalog = BuildCatalog.LoadWithHistory(One("--catalog"));
-    var modFolder = Path.GetFullPath(One("--mod"));
-    var files = Directory.EnumerateFiles(modFolder, "*", SearchOption.AllDirectories)
-        .Select(f => (Path.GetRelativePath(modFolder, f).Replace('\\', '/'), File.ReadAllBytes(f)))
-        .OrderBy(f => f.Item1, StringComparer.Ordinal).ToList();
+    var mod = ModFiles.InFolder(One("--mod"));
     var games = Games();
     games.AddRange(SteamBuilds(index, games.Select(g => g.Build).ToList()));
-    var (_, _, report) = new Migrator(index, games).Migrate(files);
+    var (_, report) = new Migrator(index, games).Migrate(mod, Stream.Null);
     var left = report.Resources.Where(r => r.Literal > 0).ToList();
     DateTime When(string build) => catalog.History?.FirstOrDefault(h => $"{catalog.DataDepot}:{h.Manifest}" == build)?.Time ?? DateTime.MinValue;
     // Per build: the archives to fingerprint, and (when known) just the resources of them that are needed.
@@ -269,11 +267,11 @@ int Resolve()
     if (chunks is not null)
     {
         var clock = Stopwatch.StartNew();
-        foreach (var (path, bytes) in files)
+        foreach (var path in mod.Paths)
         {
             if (!report.Kept.TryGetValue(path, out var kept) || kept.Count == 0) continue;
             var mine = left.Where(r => r.File == path && !r.InIndex).ToList();
-            foreach (var m in chunks.Scan(bytes))
+            foreach (var m in chunks.Scan(mod.Read(path), kept))
             {
                 if (!kept.Any(k => k.Start < m.Offset + m.Length && m.Offset < k.Start + k.Length)) continue;
                 var ids = chunks.BuildIdsOf(m.Chunk).ToList();
@@ -393,11 +391,20 @@ int LocalCheck()
     return 0;
 }
 
+// chunk-kinds --chunks <file>: the distinct whole-window chunks by kind of game file (for tuning the scan).
+int ChunkKinds()
+{
+    var index = SteamChunkIndex.Load(One("--chunks"));
+    foreach (var (kind, count) in index.WindowChunkKinds().OrderByDescending(k => k.Value)) Console.WriteLine($"{count,9:N0}  {kind}");
+    return 0;
+}
+
 // scan --chunks <file> --mod <folder>: the runs of each mod file that are chunks Steam shipped, with the builds and game
 // files they are from. Reads nothing from Steam.
 int Scan()
 {
     var index = SteamChunkIndex.Load(One("--chunks"));
+    Console.WriteLine($"Chunk index loaded: {index.FileCount:N0} file versions, {index.PlaceCount:N0} chunk places. {Memory()}");
     var mod = Path.GetFullPath(One("--mod"));
     long total = 0, matched = 0;
     var clock = Stopwatch.StartNew();
@@ -418,7 +425,7 @@ int Scan()
         Console.WriteLine($"{Path.GetRelativePath(mod, file)}: {bytes / 1e6:F1} of {data.Length / 1e6:F1} MB are Steam chunks ({found.Count} chunks), " +
             $"in {builds.Count} builds {builds.First().Time:yyyy-MM-dd} to {builds.Last().Time:yyyy-MM-dd}; from {string.Join(", ", sources)}");
     }
-    Console.WriteLine($"{matched / 1e6:F1} of {total / 1e6:F1} MB proven to be bytes Steam shipped, in {clock.Elapsed.TotalSeconds:F1} s.");
+    Console.WriteLine($"{matched / 1e6:F1} of {total / 1e6:F1} MB proven to be bytes Steam shipped, in {clock.Elapsed.TotalSeconds:F1} s ({index.Verified:N0} SHA-1 checks; {index.UniformChunks} chunks of one byte value left out).");
     return 0;
 }
 
@@ -621,7 +628,9 @@ int Index()
 
 int Migrate()
 {
+    var loadClock = Stopwatch.StartNew();
     var index = SourceIndex.Load(One("--index"));
+    Console.WriteLine($"Index loaded in {loadClock.Elapsed.TotalSeconds:F1} s. {Memory()}");
     var games = Games();
     games.AddRange(SteamBuilds(index, games.Select(g => g.Build).ToList()));
     var modFolder = Path.GetFullPath(One("--mod"));
@@ -630,29 +639,47 @@ int Migrate()
     if (Directory.Exists(outFolder)) Directory.Delete(outFolder, true);
     Directory.CreateDirectory(shipped);
 
-    var files = Directory.EnumerateFiles(modFolder, "*", SearchOption.AllDirectories)
-        .Select(f => (Path.GetRelativePath(modFolder, f).Replace('\\', '/'), File.ReadAllBytes(f)))
-        .OrderBy(f => f.Item1, StringComparer.Ordinal).ToList();
+    // The mod is read one file at a time, and the literal bytes go straight to a file: a mod of any size fits.
+    var mod = ModFiles.InFolder(modFolder);
+    var literalsPath = Path.Combine(outFolder, "literals.partial");
+    using var literals = new FileStream(literalsPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1 << 16, FileOptions.DeleteOnClose);
     var clock = Stopwatch.StartNew();
-    var (recipe, literals, report) = new Migrator(index, games).Migrate(files, Console.WriteLine);
-    Console.WriteLine($"Matched in {clock.Elapsed.TotalSeconds:F1} s.");
+    // Tuning by environment (for measuring); the defaults are the migrator's own.
+    var defaults = new Migrator(index, games);
+    static long Tuned(string name, long fallback) => long.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : fallback;
+    var migrator = new Migrator(index, games)
+    {
+        MaxDiagonals = (int)Tuned("HF_MIGRATOR_DIAGONALS", defaults.MaxDiagonals),
+        Neighbours = (int)Tuned("HF_MIGRATOR_NEIGHBOURS", defaults.Neighbours),
+        TableBudget = Tuned("HF_MIGRATOR_WINDOWS", defaults.TableBudget >> 20) << 20,
+        CacheBytes = Tuned("HF_MIGRATOR_CACHE_MB", defaults.CacheBytes >> 20) << 20,
+    };
+    var perFile = Environment.GetEnvironmentVariable("HF_MIGRATOR_LIVE") is { Length: > 0 };
+    var (recipe, report) = migrator.Migrate(mod, literals, line => Console.WriteLine(perFile ? $"{line} {Memory()}" : line));
+    literals.Flush();
+    migrator.ReleaseCaches();
+    Console.WriteLine($"Matched in {clock.Elapsed.TotalSeconds:F1} s: {migrator.Stats}. {Memory()}");
     if (All("--chunks").Count > 0)
     {
         clock.Restart();
-        report.Shipped.AddRange(SteamChunkIndex.Load(One("--chunks")).Runs(files));
-        Console.WriteLine($"Steam chunks: {report.Shipped.Sum(r => r.Length) / 1e6:F1} MB of the mod are chunks Steam shipped ({clock.Elapsed.TotalSeconds:F1} s).");
+        // Only the bytes the mod still ships matter (the rest the recipe takes from the game): the runs over them.
+        var steamChunks = SteamChunkIndex.Load(One("--chunks"));
+        report.Shipped.AddRange(steamChunks.Runs(mod.Paths.Select(p => (p, (Func<byte[]>)(() => mod.Read(p)))), report.Kept));
+        Console.WriteLine($"Steam chunks: {report.Shipped.Sum(r => r.Length) / 1e6:F1} MB of runs over what the mod still ships " +
+            $"({steamChunks.Scanned / 1e6:F0} MB scanned, {steamChunks.Verified:N0} SHA-1 checks, {clock.Elapsed.TotalSeconds:F1} s). {Memory()}");
     }
 
+    clock.Restart();
     // The gate: the game content is only taken out of the mod once the recipe has rebuilt every file, from the game
-    // folders alone, byte for byte (SHA-256). If anything fails, the mod is kept exactly as it was.
+    // folders alone, byte for byte: each rebuilt file's SHA-256 must be the original's (hashed as it is rebuilt, so no
+    // file is held). If anything fails, the mod is kept exactly as it was.
     string? rebuildError = null;
     try
     {
-        var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games);
-        foreach (var (path, bytes) in files.Where(f => rebuilt.ContainsKey(f.Item1)))
-            if (!rebuilt[path].AsSpan().SequenceEqual(bytes)) throw new InvalidDataException($"{path} rebuilt differently.");
+        RecipeRebuilder.Write(recipe, literals, games, _ => Stream.Null);
     }
     catch (InvalidDataException e) { rebuildError = e.Message; }
+    Console.WriteLine($"Rebuilt and checked (SHA-256) in {clock.Elapsed.TotalSeconds:F1} s. {Memory()}");
     var decided = MigrationVerdict.Decide(report, index, BuildCatalog.LoadWithHistory(One("--catalog")), recipe.Files.Count, rebuildError,
         All("--map").Count > 0 ? NameMap.Load(One("--map")) : null);
     if (decided.Kind is VerdictKind.NotMigrated or VerdictKind.NeedsReview) recipe = new Recipe();
@@ -660,16 +687,23 @@ int Migrate()
     Console.WriteLine(verdict);
     File.WriteAllText(Path.Combine(outFolder, "verdict.txt"), verdict + Environment.NewLine);
 
-    foreach (var (path, bytes) in files)
+    var inRecipe = recipe.Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+    foreach (var path in mod.Paths)
     {
-        if (recipe.Files.Any(f => f.Path == path)) continue;
+        if (inRecipe.Contains(path)) continue;
         var target = Path.Combine(shipped, path);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.WriteAllBytes(target, bytes);
+        File.Copy(mod.FullPath(path), target);
     }
-    if (recipe.Files.Count > 0) recipe.Save(shipped, literals);
+    if (recipe.Files.Count > 0)
+    {
+        recipe.Save(shipped);
+        using var output = File.Create(Path.Combine(shipped, Recipe.LiteralsName));
+        literals.Position = 0;
+        literals.CopyTo(output);
+    }
 
-    var text = Report(index, recipe, report, files, shipped, Path.GetFileName(modFolder), verdict);
+    var text = Report(index, recipe, report, mod, shipped, Path.GetFileName(modFolder), verdict);
     File.WriteAllText(Path.Combine(outFolder, "migration-report.md"), text);
     Console.WriteLine();
     Console.WriteLine(text);
@@ -695,7 +729,8 @@ int Rebuild()
         Console.WriteLine("No recipe: the mod ships as it is.");
         return 0;
     }
-    var (recipe, literals) = Recipe.Load(mod);
+    var recipe = Recipe.LoadRecipe(mod);
+    using var literals = Recipe.OpenLiterals(mod);
     var clock = Stopwatch.StartNew();
     var games = Games();
     var plan = RecipeRebuilder.FetchPlan(recipe, games.Select(g => g.Build).ToList(), All("--catalog").Count > 0 ? BuildCatalog.Load(One("--catalog")) : new BuildCatalog());
@@ -709,15 +744,14 @@ int Rebuild()
         }
         return 1;
     }
-    var rebuilt = RecipeRebuilder.Rebuild(recipe, literals, games, Console.WriteLine);
-    foreach (var (path, bytes) in rebuilt)
+    RecipeRebuilder.Write(recipe, literals, games, file =>
     {
-        var target = Path.Combine(outFolder, path);
+        var target = Path.GetFullPath(Path.Combine(outFolder, file.Path));
+        if (!target.StartsWith(outFolder + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new InvalidDataException($"{file.Path} is outside the mod.");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.WriteAllBytes(target, bytes);
-        Console.WriteLine($"Rebuilt {path} ({bytes.Length:N0} bytes, SHA-256 matches the original)");
-    }
-    Console.WriteLine($"Done in {clock.Elapsed.TotalSeconds:F1} s.");
+        return File.Create(target);
+    }, file => Console.WriteLine($"Rebuilt {file.Path} ({file.Size:N0} bytes, SHA-256 matches the original)"), Console.WriteLine);
+    Console.WriteLine($"Done in {clock.Elapsed.TotalSeconds:F1} s. {Memory()}");
     return 0;
 }
 
@@ -741,18 +775,17 @@ int Compare(string a, string b)
 static string Size(long bytes) => bytes >= 1e6 ? $"{bytes / 1e6:F2} MB" : bytes >= 1e3 ? $"{bytes / 1e3:F1} KB" : $"{bytes} B";
 static string Pct(long part, long whole) => whole == 0 ? "-" : $"{100.0 * part / whole:F1}%";
 
-string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(string Path, byte[] Bytes)> files, string shipped, string name, string verdict)
+string Report(SourceIndex index, Recipe recipe, MigrationReport report, ModFiles mod, string shipped, string name, string verdict)
 {
     var s = new StringBuilder();
-    long total = files.Sum(f => (long)f.Bytes.Length);
+    long total = mod.TotalSize;
     long fromGame = report.Files.Sum(f => f.FromGame);
     long fill = report.Files.Sum(f => f.Fill);
     long shippedBytes = Directory.EnumerateFiles(shipped, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
     // Whether the game has a resource with this name and part, and whether its bytes are the mod's.
     string SameKey(MigrationReport.ResourceLine r)
     {
-        var bytes = files.Single(f => f.Path == r.File).Bytes.AsSpan((int)r.Start, (int)r.Size);
-        var sha = SHA256.HashData(bytes);
+        if (r.Sha256 is not { } sha) return "the part runs past the file's end";
         var places = index.WithKey(r.Key).SelectMany(c => index.Contents[c].Places.Where(p => p.Key == r.Key && p.Part == r.Part).Select(p => (c, p.Build))).ToList();
         if (places.Count == 0) return "not in indexed builds";
         var identical = places.Where(x => index.Contents[x.c].Sha256.AsSpan().SequenceEqual(sha)).Select(x => index.Builds[x.Build]).Distinct().ToList();
@@ -767,7 +800,7 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
     s.AppendLine();
     s.AppendLine("| | |");
     s.AppendLine("|---|---|");
-    s.AppendLine($"| Original mod | {files.Count} files, {Size(total)} |");
+    s.AppendLine($"| Original mod | {mod.Paths.Count} files, {Size(total)} |");
     s.AppendLine($"| Game content found and replaced by references | {Size(fromGame)} ({Pct(fromGame, total)}) |");
     s.AppendLine($"| Padding / runs of one byte | {Size(fill)} ({Pct(fill, total)}) |");
     s.AppendLine($"| Bytes the mod still ships (author's own or unmatched) | {Size(total - fromGame - fill)} ({Pct(total - fromGame - fill, total)}) |");
@@ -820,6 +853,14 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
     }
     if (report.SourceBytes.Count > 40) s.AppendLine($"| ... and {report.SourceBytes.Count - 40} more | | | |");
     return s.ToString();
+}
+
+static string Memory()
+{
+    var live = Environment.GetEnvironmentVariable("HF_MIGRATOR_LIVE") is { Length: > 0 };
+    var gc = GC.GetGCMemoryInfo();
+    return $"[{(live ? "live" : "heap")} {GC.GetTotalMemory(live) / 1e6:F0} MB, GC committed {gc.TotalCommittedBytes / 1e6:F0} MB ({gc.FragmentedBytes / 1e6:F0} MB fragmented), " +
+        $"peak working set {Process.GetCurrentProcess().PeakWorkingSet64 / 1e6:F0} MB]";
 }
 
 sealed class LazyGame(string label, Func<IGameResources> open) : IGameResources
