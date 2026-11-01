@@ -16,8 +16,8 @@ and the game build it targets in its bottom-left corner.
 
 HellForge plays your own game. Setup copies HELLDIVERS 2 from your Steam library into HellForge's folder and checks every
 file against Steam's hashes. This repository and HellForge-Setup.exe contain no game files. When Steam has a newer build
-than the one HellForge runs, setup downloads a patch made from the differences between the two builds and applies it to
-your own Steam files. Your normal Steam game is never changed.
+than the one HellForge runs, setup gets the supported build from Steam for your own account, copying what your Steam
+install already holds. Your normal Steam game is never changed.
 
 The Steam ownership check stays. A genuine check runs at setup, and again before a launch unless one passed within the
 last 7 days for the same installation, Steam account and game build. Steam must be running and signed in to an account
