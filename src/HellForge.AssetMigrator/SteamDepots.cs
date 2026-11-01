@@ -55,6 +55,9 @@ sealed class SteamDepots : IDisposable
     //             authenticator shows, or an approval in the app), as Steam asks for it. Nothing is stored but the token.
     public static async Task<SteamDepots> Connect(LoginMethod method = LoginMethod.Saved)
     {
+        // The account name and password are asked for before connecting: Steam drops a connection left idle while
+        // someone types.
+        (string Name, string Password)? credentials = method == LoginMethod.Password ? AskCredentials() : null;
         var steam = new SteamDepots();
         await steam.ConnectClient();
         SavedLogin? saved = method == LoginMethod.Saved && File.Exists(LoginFile) ? JsonSerializer.Deserialize<SavedLogin>(File.ReadAllText(LoginFile)) : null;
@@ -64,7 +67,7 @@ sealed class SteamDepots : IDisposable
             AuthPollResult result;
             try
             {
-                result = method == LoginMethod.Qr ? await QrLogin(steam) : await PasswordLogin(steam);
+                result = method == LoginMethod.Qr ? await QrLogin(steam) : await PasswordLogin(steam, credentials!.Value);
             }
             catch (AuthenticationException e)
             {
@@ -101,13 +104,18 @@ sealed class SteamDepots : IDisposable
         return await session.PollingWaitForResultAsync();
     }
 
-    static async Task<AuthPollResult> PasswordLogin(SteamDepots steam)
+    static (string, string) AskCredentials()
     {
         Console.Write("Steam account name: ");
         var name = Console.ReadLine()?.Trim();
         if (string.IsNullOrEmpty(name)) throw new InvalidOperationException("No account name given.");
         Console.Write("Password (not shown): ");
-        var password = ReadHidden();
+        return (name, ReadHidden());
+    }
+
+    static async Task<AuthPollResult> PasswordLogin(SteamDepots steam, (string Name, string Password) credentials)
+    {
+        var (name, password) = credentials;
         var session = await steam.client.Authentication.BeginAuthSessionViaCredentialsAsync(new AuthSessionDetails
         {
             Username = name,
@@ -146,6 +154,8 @@ sealed class SteamDepots : IDisposable
 
     async Task LogOn(SavedLogin login)
     {
+        // A login approved in the app (or a code typed) can take minutes, and Steam may have dropped the connection.
+        if (!client.IsConnected) await ConnectClient();
         var done = new TaskCompletionSource<EResult>();
         using var a = callbacks.Subscribe<SteamUser.LoggedOnCallback>(cb => done.TrySetResult(cb.Result));
         user.LogOn(new SteamUser.LogOnDetails { Username = login.AccountName, AccessToken = login.RefreshToken, ShouldRememberPassword = true });
