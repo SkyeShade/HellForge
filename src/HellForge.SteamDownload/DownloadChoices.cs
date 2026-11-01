@@ -1,48 +1,52 @@
 namespace HellForge.SteamDownload;
 
-// How the player gets the supported build when Steam has another one: three equal choices on setup's card.
-// QrCode: sign in by scanning a QR code with the Steam app on a phone (the default). Password: no phone needed; account
-// name and password, and the code Steam emails when the account has Steam Guard by email. SteamClient: no sign-in in
-// HellForge at all; the Steam client on this PC downloads the build through its console and HellForge copies it.
-public enum DownloadChoice { QrCode, Password, SteamClient }
+// How the player gets the supported build when Steam has another one: three ways on setup's card, in this order.
+// QrCode: HellForge signs in with a QR code scanned in the Steam app on a phone, and downloads from Steam's servers (the
+// default; fully automatic). SteamCmd: no phone needed; Valve's own SteamCMD downloads it, and the player types the
+// password and any Steam Guard code into SteamCMD's window, never into HellForge (SteamCmd). SteamClient: the Steam app
+// on this PC downloads it through its console (SteamDepotDownload); also where setup goes when another way fails.
+public enum DownloadChoice { QrCode, SteamCmd, SteamClient }
 
 public static class DownloadChoices
 {
     public const DownloadChoice Default = DownloadChoice.QrCode;
 
-    public static IReadOnlyList<DownloadChoice> All { get; } = [DownloadChoice.QrCode, DownloadChoice.Password, DownloadChoice.SteamClient];
+    public static IReadOnlyList<DownloadChoice> All { get; } = [DownloadChoice.QrCode, DownloadChoice.SteamCmd, DownloadChoice.SteamClient];
 
-    // Whether HellForge signs in to Steam itself for this choice (the Steam client choice never does).
-    public static bool SignsIn(DownloadChoice choice) => choice != DownloadChoice.SteamClient;
+    // The ways setup can offer. reachesSteam: setup can reach Steam's servers itself (not under Wine, inside HellForge's
+    // network namespace, which has no route out); else only the Steam app on this PC can download.
+    public static IReadOnlyList<DownloadChoice> Offered(bool reachesSteam) => reachesSteam ? All : [DownloadChoice.SteamClient];
+
+    // Whether HellForge signs in to Steam itself (only with the QR code; SteamCMD and the Steam app sign in on their own).
+    public static bool SignsIn(DownloadChoice choice) => choice == DownloadChoice.QrCode;
 
     // The choice's button.
     public static string Title(DownloadChoice choice) => choice switch
     {
-        DownloadChoice.QrCode => "Scan a QR code with the Steam app",
-        DownloadChoice.Password => "No phone? Account name and password",
-        _ => "Download with the Steam client",
+        DownloadChoice.QrCode => "Scan a QR code with your phone",
+        DownloadChoice.SteamCmd => "No phone: sign in with SteamCMD",
+        _ => "Use the Steam app",
     };
 
-    // The choice in plain words, under the buttons.
+    // One line under the button, while the player chooses.
+    public static string Hint(DownloadChoice choice) => choice switch
+    {
+        DownloadChoice.QrCode => "The quickest: approve the sign-in in the Steam app on your phone, and setup does the rest.",
+        DownloadChoice.SteamCmd => "No phone needed: you type your password into Valve's own SteamCMD window, never into HellForge.",
+        _ => "No sign-in here at all: the Steam app on this PC downloads the build through its console.",
+    };
+
+    // The chosen way in plain words, above its steps.
     public static string Explanation(DownloadChoice choice, string buildId) => choice switch
     {
         DownloadChoice.QrCode => "Open the Steam app on your phone, tap the Steam Guard shield, then the QR code scanner, and scan this " +
-            "code. Then approve the sign-in in the app. HellForge never sees your password.",
-        DownloadChoice.Password => "No phone needed: sign in with your Steam account name and password. If your account has Steam Guard by " +
-            "email, Steam emails you a code to enter here. Your password goes only to Steam, through Steam's own sign-in, and HellForge " +
-            "never keeps it.",
-        _ => $"No sign-in in HellForge: the Steam client on this PC downloads build {buildId} to your own account, through its " +
-            "console. Paste the commands below into the console, one at a time. HellForge watches for the download, then copies it " +
-            "into this folder, every file checked against Steam's hashes. This needs about 24 GB more free space while both copies exist.",
-    };
-
-    // The sign-in to start for a choice: the QR code at once; the password sign-in once both are typed; none for the Steam
-    // client (null).
-    public static SignInRequest? Request(DownloadChoice choice, string? account, string? password) => choice switch
-    {
-        DownloadChoice.QrCode => new QrSignIn(),
-        DownloadChoice.Password when !string.IsNullOrWhiteSpace(account) && !string.IsNullOrEmpty(password) =>
-            new PasswordSignIn(account.Trim(), password),
-        _ => null,
+            "code. Then approve the sign-in in the app. HellForge never sees your password, and nothing of the sign-in is kept.",
+        DownloadChoice.SteamCmd => "No phone needed. HellForge gets SteamCMD, Valve's own command-line Steam tool, from Valve and starts " +
+            "it in a window of its own, with everything filled in except your password. Type your password in the SteamCMD window; it " +
+            "goes to Valve's own tool, not HellForge. If Steam asks for a Steam Guard code (by email), type it there too. SteamCMD then " +
+            $"downloads build {buildId} to your own account, and HellForge checks every file against Steam's hashes and moves it into " +
+            "this folder. Afterwards HellForge removes SteamCMD and what it remembered of the sign-in.",
+        _ => $"No sign-in in HellForge: the Steam app on this PC downloads build {buildId} to your own account, through its " +
+            "console. HellForge then copies it into this folder, every file checked against Steam's hashes.",
     };
 }

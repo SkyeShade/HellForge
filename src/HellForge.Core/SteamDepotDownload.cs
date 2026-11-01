@@ -5,7 +5,8 @@ namespace HellForge.Core;
 // an account that owns the game, into <Steam>/steamapps/content/app_<app>/depot_<depot>. HellForge shows the commands for the
 // manifests it pins (SupportedBuild.Depots), watches those folders and copies the game from them like from an install:
 // every file is hashed against the build's list. On this path the Steam client downloads, not HellForge, and HellForge ships no
-// game content. Setup offers it as a choice ("Download with the Steam client") and as the fallback of its own download.
+// game content. Setup offers it as a choice ("Use the Steam app") and as the fallback of the other ways. SteamCMD's
+// download_depot (HellForge.SteamDownload's SteamCmd) writes the same folders under SteamCMD's own folder, read the same way.
 public static class SteamDepotDownload
 {
     // Waiting: the depot's files not (yet) present with their listed size, as (path, the size on disk or -1 when missing,
@@ -20,8 +21,8 @@ public static class SteamDepotDownload
 
     // Where else download_depot may have put it: the Linux Steam client downloads relative to the folder its program runs
     // from, so <Steam>/ubuntu12_32/steamapps/content (or ubuntu12_64, or steamrt64 for the 64-bit client) instead of
-    // <Steam>/steamapps/content (GitHub issue 11).
-    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64"];
+    // <Steam>/steamapps/content (GitHub issue 11). SteamCMD for Linux does the same from its linux32 folder.
+    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64", "linux32"];
 
     static IEnumerable<string> ContentFolders(string steamRoot, SupportedBuild build) =>
         [ContentFolder(steamRoot, build), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps", "content", "app_" + build.AppId))];

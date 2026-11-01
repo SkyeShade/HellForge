@@ -7,7 +7,7 @@ using DepotManifest = HellForge.Core.DepotManifest;
 
 namespace HellForge.SteamDownload;
 
-// A sign-in to Steam for setup's download, on SteamKit2: Steam's own sign-in (QR code or password with Steam Guard), then
+// A sign-in to Steam for setup's download, on SteamKit2: Steam's own QR code sign-in, approved in the Steam app, then
 // depot keys, manifest request codes, manifests and chunks from Steam's content servers. Written for HellForge on
 // SteamKit2's API. The session is not persistent and nothing about it is stored: the tokens Steam returns live in this
 // object until it is disposed. It signs in as a separate session (its own login id), so the Steam client stays signed in.
@@ -49,8 +49,9 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         callbacks.Subscribe<SteamUser.LoggedOnCallback>(result => loggedOn.TrySetResult(result));
     }
 
-    // Connects, signs in as the request says and logs on. Throws SteamSignInException with the reason in plain words.
-    public static async Task<SteamDepotSession> SignInAsync(SignInRequest request, ISignInPrompt prompt, CancellationToken cancellation)
+    // Connects, signs in with a QR code approved in the Steam app and logs on. Throws SteamSignInException with the reason in
+    // plain words.
+    public static async Task<SteamDepotSession> SignInAsync(ISignInPrompt prompt, CancellationToken cancellation)
     {
         var session = new SteamDepotSession();
         try
@@ -58,7 +59,7 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
             prompt = new ScrubbedPrompt(prompt, session.scrubber);
             prompt.Status("Connecting to Steam...");
             await session.ConnectAsync(cancellation);
-            var (account, token) = await session.AuthenticateAsync(request, prompt, cancellation);
+            var (account, token) = await session.AuthenticateAsync(prompt, cancellation);
             prompt.Status("Signing in...");
             await session.LogOnAsync(account, token, cancellation);
             return session;
@@ -95,28 +96,14 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         await connected.Task.WaitAsync(Timeout, cancellation);
     }
 
-    async Task<(string Account, string Token)> AuthenticateAsync(SignInRequest request, ISignInPrompt prompt, CancellationToken cancellation)
+    async Task<(string Account, string Token)> AuthenticateAsync(ISignInPrompt prompt, CancellationToken cancellation)
     {
         var details = new AuthSessionDetails { DeviceFriendlyName = "HellForge setup", IsPersistentSession = false };
-        AuthSession session;
-        if (request is PasswordSignIn password)
-        {
-            scrubber.Add(password.Password);
-            details.Username = password.AccountName;
-            details.Password = password.Password;
-            details.Authenticator = new PromptAuthenticator(prompt, cancellation);
-            session = await client.Authentication.BeginAuthSessionViaCredentialsAsync(details).WaitAsync(Timeout, cancellation);
-            prompt.Status("Waiting for Steam to accept the sign-in...");
-        }
-        else
-        {
-            var qr = await client.Authentication.BeginAuthSessionViaQRAsync(details).WaitAsync(Timeout, cancellation);
-            prompt.ShowQr(qr.ChallengeURL);
-            qr.ChallengeURLChanged = () => prompt.ShowQr(qr.ChallengeURL);
-            prompt.Status("Scan the code with the Steam app on your phone, then approve the sign-in there.");
-            session = qr;
-        }
-        var result = await session.PollingWaitForResultAsync(cancellation);
+        var qr = await client.Authentication.BeginAuthSessionViaQRAsync(details).WaitAsync(Timeout, cancellation);
+        prompt.ShowQr(qr.ChallengeURL);
+        qr.ChallengeURLChanged = () => prompt.ShowQr(qr.ChallengeURL);
+        prompt.Status("Scan the code with the Steam app on your phone, then approve the sign-in there.");
+        var result = await qr.PollingWaitForResultAsync(cancellation);
         scrubber.Add(result.RefreshToken);
         scrubber.Add(result.AccessToken);
         return (result.AccountName, result.RefreshToken);
@@ -134,9 +121,7 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
     // Steam's result in words a player can act on.
     static string Describe(EResult result) => result switch
     {
-        EResult.InvalidPassword => "the account name or password is wrong.",
         EResult.AccountLoginDeniedThrottle or EResult.RateLimitExceeded => "Steam has had too many sign-in attempts; wait a while and try again.",
-        EResult.TwoFactorCodeMismatch or EResult.InvalidLoginAuthCode => "the Steam Guard code was wrong.",
         EResult.Expired or EResult.FileNotFound => "the sign-in expired before it was approved; try again.",
         EResult.ServiceUnavailable or EResult.TryAnotherCM => "Steam is busy; try again in a few minutes.",
         _ => $"Steam answered {result}.",
@@ -175,18 +160,5 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         cdn?.Dispose();
         pump.Dispose();
         scrubber.Forget();
-    }
-
-    // Steam Guard codes asked of the player. A sign-in that the Steam app could approve asks for the app's code instead,
-    // so the password path always works with a code (the QR path is the one approved in the app).
-    sealed class PromptAuthenticator(ISignInPrompt prompt, CancellationToken cancellation) : IAuthenticator
-    {
-        public Task<string> GetDeviceCodeAsync(bool previousCodeWasIncorrect) =>
-            prompt.GuardCodeAsync(GuardCodeKind.App, null, previousCodeWasIncorrect, cancellation);
-
-        public Task<string> GetEmailCodeAsync(string email, bool previousCodeWasIncorrect) =>
-            prompt.GuardCodeAsync(GuardCodeKind.Email, email, previousCodeWasIncorrect, cancellation);
-
-        public Task<bool> AcceptDeviceConfirmationAsync() => Task.FromResult(false);
     }
 }
