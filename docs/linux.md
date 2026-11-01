@@ -14,11 +14,12 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 ## What you need
 
 - Steam for Linux, running and signed in to an account that owns HELLDIVERS 2, with at least one Proton installed.
-  HELLDIVERS 2 itself does not need to be installed: setup gets the supported build from Steam's installed copy, its
-  depot download, or a build patch applied to a newer installed copy.
-- About 50 GB of free space while setting up: Steam's download of the supported build and HellForge's copy of the game
-  are about 24 GB each. Setup deletes the download after copying unless you untick that. A build patch needs about 2 GB
-  more while it is applied.
+  HELLDIVERS 2 itself does not need to be installed: setup copies the supported build from Steam's installed copy or its
+  depot download, or gets it from Steam for your account when Steam has another build
+  ([below](#getting-the-supported-build-from-steam)).
+- About 24 GB of free space on the prefix's drive for HellForge's copy of the game. Only the Steam app's console
+  download needs more while setting up: that download and HellForge's copy are about 24 GB each, and setup deletes the
+  download after copying unless you untick that.
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
@@ -124,9 +125,10 @@ resolved and the real folder is used. A link at the installation folder or insid
 `Linked/reparse paths are not supported: <path>`, because a game copy written through it could land somewhere else. The
 same rule covers the game folder and every Steam library HellForge reads.
 
-The supported build's copy is 23.8 GB (about 24 GB). A first setup that copies from Steam's download needs room for that
-download too, about another 24 GB, unless setup can use an installed game or a build patch; a patch needs about 2 GB more
-while it is applied. Allow at least 50 GB free on the prefix's drive for a first setup from Steam's download. A prefix
+The supported build's copy is 23.8 GB (about 24 GB). The QR code and SteamCMD ways write it once on the prefix's drive
+(SteamCMD's download is moved into the game folder, not copied). A first setup through the Steam app's console download
+needs room for that download in Steam's folder too, about another 24 GB; allow at least 50 GB free for it when Steam's
+library is on the prefix's drive. A prefix
 backup is about the size of the prefix, and its default folder is `hellforge-backups` beside the prefix, on the same
 drive; choose another folder with **Choose folder**.
 
@@ -152,17 +154,13 @@ for the game in this order:
 1. the installation's own copy, if every file matches the supported build;
 2. Steam's installed copy, if it is the supported build;
 3. Steam's completed `download_depot` download;
-4. a published build patch for the build Steam has installed;
-5. otherwise, Steam's download of the supported build (see below).
+4. otherwise, the supported build from Steam for your account, in one of three ways
+   ([below](#getting-the-supported-build-from-steam)), copying what Steam's installed build already holds.
 
-A build patch is about 1.7 GB. Setup applies it to a copy of Steam's installed game before the ownership check, because
-the check needs the supported build's `steam_api64.dll`. The pinned native Linux `hpatchz` runs directly, with the same
-arguments as the Windows tool and exit code 24 for a full drive; Steam's installation is only read. If the native tool
-cannot be fetched or checked, setup falls back to the pinned Windows `hpatchz.exe` through the selected Proton, with
-Wine's `start /wait /b` so no console window opens per file. Every patched file is checked against the supported build's
-hash. If the patch fails or the drive is full, setup keeps the files it already patched, remembers the failed patch for
-this launcher run and offers Steam's download instead; starting the launcher again tries the patch again. A complete depot
-download is used before a patch, as on Windows.
+The download from Steam comes before the ownership check, because the check needs the supported build's
+`steam_api64.dll`. When HELLDIVERS 2 is in Steam but Steam is updating it or the game is running, setup stops with
+"HELLDIVERS 2 is in Steam, but setup cannot use it right now", as on Windows: let Steam finish, close the game and press
+Try again.
 
 Setup then confirms ownership through the selected Proton. Steam must be running and signed in to an account that owns
 HELLDIVERS 2 (or has it through Steam Family Sharing). The launcher starts its Steam probe through
@@ -175,17 +173,76 @@ account that owns HELLDIVERS 2.`
 After the ownership check, setup prepares the optional mod tools through the wrapper: the pinned native Linux Zig (about
 55 MB, a `.tar.xz` from ziglang.org) that compiles source mods, and the pinned Windows Zig (about 90 MB) for an
 installation that is also used from Windows. A failure is reported in the row but does not stop setup. Setup then copies
-the game from the source it chose, or keeps the installation's own copy after verifying it, and checks every file
-against Steam's hashes. When the copy came from Steam's depot download and **Delete Steam's download after copying** is
-ticked, the download is deleted afterwards. Setup installs the namespace marker only after `hellforge-linux.sh`'s
+the game from the source it chose (nothing to copy when it was downloaded from Steam), or keeps the installation's own
+copy after verifying it, and checks every file against Steam's hashes. When the copy came from Steam's depot download
+and **Delete Steam's download after copying** is ticked, the download is deleted afterwards. Setup installs the namespace marker only after `hellforge-linux.sh`'s
 offline self-test passes. It then creates `~/Desktop/HellForge.desktop`, syncs the bundled mods and shows Ready to play;
 your desktop may ask you to allow launching the shortcut.
+
+### Getting the supported build from Steam
+
+When Steam has another HELLDIVERS 2 build than the one HellForge runs, or none, setup gets the supported build from
+Steam for your own account, as on Windows ([steam-download.md](steam-download.md)). HellForge hosts no game files. The
+native launcher runs setup outside HellForge's network namespace, with Steam's library readable, so it offers all three
+ways on one card, **Get the supported build from Steam**. The card opens on the QR code, and **Choose another way**
+shows the three. Every way's progress shows under Game files, and every file is checked against Steam's hashes.
+
+1. **Scan a QR code with your phone** (the default). Scan the code with the Steam app on your phone (the Steam Guard
+   shield, then the QR code scanner) and approve the sign-in there. Setup then downloads from Steam's content servers
+   only what your Steam install does not hold and copies the rest from it, straight into the game folder: no console
+   step and no second 24 GB. HellForge never sees your password, and nothing of the sign-in is kept.
+2. **No phone: sign in with SteamCMD.** Type your Steam account name (the name you sign in with) and press **Start
+   SteamCMD**. Setup gets SteamCMD for Linux from Valve into `<installation>/tools/steamcmd` and opens it in a
+   [terminal window](#steamcmds-terminal-window) with everything filled in except your password. Type your password,
+   and a Steam Guard code if Steam asks for one, in that window: it goes to SteamCMD, never to HellForge. SteamCMD runs
+   with its HOME inside its own folder, so it never touches your `~/.steam` or `~/Steam`, and downloads into
+   `<installation>/tools/steamcmd/linux32/steamapps/content/app_553850/`. Setup checks each file and moves it into the
+   game folder (the same drive, so the 24 GB need room once), then removes SteamCMD and what it remembered of the
+   sign-in. A closed window or a failed sign-in is said on the card, with **Start SteamCMD again**, which continues the
+   download it kept.
+3. **Use the Steam app.** No sign-in in HellForge: the Steam client downloads the build through its console, and setup
+   copies it ([below](#steams-download-of-the-supported-build)). Setup also goes there when another way cannot work: a
+   game borrowed through Steam Family Sharing, or SteamCMD that cannot be set up.
+
+#### SteamCMD's terminal window
+
+The native launcher has no terminal of its own for SteamCMD to ask for the password on, so it opens one. It tries, in
+order, `xdg-terminal-exec` (the terminal your desktop is set to use), `konsole -e`, `gnome-terminal --`, `kgx --`
+(GNOME Console), `xterm -e`, then `ptyxis`, `xfce4-terminal`, `mate-terminal`, `terminator`, `alacritty`, `kitty`,
+`foot`, `wezterm` and `x-terminal-emulator`: the first one found on `PATH`, and the next one when it fails to start. The
+program and its arguments are passed to the terminal as they are, so no shell reads them. The window shows a line from
+HellForge, then SteamCMD's own prompts, and closes when SteamCMD ends. HellForge reads nothing from it; it only learns
+that SteamCMD started and how it ended. Closing the window stops SteamCMD, and **Stop SteamCMD** or **Choose another
+way** closes the window.
+
+With none of these terminals installed, the card shows SteamCMD's way greyed out with the reason, and offers the QR code
+and the Steam app. Install a terminal (for example `konsole`, `gnome-terminal` or `xterm`) and start setup again to use
+SteamCMD.
+
+#### What is checked instead of a signature
+
+On Windows, `steamcmd.exe` must carry Valve's Authenticode signature. Linux has no counterpart, so:
+
+- The archive comes only from Valve's own https URL,
+  `https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz`. The server's certificate is checked, and a
+  redirect from https to http is never followed.
+- Before anything in it is unpacked, it must hold only plain files and folders whose names stay inside SteamCMD's folder
+  (no links, no absolute names, no `..`), at most 64 MB unpacked, with `steamcmd.sh` a bash script and
+  `linux32/steamcmd` a 32-bit x86 Linux program, each once. Valve's archive (2.4 MB, unchanged since 2018) holds those
+  two and `linux32/steamerrorreporter`, `linux32/libstdc++.so.6` and `linux32/crashhandler.so`. Anything else is deleted
+  unopened, and setup offers the Steam app.
+- After SteamCMD updates itself, `steamcmd.sh` and `linux32/steamcmd` are checked again. If they are not what they
+  should be, `steamcmd.sh` is deleted, nothing is started, and setup offers the Steam app.
+
+Valve updates SteamCMD itself, so no hash of the program can be pinned, as on Windows.
 
 ### Steam's download of the supported build
 
 The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`, or in the same
 path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because it downloads relative to the
-folder its program runs from. The native setup reads these locations directly and does not move the depot folders:
+folder its program runs from. The native setup reads these locations directly and does not move the depot folders. For
+each depot it takes the folder holding the most of the build, so an empty folder left by an earlier download does not
+hide the real one under `steamrt64`:
 
 ```text
 <Steam>/steamapps/content/app_553850/depot_553851/
@@ -193,10 +250,11 @@ folder its program runs from. The native setup reads these locations directly an
 <Steam>/steamapps/content/app_553850/depot_553854/
 ```
 
-When setup needs the download, it shows a card with one `download_depot 553850 <depot> <manifest>` command per depot.
-Press **Open the Steam console** (or run `xdg-open steam://open/console`), paste each command into the console and press
-Enter, one at a time. The wizard checks the folders every two seconds, shows the progress it can read, and continues by
-itself when every depot is complete. When five or fewer files remain, it names them; a file larger than this build's is
+When you choose **Use the Steam app**, or another way cannot work, the card shows one
+`download_depot 553850 <depot> <manifest>` command per depot. Press **Open the Steam console** (or run
+`xdg-open steam://open/console`), paste each command into the console and press Enter, one at a time. The wizard checks
+the folders every two seconds, shows the progress under Game files, and continues by itself when every depot is
+complete. When five or fewer files remain, it names them; a file larger than this build's is
 another build's file, so delete it and run that depot's command again.
 
 The download can remain in Steam's folder, or the setup option can delete it: **Delete Steam's download after copying**
@@ -215,7 +273,9 @@ bash "<installation>/app/linux/hellforge-linux.sh"
 With no program argument the wrapper starts the installation's `HellForge.exe` through Proton inside the namespace.
 Setup then runs under Wine and refuses to run outside the namespace with `On Linux, setup runs inside HellForge's
 network namespace. Close HellForge and start it with app/linux/hellforge-linux.sh (docs/linux.md), then start setup
-there.` Uninstall under Wine says to use the native launcher. `HellForge-Setup.exe` is not used on Linux.
+there.` Inside the namespace setup has no route to Steam's servers, so when Steam has another build it offers only the
+Steam app's console download ([above](#steams-download-of-the-supported-build)), not the QR code or SteamCMD. Uninstall
+under Wine says to use the native launcher. `HellForge-Setup.exe` is not used on Linux.
 
 An installation set up on Windows already has the game copy, so it needs no download. Copy the whole installation folder
 into a prefix's C: drive, for example to `~/.local/share/hellforge-prefix/pfx/drive_c/HellForge` (the prefix directory
@@ -238,8 +298,8 @@ replaced, files a release no longer ships do not stay behind.
 The installer does not compare versions, so pick the package you mean to install. On an existing installation it does
 not run `wineboot` again; the Proton you choose is saved for setup and sessions.
 
-A release that pins another HELLDIVERS 2 build normally reopens setup, and that can need another large download or a
-build patch (see [the setup wizard](#setup-wizard)). Settings > Installation > Check and repair also installs the engine
+A release that pins another HELLDIVERS 2 build normally reopens setup, and that can need another download from Steam
+(see [the setup wizard](#setup-wizard)). Settings > Installation > Check and repair also installs the engine
 package again, verifies the game copy and repeats ownership and the namespace check. Back up the prefix before a big
 update if you want a way back ([prefix backup and restore](#prefix-backup-and-restore)).
 
@@ -346,7 +406,7 @@ HellForge: Steam Linux Runtime: host mode: <reason>; Proton runs on the host.
 Host mode is used when the Proton names no runtime, when the runtime is not installed or its manifest cannot be
 reproduced, or with `HELLFORGE_STEAM_RUNTIME=off`; the reason is always printed. A runtime that is present but fails to
 start is not retried on the host. The session, the sandboxed domain, the live-war fetch, the Windows mod tools, setup's
-`wineboot` and the build-patch fallback all use the chosen mode. HellForge's own steps (`ip`, `unshare`, the Steam
+`wineboot` all use the chosen mode. HellForge's own steps (`ip`, `unshare`, the Steam
 bridge, the native CLI) stay outside the container, which does not have those programs.
 
 The order is fixed: the offline network namespace, then the runtime container (it keeps that namespace: only loopback,
@@ -747,7 +807,8 @@ Closing the launcher window while a sync runs stops the helper and attempts the 
 
 Settings > Installation > Check and repair reruns the native setup: run the informational
 [sandbox probe](#sandbox-probe), choose the Proton version, install the engine package again, confirm Steam ownership,
-verify the game copy (copying missing or damaged files from Steam, a complete depot download or a build patch), and check
+verify the game copy (copying missing or damaged files from Steam's install or a complete depot download, or getting
+them from Steam for your account), and check
 the namespace marker (installing it, with the self-test, when it is missing). It also renews the desktop shortcut and the
 bundled mods. Use it after changing Proton, when the game copy is damaged, or after replacing `app` by hand.
 
@@ -969,6 +1030,9 @@ probe, and a real game session have not been tested here.
 
 - Native setup's direct depot reads, engine-package extraction, and the Proton ownership probe still need a full test on
   a Linux machine with Steam and the game depot download.
+- Native setup's download from Steam: the QR code's sign-in and download, and SteamCMD in a real terminal window with a
+  real account (the password and Steam Guard prompts, `linux32/steamapps`, HOME kept in its folder), have not been run
+  end to end in the launcher. Konsole was checked to pass SteamCMD's arguments as they are and to report its exit code.
 - Co-op on Linux. Friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace, but the one test so far did not connect (see [above](#problems-players-have-reported)).
 - Steam as a Flatpak or Snap (its own `/tmp` and paths), and SteamOS 3.x (see [SteamOS 3.x](#steamos-3x)), including the
@@ -981,8 +1045,8 @@ probe, and a real game session have not been tested here.
   The probe must confirm the game on the signed-in Steam account, or setup and the session stop. It has not yet been
   run on a Linux machine, so if setup or a session stops at "The ownership check did not pass", please report it with
   the logs.
-- The graphical installer's install and update path (the staged app swap, rollback and new engine install), build
-  patches applied through Proton, prefix backup and restore, and uninstall's outside cleanup (including the AppArmor
+- The graphical installer's install and update path (the staged app swap, rollback and new engine install), prefix
+  backup and restore, and uninstall's outside cleanup (including the AppArmor
   commands) and prefix deletion offer have not been tried with a real game and Steam on a Linux machine.
 - Account Sync on Linux worked end to end on one PC (2026-10-29: Fedora 44, Proton - Experimental): the launcher found
   the game's Proton from the prefix, installed the helper through pkexec, the CA reached the prefix's `Root` store, the

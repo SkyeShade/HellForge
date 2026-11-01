@@ -78,8 +78,9 @@ and your Steam install is only read. Pause download stops the QR code's download
 next time, after you sign in again.
 
 When you choose the Steam app, when Steam does not allow the download after a sign-in, when SteamCMD cannot be set up
-(below), and always on Linux, the card shows the Steam app's steps, with one `download_depot 553850 <depot> <manifest>`
-command per depot. To use them:
+(below), and always in the Windows launcher run under Wine on Linux, the card shows the Steam app's steps, with one
+`download_depot 553850 <depot> <manifest>` command per depot. The native Linux launcher offers all three ways, with
+SteamCMD in a terminal window ([linux.md](linux.md#getting-the-supported-build-from-steam)). To use the steps:
 
 1. Press Open the Steam console, or open `steam://open/console` yourself.
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
@@ -108,7 +109,10 @@ is running. Let Steam finish, close the game, and press Try again.
 | "The download from Steam stopped: ..." | A lost connection or Steam's servers refused. Use the Steam app's steps the card shows, or Choose another way to try again (the files already downloaded are kept). |
 | "SteamCMD closed without downloading the build (exit code ...)." | The sign-in in SteamCMD's window did not work (a wrong password or Steam Guard code), or the window was closed. Press Start SteamCMD again and type them in its window. A game borrowed through Family Sharing cannot be downloaded this way: use the Steam app. |
 | "SteamCMD closed before the download was complete (... of ... GB)." | Press Start SteamCMD again: it continues, and what it downloaded is kept. |
-| "SteamCMD cannot be used: ..." | SteamCMD could not be fetched from Valve, was not signed by Valve, or did not start. The card shows the Steam app's steps instead. |
+| "SteamCMD's window was closed before it downloaded the build." | Linux: the terminal window SteamCMD ran in was closed. Press Start SteamCMD again; what it downloaded is kept. |
+| "SteamCMD cannot be used: ..." | SteamCMD could not be fetched from Valve, was not signed by Valve (on Linux: its archive or programs were not what Valve's SteamCMD has), or did not start. The card shows the Steam app's steps instead. |
+| "SteamCMD cannot be used: no terminal program was found to open a window for it ..." (Linux) | The native launcher opens SteamCMD in a terminal window, and none of the terminals it knows is installed. Install one (`konsole`, `gnome-terminal`, `xterm`, ...), then choose SteamCMD again, or use the QR code or the Steam app. |
+| SteamCMD's way is greyed out: "Not on this PC: SteamCMD asks for your password in a terminal window ..." (Linux) | The same: no terminal program was found. Install one and start setup again. |
 | "... did not come out as the supported build's file; it was not kept. Start setup again." | Start setup again. It is downloaded again, and the files already in place are kept. |
 
 On a full drive, setup asks for space before it writes anything: "Not enough free space on D:\: ... more is needed".

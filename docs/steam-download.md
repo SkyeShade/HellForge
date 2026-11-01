@@ -25,7 +25,9 @@ player's own account. It opens on the QR code. Each way has **Choose another way
    into HellForge.
 3. **Use the Steam app:** no sign-in in HellForge at all. The Steam app on the PC downloads the build through its
    console, and HellForge copies it from there ([below](#with-the-steam-app)). It is also where setup goes when another
-   way cannot work: a game borrowed through Family Sharing, SteamCMD that cannot be set up, and Linux.
+   way cannot work: a game borrowed through Family Sharing, SteamCMD that cannot be set up, and the Windows launcher run
+   under Wine on Linux. The native Linux launcher offers all three ways
+   ([linux.md](linux.md#getting-the-supported-build-from-steam)).
 
 The progress of every way shows in one place, the Game files card under it.
 
@@ -83,11 +85,17 @@ WinVerifyTrust, and the signer's organisation Valve or Valve Corp.; Valve's `ste
 O=Valve"), or it is deleted and never started. Valve updates SteamCMD itself, so no hash of it can be pinned. SteamCMD
 updates itself once, without a window, and is checked again.
 
-Then it starts in a window of its own with every command filled in except the password: `+@ShutdownOnFailedCommand 1
-+login <account name> +download_depot 553850 <depot> <manifest>` for each pinned depot, and `+quit`. The card asks for
-the account name only (letters, digits and underscores, so it can never carry another command) and says: "Type your
-password in the SteamCMD window; it goes to Valve's own tool, not HellForge." SteamCMD asks for the password, and for a
-Steam Guard code when Steam wants one, in its window. Its `download_depot` writes each depot into
+On Linux, where no signature can be checked, the archive comes only from that https URL and is checked before anything
+in it is unpacked: only plain files and folders inside SteamCMD's folder, with `steamcmd.sh` a bash script and
+`linux32/steamcmd` a 32-bit x86 Linux program, both checked again after SteamCMD updated itself
+([linux.md](linux.md#what-is-checked-instead-of-a-signature)).
+
+Then it starts in a window of its own (on the native Linux launcher, a terminal window it opens:
+[linux.md](linux.md#steamcmds-terminal-window)) with every command filled in except the password:
+`+@ShutdownOnFailedCommand 1 +login <account name> +download_depot 553850 <depot> <manifest>` for each pinned depot,
+and `+quit`. The card asks for the account name only (letters, digits and underscores, so it can never carry another
+command) and says: "Type your password in the SteamCMD window; it goes to Valve's own tool, not HellForge." SteamCMD
+asks for the password, and for a Steam Guard code when Steam wants one, in its window. Its `download_depot` writes each depot into
 `<SteamCMD>/steamapps/content/app_553850/depot_<depot>/` (`linux32/steamapps` on Linux), which setup reads the way it
 reads the Steam app's download, showing the progress under Game files.
 
@@ -122,8 +130,9 @@ download ([above](#with-the-steam-app), and
 Steam's servers stops for another reason (a lost connection, Steam's servers refusing), and when SteamCMD cannot be set
 up. Choose another way tries the QR code or SteamCMD again; the files already downloaded are kept.
 
-On Linux, setup runs inside HellForge's network namespace, which has no route out, so it cannot reach Steam's servers
-and offers only the Steam app ([linux.md](linux.md#steams-download-of-the-supported-build)).
+The Windows launcher run under Wine on Linux runs setup inside HellForge's network namespace, which has no route out,
+so it cannot reach Steam's servers and offers only the Steam app. The native Linux launcher runs setup outside it and
+offers all three ways ([linux.md](linux.md#getting-the-supported-build-from-steam)).
 
 ## After a game update
 

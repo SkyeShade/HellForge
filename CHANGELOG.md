@@ -34,7 +34,8 @@ On `dev`, since 0.3.0-beta.
   remembered sign-in is removed after it runs, and SteamCMD itself once the build is in place. Setup also finds the
   Steam app's download in the Linux client's `steamrt64` folder. HellForge no longer downloads build patches from
   files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
-  Sharing), when SteamCMD can't be set up, or on Linux, setup shows the Steam console commands (#205).
+  Sharing) or SteamCMD can't be set up, setup shows the Steam console commands. The native Linux launcher offers the
+  same three ways, with SteamCMD in a terminal window it opens, and no longer applies build patches (#205).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
