@@ -201,7 +201,7 @@ Only the newest ten are kept. These are the files to show a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none |
 | `modloader.log` | the mod loader: which mods loaded, and why one did not |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
@@ -227,12 +227,12 @@ yet.
 the one `--run` names: one zip for a player to attach to a GitHub issue. Nothing is uploaded; offer
 `https://github.com/SkyeShade/HellForge/issues/new` (`issuePage`, no parameters) for them to attach it. It holds
 `summary.txt` (the versions, system and settings, the game's exit code, the mod loader's crash note: its code, module and
-offset and thread, the mods, the loader's events before the crash and the last 200 lines of its log), `logs\` (the
-export, without crash dumps) and, only with `--dump yes`, `dump\crash-<pid>.dmp`. Its text is scrubbed further than the
-export, for a public issue: Steam ids, IP addresses other than loopback and the other players HellForge's logs name are
-replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's memory and cannot be scrubbed: ask the
-player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and
-`issuePage`.
+offset and thread, Windows' record of the crash when the session looked for one, the mods, the loader's events before
+the crash and the last 200 lines of its log), `logs\` (the export, without crash dumps) and, only with `--dump yes`,
+`dump\crash-<pid>.dmp`. Its text is scrubbed further than the export, for a public issue: Steam ids, IP addresses
+other than loopback and the other players HellForge's logs name are replaced with `steam-id-1`, `ip-1`, `player-1` and
+so on. A dump is the game's memory and cannot be scrubbed: ask the player before passing `--dump yes`. The JSON says
+`files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and `issuePage`.
 
 ## Linux
 

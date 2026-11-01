@@ -191,17 +191,32 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 ### The game could not be prepared or connected
 
 After the game starts, the session runner makes two memory-only edits to the running game: the first prepares it for
-the local backend, the second connects it. These messages mean one of them did not happen:
+the local backend, the second connects it.
+
+When the game closes before both are made, usually because it crashed while starting, the message says so:
+
+- "The game closed while starting, before HellForge could prepare it for the local backend (...)."
+- "The game closed while starting, before HellForge could connect it to the local backend (...)."
+
+In brackets are the game's exit code, what it means (below) and, when Windows recorded the crash, the file the game
+crashed in: "Windows recorded the crash in RTSSHooks64.dll+0x2f3c1". When that file is not part of the game, HellForge
+or Windows, another program put it into the game: an overlay, a recorder, RGB lighting or security software. The
+message names it: close that program, turn off its in-game overlay or add the HellForge folder to its exclusions, then
+press PLAY. Otherwise press PLAY again, and if the game closes again, save the crash report the Play page offers and
+attach it to an issue: its `summary.txt` has Windows' record of the crash. (0.3.0-beta said "The game could not be
+connected to the local backend." for these too.)
+
+When the game is still running and an edit was not made:
 
 - "The game could not be prepared for the local backend."
-- "The game could not be connected to the local backend."
+- "The game could not be connected to the local backend: ..." and why: the game had not loaded its code (`game.dll`)
+  after 45 seconds, its code in memory was not what HellForge expects, or HellForge's change to its memory did not go
+  through.
 
-For the second, the session runner waits up to 45 seconds for the game to load and unpack its code. The edit fails when
-the game closes or crashes first, takes longer than that, or the code is not what HellForge expects. Press PLAY once
-more. If it fails the same way again, [save the logs](#collecting-logs) and report it.
+Press PLAY once more. If it fails the same way again, [save the logs](#collecting-logs) and report it. The session's
+`result.json` keeps how each edit ended (`prepare`, `connect`) and Windows' record of a crash (`windowsCrash`).
 
-When the game exited before it was prepared, the first message adds the game's exit code, and for these codes what it
-means:
+The game's exit codes in the messages, and what they mean:
 
 | Exit code | Meaning |
 |---|---|
