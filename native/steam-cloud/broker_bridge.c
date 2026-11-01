@@ -78,9 +78,33 @@ static void LogValue(const BrokerApi* api, const char* what, const char* value)
  * reach no one with Play with strangers off, so the game's Public lobby is made Friends only then (friends and invitees
  * still join), and turned back when it is switched on. Every other type is left as asked. */
 
-int BrokerStrangersIn(const char* json, size_t length)
+static size_t SkipSpace(const char* json, size_t length, size_t at)
+{
+    while (at < length && (json[at] == ' ' || json[at] == '\t' || json[at] == '\r' || json[at] == '\n')) at++;
+    return at;
+}
+
+/* Where the string whose text starts at json[i] ends: its closing quote, or length (or past it) when it has none. */
+static size_t StringEnd(const char* json, size_t length, size_t i)
+{
+    while (i < length && json[i] != '"') i += json[i] == '\\' ? 2 : 1;
+    return i;
+}
+
+/* A string json[start..end) at depth: -1 when it is not the top-level key or no ':' follows it, else whether the
+ * key's value is true. */
+static int StrangersValue(const char* json, size_t length, size_t start, size_t end, int depth)
 {
     static const char key[] = "playWithStrangers";
+    if (depth != 1 || end - start != sizeof key - 1 || memcmp(json + start, key, sizeof key - 1) != 0) return -1;
+    size_t at = SkipSpace(json, length, end + 1);
+    if (at >= length || json[at] != ':') return -1;
+    at = SkipSpace(json, length, at + 1);
+    return length - at >= 4 && memcmp(json + at, "true", 4) == 0;
+}
+
+int BrokerStrangersIn(const char* json, size_t length)
+{
     int depth = 0;
     for (size_t i = 0; i < length; i++)
     {
@@ -90,15 +114,10 @@ int BrokerStrangersIn(const char* json, size_t length)
         else if (c == '"')
         {
             size_t start = ++i;
-            while (i < length && json[i] != '"') i += json[i] == '\\' ? 2 : 1;
+            i = StringEnd(json, length, i);
             if (i >= length) return 0;
-            if (depth != 1 || i - start != sizeof key - 1 || memcmp(json + start, key, sizeof key - 1) != 0) continue;
-            size_t at = i + 1;
-            while (at < length && (json[at] == ' ' || json[at] == '\t' || json[at] == '\r' || json[at] == '\n')) at++;
-            if (at >= length || json[at] != ':') continue;
-            at++;
-            while (at < length && (json[at] == ' ' || json[at] == '\t' || json[at] == '\r' || json[at] == '\n')) at++;
-            return length - at >= 4 && memcmp(json + at, "true", 4) == 0;
+            int value = StrangersValue(json, length, start, i, depth);
+            if (value >= 0) return value;
         }
     }
     return 0;
@@ -135,6 +154,12 @@ static int AlwaysFriendsOnly(void)
     return n == 1 && value[0] == '1';
 }
 
+static void LogLobbyType(const BrokerBridge* b, uint64_t lobby, int type, bool set)
+{
+    fprintf(stderr, "broker: lobby %llu made %s (Play with strangers %s)%s\n", (unsigned long long)lobby,
+        type == LOBBY_PUBLIC ? "Public" : "Friends only", b->strangers ? "on" : "off", set ? "" : ": SetLobbyType failed");
+}
+
 /* The game's lobbies it asked to be Public get Friends only or Public again, as the setting now says. */
 static void ApplyLobbyTypes(BrokerBridge* b)
 {
@@ -147,8 +172,7 @@ static void ApplyLobbyTypes(BrokerBridge* b)
         if (b->lobbyAsked[i] == LOBBY_PUBLIC)
         {
             bool set = setType && matchmaking && setType(matchmaking, b->lobbies[i], type);
-            fprintf(stderr, "broker: lobby %llu made %s (Play with strangers %s)%s\n", (unsigned long long)b->lobbies[i],
-                type == LOBBY_PUBLIC ? "Public" : "Friends only", b->strangers ? "on" : "off", set ? "" : ": SetLobbyType failed");
+            LogLobbyType(b, b->lobbies[i], type, set);
         }
 }
 
@@ -215,7 +239,11 @@ static void RememberEntered(BrokerBridge* b, const uint8_t* data, uint32_t size)
 
 /* ---- Steam P2P (docs/steam-bridge.md "Steam P2P"): only with the game's co-op peers ---- */
 
-/* The backend's peers file, read when its time stamp moved (looked at every 500 ms, or now). */
+static uint64_t FileTicks(FILETIME t) { return (uint64_t)t.dwHighDateTime << 32 | t.dwLowDateTime; }
+
+/* The backend's peers file, read when its time stamp moved (looked at every 500 ms, or now). Writes within one tick of
+ * the system clock (about 16 ms: a lobby change and a join's peer) get the same stamp, so an unchanged stamp is trusted
+ * only once it was read more than a second after that stamp: a read between two such writes is not kept. */
 static void LoadPeers(BrokerBridge* b, int now)
 {
     if (!b->peersFile[0]) return;
@@ -224,8 +252,9 @@ static void LoadPeers(BrokerBridge* b, int now)
     b->peersChecked = tick;
     WIN32_FILE_ATTRIBUTE_DATA data;
     FILETIME stamp = GetFileAttributesExW(b->peersFile, GetFileExInfoStandard, &data) ? data.ftLastWriteTime : (FILETIME){ 0, 0 };
-    if (CompareFileTime(&stamp, &b->peersStamp) == 0) return;
+    if (CompareFileTime(&stamp, &b->peersStamp) == 0 && FileTicks(b->peersRead) > FileTicks(stamp) + 10000000ull) return;
     b->peersStamp = stamp;
+    GetSystemTimeAsFileTime(&b->peersRead);
     b->peerCount = 0;
     HANDLE file = CreateFileW(b->peersFile, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
     if (file == INVALID_HANDLE_VALUE) return;
@@ -272,6 +301,36 @@ void BrokerBridgeWatchPeers(BrokerBridge* b, const wchar_t* peersFile)
     LoadPeers(b, 1);
 }
 
+/* A packet the game does not get, read only so it never piles up in Steam: larger than capacity or BRIDGE_P2P_MAX, or
+ * not from a co-op peer. The first few are logged. */
+static bool DropUnwanted(BrokerBridge* b, uint32_t size, uint32_t capacity, uint64_t remote, int32_t channel)
+{
+    if (size <= capacity && size <= BRIDGE_P2P_MAX && P2PPeer(&b->api, remote)) return false;
+    if (b->p2pDropped++ < 8)
+        fprintf(stderr, "broker: P2P packet of %u bytes from %llu on channel %d dropped (%s)\n", size, (unsigned long long)remote, channel,
+            size > BRIDGE_P2P_MAX ? "too large" : "not a co-op peer");
+    return true;
+}
+
+/* A co-op peer's packet into the ring, in pieces (BridgeP2PPiece); a full ring loses the rest of it. */
+static void PassPacket(BrokerBridge* b, BrokerChannel* ch, const uint8_t* packet, uint32_t size, uint64_t remote, int32_t channel)
+{
+    uint8_t piece[BRIDGE_RING_DATA_SIZE];
+    BridgeP2PPiece head = { remote, channel, size, 0, 0 };
+    do
+    {
+        uint32_t part = size - head.offset < BRIDGE_P2P_PIECE ? size - head.offset : BRIDGE_P2P_PIECE;
+        memcpy(piece, &head, sizeof head);
+        memcpy(piece + sizeof head, packet + head.offset, part);
+        if (!BrokerChannelPushCallback(ch, BRIDGE_P2P_PACKET, piece, (uint32_t)sizeof head + part))
+        {
+            if (b->p2pDropped++ < 8) fprintf(stderr, "broker: the ring is full; a P2P packet of %u bytes is lost\n", size);
+            break;
+        }
+        head.offset += part;
+    } while (head.offset < size);
+}
+
 /* Packets waiting for the game, from its co-op peers, into the ring in pieces (BridgeP2PPiece). Others are read and
  * dropped, so they never pile up in Steam. */
 static void PollP2P(BrokerBridge* b, BrokerChannel* ch)
@@ -285,33 +344,14 @@ static void PollP2P(BrokerBridge* b, BrokerChannel* ch)
     void* networking = Self(&b->api, "SteamAPI_SteamNetworking_v006");
     if (!available || !read || !networking) return;
     static uint8_t packet[64 * 1024];
-    uint8_t piece[BRIDGE_RING_DATA_SIZE];
     for (int32_t channel = 0; channel < BROKER_P2P_CHANNELS; channel++)
         for (int n = 0; n < BROKER_P2P_PER_PUMP; n++)
         {
             uint32_t size = 0;
             uint64_t remote = 0;
             if (!available(networking, &size, channel) || !read(networking, packet, sizeof packet, &size, &remote, channel)) break;
-            if (size > sizeof packet || size > BRIDGE_P2P_MAX || !P2PPeer(&b->api, remote))
-            {
-                if (b->p2pDropped++ < 8)
-                    fprintf(stderr, "broker: P2P packet of %u bytes from %llu on channel %d dropped (%s)\n", size, (unsigned long long)remote, channel,
-                        size > BRIDGE_P2P_MAX ? "too large" : "not a co-op peer");
-                continue;
-            }
-            BridgeP2PPiece head = { remote, channel, size, 0, 0 };
-            do
-            {
-                uint32_t part = size - head.offset < BRIDGE_P2P_PIECE ? size - head.offset : BRIDGE_P2P_PIECE;
-                memcpy(piece, &head, sizeof head);
-                memcpy(piece + sizeof head, packet + head.offset, part);
-                if (!BrokerChannelPushCallback(ch, BRIDGE_P2P_PACKET, piece, (uint32_t)sizeof head + part))
-                {
-                    if (b->p2pDropped++ < 8) fprintf(stderr, "broker: the ring is full; a P2P packet of %u bytes is lost\n", size);
-                    break;
-                }
-                head.offset += part;
-            } while (head.offset < size);
+            if (DropUnwanted(b, size, sizeof packet, remote, channel)) continue;
+            PassPacket(b, ch, packet, size, remote, channel);
         }
 }
 
@@ -375,26 +415,19 @@ static void PassCallResult(BrokerBridge* b, BrokerChannel* ch, uint64_t call, in
     BrokerChannelPushCallback(ch, (uint32_t)id | BRIDGE_CALL_RESULT_FLAG, slot, BRIDGE_CALL_RESULT_HEADER + resultSize);
 }
 
-static void Pump(void* context, BrokerChannel* ch)
+/* One callback of Steam's manual dispatch: a call's completion, or a callback for the game when the table lets it through. */
+static void PassCallback(BrokerBridge* b, BrokerChannel* ch, const CallbackMsg* msg)
 {
-    BrokerBridge* b = (BrokerBridge*)context;
-    NextFn next = (NextFn)b->next;
-    b->runFrame(b->hPipe);
-    CallbackMsg msg;
-    static uint32_t reportedDrops;
-    while (next(b->hPipe, &msg))
-    {
-        uint32_t size = msg.dataSize > 0 ? (uint32_t)msg.dataSize : 0;
-        if (msg.callbackId == STEAM_API_CALL_COMPLETED) CallCompleted(b, ch, msg.data, msg.dataSize);
-        else
-        {
-            if (msg.callbackId == LOBBY_ENTER) RememberEntered(b, msg.data, size);
-            if (Allowed(msg.callbackId) && !BrokerChannelPushCallback(ch, (uint32_t)msg.callbackId, msg.data, size) && size > BRIDGE_RING_DATA_SIZE)
-                fprintf(stderr, "broker: callback %d of %u bytes does not fit a ring slot; dropped\n", msg.callbackId, size);
-        }
-        b->freeLast(b->hPipe);
-    }
-    /* the local lobby's call results and data updates (BrokerBridgeMultiInstance) */
+    uint32_t size = msg->dataSize > 0 ? (uint32_t)msg->dataSize : 0;
+    if (msg->callbackId == STEAM_API_CALL_COMPLETED) { CallCompleted(b, ch, msg->data, msg->dataSize); return; }
+    if (msg->callbackId == LOBBY_ENTER) RememberEntered(b, msg->data, size);
+    if (Allowed(msg->callbackId) && !BrokerChannelPushCallback(ch, (uint32_t)msg->callbackId, msg->data, size) && size > BRIDGE_RING_DATA_SIZE)
+        fprintf(stderr, "broker: callback %d of %u bytes does not fit a ring slot; dropped\n", msg->callbackId, size);
+}
+
+/* The local lobby's call results and data updates (BrokerBridgeMultiInstance). */
+static void PassLocalResults(BrokerBridge* b, BrokerChannel* ch)
+{
     BrokerLocalResult local;
     while (b->localLobbies && BrokerLobbiesNext(b->localLobbies, &local))
     {
@@ -404,6 +437,21 @@ static void Pump(void* context, BrokerChannel* ch)
         if (local.call) PassCallResult(b, ch, local.call, local.id, false, slot, local.size);
         else if (Allowed(local.id)) BrokerChannelPushCallback(ch, (uint32_t)local.id, local.data, local.size);
     }
+}
+
+static void Pump(void* context, BrokerChannel* ch)
+{
+    BrokerBridge* b = (BrokerBridge*)context;
+    NextFn next = (NextFn)b->next;
+    b->runFrame(b->hPipe);
+    CallbackMsg msg;
+    static uint32_t reportedDrops;
+    while (next(b->hPipe, &msg))
+    {
+        PassCallback(b, ch, &msg);
+        b->freeLast(b->hPipe);
+    }
+    PassLocalResults(b, ch);
     if (ch->dropped > 0 && reportedDrops == 0) { fprintf(stderr, "broker: the ring is full; callbacks are being dropped\n"); reportedDrops = 1; }
     PollP2P(b, ch);
     CheckStrangers(b, 0);
@@ -428,6 +476,58 @@ static void Put(char* to, size_t capacity, const char* from)
     to[n] = 0;
 }
 
+/* The player's part of the snapshot: signed on, SteamID, persona name, IP country, Steam Deck. */
+static void SnapshotPlayer(BrokerBridge* b, BridgeSnapshot* next, void* user, void* friends, void* utils)
+{
+    if (user && HAVE("SteamAPI_ISteamUser_BLoggedOn")) next->loggedOn = CALL(bool (*)(void*), "SteamAPI_ISteamUser_BLoggedOn", user) ? 1 : 0;
+    if (user && HAVE("SteamAPI_ISteamUser_GetSteamID")) next->steamId = CALL(uint64_t (*)(void*), "SteamAPI_ISteamUser_GetSteamID", user);
+    if (friends && HAVE("SteamAPI_ISteamFriends_GetPersonaName"))
+        Put(next->personaName, sizeof next->personaName, CALL(const char* (*)(void*), "SteamAPI_ISteamFriends_GetPersonaName", friends));
+    if (utils && HAVE("SteamAPI_ISteamUtils_GetIPCountry"))
+        Put(next->ipCountry, sizeof next->ipCountry, CALL(const char* (*)(void*), "SteamAPI_ISteamUtils_GetIPCountry", utils));
+    if (utils && HAVE("SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck"))
+        next->steamDeck = CALL(bool (*)(void*), "SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck", utils) ? 1 : 0;
+}
+
+/* The DLCs Steam lists for the game, up to BRIDGE_DLC_MAX: app id, name, available, subscribed. */
+static void SnapshotDlc(BrokerBridge* b, BridgeSnapshot* next, void* apps)
+{
+    int count = CALL(int (*)(void*), "SteamAPI_ISteamApps_GetDLCCount", apps);
+    for (int i = 0; i < count && next->dlcCount < BRIDGE_DLC_MAX; i++)
+    {
+        BridgeSnapshotDlc* d = &next->dlc[next->dlcCount];
+        bool available = false;
+        if (!CALL(bool (*)(void*, int, uint32_t*, bool*, char*, int), "SteamAPI_ISteamApps_BGetDLCDataByIndex", apps, i, &d->appId, &available,
+            d->name, (int)sizeof d->name - 1)) continue;
+        d->name[sizeof d->name - 1] = 0;
+        d->available = available ? 1 : 0;
+        d->subscribed = HAVE("SteamAPI_ISteamApps_BIsSubscribedApp") &&
+            CALL(bool (*)(void*, uint32_t), "SteamAPI_ISteamApps_BIsSubscribedApp", apps, d->appId) ? 1 : 0;
+        next->dlcCount++;
+    }
+}
+
+/* The game's part of the snapshot: language, beta branch, DLCs. */
+static void SnapshotApps(BrokerBridge* b, BridgeSnapshot* next, void* apps)
+{
+    if (apps && HAVE("SteamAPI_ISteamApps_GetCurrentGameLanguage"))
+        Put(next->language, sizeof next->language, CALL(const char* (*)(void*), "SteamAPI_ISteamApps_GetCurrentGameLanguage", apps));
+    if (apps && HAVE("SteamAPI_ISteamApps_GetCurrentBetaName"))
+        next->hasBeta = CALL(bool (*)(void*, char*, int), "SteamAPI_ISteamApps_GetCurrentBetaName", apps, next->betaName, (int)sizeof next->betaName - 1) ? 1 : 0;
+    if (apps && HAVE("SteamAPI_ISteamApps_GetDLCCount") && HAVE("SteamAPI_ISteamApps_BGetDLCDataByIndex")) SnapshotDlc(b, next, apps);
+}
+
+/* next into the shared snapshot under its seqlock: odd while written. */
+static void PublishSnapshot(BridgeSnapshot* s, const BridgeSnapshot* next)
+{
+    uint32_t version = s->version;
+    __atomic_store_n(&s->version, version | 1, __ATOMIC_RELEASE);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    memcpy((uint8_t*)s + sizeof s->version, (const uint8_t*)next + sizeof next->version, sizeof *next - sizeof next->version);
+    s->ready = 1;
+    __atomic_store_n(&s->version, (version | 1) + 1, __ATOMIC_RELEASE);
+}
+
 void BrokerBridgeSnapshot(BrokerBridge* b, BrokerChannel* ch)
 {
     BridgeSnapshot* s = BridgeSnapshotOf(ch->ring);
@@ -437,34 +537,8 @@ void BrokerBridgeSnapshot(BrokerBridge* b, BrokerChannel* ch)
     void* friends = Self(&b->api, "SteamAPI_SteamFriends_v017");
     void* utils = Self(&b->api, "SteamAPI_SteamUtils_v010");
     void* apps = Self(&b->api, "SteamAPI_SteamApps_v008");
-    if (user && HAVE("SteamAPI_ISteamUser_BLoggedOn")) next.loggedOn = CALL(bool (*)(void*), "SteamAPI_ISteamUser_BLoggedOn", user) ? 1 : 0;
-    if (user && HAVE("SteamAPI_ISteamUser_GetSteamID")) next.steamId = CALL(uint64_t (*)(void*), "SteamAPI_ISteamUser_GetSteamID", user);
-    if (friends && HAVE("SteamAPI_ISteamFriends_GetPersonaName"))
-        Put(next.personaName, sizeof next.personaName, CALL(const char* (*)(void*), "SteamAPI_ISteamFriends_GetPersonaName", friends));
-    if (utils && HAVE("SteamAPI_ISteamUtils_GetIPCountry"))
-        Put(next.ipCountry, sizeof next.ipCountry, CALL(const char* (*)(void*), "SteamAPI_ISteamUtils_GetIPCountry", utils));
-    if (utils && HAVE("SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck"))
-        next.steamDeck = CALL(bool (*)(void*), "SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck", utils) ? 1 : 0;
-    if (apps && HAVE("SteamAPI_ISteamApps_GetCurrentGameLanguage"))
-        Put(next.language, sizeof next.language, CALL(const char* (*)(void*), "SteamAPI_ISteamApps_GetCurrentGameLanguage", apps));
-    if (apps && HAVE("SteamAPI_ISteamApps_GetCurrentBetaName"))
-        next.hasBeta = CALL(bool (*)(void*, char*, int), "SteamAPI_ISteamApps_GetCurrentBetaName", apps, next.betaName, (int)sizeof next.betaName - 1) ? 1 : 0;
-    if (apps && HAVE("SteamAPI_ISteamApps_GetDLCCount") && HAVE("SteamAPI_ISteamApps_BGetDLCDataByIndex"))
-    {
-        int count = CALL(int (*)(void*), "SteamAPI_ISteamApps_GetDLCCount", apps);
-        for (int i = 0; i < count && next.dlcCount < BRIDGE_DLC_MAX; i++)
-        {
-            BridgeSnapshotDlc* d = &next.dlc[next.dlcCount];
-            bool available = false;
-            if (!CALL(bool (*)(void*, int, uint32_t*, bool*, char*, int), "SteamAPI_ISteamApps_BGetDLCDataByIndex", apps, i, &d->appId, &available,
-                d->name, (int)sizeof d->name - 1)) continue;
-            d->name[sizeof d->name - 1] = 0;
-            d->available = available ? 1 : 0;
-            d->subscribed = HAVE("SteamAPI_ISteamApps_BIsSubscribedApp") &&
-                CALL(bool (*)(void*, uint32_t), "SteamAPI_ISteamApps_BIsSubscribedApp", apps, d->appId) ? 1 : 0;
-            next.dlcCount++;
-        }
-    }
+    SnapshotPlayer(b, &next, user, friends, utils);
+    SnapshotApps(b, &next, apps);
     next.betaName[sizeof next.betaName - 1] = 0;
     /* several installations on one PC: the game is this instance's player, not the Steam account's */
     if (b->identity)
@@ -472,13 +546,7 @@ void BrokerBridgeSnapshot(BrokerBridge* b, BrokerChannel* ch)
         next.steamId = b->identity;
         Put(next.personaName, sizeof next.personaName, b->persona);
     }
-    /* the seqlock: odd while written */
-    uint32_t version = s->version;
-    __atomic_store_n(&s->version, version | 1, __ATOMIC_RELEASE);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
-    memcpy((uint8_t*)s + sizeof s->version, (uint8_t*)&next + sizeof next.version, sizeof next - sizeof next.version);
-    s->ready = 1;
-    __atomic_store_n(&s->version, (version | 1) + 1, __ATOMIC_RELEASE);
+    PublishSnapshot(s, &next);
     b->lastSnapshot = GetTickCount();
     b->snapshotDone = 1;
 }

@@ -75,22 +75,30 @@ static int RoundEntryAt(const char** at, uint64_t peer, RoundEntry* out, const c
     return 1;
 }
 
+/* One player's entries at *at, "<peer hex>=<entry>;<entry>...", into entries from *count; *at moves past them. 0 with
+ * *why when malformed, or past ROUND_ENTRIES. */
+static int RoundGroupAt(const char** at, RoundEntry* entries, int* count, const char** why)
+{
+    char* end;
+    uint64_t peer = strtoull(*at, &end, 16);
+    if (end == *at || *end != '=' || peer == 0) { *why = "malformed list"; return 0; }
+    *at = end; /* each entry follows an '=' or a ';' */
+    do
+    {
+        (*at)++;
+        if (*count == ROUND_ENTRIES) { *why = "more changes than HellForge keeps"; return 0; }
+        if (!RoundEntryAt(at, peer, &entries[(*count)++], why)) return 0;
+    } while (**at == ';');
+    return 1;
+}
+
 static int RoundsSetLobby(const char* list, const char** why)
 {
     static RoundEntry entries[ROUND_ENTRIES]; /* the pipe's thread only */
     int count = 0;
     for (const char* at = list; strcmp(list, "-") && *at;)
     {
-        char* end;
-        uint64_t peer = strtoull(at, &end, 16);
-        if (end == at || *end != '=' || peer == 0) { *why = "malformed list"; return 0; }
-        at = end; /* each entry follows an '=' or a ';' */
-        do
-        {
-            at++;
-            if (count == ROUND_ENTRIES) { *why = "more changes than HellForge keeps"; return 0; }
-            if (!RoundEntryAt(&at, peer, &entries[count++], why)) return 0;
-        } while (*at == ';');
+        if (!RoundGroupAt(&at, entries, &count, why)) return 0;
         if (*at != ',' && *at != 0) { *why = "malformed list"; return 0; }
         if (*at == ',') at++;
     }
@@ -170,6 +178,40 @@ static void RoundViewOf(const uint8_t* now, const uint8_t* theirs, RoundView* v)
         durable != mineDurable && mineDurable != 0 ? (float)durable / (float)mineDurable : 1.0f;
 }
 
+/* The lobby's entries as RoundsRebuild copied them, and the rows of each table they touch (RoundsTouched). */
+typedef struct RoundsLobby
+{
+    const RoundEntry* entries;
+    int entryCount;
+    uint32_t rows[2][ROUND_ROWS];
+    int rowCount[2];
+} RoundsLobby;
+
+/* A player's projectile rows that differ from this machine's, into shadows from *count (at most ROUND_SHADOWS). */
+static void RoundShadowsOf(const RoundsLobby* lobby, uint64_t peer, RoundShadow* shadows, int* count)
+{
+    uint8_t now[PRJ_ROW], theirs[PRJ_ROW];
+    for (int r = 0; r < lobby->rowCount[0] && *count < ROUND_SHADOWS; r++)
+        if (RoundTheirs(0, lobby->rows[0][r], peer, lobby->entries, lobby->entryCount, now, theirs))
+        {
+            shadows[*count].peer = peer;
+            shadows[*count].type = lobby->rows[0][r];
+            memcpy(shadows[(*count)++].row, theirs, PRJ_ROW);
+        }
+}
+
+/* A player's damage rows that differ from this machine's, as views into views from *count (at most ROUND_VIEWS). */
+static void RoundViewsOf(const RoundsLobby* lobby, uint64_t peer, RoundView* views, int* count)
+{
+    uint8_t now[PRJ_ROW], theirs[PRJ_ROW];
+    for (int r = 0; r < lobby->rowCount[1] && *count < ROUND_VIEWS; r++)
+        if (RoundTheirs(1, lobby->rows[1][r], peer, lobby->entries, lobby->entryCount, now, theirs))
+        {
+            views[*count] = (RoundView){peer, lobby->rows[1][r], {0}, 1.0f};
+            RoundViewOf(now, theirs, &views[(*count)++]);
+        }
+}
+
 /* The watch loop, every second while the lobby has changes: every other player's shadow rows and damage views, from
  * the rows as they are now (this machine's edits can change under them). */
 static void RoundsRebuild(void)
@@ -187,27 +229,14 @@ static void RoundsRebuild(void)
     int entryCount = g_roundEntryCount;
     memcpy(entries, g_roundEntries, sizeof entries[0] * (size_t)entryCount);
     ReleaseSRWLockShared(&g_roundsLock);
-    uint32_t rows[2][ROUND_ROWS];
-    int rowCount[2];
-    RoundsTouched(entries, entryCount, rows, rowCount);
+    RoundsLobby lobby = {entries, entryCount};
+    RoundsTouched(entries, entryCount, lobby.rows, lobby.rowCount);
     int shadowCount = 0, viewCount = 0;
-    uint8_t now[PRJ_ROW], theirs[PRJ_ROW];
     for (int p = 0; p < playerCount; p++)
     {
         if (players[p].local || players[p].peer == 0) continue;
-        for (int r = 0; r < rowCount[0] && shadowCount < ROUND_SHADOWS; r++)
-            if (RoundTheirs(0, rows[0][r], players[p].peer, entries, entryCount, now, theirs))
-            {
-                shadows[shadowCount].peer = players[p].peer;
-                shadows[shadowCount].type = rows[0][r];
-                memcpy(shadows[shadowCount++].row, theirs, PRJ_ROW);
-            }
-        for (int r = 0; r < rowCount[1] && viewCount < ROUND_VIEWS; r++)
-            if (RoundTheirs(1, rows[1][r], players[p].peer, entries, entryCount, now, theirs))
-            {
-                views[viewCount] = (RoundView){players[p].peer, rows[1][r], {0}, 1.0f};
-                RoundViewOf(now, theirs, &views[viewCount++]);
-            }
+        RoundShadowsOf(&lobby, players[p].peer, shadows, &shadowCount);
+        RoundViewsOf(&lobby, players[p].peer, views, &viewCount);
     }
     AcquireSRWLockExclusive(&g_roundsLock);
     int changed = shadowCount != g_roundShadowCount || viewCount != g_roundViewCount ||

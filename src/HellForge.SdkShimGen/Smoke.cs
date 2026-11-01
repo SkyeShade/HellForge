@@ -19,17 +19,33 @@ public static unsafe class Smoke
         void Expect(bool condition, string description) { if (!condition) problems.Add(description); }
 
         var party = NativeLibrary.Load(Path.Combine(directory, "PartyWin.dll"));
+        PartyContract(party, Expect);
+        var lobby = NativeLibrary.Load(Path.Combine(directory, "PlayFabMultiplayerWin.dll"));
+        LobbyContract(lobby, Expect);
+
+        var pid = Environment.ProcessId;
+        var partyLog = Path.Combine(logs, $"PartyWin.dll-{pid}.log");
+        var lobbyLog = Path.Combine(logs, $"PlayFabMultiplayerWin.dll-{pid}.log");
+        var partyText = ReadShared(partyLog);
+        var lobbyText = ReadShared(lobbyLog);
+        Expect(partyText.Contains("HellForge stand-in loaded") && partyText.Contains("PartyInitialize #1(\"974A9\""), "Party log records load and calls");
+        Expect(lobbyText.Contains("PFLobbyLeaveWithEntityHandle #1()"), "Lobby log records undeclared calls");
+
+        Console.WriteLine($"Smoke test: {problems.Count} problem(s); logs in {logs}");
+        foreach (var problem in problems) Console.Error.WriteLine("  failed: " + problem);
+        return problems.Count == 0 ? 0 : 1;
+    }
+
+    // PartyWin: initialize, an empty pump, the local device, a local user and a created network, then hosting and the stubs.
+    static void PartyContract(nint party, Action<bool, string> Expect)
+    {
         var partyInitialize = (delegate* unmanaged<byte*, nint*, uint>)NativeLibrary.GetExport(party, "PartyInitialize");
         var partyStart = (delegate* unmanaged<nint, uint*, nint*, uint>)NativeLibrary.GetExport(party, "PartyStartProcessingStateChanges");
-        var partyFinish = (delegate* unmanaged<nint, uint, nint, uint>)NativeLibrary.GetExport(party, "PartyFinishProcessingStateChanges");
         var partyLocalDevice = (delegate* unmanaged<nint, nint*, uint>)NativeLibrary.GetExport(party, "PartyGetLocalDevice");
         var partyCreateLocalUser = (delegate* unmanaged<nint, byte*, byte*, nint*, uint>)NativeLibrary.GetExport(party, "PartyCreateLocalUser");
         var partyEntityId = (delegate* unmanaged<nint, nint*, uint>)NativeLibrary.GetExport(party, "PartyLocalUserGetEntityId");
         var partyCreateNetwork = (delegate* unmanaged<nint, nint, uint*, uint, nint, nint, nint, byte*, byte*, uint>)NativeLibrary.GetExport(party, "PartyCreateNewNetwork");
-        var partyRegions = (delegate* unmanaged<nint, uint*, nint*, uint>)NativeLibrary.GetExport(party, "PartyGetRegions");
-        var partySetOption = (delegate* unmanaged<nint, uint, nint, uint>)NativeLibrary.GetExport(party, "PartySetOption");
-        var partyDoWork = (delegate* unmanaged<nint, uint, uint>)NativeLibrary.GetExport(party, "PartyDoWork");
-        nint handle = 0, changes = 0, device = 0, user = 0, entityId = 0, regions = 0x1234;
+        nint handle = 0, changes = 0, device = 0, user = 0, entityId = 0;
         uint count = 99;
         fixed (byte* title = "974A9\0"u8)
             Expect(partyInitialize(title, &handle) == PartyOk && handle != 0, "PartyInitialize returns a handle");
@@ -44,8 +60,17 @@ public static unsafe class Smoke
         var invitation = stackalloc byte[128];
         Expect(partyCreateNetwork(handle, user, configuration, 0, 0, 0, 0x77, descriptor, invitation) == PartyOk && descriptor[8] == (byte)'-' && invitation[0] != 0,
             "PartyCreateNewNetwork is accepted and writes a descriptor and the initial invitation");
-        // HD2 hosts by creating a network, connecting, authenticating with the initial invitation and creating an
-        // endpoint, all in one frame (stand-in boots, 2026-10-14).
+        PartyHosting(party, handle, user, descriptor, invitation, Expect);
+        PartyStubs(party, handle, Expect);
+    }
+
+    // HD2 hosts by creating a network, connecting, authenticating with the initial invitation and creating an endpoint,
+    // all in one frame (stand-in boots, 2026-10-14); then the regions, lossless descriptors, leaving, and a friend's network.
+    static void PartyHosting(nint party, nint handle, nint user, byte* descriptor, byte* invitation, Action<bool, string> Expect)
+    {
+        var partyStart = (delegate* unmanaged<nint, uint*, nint*, uint>)NativeLibrary.GetExport(party, "PartyStartProcessingStateChanges");
+        var partyFinish = (delegate* unmanaged<nint, uint, nint, uint>)NativeLibrary.GetExport(party, "PartyFinishProcessingStateChanges");
+        var partyRegions = (delegate* unmanaged<nint, uint*, nint*, uint>)NativeLibrary.GetExport(party, "PartyGetRegions");
         var connect = (delegate* unmanaged<nint, byte*, nint, nint*, uint>)NativeLibrary.GetExport(party, "PartyConnectToNetwork");
         var authenticate = (delegate* unmanaged<nint, nint, byte*, nint, uint>)NativeLibrary.GetExport(party, "PartyNetworkAuthenticateLocalUser");
         var createEndpoint = (delegate* unmanaged<nint, nint, uint, nint, nint, nint, nint*, uint>)NativeLibrary.GetExport(party, "PartyNetworkCreateEndpoint");
@@ -53,7 +78,8 @@ public static unsafe class Smoke
         var leave = (delegate* unmanaged<nint, nint, uint>)NativeLibrary.GetExport(party, "PartyNetworkLeaveNetwork");
         var serialize = (delegate* unmanaged<byte*, byte*, uint>)NativeLibrary.GetExport(party, "PartySerializeNetworkDescriptor");
         var deserialize = (delegate* unmanaged<byte*, byte*, uint>)NativeLibrary.GetExport(party, "PartyDeserializeNetworkDescriptor");
-        nint network = 0, endpoint = 0;
+        nint changes = 0, network = 0, endpoint = 0, regions = 0x1234;
+        uint count = 0;
         Expect(connect(handle, descriptor, 0x88, &network) == PartyOk && network != 0, "PartyConnectToNetwork returns a network at once");
         Expect(authenticate(network, user, invitation, 0) == PartyOk, "PartyNetworkAuthenticateLocalUser queues on the connecting network");
         Expect(createEndpoint(network, user, 0, 0, 0, 0x99, &endpoint) == PartyOk && endpoint != 0, "PartyNetworkCreateEndpoint queues on the connecting network");
@@ -77,20 +103,30 @@ public static unsafe class Smoke
             Expect(deserialize(text, parsed) == PartyOk && connect(handle, parsed, 0, &foreign) == PartyOk && partyStart(handle, &count, &changes) == PartyOk &&
                 string.Join(",", Types(changes, count)) == "3:3,20", "Connecting to a friend's network fails cleanly");
         partyFinish(handle, count, changes);
+    }
+
+    static void PartyStubs(nint party, nint handle, Action<bool, string> Expect)
+    {
+        var partySetOption = (delegate* unmanaged<nint, uint, nint, uint>)NativeLibrary.GetExport(party, "PartySetOption");
+        var partyDoWork = (delegate* unmanaged<nint, uint, uint>)NativeLibrary.GetExport(party, "PartyDoWork");
         var memoryCallbacks = (delegate* unmanaged<nint*, nint*, uint>)NativeLibrary.GetExport(party, "PartyGetMemoryCallbacks");
         nint allocate = 0x1234, free = 0x1234;
         Expect(memoryCallbacks(&allocate, &free) == PartyUnavailable && allocate == 0 && free == 0, "A generated stub with outputs fails and clears them");
         Expect(partySetOption(0, 0, 0) == PartyOk, "PartySetOption (no outputs) succeeds by default");
         Expect(partyDoWork(handle, 0) == PartyUnavailable, "HELLFORGE_SHIM_POLICY turns PartyDoWork into a failure");
+    }
 
-        var lobby = NativeLibrary.Load(Path.Combine(directory, "PlayFabMultiplayerWin.dll"));
+    // PlayFabMultiplayerWin: initialize, an empty pump, failing reads that clear their outputs, a named error and an
+    // undeclared export, then hosting a lobby.
+    static void LobbyContract(nint lobby, Action<bool, string> Expect)
+    {
         var initialize = (delegate* unmanaged<byte*, nint*, int>)NativeLibrary.GetExport(lobby, "PFMultiplayerInitialize");
         var lobbyStart = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(lobby, "PFMultiplayerStartProcessingLobbyStateChanges");
         var members = (delegate* unmanaged<nint, uint*, nint*, int>)NativeLibrary.GetExport(lobby, "PFLobbyGetMembers");
         var message = (delegate* unmanaged<int, byte*>)NativeLibrary.GetExport(lobby, "PFMultiplayerGetErrorMessage");
         var undeclared = (delegate* unmanaged<int>)NativeLibrary.GetExport(lobby, "PFLobbyLeaveWithEntityHandle");
-        nint multiplayer = 0, list = 0x5678;
-        count = 99;
+        nint multiplayer = 0, changes = 0, list = 0x5678;
+        uint count = 99;
         fixed (byte* title = "974A9\0"u8)
             Expect(initialize(title, &multiplayer) == SOk && multiplayer != 0, "PFMultiplayerInitialize returns a handle");
         Expect(lobbyStart(multiplayer, &count, &changes) == SOk && count == 0, "Lobby state changes are empty");
@@ -103,18 +139,6 @@ public static unsafe class Smoke
         Expect(Marshal.PtrToStringUTF8((nint)message(ENotImpl))?.StartsWith("HellForge:", StringComparison.Ordinal) == true, "Error message names the stand-in");
         Expect(undeclared() == ENotImpl, "Undeclared export answers E_NOTIMPL");
         HostLobby(lobby, multiplayer, Expect);
-
-        var pid = Environment.ProcessId;
-        var partyLog = Path.Combine(logs, $"PartyWin.dll-{pid}.log");
-        var lobbyLog = Path.Combine(logs, $"PlayFabMultiplayerWin.dll-{pid}.log");
-        var partyText = ReadShared(partyLog);
-        var lobbyText = ReadShared(lobbyLog);
-        Expect(partyText.Contains("HellForge stand-in loaded") && partyText.Contains("PartyInitialize #1(\"974A9\""), "Party log records load and calls");
-        Expect(lobbyText.Contains("PFLobbyLeaveWithEntityHandle #1()"), "Lobby log records undeclared calls");
-
-        Console.WriteLine($"Smoke test: {problems.Count} problem(s); logs in {logs}");
-        foreach (var problem in problems) Console.Error.WriteLine("  failed: " + problem);
-        return problems.Count == 0 ? 0 : 1;
     }
 
     [StructLayout(LayoutKind.Sequential)] struct EntityKey { public byte* Id; public byte* Type; }

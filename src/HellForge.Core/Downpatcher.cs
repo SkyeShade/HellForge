@@ -12,6 +12,16 @@ namespace HellForge.Core;
 public sealed record DownpatchPack(string SourceBuild, string TargetBuild, string Url, string Sha256, long Size,
     string SourceExeSha256 = "", string SourceGameDllSha256 = "");
 
+// What a patch reports as it goes: the pack's download (bytes so far, of all) and the files written (bytes so far, of the
+// build's, and the file).
+public sealed record DownpatchProgress(Action<long, long>? Download = null, Action<long, long, string>? Apply = null);
+
+// What Downpatcher.ApplyPack patches: Steam's game folder (the pack's source build) into the copy at GameDestination, from
+// the downloaded pack at PackPath, which Pack lists, into Build, with the patch tool (Hpatchz); Http fetches
+// DownloadOverrides' files (null: none can be).
+public sealed record DownpatchJob(string SteamGame, string GameDestination, string PackPath, DownpatchPack Pack, SupportedBuild Build,
+    string Hpatchz, HttpClient? Http);
+
 // Patches HELLDIVERS 2 as Steam has it into the supported build. Packs are listed in downpatch/index.json on
 // files.hf-mod.com (scripts/New-DownpatchPack.ps1 builds one for each new Steam build), so a game update needs a new pack,
 // not a new HellForge. The list only says which pack to try: whatever a pack holds, every file it writes must be one of
@@ -109,8 +119,7 @@ public static partial class Downpatcher
     public static async Task ApplyAsync(
         string steamGame, string gameDestination, string tempFolder,
         DownpatchPack pack, HttpClient http,
-        Action<long, long>? downloadProgress = null,
-        Action<long, long, string>? applyProgress = null,
+        DownpatchProgress? progress = null,
         CancellationToken cancellation = default)
     {
         steamGame = LocalInstall.FullPath(steamGame);
@@ -127,8 +136,8 @@ public static partial class Downpatcher
             (tempFolder, packThere.Exists && packThere.Length == pack.Size ? 0 : pack.Size));
 
         var hpatchz = await EnsureHpatchz(tempFolder, http, cancellation);
-        var packPath = await DownloadPack(tempFolder, pack, http, downloadProgress, cancellation);
-        ApplyPack(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http, applyProgress, cancellation);
+        var packPath = await DownloadPack(tempFolder, pack, http, progress?.Download, cancellation);
+        ApplyPack(new(steamGame, gameDestination, packPath, pack, SupportedBuild.Current, hpatchz, http), progress?.Apply, cancellation);
     }
 
     static string Sha256(string path)
@@ -224,10 +233,35 @@ public static partial class Downpatcher
 
     // Writes the build's files into gameDestination from the pack. The pack's manifest must name exactly the build's files
     // and nothing else; each one written must have the build's size and SHA-1, or setup stops before it is used.
-    public static void ApplyPack(string steamGame, string gameDestination, string packPath, DownpatchPack pack, SupportedBuild build,
-        string hpatchz, HttpClient? http, Action<long, long, string>? progress, CancellationToken cancellation)
+    public static void ApplyPack(DownpatchJob job, Action<long, long, string>? progress, CancellationToken cancellation)
     {
-        using var zip = ZipFile.OpenRead(packPath);
+        using var zip = ZipFile.OpenRead(job.PackPath);
+        var manifest = ReadManifest(zip, job);
+
+        // exactly the build's files: a path outside the list (or ../) never reaches the file system
+        var listed = job.Build.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
+        CheckNamed(manifest, listed, job.Build);
+        RequireSpace(zip, job, manifest, listed);
+
+        long done = 0;
+        long total = job.Build.TotalBytes;
+        foreach (var file in manifest.Files!)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var expected = listed[file.Path];
+            var destPath = Destination(job.GameDestination, file);
+            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+
+            if (!Matches(destPath, expected)) WriteFile(zip, job, file, expected, destPath, cancellation);
+
+            done += expected.Size;
+            progress?.Invoke(done, total, file.Path);
+        }
+    }
+
+    // The pack's downpatch.json, which must be for this pack's builds and the build being made.
+    static DownpatchManifest ReadManifest(ZipArchive zip, DownpatchJob job)
+    {
         var manifestEntry = zip.GetEntry("downpatch.json")
             ?? throw new InvalidDataException("The build patch has no downpatch.json.");
 
@@ -235,108 +269,107 @@ public static partial class Downpatcher
         using (var reader = new StreamReader(manifestEntry.Open()))
             manifest = JsonSerializer.Deserialize<DownpatchManifest>(reader.ReadToEnd(), ManifestJson)
                 ?? throw new InvalidDataException("The build patch's manifest is empty.");
-        if (manifest.TargetBuild != build.BuildId || manifest.TargetBuild != pack.TargetBuild || manifest.SourceBuild != pack.SourceBuild)
-            throw new InvalidDataException($"The build patch is for {manifest.SourceBuild} to {manifest.TargetBuild}, not {pack.SourceBuild} to {build.BuildId}.");
+        if (manifest.TargetBuild != job.Build.BuildId || manifest.TargetBuild != job.Pack.TargetBuild || manifest.SourceBuild != job.Pack.SourceBuild)
+            throw new InvalidDataException($"The build patch is for {manifest.SourceBuild} to {manifest.TargetBuild}, not {job.Pack.SourceBuild} to {job.Build.BuildId}.");
+        return manifest;
+    }
 
-        // exactly the build's files: a path outside the list (or ../) never reaches the file system
-        var listed = build.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
+    // The manifest names each of the build's files once, and nothing else.
+    static void CheckNamed(DownpatchManifest manifest, Dictionary<string, SupportedFile> listed, SupportedBuild build)
+    {
         var named = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in manifest.Files ?? [])
             if (file == null || !listed.ContainsKey(file.Path) || !named.Add(file.Path))
                 throw new InvalidDataException($"The build patch names a file that is not one of build {build.BuildId}'s once: {file?.Path}.");
         if (named.Count != listed.Count)
             throw new InvalidDataException($"The build patch leaves out {listed.Count - named.Count} of build {build.BuildId}'s files.");
+    }
 
-        // Room for every file not yet in place, and beside the pack for the largest patch extracted at a time. A drive
-        // that filled up mid-patch used to end in hpatchz exit code 24 and "validate the game in Steam".
-        string Destination(DownpatchFile file) => Path.Combine(gameDestination, file.Path.Replace('/', Path.DirectorySeparatorChar));
-        var pending = manifest.Files!.Where(f => !GameCopier.Present(Destination(f), listed[f.Path])).ToList();
+    // Room for every file not yet in place, and beside the pack for the largest patch extracted at a time. A drive
+    // that filled up mid-patch used to end in hpatchz exit code 24 and "validate the game in Steam".
+    static void RequireSpace(ZipArchive zip, DownpatchJob job, DownpatchManifest manifest, Dictionary<string, SupportedFile> listed)
+    {
+        var pending = manifest.Files!.Where(f => !GameCopier.Present(Destination(job.GameDestination, f), listed[f.Path])).ToList();
         long largestPatch = pending.Where(f => f.Op == "patch" && f.PatchFile is { Length: > 0 })
             .Select(f => zip.GetEntry("patches/" + f.PatchFile)?.Length ?? 0).DefaultIfEmpty(0).Max();
-        DiskSpace.Require((gameDestination, pending.Sum(f => listed[f.Path].Size)), (Path.GetDirectoryName(packPath)!, largestPatch));
+        DiskSpace.Require((job.GameDestination, pending.Sum(f => listed[f.Path].Size)), (Path.GetDirectoryName(job.PackPath)!, largestPatch));
+    }
 
-        long done = 0;
-        long total = build.TotalBytes;
-        foreach (var file in manifest.Files!)
+    static string Destination(string gameDestination, DownpatchFile file) =>
+        Path.Combine(gameDestination, file.Path.Replace('/', Path.DirectorySeparatorChar));
+
+    // One of the build's files at destPath, made by its operation (or downloaded, for DownloadOverrides), kept only with
+    // the build's size and SHA-1.
+    static void WriteFile(ZipArchive zip, DownpatchJob job, DownpatchFile file, SupportedFile expected, string destPath, CancellationToken cancellation)
+    {
+        var partial = destPath + ".partial";
+        var src = Path.Combine(job.SteamGame, file.Path.Replace('/', Path.DirectorySeparatorChar));
+        string FromSteam() => File.Exists(src) ? src
+            : throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+
+        if (DownloadOverrides.TryGetValue(file.Path, out var overrideUrl) && file.Op != "add")
+            DownloadOverride(job.Http, file, overrideUrl, partial, cancellation);
+        else switch (file.Op)
         {
-            cancellation.ThrowIfCancellationRequested();
-            var expected = listed[file.Path];
-            var destPath = Destination(file);
-            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-
-            if (Matches(destPath, expected))
+            case "copy":
+                File.Copy(FromSteam(), partial, overwrite: true);
+                break;
+            case "patch":
+                Patch(zip, job, file, FromSteam(), partial);
+                break;
+            case "add":
             {
-                done += expected.Size;
-                progress?.Invoke(done, total, file.Path);
-                continue;
+                var addEntry = zip.GetEntry("add/" + file.Path)
+                    ?? throw new InvalidDataException($"The build patch is missing add/{file.Path}.");
+                addEntry.ExtractToFile(partial, overwrite: true);
+                break;
             }
+            default:
+                throw new InvalidDataException($"Unknown operation in the build patch: {file.Op}");
+        }
 
-            var partial = destPath + ".partial";
-            var src = Path.Combine(steamGame, file.Path.Replace('/', Path.DirectorySeparatorChar));
-            string FromSteam() => File.Exists(src) ? src
-                : throw new InvalidDataException($"Steam is missing {file.Path}; validate the game in Steam and start setup again.");
+        if (!Matches(partial, expected))
+        {
+            if (File.Exists(partial)) File.Delete(partial);
+            throw new InvalidDataException(file.Op is "copy" or "patch"
+                ? $"{file.Path} did not come out as build {job.Build.BuildId}: Steam's copy is not the build this patch was made from. Validate the game in Steam and start setup again."
+                : $"{file.Path} in the build patch is not build {job.Build.BuildId}'s.");
+        }
+        File.Move(partial, destPath, overwrite: true);
+    }
 
-            if (DownloadOverrides.TryGetValue(file.Path, out var overrideUrl) && file.Op != "add")
+    static void DownloadOverride(HttpClient? http, DownpatchFile file, string overrideUrl, string partial, CancellationToken cancellation)
+    {
+        if (http == null) throw new InvalidOperationException("No HTTP client for " + file.Path + ".");
+        using var response = http.GetAsync(overrideUrl, cancellation).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+        using var stream = response.Content.ReadAsStreamAsync(cancellation).GetAwaiter().GetResult();
+        using var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None);
+        stream.CopyTo(output);
+    }
+
+    // Steam's file (from) through the pack's patch for it into partial, with hpatchz.
+    static void Patch(ZipArchive zip, DownpatchJob job, DownpatchFile file, string from, string partial)
+    {
+        var patchEntry = (file.PatchFile is { Length: > 0 } name ? zip.GetEntry("patches/" + name) : null)
+            ?? throw new InvalidDataException($"The build patch is missing the patch for {file.Path}.");
+        var patchTemp = Path.Combine(Path.GetDirectoryName(job.PackPath)!, $"hf-patch-{Guid.NewGuid():N}.hdiff");
+        try
+        {
+            patchEntry.ExtractToFile(patchTemp, overwrite: true);
+            // hpatchz writes progress to its console: not redirected, so a full pipe never stalls it
+            var psi = new ProcessStartInfo(job.Hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
+            using var proc = Process.Start(psi) ?? throw new InvalidOperationException("hpatchz did not start.");
+            proc.WaitForExit();
+            if (proc.ExitCode != 0)
             {
-                if (http == null) throw new InvalidOperationException("No HTTP client for " + file.Path + ".");
-                using var response = http.GetAsync(overrideUrl, cancellation).GetAwaiter().GetResult();
-                response.EnsureSuccessStatusCode();
-                using var stream = response.Content.ReadAsStreamAsync(cancellation).GetAwaiter().GetResult();
-                using var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None);
-                stream.CopyTo(output);
+                if (File.Exists(partial)) File.Delete(partial); /* a half-written file keeps the space it took */
+                throw PatchFailed(file.Path, proc.ExitCode, partial);
             }
-            else switch (file.Op)
-            {
-                case "copy":
-                    File.Copy(FromSteam(), partial, overwrite: true);
-                    break;
-                case "patch":
-                {
-                    var from = FromSteam();
-                    var patchEntry = (file.PatchFile is { Length: > 0 } name ? zip.GetEntry("patches/" + name) : null)
-                        ?? throw new InvalidDataException($"The build patch is missing the patch for {file.Path}.");
-                    var patchTemp = Path.Combine(Path.GetDirectoryName(packPath)!, $"hf-patch-{Guid.NewGuid():N}.hdiff");
-                    try
-                    {
-                        patchEntry.ExtractToFile(patchTemp, overwrite: true);
-                        // hpatchz writes progress to its console: not redirected, so a full pipe never stalls it
-                        var psi = new ProcessStartInfo(hpatchz) { ArgumentList = { "-f", from, patchTemp, partial }, UseShellExecute = false, CreateNoWindow = true };
-                        using var proc = Process.Start(psi) ?? throw new InvalidOperationException("hpatchz did not start.");
-                        proc.WaitForExit();
-                        if (proc.ExitCode != 0)
-                        {
-                            if (File.Exists(partial)) File.Delete(partial); /* a half-written file keeps the space it took */
-                            throw PatchFailed(file.Path, proc.ExitCode, partial);
-                        }
-                    }
-                    finally
-                    {
-                        if (File.Exists(patchTemp)) File.Delete(patchTemp);
-                    }
-                    break;
-                }
-                case "add":
-                {
-                    var addEntry = zip.GetEntry("add/" + file.Path)
-                        ?? throw new InvalidDataException($"The build patch is missing add/{file.Path}.");
-                    addEntry.ExtractToFile(partial, overwrite: true);
-                    break;
-                }
-                default:
-                    throw new InvalidDataException($"Unknown operation in the build patch: {file.Op}");
-            }
-
-            if (!Matches(partial, expected))
-            {
-                if (File.Exists(partial)) File.Delete(partial);
-                throw new InvalidDataException(file.Op is "copy" or "patch"
-                    ? $"{file.Path} did not come out as build {build.BuildId}: Steam's copy is not the build this patch was made from. Validate the game in Steam and start setup again."
-                    : $"{file.Path} in the build patch is not build {build.BuildId}'s.");
-            }
-            File.Move(partial, destPath, overwrite: true);
-
-            done += expected.Size;
-            progress?.Invoke(done, total, file.Path);
+        }
+        finally
+        {
+            if (File.Exists(patchTemp)) File.Delete(patchTemp);
         }
     }
 

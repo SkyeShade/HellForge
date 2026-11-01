@@ -32,6 +32,9 @@ public sealed class StatsShare : IAsyncDisposable
     readonly IPeerTransport transport;
     readonly LobbyService lobby;
     readonly string statsFile, modValuesFile, hostModValuesFile, hostStatsFile, editorSettingsFile, hostMountsFile;
+    // A sandboxed game's editor saves into the run's sandbox-stats folder (changes.json, editor-settings.json) until the
+    // session ends (SandboxStats.Apply): null when the game is not sandboxed.
+    readonly string? sandboxChangesFile, sandboxSettingsFile;
     readonly Func<ulong, string> nameOf;
     readonly Action<string> log;
     readonly LiveEditServer live;
@@ -67,11 +70,18 @@ public sealed class StatsShare : IAsyncDisposable
     readonly StatsSync sync = new();
     readonly SemaphoreSlim applying = new(1, 1);
     readonly object gate = new();
+    // Notices go to the game one after another, in the order they were made (each continues the one before).
+    readonly object noticesGate = new();
+    Task notices = Task.CompletedTask;
     readonly Timer timer;
     // host: the file last read, its version, whether friends play with it, and the friends that have it
     string? mine, mineMods, mineSettings, mineMounts;
     DateTime mineStamp, modsStamp, settingsStamp;
     long length = -1, modsLength = -1, settingsLength = -1;
+    // sandboxed: the files as they are, and the editor's saves of this session that go over them
+    string? realStats, realMods, realSettings, sandboxChanges, sandboxSettings;
+    DateTime changesStamp, sandboxSettingsStamp;
+    long changesLength = -1, sandboxSettingsLength = -1;
     long version;
     bool sharing;
     readonly Func<bool> hostShares;
@@ -81,26 +91,33 @@ public sealed class StatsShare : IAsyncDisposable
     long hostVersion = -1;
     bool hostShared;
     string? hostStats, hostMods, hostMounts;
+    bool hostWritePending; /* under gate: the host's files on disk are not the latest (WriteHostNow) */
+    readonly object hostWriteGate = new(); /* one WriteHostNow at a time; taken before gate */
     string role = "solo", roleHost = "";
     bool sessionSent;
 
-    // hostShares: whether friends play with this machine's stats when it hosts (ModSettings.HostStats; read each second).
     public StatsShare(IPeerTransport transport, LobbyService lobby, string runId, string modsFolder, Func<ulong, string> nameOf, Action<string> log,
-        Func<bool>? hostShares = null)
+        StatsShareOptions? options = null)
     {
+        var (hostShares, sandboxStats) = options ?? new StatsShareOptions();
         this.transport = transport;
         this.lobby = lobby;
         this.nameOf = nameOf;
         this.log = log;
         this.hostShares = hostShares ?? (() => false);
         statsFile = Path.Combine(modsFolder, "zz.local.stats", FileName);
+        if (sandboxStats != null)
+        {
+            sandboxChangesFile = Path.Combine(sandboxStats, SandboxStats.ChangesName);
+            sandboxSettingsFile = Path.Combine(sandboxStats, SandboxStats.SettingsName);
+        }
         var editor = Path.Combine(modsFolder, BundledMods.EditorFolder);
         modValuesFile = Path.Combine(editor, ModValuesName);
         hostModValuesFile = Path.Combine(editor, HostModValuesName);
         hostStatsFile = Path.Combine(editor, HostStatsName);
         editorSettingsFile = Path.Combine(editor, EditorSettingsName);
         hostMountsFile = Path.Combine(editor, HostMountsName);
-        WriteHost(null, null, null); /* a session cut short leaves its host's files behind */
+        WriteHostNow(); /* a session cut short leaves its host's files behind */
         live = new LiveEditServer(runId);
         live.StateChanged += () => { lock (gate) sessionSent = false; _ = ApplyAsync(); };
         live.Start();
@@ -113,37 +130,9 @@ public sealed class StatsShare : IAsyncDisposable
         try
         {
             ReadMine();
-            var shares = hostShares();
-            lock (gate)
-                if (shares != sharing)
-                {
-                    (sharing, version, sessionSent) = (shares, version + 1, false); /* the game's editor shows which */
-                    sentTo.Clear();
-                    log(shares ? "Stats: friends in lobbies hosted here play with this machine's stats." : "Stats: every player keeps their own stats.");
-                }
+            ReadSharing();
             var friends = lobby.HostedFriends();
-            List<ulong> send;
-            byte[] packed, packedMods, packedMounts;
-            long sending;
-            bool shared;
-            lock (gate)
-            {
-                sentTo.IntersectWith(friends);
-                send = friends.Where(f => !sentTo.Contains(f)).ToList();
-                sentTo.UnionWith(send);
-                packed = StatsSync.Pack(sharing ? mine ?? "" : "");
-                packedMods = StatsSync.Pack(sharing ? mineMods ?? "" : "");
-                packedMounts = StatsSync.Pack(sharing ? mineMounts ?? "" : "");
-                sending = version;
-                shared = sharing;
-            }
-            foreach (var friend in send)
-            {
-                transport.Send(friend, new Frame("stats.set").Add(sending).Add(packed).Add(packedMods).Add(packedMounts).Add(shared ? "host" : "own").Encode(),
-                    reliable: true);
-                log(shared ? $"Stats: sent this host's Local Stats, mod content values and arm swaps (version {sending}, {packed.Length} + {packedMods.Length} + {packedMounts.Length} bytes) to {LobbyService.EntityId(friend)}."
-                    : $"Stats: told {LobbyService.EntityId(friend)} to keep its own stats (version {sending}).");
-            }
+            SendToFriends(friends);
             bool hostGone;
             lock (gate)
             {
@@ -151,21 +140,62 @@ public sealed class StatsShare : IAsyncDisposable
                 if (hostGone)
                 {
                     log($"Stats: the host {LobbyService.EntityId(hostPeer)} is gone" + (hostShared ? "; this game's own values come back." : "."));
-                    (hostPeer, hostVersion, hostShared, hostStats, hostMods, hostMounts) = (0, -1, false, null, null, null);
+                    (hostPeer, hostVersion, hostShared, hostStats, hostMods, hostMounts, hostWritePending) = (0, -1, false, null, null, null, true);
                 }
                 var (wantRole, wantHost) = hostPeer != 0 ? ("joiner", nameOf(hostPeer)) : friends.Count > 0 ? ("host", "") : ("solo", "");
                 if (wantRole != role || wantHost != roleHost) (role, roleHost, sessionSent) = (wantRole, wantHost, false);
             }
-            if (hostGone) WriteHost(null, null, null);
+            if (HostWritePending()) WriteHostNow(); /* the host gone (its files go), or a write that failed */
             if (hostGone || !sessionSent) _ = ApplyAsync();
         }
         catch (Exception error) { log("Stats sharing failed: " + error.Message); }
+    }
+
+    // Whether friends play with this machine's stats (the Mods page), read again each second.
+    void ReadSharing()
+    {
+        var shares = hostShares();
+        lock (gate)
+            if (shares != sharing)
+            {
+                (sharing, version, sessionSent) = (shares, version + 1, false); /* the game's editor shows which */
+                sentTo.Clear();
+                log(shares ? "Stats: friends in lobbies hosted here play with this machine's stats." : "Stats: every player keeps their own stats.");
+            }
+    }
+
+    // This host's file, or that friends keep their own, to every friend who joined since it last changed.
+    void SendToFriends(IReadOnlyCollection<ulong> friends)
+    {
+        List<ulong> send;
+        byte[] packed, packedMods, packedMounts;
+        long sending;
+        bool shared;
+        lock (gate)
+        {
+            sentTo.IntersectWith(friends);
+            send = friends.Where(f => !sentTo.Contains(f)).ToList();
+            sentTo.UnionWith(send);
+            packed = StatsSync.Pack(sharing ? mine ?? "" : "");
+            packedMods = StatsSync.Pack(sharing ? mineMods ?? "" : "");
+            packedMounts = StatsSync.Pack(sharing ? mineMounts ?? "" : "");
+            sending = version;
+            shared = sharing;
+        }
+        foreach (var friend in send)
+        {
+            transport.Send(friend, new Frame("stats.set").Add(sending).Add(packed).Add(packedMods).Add(packedMounts).Add(shared ? "host" : "own").Encode(),
+                reliable: true);
+            log(shared ? $"Stats: sent this host's Local Stats, mod content values and arm swaps (version {sending}, {packed.Length} + {packedMods.Length} + {packedMounts.Length} bytes) to {LobbyService.EntityId(friend)}."
+                : $"Stats: told {LobbyService.EntityId(friend)} to keep its own stats (version {sending}).");
+        }
     }
 
     // The Local Stats file, the editor's mod content values and its arm swaps, re-read when they changed (a new version
     // for friends; the editor's settings change for its own reasons too, so only a change of its mounts counts).
     void ReadMine()
     {
+        if (sandboxChangesFile != null) { ReadMineSandboxed(); return; }
         var changed = ReadChanged(statsFile, ref mineStamp, ref length, ref mine) | ReadChanged(modValuesFile, ref modsStamp, ref modsLength, ref mineMods);
         if (ReadChanged(editorSettingsFile, ref settingsStamp, ref settingsLength, ref mineSettings))
         {
@@ -178,6 +208,30 @@ public sealed class StatsShare : IAsyncDisposable
                 version++;
                 sentTo.Clear();
             }
+    }
+
+    // Sandboxed, the game's editor cannot write the mods folder: its saves wait in the run's sandbox-stats folder until the
+    // session ends. What this host plays with meanwhile is its files with those saves over them (SandboxStats.Overlay,
+    // nothing written), and that is what friends get, live, as they would from an unsandboxed host. The same text is
+    // LocalStats, whose projectile swaps AssetShare sends.
+    void ReadMineSandboxed()
+    {
+        var changed = ReadChanged(statsFile, ref mineStamp, ref length, ref realStats) | ReadChanged(modValuesFile, ref modsStamp, ref modsLength, ref realMods) |
+            ReadChanged(sandboxChangesFile!, ref changesStamp, ref changesLength, ref sandboxChanges) |
+            ReadChanged(editorSettingsFile, ref settingsStamp, ref settingsLength, ref realSettings) |
+            ReadChanged(sandboxSettingsFile!, ref sandboxSettingsStamp, ref sandboxSettingsLength, ref sandboxSettings);
+        if (!changed) return;
+        string? real, mods, changes, settings;
+        lock (gate) (real, mods, changes, settings) = (realStats, realMods, sandboxChanges, sandboxSettings ?? realSettings);
+        var (stats, values) = SandboxStats.Overlay(real, mods, changes, EntityProfile.Current);
+        var mounts = MountsOf(settings);
+        lock (gate)
+        {
+            if (stats == mine && values == mineMods && mounts == mineMounts) return;
+            (mine, mineMods, mineSettings, mineMounts) = (stats, values, settings, mounts);
+            version++;
+            sentTo.Clear();
+        }
     }
 
     // The arm swaps of the editor's settings: its "mounts" object as JSON ("" none or unreadable).
@@ -209,12 +263,29 @@ public sealed class StatsShare : IAsyncDisposable
 
     // The host's Local Stats file and mod content values for the in-game editor (null: none, the files go), each written
     // whole (the editor reads them each second and skips one caught mid-write).
-    void WriteHost(string? stats, string? mods, string? mounts)
+    // Always the host's latest (hostStats, hostMods, hostMounts, read under the write lock), so two writes at once (two
+    // versions from the transport) cannot leave the older on disk. A write that failed (the editor had the file open
+    // as it was replaced) is made again on the next second's tick, not left until the host's next version.
+    void WriteHostNow()
     {
-        Write(hostStatsFile, stats, "Local Stats");
-        Write(hostModValuesFile, mods, "mod content values");
-        Write(hostMountsFile, mounts, "arm swaps");
-        void Write(string path, string? text, string what)
+        lock (hostWriteGate)
+        {
+            string? stats, mods, mounts;
+            lock (gate) (stats, mods, mounts, hostWritePending) = (hostStats, hostMods, hostMounts, false);
+            if (!WriteHost(stats, mods, mounts)) lock (gate) hostWritePending = true;
+        }
+    }
+
+    bool HostWritePending() { lock (gate) return hostWritePending; }
+
+    // True when all three were written (or removed).
+    bool WriteHost(string? stats, string? mods, string? mounts)
+    {
+        var written = Write(hostStatsFile, stats, "Local Stats");
+        written &= Write(hostModValuesFile, mods, "mod content values");
+        written &= Write(hostMountsFile, mounts, "arm swaps");
+        return written;
+        bool Write(string path, string? text, string what)
         {
             try
             {
@@ -226,13 +297,18 @@ public sealed class StatsShare : IAsyncDisposable
                     if (text == null) log($"Stats: the host's {what} is not a file the editor reads; it is left out.");
                     else if (dropped > 0) log($"Stats: {dropped} value(s) of the host's {what} are beyond the limits and left out.");
                 }
-                if (text == null) { if (File.Exists(path)) File.Delete(path); return; }
-                if (!Directory.Exists(Path.GetDirectoryName(path))) return;
+                if (text == null) { if (File.Exists(path)) File.Delete(path); return true; }
+                if (!Directory.Exists(Path.GetDirectoryName(path))) return true;
                 var partial = path + ".partial";
                 File.WriteAllText(partial, text);
                 File.Move(partial, path, overwrite: true);
+                return true;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { log($"Stats: the host's {what} could not be written: " + error.Message); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                log($"Stats: the host's {what} could not be written (tried again in a second): " + error.Message);
+                return false;
+            }
         }
     }
 
@@ -270,7 +346,7 @@ public sealed class StatsShare : IAsyncDisposable
         }
         log(shared ? $"Stats: the host's Local Stats, version {received}, from {LobbyService.EntityId(peer)}."
             : $"Stats: the host {LobbyService.EntityId(peer)} lets every player keep their own stats (version {received}).");
-        WriteHost(text, mods, mounts);
+        WriteHostNow();
         _ = ApplyAsync();
     }
 
@@ -279,11 +355,16 @@ public sealed class StatsShare : IAsyncDisposable
     public void Notice(string kind, string title, IReadOnlyList<string> lines)
     {
         if (!live.Connected || live.Mismatched) { log($"Notice not shown, the game is not connected: {title}"); return; }
-        _ = Task.Run(async () =>
-        {
-            var result = await live.NoticeAsync(kind, title, lines);
-            log(result.Ok ? $"Notice shown in the game: {title}" : $"Notice not shown ({result.Detail}): {title}");
-        });
+        // Off the caller's thread (it may hold the lobby service's lock), as a Task.Run each would be, but never overtaking
+        // an earlier notice: the game gets them in the order they were made.
+        lock (noticesGate) notices = notices.ContinueWith(_ => ShowNotice(kind, title, lines), CancellationToken.None,
+            TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+    }
+
+    async Task ShowNotice(string kind, string title, IReadOnlyList<string> lines)
+    {
+        var result = await live.NoticeAsync(kind, title, lines);
+        log(result.Ok ? $"Notice shown in the game: {title}" : $"Notice not shown ({result.Detail}): {title}");
     }
 
     // Whether the lobby plays with its host's stats, as the game is told (HfApi stats_source): joined to a host who shares
@@ -309,32 +390,44 @@ public sealed class StatsShare : IAsyncDisposable
             bool sessionShared;
             lock (gate)
                 (host, own, sessionRole, sessionHost, sessionShared) = (hostPeer != 0 && hostShared ? hostStats ?? "" : null, mine, role, roleHost, LobbyShared());
-            bool sendSession;
-            lock (gate) sendSession = !sessionSent;
-            if (sendSession)
-            {
-                var session = await live.SessionAsync(sessionRole, sessionHost, sessionShared ? "host" : "own");
-                lock (gate) if (session.Ok && sessionRole == role && sessionHost == roleHost && sessionShared == LobbyShared()) sessionSent = true;
-            }
+            await SendSessionAsync(sessionRole, sessionHost, sessionShared);
             var requests = sync.Plan(host, own);
-            int done = 0, refused = 0;
-            foreach (var request in requests)
-            {
-                var result = request.Verb switch
-                {
-                    "set" => await live.SetAsync(request.Field, request.Bits, request.Field.Shared),
-                    "base" => await live.BaseAsync(request.Field),
-                    _ => await live.ResetAsync(request.Field),
-                };
-                if (result.Ok) { sync.Done(request, host != null); done++; }
-                else if (refused++ < 5) log($"Stats: {request.Verb} {request.Field.Name} refused: {result.Detail}");
-            }
+            var (done, refused) = await RequestAllAsync(requests, host != null);
             if (requests.Count > 0)
                 log($"Stats: {(host != null ? "the host's values" : "this game's own values")}: {done} applied, {refused} refused" +
                     (host != null && sync.BootOnly > 0 ? $", {sync.BootOnly} apply only from a session start (attachments, status multipliers)" : "") + ".");
         }
         catch (Exception error) { log("Stats: applying failed: " + error.Message); }
         finally { applying.Release(); }
+    }
+
+    // The game's role, when it has not been told it since it changed (or the game connected).
+    async Task SendSessionAsync(string sessionRole, string sessionHost, bool sessionShared)
+    {
+        bool sendSession;
+        lock (gate) sendSession = !sessionSent;
+        if (!sendSession) return;
+        var session = await live.SessionAsync(sessionRole, sessionHost, sessionShared ? "host" : "own");
+        lock (gate) if (session.Ok && sessionRole == role && sessionHost == roleHost && sessionShared == LobbyShared()) sessionSent = true;
+    }
+
+    // The plan's requests, one at a time (joined: to the host's values); how many the game took and refused, the first
+    // five refusals logged.
+    async Task<(int Done, int Refused)> RequestAllAsync(List<StatsSyncRequest> requests, bool joined)
+    {
+        int done = 0, refused = 0;
+        foreach (var request in requests)
+        {
+            var result = request.Verb switch
+            {
+                "set" => await live.SetAsync(request.Field, request.Bits, request.Field.Shared),
+                "base" => await live.BaseAsync(request.Field),
+                _ => await live.ResetAsync(request.Field),
+            };
+            if (result.Ok) { sync.Done(request, joined); done++; }
+            else if (refused++ < 5) log($"Stats: {request.Verb} {request.Field.Name} refused: {result.Detail}");
+        }
+        return (done, refused);
     }
 
     public async ValueTask DisposeAsync()
@@ -344,3 +437,7 @@ public sealed class StatsShare : IAsyncDisposable
         applying.Dispose();
     }
 }
+
+// HostShares: whether friends play with this machine's stats when it hosts (ModSettings.HostStats; read each second).
+// SandboxStats: the run's sandbox-stats folder when the game is sandboxed, else null.
+public sealed record StatsShareOptions(Func<bool>? HostShares = null, string? SandboxStats = null);

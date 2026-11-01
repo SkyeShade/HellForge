@@ -2,11 +2,13 @@
 # mod folder (manifest, DLL, Dear ImGui's licence) to copy into <installation>/mods. Dear ImGui 1.91.9b (MIT) is fetched
 # from GitHub once, pinned by SHA-256, into tools/imgui; it is compiled with the editor by the project's pinned Zig.
 # With -Test it also runs native/editor/test/overlay_test.cpp: the editor against a real D3D12 swap chain (then a D3D11 one) in a window of
-# its own (shown for a few seconds), with F8, resizes and a screenshot check, and native/editor/test/local_stats_test.cpp,
+# its own (shown for a few seconds), with F8, resizes and a screenshot check (then forced into HDR10 and scRGB, the
+# colours checked PQ-encoded), and native/editor/test/local_stats_test.cpp,
 # its saving into the Local Stats mod.
-# Usage: scripts/Build-Editor.ps1 [-Install <installation>] [-Test]   (with -Install, the folder is copied into its mods, with
-# the game icons extracted from that installation's game copy)
-param([string]$Install,[switch]$Test)
+# Usage: scripts/Build-Editor.ps1 [-Install <installation>] [-Test [-SkipOverlayTest]]   (with -Install, the folder is copied into
+# its mods, with the game icons extracted from that installation's game copy; -SkipOverlayTest leaves out overlay_test, which
+# needs a GPU and a desktop to draw on, as on CI's hosted runners)
+param([string]$Install,[switch]$Test,[switch]$SkipOverlayTest)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -37,15 +39,28 @@ $common=@('-target','x86_64-windows-gnu','-O2','-std=c++17','-fno-exceptions','-
 $objects=Join-Path $project 'artifacts/editor/obj'
 New-Item -ItemType Directory $objects -Force|Out-Null
 $built=@()
+# HDR: ImGui's DX11 and DX12 renderers compile their pixel shader from a fixed string. The editor supplies its own while
+# the game draws in HDR (native/editor/editor.cpp, g_hellforgePixelShader), so the one line declaring that string is
+# changed in a copy beside the objects; the pinned source stays as it is. A version where the line is not there once stops.
+$shaderLine='static const char* pixelShader ='
+$shaderHook='extern const char* g_hellforgePixelShader; const char* pixelShader = g_hellforgePixelShader != nullptr ? g_hellforgePixelShader :'
+$sources=foreach($source in $sources){
+    if([IO.Path]::GetFileName($source) -notin @('imgui_impl_dx11.cpp','imgui_impl_dx12.cpp')){$source;continue}
+    $text=[IO.File]::ReadAllText($source)
+    if(([regex]::Matches($text,[regex]::Escape($shaderLine))).Count -ne 1){throw ('The HDR shader hook does not fit '+$source+': '+$shaderLine+' is not there once.')}
+    $copy=Join-Path $objects ([IO.Path]::GetFileName($source))
+    [IO.File]::WriteAllText($copy,$text.Replace($shaderLine,$shaderHook))
+    $copy
+}
 foreach($source in $sources){
     $object=Join-Path $objects ([IO.Path]::GetFileNameWithoutExtension($source)+'.o')
     & $zig c++ @common -w -c $source -o $object
     if($LASTEXITCODE){throw ('Dear ImGui did not compile: '+$source)}
     $built+=$object
 }
-$editorSources=@('editor.cpp','app.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
+$editorSources=@('editor.cpp','app.cpp','app_values.cpp','app_staging.cpp','app_widgets.cpp','app_page.cpp','app_presets.cpp','app_mods_logs.cpp','app_sync.cpp','app_keys.cpp','app_browse.cpp','app_views.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
 & $zig c++ @common -shared -Wall -Werror -Wno-unused-parameter -s @editorSources @built `
-    -ld3d11 -ld3d12 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -lole32 -o (Join-Path $out 'hellforge_editor.dll')
+    -ld3d11 -ld3d12 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -lole32 -luser32 -o (Join-Path $out 'hellforge_editor.dll')
 if($LASTEXITCODE){throw 'The editor did not compile.'}
 Get-ChildItem -LiteralPath $out -Filter '*.lib'|Remove-Item
 Copy-Item -LiteralPath (Join-Path $project 'native/editor/hellforge-mod.json') -Destination $out
@@ -59,7 +74,7 @@ if($Install){$dataArgs+=@('--install',$Install)}
 if($LASTEXITCODE){throw 'The editor catalogue could not be made.'}
 Copy-Item -LiteralPath (Join-Path $imgui 'LICENSE.txt') -Destination (Join-Path $out 'imgui-LICENSE.txt')
 Write-Output ('Built {0} ({1:N0} KB)' -f (Join-Path $out 'hellforge_editor.dll'),((Get-Item (Join-Path $out 'hellforge_editor.dll')).Length/1KB))
-if($Test){
+if($Test -and -not $SkipOverlayTest){
     $minHook=$buildTools.MinHook
     $testOut=Join-Path $project 'artifacts/editor/test'
     New-Item -ItemType Directory $testOut -Force|Out-Null
@@ -83,6 +98,20 @@ if($Test){
     try { & (Join-Path $testOut 'overlay_test.exe') (Join-Path $out 'hellforge_editor.dll') (Join-Path $testOut 'screen11.bmp') $out }
     finally { Remove-Item Env:HELLFORGE_EDITOR_TEST_D3D11 }
     if($LASTEXITCODE){throw 'The overlay test failed on Direct3D 11.'}
+    # HDR, forced (an SDR desktop shows the values as they are): HDR10 on Direct3D 12, whose colours the test checks are
+    # PQ-encoded at 200 nits, and scRGB on Direct3D 11 (the other renderer and shader compile and draw)
+    $env:HELLFORGE_EDITOR_HDR='pq:200'
+    try { & (Join-Path $testOut 'overlay_test.exe') (Join-Path $out 'hellforge_editor.dll') (Join-Path $testOut 'screen-hdr.bmp') $out }
+    finally { Remove-Item Env:HELLFORGE_EDITOR_HDR }
+    if($LASTEXITCODE){throw 'The overlay test failed in HDR10.'}
+    $env:HELLFORGE_EDITOR_HDR='scrgb:200'; $env:HELLFORGE_EDITOR_TEST_D3D11='1'
+    try { & (Join-Path $testOut 'overlay_test.exe') (Join-Path $out 'hellforge_editor.dll') (Join-Path $testOut 'screen11-scrgb.bmp') $out }
+    finally { Remove-Item Env:HELLFORGE_EDITOR_HDR; Remove-Item Env:HELLFORGE_EDITOR_TEST_D3D11 }
+    if($LASTEXITCODE){throw 'The overlay test failed in scRGB on Direct3D 11.'}
+}
+if($Test){
+    $testOut=Join-Path $project 'artifacts/editor/test'
+    New-Item -ItemType Directory $testOut -Force|Out-Null
     & $zig c++ -target x86_64-windows-gnu -O1 -std=c++17 -Wall -Werror (Join-Path $project 'native/editor/test/local_stats_test.cpp') `
         (Join-Path $project 'native/editor/local_stats.cpp') (Join-Path $project 'native/editor/json.cpp') -o (Join-Path $testOut 'local_stats_test.exe')
     if($LASTEXITCODE){throw 'The Local Stats test did not compile.'}

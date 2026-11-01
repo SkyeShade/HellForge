@@ -5,7 +5,7 @@ to do. The launcher's messages are quoted as it shows them. If your problem is n
 and [ask](#where-to-ask).
 
 - [Steam](#steam)
-- [Setup](#setup): the folder, the supported build, the build patch, the network block
+- [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
 - [Playing with friends](#playing-with-friends)
@@ -15,10 +15,16 @@ and [ask](#where-to-ask).
 
 ### Steam must be running and signed in
 
-HellForge keeps the game's Steam ownership check. It runs at setup and before every launch, so Steam must be running and
-signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. When it fails, setup says "The
+HellForge keeps the game's Steam ownership check. It runs at setup, and before a launch unless a check passed within the
+last 7 days for the same installation, the same Steam account (the one signed in now) and the same game build; another
+account, Steam signed out, a new game build or an older check runs it again. Either way Steam must be running and signed
+in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. When it fails, setup says "The
 ownership check did not pass: ... Make sure Steam is running and signed in, then start setup again", and a session fails
-with "Steam ownership was not confirmed: ..." followed by the reason.
+with "Steam ownership was not confirmed: ..." followed by the reason. A failed check is never reused.
+
+The last passed check is kept in the installation's `temp\steam-ownership.json`, sealed for your Windows account.
+Deleting it, `HellForge.Cli play --full-ownership-check yes` or Settings > Installation's check and repair makes
+HellForge ask Steam again.
 
 Start Steam, sign in to the account that owns the game, and try again. The launcher's idle line is a reminder: "Ready.
 Steam must be running and signed in."
@@ -102,6 +108,23 @@ game. When one is missing, the message names it and gives Microsoft's download l
 
 Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
 have.
+
+### Playing in a language other than English
+
+The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
+installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
+it.
+
+Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
+the only language HellForge has pinned so far; more follow.
+
+1. Run `HellForge.Cli.exe languages`. It lists the pinned languages and, for each, a `download_depot` command.
+2. Open Steam's console (`steam://open/console` in a browser or the Run dialog), paste that command and wait for
+   "Depot download complete".
+3. Close HellForge, then run `HellForge.Cli.exe language-add --name japanese`. It copies the language into the game copy,
+   checks every file, and deletes Steam's download.
+
+`languages` then shows `"inCopy": true` for it. Your live game is never touched.
 
 ### The network block
 
@@ -197,9 +220,22 @@ Installation > Check and repair. For the security codes, see
 
 ### Other network block messages
 
-"Required loopback/egress controls failed." means the session's check of the network block did not pass: the local
-backend must answer on this PC and a connection to the outside must be refused. The session's `network-probe.json`
-records what the check saw; include the logs when you ask.
+"The network block is not holding" means the session's check of the network block did not pass: the local backend must
+answer on this PC, and a connection to the outside must be refused by the block. (Before 0.3.0 the message was
+"Required loopback/egress controls failed.") The message says which part failed:
+
+- **"not stopping the game's connections to the internet"**: the block's filters no longer apply to the game. They name
+  each program by its drive's internal device path, which for a drive other than Windows' own can change after a
+  restart (for example with a USB drive or another disk plugged in), and they stay behind when the HellForge folder is
+  moved. The session places the block again by itself, with one Windows prompt. If it still does not hold, a VPN, a
+  proxy or a security program is letting the game's traffic past it: turn it off or exclude the HellForge folder.
+- **"stops the game reaching HellForge's own backend"**: usually an older HellForge started on an installation a newer
+  one set up. Use the newer HellForge, or run Settings > Installation.
+- **"the game cannot reach HellForge's own backend on this PC"**: another firewall or security program is blocking
+  connections inside this PC (loopback). Allow HellForge's folder in it.
+
+The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
+check saw; include the logs when you ask.
 
 "Network block was not installed: Linked target path: <path> is a link or a special file" means a folder or file on
 the way to the game copy is a link: a junction or symbolic link (a Documents folder moved to another drive is often
@@ -228,6 +264,15 @@ use may be left out, and the launcher says how many.
 In the text files in the zip, your Windows user folder is written as `%USERPROFILE%` (a Linux home folder as `~`) and the
 PC's name as `PC`. Paths stay readable. The zip still names Steam accounts by their id. Files that are not text, such
 as a crash dump, go in as they are.
+
+When a session ends in a crash, the Play page offers Save crash report. It saves one zip to your Desktop
+(`HellForge-crash-report-<date>-<time>.zip`) made to be attached to a public GitHub issue: a `summary.txt` with
+HellForge's, the engine's and the game's versions, your Windows version and graphics driver, the session's settings,
+where the game crashed and which mods ran, and the session's logs. On top of the user folder and the PC's name, it
+leaves out Steam ids, IP addresses and the names of the other players HellForge's logs give. The game's own logs can
+name players in ways HellForge does not know, so read `summary.txt` before you post it. If Crash dump was on, the
+launcher asks whether to add the dump, which cannot be scrubbed. Open a GitHub issue then opens the new-issue page;
+nothing is sent until you attach the zip yourself.
 
 Settings > Troubleshooting has two switches for harder problems. Both apply to the next session.
 

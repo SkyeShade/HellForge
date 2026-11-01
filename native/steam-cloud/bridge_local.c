@@ -18,14 +18,14 @@ void BridgeLocalAttach(GameChannel* channel) { g_channel = channel; }
 
 int BridgeInvoke(uint32_t method, BridgeWriter* w, BridgeReader* r)
 {
-    uint32_t size = 0, status = BRIDGE_STATUS_UNKNOWN;
+    GameChannelReply reply = { w->data, sizeof w->data, 0, BRIDGE_STATUS_UNKNOWN };
     if (!g_channel || w->failed) return 0;
     /* the reply is read into the writer's buffer: GameChannelCall copies the arguments out before it reads */
-    if (!GameChannelCall(g_channel, method, w->data, w->size, w->data, sizeof w->data, &size, &status) ||
-        status != BRIDGE_STATUS_OK || size > sizeof w->data)
+    if (!GameChannelCall(g_channel, method, w->data, w->size, &reply) ||
+        reply.status != BRIDGE_STATUS_OK || reply.size > sizeof w->data)
         return 0;
     r->data = w->data;
-    r->size = size;
+    r->size = reply.size;
     r->at = 0;
     return 1;
 }
@@ -366,24 +366,26 @@ static void Run(void* object, const uint8_t* payload, uint32_t size, bool ioFail
     ((RunFn)vtable[0])(object, param, ioFailure, call);
 }
 
+/* A call result: the one object registered for its call. */
+static void DispatchCallResult(const uint8_t* data, uint32_t size)
+{
+    if (size < BRIDGE_CALL_RESULT_HEADER) return;
+    uint64_t call;
+    memcpy(&call, data, 8);
+    bool ioFailure = data[8] != 0;
+    /* as Steam: the registration ends with its delivery */
+    void* object = NULL;
+    AcquireSRWLockExclusive(&g_registrationsLock);
+    for (int i = 0; i < g_registrationCount; i++)
+        if (g_registrations[i].call == call) { object = g_registrations[i].object; g_registrations[i] = g_registrations[--g_registrationCount]; break; }
+    ReleaseSRWLockExclusive(&g_registrationsLock);
+    if (object) Run(object, data + BRIDGE_CALL_RESULT_HEADER, size - BRIDGE_CALL_RESULT_HEADER, ioFailure, call);
+}
+
 void BridgeDispatch(uint32_t callbackId, const uint8_t* data, uint32_t size)
 {
     if (callbackId == BRIDGE_P2P_PACKET) { P2PPiece(data, size); return; }
-    if (callbackId & BRIDGE_CALL_RESULT_FLAG)
-    {
-        if (size < BRIDGE_CALL_RESULT_HEADER) return;
-        uint64_t call;
-        memcpy(&call, data, 8);
-        bool ioFailure = data[8] != 0;
-        /* as Steam: the registration ends with its delivery */
-        void* object = NULL;
-        AcquireSRWLockExclusive(&g_registrationsLock);
-        for (int i = 0; i < g_registrationCount; i++)
-            if (g_registrations[i].call == call) { object = g_registrations[i].object; g_registrations[i] = g_registrations[--g_registrationCount]; break; }
-        ReleaseSRWLockExclusive(&g_registrationsLock);
-        if (object) Run(object, data + BRIDGE_CALL_RESULT_HEADER, size - BRIDGE_CALL_RESULT_HEADER, ioFailure, call);
-        return;
-    }
+    if (callbackId & BRIDGE_CALL_RESULT_FLAG) { DispatchCallResult(data, size); return; }
     /* a callback: every object registered for its id, as it stands when each is called (a handler may unregister others) */
     void* objects[MAX_REGISTRATIONS];
     int n = 0;

@@ -156,7 +156,8 @@ public sealed class PlayFabService
         return Ok(new JsonObject { ["Friends"] = friends }, friends.Count > 0 ? "pf_friends_hellforge" : "pf_friends_empty");
     }
 
-    (int, JsonObject, string) Profiles(JsonElement body, bool single)
+    // The entity ids a GetProfile (its Entity) or GetProfiles (its Entities) body asks for.
+    static List<string> ProfileIds(JsonElement body, bool single)
     {
         var ids = new List<string>();
         if (single && body.ValueKind == JsonValueKind.Object && body.TryGetProperty("Entity", out var entity) && entity.TryGetProperty("Id", out var one))
@@ -164,6 +165,12 @@ public sealed class PlayFabService
         if (!single && body.ValueKind == JsonValueKind.Object && body.TryGetProperty("Entities", out var list) && list.ValueKind == JsonValueKind.Array)
             foreach (var e in list.EnumerateArray())
                 if (e.ValueKind == JsonValueKind.Object && e.TryGetProperty("Id", out var id)) ids.Add(id.GetString() ?? "");
+        return ids;
+    }
+
+    (int, JsonObject, string) Profiles(JsonElement body, bool single)
+    {
+        var ids = ProfileIds(body, single);
         var profiles = new JsonArray();
         foreach (var id in ids)
         {
@@ -193,25 +200,27 @@ public sealed class PlayFabService
         var results = new JsonArray();
         lock (stored)
             foreach (var item in list.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("ObjectName", out var nameElement) || nameElement.GetString() is not { Length: > 0 and <= 64 } name) continue;
-                if (!item.TryGetProperty("DataObject", out var value)) continue;
-                if (value.GetRawText().Length > MaxObjectBytes || (!stored.ContainsKey(name) && stored.Count >= MaxObjectsPerEntity))
-                {
-                    results.Add((JsonNode?)new JsonObject { ["ObjectName"] = name, ["OperationReason"] = "Rejected", ["SetResult"] = "None" });
-                    continue;
-                }
-                // The engine reads only EscapedDataObject (the object's JSON text) and dereferences it unchecked
-                // (exe 0x8D4710): a profile object without it crashes the client.
-                stored[name] = new JsonObject
-                {
-                    ["ObjectName"] = name, ["DataObject"] = JsonNode.Parse(value.GetRawText()), ["EscapedDataObject"] = value.GetRawText()
-                };
-                results.Add((JsonNode?)new JsonObject { ["ObjectName"] = name, ["OperationReason"] = "Updated", ["SetResult"] = "Updated" });
-            }
+                if (SetObject(stored, item) is { } result) results.Add((JsonNode?)result);
         if (presence != null && localSteamId is { } me && string.Equals(id, TitlePlayerId(me), StringComparison.OrdinalIgnoreCase))
             lock (stored) presence.SetLocalObjects(stored);
         return Ok(new JsonObject { ["ProfileVersion"] = 1, ["SetResults"] = results }, "pf_objects_set");
+    }
+
+    // One object of a SetObjects body into the entity's stored objects, or rejected over the limits; its set result, or
+    // null for an item that names no object or carries no DataObject.
+    static JsonObject? SetObject(JsonObject stored, JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("ObjectName", out var nameElement) || nameElement.GetString() is not { Length: > 0 and <= 64 } name) return null;
+        if (!item.TryGetProperty("DataObject", out var value)) return null;
+        if (value.GetRawText().Length > MaxObjectBytes || (!stored.ContainsKey(name) && stored.Count >= MaxObjectsPerEntity))
+            return new JsonObject { ["ObjectName"] = name, ["OperationReason"] = "Rejected", ["SetResult"] = "None" };
+        // The engine reads only EscapedDataObject (the object's JSON text) and dereferences it unchecked
+        // (exe 0x8D4710): a profile object without it crashes the client.
+        stored[name] = new JsonObject
+        {
+            ["ObjectName"] = name, ["DataObject"] = JsonNode.Parse(value.GetRawText()), ["EscapedDataObject"] = value.GetRawText()
+        };
+        return new JsonObject { ["ObjectName"] = name, ["OperationReason"] = "Updated", ["SetResult"] = "Updated" };
     }
 
     (int, JsonObject, string) DisplayName(JsonElement body)

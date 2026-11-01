@@ -25,7 +25,7 @@ try
     // A web page in the player's browser is refused: another Host (DNS rebinding), or a browser's marks (Origin, Referer,
     // Sec-Fetch-*). A program on this PC is served, by 127.0.0.1 or localhost.
     {
-        await using var app = LocalBackend.Create(0, Path.Combine(root, "web-pages"), LoginMode.LocalSession);
+        await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "web-pages"), LoginMode.LocalSession));
         await app.StartAsync();
         try
         {
@@ -62,7 +62,7 @@ try
     foreach (var mode in new[] { LoginMode.RejectGmi, LoginMode.LocalSession })
     {
         var evidence = Path.Combine(root, mode.ToString());
-        await using var app = LocalBackend.Create(0, evidence, mode);
+        await using var app = LocalBackend.Create(new BackendSettings(0, evidence, mode));
         await app.StartAsync();
         try
         {
@@ -172,7 +172,7 @@ try
     {
         Check(!reopened.Created, "Existing profile was recreated.");
         var evidence = Path.Combine(root, "profile-server");
-        await using var app = LocalBackend.Create(0, evidence, LoginMode.LocalSession, true, reopened);
+        await using var app = LocalBackend.Create(new BackendSettings(0, evidence, LoginMode.LocalSession) { StartupFixtures = true, Profile = reopened });
         await app.StartAsync();
         try
         {
@@ -403,7 +403,7 @@ try
     using (var writable = ProfileStore.Open(profileDirectory))
     {
         var accountKeys = new AccountKeys { LocalId = 76561190000000002 };
-        await using var app = LocalBackend.Create(0, Path.Combine(root, "profile-writes"), LoginMode.LocalSession, true, writable, accountKeys: accountKeys);
+        await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "profile-writes"), LoginMode.LocalSession) { StartupFixtures = true, Profile = writable, AccountKeys = accountKeys });
         await app.StartAsync();
         try
         {
@@ -550,9 +550,11 @@ try
         Check(File.ReadAllText(profileFile) == text, "Invalid profile was overwritten: " + name);
     }
     var unpaired = false;
-    try { using var store = ProfileStore.Open(null); await using var app = LocalBackend.Create(0, Path.Combine(root, "unpaired"), LoginMode.LocalSession, false, store); }
+    try { using var store = ProfileStore.Open(null); await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "unpaired"), LoginMode.LocalSession) { Profile = store }); }
     catch (ArgumentException) { unpaired = true; }
     Check(unpaired, "Profile accepted without startup fixtures.");
+    AccountSyncTests.Run(root, Check);
+    Console.WriteLine("PASS account sync: premium only from a sealed snapshot of the signed-in account, free warbond open, Super Credits never served, granted or imported, imports by category with backups and restore");
     results.Add(new { mode = "profile", outcome = "passed", invalidEdits = invalidEdits.Length + 1 });
     Console.WriteLine("PASS profile: fixture defaults, persistence, single server, validation, session audit");
     await LiveWarTests.Run(root, Check);
@@ -564,11 +566,12 @@ try
     await MultiplayerTests.Run(Check);
     results.Add(new { mode = "multiplayer", outcome = "passed" });
     Console.WriteLine("PASS multiplayer: frames, lobby create/join/update/leave across backends, modlist gate, forged events, named pipe, loopback UDP");
-    // The command line: every option the session runner passes (PlaySession.StartBackend; its multiplayer path the longest)
-    // is accepted; an unknown or repeated one is refused.
+    // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
+    // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
+    // repeated one is refused.
     var runner = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session/PlaySession.cs"));
     var startAt = runner.IndexOf("void StartBackend(", StringComparison.Ordinal);
-    var startBackend = startAt < 0 ? "" : runner[startAt..runner.IndexOf("Process.Start(", startAt, StringComparison.Ordinal)];
+    var startBackend = startAt < 0 ? "" : runner[startAt..runner.IndexOf("void Observe(", startAt, StringComparison.Ordinal)];
     var passed = System.Text.RegularExpressions.Regex.Matches(startBackend, "\"(--[a-z][a-z-]+)\"").Select(m => m.Groups[1].Value).Distinct().ToList();
     Check(passed.Contains("--mods") && passed.Contains("--pipe") && passed.Contains("--port") && passed.Contains("--mod-digest"),
         "The session runner's backend options were not found.");
@@ -594,7 +597,7 @@ try
     Console.WriteLine("PASS lobby privacy: Public, Friends only and Invite only against friends, strangers and invited players; kicks and no rejoin; invitations; frame limits; the stranger gate's limits and memory");
     await ModSyncTests.Run(root, Check);
     results.Add(new { mode = "mod-sync", outcome = "passed" });
-    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, never a stranger's; the live pipe");
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's only when sandboxed; the live pipe");
     await RejoinTests.Run(root, Check);
     results.Add(new { mode = "rejoin", outcome = "passed" });
     Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");

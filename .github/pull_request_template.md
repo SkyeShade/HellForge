@@ -10,6 +10,11 @@
 - [ ] Engine or editor changes: `scripts/Build-Engine.ps1` / `scripts/Build-Editor.ps1 -Test` pass
 - [ ] In game, if it changes what players see or do: what was tried, solo or co-op
 
+## Changelog
+
+- [ ] `CHANGELOG.md` has this change's line under Unreleased, with this pull request's number (Added, Changed or Fixed;
+      CLI and settings changes under "For launcher developers"), or: nothing a player, modder or launcher would notice
+
 ## For launchers
 
 - [ ] No `HellForge.Cli` command, option or JSON output changed, or: `docs/external-launchers.md` is updated and the

@@ -341,7 +341,18 @@ static bool SetLobbyJoinable(void* self, uint64_t lobby, bool joinable)
 
 /* ---- Steam P2P between the instances (loopback UDP; the bridge's own checks still decide who may be reached) ---- */
 
-static uint16_t PortOf(uint64_t id) { return (uint16_t)(BROKER_P2P_PORT_BASE + id % 1000); }
+static uint16_t DefaultPortOf(uint64_t id) { return (uint16_t)(BROKER_P2P_PORT_BASE + id % 1000); }
+static BrokerP2PPortFn g_portOf = DefaultPortOf;
+static uint16_t PortOf(uint64_t id) { return g_portOf(id); }
+void BrokerLobbiesPorts(BrokerP2PPortFn portOf) { g_portOf = portOf ? portOf : DefaultPortOf; }
+
+uint16_t BrokerLobbiesPort(const BrokerLobbies* s)
+{
+    struct sockaddr_in at;
+    int length = sizeof at;
+    if (!s || s->udp == INVALID_SOCKET || getsockname(s->udp, (struct sockaddr*)&at, &length) != 0) return 0;
+    return ntohs(at.sin_port);
+}
 
 /* Whatever arrived on this broker's socket since, into its packet list (a full list drops the rest). */
 static void Drain(BrokerLobbies* s)

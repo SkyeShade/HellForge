@@ -40,18 +40,24 @@ public sealed class StrangerGate(IPeerTransport transport, Func<bool> listing, F
         if (frame.Type is "lobby.join" or "lobby.rejoin")
         {
             if (!listing() && !related(peer) && welcome?.Invoke(peer) != true) return Refuse(peer, "a join with no public lobby listed here", now);
-            lock (joins)
-            {
-                if (!joins.TryGetValue(peer, out var times)) joins[peer] = times = new Queue<DateTime>();
-                while (times.Count > 0 && now - times.Peek() > Window) times.Dequeue();
-                while (allJoins.Count > 0 && now - allJoins.Peek() > Window) allJoins.Dequeue();
-                if (times.Count >= JoinsPerPeer || allJoins.Count >= JoinsInAll) return Refuse(peer, "too many joins", now);
-                times.Enqueue(now);
-                allJoins.Enqueue(now);
-                return true;
-            }
+            return CountJoin(peer, now);
         }
         return related(peer) || Refuse(peer, frame.Type, now);
+    }
+
+    // A join within JoinsPerPeer a minute from this machine and JoinsInAll from everyone, counted.
+    bool CountJoin(ulong peer, DateTime now)
+    {
+        lock (joins)
+        {
+            if (!joins.TryGetValue(peer, out var times)) joins[peer] = times = new Queue<DateTime>();
+            while (times.Count > 0 && now - times.Peek() > Window) times.Dequeue();
+            while (allJoins.Count > 0 && now - allJoins.Peek() > Window) allJoins.Dequeue();
+            if (times.Count >= JoinsPerPeer || allJoins.Count >= JoinsInAll) return Refuse(peer, "too many joins", now);
+            times.Enqueue(now);
+            allJoins.Enqueue(now);
+            return true;
+        }
     }
 
     // Machines silent for Window leave both tables.

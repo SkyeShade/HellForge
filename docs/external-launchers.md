@@ -26,7 +26,8 @@ The interface is the commands and the JSON they print. Other files in an install
    the same way (see [Mods](#mods)).
 4. Manage profiles and settings with `profiles` and `settings`.
 5. Start a session with `play --wait yes`, show its status lines, and stop it with `stop`.
-6. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help.
+6. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help, or
+   `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
 game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version.
@@ -58,7 +59,7 @@ standard error and exits with 1.
 
 | Command | What it does |
 |---|---|
-| `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session and whether one is running. |
+| `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session, whether one is running, and the language packs in the copy (`languages`; English is always there). |
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
 | `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
 | `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). |
@@ -67,10 +68,12 @@ standard error and exits with 1.
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
-| `logs [--run <id>] [--export <file.zip>]` | Lists the sessions, newest first, with how each ended; `--run` adds one session's files; `--export` zips a session's logs (see [Logs](#logs)). |
+| `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended; `--run` adds one session's files; `--export` zips a session's logs; `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
 | `stop [--run <run folder>] [--wait yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. |
 | `fetch-war` | Fetches the live galactic war into `live-war.json`. The Linux scripts run this before a session. |
+| `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
+| `language-add --name <language> [--steam-root <Steam folder>] [--keep yes\|no]` | Copies one pack from Steam's download into the game copy, every file checked against the pinned list, then deletes the download unless `--keep yes`. Refused while a session runs, and until Steam has finished the download. |
 
 The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
 not show Local Stats (the in-game editor's saved changes, always on and never compared between friends); `mods` still
@@ -148,7 +151,7 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--game-options "<launch options>"]
-                       [--wait yes] [--dry-run yes]
+                       [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
@@ -161,6 +164,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
+| `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |
 
 Once the session runner has made its run folder, `play` prints
@@ -196,8 +200,8 @@ Only the newest ten are kept. These are the files to show a player:
 
 | File | What it holds |
 |---|---|
-| `session.log` | the session runner's steps |
-| `result.json` | the session's status and outcome |
+| `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
 | `modloader.log` | the mod loader: which mods loaded, and why one did not |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
@@ -208,7 +212,8 @@ Anything that stops a session before its run folder exists goes to `logs\session
 are in `userdata\`.
 
 `logs` reads all of this for you. It lists the sessions newest first, each with `id`, `folder`, `startedUtc`, `status`,
-`failure`, `gameExitCode` and `completedUtc` (a session still starting has no status yet), and prints the paths of
+`failure`, `gameExitCode`, `completedUtc` (a session still starting has no status yet) and `crashed` (the game ended by
+itself with an error, the mod loader noted a crash, or it left a crash dump), and prints the paths of
 `session-runner.log` (when there is one) and the game's own log folder. `--run <id>` adds that session's files with their
 sizes.
 
@@ -217,6 +222,17 @@ sizes.
 computer name, whoever wrote them. Programs are left out, and a crash dump goes in as it is. While a session runs, its
 logs are read with shared access, and a file it has locked is left out (`skipped` counts them). The zip must not exist
 yet.
+
+`logs --crash-report <file.zip>` makes the crash report the launcher's Save crash report makes, of the newest session or
+the one `--run` names: one zip for a player to attach to a GitHub issue. Nothing is uploaded; offer
+`https://github.com/SkyeShade/HellForge/issues/new` (`issuePage`, no parameters) for them to attach it. It holds
+`summary.txt` (the versions, system and settings, the game's exit code, the mod loader's crash note: its code, module and
+offset and thread, the mods, the loader's events before the crash and the last 200 lines of its log), `logs\` (the
+export, without crash dumps) and, only with `--dump yes`, `dump\crash-<pid>.dmp`. Its text is scrubbed further than the
+export, for a public issue: Steam ids, IP addresses other than loopback and the other players HellForge's logs name are
+replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's memory and cannot be scrubbed: ask the
+player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and
+`issuePage`.
 
 ## Linux
 

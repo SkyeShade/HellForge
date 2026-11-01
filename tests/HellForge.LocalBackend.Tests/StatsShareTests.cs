@@ -107,7 +107,7 @@ static class StatsShareTests
         var log = new ConcurrentQueue<string>();
         var runId = "stats-test-" + Guid.NewGuid().ToString("N")[..8];
         var sharing = true; /* the host's Mods page switch (ModSettings.HostStats) */
-        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue, () => Volatile.Read(ref sharing));
+        await using var hostShare = new StatsShare(hostLink, hostLobby, "stats-host-" + runId, hostMods, _ => "Host", log.Enqueue, new StatsShareOptions(() => Volatile.Read(ref sharing)));
         await using var guestShare = new StatsShare(guestLink, guestLobby, runId, guestMods, id => id == HostId ? "Friend Host" : "?", log.Enqueue);
         check(!File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts), "A host's files left by a session cut short are removed.");
         void Wire(IPeerTransport link, LobbyService lobby, StatsShare share) => link.Received += (peer, bytes) =>
@@ -156,6 +156,20 @@ static class StatsShareTests
         check(Eventually(() => Read(guestHostValues) == longKeys), "Long mod keys are kept: " + Read(guestHostValues));
         File.WriteAllText(hostModValues, silo.Replace(":2}", ":3}"));
         check(Eventually(() => Read(guestHostValues) == silo.Replace(":2}", ":3}")), "The host's values come back after the long keys.");
+        // The editor reading the file just as it is replaced: that write fails, and is made again a second later (not left
+        // until the host's next change). Windows only: elsewhere an open file does not stop its replacement.
+        if (OperatingSystem.IsWindows())
+        {
+            using (File.Open(guestHostValues, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                File.WriteAllText(hostModValues, longKeys);
+                check(Eventually(() => log.Any(l => l.Contains("mod content values could not be written", StringComparison.Ordinal))),
+                    "The joiner could not replace a file the editor holds open.");
+            }
+            check(Eventually(() => Read(guestHostValues) == longKeys), "Once the editor lets go, the host's latest values are written.");
+            File.WriteAllText(hostModValues, silo.Replace(":2}", ":3}"));
+            check(Eventually(() => Read(guestHostValues) == silo.Replace(":2}", ":3}")), "... and its next change too.");
+        }
 
         // The host applies a change: it reaches the joiner's game.
         File.WriteAllText(hostFile, Stats("\"AR-23 Liberator\":{\"weapon.fire_rate\":1000}"));
@@ -185,5 +199,12 @@ static class StatsShareTests
             "Without the host: the joiner's own values: " + string.Join(" | ", left));
         check(Eventually(() => !File.Exists(guestHostValues) && !File.Exists(guestHostStats) && !File.Exists(guestHostMounts)), "Without the host: its files are gone (the editor's own come back).");
         check(log.Any(l => l.Contains("sent this host's Local Stats")), "The host logged what it sent.");
+
+        // Notices (a refused join's, a kick's) reach the game in the order they were made, though each is sent off the
+        // caller's thread.
+        for (var i = 0; i < 100; i++) guestShare.Notice("brief", "n" + i, ["line"]);
+        var notices = game.Take(100);
+        check(notices.SequenceEqual(Enumerable.Range(0, 100).Select(i => $"notice\tbrief\tn{i}\tline")),
+            $"Notices reach the game in order ({notices.Count}): " + string.Join(" | ", notices.Take(8)));
     }
 }

@@ -32,6 +32,9 @@ public sealed class ProfileStore : IDisposable
     public string? FilePath { get; }
     public bool Created { get; }
 
+    // When set, inventory responses follow its premium rules; Super Credits are never served either way.
+    public OwnershipFilter? Ownership { get; set; }
+
     ProfileStore(JsonObject profile, string? filePath, FileStream? lease, bool created)
     {
         this.profile = profile;
@@ -56,7 +59,7 @@ public sealed class ProfileStore : IDisposable
         if (!document.RootElement.GetProperty("templates").TryGetProperty(template, out var found))
             throw new ArgumentException($"Unknown profile template '{template}'. Known: {string.Join(", ", TemplateNames)}.");
         var items = new JsonArray();
-        foreach (var item in found.GetProperty("items").EnumerateArray())
+        foreach (var item in found.GetProperty("items").EnumerateArray().Where(i => !PaidContentSet.IsSuperCredits(i.GetProperty("mixId").GetUInt32())))
             items.Add((JsonNode?)new JsonObject { ["mixId"] = item.GetProperty("mixId").GetUInt32(), ["amount"] = item.GetProperty("amount").GetInt32(),
                 ["isDiscovered"] = item.GetProperty("isDiscovered").GetBoolean() });
         return items;
@@ -109,7 +112,12 @@ public sealed class ProfileStore : IDisposable
         foreach (var (section, sectionPath) in Sections)
         {
             if (sectionPath != path) continue;
-            lock (gate) body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
+            lock (gate)
+            {
+                body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
+                if (section == "inventory")
+                    body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
+            }
             return true;
         }
         body = default;
@@ -130,27 +138,29 @@ public sealed class ProfileStore : IDisposable
     // POST /Account/ReportPosition (builders 0x12bcf40, 0x12db270): where the Super Destroyer is, {"warId", "planetIndex",
     // "territoryIndex"?, "regionIndex"?}, sent as it moves. GET /Progression returns it as "location" (parser 0x1063320,
     // from 0x10624d0: warId and planetIndex required, the others optional), where the client places the ship at startup.
-    // The builder leaves territoryIndex out when it is negative but always writes regionIndex, -1 away from a region:
-    // a negative optional index is "none" and is not kept.
-    public bool TrySetLocation(JsonElement body)
+    public bool TrySetLocation(JsonElement body) => ParseLocation(body) is { } value && Update(progression => progression["location"] = value);
+
+    // A ship position as /Progression serves it, or null when it names no planet. The builder leaves territoryIndex out
+    // when it is negative but always writes regionIndex, -1 away from a region: a negative optional index is "none" and
+    // is not kept. The live server's /Progression gives a ship away from any planet a negative warId and planetIndex.
+    internal static JsonObject? ParseLocation(JsonElement reported)
     {
-        if (body.ValueKind != JsonValueKind.Object) return false;
-        JsonObject value;
+        if (reported.ValueKind != JsonValueKind.Object) return null;
         try
         {
-            var reported = JsonNode.Parse(body.GetRawText())!.AsObject();
-            value = new JsonObject();
+            var source = JsonNode.Parse(reported.GetRawText())!.AsObject();
+            var value = new JsonObject();
             foreach (var key in new[] { "warId", "planetIndex", "territoryIndex", "regionIndex" })
             {
-                if (!reported.ContainsKey(key)) { if (key is "warId" or "planetIndex") return false; continue; }
-                if (key is "territoryIndex" or "regionIndex" && reported[key] is JsonValue index &&
+                if (!source.ContainsKey(key)) { if (key is "warId" or "planetIndex") return null; continue; }
+                if (key is "territoryIndex" or "regionIndex" && source[key] is JsonValue index &&
                     index.GetValueKind() == JsonValueKind.Number && index.ToJsonString() == "-1") continue;
-                value[key] = Integer(reported, key, "location");
+                value[key] = Integer(source, key, "location");
             }
             ValidateLocation(value);
+            return value;
         }
-        catch (InvalidDataException) { return false; }
-        return Update(progression => progression["location"] = value);
+        catch (InvalidDataException) { return null; }
     }
 
     // PUT /Progression/OnboardingState (builders 0x12be3a0, 0x1355f00): state and flags as GET /Progression reports them.
@@ -186,51 +196,66 @@ public sealed class ProfileStore : IDisposable
         if (body.TryGetProperty("modes", out var modeList))
         {
             if (modeList.ValueKind != JsonValueKind.Array || modeList.GetArrayLength() > 8) return null;
-            foreach (var mode in modeList.EnumerateArray())
-                if (mode.TryGetInt64(out var value) && value is >= 0 and <= uint.MaxValue) modes.Add((JsonNode?)value); else return null;
+            if (!TryIds(modeList, out modes)) return null;
         }
+        if (Templates(body) is not { } templates) return null;
+        lock (gate) return SetCustomization(weapon, activeIndex, modes, templates);
+    }
+
+    // A list of ids (0 to uint.MaxValue each: modes, attachments), or false when any is not one.
+    static bool TryIds(JsonElement list, out JsonArray ids)
+    {
+        ids = new JsonArray();
+        foreach (var item in list.EnumerateArray())
+            if (item.TryGetInt64(out var value) && value is >= 0 and <= uint.MaxValue) ids.Add((JsonNode?)value); else return false;
+        return true;
+    }
+
+    // A customization body's templates (none without "customizations"), or null when they are not up to 3 of index 0-2
+    // with up to 10 slots each.
+    static List<(int Index, JsonArray Slots)>? Templates(JsonElement body)
+    {
         var templates = new List<(int Index, JsonArray Slots)>();
-        if (body.TryGetProperty("customizations", out var customizations))
+        if (!body.TryGetProperty("customizations", out var customizations)) return templates;
+        if (customizations.ValueKind != JsonValueKind.Array || customizations.GetArrayLength() > 3) return null;
+        foreach (var template in customizations.EnumerateArray())
         {
-            if (customizations.ValueKind != JsonValueKind.Array || customizations.GetArrayLength() > 3) return null;
-            foreach (var template in customizations.EnumerateArray())
-            {
-                if (template.ValueKind != JsonValueKind.Object || !template.TryGetProperty("index", out var index) ||
-                    !index.TryGetInt32(out var at) || at is < 0 or > 2 || !template.TryGetProperty("slots", out var slots) ||
-                    slots.ValueKind != JsonValueKind.Array || slots.GetArrayLength() > 10) return null;
-                var values = new JsonArray();
-                foreach (var slot in slots.EnumerateArray())
-                    if (slot.TryGetInt64(out var value) && value is >= 0 and <= uint.MaxValue) values.Add((JsonNode?)value); else return null;
-                templates.Add((at, values));
-            }
+            if (template.ValueKind != JsonValueKind.Object || !template.TryGetProperty("index", out var index) ||
+                !index.TryGetInt32(out var at) || at is < 0 or > 2 || !template.TryGetProperty("slots", out var slots) ||
+                slots.ValueKind != JsonValueKind.Array || slots.GetArrayLength() > 10) return null;
+            if (!TryIds(slots, out var values)) return null;
+            templates.Add((at, values));
         }
-        lock (gate)
+        return templates;
+    }
+
+    // Called with gate held.
+    JsonElement SetCustomization(uint weapon, int activeIndex, JsonArray modes, List<(int Index, JsonArray Slots)> templates)
+    {
+        var updated = profile.DeepClone().AsObject();
+        var section = (JsonObject)updated["customization"]!;
+        var items = section["items"] as JsonArray ?? [];
+        section["items"] = items;
+        var item = items.OfType<JsonObject>().FirstOrDefault(i => Whole(i["mixId32"]) == weapon);
+        if (item == null)
         {
-            var updated = profile.DeepClone().AsObject();
-            var section = (JsonObject)updated["customization"]!;
-            var items = section["items"] as JsonArray ?? [];
-            section["items"] = items;
-            var item = items.OfType<JsonObject>().FirstOrDefault(i => Whole(i["mixId32"]) == weapon);
-            if (item == null)
-            {
-                item = new JsonObject { ["mixId32"] = weapon, ["modes"] = new JsonArray(), ["activeIndex"] = -1, ["customizations"] = new JsonArray() };
-                items.Add((JsonNode?)item);
-            }
-            item["modes"] = modes;
-            item["activeIndex"] = activeIndex;
-            var stored = item["customizations"] as JsonArray ?? [];
-            item["customizations"] = stored;
-            foreach (var (index, slots) in templates)
-            {
-                if (stored.OfType<JsonObject>().FirstOrDefault(t => Whole(t["index"]) == index) is { } existing)
-                    existing["slots"] = slots;
-                else stored.Add((JsonNode?)new JsonObject { ["index"] = index, ["slots"] = slots });
-            }
-            Validate(updated);
-            if (FilePath != null) Save(FilePath, updated);
-            profile["customization"] = updated["customization"]!.DeepClone();
-            return JsonSerializer.SerializeToElement(profile["customization"], BackendJson.Default.JsonNode);
+            item = new JsonObject { ["mixId32"] = weapon, ["modes"] = new JsonArray(), ["activeIndex"] = -1, ["customizations"] = new JsonArray() };
+            items.Add((JsonNode?)item);
         }
+        item["modes"] = modes;
+        item["activeIndex"] = activeIndex;
+        var stored = item["customizations"] as JsonArray ?? [];
+        item["customizations"] = stored;
+        foreach (var (index, slots) in templates)
+        {
+            if (stored.OfType<JsonObject>().FirstOrDefault(t => Whole(t["index"]) == index) is { } existing)
+                existing["slots"] = slots;
+            else stored.Add((JsonNode?)new JsonObject { ["index"] = index, ["slots"] = slots });
+        }
+        Validate(updated);
+        if (FilePath != null) Save(FilePath, updated);
+        profile["customization"] = updated["customization"]!.DeepClone();
+        return JsonSerializer.SerializeToElement(profile["customization"], BackendJson.Default.JsonNode);
     }
 
     // A JSON integer, however its node was made (a JsonValue made from a uint does not convert to long).
@@ -251,8 +276,43 @@ public sealed class ProfileStore : IDisposable
         return true;
     }
 
+    // An account import (AccountImport, the launcher's Profile > Account sync): the saved profile is backed up first.
+    public void Import(AccountSnapshot snapshot, HellForge.Core.AccountImportSettings settings, PaidContentSet paid)
+    {
+        lock (gate)
+        {
+            var updated = AccountImport.Merge(profile, snapshot, settings, paid);
+            Validate(updated);
+            Commit(updated, "import");
+        }
+    }
+
+    // Puts a backup (HellForge.Core ProfileBackups) back; the profile it replaces is backed up first.
+    public void Restore(string backupPath)
+    {
+        var restored = Load(backupPath);
+        lock (gate) Commit(restored, "restore");
+    }
+
+    // A copy of the profile as it is now.
+    public JsonObject Current()
+    {
+        lock (gate) return (JsonObject)profile.DeepClone();
+    }
+
+    void Commit(JsonObject updated, string reason)
+    {
+        if (FilePath != null)
+        {
+            HellForge.Core.ProfileBackups.Save(Path.GetDirectoryName(FilePath)!, reason, DateTime.UtcNow);
+            Save(FilePath, updated);
+        }
+        foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
+    }
+
     // Mission end: adds experience and item amounts (samples, requisition). Amounts are clamped to the catalogue
-    // maxCap when one exists; unknown items are added as discovered inventory entries.
+    // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
+    // whatever the mission report claims was found.
     public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items)
     {
         var caps = new Dictionary<uint, long>();
@@ -265,7 +325,7 @@ public sealed class ProfileStore : IDisposable
             progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             var inventory = (JsonObject)updated["inventory"]!;
             if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
-            foreach (var (mix, amount) in items)
+            foreach (var (mix, amount) in items.Where(item => !PaidContentSet.IsSuperCredits(item.Key)))
             {
                 var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
                 if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));
@@ -422,13 +482,19 @@ public sealed class ProfileStore : IDisposable
         {
             if (entry["id32"] is not JsonValue id || !id.TryGetValue<long>(out var id32) || !chains.TryGetValue((uint)id32, out var chain)) continue;
             var level = entry["level"] is JsonValue l && l.TryGetValue<int>(out var reached) ? reached : 0;
-            foreach (var required in chain.GetProperty("requiredItems").EnumerateArray()) Grant(required.GetUInt32());
-            foreach (var step in chain.GetProperty("levels").EnumerateArray())
-                if (step.GetProperty("level").GetInt32() <= level)
-                    foreach (var reward in step.GetProperty("rewards").EnumerateArray())
-                        if (reward.GetProperty("type").GetInt32() == 1) Grant(reward.GetProperty("id32").GetUInt32());
+            foreach (var mixId in ChainItems(chain, level)) Grant(mixId);
         }
         return added > 0;
+    }
+
+    // The items a chain gives a profile at its level: the chain's required items, then the item rewards of levels 1..level.
+    static IEnumerable<uint> ChainItems(JsonElement chain, int level)
+    {
+        foreach (var required in chain.GetProperty("requiredItems").EnumerateArray()) yield return required.GetUInt32();
+        foreach (var step in chain.GetProperty("levels").EnumerateArray())
+            if (step.GetProperty("level").GetInt32() <= level)
+                foreach (var reward in step.GetProperty("rewards").EnumerateArray())
+                    if (reward.GetProperty("type").GetInt32() == 1) yield return reward.GetProperty("id32").GetUInt32();
     }
 
     // Onboarding flags (from a template, or a profile saved before this) mark the new-player intro as done, so the

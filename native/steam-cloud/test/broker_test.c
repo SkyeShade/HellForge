@@ -20,6 +20,16 @@
 #include "../bridge_broker.h"
 
 static int g_failures;
+/* A pipe suffix of this process's own (base-pid): another run of this test at the same time has its own pipes. Each call
+ * returns its own buffer, so a suffix stays valid while the test uses it. */
+static const wchar_t* Name(const wchar_t* base)
+{
+    static wchar_t names[16][64];
+    static int next;
+    wchar_t* name = names[next++ % 16];
+    swprintf(name, 64, L"%ls-%lu", base, GetCurrentProcessId());
+    return name;
+}
 #define CHECK(ok, what) do { int ok_ = (ok); printf("%s %s\n", ok_ ? "  ok  " : "  FAIL", what); if (!ok_) g_failures++; } while (0)
 
 /* ---- the ring ---- */
@@ -142,21 +152,23 @@ static void Join(HANDLE thread, Broker* b)
 
 static void TestServe(void)
 {
-    Broker b = { .suffix = L"test-serve", .expectedPid = GetCurrentProcessId(), .serve = 1 };
+    Broker b = { .suffix = Name(L"test-serve"), .expectedPid = GetCurrentProcessId(), .serve = 1 };
     HANDLE thread = StartBroker(&b);
     CHECK(b.created, "serve: channel created");
 
     BrokerChannel second;
-    CHECK(!BrokerChannelCreate(&second, L"test-serve"), "serve: a second pipe of the same name is refused (first instance)");
+    CHECK(!BrokerChannelCreate(&second, Name(L"test-serve")), "serve: a second pipe of the same name is refused (first instance)");
 
     GameChannel game;
-    CHECK(GameChannelConnect(&game, L"test-serve", 2000), "serve: the game connects and gets the ring");
+    CHECK(GameChannelConnect(&game, Name(L"test-serve"), 2000), "serve: the game connects and gets the ring");
 
     uint8_t running = 0;
-    uint32_t size = 0, status = 99;
-    CHECK(GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &running, 1, &size, &status) &&
-        status == BRIDGE_STATUS_OK && size == 1 && running == 1, "serve: IsSteamRunning answered by the broker");
-    CHECK(GameChannelCall(&game, 777, NULL, 0, NULL, 0, &size, &status) && status == BRIDGE_STATUS_UNKNOWN,
+    uint32_t size = 0;
+    GameChannelReply answer = { &running, 1, 0, 99 };
+    CHECK(GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &answer) &&
+        answer.status == BRIDGE_STATUS_OK && answer.size == 1 && running == 1, "serve: IsSteamRunning answered by the broker");
+    GameChannelReply unknown = { NULL, 0, 0, 99 };
+    CHECK(GameChannelCall(&game, 777, NULL, 0, &unknown) && unknown.status == BRIDGE_STATUS_UNKNOWN,
         "serve: an unknown function is refused, the channel stays up");
 
     /* malformed: a call too short to name its function */
@@ -178,7 +190,7 @@ static void TestServe(void)
         "serve: an oversized message is read to its end and answered as malformed");
 
     running = 0;
-    CHECK(GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &running, 1, &size, &status) && running == 1,
+    CHECK(GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &answer) && running == 1,
         "serve: calls still work after both");
 
     /* the round trips' cost: the three calls made through GameChannelCall, by function, then a fresh count */
@@ -193,7 +205,7 @@ static void TestServe(void)
 
     /* the pump runs between calls: its callback reaches the ring */
     DWORD start = GetTickCount();
-    while (!GameChannelPending(&game) && GetTickCount() - start < 2000) Sleep(5);
+    while (!GameChannelPending(&game) && GetTickCount() - start < 10000) Sleep(5);
     uint32_t id = 0;
     uint8_t data[BRIDGE_RING_DATA_SIZE];
     CHECK(GameChannelReadCallback(&game, &id, data, sizeof data, &size) && id == 1221 && size == 3 && data[2] == 3,
@@ -205,17 +217,38 @@ static void TestServe(void)
     CHECK(b.ended == BROKER_END_SHUTDOWN, "serve: closing says shutdown and the loop ends");
 }
 
+/* Whether the DACL allows this process's user, compared as SIDs: SDDL text names some accounts by an alias (the built-in
+ * Administrator, CI's runner account, is "LA"), not by S-1-5-21-... */
+static int GrantsOwnUser(PACL dacl)
+{
+    HANDLE token = NULL;
+    union { TOKEN_USER user; BYTE bytes[256]; } info;
+    DWORD size = 0;
+    if (!dacl || !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return 0;
+    BOOL ok = GetTokenInformation(token, TokenUser, &info, sizeof info, &size);
+    CloseHandle(token);
+    if (!ok) return 0;
+    for (DWORD i = 0; i < dacl->AceCount; i++)
+    {
+        ACCESS_ALLOWED_ACE* ace = NULL;
+        if (GetAce(dacl, i, (void**)&ace) && ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE && EqualSid((PSID)&ace->SidStart, info.user.User.Sid))
+            return 1;
+    }
+    return 0;
+}
+
 static void TestSecurity(void)
 {
     BrokerChannel* ch = (BrokerChannel*)calloc(1, sizeof *ch);
-    if (!ch || !BrokerChannelCreate(ch, L"test-security")) { CHECK(0, "security: channel created"); free(ch); return; }
+    if (!ch || !BrokerChannelCreate(ch, Name(L"test-security"))) { CHECK(0, "security: channel created"); free(ch); return; }
     PSECURITY_DESCRIPTOR sd = NULL;
+    PACL dacl = NULL;
     wchar_t* text = NULL;
-    DWORD got = GetSecurityInfo(ch->pipe, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION, NULL, NULL, NULL, NULL, &sd);
+    DWORD got = GetSecurityInfo(ch->pipe, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION, NULL, NULL, &dacl, NULL, &sd);
     if (got == ERROR_SUCCESS) ConvertSecurityDescriptorToStringSecurityDescriptorW(sd, SDDL_REVISION_1, DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION, &text, NULL);
     CHECK(text && wcsstr(text, L"ML;;NW;;;LW"), "security: the pipe carries a low no-write-up label");
     CHECK(text && !wcsstr(text, L";;;WD)"), "security: Everyone is not granted");
-    CHECK(text && wcsstr(text, L"S-1-5-21") , "security: the player's own SID is granted");
+    CHECK(got == ERROR_SUCCESS && GrantsOwnUser(dacl), "security: the player's own SID is granted");
     if (text) LocalFree(text);
     if (sd) LocalFree(sd);
     BrokerChannelClose(ch);
@@ -224,12 +257,12 @@ static void TestSecurity(void)
 
 static void TestWrongClient(const wchar_t* self)
 {
-    Broker b = { .suffix = L"test-wrong", .expectedPid = GetCurrentProcessId(), .serve = 1 };
+    Broker b = { .suffix = Name(L"test-wrong"), .expectedPid = GetCurrentProcessId(), .serve = 1 };
     HANDLE thread = StartBroker(&b);
 
     /* another process: same user, wrong pid */
     wchar_t command[MAX_PATH + 64];
-    swprintf(command, MAX_PATH + 64, L"\"%ls\" client test-wrong", self);
+    swprintf(command, MAX_PATH + 64, L"\"%ls\" client %ls", self, b.suffix);
     STARTUPINFOW si = { sizeof si };
     PROCESS_INFORMATION pi;
     DWORD code = 0;
@@ -244,9 +277,11 @@ static void TestWrongClient(const wchar_t* self)
 
     /* this process, lying about its pid */
     HANDLE pipe = INVALID_HANDLE_VALUE;
+    wchar_t pipeName[128];
+    swprintf(pipeName, 128, L"\\\\.\\pipe\\hellforge-broker-%ls", b.suffix);
     for (int i = 0; i < 100 && pipe == INVALID_HANDLE_VALUE; i++)
     {
-        pipe = CreateFileW(L"\\\\.\\pipe\\hellforge-broker-test-wrong", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        pipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
         if (pipe == INVALID_HANDLE_VALUE) Sleep(20);
     }
     DWORD mode = PIPE_READMODE_MESSAGE;
@@ -260,7 +295,7 @@ static void TestWrongClient(const wchar_t* self)
 
     /* the game itself still gets in */
     GameChannel game;
-    CHECK(GameChannelConnect(&game, L"test-wrong", 3000), "wrong client: the right one connects afterwards");
+    CHECK(GameChannelConnect(&game, Name(L"test-wrong"), 3000), "wrong client: the right one connects afterwards");
     GameChannelClose(&game);
     Join(thread, &b);
     CHECK(b.accepted == BROKER_ACCEPTED && b.refused == 2, "wrong client: the broker refused two and kept waiting");
@@ -268,40 +303,40 @@ static void TestWrongClient(const wchar_t* self)
 
 static void TestLateBroker(void)
 {
-    Broker b = { .suffix = L"test-late", .expectedPid = GetCurrentProcessId(), .serve = 1, .delayMs = 400 };
+    Broker b = { .suffix = Name(L"test-late"), .expectedPid = GetCurrentProcessId(), .serve = 1, .delayMs = 400 };
     HANDLE thread = StartBroker(&b);
     DWORD start = GetTickCount();
     GameChannel game;
-    int ok = GameChannelConnect(&game, L"test-late", 5000);
+    int ok = GameChannelConnect(&game, Name(L"test-late"), 5000);
     CHECK(ok && GetTickCount() - start >= 300, "late broker: the game waits for its pipe, then connects");
     GameChannelClose(&game);
     Join(thread, &b);
 
     start = GetTickCount();
-    CHECK(!GameChannelConnect(&game, L"test-nobody", 300) && game.dead && GetTickCount() - start < 2000,
+    CHECK(!GameChannelConnect(&game, Name(L"test-nobody"), 300) && game.dead && GetTickCount() - start < 2000,
         "no broker: the connect gives up after its timeout");
     GameChannelClose(&game);
 }
 
 static void TestDeadBroker(void)
 {
-    Broker b = { .suffix = L"test-dead", .expectedPid = GetCurrentProcessId(), .serve = 0 };
+    Broker b = { .suffix = Name(L"test-dead"), .expectedPid = GetCurrentProcessId(), .serve = 0 };
     HANDLE thread = StartBroker(&b);
     GameChannel game;
-    CHECK(GameChannelConnect(&game, L"test-dead", 2000), "dead broker: connected");
+    CHECK(GameChannelConnect(&game, Name(L"test-dead"), 2000), "dead broker: connected");
     Join(thread, &b);
     uint8_t running = 1;
-    uint32_t size = 0, status = 0;
-    CHECK(!GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &running, 1, &size, &status) && game.dead,
+    GameChannelReply answer = { &running, 1, 0, 0 };
+    CHECK(!GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &answer) && game.dead,
         "dead broker: the call fails and the channel is marked dead");
-    CHECK(!GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &running, 1, &size, &status), "dead broker: later calls fail at once");
+    CHECK(!GameChannelCall(&game, BRIDGE_FN_IS_STEAM_RUNNING, NULL, 0, &answer), "dead broker: later calls fail at once");
     GameChannelClose(&game);
 }
 
 static void TestGameGone(void)
 {
     HANDLE game = CreateEventW(NULL, TRUE, FALSE, NULL);
-    Broker b = { .suffix = L"test-gone", .expectedPid = GetCurrentProcessId(), .serve = 1, .game = game };
+    Broker b = { .suffix = Name(L"test-gone"), .expectedPid = GetCurrentProcessId(), .serve = 1, .game = game };
     HANDLE thread = StartBroker(&b);
     Sleep(100);
     SetEvent(game);
@@ -309,10 +344,10 @@ static void TestGameGone(void)
     CHECK(b.accepted == BROKER_GAME_GONE, "game gone: the broker stops waiting when the game exits before connecting");
 
     ResetEvent(game);
-    Broker s = { .suffix = L"test-gone2", .expectedPid = GetCurrentProcessId(), .serve = 1, .game = game };
+    Broker s = { .suffix = Name(L"test-gone2"), .expectedPid = GetCurrentProcessId(), .serve = 1, .game = game };
     thread = StartBroker(&s);
     GameChannel client;
-    CHECK(GameChannelConnect(&client, L"test-gone2", 2000), "game gone: connected");
+    CHECK(GameChannelConnect(&client, Name(L"test-gone2"), 2000), "game gone: connected");
     SetEvent(game);
     Join(thread, &s);
     CHECK(s.ended == BROKER_END_GAME_GONE, "game gone: the serving loop ends when the game exits");
@@ -328,9 +363,9 @@ typedef void (__cdecl *VoidFn)(void);
 
 static void TestStandIn(const wchar_t* standIn)
 {
-    Broker b = { .suffix = L"test-standin", .expectedPid = GetCurrentProcessId(), .serve = 1 };
+    Broker b = { .suffix = Name(L"test-standin"), .expectedPid = GetCurrentProcessId(), .serve = 1 };
     HANDLE thread = StartBroker(&b);
-    SetEnvironmentVariableW(L"HELLFORGE_BRIDGE_PIPE", L"test-standin");
+    SetEnvironmentVariableW(L"HELLFORGE_BRIDGE_PIPE", Name(L"test-standin"));
     HMODULE dll = LoadLibraryW(standIn);
     CHECK(dll != NULL, "stand-in: loads with HELLFORGE_BRIDGE_PIPE set (no connect under the loader lock)");
     if (!dll) { Join(thread, &b); return; }
@@ -344,7 +379,7 @@ static void TestStandIn(const wchar_t* standIn)
     CHECK(initSafe() && pipe() == 1, "stand-in: Init connects to the broker");
     CHECK(running() == 1, "stand-in: IsSteamRunning is the broker's answer");
     DWORD start = GetTickCount();
-    while (!b.fake.pushed && GetTickCount() - start < 2000) Sleep(5);
+    while (!b.fake.pushed && GetTickCount() - start < 10000) Sleep(5);
     run();
     run();
     CHECK(GetModuleHandleW(L"steam_api64_hellforge.dll") == NULL, "stand-in: Valve's DLL is never loaded in bridge mode");

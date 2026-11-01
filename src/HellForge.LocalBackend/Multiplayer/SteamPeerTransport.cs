@@ -165,28 +165,34 @@ public sealed unsafe class SteamPeerTransport : IPeerTransport, IFriendSource
             var callback = stackalloc byte[24]; // CallbackMsg_t
             var identity = stackalloc byte[IdentitySize];
             var inbox = stackalloc nint[32];
-            while (!stop.IsCancellationRequested)
+            // Steam's callbacks: session requests and failures, and the directory's calls completed.
+            void TakeCallbacks()
             {
-                runFrame(pipe);
                 while (nextCallback(pipe, callback) != 0)
                 {
                     var id = *(int*)(callback + 4);
                     var parameter = *(byte**)(callback + 8);
-                    if (id is SessionRequest or SessionFailed && *(int*)parameter == IdentitySteamId)
-                    {
-                        var remote = *(ulong*)(parameter + 8);
-                        if (id == SessionFailed) log("A Steam peer session failed.");
-                        else if (!TreatFriendsAsStrangers && relationship(friends, remote) == FriendRelationshipFriend || AcceptStranger?.Invoke(remote) == true)
-                            accept(messages, parameter);
-                        else if (DateTime.UtcNow - strangerLogged > TimeSpan.FromMinutes(1))
-                        {
-                            strangerLogged = DateTime.UtcNow;
-                            log("Refused a Steam peer session from someone who is not a Steam friend (no public lobby listed here).");
-                        }
-                    }
+                    if (id is SessionRequest or SessionFailed && *(int*)parameter == IdentitySteamId) SessionCallback(id, parameter);
                     else if (id == CallCompleted) Directory.CallCompleted(parameter);
                     freeCallback(pipe);
                 }
+            }
+            // A session request is accepted from a Steam friend, or from someone else AcceptStranger lets in.
+            void SessionCallback(int id, byte* parameter)
+            {
+                var remote = *(ulong*)(parameter + 8);
+                if (id == SessionFailed) log("A Steam peer session failed.");
+                else if (!TreatFriendsAsStrangers && relationship(friends, remote) == FriendRelationshipFriend || AcceptStranger?.Invoke(remote) == true)
+                    accept(messages, parameter);
+                else if (DateTime.UtcNow - strangerLogged > TimeSpan.FromMinutes(1))
+                {
+                    strangerLogged = DateTime.UtcNow;
+                    log("Refused a Steam peer session from someone who is not a Steam friend (no public lobby listed here).");
+                }
+            }
+            // The queued frames to their peers; true when there were any.
+            bool SendQueued()
+            {
                 var busy = false;
                 while (outbox.TryDequeue(out var outgoing))
                 {
@@ -203,6 +209,12 @@ public sealed unsafe class SteamPeerTransport : IPeerTransport, IFriendSource
                             (result == ResultLimitExceeded ? ", its send buffer is full." : "."));
                     }
                 }
+                return busy;
+            }
+            // The messages that came in, to Received; true when there were any.
+            bool ReceiveMessages()
+            {
+                var busy = false;
                 int count;
                 while ((count = receive(messages, Channel, inbox, 32)) > 0)
                     for (var i = 0; i < count; i++)
@@ -219,6 +231,14 @@ public sealed unsafe class SteamPeerTransport : IPeerTransport, IFriendSource
                         }
                         release(message);
                     }
+                return busy;
+            }
+            while (!stop.IsCancellationRequested)
+            {
+                runFrame(pipe);
+                TakeCallbacks();
+                var busy = SendQueued();
+                if (ReceiveMessages()) busy = true;
                 Directory.Pump();
                 if (DateTime.UtcNow - lastScan > FriendScanInterval)
                 {

@@ -1,9 +1,26 @@
 /* Read-only, per-load observations for the launcher. Values stay in the local session directory.
  * A field a stats file changed reports its value from before the stats pass: the editor's game value. */
+/* Whether one of the mods' own records of the component, in the table, has that index. */
+static int StatsOwnedIndex(const Component* c, const uint8_t* table, uint32_t index)
+{
+    for (int j = 0; j < g_ownedCount; j++)
+        if (g_owned[j].component == c->index && g_owned[j].index == table && g_owned[j].stride == c->stride &&
+            index >= g_owned[j].first && index < g_owned[j].next) return 1;
+    return 0;
+}
+
+/* The field of the record an index row names for the probe (flags: the row's): a vanilla record when it is the probe's
+ * record, or a mod's own; 0 otherwise. */
+static uintptr_t StatsObservedRecord(const StatEdit* e, const Component* c, uint8_t* table, uint32_t index, uint32_t flags)
+{
+    if (flags) return 0;
+    int valid = (index < c->records && index == e->record) || StatsOwnedIndex(c, table, index);
+    return valid ? (uintptr_t)table + c->recordOffset + (uintptr_t)index * c->stride + e->offset : 0;
+}
+
 static uintptr_t StatsObservedComponent(StatEdit* e)
 {
-    const Component* c = NULL;
-    for (int i = 0; i < g_componentCount; i++) if (!strcmp(g_components[i].name, e->component)) c = &g_components[i];
+    const Component* c = LastComponentNamed(e->component);
     if (!c || c->stride < 4 || e->offset > c->stride - StatSize(e) || c->recordOffset != c->indices * 16u || !c->indices) return 0;
     uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * c->index);
     uint8_t head[32];
@@ -15,41 +32,28 @@ static uintptr_t StatsObservedComponent(StatEdit* e)
         if (SafeRead((uintptr_t)table + at * 16u, row, sizeof row)) return 0;
         memcpy(&resource, row, 8); memcpy(&index, row + 8, 4); memcpy(&flags, row + 12, 4);
         if (!resource) return 0;
-        if (resource == e->resource)
-        {
-            if (flags) return 0;
-            int valid = index < c->records && index == e->record;
-            for (int j = 0; j < g_ownedCount; j++)
-                if (g_owned[j].component == c->index && g_owned[j].index == table && g_owned[j].stride == c->stride &&
-                    index >= g_owned[j].first && index < g_owned[j].next) valid = 1;
-            return valid ? (uintptr_t)table + c->recordOffset + (uintptr_t)index * c->stride + e->offset : 0;
-        }
+        if (resource == e->resource) return StatsObservedRecord(e, c, table, index, flags);
         at = (at + 1) % c->indices;
     }
     return 0;
 }
 
+/* A table kind's phase (StatsTableOf): projectile, damage, else stratagem. */
+static int StatsTablePhase(const char* kind) { return !strcmp(kind, "ProjectileSettings") ? 0 : !strcmp(kind, "DamageInfo") ? 1 : 2; }
+
 static uintptr_t StatsObservedTable(StatEdit* e, uintptr_t game)
 {
     if (StatsExtraKind(e->kind) >= 0) return StatsExtraRow(e);
-    int phase = !strcmp(e->kind, "ProjectileSettings") ? 0 : !strcmp(e->kind, "DamageInfo") ? 1 : 2;
-    uintptr_t table = phase == 0 ? ProjectileTable(game) : phase == 1 ? (g_damageTable ? (uintptr_t)g_damageTable : game + DMG_TABLE) :
-        (g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE);
+    int phase = StatsTablePhase(e->kind);
+    uintptr_t table = StatsTableOf(phase, game);
     uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
     uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     if (!game || e->offset < 4 || e->offset > stride - 4) return 0;
-    uintptr_t found = 0; int matches = 0;
     uint32_t first = phase == 2 ? 1 : (uint32_t)e->record;
     uint32_t last = phase == 2 ? count : first + 1;
     if (first == 0 || first >= count) return 0;
-    for (uint32_t slot = first; slot < last; slot++)
-    {
-        uintptr_t row; uint32_t type, id;
-        if (SafeRead(table + slot * 8u, &row, 8) || !row || SafeRead(row, &type, 4) || type != slot) continue;
-        if (phase == 2) { if (SafeRead(row + 4, &id, 4)) continue; } else id = type;
-        if (id == e->record) { matches++; found = row; }
-    }
-    return matches == 1 ? found + e->offset : 0;
+    uintptr_t found = StatsTableRow(phase, table, first, last, e->record);
+    return found ? found + e->offset : 0;
 }
 
 static void StatsSaveSnapshot(void)
@@ -71,65 +75,80 @@ static void StatsSaveSnapshot(void)
     if (!failed) MoveFileExW(temporary, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
 }
 
+/* What the last snapshot was taken after: the component pass's generation, and which table passes were done. */
+static struct { unsigned componentGeneration; int phases[3], extra[STATS_EXTRA_COUNT], boosters, perks, melee; } g_statsSeen = {UINT32_MAX};
+
+/* Whether a pass was done since the last snapshot (components: the component pass ran again). */
+static int StatsSnapshotChanged(int components)
+{
+    int changed = components;
+    for (int i = 0; i < 3; i++) if (g_statsSeen.phases[i] != g_statsTablesDone[i]) changed = 1;
+    for (int i = 0; i < (int)STATS_EXTRA_COUNT; i++) if (g_statsSeen.extra[i] != g_statsExtraDone[i]) changed = 1;
+    if (g_statsSeen.boosters != g_boostersDone || g_statsSeen.perks != g_perksDone || g_statsSeen.melee != g_meleeDone) changed = 1;
+    return changed;
+}
+
+/* Whether the pass a probe's field belongs to was done since the last snapshot: it is read again. */
+static int StatsProbeDue(const StatEdit* e, int components)
+{
+    if (!strcmp(e->kind, "component")) return components;
+    if (!strncmp(e->kind, "Passive", 7)) return g_statsSeen.perks != g_perksDone;
+    if (!strcmp(e->kind, "MeleeHitVolume")) return g_statsSeen.melee != g_meleeDone;
+    if (!strcmp(e->kind, "BoosterSettings")) return g_statsSeen.boosters != g_boostersDone;
+    int kind = StatsExtraKind(e->kind);
+    if (kind >= 0) return g_statsSeen.extra[kind] != g_statsExtraDone[kind];
+    int phase = StatsTablePhase(e->kind);
+    return g_statsSeen.phases[phase] != g_statsTablesDone[phase];
+}
+
+/* Where a probe's field is now; 0 none. */
+static uintptr_t StatsProbeAddress(StatEdit* e, uintptr_t game)
+{
+    if (!strcmp(e->kind, "component")) return StatsObservedComponent(e);
+    if (!strncmp(e->kind, "Passive", 7))
+    {
+        int ready;
+        uintptr_t at = PerkRow(e->kind, (uint64_t)e->record, &ready);
+        return at && e->offset >= 4 && e->offset <= 12 ? at + e->offset : 0;
+    }
+    if (!strcmp(e->kind, "MeleeHitVolume"))
+    {
+        uintptr_t row = MeleeVolume((uint64_t)e->record);
+        return row && e->offset >= 4 && e->offset <= MELEE_VOLUME_SIZE - 4 ? row + e->offset : 0;
+    }
+    if (!strcmp(e->kind, "BoosterSettings"))
+    {
+        uintptr_t row = BoosterRow((uint64_t)e->record);
+        return row && e->offset >= 4 && e->offset <= BOOSTER_ROW - 4 ? row + e->offset : 0;
+    }
+    return StatsObservedTable(e, game);
+}
+
+/* A probe's value at its address: the game's, from before a stats edit there. */
+static void StatsProbeRead(StatEdit* e, uintptr_t address)
+{
+    e->value = 0;
+    e->applied = address && !SafeRead(address, &e->value, StatSize(e));
+    e->address = e->applied ? address : 0; /* get_stat reads it again */
+    for (int j = 0; e->applied && j < g_statCount; j++)
+        if (g_stats[j].applied && g_stats[j].address == address) { e->value = g_stats[j].original; break; }
+    if (e->applied && e->floating && !StatsFiniteBits(e->value)) e->applied = 0;
+}
+
 static void StatsSnapshotReady(uintptr_t game)
 {
-    static unsigned componentGeneration = UINT32_MAX;
-    static int phases[3], extra[STATS_EXTRA_COUNT], boosters, perks, melee;
     if (!g_statsProbeCount || strcmp(g_build, "25480438")) return;
-    int components = g_statsComponentsReady && componentGeneration != g_statsGeneration;
-    int changed = components;
-    for (int i = 0; i < 3; i++) if (phases[i] != g_statsTablesDone[i]) changed = 1;
-    for (int i = 0; i < (int)STATS_EXTRA_COUNT; i++) if (extra[i] != g_statsExtraDone[i]) changed = 1;
-    if (boosters != g_boostersDone || perks != g_perksDone || melee != g_meleeDone) changed = 1;
-    if (!changed) return;
+    int components = g_statsComponentsReady && g_statsSeen.componentGeneration != g_statsGeneration;
+    if (!StatsSnapshotChanged(components)) return;
     AcquireSRWLockExclusive(&g_statsLock);
     for (int i = 0; i < g_statsProbeCount; i++)
     {
-        StatEdit* e = &g_statsProbes[i]; uintptr_t address = 0;
-        if (!strcmp(e->kind, "component"))
-        {
-            if (!components) continue;
-            address = StatsObservedComponent(e);
-        }
-        else if (!strncmp(e->kind, "Passive", 7))
-        {
-            if (perks == g_perksDone) continue;
-            int ready;
-            uintptr_t at = PerkRow(e->kind, (uint64_t)e->record, &ready);
-            address = at && e->offset >= 4 && e->offset <= 12 ? at + e->offset : 0;
-        }
-        else if (!strcmp(e->kind, "MeleeHitVolume"))
-        {
-            if (melee == g_meleeDone) continue;
-            uintptr_t row = MeleeVolume((uint64_t)e->record);
-            address = row && e->offset >= 4 && e->offset <= MELEE_VOLUME_SIZE - 4 ? row + e->offset : 0;
-        }
-        else if (!strcmp(e->kind, "BoosterSettings"))
-        {
-            if (boosters == g_boostersDone) continue;
-            uintptr_t row = BoosterRow((uint64_t)e->record);
-            address = row && e->offset >= 4 && e->offset <= BOOSTER_ROW - 4 ? row + e->offset : 0;
-        }
-        else
-        {
-            int kind = StatsExtraKind(e->kind);
-            if (kind >= 0) { if (extra[kind] == g_statsExtraDone[kind]) continue; }
-            else
-            {
-                int phase = !strcmp(e->kind, "ProjectileSettings") ? 0 : !strcmp(e->kind, "DamageInfo") ? 1 : 2;
-                if (phases[phase] == g_statsTablesDone[phase]) continue;
-            }
-            address = StatsObservedTable(e, game);
-        }
-        e->value = 0;
-        e->applied = address && !SafeRead(address, &e->value, StatSize(e));
-        e->address = e->applied ? address : 0; /* get_stat reads it again */
-        for (int j = 0; e->applied && j < g_statCount; j++)
-            if (g_stats[j].applied && g_stats[j].address == address) { e->value = g_stats[j].original; break; }
-        if (e->applied && e->floating) { float value; memcpy(&value, &e->value, 4); if (!isfinite(value)) e->applied = 0; }
+        StatEdit* e = &g_statsProbes[i];
+        if (StatsProbeDue(e, components)) StatsProbeRead(e, StatsProbeAddress(e, game));
     }
-    if (components) componentGeneration = g_statsGeneration;
-    memcpy(phases, g_statsTablesDone, sizeof phases); memcpy(extra, g_statsExtraDone, sizeof extra); boosters = g_boostersDone; perks = g_perksDone; melee = g_meleeDone;
+    if (components) g_statsSeen.componentGeneration = g_statsGeneration;
+    memcpy(g_statsSeen.phases, g_statsTablesDone, sizeof g_statsSeen.phases); memcpy(g_statsSeen.extra, g_statsExtraDone, sizeof g_statsSeen.extra);
+    g_statsSeen.boosters = g_boostersDone; g_statsSeen.perks = g_perksDone; g_statsSeen.melee = g_meleeDone;
     ReleaseSRWLockExclusive(&g_statsLock);
     StatsSaveSnapshot();
 }

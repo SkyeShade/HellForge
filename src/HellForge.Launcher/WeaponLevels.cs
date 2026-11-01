@@ -93,29 +93,7 @@ static class WeaponLevelData
             {
                 if (have.Add(mixId)) held.Add(new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });
             }
-            foreach (var (package, level) in levels)
-            {
-                var entry = progress.OfType<JsonObject>().FirstOrDefault(e => Whole(e["id32"]) == package);
-                if (level <= 0)
-                {
-                    if (entry != null) progress.Remove(entry);
-                    continue;
-                }
-                if (entry == null)
-                    progress.Add(new JsonObject { ["id32"] = package, ["level"] = level, ["progress"] = 0, ["sortOrder"] = 0, ["claimedLevels"] = new JsonArray() });
-                else if (Whole(entry["level"]) != level)
-                {
-                    entry["level"] = level;
-                    entry["progress"] = 0;
-                }
-                if (!packages.TryGetValue(package, out var definition)) continue;
-                foreach (var step in definition.GetProperty("levels").EnumerateArray().Where(s => s.GetProperty("level").GetInt32() <= level))
-                {
-                    foreach (var reward in step.GetProperty("rewards").EnumerateArray())
-                        if (reward.GetProperty("type").GetInt32() == 1) Grant(reward.GetProperty("id32").GetUInt32());
-                    foreach (var unlock in step.GetProperty("unlockableItems").EnumerateArray()) Grant(unlock.GetProperty("mixId").GetUInt32());
-                }
-            }
+            foreach (var (package, level) in levels) ApplyPackageLevel(progress, package, level, packages, Grant);
             var temporary = profileFile + ".tmp";
             File.WriteAllText(temporary, profile.ToJsonString(WriteOptions) + "\n");
             File.Move(temporary, profileFile, true);
@@ -125,6 +103,32 @@ static class WeaponLevelData
             NullReferenceException or KeyNotFoundException or FormatException)
         {
             return "Could not save the weapon levels: " + error.Message;
+        }
+    }
+
+    // One weapon's mastery package set to level (0 removes it): the progress entry, and the reward and unlock items of
+    // levels 1..level granted through Grant.
+    static void ApplyPackageLevel(JsonArray progress, uint package, int level, IReadOnlyDictionary<uint, JsonElement> packages, Action<uint> Grant)
+    {
+        var entry = progress.OfType<JsonObject>().FirstOrDefault(e => Whole(e["id32"]) == package);
+        if (level <= 0)
+        {
+            if (entry != null) progress.Remove(entry);
+            return;
+        }
+        if (entry == null)
+            progress.Add(new JsonObject { ["id32"] = package, ["level"] = level, ["progress"] = 0, ["sortOrder"] = 0, ["claimedLevels"] = new JsonArray() });
+        else if (Whole(entry["level"]) != level)
+        {
+            entry["level"] = level;
+            entry["progress"] = 0;
+        }
+        if (!packages.TryGetValue(package, out var definition)) return;
+        foreach (var step in definition.GetProperty("levels").EnumerateArray().Where(s => s.GetProperty("level").GetInt32() <= level))
+        {
+            foreach (var reward in step.GetProperty("rewards").EnumerateArray())
+                if (reward.GetProperty("type").GetInt32() == 1) Grant(reward.GetProperty("id32").GetUInt32());
+            foreach (var unlock in step.GetProperty("unlockableItems").EnumerateArray()) Grant(unlock.GetProperty("mixId").GetUInt32());
         }
     }
 }

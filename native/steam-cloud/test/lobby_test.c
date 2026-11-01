@@ -39,6 +39,17 @@ static bool Next(BrokerLobbies* s, int32_t id, BrokerLocalResult* out)
 
 static uint32_t Response(const BrokerLocalResult* r) { uint32_t v; memcpy(&v, r->data + 16, 4); return v; }
 
+// Each instance's P2P port: 0 until it opened (it binds any free one), then the one it got. A fixed port per SteamID
+// (the broker's own) would collide with another run of this test at the same time.
+static uint16_t g_ports[3];
+static uint16_t TestPort(uint64_t id) { return id >= A && id <= C ? g_ports[id - A] : 0; }
+static BrokerLobbies* Open(const wchar_t* folder, uint64_t id)
+{
+    BrokerLobbies* s = BrokerLobbiesOpen(folder, id);
+    g_ports[id - A] = BrokerLobbiesPort(s);
+    return s;
+}
+
 int wmain(int argc, wchar_t** argv)
 {
     (void)argc; (void)argv;
@@ -60,10 +71,12 @@ int wmain(int argc, wchar_t** argv)
     EXPECT(create && join && leave && members && member && owner && getData && setData && joinable &&
         !BrokerLobbiesResolve("SteamAPI_ISteamMatchmaking_RequestLobbyList"), "the nine bridged matchmaking calls are answered here, nothing else");
 
-    BrokerLobbies* a = BrokerLobbiesOpen(folder, A);
-    BrokerLobbies* b = BrokerLobbiesOpen(folder, B);
-    BrokerLobbies* c = BrokerLobbiesOpen(folder, C);
+    BrokerLobbiesPorts(TestPort);
+    BrokerLobbies* a = Open(folder, A);
+    BrokerLobbies* b = Open(folder, B);
+    BrokerLobbies* c = Open(folder, C);
     EXPECT(a && b && c, "three instances share the folder");
+    EXPECT(g_ports[0] && g_ports[1] && g_ports[2], "each instance's P2P socket is bound (to a free port)");
 
     // A hosts: its lobby, with data only it may set
     BrokerLobbiesUse(a);
@@ -115,7 +128,7 @@ int wmain(int argc, wchar_t** argv)
     uint64_t from = 0;
     static uint8_t got[7000];
     bool arrived = false;
-    for (int i = 0; i < 100 && !arrived; i++) { arrived = available(NULL, &size, 3); if (!arrived) Sleep(10); }
+    for (int i = 0; i < 500 && !arrived; i++) { arrived = available(NULL, &size, 3); if (!arrived) Sleep(10); }
     EXPECT(arrived && size == 3 && readPacket(NULL, got, sizeof got, &size, &from, 3) && size == 3 && memcmp(got, "two", 3) == 0 && from == A,
         "the joiner reads channel 3's packet, from the host");
     EXPECT(available(NULL, &size, 0) && size == sizeof bytes && readPacket(NULL, got, sizeof got, &size, &from, 0) && memcmp(got, bytes, sizeof bytes) == 0 &&

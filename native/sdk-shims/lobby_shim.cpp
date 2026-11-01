@@ -22,875 +22,11 @@
 #include <string>
 #include <vector>
 #include "lobby_index.g.h"
+// The state and its local completions, then the backend's lobby service: in files of their own, included here.
+#include "lobby_state.h"
+#include "lobby_remote.h"
 
 namespace {
-
-// "The requested lobby doesn't exist", from the SDK's error table (lobby research notes).
-constexpr HRESULT lobbyNotFound = (HRESULT)0x89236226;
-const char unavailable[] = "HellForge: PlayFab Multiplayer is replaced by the offline stand-in; this operation is not available.";
-// "hellforge1-lobby;<lobby id>;<owner entity id>": the owner tells a friend's stand-in whose machine hosts the lobby.
-const char connectionPrefix[] = "hellforge1-lobby;";
-
-// Text handed to the game stays valid until PFMultiplayerUninitialize. The SDK only promises it until the next
-// state-change processing, but HD2's engine keeps a lobby property's text (wrapper 0x8c6f00) beyond the call.
-std::vector<char*> strings;
-
-const char* Intern(const char* text)
-{
-    size_t length = strlen(text);
-    char* copy = new char[length + 1];
-    memcpy(copy, text, length + 1);
-    strings.push_back(copy);
-    return copy;
-}
-
-struct Member
-{
-    std::string id;
-    std::string type;
-    bool local;
-    std::map<std::string, const char*> properties;
-    std::vector<const char*> keys;
-    PFEntityKey Key() const { return {id.c_str(), type.c_str()}; }
-};
-
-struct Lobby
-{
-    std::string id;
-    std::string connectionString;
-    uint32_t maxMemberCount;
-    PFLobbyOwnerMigrationPolicy ownerMigrationPolicy;
-    PFLobbyAccessPolicy accessPolicy;
-    PFLobbyMembershipLock membershipLock;
-    std::map<std::string, const char*> lobbyProperties;
-    std::map<std::string, const char*> searchProperties;
-    std::vector<const char*> lobbyKeys;
-    std::vector<const char*> searchKeys;
-    std::vector<Member*> members; // Current members.
-    std::vector<PFEntityKey> memberKeys;
-    std::vector<Member*> everyMember; // Owns every member ever added, so their keys stay valid.
-    Member* owner;
-    PFEntityKey ownerKey;
-    void* customContext;
-    bool joined;
-};
-
-struct PropertyChange
-{
-    std::string key;
-    bool remove;
-    std::string value;
-};
-
-enum class OperationType { CreateAndJoin, Join, PostUpdate, Leave, SendInvite, FindLobbies, ListenerChanged, ForceRemove };
-
-// An asynchronous operation, completed in call order at the next state-change delivery. Its inputs are copied: the
-// game's buffers are only valid during the call.
-struct Operation
-{
-    OperationType type;
-    Lobby* lobby;
-    Member* member; // Creator, updating member, or the member leaving (null: every local member).
-    void* asyncContext;
-    std::string entityId; // Join, invite and listener operations name an entity that may not be a member.
-    std::string entityType;
-    std::string inviteeId; // also a force removal's target member
-    std::string inviteeType;
-    bool newOwner;
-    std::string newOwnerId;
-    bool maxMemberCountChanged;
-    uint32_t maxMemberCount;
-    bool accessPolicyChanged;
-    PFLobbyAccessPolicy accessPolicy;
-    bool membershipLockChanged;
-    PFLobbyMembershipLock membershipLock;
-    bool lobbyUpdate;
-    std::vector<PropertyChange> lobbyProperties;
-    std::vector<PropertyChange> searchProperties;
-    bool memberUpdate;
-    std::vector<PropertyChange> memberProperties;
-};
-
-union Payload
-{
-    PFLobbyStateChange base;
-    PFLobbyCreateAndJoinLobbyCompletedStateChange createAndJoin;
-    PFLobbyJoinLobbyCompletedStateChange join;
-    PFLobbyMemberAddedStateChange memberAdded;
-    PFLobbyMemberRemovedStateChange memberRemoved;
-    PFLobbyLeaveLobbyCompletedStateChange leave;
-    PFLobbyUpdatedStateChange updated;
-    PFLobbyPostUpdateCompletedStateChange postUpdate;
-    PFLobbyDisconnectingStateChange disconnecting;
-    PFLobbyDisconnectedStateChange disconnected;
-    PFLobbyFindLobbiesCompletedStateChange findLobbies;
-    PFLobbyInviteListenerStatusChangedStateChange listenerChanged;
-    PFLobbySendInviteCompletedStateChange sendInvite;
-    PFLobbyForceRemoveMemberCompletedStateChange forceRemove;
-    PFLobbyInviteReceivedStateChange inviteReceived;
-};
-
-// A search's results and the text they point to. A completion's results stay valid after its batch is finished, for the
-// last few searches: the SDK promises them until FinishProcessingLobbyStateChanges, but HD2 keeps lobby text beyond its
-// calls elsewhere (see strings), and interning every search's text would grow without end (a scan every 10 s).
-struct SearchResults
-{
-    std::deque<std::string> texts; // a deque: pointers into its strings stay valid as it grows
-    std::deque<PFEntityKey> owners;
-    std::deque<std::vector<const char*>> keys, values;
-    std::vector<PFLobbySearchResult> results;
-    const char* Keep(const std::string& text) { texts.push_back(text); return texts.back().c_str(); }
-};
-
-// A queued state change and the data its fields point to.
-struct StateChange
-{
-    Payload payload;
-    PFEntityKey localUser;
-    std::vector<const char*> lobbyKeys;
-    std::vector<const char*> searchKeys;
-    std::vector<const char*> memberKeys;
-    std::vector<PFLobbyMemberUpdateSummary> memberUpdates;
-    std::shared_ptr<SearchResults> search;
-};
-
-struct Batch
-{
-    std::vector<StateChange*> changes;
-    std::vector<const PFLobbyStateChange*> pointers;
-};
-
-const char multiplayer = 0; // The library handle only has to be stable and non-null.
-SRWLOCK lock = SRWLOCK_INIT;
-std::vector<Lobby*> lobbies;
-std::vector<Operation> pending;
-std::vector<StateChange*> queued;
-std::vector<Batch*> batches;
-std::vector<std::string> listeningEntities;
-std::map<std::string, std::string> listeningTypes; // a listening entity's type, for its InviteReceived
-std::deque<std::shared_ptr<SearchResults>> recentSearches;
-std::string lastFilter;
-uint32_t identifierCounter;
-const PFLobbyStateChange* const noLobbyStateChanges[1] = {nullptr};
-const PFMatchmakingStateChange* const noMatchmakingStateChanges[1] = {nullptr};
-const char* const noKeys[1] = {nullptr};
-const PFEntityKey noMembers[1] = {};
-
-// Remote mode: the backend's lobby service answers every request (lobby.result) and reports what changes.
-hellforge::Link link;
-bool remote;
-bool remoteLost; // The backend went away and every lobby was told.
-uint64_t operationCounter;
-std::map<std::string, Operation> waiting; // Sent requests by operation id.
-
-class Locked
-{
-public:
-    Locked() { AcquireSRWLockExclusive(&lock); }
-    ~Locked() { ReleaseSRWLockExclusive(&lock); }
-    Locked(const Locked&) = delete;
-    Locked& operator=(const Locked&) = delete;
-};
-
-bool IsMultiplayer(PFMultiplayerHandle handle) { return handle == reinterpret_cast<PFMultiplayerHandle>(&multiplayer); }
-PFLobbyHandle Handle(Lobby* lobby) { return reinterpret_cast<PFLobbyHandle>(lobby); }
-
-bool ValidKey(const PFEntityKey* key) { return key != nullptr && key->id != nullptr && key->id[0] != '\0' && key->type != nullptr; }
-
-// The finders run under the lock and accept only handles this library issued.
-Lobby* Find(PFLobbyHandle handle)
-{
-    for (Lobby* lobby : lobbies)
-        if (Handle(lobby) == handle) return lobby;
-    return nullptr;
-}
-
-Member* FindMember(const Lobby* lobby, const PFEntityKey* key)
-{
-    if (lobby == nullptr || !ValidKey(key)) return nullptr;
-    for (Member* member : lobby->members)
-        if (member->id == key->id) return member;
-    return nullptr;
-}
-
-std::string NewIdentifier()
-{
-    char identifier[40];
-    uint64_t tick = GetTickCount64();
-    snprintf(identifier, sizeof(identifier), "b75b10bb-%04lx-%04x-%04x-%012llx", GetCurrentProcessId() & 0xFFFF,
-        ++identifierCounter & 0xFFFF, (unsigned)(tick & 0xFFFF), (unsigned long long)(tick & 0xFFFFFFFFFFFFull));
-    return identifier;
-}
-
-void RefreshKeys(const std::map<std::string, const char*>& properties, std::vector<const char*>& keys)
-{
-    keys.clear();
-    for (const auto& property : properties) keys.push_back(property.first.c_str());
-}
-
-void RefreshMembers(Lobby* lobby)
-{
-    lobby->memberKeys.clear();
-    for (Member* member : lobby->members) lobby->memberKeys.push_back(member->Key());
-    lobby->ownerKey = lobby->owner != nullptr ? lobby->owner->Key() : PFEntityKey{};
-}
-
-// Returns false when the game passed inconsistent arrays.
-bool CopyProperties(uint32_t count, const char* const* keys, const char* const* values, std::vector<PropertyChange>& changes)
-{
-    if (count > 0 && (keys == nullptr || values == nullptr)) return false;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        if (keys[i] == nullptr || keys[i][0] == '\0') return false;
-        // A null value deletes the key.
-        changes.push_back({keys[i], values[i] == nullptr, values[i] != nullptr ? values[i] : ""});
-    }
-    return true;
-}
-
-void ApplyProperties(const std::vector<PropertyChange>& changes, std::map<std::string, const char*>& properties, std::vector<const char*>& keys)
-{
-    for (const PropertyChange& change : changes)
-    {
-        if (change.remove) properties.erase(change.key);
-        else properties[change.key] = Intern(change.value.c_str());
-    }
-    RefreshKeys(properties, keys);
-}
-
-// Records what the game publishes, which a joining friend's game reads (Party descriptor, invite id, platform lobby).
-void LogProperties(const char* scope, const std::string& owner, const std::vector<PropertyChange>& changes)
-{
-    for (const PropertyChange& change : changes)
-        if (change.remove) hellforge::Note("%s property of %s: \"%s\" removed", scope, owner.c_str(), change.key.c_str());
-        else hellforge::Note("%s property of %s: \"%s\" = \"%.300s\"", scope, owner.c_str(), change.key.c_str(), change.value.c_str());
-}
-
-Member* NewMember(Lobby* lobby, const std::string& id, const std::string& type, bool local)
-{
-    Member* member = new Member{};
-    member->id = id;
-    member->type = type;
-    member->local = local;
-    lobby->everyMember.push_back(member);
-    lobby->members.push_back(member);
-    RefreshMembers(lobby);
-    return member;
-}
-
-StateChange* Enqueue(PFLobbyStateChangeType type)
-{
-    StateChange* change = new StateChange{};
-    memset(&change->payload, 0, sizeof(change->payload));
-    change->payload.base.stateChangeType = type;
-    queued.push_back(change);
-    return change;
-}
-
-PFEntityKey InternKey(const std::string& id, const std::string& type) { return {Intern(id.c_str()), Intern(type.c_str())}; }
-
-void LeaveLocally(Operation& operation);
-
-void Complete(Operation& operation)
-{
-    Lobby* lobby = operation.lobby;
-    switch (operation.type)
-    {
-    case OperationType::CreateAndJoin:
-    {
-        // The SDK reports the creator's MemberAdded before the completion.
-        lobby->joined = true;
-        PFLobbyMemberAddedStateChange& added = Enqueue(PFLobbyStateChangeType::MemberAdded)->payload.memberAdded;
-        added.lobby = Handle(lobby);
-        added.member = operation.member->Key();
-        PFLobbyCreateAndJoinLobbyCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::CreateAndJoinLobbyCompleted)->payload.createAndJoin;
-        completed.result = S_OK;
-        completed.asyncContext = operation.asyncContext;
-        completed.lobby = Handle(lobby);
-        break;
-    }
-    case OperationType::Join:
-    {
-        // A friend's lobby: nothing can reach it yet.
-        PFLobbyJoinLobbyCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::JoinLobbyCompleted)->payload.join;
-        completed.result = lobbyNotFound;
-        completed.newMember = InternKey(operation.entityId, operation.entityType);
-        completed.asyncContext = operation.asyncContext;
-        completed.lobby = Handle(lobby);
-        break;
-    }
-    case OperationType::PostUpdate:
-    {
-        StateChange* change = Enqueue(PFLobbyStateChangeType::PostUpdateCompleted);
-        PFLobbyPostUpdateCompletedStateChange& completed = change->payload.postUpdate;
-        completed.lobby = Handle(lobby);
-        completed.localUser = operation.member->Key();
-        completed.asyncContext = operation.asyncContext;
-        bool member = lobby->joined && FindMember(lobby, &completed.localUser) != nullptr;
-        Member* newOwner = nullptr;
-        if (operation.newOwner)
-        {
-            PFEntityKey key{operation.newOwnerId.c_str(), ""};
-            newOwner = FindMember(lobby, &key);
-        }
-        // Only the owner may change the lobby itself, and a new owner must be a member.
-        if (!member) completed.result = lobbyNotFound;
-        else if (operation.lobbyUpdate && lobby->owner != operation.member) completed.result = E_ACCESSDENIED;
-        else if (operation.newOwner && newOwner == nullptr) completed.result = E_INVALIDARG;
-        else completed.result = S_OK;
-        if (completed.result != S_OK) break;
-
-        StateChange* update = Enqueue(PFLobbyStateChangeType::Updated);
-        PFLobbyUpdatedStateChange& updated = update->payload.updated;
-        updated.lobby = Handle(lobby);
-        if (operation.newOwner)
-        {
-            lobby->owner = newOwner;
-            updated.ownerUpdated = true;
-        }
-        if (operation.maxMemberCountChanged)
-        {
-            lobby->maxMemberCount = operation.maxMemberCount;
-            updated.maxMembersUpdated = true;
-        }
-        if (operation.accessPolicyChanged)
-        {
-            lobby->accessPolicy = operation.accessPolicy;
-            updated.accessPolicyUpdated = true;
-        }
-        if (operation.membershipLockChanged)
-        {
-            lobby->membershipLock = operation.membershipLock;
-            updated.membershipLockUpdated = true;
-        }
-        ApplyProperties(operation.lobbyProperties, lobby->lobbyProperties, lobby->lobbyKeys);
-        ApplyProperties(operation.searchProperties, lobby->searchProperties, lobby->searchKeys);
-        for (const PropertyChange& changed : operation.lobbyProperties) update->lobbyKeys.push_back(Intern(changed.key.c_str()));
-        for (const PropertyChange& changed : operation.searchProperties) update->searchKeys.push_back(Intern(changed.key.c_str()));
-        updated.updatedLobbyPropertyCount = (uint32_t)update->lobbyKeys.size();
-        updated.updatedLobbyPropertyKeys = update->lobbyKeys.empty() ? nullptr : update->lobbyKeys.data();
-        updated.updatedSearchPropertyCount = (uint32_t)update->searchKeys.size();
-        updated.updatedSearchPropertyKeys = update->searchKeys.empty() ? nullptr : update->searchKeys.data();
-        if (operation.memberUpdate)
-        {
-            ApplyProperties(operation.memberProperties, operation.member->properties, operation.member->keys);
-            for (const PropertyChange& changed : operation.memberProperties) update->memberKeys.push_back(Intern(changed.key.c_str()));
-            PFLobbyMemberUpdateSummary summary{};
-            summary.member = operation.member->Key();
-            summary.updatedMemberPropertyCount = (uint32_t)update->memberKeys.size();
-            summary.updatedMemberPropertyKeys = update->memberKeys.empty() ? nullptr : update->memberKeys.data();
-            update->memberUpdates.push_back(summary);
-            updated.memberUpdateCount = 1;
-            updated.memberUpdates = update->memberUpdates.data();
-        }
-        RefreshMembers(lobby);
-        break;
-    }
-    case OperationType::Leave:
-        LeaveLocally(operation);
-        break;
-    case OperationType::ForceRemove:
-    {
-        // Without the backend no other machine's member can be in a lobby, and a local member is never kicked.
-        PFLobbyForceRemoveMemberCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::ForceRemoveMemberCompleted)->payload.forceRemove;
-        completed.result = E_INVALIDARG;
-        completed.lobby = Handle(lobby);
-        completed.targetMember = InternKey(operation.inviteeId, operation.inviteeType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::SendInvite:
-    {
-        // Without the backend no invitation can leave this machine.
-        PFLobbySendInviteCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::SendInviteCompleted)->payload.sendInvite;
-        completed.result = E_NOTIMPL;
-        completed.lobby = Handle(lobby);
-        completed.sender = InternKey(operation.entityId, operation.entityType);
-        completed.invitee = InternKey(operation.inviteeId, operation.inviteeType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::FindLobbies:
-    {
-        PFLobbyFindLobbiesCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::FindLobbiesCompleted)->payload.findLobbies;
-        completed.result = S_OK;
-        completed.searchingEntity = InternKey(operation.entityId, operation.entityType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::ListenerChanged:
-        Enqueue(PFLobbyStateChangeType::InviteListenerStatusChanged)->payload.listenerChanged.listeningEntity =
-            InternKey(operation.entityId, operation.entityType);
-        break;
-    }
-}
-
-// The local member (or every local member) leaves: MemberRemoved, LeaveLobbyCompleted, and when no local member is
-// left, Disconnecting and Disconnected.
-void LeaveLocally(Operation& operation)
-{
-    Lobby* lobby = operation.lobby;
-    {
-        std::vector<Member*> leaving;
-        for (Member* member : lobby->members)
-            if (member->local && (operation.member == nullptr || member == operation.member)) leaving.push_back(member);
-        for (Member* member : leaving)
-        {
-            for (size_t i = 0; i < lobby->members.size(); i++)
-                if (lobby->members[i] == member) lobby->members.erase(lobby->members.begin() + (ptrdiff_t)i);
-            PFLobbyMemberRemovedStateChange& removed = Enqueue(PFLobbyStateChangeType::MemberRemoved)->payload.memberRemoved;
-            removed.lobby = Handle(lobby);
-            removed.member = member->Key();
-            removed.reason = PFLobbyMemberRemovedReason::LocalUserLeftLobby;
-        }
-        RefreshMembers(lobby);
-        StateChange* change = Enqueue(PFLobbyStateChangeType::LeaveLobbyCompleted);
-        change->payload.leave.lobby = Handle(lobby);
-        if (operation.member != nullptr)
-        {
-            change->localUser = operation.member->Key();
-            change->payload.leave.localUser = &change->localUser;
-        }
-        change->payload.leave.asyncContext = operation.asyncContext;
-        bool localMembers = false;
-        for (Member* member : lobby->members) localMembers = localMembers || member->local;
-        if (lobby->joined && !localMembers)
-        {
-            lobby->joined = false;
-            PFLobbyDisconnectingStateChange& disconnecting = Enqueue(PFLobbyStateChangeType::Disconnecting)->payload.disconnecting;
-            disconnecting.lobby = Handle(lobby);
-            disconnecting.reason = PFLobbyDisconnectingReason::NoLocalMembers;
-            Enqueue(PFLobbyStateChangeType::Disconnected)->payload.disconnected.lobby = Handle(lobby);
-        }
-    }
-}
-
-const char* Describe(const Payload& payload, uint32_t* value)
-{
-    switch (payload.base.stateChangeType)
-    {
-    case PFLobbyStateChangeType::CreateAndJoinLobbyCompleted: *value = (uint32_t)payload.createAndJoin.result; return "CreateAndJoinLobbyCompleted result";
-    case PFLobbyStateChangeType::JoinLobbyCompleted: *value = (uint32_t)payload.join.result; return "JoinLobbyCompleted result";
-    case PFLobbyStateChangeType::MemberAdded: *value = 0; return "MemberAdded";
-    case PFLobbyStateChangeType::MemberRemoved: *value = (uint32_t)payload.memberRemoved.reason; return "MemberRemoved reason";
-    case PFLobbyStateChangeType::LeaveLobbyCompleted: *value = 0; return "LeaveLobbyCompleted";
-    case PFLobbyStateChangeType::Updated: *value = payload.updated.updatedLobbyPropertyCount; return "Updated lobby properties";
-    case PFLobbyStateChangeType::PostUpdateCompleted: *value = (uint32_t)payload.postUpdate.result; return "PostUpdateCompleted result";
-    case PFLobbyStateChangeType::Disconnecting: *value = (uint32_t)payload.disconnecting.reason; return "Disconnecting reason";
-    case PFLobbyStateChangeType::Disconnected: *value = 0; return "Disconnected";
-    case PFLobbyStateChangeType::FindLobbiesCompleted: *value = (uint32_t)payload.findLobbies.result; return "FindLobbiesCompleted result";
-    case PFLobbyStateChangeType::InviteListenerStatusChanged: *value = 0; return "InviteListenerStatusChanged";
-    case PFLobbyStateChangeType::SendInviteCompleted: *value = (uint32_t)payload.sendInvite.result; return "SendInviteCompleted result";
-    case PFLobbyStateChangeType::ForceRemoveMemberCompleted: *value = (uint32_t)payload.forceRemove.result; return "ForceRemoveMemberCompleted result";
-    case PFLobbyStateChangeType::InviteReceived: *value = 0; return "InviteReceived";
-    default: *value = (uint32_t)payload.base.stateChangeType; return "state change type";
-    }
-}
-
-void AddChanges(hellforge::Frame& frame, const std::vector<PropertyChange>& changes)
-{
-    frame.Add((long long)changes.size());
-    for (const PropertyChange& change : changes) frame.Add(change.key).Add(change.remove ? "remove" : "set").Add(change.value);
-}
-
-std::map<std::string, std::string> SetValues(const std::vector<PropertyChange>& changes)
-{
-    std::map<std::string, std::string> values;
-    for (const PropertyChange& change : changes)
-        if (!change.remove) values[change.key] = change.value;
-    return values;
-}
-
-std::vector<PropertyChange> FromChanges(const std::vector<hellforge::FrameReader::Change>& changes)
-{
-    std::vector<PropertyChange> converted;
-    for (const auto& change : changes) converted.push_back({change.key, change.remove, change.value});
-    return converted;
-}
-
-// Sends a request; its answer completes the operation. A request the backend cannot receive fails at the next delivery.
-void Request(hellforge::Frame frame, Operation operation)
-{
-    std::string id = "op" + std::to_string(++operationCounter);
-    frame.fields.insert(frame.fields.begin(), id);
-    waiting[id] = std::move(operation);
-    if (!link.Send(frame)) hellforge::Note("lobby link: could not send %s", frame.type.c_str());
-}
-
-Lobby* FindById(const std::string& id)
-{
-    for (Lobby* lobby : lobbies)
-        if (lobby->id == id && lobby->joined) return lobby;
-    return nullptr;
-}
-
-// A lobby as the backend describes it: the snapshot in a create or join answer.
-bool ApplySnapshot(Lobby* lobby, hellforge::FrameReader& reader, const std::string& localId)
-{
-    std::string id = reader.Text(), connection = reader.Text(), ownerId = reader.Text();
-    long long maxMembers = reader.Int(), access = reader.Int(), migration = reader.Int(), lockState = reader.Int();
-    std::map<std::string, std::string> lobbyProperties = reader.Properties(), searchProperties = reader.Properties();
-    long long count = reader.Int();
-    if (!reader.ok || count < 1 || count > 64) return false;
-    lobby->id = id;
-    lobby->connectionString = connection;
-    lobby->maxMemberCount = (uint32_t)maxMembers;
-    lobby->accessPolicy = (PFLobbyAccessPolicy)access;
-    lobby->ownerMigrationPolicy = (PFLobbyOwnerMigrationPolicy)migration;
-    lobby->membershipLock = (PFLobbyMembershipLock)lockState;
-    lobby->lobbyProperties.clear();
-    for (const auto& property : lobbyProperties) lobby->lobbyProperties[property.first] = Intern(property.second.c_str());
-    RefreshKeys(lobby->lobbyProperties, lobby->lobbyKeys);
-    lobby->searchProperties.clear();
-    for (const auto& property : searchProperties) lobby->searchProperties[property.first] = Intern(property.second.c_str());
-    RefreshKeys(lobby->searchProperties, lobby->searchKeys);
-    lobby->members.clear();
-    lobby->owner = nullptr;
-    for (long long i = 0; i < count && reader.ok; i++)
-    {
-        std::string memberId = reader.Text(), memberType = reader.Text();
-        std::map<std::string, std::string> properties = reader.Properties();
-        Member* member = nullptr;
-        for (Member* known : lobby->everyMember)
-            if (known->id == memberId) member = known;
-        if (member == nullptr) member = NewMember(lobby, memberId, memberType, memberId == localId);
-        else lobby->members.push_back(member);
-        member->properties.clear();
-        for (const auto& property : properties) member->properties[property.first] = Intern(property.second.c_str());
-        RefreshKeys(member->properties, member->keys);
-        if (memberId == ownerId) lobby->owner = member;
-    }
-    RefreshMembers(lobby);
-    return reader.ok;
-}
-
-void Finish(Operation& operation, HRESULT result)
-{
-    Lobby* lobby = operation.lobby;
-    switch (operation.type)
-    {
-    case OperationType::CreateAndJoin:
-    {
-        if (SUCCEEDED(result))
-        {
-            lobby->joined = true;
-            PFLobbyMemberAddedStateChange& added = Enqueue(PFLobbyStateChangeType::MemberAdded)->payload.memberAdded;
-            added.lobby = Handle(lobby);
-            added.member = operation.member->Key();
-        }
-        PFLobbyCreateAndJoinLobbyCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::CreateAndJoinLobbyCompleted)->payload.createAndJoin;
-        completed.result = result;
-        completed.asyncContext = operation.asyncContext;
-        completed.lobby = Handle(lobby);
-        break;
-    }
-    case OperationType::Join:
-    {
-        if (SUCCEEDED(result))
-        {
-            lobby->joined = true;
-            for (Member* member : lobby->members)
-            {
-                PFLobbyMemberAddedStateChange& added = Enqueue(PFLobbyStateChangeType::MemberAdded)->payload.memberAdded;
-                added.lobby = Handle(lobby);
-                added.member = member->Key();
-            }
-        }
-        PFLobbyJoinLobbyCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::JoinLobbyCompleted)->payload.join;
-        completed.result = result;
-        completed.newMember = InternKey(operation.entityId, operation.entityType);
-        completed.asyncContext = operation.asyncContext;
-        completed.lobby = Handle(lobby);
-        if (FAILED(result))
-        {
-            // A refused join also ends the lobby object (NoLocalMembers): with only the failed completion, HD2 kept
-            // retrying the join every 20 s until "lobby timeout" (two-PC test with different mods).
-            PFLobbyDisconnectingStateChange& disconnecting = Enqueue(PFLobbyStateChangeType::Disconnecting)->payload.disconnecting;
-            disconnecting.lobby = Handle(lobby);
-            disconnecting.reason = PFLobbyDisconnectingReason::NoLocalMembers;
-            Enqueue(PFLobbyStateChangeType::Disconnected)->payload.disconnected.lobby = Handle(lobby);
-        }
-        break;
-    }
-    case OperationType::PostUpdate:
-    {
-        PFLobbyPostUpdateCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::PostUpdateCompleted)->payload.postUpdate;
-        completed.result = result;
-        completed.lobby = Handle(lobby);
-        completed.localUser = operation.member->Key();
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::Leave:
-        // Leaving always succeeds locally, whatever the backend answered.
-        LeaveLocally(operation);
-        break;
-    case OperationType::ForceRemove:
-    {
-        // The backend's lobby.memberRemoved for the kicked member came first, as the SDK orders them.
-        PFLobbyForceRemoveMemberCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::ForceRemoveMemberCompleted)->payload.forceRemove;
-        completed.result = result;
-        completed.lobby = Handle(lobby);
-        completed.targetMember = InternKey(operation.inviteeId, operation.inviteeType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::SendInvite:
-    {
-        PFLobbySendInviteCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::SendInviteCompleted)->payload.sendInvite;
-        completed.result = result;
-        completed.lobby = Handle(lobby);
-        completed.sender = InternKey(operation.entityId, operation.entityType);
-        completed.invitee = InternKey(operation.inviteeId, operation.inviteeType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    case OperationType::FindLobbies:
-    {
-        // The backend went away during a search.
-        PFLobbyFindLobbiesCompletedStateChange& completed = Enqueue(PFLobbyStateChangeType::FindLobbiesCompleted)->payload.findLobbies;
-        completed.result = result;
-        completed.searchingEntity = InternKey(operation.entityId, operation.entityType);
-        completed.asyncContext = operation.asyncContext;
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-void Disconnect(Lobby* lobby, PFLobbyDisconnectingReason reason)
-{
-    if (!lobby->joined) return;
-    lobby->joined = false;
-    PFLobbyDisconnectingStateChange& disconnecting = Enqueue(PFLobbyStateChangeType::Disconnecting)->payload.disconnecting;
-    disconnecting.lobby = Handle(lobby);
-    disconnecting.reason = reason;
-    Enqueue(PFLobbyStateChangeType::Disconnected)->payload.disconnected.lobby = Handle(lobby);
-}
-
-void ApplyUpdate(Lobby* lobby, hellforge::FrameReader& reader)
-{
-    std::string ownerId = reader.Text(), maxMembers = reader.Text(), access = reader.Text(), lockState = reader.Text();
-    std::vector<PropertyChange> lobbyChanges = FromChanges(reader.Changes()), searchChanges = FromChanges(reader.Changes());
-    long long memberUpdates = reader.Int();
-    std::string memberId = memberUpdates > 0 ? reader.Text() : "";
-    std::vector<PropertyChange> memberChanges = memberUpdates > 0 ? FromChanges(reader.Changes()) : std::vector<PropertyChange>();
-    if (!reader.ok) return;
-    StateChange* update = Enqueue(PFLobbyStateChangeType::Updated);
-    PFLobbyUpdatedStateChange& updated = update->payload.updated;
-    updated.lobby = Handle(lobby);
-    if (!ownerId.empty())
-        for (Member* member : lobby->members)
-            if (member->id == ownerId)
-            {
-                lobby->owner = member;
-                updated.ownerUpdated = true;
-            }
-    if (!maxMembers.empty())
-    {
-        lobby->maxMemberCount = (uint32_t)strtoul(maxMembers.c_str(), nullptr, 10);
-        updated.maxMembersUpdated = true;
-    }
-    if (!access.empty())
-    {
-        lobby->accessPolicy = (PFLobbyAccessPolicy)strtoul(access.c_str(), nullptr, 10);
-        updated.accessPolicyUpdated = true;
-    }
-    if (!lockState.empty())
-    {
-        lobby->membershipLock = (PFLobbyMembershipLock)strtoul(lockState.c_str(), nullptr, 10);
-        updated.membershipLockUpdated = true;
-    }
-    ApplyProperties(lobbyChanges, lobby->lobbyProperties, lobby->lobbyKeys);
-    ApplyProperties(searchChanges, lobby->searchProperties, lobby->searchKeys);
-    for (const PropertyChange& changed : lobbyChanges) update->lobbyKeys.push_back(Intern(changed.key.c_str()));
-    for (const PropertyChange& changed : searchChanges) update->searchKeys.push_back(Intern(changed.key.c_str()));
-    updated.updatedLobbyPropertyCount = (uint32_t)update->lobbyKeys.size();
-    updated.updatedLobbyPropertyKeys = update->lobbyKeys.empty() ? nullptr : update->lobbyKeys.data();
-    updated.updatedSearchPropertyCount = (uint32_t)update->searchKeys.size();
-    updated.updatedSearchPropertyKeys = update->searchKeys.empty() ? nullptr : update->searchKeys.data();
-    Member* member = nullptr;
-    for (Member* candidate : lobby->members)
-        if (candidate->id == memberId) member = candidate;
-    if (member != nullptr)
-    {
-        ApplyProperties(memberChanges, member->properties, member->keys);
-        for (const PropertyChange& changed : memberChanges) update->memberKeys.push_back(Intern(changed.key.c_str()));
-        PFLobbyMemberUpdateSummary summary{};
-        summary.member = member->Key();
-        summary.updatedMemberPropertyCount = (uint32_t)update->memberKeys.size();
-        summary.updatedMemberPropertyKeys = update->memberKeys.empty() ? nullptr : update->memberKeys.data();
-        update->memberUpdates.push_back(summary);
-        updated.memberUpdateCount = 1;
-        updated.memberUpdates = update->memberUpdates.data();
-    }
-    RefreshMembers(lobby);
-}
-
-// lobby.found [op, hresult, count, (lobby id, connection string, owner entity id, max members, members, locked 0|1, search
-// properties)...]: the search's completion, with its results.
-void Found(const Operation& operation, hellforge::FrameReader& reader)
-{
-    HRESULT result = (HRESULT)(uint32_t)reader.Int();
-    long long count = reader.Int();
-    auto search = std::make_shared<SearchResults>();
-    for (long long i = 0; reader.ok && SUCCEEDED(result) && count >= 0 && count <= (long long)PFLobbyClientRequestedSearchResultCountUpperLimit && i < count; i++)
-    {
-        std::string lobbyId = reader.Text(), connection = reader.Text(), owner = reader.Text();
-        long long maxMembers = reader.Int(), members = reader.Int(), locked = reader.Int();
-        std::map<std::string, std::string> properties = reader.Properties();
-        if (!reader.ok) break;
-        // A listing the backend should never pass on (more search properties than PlayFab allows, an impossible member
-        // count) is skipped alone: the frame is still read past it, so the listings after it stay.
-        if (properties.size() > PFLobbyMaxSearchPropertyCount || maxMembers < (long long)PFLobbyMaxMemberCountLowerLimit ||
-            maxMembers > (long long)PFLobbyMaxMemberCountUpperLimit || members < 0 || members > maxMembers || lobbyId.empty() || connection.empty())
-        {
-            hellforge::Note("lobby link: skipped a search result with %zu search properties, %lld of %lld members", properties.size(), members, maxMembers);
-            continue;
-        }
-        PFLobbySearchResult entry{};
-        entry.lobbyId = search->Keep(lobbyId);
-        entry.connectionString = search->Keep(connection);
-        search->owners.push_back(PFEntityKey{search->Keep(owner), search->Keep("title_player_account")});
-        entry.ownerEntity = &search->owners.back();
-        entry.maxMemberCount = (uint32_t)maxMembers; /* both in range: checked above */
-        entry.currentMemberCount = (uint32_t)members;
-        entry.membershipLock = locked != 0 ? PFLobbyMembershipLock::Locked : PFLobbyMembershipLock::Unlocked;
-        search->keys.emplace_back();
-        search->values.emplace_back();
-        for (const auto& property : properties)
-        {
-            search->keys.back().push_back(search->Keep(property.first));
-            search->values.back().push_back(search->Keep(property.second));
-        }
-        entry.searchPropertyCount = (uint32_t)properties.size();
-        entry.searchPropertyKeys = search->keys.back().empty() ? noKeys : search->keys.back().data();
-        entry.searchPropertyValues = search->values.back().empty() ? noKeys : search->values.back().data();
-        search->results.push_back(entry);
-    }
-    if (!reader.ok) result = E_FAIL;
-    StateChange* change = Enqueue(PFLobbyStateChangeType::FindLobbiesCompleted);
-    PFLobbyFindLobbiesCompletedStateChange& completed = change->payload.findLobbies;
-    completed.result = result;
-    completed.searchingEntity = InternKey(operation.entityId, operation.entityType);
-    completed.asyncContext = operation.asyncContext;
-    if (SUCCEEDED(result) && !search->results.empty())
-    {
-        completed.searchResultCount = (uint32_t)search->results.size();
-        completed.searchResults = search->results.data();
-    }
-    change->search = search;
-    recentSearches.push_back(search);
-    while (recentSearches.size() > 4) recentSearches.pop_front();
-    hellforge::Note("lobby link: search found %u lobby(s) (0x%08x)", completed.searchResultCount, (unsigned)result);
-}
-
-void ApplyRemote(const hellforge::Frame& frame)
-{
-    hellforge::FrameReader reader(frame);
-    if (frame.type == "lobby.result")
-    {
-        std::string id = reader.Text();
-        std::string kind = reader.Text();
-        HRESULT result = (HRESULT)(uint32_t)reader.Int();
-        auto found = waiting.find(id);
-        if (!reader.ok || found == waiting.end()) return;
-        Operation operation = std::move(found->second);
-        waiting.erase(found);
-        hellforge::Note("lobby link: %s %s -> 0x%08x", kind.c_str(), id.c_str(), (unsigned)result);
-        bool snapshot = SUCCEEDED(result) && (operation.type == OperationType::CreateAndJoin || operation.type == OperationType::Join);
-        std::string localId = operation.type == OperationType::CreateAndJoin ? operation.member->id : operation.entityId;
-        if (snapshot && !ApplySnapshot(operation.lobby, reader, localId)) result = E_FAIL;
-        Finish(operation, result);
-        return;
-    }
-    if (frame.type == "lobby.found")
-    {
-        std::string id = reader.Text();
-        auto found = waiting.find(id);
-        if (!reader.ok || found == waiting.end() || found->second.type != OperationType::FindLobbies) return;
-        Operation operation = std::move(found->second);
-        waiting.erase(found);
-        Found(operation, reader);
-        return;
-    }
-    if (frame.type == "lobby.inviteReceived")
-    {
-        // A friend's invitation (the backend took it from a Steam friend only): every entity listening hears it.
-        std::string invitedTo = reader.Text(), connection = reader.Text(), inviter = reader.Text();
-        if (!reader.ok || invitedTo.empty() || connection.compare(0, sizeof(connectionPrefix) - 1, connectionPrefix) != 0) return;
-        hellforge::Note("lobby link: invited to lobby %s by %s (%zu listening)", invitedTo.c_str(), inviter.c_str(), listeningEntities.size());
-        for (const std::string& listener : listeningEntities)
-        {
-            PFLobbyInviteReceivedStateChange& received = Enqueue(PFLobbyStateChangeType::InviteReceived)->payload.inviteReceived;
-            received.listeningEntity = InternKey(listener, listeningTypes[listener]);
-            received.invitingEntity = InternKey(inviter, "title_player_account");
-            received.connectionString = Intern(connection.c_str());
-            received.lobbyId = Intern(invitedTo.c_str());
-        }
-        return;
-    }
-    std::string lobbyId = reader.Text();
-    Lobby* lobby = FindById(lobbyId);
-    if (!reader.ok || lobby == nullptr) return;
-    if (frame.type == "lobby.memberAdded")
-    {
-        std::string memberId = reader.Text(), memberType = reader.Text();
-        std::map<std::string, std::string> properties = reader.Properties();
-        if (!reader.ok) return;
-        for (Member* member : lobby->members)
-            if (member->id == memberId) return;
-        Member* member = NewMember(lobby, memberId, memberType, false);
-        for (const auto& property : properties) member->properties[property.first] = Intern(property.second.c_str());
-        RefreshKeys(member->properties, member->keys);
-        hellforge::Note("lobby link: member %s joined lobby %s", memberId.c_str(), lobbyId.c_str());
-        PFLobbyMemberAddedStateChange& added = Enqueue(PFLobbyStateChangeType::MemberAdded)->payload.memberAdded;
-        added.lobby = Handle(lobby);
-        added.member = member->Key();
-    }
-    else if (frame.type == "lobby.memberRemoved")
-    {
-        std::string memberId = reader.Text();
-        long long reason = reader.Int();
-        if (!reader.ok) return;
-        for (size_t i = 0; i < lobby->members.size(); i++)
-        {
-            Member* member = lobby->members[i];
-            if (member->id != memberId) continue;
-            lobby->members.erase(lobby->members.begin() + (ptrdiff_t)i);
-            RefreshMembers(lobby);
-            hellforge::Note(reason == (long long)PFLobbyMemberRemovedReason::LocalUserForciblyRemoved ? "lobby link: member %s was removed from lobby %s by its owner"
-                : "lobby link: member %s left lobby %s", memberId.c_str(), lobbyId.c_str());
-            PFLobbyMemberRemovedStateChange& removed = Enqueue(PFLobbyStateChangeType::MemberRemoved)->payload.memberRemoved;
-            removed.lobby = Handle(lobby);
-            removed.member = member->Key();
-            removed.reason = (PFLobbyMemberRemovedReason)reason;
-            break;
-        }
-    }
-    else if (frame.type == "lobby.updated") ApplyUpdate(lobby, reader);
-    else if (frame.type == "lobby.disconnected")
-    {
-        long long reason = reader.Int();
-        hellforge::Note("lobby link: lobby %s closed (reason %lld)", lobbyId.c_str(), reason);
-        Disconnect(lobby, (PFLobbyDisconnectingReason)reason);
-    }
-}
-
-// Frames from the backend become state changes. If the backend went away, every waiting request fails and every lobby
-// is disconnected, once.
-void ProcessRemote()
-{
-    for (const hellforge::Frame& frame : link.Drain()) ApplyRemote(frame);
-    if (!link.Broken() || remoteLost) return;
-    remoteLost = true;
-    hellforge::Note("lobby link: the backend went away");
-    std::map<std::string, Operation> failed;
-    failed.swap(waiting);
-    for (auto& entry : failed) Finish(entry.second, lobbyNotFound);
-    for (Lobby* lobby : lobbies) Disconnect(lobby, PFLobbyDisconnectingReason::ConnectionInterruption);
-}
 
 // Lobby getters share their shape: clear the outputs, find the lobby, then write.
 template <class T> HRESULT Read(PFLobbyHandle handle, T* output, T (*read)(const Lobby*))
@@ -921,6 +57,67 @@ HRESULT Value(const std::map<std::string, const char*>& properties, const char* 
     auto found = properties.find(key);
     *value = found != properties.end() ? found->second : nullptr; // A missing property is not an error.
     return S_OK;
+}
+
+// What a search asks, as the backend gets it: filter and sort ("" when not given) and the result count (0).
+struct SearchQuery
+{
+    const char* filter;
+    const char* sort;
+    uint32_t count;
+};
+
+SearchQuery QueryOf(const PFLobbySearchConfiguration* configuration)
+{
+    if (configuration == nullptr) return {"", "", 0};
+    return {configuration->filterString != nullptr ? configuration->filterString : "",
+        configuration->sortString != nullptr ? configuration->sortString : "",
+        configuration->clientSearchResultCount != nullptr ? *configuration->clientSearchResultCount : 0};
+}
+
+// What a lobby update changes, copied into the operation: false when its new owner or its properties are malformed.
+bool CopyLobbyUpdate(const PFLobbyDataUpdate* lobbyUpdate, Operation& operation)
+{
+    bool valid = true;
+    operation.lobbyUpdate = true;
+    if (lobbyUpdate->newOwner != nullptr)
+    {
+        valid = ValidKey(lobbyUpdate->newOwner);
+        operation.newOwner = valid;
+        if (valid) operation.newOwnerId = lobbyUpdate->newOwner->id;
+    }
+    if (lobbyUpdate->maxMemberCount != nullptr)
+    {
+        operation.maxMemberCountChanged = true;
+        operation.maxMemberCount = *lobbyUpdate->maxMemberCount;
+    }
+    if (lobbyUpdate->accessPolicy != nullptr)
+    {
+        operation.accessPolicyChanged = true;
+        operation.accessPolicy = *lobbyUpdate->accessPolicy;
+    }
+    if (lobbyUpdate->membershipLock != nullptr)
+    {
+        operation.membershipLockChanged = true;
+        operation.membershipLock = *lobbyUpdate->membershipLock;
+    }
+    return valid && CopyProperties(lobbyUpdate->lobbyPropertyCount, lobbyUpdate->lobbyPropertyKeys, lobbyUpdate->lobbyPropertyValues, operation.lobbyProperties) &&
+        CopyProperties(lobbyUpdate->searchPropertyCount, lobbyUpdate->searchPropertyKeys, lobbyUpdate->searchPropertyValues, operation.searchProperties);
+}
+
+// The backend's lobby.update request for an accepted update.
+hellforge::Frame UpdateRequest(const Lobby* target, const Member* member, const Operation& operation)
+{
+    hellforge::Frame request("lobby.update");
+    request.Add(target->id).Add(member->id).Add(operation.newOwner ? 1 : 0).Add(operation.newOwnerId)
+        .Add(operation.maxMemberCountChanged ? 1 : 0).Add((long long)operation.maxMemberCount)
+        .Add(operation.accessPolicyChanged ? 1 : 0).Add((long long)operation.accessPolicy)
+        .Add(operation.membershipLockChanged ? 1 : 0).Add((long long)operation.membershipLock);
+    AddChanges(request, operation.lobbyProperties);
+    AddChanges(request, operation.searchProperties);
+    request.Add(operation.memberUpdate ? 1 : 0);
+    AddChanges(request, operation.memberProperties);
+    return request;
 }
 
 }
@@ -1160,19 +357,17 @@ HRESULT PFMULTIPLAYER_API PFMultiplayerFindLobbies(PFMultiplayerHandle handle, c
             operation.asyncContext = asyncContext;
             operation.entityId = searchingEntity->id;
             operation.entityType = searchingEntity->type;
-            const char* filter = searchConfiguration != nullptr && searchConfiguration->filterString != nullptr ? searchConfiguration->filterString : "";
-            const char* sort = searchConfiguration != nullptr && searchConfiguration->sortString != nullptr ? searchConfiguration->sortString : "";
-            uint32_t count = searchConfiguration != nullptr && searchConfiguration->clientSearchResultCount != nullptr ? *searchConfiguration->clientSearchResultCount : 0;
+            SearchQuery query = QueryOf(searchConfiguration);
             // The Galactic Map's filter, logged when it changes (which keys it compares is still to be confirmed live).
-            if (lastFilter != filter)
+            if (lastFilter != query.filter)
             {
-                lastFilter = filter;
-                hellforge::Note("PFMultiplayerFindLobbies: filter \"%.500s\", sort \"%.100s\", %u result(s) asked", filter, sort, count);
+                lastFilter = query.filter;
+                hellforge::Note("PFMultiplayerFindLobbies: filter \"%.500s\", sort \"%.100s\", %u result(s) asked", query.filter, query.sort, query.count);
             }
             if (remote)
             {
                 hellforge::Frame request("lobby.find");
-                request.Add(searchingEntity->id).Add(searchingEntity->type).Add(filter).Add(sort).Add((long long)count);
+                request.Add(searchingEntity->id).Add(searchingEntity->type).Add(query.filter).Add(query.sort).Add((long long)query.count);
                 Request(request, operation);
             }
             else pending.push_back(operation);
@@ -1414,33 +609,7 @@ HRESULT PFMULTIPLAYER_API PFLobbyPostUpdate(PFLobbyHandle lobby, const PFEntityK
         Operation operation{};
         operation.type = OperationType::PostUpdate;
         bool valid = member != nullptr && member->local && (lobbyUpdate != nullptr || memberUpdate != nullptr);
-        if (valid && lobbyUpdate != nullptr)
-        {
-            operation.lobbyUpdate = true;
-            if (lobbyUpdate->newOwner != nullptr)
-            {
-                valid = valid && ValidKey(lobbyUpdate->newOwner);
-                operation.newOwner = valid;
-                if (valid) operation.newOwnerId = lobbyUpdate->newOwner->id;
-            }
-            if (lobbyUpdate->maxMemberCount != nullptr)
-            {
-                operation.maxMemberCountChanged = true;
-                operation.maxMemberCount = *lobbyUpdate->maxMemberCount;
-            }
-            if (lobbyUpdate->accessPolicy != nullptr)
-            {
-                operation.accessPolicyChanged = true;
-                operation.accessPolicy = *lobbyUpdate->accessPolicy;
-            }
-            if (lobbyUpdate->membershipLock != nullptr)
-            {
-                operation.membershipLockChanged = true;
-                operation.membershipLock = *lobbyUpdate->membershipLock;
-            }
-            valid = valid && CopyProperties(lobbyUpdate->lobbyPropertyCount, lobbyUpdate->lobbyPropertyKeys, lobbyUpdate->lobbyPropertyValues, operation.lobbyProperties) &&
-                CopyProperties(lobbyUpdate->searchPropertyCount, lobbyUpdate->searchPropertyKeys, lobbyUpdate->searchPropertyValues, operation.searchProperties);
-        }
+        if (valid && lobbyUpdate != nullptr) valid = CopyLobbyUpdate(lobbyUpdate, operation);
         if (valid && memberUpdate != nullptr)
         {
             operation.memberUpdate = true;
@@ -1456,15 +625,7 @@ HRESULT PFMULTIPLAYER_API PFLobbyPostUpdate(PFLobbyHandle lobby, const PFEntityK
             LogProperties("member update", member->id, operation.memberProperties);
             if (remote)
             {
-                hellforge::Frame request("lobby.update");
-                request.Add(target->id).Add(member->id).Add(operation.newOwner ? 1 : 0).Add(operation.newOwnerId)
-                    .Add(operation.maxMemberCountChanged ? 1 : 0).Add((long long)operation.maxMemberCount)
-                    .Add(operation.accessPolicyChanged ? 1 : 0).Add((long long)operation.accessPolicy)
-                    .Add(operation.membershipLockChanged ? 1 : 0).Add((long long)operation.membershipLock);
-                AddChanges(request, operation.lobbyProperties);
-                AddChanges(request, operation.searchProperties);
-                request.Add(operation.memberUpdate ? 1 : 0);
-                AddChanges(request, operation.memberProperties);
+                hellforge::Frame request = UpdateRequest(target, member, operation);
                 Request(request, std::move(operation));
             }
             else pending.push_back(std::move(operation));

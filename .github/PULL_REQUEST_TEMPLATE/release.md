@@ -3,7 +3,7 @@
 
 ## Release HellForge X.Y.Z
 
-Changelog:
+Changelog (this release's section of `CHANGELOG.md`):
 
 ## Checklist
 
@@ -14,7 +14,11 @@ Changelog:
 - [ ] 5. A staff build of this commit was tested in game by the maintainer and the admins, with no open crash or
   blocker tickets
 - [ ] 6. The version is bumped (`Directory.Build.props`), the roadmap and the README are updated, and the changelog is
-  written
+  written; `EngineVersion` is bumped if the engine changed since its last bump (CI's "Engine version" job fails this
+  pull request otherwise: `py -3 scripts/engine-version/engine_version.py --base origin/main --release`)
+- [ ] 6a. `CHANGELOG.md`: Unreleased is renamed to `X.Y.Z-beta (date)`, a new empty Unreleased is above it, and every
+  issue its Fixed lines name is closed or listed here for closing; the GitHub release notes are written from that
+  section
 - [ ] 6b. If any `HellForge.Cli` command or its JSON changed, `docs/external-launchers.md` is updated and the change is
   in the changelog, so launchers that use the CLI know before the release lands
 

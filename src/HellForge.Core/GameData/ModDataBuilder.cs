@@ -23,31 +23,7 @@ public static class ModDataBuilder
     public static List<string> Build(DataSpec spec, string modFolder, GameDataReader game, string output, GameDataReader? steam = null)
     {
         if (spec.UsesSteam && steam == null) throw new InvalidDataException("it takes resources from HELLDIVERS 2 as Steam has it installed, and Steam's copy was not found.");
-        HashSet<ResourceKey> Sources(bool fromSteam) => spec.Patches.SelectMany(p => p.Resources).Where(r => r.Steam == fromSteam).SelectMany(r => r switch
-        {
-            // a unit copy's physics too, if it has one: the engine finds a unit's physics by the unit's name (its header names
-            // its bones and state machine), so a copy without it gets a default body (a sentry: a huge box, and no aim)
-            CopyResource copy => copy.Type == ResourceTypes.Unit ? [new ResourceKey(copy.Type, copy.From), new ResourceKey(ResourceTypes.Physics, copy.From)]
-                : [new ResourceKey(copy.Type, copy.From)],
-            IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
-            _ => []
-        }).ToHashSet();
-        var gameSources = Sources(false);
-        var steamSources = Sources(true);
-        var found = game.Find(gameSources);
-        var foundSteam = steam?.Find(steamSources) ?? [];
-        var missing = gameSources.Where(k => !found.ContainsKey(k) && k.Type != ResourceTypes.Physics).Select(k => k.ToString())
-            .Concat(steamSources.Where(k => !foundSteam.ContainsKey(k) && k.Type != ResourceTypes.Physics).Select(k => $"{k} (Steam)"))
-            .Order(StringComparer.Ordinal).ToList();
-        if (missing.Count > 0) throw new InvalidDataException("not in the game data: " + string.Join(", ", missing) + ".");
-        // An include from Steam stands under its own name, so it may not replace a resource the game copy has (that one's
-        // bytes can differ between the builds): such a resource is included from the game.
-        var steamIncludes = spec.Patches.SelectMany(p => p.Resources).OfType<IncludeResources>().Where(i => i.Steam)
-            .SelectMany(i => i.Ids.Select(id => new ResourceKey(i.Type, id)));
-        var shadowed = game.Find(steamIncludes).Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal).ToList();
-        if (shadowed.Count > 0) throw new InvalidDataException("the game copy has these already; include them from the game, not Steam: " + string.Join(", ", shadowed) + ".");
-        var archives = spec.Patches.SelectMany(p => p.Archives).Distinct().Where(a => !game.HasArchive(a)).ToList();
-        if (archives.Count > 0) throw new InvalidDataException("the game has no archive " + string.Join(", ", archives) + ".");
+        var (found, foundSteam) = FindSources(spec, game, steam);
         var read = new Dictionary<(ResourceKey, bool), ResourceParts>();
         var parents = new Dictionary<ulong, byte[]?>();
         ResourceParts Read(ResourceKey key, bool fromSteam)
@@ -73,55 +49,106 @@ public static class ModDataBuilder
         }
         bool Has(ResourceKey key, bool fromSteam) => fromSteam ? foundSteam.ContainsKey(key) : found.ContainsKey(key);
 
-        var built = new List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)>();
-        var added = new HashSet<ResourceKey>();
-        foreach (var patch in spec.Patches)
+        // A patch's resources: its includes, icons and copies, each key once.
+        Dictionary<ResourceKey, ResourceParts> PatchResources(DataPatch patch, HashSet<ResourceKey> added)
         {
             var resources = new Dictionary<ResourceKey, ResourceParts>();
-            void Add(string where, ResourceKey key, ResourceParts parts)
-            {
-                if (resources.TryGetValue(key, out var other) && !(other.Main.AsSpan().SequenceEqual(parts.Main)
-                    && other.Gpu.AsSpan().SequenceEqual(parts.Gpu) && other.Stream.AsSpan().SequenceEqual(parts.Stream)))
-                    throw new InvalidDataException($"{where}: the patch already has a different {key}.");
-                resources[key] = parts;
-            }
             foreach (var resource in patch.Resources)
                 switch (resource)
                 {
                     case IncludeResources include:
-                        foreach (var id in include.Ids) Add(include.Where, new(include.Type, id), Read(new(include.Type, id), include.Steam));
+                        foreach (var id in include.Ids) AddResource(resources, include.Where, new(include.Type, id), Read(new(include.Type, id), include.Steam));
                         break;
                     case IconResource icon:
                         foreach (var (key, parts) in IconImage.Family(File.ReadAllBytes(Path.Combine(modFolder, icon.Png)), Hash(icon.Name), icon.Prepare))
                         {
-                            Add(icon.Where, key, parts);
+                            AddResource(resources, icon.Where, key, parts);
                             added.Add(key);
                         }
                         break;
                     case CopyResource copy:
-                        var copied = new ResourceKey(copy.Type, Hash(copy.Name));
-                        try { Add(copy.Where, copied, Edit(copy, Read(new(copy.Type, copy.From), copy.Steam), modFolder)); }
-                        catch (InvalidDataException error) when (!error.Message.StartsWith(copy.Where, StringComparison.Ordinal))
-                        {
-                            throw new InvalidDataException($"{copy.Where} ({ResourceTypes.Describe(copy.Type)} 0x{copy.From:X16}): {error.Message}");
-                        }
-                        added.Add(copied);
-                        var physics = new ResourceKey(ResourceTypes.Physics, copy.From);
-                        if (copy.Type == ResourceTypes.Unit && Has(physics, copy.Steam))
-                        {
-                            var named = new ResourceKey(ResourceTypes.Physics, copied.Name);
-                            Add(copy.Where, named, RenamePhysics(Read(physics, copy.Steam), copy.From, copied.Name));
-                            added.Add(named);
-                        }
+                        AddCopy(resources, copy, added);
                         break;
                 }
-            var (archive, gpu, stream) = ResourceArchive.Write(resources);
+            return resources;
+        }
+        // A copy under its own name, edited, and a unit copy's physics under that name too.
+        void AddCopy(Dictionary<ResourceKey, ResourceParts> resources, CopyResource copy, HashSet<ResourceKey> added)
+        {
+            var copied = new ResourceKey(copy.Type, Hash(copy.Name));
+            try { AddResource(resources, copy.Where, copied, Edit(copy, Read(new(copy.Type, copy.From), copy.Steam), modFolder)); }
+            catch (InvalidDataException error) when (!error.Message.StartsWith(copy.Where, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException($"{copy.Where} ({ResourceTypes.Describe(copy.Type)} 0x{copy.From:X16}): {error.Message}");
+            }
+            added.Add(copied);
+            var physics = new ResourceKey(ResourceTypes.Physics, copy.From);
+            if (copy.Type == ResourceTypes.Unit && Has(physics, copy.Steam))
+            {
+                var named = new ResourceKey(ResourceTypes.Physics, copied.Name);
+                AddResource(resources, copy.Where, named, RenamePhysics(Read(physics, copy.Steam), copy.From, copied.Name));
+                added.Add(named);
+            }
+        }
+
+        var built = new List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)>();
+        var added = new HashSet<ResourceKey>();
+        foreach (var patch in spec.Patches)
+        {
+            var (archive, gpu, stream) = ResourceArchive.Write(PatchResources(patch, added));
             built.Add((patch.Archives, archive, gpu, stream));
         }
         // What a mod adds has a name of its own: a copy or icon may not stand in for one of the game's resources.
         var taken = game.Find(added).Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal).ToList();
         if (taken.Count > 0) throw new InvalidDataException("these names are the game's own resources; give them names of the mod's: " + string.Join(", ", taken) + ".");
+        return WriteFiles(output, built);
+    }
 
+    // Where each resource the spec reads is, in the game copy and in Steam's install. Every missing one is reported
+    // together; nothing is read until all are found.
+    static (Dictionary<ResourceKey, GameDataReader.Location> Game, Dictionary<ResourceKey, GameDataReader.Location> Steam) FindSources(DataSpec spec,
+        GameDataReader game, GameDataReader? steam)
+    {
+        HashSet<ResourceKey> Sources(bool fromSteam) => spec.Patches.SelectMany(p => p.Resources).Where(r => r.Steam == fromSteam).SelectMany(r => r switch
+        {
+            // a unit copy's physics too, if it has one: the engine finds a unit's physics by the unit's name (its header names
+            // its bones and state machine), so a copy without it gets a default body (a sentry: a huge box, and no aim)
+            CopyResource copy => copy.Type == ResourceTypes.Unit ? [new ResourceKey(copy.Type, copy.From), new ResourceKey(ResourceTypes.Physics, copy.From)]
+                : [new ResourceKey(copy.Type, copy.From)],
+            IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
+            _ => []
+        }).ToHashSet();
+        var gameSources = Sources(false);
+        var steamSources = Sources(true);
+        var found = game.Find(gameSources);
+        var foundSteam = steam?.Find(steamSources) ?? [];
+        var missing = gameSources.Where(k => !found.ContainsKey(k) && k.Type != ResourceTypes.Physics).Select(k => k.ToString())
+            .Concat(steamSources.Where(k => !foundSteam.ContainsKey(k) && k.Type != ResourceTypes.Physics).Select(k => $"{k} (Steam)"))
+            .Order(StringComparer.Ordinal).ToList();
+        if (missing.Count > 0) throw new InvalidDataException("not in the game data: " + string.Join(", ", missing) + ".");
+        // An include from Steam stands under its own name, so it may not replace a resource the game copy has (that one's
+        // bytes can differ between the builds): such a resource is included from the game.
+        var steamIncludes = spec.Patches.SelectMany(p => p.Resources).OfType<IncludeResources>().Where(i => i.Steam)
+            .SelectMany(i => i.Ids.Select(id => new ResourceKey(i.Type, id)));
+        var shadowed = game.Find(steamIncludes).Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal).ToList();
+        if (shadowed.Count > 0) throw new InvalidDataException("the game copy has these already; include them from the game, not Steam: " + string.Join(", ", shadowed) + ".");
+        var archives = spec.Patches.SelectMany(p => p.Archives).Distinct().Where(a => !game.HasArchive(a)).ToList();
+        if (archives.Count > 0) throw new InvalidDataException("the game has no archive " + string.Join(", ", archives) + ".");
+        return (found, foundSteam);
+    }
+
+    // A resource into a patch; a key it has already must come with the same bytes.
+    static void AddResource(Dictionary<ResourceKey, ResourceParts> resources, string where, ResourceKey key, ResourceParts parts)
+    {
+        if (resources.TryGetValue(key, out var other) && !(other.Main.AsSpan().SequenceEqual(parts.Main)
+            && other.Gpu.AsSpan().SequenceEqual(parts.Gpu) && other.Stream.AsSpan().SequenceEqual(parts.Stream)))
+            throw new InvalidDataException($"{where}: the patch already has a different {key}.");
+        resources[key] = parts;
+    }
+
+    // Each patch written for each archive it names, numbered per archive in the spec's order: the file names.
+    static List<string> WriteFiles(string output, List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)> built)
+    {
         Directory.CreateDirectory(output);
         var files = new List<string>();
         var next = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -160,12 +187,7 @@ public static class ModDataBuilder
             if ((long)offset + 8 > main.Length || BitConverter.ToUInt64(main, offset) != value)
                 throw new InvalidDataException($"0x{offset:X} does not hold 0x{value:X16}: not the resource the spec was written for.");
         foreach (var replace in copy.Replace) ResourceEdits.Replace(main, replace.From, replace.To, replace.At);
-        if (copy.Curves is { } curves)
-        {
-            var changed = ResourceEdits.RecolourCurves(main, curves.Preset == DataSpecs.WarmToBlue ? ResourceEdits.WarmToBlue : ResourceEdits.TowardsColour(curves.Colour!));
-            if (changed == 0 || (curves.Keys is { } keys && changed != keys))
-                throw new InvalidDataException($"{changed} warm colour curve keys found{(curves.Keys is { } k ? $", {k} expected" : "")}.");
-        }
+        if (copy.Curves is { } curves) EditCurves(main, curves);
         if (copy.Colours != null) ResourceEdits.SetMaterialColours(main, copy.Colours);
         if (copy.Lut != null) gpu = ResourceEdits.RecolourLut(main, gpu, copy.Lut);
         if (copy.Mesh is { } mesh)
@@ -175,6 +197,14 @@ public static class ModDataBuilder
             return new(meshMain, meshGpu, source.Stream);
         }
         return new(main, gpu, source.Stream);
+    }
+
+    // The warm colour curve keys recoloured, as many as the spec says when it says.
+    static void EditCurves(byte[] main, CurveEdit curves)
+    {
+        var changed = ResourceEdits.RecolourCurves(main, curves.Preset == DataSpecs.WarmToBlue ? ResourceEdits.WarmToBlue : ResourceEdits.TowardsColour(curves.Colour!));
+        if (changed == 0 || (curves.Keys is { } keys && changed != keys))
+            throw new InvalidDataException($"{changed} warm colour curve keys found{(curves.Keys is { } k ? $", {k} expected" : "")}.");
     }
 
     static ulong Hash(string name) => EngineHash.Murmur64A(Encoding.UTF8.GetBytes(name));

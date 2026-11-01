@@ -130,5 +130,28 @@ static class NetworkBlockTests
             Probe("41000", report);
             check(!File.ReadAllText(report).Contains("otherLoopbackTcpError", StringComparison.Ordinal), "Without it the report is as before (the session's probe).");
         });
+
+        test("Network block probe: a report passes only as the session always required, and a failure says which part failed", () =>
+        {
+            string? Problem(string json, bool narrowed = false) => NetworkBlockProbe.Problem(System.Text.Json.Nodes.JsonNode.Parse(json), narrowed);
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"externalIpv6TcpError":10013}""") == null, "A holding block failed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"externalIpv6TcpError":10051,"loopbackTcpError":0,"otherLoopbackTcpError":10013}""", true) == null,
+                "A holding narrowed block failed (IPv6 is not required).");
+            // the 0.2.0 tickets (0050, 0072, 0087, 0091): the filters no longer applied, the outside connect waited
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":-1,"externalIpv6TcpError":10051}""") is { } waited &&
+                waited.Contains("not stopping the game's connections", StringComparison.Ordinal), "A connect let out passed or was not named.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":0,"externalIpv6TcpError":10051}""") is { } answered && answered.Contains("error 0", StringComparison.Ordinal),
+                "A connect something answered passed.");
+            // ticket 0069: an older HellForge's backend on a random port behind a block narrowed by a newer one
+            check(Problem("""{"loopbackHttpPassed":false,"externalIpv4TcpError":10013,"externalIpv6TcpError":10013}""") is { } own &&
+                own.Contains("stops the game reaching HellForge's own backend", StringComparison.Ordinal), "A refused backend passed or was not named.");
+            check(Problem("""{"loopbackHttpPassed":false,"externalIpv4TcpError":-1}""") is { } unreachable && unreachable.Contains("cannot reach", StringComparison.Ordinal),
+                "An unreachable backend passed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013,"loopbackTcpError":0,"otherLoopbackTcpError":10061}""", true) is { } wide &&
+                wide.Contains("other programs on this PC", StringComparison.Ordinal), "A narrowed block letting other loopback ports through passed.");
+            check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013}""", true) != null, "A narrowed block's report without the other port passed.");
+            check(NetworkBlockProbe.Problem(null, false) != null && Problem("[]") != null && Problem("""{"loopbackHttpPassed":"yes","externalIpv4TcpError":"10013"}""") != null,
+                "No report, or one of another shape, passed.");
+        });
     }
 }

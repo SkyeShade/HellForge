@@ -120,11 +120,9 @@ static uintptr_t g_nearGame;
 static uint8_t* g_nearArena;
 static size_t g_nearUsed;
 
-/* A region of `bytes` within 2 GB of game.dll (type: MEM_RESERVE alone, or with MEM_COMMIT), or NULL. */
-static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
+/* Above the image (`image` bytes at game): the first free region within 2 GB that takes the block. */
+static uint8_t* FindNearAbove(uintptr_t game, size_t image, size_t bytes, DWORD type)
 {
-    size_t image = 0;
-    ApiModuleBase("game.dll", &image);
     uintptr_t at = (game + image + 0xFFFF) & ~(uintptr_t)0xFFFF;
     for (; at + bytes < game + 0x7FFF0000u; at += 0x10000)
     {
@@ -134,7 +132,13 @@ static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
         void* block = VirtualAlloc((void*)at, bytes, type, PAGE_READWRITE);
         if (block != NULL) return (uint8_t*)block;
     }
-    /* below: within 2 GB of the image's end too, since RIP-relative operands and jumps anywhere in it reach the block */
+    return NULL;
+}
+
+/* below: within 2 GB of the image's end too, since RIP-relative operands and jumps anywhere in it reach the block */
+static uint8_t* FindNearBelow(uintptr_t game, size_t image, size_t bytes, DWORD type)
+{
+    uintptr_t at;
     uintptr_t lowest = game + image > 0x7FFF0000u + 0x10000u ? game + image - 0x7FFF0000u : 0x10000;
     for (at = (game - bytes) & ~(uintptr_t)0xFFFF; at >= lowest && at < game;)
     {
@@ -153,6 +157,15 @@ static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
         at = (base - bytes) & ~(uintptr_t)0xFFFF;
     }
     return NULL;
+}
+
+/* A region of `bytes` within 2 GB of game.dll (type: MEM_RESERVE alone, or with MEM_COMMIT), or NULL. */
+static uint8_t* FindNearGame(uintptr_t game, size_t bytes, DWORD type)
+{
+    size_t image = 0;
+    ApiModuleBase("game.dll", &image);
+    uint8_t* block = FindNearAbove(game, image, bytes, type);
+    return block != NULL ? block : FindNearBelow(game, image, bytes, type);
 }
 
 /* Once game.dll is decoded: the loader's own space near it, and where both are in modloader.log. */

@@ -7,6 +7,9 @@ if (args.Contains("--help"))
     Console.WriteLine("HellForge.LocalBackend profile show <directory>");
     Console.WriteLine("HellForge.LocalBackend profile apply-template <directory> <template>   (replaces the inventory; server must be stopped)");
     Console.WriteLine("HellForge.LocalBackend profile add-template-items <directory> <template>   (adds only missing items; server must be stopped)");
+    Console.WriteLine("HellForge.LocalBackend profile import-preview <directory> [template]   (the account snapshot against the profile, as JSON)");
+    Console.WriteLine("HellForge.LocalBackend profile import <directory> [template]   (applies the account snapshot with the profile's account-import.json; backs up first; server must be stopped)");
+    Console.WriteLine("HellForge.LocalBackend profile restore <directory> <backup file>   (backs up first; server must be stopped)");
     Console.WriteLine("--item-catalog <file> (development) serves that file's \"items\" array as /Progression/items.");
     Console.WriteLine("--profile-template <name> sets the inventory of a newly created profile: " + string.Join(", ", ProfileStore.TemplateNames));
     Console.WriteLine("Synthetic loopback-only login service. Default port 0 selects a free port. No game launch or routing changes.");
@@ -15,7 +18,6 @@ if (args.Contains("--help"))
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war open serves the all-planets war instead: the frozen war with every planet but Super Earth an enemy's, each with a liberation campaign (no --live-war).");
     Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ; --modset <file> is the session's mod set, which joiners lacking its mods may download; --directory <folder> lists public lobbies in a folder (the loopback harness; Steam's directory otherwise); --rejoin <file> (after a mod sync, a ModSyncSession) invites the game back into that host's lobby once it is on the ship.");
-    Console.WriteLine("--pipe <name> serves the game's lobby stand-in on that named pipe; --link none|steam:<steam_api64.dll>|udp:<id>:<port>:<peer>=<port>,... reaches friends' backends; --mod-digest <text> must match theirs; --mod-list <file> names its mods, so a refused join says which differ; --modset <file> is the session's mod set, which joiners lacking its mods may download; --directory <folder> lists public lobbies in a folder (the loopback harness; Steam's directory otherwise).");
     Console.WriteLine("--live-run <run id> serves the game's live pipe in a solo session (a multiplayer session's comes with stats sharing); with --mods, --modset and --session-mods <file> (the mods the session runs), the launcher can change the session's mods without a restart (POST /hellforge/live-mods). --cli <HellForge.Cli.exe> builds a change's source mods and game data first (mods-live).");
     return 0;
 }
@@ -53,6 +55,12 @@ if (args is ["profile", var templateCommand and ("apply-template" or "add-templa
         return 1;
     }
 }
+if (args is ["profile", var accountCommand and ("import-preview" or "import"), var accountDirectory, .. var accountTemplate] && accountTemplate.Length <= 1)
+    return accountCommand == "import"
+        ? AccountCommands.Import(accountDirectory, accountTemplate.FirstOrDefault(), HellForge.Core.SteamAccount.Current(), Console.Out, Console.Error)
+        : AccountCommands.Preview(accountDirectory, accountTemplate.FirstOrDefault(), HellForge.Core.SteamAccount.Current(), Console.Out, Console.Error);
+if (args is ["profile", "restore", var restoreDirectory, var backupFile])
+    return AccountCommands.Restore(restoreDirectory, backupFile, Console.Out, Console.Error);
 if (args is ["fetch-live-war", var fetchCache])
     return await LiveWar.FetchOnceAsync(fetchCache, Console.WriteLine) ? 0 : 1;
 try
@@ -80,6 +88,16 @@ try
     var profileTemplate = options.GetValueOrDefault("--profile-template");
     if (profileTemplate != null && !startupFixtures) throw new ArgumentException("--profile-template requires --startup-fixtures true.");
     using var profile = startupFixtures ? ProfileStore.Open(profileDirectory, profileTemplate) : null;
+    // Premium items (OwnershipFilter): served only from the profile's account snapshot, when it is sealed on this PC for
+    // the Steam account signed in now. The rest of a snapshot reaches the profile only through an import the player
+    // chose (AccountCommands), never at start.
+    if (profile != null)
+    {
+        var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
+        profile.Ownership = OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, HellForge.Core.SteamAccount.Current(), out var refusal);
+        Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
+            : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
+    }
     var warClock = new WarClock();
     var accountKeys = new AccountKeys();
     var presence = new FriendPresence();
@@ -87,6 +105,10 @@ try
     // gameOut), and the pipes it opens carry a low label (PipeServer)
     var sandboxed = options.GetValueOrDefault("--sandbox") == "true";
     var registeredItems = new RegisteredItems(RegisteredItems.PathFor(evidence, sandboxed));
+    // Premium content mods build on: a copy of a premium base follows the player's ownership, and the mods mods-stage
+    // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
+    if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
+    registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).
     Directory.CreateDirectory(evidence);
     var liveWarLog = Path.Combine(evidence, "live-war.log");
@@ -116,18 +138,25 @@ try
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
     var liveMods = new LiveModsHub();
-    await using var app = LocalBackend.Create(port, evidence, mode, startupFixtures, profile, options.GetValueOrDefault("--item-catalog"),
-        options.GetValueOrDefault("--fixture-override"), options.GetValueOrDefault("--capture-mission-bodies") == "true", warClock, accountKeys, liveWar, presence, registeredItems, openWar, warSeed, dealSubfactions, dealSeaf,
-        liveMods);
+    await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
+    {
+        StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
+        FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods
+    });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
     HellForge.Core.PipeServer.LowIntegrityClients = sandboxed;
     // --mod-list <file>: the digest's mods one by one (ModlistDiff's form), so a refused join can say which differ
     var modList = options.GetValueOrDefault("--mod-list") is { } modListFile ? File.ReadAllText(modListFile) : null;
     await using var multiplayer = pipeName != null
-        ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence, warClock, accountKeys, presence,
-            options.GetValueOrDefault("--mods"), modList, options.GetValueOrDefault("--modset"), directoryFolder: options.GetValueOrDefault("--directory"),
-            rejoinFile: options.GetValueOrDefault("--rejoin"))
+        ? HellForge.LocalBackend.Multiplayer.MultiplayerHost.Start(new(pipeName, options.GetValueOrDefault("--link", "none"), options.GetValueOrDefault("--mod-digest", "none"), evidence)
+        {
+            WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
+            ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin"),
+            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
+        })
         : null;
     // The game's live pipe: a multiplayer session's comes with stats sharing (StatsShare); a solo session's is served here
     // (--live-run). With it the session's mods can change without a restart (LiveMods).

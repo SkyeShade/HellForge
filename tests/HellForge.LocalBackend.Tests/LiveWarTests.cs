@@ -47,7 +47,7 @@ static class LiveWarTests
             check(mirror.Requests.All(r => r.Method == HttpMethod.Get && r.RequestUri!.Host == "mirror.test"), "The live war made a request other than a GET to the mirror.");
             check(File.Exists(cache), "The live war was not cached.");
             // The game's war requests are answered from it.
-            await using var app = LocalBackend.Create(0, Path.Combine(root, "live-war-backend"), LoginMode.LocalSession, true, warClock: clock, liveWar: war);
+            await using var app = LocalBackend.Create(new BackendSettings(0, Path.Combine(root, "live-war-backend"), LoginMode.LocalSession) { StartupFixtures = true, WarClock = clock, LiveWar = war });
             await app.StartAsync();
             try
             {

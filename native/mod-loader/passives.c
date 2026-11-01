@@ -106,19 +106,10 @@ static int PassivesKit(uintptr_t manager, uint32_t id, uint32_t* passive, uint32
     return 0;
 }
 
-/* The local player's applied record, as PassivesTick needs it; 0 with *why. */
-static int PassivesLocal(uintptr_t game, LocalPassives* out, const char** why)
+/* the local player: the player list's entry with the local peer (out->players: how many are in); 0 with *why. */
+static uint32_t PassivesLocalEntity(uintptr_t game, LocalPassives* out, const char** why)
 {
-    memset(out, 0, sizeof *out);
-    uintptr_t manager = 0, players = 0, user = 0;
-    if (SafeRead(game + PSV_MANAGER, &manager, 8) || !manager) { *why = "the customization manager is not created yet"; return 0; }
-    uint32_t passiveCount = 0, records = 0;
-    int32_t index[PSV_PASSIVE_IDS];
-    if (SafeRead(manager + PSV_PASSIVE_COUNT, &passiveCount, 4) || SafeRead(manager + PSV_RECORD_COUNT, &records, 4) ||
-        SafeRead(manager + PSV_PASSIVE_INDEX, index, sizeof index) || !passiveCount || passiveCount > PSV_PASSIVE_IDS || records > PSV_RECORDS)
-    { *why = "the customization manager is not the reviewed one"; return 0; }
-    for (uint32_t id = 0; id < PSV_PASSIVE_IDS; id++) out->passiveValid[id] = index[id] >= 0 && (uint32_t)index[id] < passiveCount;
-    /* the local player: the player list's entry with the local peer */
+    uintptr_t players = 0, user = 0;
     uint8_t peer[8];
     uint32_t count = 0, entity = 0;
     if (SafeRead(game + PSV_PLAYERS, &players, 8) || !players || SafeRead(players + PSV_PLAYER_COUNT, &count, 4) || count > 4 ||
@@ -132,29 +123,34 @@ static int PassivesLocal(uintptr_t game, LocalPassives* out, const char** why)
         if (SafeRead(players + PSV_PLAYER_PEERS + slot * PSV_PLAYER_STRIDE, block, 8) || memcmp(block, peer, 8)) continue;
         if (!SafeRead(players + PSV_PLAYER_DESCRIPTORS + slot * 8u, &descriptor, 8) && descriptor) SafeRead(descriptor + 8, &entity, 4);
     }
-    if (!entity) { *why = "the local player is not in the player list"; return 0; }
-    /* its record: the manager's entity map, linear probing from entity x multiplier */
+    if (!entity) *why = "the local player is not in the player list";
+    return entity;
+}
+
+/* its record: the manager's entity map, linear probing from entity x multiplier. UINT32_MAX with *why when none. */
+static uint32_t PassivesRecordOf(uintptr_t manager, uint32_t entity, const char** why)
+{
     uint8_t map[20];
     uintptr_t slots = 0;
     uint32_t capacity, empty, multiplier, at = UINT32_MAX;
-    if (SafeRead(manager + PSV_MAP, map, sizeof map)) { *why = "the entity map is not readable"; return 0; }
+    if (SafeRead(manager + PSV_MAP, map, sizeof map)) { *why = "the entity map is not readable"; return UINT32_MAX; }
     memcpy(&slots, map, 8); memcpy(&capacity, map + 8, 4); memcpy(&empty, map + 12, 4); memcpy(&multiplier, map + 16, 4);
-    if (!slots || !capacity || capacity > 64 || capacity % 2) { *why = "the entity map is not the reviewed one"; return 0; }
+    if (!slots || !capacity || capacity > 64 || capacity % 2) { *why = "the entity map is not the reviewed one"; return UINT32_MAX; }
     uint32_t start = entity * multiplier;
     for (uint32_t probe = 0; probe < capacity; probe++)
     {
         uint32_t entry[2];
-        if (SafeRead(slots + ((start + probe) % capacity) * 8u, entry, 8)) { *why = "the entity map is not readable"; return 0; }
+        if (SafeRead(slots + ((start + probe) % capacity) * 8u, entry, 8)) { *why = "the entity map is not readable"; return UINT32_MAX; }
         if (entry[0] == entity) { at = entry[1]; break; }
         if (entry[0] == empty) break;
     }
-    if (at == UINT32_MAX) { *why = "the local player has no customization record yet"; return 0; }
-    uintptr_t descriptor = 0;
-    uint32_t carried = 0;
-    if (at >= records || at >= PSV_RECORDS || SafeRead(manager + PSV_DESCRIPTORS + at * 8u, &descriptor, 8) || !descriptor ||
-        SafeRead(descriptor + 8, &carried, 4) || carried != entity)
-    { *why = "the record does not carry the local player's entity"; return 0; }
-    out->record = manager + PSV_APPLIED + at * PSV_APPLIED_STRIDE;
+    if (at == UINT32_MAX) *why = "the local player has no customization record yet";
+    return at;
+}
+
+/* The record's slots, and what the kits give: the armor kit's passive, and the helmet's second (0 none). 0 with *why. */
+static int PassivesDerived(uintptr_t manager, LocalPassives* out, const char** why)
+{
     uint32_t armorKit = 0, helmetKit = 0, passive = 0, type = 0;
     if (SafeRead(out->record + PSV_ARMOR_KIT, &armorKit, 4) || SafeRead(out->record + PSV_HELMET_KIT, &helmetKit, 4) ||
         SafeRead(out->record + PSV_ARMOR, &out->slots[0], 4) || SafeRead(out->record + PSV_SECOND, &out->slots[1], 4))
@@ -163,6 +159,31 @@ static int PassivesLocal(uintptr_t game, LocalPassives* out, const char** why)
     out->derived[0] = passive;
     out->derived[1] = PassivesKit(manager, helmetKit, &passive, &type) && type == 1 ? passive : 0;
     return 1;
+}
+
+/* The local player's applied record, as PassivesTick needs it; 0 with *why. */
+static int PassivesLocal(uintptr_t game, LocalPassives* out, const char** why)
+{
+    memset(out, 0, sizeof *out);
+    uintptr_t manager = 0;
+    if (SafeRead(game + PSV_MANAGER, &manager, 8) || !manager) { *why = "the customization manager is not created yet"; return 0; }
+    uint32_t passiveCount = 0, records = 0;
+    int32_t index[PSV_PASSIVE_IDS];
+    if (SafeRead(manager + PSV_PASSIVE_COUNT, &passiveCount, 4) || SafeRead(manager + PSV_RECORD_COUNT, &records, 4) ||
+        SafeRead(manager + PSV_PASSIVE_INDEX, index, sizeof index) || !passiveCount || passiveCount > PSV_PASSIVE_IDS || records > PSV_RECORDS)
+    { *why = "the customization manager is not the reviewed one"; return 0; }
+    for (uint32_t id = 0; id < PSV_PASSIVE_IDS; id++) out->passiveValid[id] = index[id] >= 0 && (uint32_t)index[id] < passiveCount;
+    uint32_t entity = PassivesLocalEntity(game, out, why);
+    if (!entity) return 0;
+    uint32_t at = PassivesRecordOf(manager, entity, why);
+    if (at == UINT32_MAX) return 0;
+    uintptr_t descriptor = 0;
+    uint32_t carried = 0;
+    if (at >= records || at >= PSV_RECORDS || SafeRead(manager + PSV_DESCRIPTORS + at * 8u, &descriptor, 8) || !descriptor ||
+        SafeRead(descriptor + 8, &carried, 4) || carried != entity)
+    { *why = "the record does not carry the local player's entity"; return 0; }
+    out->record = manager + PSV_APPLIED + at * PSV_APPLIED_STRIDE;
+    return PassivesDerived(manager, out, why);
 }
 
 static int PassiveIn(const uint32_t* list, size_t count, uint32_t id)
@@ -186,6 +207,35 @@ static int PassivesWritable(uintptr_t address)
 {
     MEMORY_BASIC_INFORMATION info;
     return VirtualQuery((void*)address, &info, sizeof info) && info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && info.Protect == PAGE_READWRITE;
+}
+
+/* The passive slot s should hold: the override's (HF_PASSIVE_KIT: the kit's), the kit's when the game cannot take it
+ * there (status says why). */
+static uint32_t PassivesWanted(const LocalPassives* local, int s, char* status, size_t statusSize)
+{
+    uint32_t want = g_passivesWant[s] == HF_PASSIVE_KIT ? local->derived[s] : g_passivesWant[s];
+    if (want != local->derived[s] && PassiveIn(kPassivePackaged, sizeof kPassivePackaged / sizeof kPassivePackaged[0], want))
+    { snprintf(status, statusSize, "passive %u needs an effect package HellForge does not load yet", want); want = local->derived[s]; }
+    if (s == 1 && want != local->derived[s] && PassiveIn(kPassiveArmorOnly, sizeof kPassiveArmorOnly / sizeof kPassiveArmorOnly[0], want))
+    { snprintf(status, statusSize, "passive %u works only as the armor passive", want); want = local->derived[s]; }
+    return want;
+}
+
+/* Slot s written with what it should hold (status says why not). */
+static void PassivesSlot(const LocalPassives* local, int s, char* status, size_t statusSize)
+{
+    uint32_t want = PassivesWanted(local, s, status, statusSize);
+    if (local->slots[s] == want) return;
+    /* only the kits' value or the one this override wrote is replaced */
+    if (local->slots[s] != local->derived[s] && !(g_passivesWrote[s] && local->slots[s] == g_passivesWritten[s]))
+    { snprintf(status, statusSize, "the %s slot holds %u, which neither the kit nor HellForge put there", s ? "second" : "armor", local->slots[s]); return; }
+    uintptr_t at = local->record + (s ? PSV_SECOND : PSV_ARMOR);
+    uint32_t check = 0;
+    if (!PassivesWritable(at) || ApiWrite(at, &want, 4) || SafeRead(at, &check, 4) || check != want)
+    { snprintf(status, statusSize, "the record could not be written"); return; }
+    g_passivesWritten[s] = want;
+    g_passivesWrote[s] = want != local->derived[s];
+    if (g_passivesMod) ApiLog(g_passivesMod, "passives: %s slot %u (the kit gives %u)", s ? "second" : "armor", want, local->derived[s]);
 }
 
 /* Every 250 ms from the watch loop (the native fixture calls it with a game image of its own). */
@@ -216,25 +266,7 @@ static void PassivesTick(uintptr_t game)
         return;
     }
     char status[192] = "held";
-    for (int s = 0; s < 2; s++)
-    {
-        uint32_t want = g_passivesWant[s] == HF_PASSIVE_KIT ? local.derived[s] : g_passivesWant[s];
-        if (want != local.derived[s] && PassiveIn(kPassivePackaged, sizeof kPassivePackaged / sizeof kPassivePackaged[0], want))
-        { snprintf(status, sizeof status, "passive %u needs an effect package HellForge does not load yet", want); want = local.derived[s]; }
-        if (s == 1 && want != local.derived[s] && PassiveIn(kPassiveArmorOnly, sizeof kPassiveArmorOnly / sizeof kPassiveArmorOnly[0], want))
-        { snprintf(status, sizeof status, "passive %u works only as the armor passive", want); want = local.derived[s]; }
-        if (local.slots[s] == want) continue;
-        /* only the kits' value or the one this override wrote is replaced */
-        if (local.slots[s] != local.derived[s] && !(g_passivesWrote[s] && local.slots[s] == g_passivesWritten[s]))
-        { snprintf(status, sizeof status, "the %s slot holds %u, which neither the kit nor HellForge put there", s ? "second" : "armor", local.slots[s]); continue; }
-        uintptr_t at = local.record + (s ? PSV_SECOND : PSV_ARMOR);
-        uint32_t check = 0;
-        if (!PassivesWritable(at) || ApiWrite(at, &want, 4) || SafeRead(at, &check, 4) || check != want)
-        { snprintf(status, sizeof status, "the record could not be written"); continue; }
-        g_passivesWritten[s] = want;
-        g_passivesWrote[s] = want != local.derived[s];
-        if (g_passivesMod) ApiLog(g_passivesMod, "passives: %s slot %u (the kit gives %u)", s ? "second" : "armor", want, local.derived[s]);
-    }
+    for (int s = 0; s < 2; s++) PassivesSlot(&local, s, status, sizeof status);
     snprintf(g_passivesStatus, sizeof g_passivesStatus, "%s", status);
     ReleaseSRWLockExclusive(&g_passivesLock);
 }

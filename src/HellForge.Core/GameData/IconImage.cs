@@ -79,8 +79,37 @@ public static class IconImage
     public static (int Width, int Height, byte[] Rgba) ReadPng(byte[] data)
     {
         if (data.Length < 8 || !data.AsSpan(0, 8).SequenceEqual(PngSignature)) throw new InvalidDataException("not a PNG file.");
-        byte[]? header = null, palette = null, alpha = null;
         using var idat = new MemoryStream();
+        var format = ReadChunks(data, idat);
+        var bits = format.Channels * format.Depth;
+        int stride = (format.Width * bits + 7) / 8, step = Math.Max(1, bits / 8);
+        // The image data's size follows from the header: checked before inflating, and never inflated past it (a few KB of
+        // zlib can claim gigabytes; a mod's PNG may come from another machine, mod sync).
+        var expected = (long)format.Height * (stride + 1);
+        if (expected > MaxImageBytes) throw new InvalidDataException("the PNG is too large.");
+        var raw = Inflate(idat, expected);
+        var rgba = new byte[(long)format.Width * format.Height * 4];
+        var previous = new byte[stride];
+        var samples = new int[format.Width * format.Channels];
+        for (var y = 0; y < format.Height; y++)
+        {
+            var filter = raw[y * (stride + 1)];
+            var line = raw.AsSpan(y * (stride + 1) + 1, stride).ToArray();
+            Unfilter(line, previous, filter, step);
+            previous = line;
+            ReadSamples(line, format, samples);
+            for (var x = 0; x < format.Width; x++) WritePixel(rgba, (y * format.Width + x) * 4, x, format, samples);
+        }
+        return (format.Width, format.Height, rgba);
+    }
+
+    // What a PNG's header says, and its palette and its transparency (tRNS) when it has them.
+    sealed record PngFormat(int Width, int Height, int Depth, int Colour, int Channels, byte[]? Palette, byte[]? Alpha);
+
+    // A PNG's chunks, each checked: the image data (IDAT) into idat, and the header, checked, with its palette.
+    static PngFormat ReadChunks(byte[] data, MemoryStream idat)
+    {
+        byte[]? header = null, palette = null, alpha = null;
         for (var at = 8; at + 8 <= data.Length;)
         {
             var length = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(at));
@@ -96,7 +125,12 @@ public static class IconImage
             else if (kind == "IDAT") idat.Write(body);
             else if (kind == "IEND") break;
         }
-        if (header is not { Length: 13 } || idat.Length == 0) throw new InvalidDataException("PNG without image data.");
+        return Format(header, idat.Length, palette, alpha);
+    }
+
+    static PngFormat Format(byte[]? header, long imageData, byte[]? palette, byte[]? alpha)
+    {
+        if (header is not { Length: 13 } || imageData == 0) throw new InvalidDataException("PNG without image data.");
         var width = BinaryPrimitives.ReadInt32BigEndian(header);
         var height = BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(4));
         int depth = header[8], colour = header[9];
@@ -107,12 +141,12 @@ public static class IconImage
             throw new InvalidDataException($"unsupported PNG bit depth {depth}.");
         if (colour == 3 && palette == null) throw new InvalidDataException("palette PNG without a palette.");
         if (width is < 1 or > 8192 || height is < 1 or > 8192) throw new InvalidDataException("the PNG is too large.");
-        var bits = channels * depth;
-        int stride = (width * bits + 7) / 8, step = Math.Max(1, bits / 8);
-        // The image data's size follows from the header: checked before inflating, and never inflated past it (a few KB of
-        // zlib can claim gigabytes; a mod's PNG may come from another machine, mod sync).
-        var expected = (long)height * (stride + 1);
-        if (expected > MaxImageBytes) throw new InvalidDataException("the PNG is too large.");
+        return new(width, height, depth, colour, channels, palette, alpha);
+    }
+
+    // The image data inflated: exactly expected bytes, or it is refused.
+    static byte[] Inflate(MemoryStream idat, long expected)
+    {
         var raw = new byte[expected];
         idat.Position = 0;
         using (var inflate = new ZLibStream(idat, CompressionMode.Decompress))
@@ -120,59 +154,62 @@ public static class IconImage
             var read = inflate.ReadAtLeast(raw, raw.Length, throwOnEndOfStream: false);
             if (read != raw.Length || inflate.Read(new byte[1]) != 0) throw new InvalidDataException("PNG image data has the wrong size.");
         }
-        var rgba = new byte[(long)width * height * 4];
-        var previous = new byte[stride];
-        var samples = new int[width * channels];
-        for (var y = 0; y < height; y++)
+        return raw;
+    }
+
+    // A row's filter undone, against the row above (previous); step: the bytes of a pixel, at least 1.
+    static void Unfilter(byte[] line, byte[] previous, int filter, int step)
+    {
+        for (var i = 0; i < line.Length; i++)
         {
-            var filter = raw[y * (stride + 1)];
-            var line = raw.AsSpan(y * (stride + 1) + 1, stride).ToArray();
-            for (var i = 0; i < stride; i++)
+            int a = i >= step ? line[i - step] : 0, b = previous[i], c = i >= step ? previous[i - step] : 0;
+            line[i] = (byte)(line[i] + filter switch
             {
-                int a = i >= step ? line[i - step] : 0, b = previous[i], c = i >= step ? previous[i - step] : 0;
-                line[i] = (byte)(line[i] + filter switch
-                {
-                    0 => 0,
-                    1 => a,
-                    2 => b,
-                    3 => (a + b) / 2,
-                    4 => Paeth(a, b, c),
-                    _ => throw new InvalidDataException($"invalid PNG row filter {filter}.")
-                });
-            }
-            previous = line;
-            if (depth < 8)
-                for (var x = 0; x < width; x++) samples[x] = line[x * depth / 8] >> (8 - depth - x * depth % 8) & ((1 << depth) - 1);
-            else
-                for (var s = 0; s < width * channels; s++) samples[s] = line[depth == 16 ? 2 * s : s];
-            for (var x = 0; x < width; x++)
-            {
-                var o = (y * width + x) * 4;
-                switch (colour)
-                {
-                    case 3:
-                        var index = samples[x];
-                        if (3 * index + 3 > palette!.Length) throw new InvalidDataException("PNG palette index out of range.");
-                        palette.AsSpan(3 * index, 3).CopyTo(rgba.AsSpan(o));
-                        rgba[o + 3] = alpha != null && index < alpha.Length ? alpha[index] : (byte)255;
-                        break;
-                    case 0:
-                        var grey = (byte)(depth < 8 ? samples[x] * (255 / ((1 << depth) - 1)) : samples[x]);
-                        (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = (grey, grey, grey, 255);
-                        break;
-                    case 4:
-                        (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = ((byte)samples[2 * x], (byte)samples[2 * x], (byte)samples[2 * x], (byte)samples[2 * x + 1]);
-                        break;
-                    case 2:
-                        (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = ((byte)samples[3 * x], (byte)samples[3 * x + 1], (byte)samples[3 * x + 2], 255);
-                        break;
-                    default:
-                        for (var c = 0; c < 4; c++) rgba[o + c] = (byte)samples[4 * x + c];
-                        break;
-                }
-            }
+                0 => 0,
+                1 => a,
+                2 => b,
+                3 => (a + b) / 2,
+                4 => Paeth(a, b, c),
+                _ => throw new InvalidDataException($"invalid PNG row filter {filter}.")
+            });
         }
-        return (width, height, rgba);
+    }
+
+    // A row's samples: a pixel's each below 8 bits, every channel's at 8 bits, the high byte of each at 16.
+    static void ReadSamples(byte[] line, PngFormat format, int[] samples)
+    {
+        var depth = format.Depth;
+        if (depth < 8)
+            for (var x = 0; x < format.Width; x++) samples[x] = line[x * depth / 8] >> (8 - depth - x * depth % 8) & ((1 << depth) - 1);
+        else
+            for (var s = 0; s < format.Width * format.Channels; s++) samples[s] = line[depth == 16 ? 2 * s : s];
+    }
+
+    // Pixel x of a row as RGBA at rgba[o].
+    static void WritePixel(byte[] rgba, int o, int x, PngFormat format, int[] samples)
+    {
+        switch (format.Colour)
+        {
+            case 3:
+                var index = samples[x];
+                if (3 * index + 3 > format.Palette!.Length) throw new InvalidDataException("PNG palette index out of range.");
+                format.Palette.AsSpan(3 * index, 3).CopyTo(rgba.AsSpan(o));
+                rgba[o + 3] = format.Alpha != null && index < format.Alpha.Length ? format.Alpha[index] : (byte)255;
+                break;
+            case 0:
+                var grey = (byte)(format.Depth < 8 ? samples[x] * (255 / ((1 << format.Depth) - 1)) : samples[x]);
+                (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = (grey, grey, grey, 255);
+                break;
+            case 4:
+                (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = ((byte)samples[2 * x], (byte)samples[2 * x], (byte)samples[2 * x], (byte)samples[2 * x + 1]);
+                break;
+            case 2:
+                (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = ((byte)samples[3 * x], (byte)samples[3 * x + 1], (byte)samples[3 * x + 2], 255);
+                break;
+            default:
+                for (var c = 0; c < 4; c++) rgba[o + c] = (byte)samples[4 * x + c];
+                break;
+        }
     }
 
     static int Paeth(int a, int b, int c)
@@ -203,22 +240,26 @@ public static class IconImage
         foreach (var (w, h, level) in RgbaLevels(width, height, rgba))
             for (var by = 0; by < Math.Max(h, 4); by += 4)
                 for (var bx = 0; bx < Math.Max(w, 4); bx += 4)
-                {
-                    var alpha = new int[16];
-                    var colours = new (int R, int G, int B)[16];
-                    for (var k = 0; k < 16; k++)
-                    {
-                        var o = 4 * (Math.Min(by + k / 4, h - 1) * w + Math.Min(bx + k % 4, w - 1));
-                        alpha[k] = level[o + 3];
-                        colours[k] = (level[o], level[o + 1], level[o + 2]);
-                    }
-                    // Fully transparent pixels take a visible pixel's colour, so they do not pull the colour endpoints.
-                    var visible = Array.FindIndex(alpha, a => a > 0);
-                    for (var k = 0; k < 16; k++) if (alpha[k] == 0) colours[k] = visible >= 0 ? colours[visible] : (0, 0, 0);
-                    output.Write(AlphaBlock(alpha));
-                    output.Write(Block(colours));
-                }
+                    WriteBc3Block(output, level, w, h, bx, by);
         return output.ToArray();
+    }
+
+    // The BC3 block at (bx, by) of a w x h level; edge blocks repeat the last row and column.
+    static void WriteBc3Block(MemoryStream output, byte[] level, int w, int h, int bx, int by)
+    {
+        var alpha = new int[16];
+        var colours = new (int R, int G, int B)[16];
+        for (var k = 0; k < 16; k++)
+        {
+            var o = 4 * (Math.Min(by + k / 4, h - 1) * w + Math.Min(bx + k % 4, w - 1));
+            alpha[k] = level[o + 3];
+            colours[k] = (level[o], level[o + 1], level[o + 2]);
+        }
+        // Fully transparent pixels take a visible pixel's colour, so they do not pull the colour endpoints.
+        var visible = Array.FindIndex(alpha, a => a > 0);
+        for (var k = 0; k < 16; k++) if (alpha[k] == 0) colours[k] = visible >= 0 ? colours[visible] : (0, 0, 0);
+        output.Write(AlphaBlock(alpha));
+        output.Write(Block(colours));
     }
 
     // One BC3 alpha block: the highest and lowest alpha as endpoints, eight-value mode, nearest index per pixel.
@@ -253,24 +294,30 @@ public static class IconImage
             yield return (width, height, level);
             if (width == 1 && height == 1) yield break;
             int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
-            var next = new byte[w * h * 4];
-            for (var y = 0; y < h; y++)
-                for (var x = 0; x < w; x++)
-                {
-                    int r = 0, g = 0, b = 0, a = 0;
-                    for (var dy = 0; dy < 2; dy++)
-                        for (var dx = 0; dx < 2; dx++)
-                        {
-                            var o = 4 * (Math.Min(2 * y + dy, height - 1) * width + Math.Min(2 * x + dx, width - 1));
-                            int pa = level[o + 3];
-                            (r, g, b, a) = (r + level[o] * pa, g + level[o + 1] * pa, b + level[o + 2] * pa, a + pa);
-                        }
-                    var t = 4 * (y * w + x);
-                    if (a > 0) (next[t], next[t + 1], next[t + 2]) = ((byte)((r + a / 2) / a), (byte)((g + a / 2) / a), (byte)((b + a / 2) / a));
-                    next[t + 3] = (byte)((a + 2) / 4);
-                }
-            (level, width, height) = (next, w, h);
+            (level, width, height) = (HalfRgba(level, width, height, w, h), w, h);
         }
+    }
+
+    // The next level (w x h) of a width x height level: each pixel the alpha-weighted mean of the 2 x 2 it covers.
+    static byte[] HalfRgba(byte[] level, int width, int height, int w, int h)
+    {
+        var next = new byte[w * h * 4];
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                int r = 0, g = 0, b = 0, a = 0;
+                for (var dy = 0; dy < 2; dy++)
+                    for (var dx = 0; dx < 2; dx++)
+                    {
+                        var o = 4 * (Math.Min(2 * y + dy, height - 1) * width + Math.Min(2 * x + dx, width - 1));
+                        int pa = level[o + 3];
+                        (r, g, b, a) = (r + level[o] * pa, g + level[o + 1] * pa, b + level[o + 2] * pa, a + pa);
+                    }
+                var t = 4 * (y * w + x);
+                if (a > 0) (next[t], next[t + 1], next[t + 2]) = ((byte)((r + a / 2) / a), (byte)((g + a / 2) / a), (byte)((b + a / 2) / a));
+                next[t + 3] = (byte)((a + 2) / 4);
+            }
+        return next;
     }
 
     // The full BC1 mip chain (box-filtered, largest level first) of RGBA pixels drawn over black.
@@ -285,31 +332,43 @@ public static class IconImage
         using var output = new MemoryStream();
         while (true)
         {
-            for (var by = 0; by < Math.Max(height, 4); by += 4)
-                for (var bx = 0; bx < Math.Max(width, 4); bx += 4)
-                {
-                    var block = new (int, int, int)[16];
-                    for (var y = 0; y < 4; y++)
-                        for (var x = 0; x < 4; x++) block[4 * y + x] = pixels[Math.Min(by + y, height - 1) * width + Math.Min(bx + x, width - 1)];
-                    output.Write(Block(block));
-                }
+            WriteBc1Level(output, pixels, width, height);
             if (width == 1 && height == 1) return output.ToArray();
             int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
-            var next = new (int, int, int)[w * h];
-            for (var y = 0; y < h; y++)
-                for (var x = 0; x < w; x++)
-                {
-                    int r = 0, g = 0, b = 0;
-                    for (var dy = 0; dy < 2; dy++)
-                        for (var dx = 0; dx < 2; dx++)
-                        {
-                            var p = pixels[Math.Min(2 * y + dy, height - 1) * width + Math.Min(2 * x + dx, width - 1)];
-                            (r, g, b) = (r + p.R, g + p.G, b + p.B);
-                        }
-                    next[y * w + x] = ((r + 2) / 4, (g + 2) / 4, (b + 2) / 4);
-                }
-            (pixels, width, height) = (next, w, h);
+            (pixels, width, height) = (HalfPixels(pixels, width, height, w, h), w, h);
         }
+    }
+
+    // A level's BC1 blocks, rows of blocks top to bottom; edge blocks repeat the last row and column.
+    static void WriteBc1Level(MemoryStream output, (int R, int G, int B)[] pixels, int width, int height)
+    {
+        for (var by = 0; by < Math.Max(height, 4); by += 4)
+            for (var bx = 0; bx < Math.Max(width, 4); bx += 4)
+            {
+                var block = new (int, int, int)[16];
+                for (var y = 0; y < 4; y++)
+                    for (var x = 0; x < 4; x++) block[4 * y + x] = pixels[Math.Min(by + y, height - 1) * width + Math.Min(bx + x, width - 1)];
+                output.Write(Block(block));
+            }
+    }
+
+    // The next level (w x h) of a width x height level: each pixel the mean of the 2 x 2 it covers.
+    static (int R, int G, int B)[] HalfPixels((int R, int G, int B)[] pixels, int width, int height, int w, int h)
+    {
+        var next = new (int, int, int)[w * h];
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                int r = 0, g = 0, b = 0;
+                for (var dy = 0; dy < 2; dy++)
+                    for (var dx = 0; dx < 2; dx++)
+                    {
+                        var p = pixels[Math.Min(2 * y + dy, height - 1) * width + Math.Min(2 * x + dx, width - 1)];
+                        (r, g, b) = (r + p.R, g + p.G, b + p.B);
+                    }
+                next[y * w + x] = ((r + 2) / 4, (g + 2) / 4, (b + 2) / 4);
+            }
+        return next;
     }
 
     static int To565((int R, int G, int B) c) => (c.R * 31 + 127) / 255 << 11 | (c.G * 63 + 127) / 255 << 5 | (c.B * 31 + 127) / 255;

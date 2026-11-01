@@ -27,17 +27,21 @@ public static class ModlistDiff
         var own = mine.GroupBy(m => m.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         var lines = new List<(string Name, string Line)>();
         foreach (var m in own.Values)
-        {
-            if (!their.TryGetValue(m.Id, out var t))
-                lines.Add((m.Name, asHost ? $"They don't have {Label(m)}" : $"Not on the host: {Label(m)}"));
-            else if (t.Version != m.Version)
-                lines.Add((m.Name, asHost ? $"{m.Name}: they have {t.Version}, you have {m.Version}" : $"{m.Name}: you have {m.Version}, the host has {t.Version}"));
-            else if (t.Hash != m.Hash)
-                lines.Add((m.Name, asHost ? $"{Label(m)}: their files differ from yours" : $"{Label(m)}: your files differ from the host's"));
-        }
+            if (Difference(m, their.GetValueOrDefault(m.Id), asHost) is { } line) lines.Add((m.Name, line));
         foreach (var t in their.Values.Where(t => !own.ContainsKey(t.Id)))
             lines.Add((t.Name, asHost ? $"They have {Label(t)}, which you don't" : $"Missing: {Label(t)} (the host has it)"));
         return [.. lines.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).Select(l => l.Line)];
+    }
+
+    // The line for one of this player's mods against the other's copy of it (null: they have none), or null when the two
+    // are the same.
+    static string? Difference(ModFingerprint m, ModFingerprint? t, bool asHost)
+    {
+        if (t == null) return asHost ? $"They don't have {Label(m)}" : $"Not on the host: {Label(m)}";
+        if (t.Version != m.Version)
+            return asHost ? $"{m.Name}: they have {t.Version}, you have {m.Version}" : $"{m.Name}: you have {m.Version}, the host has {t.Version}";
+        if (t.Hash != m.Hash) return asHost ? $"{Label(m)}: their files differ from yours" : $"{Label(m)}: your files differ from the host's";
+        return null;
     }
 
     static string Label(ModFingerprint mod) => mod.Name + " " + mod.Version;

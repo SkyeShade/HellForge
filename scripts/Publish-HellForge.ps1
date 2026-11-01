@@ -1,4 +1,5 @@
-# Publishes HellForge into an installation's app folder: the launcher, command-line tool and Steam ownership probe as
+# Publishes HellForge into an installation's app folder: the launcher, command-line tool, Steam ownership probe and
+# Sync Inventory's capture proxy as
 # self-contained Windows builds (no .NET installation needed), the HellForge engine (its session runner, local backend,
 # mod loader and stand-ins, and the network block and ownership scripts: the package scripts/Build-Engine.ps1 builds from
 # this repository), the mod SDK, the bundled mods and the profile templates. Everything else in the
@@ -46,7 +47,8 @@ New-Item -ItemType Directory $staging|Out-Null
 foreach($app in @(
     @{folder='launcher';project='src/HellForge.Launcher/HellForge.Launcher.csproj'},
     @{folder='cli';project='src/HellForge.Cli/HellForge.Cli.csproj'},
-    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'})){
+    @{folder='steamprobe';project='src/HellForge.SteamProbe/HellForge.SteamProbe.csproj'},
+    @{folder='capture';project='src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj'})){
     Write-Output ('Publishing '+$app.folder)
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}

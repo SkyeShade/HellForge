@@ -106,7 +106,9 @@ public sealed class MissionService
         foreach (var list in FindAll(body, key))
             if (list.ValueKind == JsonValueKind.Array)
                 foreach (var item in list.EnumerateArray())
-                    if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue)
+                    // Super Credits found on a map (or claimed by a modified report) are a premium currency: never granted.
+                    if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue &&
+                        !PaidContentSet.IsSuperCredits((uint)mix))
                         items[(uint)mix] = items.GetValueOrDefault((uint)mix) + Math.Min(amount, 10_000);
         return items;
     }
@@ -116,13 +118,17 @@ public sealed class MissionService
     {
         if (node.ValueKind == JsonValueKind.Object)
             foreach (var property in node.EnumerateObject())
-            {
-                if (property.NameEquals(key)) yield return property.Value;
-                foreach (var nested in FindAll(property.Value, key)) yield return nested;
-            }
+                foreach (var found in FindIn(property, key)) yield return found;
         else if (node.ValueKind == JsonValueKind.Array)
             foreach (var element in node.EnumerateArray())
                 foreach (var nested in FindAll(element, key)) yield return nested;
+    }
+
+    // A property's value when it is the key, then the key's values inside it.
+    static IEnumerable<JsonElement> FindIn(JsonProperty property, string key)
+    {
+        if (property.NameEquals(key)) yield return property.Value;
+        foreach (var nested in FindAll(property.Value, key)) yield return nested;
     }
 
     static long? FindInt(JsonElement body, string key)

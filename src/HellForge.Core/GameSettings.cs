@@ -63,34 +63,92 @@ public static partial class GameSettings
         var files = build.Files.Select(file => file.Path).ToList();
         if (problems.Count > 0) return new(build.BuildId, problems, profileData, false, files);
 
-        var seeded = false;
-        if (!Directory.Exists(profileData))
-        {
-            Directory.CreateDirectory(Path.Combine(profileData, "saves"));
-            if (vanillaUserData != null && Directory.Exists(vanillaUserData))
-            {
-                var userSettings = Path.Combine(vanillaUserData, "user_settings.config");
-                if (File.Exists(userSettings)) File.Copy(userSettings, Path.Combine(profileData, "user_settings.config"));
-                var saves = Path.Combine(vanillaUserData, "saves");
-                if (Directory.Exists(saves))
-                    foreach (var file in Directory.EnumerateFiles(saves, "*_user_settings.config"))
-                        File.Copy(file, Path.Combine(profileData, "saves", Path.GetFileName(file)));
-            }
-            seeded = true;
-        }
+        var seeded = SeedProfile(profileData, vanillaUserData);
         var original = Utf8.GetString(File.ReadAllBytes(install.OriginalSettings));
         File.WriteAllBytes(settingsFile, Utf8.GetBytes(Rewrite(original, root, profile)));
         return new(build.BuildId, problems, profileData, seeded, files);
     }
 
+    // A new profile's user data: its saves folder, with the normal game's settings when there are any. True when the
+    // profile had none yet.
+    static bool SeedProfile(string profileData, string? vanillaUserData)
+    {
+        if (Directory.Exists(profileData)) return false;
+        Directory.CreateDirectory(Path.Combine(profileData, "saves"));
+        if (vanillaUserData != null && Directory.Exists(vanillaUserData))
+        {
+            var userSettings = Path.Combine(vanillaUserData, "user_settings.config");
+            if (File.Exists(userSettings)) File.Copy(userSettings, Path.Combine(profileData, "user_settings.config"));
+            var saves = Path.Combine(vanillaUserData, "saves");
+            if (Directory.Exists(saves))
+                foreach (var file in Directory.EnumerateFiles(saves, "*_user_settings.config"))
+                    File.Copy(file, Path.Combine(profileData, "saves", Path.GetFileName(file)));
+        }
+        return true;
+    }
+
     // The normal game's user data (%APPDATA%/Arrowhead/Helldivers2), where HELLDIVERS 2 keeps its options.
-    public static string VanillaUserData() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
+    // Under Wine (Proton) %APPDATA% is HellForge's own empty prefix, so the normal game's folder is the one in its Proton
+    // prefix in the Linux Steam library (steamapps/compatdata/553850), reached through Wine's Z: drive.
+    public static string VanillaUserData()
+    {
+        if (LinuxNetworkBlock.UnderWine)
+            foreach (var library in LinuxSteamLibraries())
+            {
+                var folder = WineZ(Path.Combine(library, "steamapps", "compatdata", "553850", "pfx", "drive_c", "users", "steamuser",
+                    "AppData", "Roaming", "Arrowhead", "Helldivers2"));
+                if (Directory.Exists(folder)) return folder;
+            }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Arrowhead", "Helldivers2");
+    }
+
+    static string WineZ(string linuxPath) => "Z:" + linuxPath.Replace('/', '\\');
+
+    // The Linux Steam client's folder (the one the launch script exports, else the usual places) and its other libraries.
+    static List<string> LinuxSteamLibraries()
+    {
+        var roots = new List<string>();
+        var home = Environment.GetEnvironmentVariable("HOME");
+        foreach (var candidate in new[] { Environment.GetEnvironmentVariable("STEAM_COMPAT_CLIENT_INSTALL_PATH"),
+                     home + "/.local/share/Steam", home + "/.steam/steam", home + "/.steam/debian-installation",
+                     home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam", home + "/snap/steam/common/.local/share/Steam" })
+            if (!string.IsNullOrEmpty(candidate) && candidate.StartsWith('/') && Directory.Exists(WineZ(candidate)) && !roots.Contains(candidate)) roots.Add(candidate);
+        foreach (var root in roots.ToList())
+        {
+            var vdf = WineZ(root + "/steamapps/libraryfolders.vdf");
+            if (!File.Exists(vdf)) continue;
+            foreach (Match match in LibraryPath().Matches(File.ReadAllText(vdf)))
+            {
+                var library = match.Groups[1].Value.Replace("\\\\", "/");
+                if (library.StartsWith('/') && !roots.Contains(library)) roots.Add(library);
+            }
+        }
+        return roots;
+    }
+
+    [GeneratedRegex("\"path\"\\s+\"([^\"]+)\"")]
+    private static partial Regex LibraryPath();
 
     // The key bindings the signed-in Steam account keeps for HELLDIVERS 2 in its Steam Cloud folder
-    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none.
+    // (<Steam>/userdata/<account>/553850/remote/input_settings.config), or null when there are none. Under Wine the
+    // registry has no Steam account, so the Linux Steam client's userdata is searched: the most recently changed file.
     public static string? SteamControls()
     {
+        if (LinuxNetworkBlock.UnderWine)
+        {
+            var found = new List<string>();
+            foreach (var library in LinuxSteamLibraries())
+            {
+                var userdata = WineZ(library + "/userdata");
+                if (!Directory.Exists(userdata)) continue;
+                foreach (var accountFolder in Directory.EnumerateDirectories(userdata).Where(a => Path.GetFileName(a) != "0"))
+                {
+                    var bindings = Path.Combine(accountFolder, "553850", "remote", ControlsFile);
+                    if (File.Exists(bindings)) found.Add(bindings);
+                }
+            }
+            return found.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        }
         if (!OperatingSystem.IsWindows() || SteamLocator.SteamRoot() is not { } steam ||
             Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess", "ActiveUser", null) is not int account || account == 0)
             return null;
@@ -129,19 +187,26 @@ public static partial class GameSettings
         foreach (var (from, to, name) in pairs)
         {
             if (from.Length == 0 || !File.Exists(from)) { missing.Add(name); continue; }
-            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-            if (File.Exists(to)) File.Copy(to, to + BackupSuffix, overwrite: true);
-            else
-            {
-                if (File.Exists(to + BackupSuffix)) File.Delete(to + BackupSuffix);
-                created.Add(Path.GetRelativePath(profileData, to));
-            }
-            File.Copy(from, to + ".partial", overwrite: true);
-            File.Move(to + ".partial", to, overwrite: true);
+            ImportFile(from, to, profileData, created);
             copied.Add(name);
         }
         if (copied.Count > 0) File.WriteAllLines(Path.Combine(profileData, ImportList), created);
         return new(copied, missing);
+    }
+
+    // One file into the profile, the profile's own copy kept beside it (*.before-import); created: the files the import
+    // made where the profile had none.
+    static void ImportFile(string from, string to, string profileData, List<string> created)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+        if (File.Exists(to)) File.Copy(to, to + BackupSuffix, overwrite: true);
+        else
+        {
+            if (File.Exists(to + BackupSuffix)) File.Delete(to + BackupSuffix);
+            created.Add(Path.GetRelativePath(profileData, to));
+        }
+        File.Copy(from, to + ".partial", overwrite: true);
+        File.Move(to + ".partial", to, overwrite: true);
     }
 
     // Whether the profile has an import UndoImport can take back.

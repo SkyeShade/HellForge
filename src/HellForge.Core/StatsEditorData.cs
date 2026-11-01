@@ -144,20 +144,27 @@ public sealed class StatsDraft
             {
                 var targetName = schema.TargetAliases.GetValueOrDefault(section.Key)?.GetValueOrDefault(name, name) ?? name;
                 if (node is not JsonObject entry || !targets.TryGetValue(targetName, out var target)) { normalized[name] = node?.DeepClone(); continue; }
-                var result = new JsonObject();
-                foreach (var (property, value) in entry)
-                {
-                    if (property == "spread")
-                    { result["weapon.horizontal_spread"] = value?.DeepClone(); result["weapon.vertical_spread"] = value?.DeepClone(); }
-                    else if (property == "armorPenetration" && section.Key == "damage" && value is JsonArray ap && ap.Count == 4)
-                        for (var i = 0; i < 4; i++) result[new[] { "ap_direct", "ap_slight", "ap_large", "ap_extreme" }[i]] = ap[i]?.DeepClone();
-                    else result[target.Aliases.GetValueOrDefault(property, property)] = value?.DeepClone();
-                }
-                normalized[targetName] = result;
+                normalized[targetName] = NormalizeEntry(entry, target, section.Key);
             }
             document[section.Key] = normalized;
         }
         return document;
+    }
+
+    // A target's stats by their fields' own keys: "spread" as its two fields, a damage type's "armorPenetration" as its
+    // four, an alias as its field.
+    static JsonObject NormalizeEntry(JsonObject entry, StatsTarget target, string category)
+    {
+        var result = new JsonObject();
+        foreach (var (property, value) in entry)
+        {
+            if (property == "spread")
+            { result["weapon.horizontal_spread"] = value?.DeepClone(); result["weapon.vertical_spread"] = value?.DeepClone(); }
+            else if (property == "armorPenetration" && category == "damage" && value is JsonArray ap && ap.Count == 4)
+                for (var i = 0; i < 4; i++) result[new[] { "ap_direct", "ap_slight", "ap_large", "ap_extreme" }[i]] = ap[i]?.DeepClone();
+            else result[target.Aliases.GetValueOrDefault(property, property)] = value?.DeepClone();
+        }
+        return result;
     }
 }
 

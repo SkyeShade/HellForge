@@ -33,18 +33,29 @@ std::string WindowsFont(const char* name)
 uint16_t U16(const unsigned char* p) { return (uint16_t)(p[0] << 8 | p[1]); }
 int16_t I16(const unsigned char* p) { return (int16_t)U16(p); }
 
+/* A file's bytes, read 64 KB at a time straight into the vector (none when it cannot be read). */
+std::vector<unsigned char> FileBytes(const std::string& file)
+{
+    std::vector<unsigned char> data;
+    FILE* f = fopen(file.c_str(), "rb");
+    if (!f) return data;
+    for (size_t n = 1; n > 0;)
+    {
+        size_t had = data.size();
+        data.resize(had + 65536);
+        n = fread(&data[had], 1, 65536, f);
+        data.resize(had + n);
+    }
+    fclose(f);
+    return data;
+}
+
 /* What a pixel height means for this font: stb_truetype sizes a font by ascender - descender (hhea), the editor's sizes
  * are em sizes (as the HD2R Editor's are); and the cap height (OS/2) the text centres on. */
 Metrics ReadMetrics(const std::string& file)
 {
     Metrics m;
-    FILE* f = fopen(file.c_str(), "rb");
-    if (!f) return m;
-    std::vector<unsigned char> data;
-    unsigned char buffer[65536];
-    size_t n;
-    while ((n = fread(buffer, 1, sizeof buffer, f)) > 0) data.insert(data.end(), buffer, buffer + n);
-    fclose(f);
+    std::vector<unsigned char> data = FileBytes(file);
     if (data.size() < 12) return m;
     int tables = U16(&data[4]);
     int upem = 0, ascender = 0, descender = 0, cap = 0;
@@ -73,28 +84,63 @@ int Nearest(float size)
 
 void SetFontFolder(const std::string& folder) { g_folder = folder; }
 
+/* The game's own FS Sinclair and FS Sinclair Medium (extracted into the editor's folder), else Windows' Bahnschrift */
+static void FindFontFiles()
+{
+    auto own = [](const char* name) {
+        std::string path = g_folder + "\\" + name;
+        return !g_folder.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES ? path : std::string();
+    };
+    g_fallbackFile = WindowsFont("bahnschrift.ttf");
+    if (g_fallbackFile.empty()) g_fallbackFile = WindowsFont("segoeui.ttf");
+    g_faceFile[BODY] = own("fs-sinclair.ttf");
+    g_faceFile[TITLE] = own("fs-sinclair-medium.ttf");
+    g_symbolFile = WindowsFont("seguisym.ttf");
+}
+
+static const ImWchar TEXT_RANGES[] = {0x0020, 0x00FF, 0x2010, 0x2027, 0x2030, 0x203A, 0x2122, 0x2122, 0x2212, 0x2212, 0};
+static const ImWchar SYMBOL_RANGES[] = {0x2190, 0x2193, 0x2715, 0x2715, 0};
+
+/* a font merged in at the same em size (a font with a taller line takes a larger pixel height) */
+static void MergeFont(const std::string& file, const Metrics& m, float size, float s, float multiply, const ImWchar* ranges)
+{
+    if (file.empty()) return;
+    ImFontConfig config;
+    config.MergeMode = true;
+    config.PixelSnapH = true;
+    config.OversampleH = 2;
+    config.RasterizerMultiply = multiply;
+    float pixels = size * s * m.pixelHeightPerEm;
+    ImGui::GetIO().Fonts->AddFontFromFileTTF(file.c_str(), pixels < 6 ? 6 : pixels, &config, ranges);
+}
+
+/* A face at one of the sizes, from its file (ImGui's own font when that cannot be read). */
+static ImFont* BakeFont(const std::string& file, int face, int i, float s)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    float pixels = SIZES[i] * s * g_baked.metrics[face].pixelHeightPerEm;
+    if (pixels < 6) pixels = 6;
+    ImFontConfig config;
+    config.OversampleH = 2;
+    config.OversampleV = 1;
+    config.PixelSnapH = true;
+    config.RasterizerMultiply = face == TITLE && g_baked.faux ? 1.15f : 1.0f;
+    ImFont* font = !file.empty() ? io.Fonts->AddFontFromFileTTF(file.c_str(), pixels, &config, TEXT_RANGES) : nullptr;
+    if (font == nullptr) { ImFontConfig fallback; fallback.SizePixels = pixels; return io.Fonts->AddFontDefault(&fallback); }
+    /* what FS Sinclair lacks: other characters from the fallback, the arrows from Segoe UI Symbol */
+    if (file != g_fallbackFile) MergeFont(g_fallbackFile, g_baked.fallback, SIZES[i], s, config.RasterizerMultiply, TEXT_RANGES);
+    MergeFont(g_symbolFile, g_baked.symbols, SIZES[i], s, config.RasterizerMultiply, SYMBOL_RANGES);
+    return font;
+}
+
 bool BuildFonts(float s)
 {
     if (fabsf(g_baked.scale - s) < 0.005f) return false;
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
-    if (g_fallbackFile.empty())
-    {
-        /* The game's own FS Sinclair and FS Sinclair Medium (extracted into the editor's folder), else Windows' Bahnschrift */
-        auto own = [](const char* name) {
-            std::string path = g_folder + "\\" + name;
-            return !g_folder.empty() && GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES ? path : std::string();
-        };
-        g_fallbackFile = WindowsFont("bahnschrift.ttf");
-        if (g_fallbackFile.empty()) g_fallbackFile = WindowsFont("segoeui.ttf");
-        g_faceFile[BODY] = own("fs-sinclair.ttf");
-        g_faceFile[TITLE] = own("fs-sinclair-medium.ttf");
-        g_symbolFile = WindowsFont("seguisym.ttf");
-    }
+    if (g_fallbackFile.empty()) FindFontFiles();
     g_baked = Baked{};
     g_baked.scale = s;
-    static const ImWchar text[] = {0x0020, 0x00FF, 0x2010, 0x2027, 0x2030, 0x203A, 0x2122, 0x2122, 0x2212, 0x2212, 0};
-    static const ImWchar symbols[] = {0x2190, 0x2193, 0x2715, 0x2715, 0};
     std::string files[2] = {g_faceFile[BODY], g_faceFile[TITLE]};
     if (files[BODY].empty()) files[BODY] = g_fallbackFile;
     g_baked.faux = files[TITLE].empty();
@@ -102,37 +148,8 @@ bool BuildFonts(float s)
     for (int face = 0; face < 2; face++) if (!files[face].empty()) g_baked.metrics[face] = ReadMetrics(files[face]);
     if (!g_fallbackFile.empty()) g_baked.fallback = ReadMetrics(g_fallbackFile);
     if (!g_symbolFile.empty()) g_baked.symbols = ReadMetrics(g_symbolFile);
-    /* a font merged in at the same em size (a font with a taller line takes a larger pixel height) */
-    auto merge = [&](const std::string& file, const Metrics& m, float size, float multiply, const ImWchar* ranges) {
-        if (file.empty()) return;
-        ImFontConfig config;
-        config.MergeMode = true;
-        config.PixelSnapH = true;
-        config.OversampleH = 2;
-        config.RasterizerMultiply = multiply;
-        float pixels = size * s * m.pixelHeightPerEm;
-        io.Fonts->AddFontFromFileTTF(file.c_str(), pixels < 6 ? 6 : pixels, &config, ranges);
-    };
     for (int face = 0; face < 2; face++)
-        for (int i = 0; i < SIZE_COUNT; i++)
-        {
-            float pixels = SIZES[i] * s * g_baked.metrics[face].pixelHeightPerEm;
-            if (pixels < 6) pixels = 6;
-            ImFontConfig config;
-            config.OversampleH = 2;
-            config.OversampleV = 1;
-            config.PixelSnapH = true;
-            config.RasterizerMultiply = face == TITLE && g_baked.faux ? 1.15f : 1.0f;
-            ImFont* font = !files[face].empty() ? io.Fonts->AddFontFromFileTTF(files[face].c_str(), pixels, &config, text) : nullptr;
-            if (font == nullptr) { ImFontConfig fallback; fallback.SizePixels = pixels; font = io.Fonts->AddFontDefault(&fallback); }
-            else
-            {
-                /* what FS Sinclair lacks: other characters from the fallback, the arrows from Segoe UI Symbol */
-                if (files[face] != g_fallbackFile) merge(g_fallbackFile, g_baked.fallback, SIZES[i], config.RasterizerMultiply, text);
-                merge(g_symbolFile, g_baked.symbols, SIZES[i], config.RasterizerMultiply, symbols);
-            }
-            g_baked.fonts[face][i] = font;
-        }
+        for (int i = 0; i < SIZE_COUNT; i++) g_baked.fonts[face][i] = BakeFont(files[face], face, i, s);
     io.Fonts->Build();
     io.FontDefault = g_baked.fonts[BODY][3];
     return true;
@@ -218,11 +235,11 @@ void Canvas::Line(float x1, float y1, float x2, float y2, ImU32 colour, int z, f
     list->AddCircleFilled(b, t * s / 2, colour);
 }
 
-void Canvas::Chevron(float x1, float y1, float x2, float y2, float x3, float y3, ImU32 colour, int z, float t)
+void Canvas::Chevron(ImVec2 a, ImVec2 b, ImVec2 c, ImU32 colour, int z, float t)
 {
     Layer(z);
-    auto snap = [&](float x, float y) { ImVec2 p = Px(x, y); return ImVec2(floorf(p.x) + 0.5f, floorf(p.y) + 0.5f); };
-    ImVec2 points[3] = {snap(x1, y1), snap(x2, y2), snap(x3, y3)};
+    auto snap = [&](ImVec2 at) { ImVec2 p = Px(at.x, at.y); return ImVec2(floorf(p.x) + 0.5f, floorf(p.y) + 0.5f); };
+    ImVec2 points[3] = {snap(a), snap(b), snap(c)};
     list->AddPolyline(points, 3, colour, ImDrawFlags_None, fmaxf(1.0f, roundf(t * s)));
 }
 
@@ -285,11 +302,11 @@ float Canvas::Text(const std::string& raw, float x, float cy, const TextOpts& o)
     return w;
 }
 
-void Canvas::Image(ImTextureID texture, float x, float y, float w, float h, ImVec2 uv0, ImVec2 uv1, ImU32 tint, int z)
+void Canvas::Image(ImTextureID texture, ImVec2 at, ImVec2 size, ImVec2 uv0, ImVec2 uv1, ImU32 tint, int z)
 {
-    if (!texture || w <= 0 || h <= 0) return;
+    if (!texture || size.x <= 0 || size.y <= 0) return;
     Layer(z);
-    list->AddImage(texture, ImVec2((ox + x) * s, (oy + y) * s), ImVec2((ox + x + w) * s, (oy + y + h) * s), uv0, uv1, tint);
+    list->AddImage(texture, ImVec2((ox + at.x) * s, (oy + at.y) * s), ImVec2((ox + at.x + size.x) * s, (oy + at.y + size.y) * s), uv0, uv1, tint);
 }
 
 bool Canvas::Hit(float x, float y, float w, float h, uint64_t id)

@@ -62,6 +62,13 @@ static uint8_t* g_projectileTable; /* HellForge's moved list, once installed */
 /* The projectile list the game reads now: HellForge's moved copy, else the game's. */
 static uintptr_t ProjectileTable(uintptr_t game) { return g_projectileTable != NULL ? (uintptr_t)g_projectileTable : game + PRJ_TABLE; }
 
+/* The first added type of that name a live change does not take out (live_content.c); NULL none. */
+static const Projectile* ProjectileNamed(const char* name)
+{
+    for (uint32_t i = 0; i < g_projectileCount; i++) if (!LiveGone(LC_PROJECTILE, i) && strcmp(g_projectiles[i].name, name) == 0) return &g_projectiles[i];
+    return NULL;
+}
+
 static uint32_t ApiAddProjectile(HfMod* mod, const HfProjectile* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfProjectile, spawn_effect) + sizeof def->spawn_effect)
@@ -92,12 +99,12 @@ static uint32_t ApiAddProjectile(HfMod* mod, const HfProjectile* def)
         ApiLog(mod, "add_projectile(%s): damage %u is neither a vanilla damage id nor one a mod added", name, def->damage);
         return 0;
     }
-    for (uint32_t i = 0; i < g_projectileCount; i++)
-        if (!LiveGone(LC_PROJECTILE, i) && strcmp(g_projectiles[i].name, name) == 0)
-        {
-            ApiLog(mod, "add_projectile(%s): already added by %s", name, g_projectiles[i].mod->id);
-            return 0;
-        }
+    const Projectile* added = ProjectileNamed(name);
+    if (added != NULL)
+    {
+        ApiLog(mod, "add_projectile(%s): already added by %s", name, added->mod->id);
+        return 0;
+    }
     uint32_t index = g_projectileCount;
     Projectile* p = live ? (Projectile*)LiveEntry(LC_PROJECTILE, mod, name, &index) : &g_projectiles[index];
     if (p == NULL) return 0;

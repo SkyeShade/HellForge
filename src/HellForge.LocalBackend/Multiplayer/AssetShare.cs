@@ -166,39 +166,45 @@ public sealed class AssetShare : IAsyncDisposable
     public void FromPeer(ulong peer, Frame frame)
     {
         if (frame.Count < 2 || !long.TryParse(frame.Text(0), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var version)) return;
-        if (frame.Type == "assets.mine" && lobby.InHostedLobby(peer))
+        if (frame.Type == "assets.mine" && lobby.InHostedLobby(peer)) FromJoiner(peer, frame, version);
+        else if (frame.Type == "assets.lobby" && lobby.HostsJoinedLobby(peer)) FromHost(peer, frame, version);
+    }
+
+    // A joiner's own packages, to this host of its lobby.
+    void FromJoiner(ulong peer, Frame frame, long version)
+    {
+        var ids = LiveEditServer.Packages(frame.Text(1), MaxPerPlayer);
+        var swaps = frame.Count > 2 ? frame.Text(2) : "-";
+        var rounds = frame.Count > 3 ? frame.Text(3) : "-";
+        if (ids == null || !WellFormed(swaps, false, MaxPerPlayer) || !WellFormedRounds(rounds, false))
+        { log($"Assets: {LobbyService.EntityId(peer)} sent a malformed list of its packages."); return; }
+        lock (gate)
         {
-            var ids = LiveEditServer.Packages(frame.Text(1), MaxPerPlayer);
-            var swaps = frame.Count > 2 ? frame.Text(2) : "-";
-            var rounds = frame.Count > 3 ? frame.Text(3) : "-";
-            if (ids == null || !WellFormed(swaps, false, MaxPerPlayer) || !WellFormedRounds(rounds, false))
-            { log($"Assets: {LobbyService.EntityId(peer)} sent a malformed list of its packages."); return; }
-            lock (gate)
-            {
-                if (friends.TryGetValue(peer, out var had) && version <= had.Version) return;
-                friends[peer] = (version, ids, swaps, rounds);
-            }
-            log($"Assets: {LobbyService.EntityId(peer)}'s game holds {ids.Count} package(s) for its own changes (version {version}).");
-            Tick();
+            if (friends.TryGetValue(peer, out var had) && version <= had.Version) return;
+            friends[peer] = (version, ids, swaps, rounds);
         }
-        else if (frame.Type == "assets.lobby" && lobby.HostsJoinedLobby(peer))
+        log($"Assets: {LobbyService.EntityId(peer)}'s game holds {ids.Count} package(s) for its own changes (version {version}).");
+        Tick();
+    }
+
+    // The lobby's packages, from the host of the lobby this machine joined.
+    void FromHost(ulong peer, Frame frame, long version)
+    {
+        var ids = LiveEditServer.Packages(frame.Text(1), MaxLobby);
+        var swaps = frame.Count > 3 ? frame.Text(3) : "-";
+        var rounds = frame.Count > 4 ? frame.Text(4) : "-";
+        if (ids == null || !WellFormed(swaps, true, MaxLobby) || !WellFormedRounds(rounds, true)) { log($"Assets: the host {LobbyService.EntityId(peer)} sent a malformed list of the lobby's packages."); return; }
+        var held = frame.Count > 2 && long.TryParse(frame.Text(2), System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var h) ? h : -1;
+        bool resend, fresh;
+        lock (gate)
         {
-            var ids = LiveEditServer.Packages(frame.Text(1), MaxLobby);
-            var swaps = frame.Count > 3 ? frame.Text(3) : "-";
-            var rounds = frame.Count > 4 ? frame.Text(4) : "-";
-            if (ids == null || !WellFormed(swaps, true, MaxLobby) || !WellFormedRounds(rounds, true)) { log($"Assets: the host {LobbyService.EntityId(peer)} sent a malformed list of the lobby's packages."); return; }
-            var held = frame.Count > 2 && long.TryParse(frame.Text(2), System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var h) ? h : -1;
-            bool resend, fresh;
-            lock (gate)
-            {
-                resend = peer == sentHost && held != sentVersion; /* the host lacks this game's latest: sent again */
-                if (resend) sentVersion = -1;
-                fresh = peer != lobbyHost || version > lobbyHostVersion;
-                if (fresh) (lobbyHost, lobbyHostVersion, hostLobbyIds, hostLobbySwaps, hostLobbyRounds) = (peer, version, ids, swaps, rounds);
-            }
-            if (fresh) log($"Assets: the lobby's packages from the host {LobbyService.EntityId(peer)}: {ids.Count} (version {version}).");
-            if (fresh || resend) Tick();
+            resend = peer == sentHost && held != sentVersion; /* the host lacks this game's latest: sent again */
+            if (resend) sentVersion = -1;
+            fresh = peer != lobbyHost || version > lobbyHostVersion;
+            if (fresh) (lobbyHost, lobbyHostVersion, hostLobbyIds, hostLobbySwaps, hostLobbyRounds) = (peer, version, ids, swaps, rounds);
         }
+        if (fresh) log($"Assets: the lobby's packages from the host {LobbyService.EntityId(peer)}: {ids.Count} (version {version}).");
+        if (fresh || resend) Tick();
     }
 
     // Every second and on every change: this game's packages to its host, the lobby's to friends, and the friends' to this
@@ -216,51 +222,9 @@ public sealed class AssetShare : IAsyncDisposable
             var shared = sharedStats();
             lock (gate)
             {
-                // this game's own projectile swaps: read again when its Local Stats changed
-                if (stats != swapsFrom)
-                {
-                    swapsFrom = stats;
-                    var swaps = Swaps(stats);
-                    if (swaps != mineSwaps) (mineSwaps, mineVersion) = (swaps, mineVersion + 1);
-                    var changes = Rounds(stats);
-                    if (changes != mineRounds) (mineRounds, mineVersion) = (changes, mineVersion + 1);
-                }
-                // joined: this game's own to the host (again to a new host)
-                var host = hosts.Count > 0 ? hosts.Min() : 0;
-                if (host != 0 && (host != sentHost || sentVersion != mineVersion))
-                {
-                    sends.Add((host, new Frame("assets.mine").Add(mineVersion).Add(List(mine)).Add(mineSwaps).Add(mineRounds), $"this game's {mine.Count} package(s) (version {mineVersion})"));
-                    (sentHost, sentVersion) = (host, mineVersion);
-                }
-                if (host == 0) (sentHost, sentVersion) = (0, -1);
-                if (lobbyHost != 0 && !hosts.Contains(lobbyHost)) (lobbyHost, lobbyHostVersion, hostLobbyIds, hostLobbySwaps, hostLobbyRounds) = (0, -1, [], "-", "-");
-                // hosting: the lobby's, again whenever a friend's or this game's change
-                foreach (var gone in friends.Keys.Where(f => !hosted.Contains(f)).ToList()) friends.Remove(gone);
-                foreach (var gone in lobbySent.Keys.Where(f => !hosted.Contains(f)).ToList()) lobbySent.Remove(gone);
-                var lobbyNow = new SortedSet<ulong>(mine.Concat(friends.Values.SelectMany(f => f.Ids)).Take(MaxLobby));
-                var swapsNow = string.Join(',', new[] { (Peer: transport.LocalId, Swaps: mineSwaps) }.Concat(friends.Select(f => (Peer: f.Key, f.Value.Swaps)))
-                    .Where(p => p.Swaps != "-").OrderBy(p => p.Peer)
-                    .SelectMany(p => p.Swaps.Split(',').Select(s => p.Peer.ToString("x", System.Globalization.CultureInfo.InvariantCulture) + ":" + s)).Take(MaxLobby));
-                if (swapsNow.Length == 0) swapsNow = "-";
-                // the round changes by player; players past what one pipe line holds are left out
-                var roundsNow = "";
-                foreach (var (peer, list) in new[] { (Peer: transport.LocalId, Rounds: mineRounds) }.Concat(friends.Select(f => (Peer: f.Key, f.Value.Rounds)))
-                             .Where(p => p.Rounds != "-").OrderBy(p => p.Peer))
-                {
-                    var group = peer.ToString("x", System.Globalization.CultureInfo.InvariantCulture) + "=" + list;
-                    if (roundsNow.Length + group.Length + 1 > MaxRoundsText) break;
-                    roundsNow += (roundsNow.Length > 0 ? "," : "") + group;
-                }
-                if (roundsNow.Length == 0) roundsNow = "-";
-                if (!lobbyNow.SetEquals(lobbyIds) || swapsNow != lobbySwaps || roundsNow != lobbyRounds)
-                    (lobbyIds, lobbySwaps, lobbyRounds, lobbyVersion) = (lobbyNow, swapsNow, roundsNow, lobbyVersion + 1);
-                foreach (var friend in hosted)
-                    if (!lobbySent.TryGetValue(friend, out var had) || had != lobbyVersion)
-                    {
-                        sends.Add((friend, new Frame("assets.lobby").Add(lobbyVersion).Add(List(lobbyIds)).Add(friends.TryGetValue(friend, out var own) ? own.Version : -1).Add(lobbySwaps).Add(lobbyRounds),
-                            $"the lobby's {lobbyIds.Count} package(s) and projectile swaps (version {lobbyVersion})"));
-                        lobbySent[friend] = lobbyVersion;
-                    }
+                ReadOwnSwaps(stats);
+                SendOwn(hosts, sends);
+                SendLobby(hosted, sends);
                 // this game loads what the lobby's other players hold
                 want = new SortedSet<ulong>((hosted.Count > 0 ? lobbyIds : []).Concat(hostLobbyIds).Where(id => !mine.Contains(id)));
                 // whose swaps this game's copies of each player's shots fire: none while the host shares its stats, or alone
@@ -277,6 +241,66 @@ public sealed class AssetShare : IAsyncDisposable
             _ = RoundsAsync(rounds);
         }
         catch (Exception error) { log("Assets: sharing failed: " + error.Message); }
+    }
+
+    // this game's own projectile swaps and round changes: read again when its Local Stats changed. Called with gate held.
+    void ReadOwnSwaps(string? stats)
+    {
+        if (stats == swapsFrom) return;
+        swapsFrom = stats;
+        var swaps = Swaps(stats);
+        if (swaps != mineSwaps) (mineSwaps, mineVersion) = (swaps, mineVersion + 1);
+        var changes = Rounds(stats);
+        if (changes != mineRounds) (mineRounds, mineVersion) = (changes, mineVersion + 1);
+    }
+
+    // joined: this game's own to the host (again to a new host). Called with gate held.
+    void SendOwn(IReadOnlyCollection<ulong> hosts, List<(ulong To, Frame Frame, string What)> sends)
+    {
+        var host = hosts.Count > 0 ? hosts.Min() : 0;
+        if (host != 0 && (host != sentHost || sentVersion != mineVersion))
+        {
+            sends.Add((host, new Frame("assets.mine").Add(mineVersion).Add(List(mine)).Add(mineSwaps).Add(mineRounds), $"this game's {mine.Count} package(s) (version {mineVersion})"));
+            (sentHost, sentVersion) = (host, mineVersion);
+        }
+        if (host == 0) (sentHost, sentVersion) = (0, -1);
+        if (lobbyHost != 0 && !hosts.Contains(lobbyHost)) (lobbyHost, lobbyHostVersion, hostLobbyIds, hostLobbySwaps, hostLobbyRounds) = (0, -1, [], "-", "-");
+    }
+
+    // hosting: the lobby's, again whenever a friend's or this game's change. Called with gate held.
+    void SendLobby(IReadOnlyCollection<ulong> hosted, List<(ulong To, Frame Frame, string What)> sends)
+    {
+        foreach (var gone in friends.Keys.Where(f => !hosted.Contains(f)).ToList()) friends.Remove(gone);
+        foreach (var gone in lobbySent.Keys.Where(f => !hosted.Contains(f)).ToList()) lobbySent.Remove(gone);
+        var lobbyNow = new SortedSet<ulong>(mine.Concat(friends.Values.SelectMany(f => f.Ids)).Take(MaxLobby));
+        var swapsNow = string.Join(',', new[] { (Peer: transport.LocalId, Swaps: mineSwaps) }.Concat(friends.Select(f => (Peer: f.Key, f.Value.Swaps)))
+            .Where(p => p.Swaps != "-").OrderBy(p => p.Peer)
+            .SelectMany(p => p.Swaps.Split(',').Select(s => p.Peer.ToString("x", System.Globalization.CultureInfo.InvariantCulture) + ":" + s)).Take(MaxLobby));
+        if (swapsNow.Length == 0) swapsNow = "-";
+        var roundsNow = LobbyRounds();
+        if (!lobbyNow.SetEquals(lobbyIds) || swapsNow != lobbySwaps || roundsNow != lobbyRounds)
+            (lobbyIds, lobbySwaps, lobbyRounds, lobbyVersion) = (lobbyNow, swapsNow, roundsNow, lobbyVersion + 1);
+        foreach (var friend in hosted)
+            if (!lobbySent.TryGetValue(friend, out var had) || had != lobbyVersion)
+            {
+                sends.Add((friend, new Frame("assets.lobby").Add(lobbyVersion).Add(List(lobbyIds)).Add(friends.TryGetValue(friend, out var own) ? own.Version : -1).Add(lobbySwaps).Add(lobbyRounds),
+                    $"the lobby's {lobbyIds.Count} package(s) and projectile swaps (version {lobbyVersion})"));
+                lobbySent[friend] = lobbyVersion;
+            }
+    }
+
+    // The round changes by player, "-" none; players past what one pipe line holds are left out. Called with gate held.
+    string LobbyRounds()
+    {
+        var roundsNow = "";
+        foreach (var (peer, list) in new[] { (Peer: transport.LocalId, Rounds: mineRounds) }.Concat(friends.Select(f => (Peer: f.Key, f.Value.Rounds)))
+                     .Where(p => p.Rounds != "-").OrderBy(p => p.Peer))
+        {
+            var group = peer.ToString("x", System.Globalization.CultureInfo.InvariantCulture) + "=" + list;
+            if (roundsNow.Length + group.Length + 1 > MaxRoundsText) break;
+            roundsNow += (roundsNow.Length > 0 ? "," : "") + group;
+        }
+        return roundsNow.Length == 0 ? "-" : roundsNow;
     }
 
     // Asks this game to load friends' packages, once per change (a refusal is tried again next second).

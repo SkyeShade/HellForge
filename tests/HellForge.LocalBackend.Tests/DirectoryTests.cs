@@ -35,9 +35,9 @@ static class DirectoryTests
             var transport = network.Join(id);
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, Mods, own, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder)), _ => "Player", Note, (_, _) => false);
-            Directory = new DirectoryService(directory ?? listings.For(id), Lobby, Presence, id, Inbox.Add, Note, Sync, () => Edited, autoPublish: false, listPublic: () => ListPublic,
-                strangersAllowed: () => Strangers);
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false);
+            Directory = new DirectoryService(directory ?? listings.For(id), Lobby, Presence, id, Inbox.Add, Note, new DirectorySettings(Sync, () => Edited, AutoPublish: false,
+                ListPublic: () => ListPublic, StrangersAllowed: () => Strangers));
             transport.Received += (peer, bytes) =>
             {
                 var frame = Frame.Decode(bytes);

@@ -24,10 +24,37 @@ not submit the game's files or code taken from the game, or code from other proj
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
   (`py -3 scripts/lint/lint.py check`, [scripts/lint/README.md](scripts/lint/README.md)), the build, where warnings
   are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
-  editor are built and tested on a maintainer's PC, since they need the game's files.
+  editor are built and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's
+  version (below).
+- **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`, bumped with
+  HellForge's `Version` in the version-bump pull request before each test build or release, whenever the engine
+  changed since the last bump. An ordinary pull request does not bump it: say "engine bump with the next build" in its
+  description. CI's "Engine version" job (`py -3 scripts/engine-version/engine_version.py`) finds the commit that set
+  the current `EngineVersion` and lists the engine sources changed since: a warning on a pull request that changes the
+  engine, a notice when earlier merges did, and a failure on a version-bump pull request (one that changes `Version`)
+  or a release into `main` when the engine changed and `EngineVersion` did not. Engine sources are what
+  `scripts/Build-Engine.ps1` builds into the package: `native/` except the editor and the launcher stub,
+  `src/HellForge.Core`, `src/HellForge.Session`, `src/HellForge.LocalBackend`, `src/HellForge.SdkShimGen`,
+  `mappings/`, the data files they embed and the scripts the package ships, but no `test/` or `tests/` folder and no
+  `.md` file (the list is `ENGINE_SOURCES` in the script). Run it locally to see where the engine stands; add
+  `--base origin/dev` to see what a pull request would get.
 - **Launchers:** if you change a `HellForge.Cli` command, an option or its JSON output, update
   [docs/external-launchers.md](docs/external-launchers.md) in the same pull request and say so in it. Launchers built
   on the CLI read that page.
+
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) lists what changed in each release, as a player updating from the release before sees it.
+
+- **Each pull request** that changes something a player, a modder or a launcher would notice adds its line under
+  Unreleased, in the same pull request: Added, Changed or Fixed, with the issue and pull request numbers ("(#18, #50)").
+  CLI and settings changes go under "For launcher developers", SDK changes under "For mod makers".
+- **Fixed** is only for a bug the latest release has. Something new since that release that a later pull request fixes
+  goes into the line that adds it.
+- **Write it in players' words:** what they see or do, not the code. Leave out test status and what is still to do.
+- **The release pull request** renames Unreleased to the version and date (`## 0.2.0-beta (2026-10-22)`), puts a new
+  empty Unreleased above it, and the GitHub release notes are written from that section. Issues its Fixed lines name
+  are closed when the release lands.
 
 ## Building and testing
 

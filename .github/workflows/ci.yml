@@ -1,6 +1,6 @@
 # The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
-# structure lint (scripts/lint/README.md), the build (warnings are errors) and the checks that need no game, as
-# scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
+# structure lint (scripts/lint/README.md), the engine version check, the build (warnings are errors) and the checks
+# that need no game, as scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
 # game's files, the Steamworks SDK and a GPU.
 name: CI
 
@@ -30,9 +30,37 @@ jobs:
           python-version: '3.10'   # the oldest the lint supports (scripts/lint/README.md)
       - name: The lint's own tests
         run: python -m unittest discover -s scripts/lint/tests -v
-      # fails on a violation that is new, or worse than scripts/lint/lint-baseline.json has it
+      # fails on an error rule's violation (R12-R14) that scripts/lint/lint-baseline.json does not have; a new R10, R11 or
+      # R15 one and a known one that grew only warn (scripts/lint/README.md, "The baseline")
       - name: scripts/lint/lint.py check
         run: python scripts/lint/lint.py check
+
+  # Whether the engine changed since the commit that set EngineVersion (scripts/engine-version/engine_version.py,
+  # CONTRIBUTING.md "The engine's version"): a warning on an ordinary pull request, a failure on a version-bump pull
+  # request or a release (into main) whose engine changed without a bump.
+  engine-version:
+    name: Engine version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the whole history: the commit that set EngineVersion, and the pull request's base
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: The check's own tests
+        run: python -m unittest discover -s scripts/engine-version/tests -v
+      - name: scripts/engine-version/engine_version.py
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            release=""; if [ "$BASE_REF" = "main" ]; then release="--release"; fi
+            python scripts/engine-version/engine_version.py --base "origin/$BASE_REF" $release
+          else
+            python scripts/engine-version/engine_version.py
+          fi
 
   test:
     name: Build and test
@@ -52,3 +80,50 @@ jobs:
           # Test.ps1 throws on any failure; its last checks expect the CLI to refuse (exit code 1), which the step's own
           # "exit $LASTEXITCODE" would otherwise report
           exit 0
+
+  # The native code: the mod loader and its tests, the PlayFab stand-ins, the steam_api64.dll stand-in and its census
+  # build, the network gate, the broker's channel and local lobby, the WFP tool, the example code mods, the smokes, the
+  # NativeAOT backend check, and the in-game editor with its Local Stats test. Zig, MinHook, the PlayFab SDK packages and
+  # Dear ImGui are downloaded as on a developer's PC, each checked against its SHA-256 pin. Valve's steam_api64.dll and
+  # Steamworks SDK cannot be: Valve publishes both only behind a Steamworks sign-in, and the repository commits neither. So
+  # Build-Engine.ps1 runs with -NoSteamApi (a synthetic export table for the stand-in; no Steam bridge, broker build,
+  # bridge test or package), and the editor without its overlay test (a real D3D12 swap chain on a desktop: no GPU here).
+  native:
+    name: Native build and test
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\artifacts\zig-global-cache
+      ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}\artifacts\zig-local-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # the pinned downloads (Get-BuildTools.ps1, Build-Engine.ps1, Build-Editor.ps1 check every one against its pin)
+      - name: Cache the pinned downloads
+        uses: actions/cache@v4
+        with:
+          path: tools/downloads
+          key: native-downloads-${{ hashFiles('scripts/Get-BuildTools.ps1', 'scripts/Build-Engine.ps1', 'scripts/Build-Editor.ps1') }}
+          restore-keys: native-downloads-
+      # Zig's compiled C runtime and C++ library, which every build would otherwise compile again
+      - name: Cache Zig's compiled libraries
+        uses: actions/cache@v4
+        with:
+          path: artifacts/zig-global-cache
+          key: zig-0.17.0-${{ hashFiles('native/**', 'examples/mods/*/src/**') }}
+          restore-keys: zig-0.17.0-
+      - name: scripts/Build-Engine.ps1 -NoSteamApi (the engine's native builds, tests and smokes)
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:TMP = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/tmp')).FullName
+          ./scripts/Build-Engine.ps1 -NoSteamApi
+          # it throws on any failure; the last exit code of a program it ran (some checks expect a refusal) must not decide
+          exit 0
+      - name: scripts/Build-Editor.ps1 -Test -SkipOverlayTest (the in-game editor and its Local Stats test)
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:TMP = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/tmp')).FullName
+          ./scripts/Build-Editor.ps1 -Test -SkipOverlayTest
+          exit 0   # likewise

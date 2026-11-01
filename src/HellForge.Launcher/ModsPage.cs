@@ -107,6 +107,7 @@ public partial class MainWindow
     void RefreshMods()
     {
         modDrag = null;
+        premiumOwnership = null;
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -118,7 +119,9 @@ public partial class MainWindow
         }
         List<ModManifest> mods;
         List<string> problems;
-        try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); }
+        // a .rar or .7z dropped into the mods folder is added as a folder first, as Add mods... adds one
+        var dropped = paths.InstallRoot != null ? ModInstaller.TakeDropped(new InstallLayout(paths.InstallRoot)) : [];
+        try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); problems.InsertRange(0, dropped); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             ModsSummary.Text = "Could not read the mods folder: " + Privacy.Scrub(error.Message);
@@ -201,7 +204,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Mods that run code or carry unchecked data go to Steam friends only.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get mods that run code or carry unchecked data only if their game is sandboxed and they trust them.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
@@ -220,13 +223,13 @@ public partial class MainWindow
         // copy too, so no synced session runs it again unless it is trusted (or verified) again.
         panel.Children.Add(Section(settings.Trusted.Count == 0 ? "Trusted mods" : $"Trusted mods ({settings.Trusted.Count})"));
         panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text = settings.Trusted.Count == 0
-            ? "None. TRUST on the in-game MOD SYNC prompt lets a Steam friend's mod download that HellForge has not verified."
-            : "These exact versions download from Steam friends without HellForge's check. They run their own code on your PC." });
+            ? "None. TRUST on the in-game MOD SYNC prompt lets a mod download that HellForge has not verified: a Steam friend's, or with the sandbox on, anyone's."
+            : "These exact versions download without HellForge's check. They run their own code on your PC; those from players who are not your Steam friends run only while the sandbox is on." });
         foreach (var trusted in settings.Trusted)
         {
             var row = new DockPanel();
             var untrust = new Button { Content = "Untrust", Classes = { "flat" }, IsEnabled = !modsLocked, VerticalAlignment = VerticalAlignment.Center };
-            ToolTip.SetTip(untrust, "Take the trust back and delete the copy downloaded from your friend.");
+            ToolTip.SetTip(untrust, "Take the trust back and delete the downloaded copy.");
             untrust.Click += (_, _) =>
             {
                 try
@@ -245,7 +248,7 @@ public partial class MainWindow
             var from = System.Text.RegularExpressions.Regex.Replace(trusted.From, @"\s*\([0-9A-Fa-f]{6,}\)$", "");
             var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = $"{trusted.Name} {trusted.Version}", TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(new TextBlock { Text = $"from {from}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            text.Children.Add(new TextBlock { Text = $"from {from}{(trusted.Stranger ? " (not a Steam friend; sandbox only)" : "")}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
             ToolTip.SetTip(text, $"{trusted.Id}, from {trusted.From}. Content hash {trusted.Hash}");
             row.Children.Add(text);
             panel.Children.Add(row);
@@ -444,7 +447,36 @@ public partial class MainWindow
         if (mod.Stats.Count > 0) tags.Add(("STATS", "#9B85FF"));
         if (mod.HasDataSpec || mod.DataFiles.Count > 0) tags.Add(("DATA", "#5FD08A"));
         if (mod.Archive != null) tags.Add(("ZIP", "#9AA0A8"));
+        if (mod.Premium.Count > 0) tags.Add((PremiumMissing(mod).Count > 0 ? "PREMIUM: LOCKED" : "PREMIUM", "#FFC72C"));
         return tags;
+    }
+
+    // What of a mod's premium list the selected profile's synced account lacks (HellForge.Core PremiumContent): what a
+    // session will lock. Read once per refresh of the page.
+    PremiumContent? premiumOwnership;
+    IReadOnlyList<string> PremiumMissing(ModManifest mod)
+    {
+        if (mod.Premium.Count == 0) return [];
+        premiumOwnership ??= File.Exists(paths.ProgressionFile) && paths.InstallRoot != null
+            ? PremiumContent.ForSnapshot(paths.ProgressionFile, InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name), SteamAccount.Current())
+            : PremiumContent.Nothing;
+        return premiumOwnership.Missing(mod.Premium);
+    }
+
+    void AddPremiumDetails(StackPanel details, ModManifest mod)
+    {
+        if (mod.Premium.Count == 0) return;
+        details.Children.Add(new TextBlock { Text = PremiumText(mod), FontSize = 12, Foreground = PremiumMissing(mod).Count > 0 ? Gold : Light, TextWrapping = TextWrapping.Wrap });
+    }
+
+    string PremiumText(ModManifest mod)
+    {
+        var missing = PremiumMissing(mod);
+        var builds = "Built on " + string.Join(", ", mod.Premium.Select(PremiumContent.Describe)) + ". ";
+        if (missing.Count == 0) return builds + "Your synced account owns it, so everything this mod adds is yours to use.";
+        return builds + "Profile " + Selected.Name + "'s synced account lacks " + string.Join(", ", missing.Select(PremiumContent.Describe)) +
+            (mod.Cosmetic ? ": this mod is not loaded for it." : ": the mod loads, but its weapons and stratagems stay locked.") +
+            " Buy it in the normal game and sync (Profile > Account sync).";
     }
 
     static Border ModTag(string text, string colour)
@@ -514,15 +546,9 @@ public partial class MainWindow
     {
         var details = new StackPanel { Spacing = 8, Margin = new(12, 10, 0, 2) };
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
-        var changes = new List<string>();
-        foreach (var type in mod.NetworkFieldTypes) changes.Add($"network field {type.Name}: {type.ExpectBits} -> {type.Bits} bits");
-        foreach (var write in mod.ComponentWrites)
-            foreach (var field in write.Fields) changes.Add($"{write.Component} {field.Name}: {field.Expect} -> {field.Value}");
-        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} stats change{(mod.Stats.Count == 1 ? "" : "s")}");
-        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} game data file{(mod.DataFiles.Count == 1 ? "" : "s")}");
-        if (mod.HasDataSpec) changes.Add("game data built from your game copy (a data spec)");
-        if (mod.HasCode) changes.Add($"runs code inside the game: {mod.CodeDll} (only enable mods from people you trust)");
+        var changes = ModChanges(mod);
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
+        AddPremiumDetails(details, mod);
         if (build is { } b)
             details.Children.Add(new TextBlock { Text = b.Text, FontSize = 12, Foreground = b.Colour, TextWrapping = TextWrapping.Wrap,
                 FontFamily = b.Colour == Red ? new FontFamily("Consolas") : FontFamily.Default });
@@ -539,6 +565,20 @@ public partial class MainWindow
         details.Children.Add(new TextBlock { Text = $"{mod.Id}  ·  {mod.Archive ?? Path.GetFileName(mod.Folder)}", FontSize = 11, Classes = { "muted" } });
         if (RemoveConfirmation(mod) is { } confirm) details.Children.Add(confirm);
         return details;
+    }
+
+    // The one-line summaries of what a mod changes: network field types, component writes, stats, data files, a data spec, code.
+    static List<string> ModChanges(ModManifest mod)
+    {
+        var changes = new List<string>();
+        foreach (var type in mod.NetworkFieldTypes) changes.Add($"network field {type.Name}: {type.ExpectBits} -> {type.Bits} bits");
+        foreach (var write in mod.ComponentWrites)
+            foreach (var field in write.Fields) changes.Add($"{write.Component} {field.Name}: {field.Expect} -> {field.Value}");
+        if (mod.Stats.Count > 0) changes.Add($"{mod.Stats.Count} stats change{(mod.Stats.Count == 1 ? "" : "s")}");
+        if (mod.DataFiles.Count > 0) changes.Add($"{mod.DataFiles.Count} game data file{(mod.DataFiles.Count == 1 ? "" : "s")}");
+        if (mod.HasDataSpec) changes.Add("game data built from your game copy (a data spec)");
+        if (mod.HasCode) changes.Add($"runs code inside the game: {mod.CodeDll} (only enable mods from people you trust)");
+        return changes;
     }
 
     // A pack's options: each switched on or off, with its variant (sub-option) where it has some; saved per pack.

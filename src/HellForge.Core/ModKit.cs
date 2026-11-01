@@ -158,29 +158,39 @@ public static partial class ModKit
             if (File.Exists(marker) && File.ReadAllText(marker).Trim() == tool.Sha256 && File.Exists(Path.Combine(destination, tool.Exe)))
             { progress($"{tool.Name} {tool.Version}: installed"); continue; }
             var archive = Path.Combine(downloads, Path.GetFileName(new Uri(tool.Url).AbsolutePath));
-            if (!File.Exists(archive) || Hash(archive) != tool.Sha256)
-            {
-                progress($"{tool.Name} {tool.Version}: downloading {tool.Url}");
-                var partial = archive + ".partial";
-                await using (var source = await http.GetStreamAsync(tool.Url, cancel))
-                await using (var file = File.Create(partial)) await source.CopyToAsync(file, cancel);
-                if (Hash(partial) != tool.Sha256) { File.Delete(partial); throw new InvalidDataException($"{tool.Url} does not match its pinned checksum."); }
-                File.Move(partial, archive, true);
-            }
+            await DownloadAsync(http, tool, archive, progress, cancel);
             progress($"{tool.Name} {tool.Version}: unpacking");
-            var staging = destination + "-staging";
-            foreach (var folder in new[] { staging, destination }) if (Directory.Exists(folder)) await RetryWhileHeld(() => Directory.Delete(folder, true), progress, cancel);
-            ZipFile.ExtractToDirectory(archive, staging);
-            var entries = Directory.GetFileSystemEntries(staging);
-            if (entries.Length == 1 && Directory.Exists(entries[0]))
-            {
-                await RetryWhileHeld(() => Directory.Move(entries[0], destination), progress, cancel);
-                await RetryWhileHeld(() => Directory.Delete(staging), progress, cancel);
-            }
-            else await RetryWhileHeld(() => Directory.Move(staging, destination), progress, cancel);
+            await UnpackAsync(archive, destination, progress, cancel);
             File.WriteAllText(marker, tool.Sha256);
             progress($"{tool.Name} {tool.Version}: installed");
         }
+    }
+
+    // The tool's archive in downloads: fetched unless it is there with its pinned checksum, and kept only with it.
+    static async Task DownloadAsync(HttpClient http, ModTool tool, string archive, Action<string> progress, CancellationToken cancel)
+    {
+        if (File.Exists(archive) && Hash(archive) == tool.Sha256) return;
+        progress($"{tool.Name} {tool.Version}: downloading {tool.Url}");
+        var partial = archive + ".partial";
+        await using (var source = await http.GetStreamAsync(tool.Url, cancel))
+        await using (var file = File.Create(partial)) await source.CopyToAsync(file, cancel);
+        if (Hash(partial) != tool.Sha256) { File.Delete(partial); throw new InvalidDataException($"{tool.Url} does not match its pinned checksum."); }
+        File.Move(partial, archive, true);
+    }
+
+    // The archive unpacked into destination (its one top-level folder, when it has one), in place of what was there.
+    static async Task UnpackAsync(string archive, string destination, Action<string> progress, CancellationToken cancel)
+    {
+        var staging = destination + "-staging";
+        foreach (var folder in new[] { staging, destination }) if (Directory.Exists(folder)) await RetryWhileHeld(() => Directory.Delete(folder, true), progress, cancel);
+        ZipFile.ExtractToDirectory(archive, staging);
+        var entries = Directory.GetFileSystemEntries(staging);
+        if (entries.Length == 1 && Directory.Exists(entries[0]))
+        {
+            await RetryWhileHeld(() => Directory.Move(entries[0], destination), progress, cancel);
+            await RetryWhileHeld(() => Directory.Delete(staging), progress, cancel);
+        }
+        else await RetryWhileHeld(() => Directory.Move(staging, destination), progress, cancel);
     }
 
     // Moving or deleting files that were just unpacked: antivirus (Windows Defender) scans a new executable, Zig's is

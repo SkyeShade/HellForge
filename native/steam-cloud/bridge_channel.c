@@ -126,47 +126,67 @@ static int Wait(HANDLE event, HANDLE game, DWORD timeoutMs)
     return -1;
 }
 
+/* How a read of the client's next message stands. */
+enum { READ_DONE, READ_MORE, READ_WAITING, READ_BROKEN };
+
+/* Starts reading the next message into rbuf unless a read is in flight: READ_DONE (*read is its size), READ_MORE (it
+ * is larger than rbuf), READ_WAITING (in flight) or READ_BROKEN. */
+static int BeginRead(BrokerChannel* ch, DWORD* read)
+{
+    if (ch->readPending) return READ_WAITING;
+    if (!ResetEvent(ch->readOv.hEvent)) return READ_BROKEN;
+    if (ReadFile(ch->pipe, ch->rbuf, sizeof ch->rbuf, read, &ch->readOv)) return READ_DONE;
+    DWORD err = GetLastError();
+    if (err == ERROR_MORE_DATA) return READ_MORE;
+    if (err != ERROR_IO_PENDING) return READ_BROKEN;
+    ch->readPending = 1;
+    return READ_WAITING;
+}
+
+/* Waits up to timeoutMs for the read in flight: READ_DONE, READ_MORE, READ_WAITING (still in flight when the wait ran
+ * out) or READ_BROKEN (the pipe broke, or the game is gone). */
+static int AwaitRead(BrokerChannel* ch, HANDLE game, DWORD timeoutMs, DWORD* read)
+{
+    int w = Wait(ch->readOv.hEvent, game, timeoutMs);
+    if (w == 0) return READ_WAITING;
+    if (w < 0) { CancelRead(ch); return READ_BROKEN; }
+    ch->readPending = 0;
+    if (GetOverlappedResult(ch->pipe, &ch->readOv, read, FALSE)) return READ_DONE;
+    return GetLastError() == ERROR_MORE_DATA ? READ_MORE : READ_BROKEN;
+}
+
+/* The rest of a message larger than rbuf, read to its end. Returns 0 when the pipe broke or the game went first. */
+static int SkipRest(BrokerChannel* ch, HANDLE game)
+{
+    DWORD read = 0;
+    for (;;)
+    {
+        if (!ResetEvent(ch->readOv.hEvent)) return 0;
+        if (ReadFile(ch->pipe, ch->rbuf, sizeof ch->rbuf, &read, &ch->readOv)) return 1;
+        DWORD err = GetLastError();
+        if (err == ERROR_MORE_DATA) continue;
+        if (err != ERROR_IO_PENDING) return 0;
+        ch->readPending = 1;
+        if (Wait(ch->readOv.hEvent, game, INFINITE) != 1) { CancelRead(ch); return 0; }
+        ch->readPending = 0;
+        if (GetOverlappedResult(ch->pipe, &ch->readOv, &read, FALSE)) return 1;
+        if (GetLastError() != ERROR_MORE_DATA) return 0;
+    }
+}
+
 uint32_t BrokerChannelRecv(BrokerChannel* ch, HANDLE game, DWORD timeoutMs, void* body, uint32_t capacity, uint32_t* bodySize, int* gone)
 {
     *gone = 0;
     *bodySize = 0;
     DWORD read = 0;
-    BOOL more = FALSE;
-    if (!ch->readPending)
-    {
-        if (!ResetEvent(ch->readOv.hEvent)) { *gone = 1; return 0; }
-        if (ReadFile(ch->pipe, ch->rbuf, sizeof ch->rbuf, &read, &ch->readOv)) goto done;
-        DWORD err = GetLastError();
-        if (err == ERROR_MORE_DATA) { more = TRUE; goto done; }
-        if (err != ERROR_IO_PENDING) { *gone = 1; return 0; }
-        ch->readPending = 1;
-    }
-    int w = Wait(ch->readOv.hEvent, game, timeoutMs);
-    if (w == 0) return 0;
-    if (w < 0) { CancelRead(ch); *gone = 1; return 0; }
-    ch->readPending = 0;
-    if (!GetOverlappedResult(ch->pipe, &ch->readOv, &read, FALSE))
-    {
-        if (GetLastError() != ERROR_MORE_DATA) { *gone = 1; return 0; }
-        more = TRUE;
-    }
-done:
-    if (more)
+    int state = BeginRead(ch, &read);
+    if (state == READ_WAITING) state = AwaitRead(ch, game, timeoutMs, &read);
+    if (state == READ_WAITING) return 0;
+    if (state == READ_BROKEN) { *gone = 1; return 0; }
+    if (state == READ_MORE)
     {
         /* larger than any message the protocol has: read it to its end, then report it unusable */
-        for (;;)
-        {
-            if (!ResetEvent(ch->readOv.hEvent)) { *gone = 1; return 0; }
-            if (ReadFile(ch->pipe, ch->rbuf, sizeof ch->rbuf, &read, &ch->readOv)) break;
-            DWORD err = GetLastError();
-            if (err == ERROR_MORE_DATA) continue;
-            if (err != ERROR_IO_PENDING) { *gone = 1; return 0; }
-            ch->readPending = 1;
-            if (Wait(ch->readOv.hEvent, game, INFINITE) != 1) { CancelRead(ch); *gone = 1; return 0; }
-            ch->readPending = 0;
-            if (GetOverlappedResult(ch->pipe, &ch->readOv, &read, FALSE)) break;
-            if (GetLastError() != ERROR_MORE_DATA) { *gone = 1; return 0; }
-        }
+        if (!SkipRest(ch, game)) { *gone = 1; return 0; }
         *bodySize = UINT32_MAX;
         return 0;
     }
@@ -220,50 +240,74 @@ static int GiveRing(BrokerChannel* ch, DWORD pid)
     return ok;
 }
 
+/* Whether the game (optional) has exited. */
+static int GameGone(HANDLE game)
+{
+    return game && WaitForSingleObject(game, 0) == WAIT_OBJECT_0;
+}
+
+/* A client that came and went before it could be accepted: the broker waits for the next. */
+#define CONNECT_AGAIN 2
+
+/* Waits for the pending connection: BROKER_ACCEPTED, CONNECT_AGAIN, or how the wait ended (BROKER_GAME_GONE, BROKER_ERROR). */
+static int AwaitClient(BrokerChannel* ch, OVERLAPPED* ov, HANDLE game)
+{
+    int w = Wait(ov->hEvent, game, INFINITE);
+    DWORD bytes;
+    if (w != 1)
+    {
+        CancelIoEx(ch->pipe, ov);
+        GetOverlappedResult(ch->pipe, ov, &bytes, TRUE);
+        return GameGone(game) ? BROKER_GAME_GONE : BROKER_ERROR;
+    }
+    if (!GetOverlappedResult(ch->pipe, ov, &bytes, FALSE)) { DisconnectNamedPipe(ch->pipe); return CONNECT_AGAIN; }
+    return BROKER_ACCEPTED;
+}
+
+/* The next client's connection: BROKER_ACCEPTED once one is connected, CONNECT_AGAIN, or how the wait ended
+ * (BROKER_GAME_GONE, BROKER_ERROR). */
+static int ConnectClient(BrokerChannel* ch, HANDLE game)
+{
+    OVERLAPPED ov;
+    memset(&ov, 0, sizeof ov);
+    ov.hEvent = ch->readOv.hEvent;
+    if (!ResetEvent(ov.hEvent)) return BROKER_ERROR;
+    if (ConnectNamedPipe(ch->pipe, &ov)) return BROKER_ACCEPTED;
+    DWORD err = GetLastError();
+    if (err == ERROR_IO_PENDING) return AwaitClient(ch, &ov, game);
+    if (err == ERROR_NO_DATA) { DisconnectNamedPipe(ch->pipe); return CONNECT_AGAIN; } /* came and went */
+    if (err != ERROR_PIPE_CONNECTED) return BROKER_ERROR;
+    return BROKER_ACCEPTED;
+}
+
+/* Whether the connected client is the one expected: its HELLO names the pid its pipe has (and expectedPid, unless 0),
+ * and it has been given the ring. */
+static int CheckClient(BrokerChannel* ch, DWORD expectedPid, uint32_t type, const uint8_t* body, uint32_t bodySize)
+{
+    ULONG pipePid = 0;
+    uint32_t declared = 0;
+    int good = type == BRIDGE_HELLO && bodySize == sizeof declared && GetNamedPipeClientProcessId(ch->pipe, &pipePid);
+    if (good) memcpy(&declared, body, sizeof declared);
+    good = good && declared == pipePid && (expectedPid == 0 || pipePid == expectedPid) && GiveRing(ch, pipePid);
+    if (good) ch->clientPid = pipePid;
+    return good;
+}
+
 int BrokerChannelAccept(BrokerChannel* ch, DWORD expectedPid, HANDLE game, DWORD helloTimeoutMs)
 {
     for (;;)
     {
         CancelRead(ch);
-        OVERLAPPED ov;
-        memset(&ov, 0, sizeof ov);
-        ov.hEvent = ch->readOv.hEvent;
-        if (!ResetEvent(ov.hEvent)) return BROKER_ERROR;
-        if (!ConnectNamedPipe(ch->pipe, &ov))
-        {
-            DWORD err = GetLastError();
-            if (err == ERROR_IO_PENDING)
-            {
-                int w = Wait(ov.hEvent, game, INFINITE);
-                DWORD bytes;
-                if (w != 1)
-                {
-                    CancelIoEx(ch->pipe, &ov);
-                    GetOverlappedResult(ch->pipe, &ov, &bytes, TRUE);
-                    return game && WaitForSingleObject(game, 0) == WAIT_OBJECT_0 ? BROKER_GAME_GONE : BROKER_ERROR;
-                }
-                if (!GetOverlappedResult(ch->pipe, &ov, &bytes, FALSE)) { DisconnectNamedPipe(ch->pipe); continue; }
-            }
-            else if (err == ERROR_NO_DATA) { DisconnectNamedPipe(ch->pipe); continue; } /* came and went */
-            else if (err != ERROR_PIPE_CONNECTED) return BROKER_ERROR;
-        }
+        int connected = ConnectClient(ch, game);
+        if (connected == CONNECT_AGAIN) continue;
+        if (connected != BROKER_ACCEPTED) return connected;
 
         uint8_t body[16];
         uint32_t bodySize = 0;
         int gone = 0;
         uint32_t type = BrokerChannelRecv(ch, game, helloTimeoutMs, body, sizeof body, &bodySize, &gone);
-        if (gone && game && WaitForSingleObject(game, 0) == WAIT_OBJECT_0) return BROKER_GAME_GONE;
-
-        ULONG pipePid = 0;
-        uint32_t declared = 0;
-        int good = type == BRIDGE_HELLO && bodySize == sizeof declared && GetNamedPipeClientProcessId(ch->pipe, &pipePid);
-        if (good) memcpy(&declared, body, sizeof declared);
-        good = good && declared == pipePid && (expectedPid == 0 || pipePid == expectedPid) && GiveRing(ch, pipePid);
-        if (good)
-        {
-            ch->clientPid = pipePid;
-            return BROKER_ACCEPTED;
-        }
+        if (gone && GameGone(game)) return BROKER_GAME_GONE;
+        if (CheckClient(ch, expectedPid, type, body, bodySize)) return BROKER_ACCEPTED;
         /* not the game (or silent): refused, and the broker waits for the next client */
         if (type != 0) BrokerChannelSend(ch, BRIDGE_HELLO_DENIED, NULL, 0);
         ch->refused++;
@@ -356,8 +400,27 @@ int GameChannelConnect(GameChannel* ch, const wchar_t* suffix, DWORD timeoutMs)
     return 1;
 }
 
-int GameChannelCall(GameChannel* ch, uint32_t function, const void* args, uint32_t argsSize,
-                    void* result, uint32_t capacity, uint32_t* resultSize, uint32_t* status)
+/* The call's round trip on a live channel, through buf (BRIDGE_MSG_BUF bytes): 1 when the broker answered this call. */
+static int RoundTrip(GameChannel* ch, uint8_t* buf, uint32_t function, const void* args, uint32_t argsSize, GameChannelReply* reply)
+{
+    uint32_t seq = ++ch->nextSeq;
+    memcpy(buf, &seq, 4);
+    memcpy(buf + 4, &function, 4);
+    if (argsSize > 0 && args) memcpy(buf + 8, args, argsSize);
+    uint32_t replySize = 0, replySeq = 0;
+    if (!BridgePipeSend(ch->pipe, BRIDGE_CALL, buf, 8 + argsSize) ||
+        BridgePipeRecv(ch->pipe, buf, BRIDGE_MSG_BUF, &replySize) != BRIDGE_RESULT || replySize < 8)
+        return 0;
+    memcpy(&replySeq, buf, 4);
+    if (replySeq != seq) return 0;
+    memcpy(&reply->status, buf + 4, 4);
+    uint32_t n = replySize - 8;
+    reply->size = n;
+    if (reply->result && n > 0) memcpy(reply->result, buf + 8, n < reply->capacity ? n : reply->capacity);
+    return 1;
+}
+
+int GameChannelCall(GameChannel* ch, uint32_t function, const void* args, uint32_t argsSize, GameChannelReply* reply)
 {
     if (!ch->lockReady) return 0;
     uint8_t buf[BRIDGE_MSG_BUF];
@@ -368,24 +431,7 @@ int GameChannelCall(GameChannel* ch, uint32_t function, const void* args, uint32
     int ok = 0;
     if (!ch->dead && ch->pipe != INVALID_HANDLE_VALUE)
     {
-        uint32_t seq = ++ch->nextSeq;
-        memcpy(buf, &seq, 4);
-        memcpy(buf + 4, &function, 4);
-        if (argsSize > 0 && args) memcpy(buf + 8, args, argsSize);
-        uint32_t replySize = 0, replySeq = 0;
-        if (BridgePipeSend(ch->pipe, BRIDGE_CALL, buf, 8 + argsSize) &&
-            BridgePipeRecv(ch->pipe, buf, sizeof buf, &replySize) == BRIDGE_RESULT && replySize >= 8)
-        {
-            memcpy(&replySeq, buf, 4);
-            if (replySeq == seq)
-            {
-                memcpy(status, buf + 4, 4);
-                uint32_t n = replySize - 8;
-                if (resultSize) *resultSize = n;
-                if (result && n > 0) memcpy(result, buf + 8, n < capacity ? n : capacity);
-                ok = 1;
-            }
-        }
+        ok = RoundTrip(ch, buf, function, args, argsSize, reply);
         if (!ok) ch->dead = 1;
         QueryPerformanceCounter(&end);
         uint64_t ticks = (uint64_t)(end.QuadPart - start.QuadPart);

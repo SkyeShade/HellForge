@@ -87,7 +87,7 @@ static uint64_t ConsumeDamageDetour(void* system, uint8_t* event, uint64_t r8, u
     return g_consumeDamage(system, event, r8, r9, s5, s6);
 }
 
-static uint64_t KillDetour(void* context, uint64_t creditor, uint32_t victim, uint32_t dealer, uint32_t kind, uint32_t element,
+static uint64_t KillDetour(void* context, uint64_t creditor, uint32_t victim, uint32_t dealer, uint32_t kind, uint32_t element, // lint-ok: R12 mirrors KillDispatch 0xB96310 (KillFn)
     uint64_t s7, uint64_t s8)
 {
     if (AnyListener(HF_ON_KILL))
@@ -98,7 +98,7 @@ static uint64_t KillDetour(void* context, uint64_t creditor, uint32_t victim, ui
     return g_kill(context, creditor, victim, dealer, kind, element, s7, s8);
 }
 
-static uint64_t ActivateDetour(void* manager, int32_t element, uint32_t thrower, const float* position, void* record, uint32_t type,
+static uint64_t ActivateDetour(void* manager, int32_t element, uint32_t thrower, const float* position, void* record, uint32_t type, // lint-ok: R12 mirrors the beacon activation dispatcher 0x6ABDB0 (ActivateFn)
     uint64_t s7, uint64_t s8, uint64_t s9, uint64_t s10)
 {
     if (AnyListener(HF_ON_STRATAGEM))
@@ -123,7 +123,7 @@ static uint64_t SpawnDetour(void* manager, uint32_t entity, uint64_t resource, c
     return result;
 }
 
-static uint64_t ExplosionDetour(void* queue, const float* position, uint32_t type, uint32_t source, uint32_t owner, uint64_t creditor,
+static uint64_t ExplosionDetour(void* queue, const float* position, uint32_t type, uint32_t source, uint32_t owner, uint64_t creditor, // lint-ok: R12 mirrors RequestExplosion 0x13C0A80 (ExplosionFn)
     uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15)
 {
     uint64_t result = g_explosion(queue, position, type, source, owner, creditor, a7, a8, a9, a10, a11, a12, a13, a14, a15);
@@ -147,6 +147,29 @@ static EventHook g_eventHooks[] = {
 static void EventPollsInstall(uintptr_t game, ULONGLONG waited); /* event_polls.c */
 static ULONGLONG g_eventHooksFirstTry;
 
+/* Whether a source's hook is wanted: a mod listens to its kind; the spawn hook also when an entity runs a HellForge
+ * behaviour (the co-op diagnostics, behaviours.c); the damage consumer also for damage before it applies. */
+static int EventHookWanted(const EventHook* h)
+{
+    return AnyListener(h->kind) || (h->kind == HF_ON_SPAWN && BehaviourSpawnsWatched()) || (h->kind == HF_ON_DAMAGE && AnyListener(HF_ON_DAMAGE_PRE));
+}
+
+/* A source's hook, when it is wanted and its bytes read as reviewed (60 s for them to decode). */
+static void EventHookInstall(EventHook* h, uintptr_t game, ULONGLONG now)
+{
+    if (h->state != 0 || !EventHookWanted(h)) return;
+    if (strcmp(g_build, "25480438")) { h->state = -1; Note("events: %s not hooked (unsupported build); no %s events", h->what, EventName(h->kind)); return; }
+    if (!PinMatches(game + h->rva, h->pin, h->pinSize))
+    {
+        if (now - g_eventHooksFirstTry < 60000) return;
+        h->state = -1;
+        Note("events: %s is not the reviewed one; no %s events", h->what, EventName(h->kind));
+        return;
+    }
+    h->state = LoaderHook(h->what, game + h->rva, h->detour, h->original) ? -1 : 1;
+    Note(h->state == 1 ? "events: hooked %s (%s events)" : "events: could not hook %s; no %s events", h->what, EventName(h->kind));
+}
+
 /* The watch loop, after HF_EVENT_GAME_LOADED: hooks each source a mod listens to, once its bytes read as reviewed. */
 static void EventsInstall(void)
 {
@@ -155,24 +178,7 @@ static void EventsInstall(void)
     g_eventsGame = game;
     ULONGLONG now = GetTickCount64();
     if (!g_eventHooksFirstTry) g_eventHooksFirstTry = now;
-    for (size_t i = 0; i < sizeof g_eventHooks / sizeof g_eventHooks[0]; i++)
-    {
-        EventHook* h = &g_eventHooks[i];
-        /* the spawn hook also when an entity runs a HellForge behaviour: the co-op diagnostics (behaviours.c) */
-        /* the damage consumer also for damage before it applies */
-        if (h->state != 0 || !(AnyListener(h->kind) || (h->kind == HF_ON_SPAWN && BehaviourSpawnsWatched()) ||
-            (h->kind == HF_ON_DAMAGE && AnyListener(HF_ON_DAMAGE_PRE)))) continue;
-        if (strcmp(g_build, "25480438")) { h->state = -1; Note("events: %s not hooked (unsupported build); no %s events", h->what, EventName(h->kind)); continue; }
-        if (!PinMatches(game + h->rva, h->pin, h->pinSize))
-        {
-            if (now - g_eventHooksFirstTry < 60000) continue;
-            h->state = -1;
-            Note("events: %s is not the reviewed one; no %s events", h->what, EventName(h->kind));
-            continue;
-        }
-        h->state = LoaderHook(h->what, game + h->rva, h->detour, h->original) ? -1 : 1;
-        Note(h->state == 1 ? "events: hooked %s (%s events)" : "events: could not hook %s; no %s events", h->what, EventName(h->kind));
-    }
+    for (size_t i = 0; i < sizeof g_eventHooks / sizeof g_eventHooks[0]; i++) EventHookInstall(&g_eventHooks[i], game, now);
     EventPollsInstall(game, now - g_eventHooksFirstTry);
 }
 
@@ -191,6 +197,38 @@ static KnownPlayer g_players[EVT_MAX_PLAYERS * 2];
 static int g_playerCount;
 static uint32_t g_lastState;
 
+/* The player known by a peer id, made known when there is room; NULL none. */
+static KnownPlayer* KnownPlayerOf(uint64_t peer)
+{
+    KnownPlayer* known = NULL;
+    for (int k = 0; k < g_playerCount; k++) if (g_players[k].peer == peer) known = &g_players[k];
+    if (known == NULL && g_playerCount < EVT_MAX_PLAYERS * 2) { known = &g_players[g_playerCount++]; *known = (KnownPlayer){peer, 0, 0}; }
+    return known;
+}
+
+/* Slot i of the player list (m: the manager's bytes) against the last update. */
+static void PollPlayer(const uint8_t* m, uint32_t i, uint64_t local)
+{
+    uint64_t peer;
+    uint32_t lifecycle, entity = 0;
+    uintptr_t player = 0;
+    memcpy(&peer, m + 0x2C8 + 0x38 * i, 8);
+    memcpy(&lifecycle, m + 0x2E0 + 0x38 * i, 4);
+    memcpy(&player, m + 0xE8 + 8 * i, 8);
+    if (player) SafeRead(player + 8, &entity, 4);
+    if (peer == 0) return;
+    KnownPlayer* known = KnownPlayerOf(peer);
+    if (known == NULL) return;
+    known->seen = 1;
+    uint32_t from = known->lifecycle;
+    known->lifecycle = lifecycle;
+    if (from == lifecycle) return;
+    uint32_t kind = lifecycle == 3 ? HF_ON_PLAYER_SPAWN : from == 3 && lifecycle == 2 ? HF_ON_PLAYER_DOWN : 0;
+    if (kind == 0 || !AnyListener(kind)) return;
+    HfPlayerEvent e = {{sizeof e, kind, 0}, peer, entity, peer == local};
+    Dispatch(&e.info);
+}
+
 /* Each player's lifecycle against the last update's: spawned (to 3), down (3 to 2). */
 static void PollPlayers(uintptr_t game)
 {
@@ -203,29 +241,7 @@ static void PollPlayers(uintptr_t game)
     memcpy(&count, m + 0x84, 4);
     if (count > EVT_MAX_PLAYERS) return; /* not a player list this build has */
     for (int k = 0; k < g_playerCount; k++) g_players[k].seen = 0;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        uint64_t peer;
-        uint32_t lifecycle, entity = 0;
-        uintptr_t player = 0;
-        memcpy(&peer, m + 0x2C8 + 0x38 * i, 8);
-        memcpy(&lifecycle, m + 0x2E0 + 0x38 * i, 4);
-        memcpy(&player, m + 0xE8 + 8 * i, 8);
-        if (player) SafeRead(player + 8, &entity, 4);
-        if (peer == 0) continue;
-        KnownPlayer* known = NULL;
-        for (int k = 0; k < g_playerCount; k++) if (g_players[k].peer == peer) known = &g_players[k];
-        if (known == NULL && g_playerCount < EVT_MAX_PLAYERS * 2) { known = &g_players[g_playerCount++]; *known = (KnownPlayer){peer, 0, 0}; }
-        if (known == NULL) continue;
-        known->seen = 1;
-        uint32_t from = known->lifecycle;
-        known->lifecycle = lifecycle;
-        if (from == lifecycle) continue;
-        uint32_t kind = lifecycle == 3 ? HF_ON_PLAYER_SPAWN : from == 3 && lifecycle == 2 ? HF_ON_PLAYER_DOWN : 0;
-        if (kind == 0 || !AnyListener(kind)) continue;
-        HfPlayerEvent e = {{sizeof e, kind, 0}, peer, entity, peer == local};
-        Dispatch(&e.info);
-    }
+    for (uint32_t i = 0; i < count; i++) PollPlayer(m, i, local);
     for (int k = 0; k < g_playerCount;) /* players who left */
         if (!g_players[k].seen) g_players[k] = g_players[--g_playerCount];
         else k++;

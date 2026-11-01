@@ -142,94 +142,123 @@ public static partial class DataSpecs
         if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include or icon.");
         switch (kinds[0])
         {
-            case "include":
-            {
-                Fields(e, at, "type", "include", "source");
-                var ids = Items(e, "include", at).Select(id => Id(id, $"{at}.include")).ToList();
-                if (ids.Count == 0) throw new InvalidDataException($"{at}: include lists no resources.");
-                return new IncludeResources(at, Type(e, at), ids) { Steam = FromSteam(e, at) };
-            }
-            case "icon":
-            {
-                Fields(e, at, "icon", "name", "prepare");
-                var png = Text(e, "icon", at).Replace('\\', '/');
-                if (Path.IsPathRooted(png) || png.Split('/').Any(part => part is "" or "." or "..") || !png.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"{at}: icon is a .png file in the mod folder, such as \"icons/my_stratagem.png\".");
-                if (folder != null && !File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
-                var prepare = e.TryGetProperty("prepare", out _) ? Text(e, "prepare", at) : "raw";
-                if (prepare is not ("raw" or "auto" or "image")) throw new InvalidDataException($"{at}: prepare is raw, auto or image.");
-                inputs.Add(png);
-                return new IconResource(at, Name(e, at), png, prepare);
-            }
+            case "include": return ReadInclude(e, at);
+            case "icon": return ReadIcon(e, at, folder, inputs);
         }
+        return ReadCopy(e, at, folder, inputs);
+    }
+
+    static IncludeResources ReadInclude(JsonElement e, string at)
+    {
+        Fields(e, at, "type", "include", "source");
+        var ids = Items(e, "include", at).Select(id => Id(id, $"{at}.include")).ToList();
+        if (ids.Count == 0) throw new InvalidDataException($"{at}: include lists no resources.");
+        return new IncludeResources(at, Type(e, at), ids) { Steam = FromSteam(e, at) };
+    }
+
+    static IconResource ReadIcon(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "icon", "name", "prepare");
+        var png = Text(e, "icon", at).Replace('\\', '/');
+        if (Path.IsPathRooted(png) || png.Split('/').Any(part => part is "" or "." or "..") || !png.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{at}: icon is a .png file in the mod folder, such as \"icons/my_stratagem.png\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
+        var prepare = e.TryGetProperty("prepare", out _) ? Text(e, "prepare", at) : "raw";
+        if (prepare is not ("raw" or "auto" or "image")) throw new InvalidDataException($"{at}: prepare is raw, auto or image.");
+        inputs.Add(png);
+        return new IconResource(at, Name(e, at), png, prepare);
+    }
+
+    // A copy, its edits read in the spec's order.
+    static CopyResource ReadCopy(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
         Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "lut", "mesh", "source");
         var type = Type(e, at);
+        var expect = ReadExpect(e, at);
+        var replace = ReadReplace(e, at);
+        var curves = ReadCurves(e, at);
+        var colours = ReadColours(e, at);
+        var lut = ReadLut(e, at);
+        var mesh = ReadMesh(e, at, type, folder, inputs);
+        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh) { Steam = FromSteam(e, at) };
+    }
+
+    static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)
+    {
         var expect = new Dictionary<int, ulong>();
         if (e.TryGetProperty("expect", out var pins))
             foreach (var pin in Object(pins, $"{at}.expect"))
                 expect[Offset(pin.Name, $"{at}.expect")] = Id(pin.Value, $"{at}.expect");
+        return expect;
+    }
+
+    static List<Replacement> ReadReplace(JsonElement e, string at)
+    {
         var replace = new List<Replacement>();
-        if (e.TryGetProperty("replace", out var replacements))
+        if (!e.TryGetProperty("replace", out var replacements)) return replace;
+        if (replacements.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{at}: replace is a list.");
+        foreach (var item in replacements.EnumerateArray())
         {
-            if (replacements.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{at}: replace is a list.");
-            foreach (var item in replacements.EnumerateArray())
-            {
-                Fields(item, $"{at}.replace", "from", "to", "at");
-                List<int>? offsets = null;
-                if (item.TryGetProperty("at", out var list))
-                    offsets = Items(item, "at", $"{at}.replace").Select(o => o.ValueKind == JsonValueKind.String ? Offset(o.GetString()!, $"{at}.replace")
-                        : throw new InvalidDataException($"{at}.replace: at lists offsets such as \"0x2E44\".")).ToList();
-                replace.Add(new(Id(Property(item, "from", $"{at}.replace"), $"{at}.replace"), Id(Property(item, "to", $"{at}.replace"), $"{at}.replace"), offsets));
-            }
+            Fields(item, $"{at}.replace", "from", "to", "at");
+            List<int>? offsets = null;
+            if (item.TryGetProperty("at", out var list))
+                offsets = Items(item, "at", $"{at}.replace").Select(o => o.ValueKind == JsonValueKind.String ? Offset(o.GetString()!, $"{at}.replace")
+                    : throw new InvalidDataException($"{at}.replace: at lists offsets such as \"0x2E44\".")).ToList();
+            replace.Add(new(Id(Property(item, "from", $"{at}.replace"), $"{at}.replace"), Id(Property(item, "to", $"{at}.replace"), $"{at}.replace"), offsets));
         }
-        CurveEdit? curves = null;
-        if (e.TryGetProperty("curves", out var curveSpec))
-        {
-            Fields(curveSpec, $"{at}.curves", "preset", "colour", "keys");
-            var preset = curveSpec.TryGetProperty("preset", out _) ? Text(curveSpec, "preset", $"{at}.curves") : null;
-            var colour = curveSpec.TryGetProperty("colour", out var c) ? Colour(c, $"{at}.curves") : null;
-            if ((preset == null) == (colour == null)) throw new InvalidDataException($"{at}.curves: give a preset or a colour.");
-            if (preset != null && preset != WarmToBlue) throw new InvalidDataException($"{at}.curves: the preset is \"{WarmToBlue}\".");
-            if (colour != null && colour.Max() <= 0) throw new InvalidDataException($"{at}.curves: the colour cannot be black.");
-            int? keys = curveSpec.TryGetProperty("keys", out var k) ? (k.ValueKind == JsonValueKind.Number && k.TryGetInt32(out var n) && n > 0 ? n : throw new InvalidDataException($"{at}.curves: keys is a positive count.")) : null;
-            curves = new(preset, colour, keys);
-        }
-        Dictionary<uint, double[]>? colours = null;
-        if (e.TryGetProperty("colours", out var colourSpec))
-        {
-            colours = [];
-            foreach (var item in Object(colourSpec, $"{at}.colours"))
-                colours[Hash32().IsMatch(item.Name) ? uint.Parse(item.Name[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
-                    : item.Name.Length > 0 ? EngineHash.Id32(item.Name) : throw new InvalidDataException($"{at}.colours: a parameter is 0x<8 hex digits> or a name.")]
-                    = Colour(item.Value, $"{at}.colours");
-            if (colours.Count == 0) throw new InvalidDataException($"{at}: colours is empty.");
-        }
-        ResourceEdits.LutRecolour? lut = null;
-        if (e.TryGetProperty("lut", out var lutSpec))
-        {
-            Fields(lutSpec, $"{at}.lut", "zonesFrom", "columns", "rows");
-            int? zonesFrom = lutSpec.TryGetProperty("zonesFrom", out var z) ? (z.ValueKind == JsonValueKind.Number && z.TryGetInt32(out var row) && row >= 0 ? row : throw new InvalidDataException($"{at}.lut: zonesFrom is a row number.")) : null;
-            var columns = lutSpec.TryGetProperty("columns", out var cs) ? Cells(cs, $"{at}.lut.columns") : [];
-            var rows = new Dictionary<int, IReadOnlyDictionary<int, double[]>>();
-            if (lutSpec.TryGetProperty("rows", out var rs))
-                foreach (var item in Object(rs, $"{at}.lut.rows")) rows[Index(item.Name, $"{at}.lut.rows")] = Cells(item.Value, $"{at}.lut.rows");
-            lut = new(zonesFrom, columns, rows);
-        }
-        MeshFile? mesh = null;
-        if (e.TryGetProperty("mesh", out var meshSpec))
-        {
-            if (type != ResourceTypes.Unit) throw new InvalidDataException($"{at}: mesh is for a unit copy.");
-            Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp");
-            var obj = Text(meshSpec, "obj", $"{at}.mesh").Replace('\\', '/');
-            if (Path.IsPathRooted(obj) || obj.Split('/').Any(part => part is "" or "." or "..") || !obj.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"{at}.mesh: obj is an .obj file in the mod folder, such as \"models/cube.obj\".");
-            if (folder != null && !File.Exists(Path.Combine(folder, obj))) throw new InvalidDataException($"{at}.mesh: {obj} is missing.");
-            var scale = meshSpec.TryGetProperty("scale", out var sc) ? (sc.ValueKind == JsonValueKind.Number && sc.GetDouble() is > 0 and < 1000 and var v ? v : throw new InvalidDataException($"{at}.mesh: scale is a positive number.")) : 1.0;
-            var yUp = !meshSpec.TryGetProperty("yUp", out var up) || (up.ValueKind is JsonValueKind.True or JsonValueKind.False ? up.GetBoolean() : throw new InvalidDataException($"{at}.mesh: yUp is true or false."));
-            inputs.Add(obj);
-            mesh = new(obj, scale, yUp);
-        }
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh) { Steam = FromSteam(e, at) };
+        return replace;
+    }
+
+    static CurveEdit? ReadCurves(JsonElement e, string at)
+    {
+        if (!e.TryGetProperty("curves", out var curveSpec)) return null;
+        Fields(curveSpec, $"{at}.curves", "preset", "colour", "keys");
+        var preset = curveSpec.TryGetProperty("preset", out _) ? Text(curveSpec, "preset", $"{at}.curves") : null;
+        var colour = curveSpec.TryGetProperty("colour", out var c) ? Colour(c, $"{at}.curves") : null;
+        if ((preset == null) == (colour == null)) throw new InvalidDataException($"{at}.curves: give a preset or a colour.");
+        if (preset != null && preset != WarmToBlue) throw new InvalidDataException($"{at}.curves: the preset is \"{WarmToBlue}\".");
+        if (colour != null && colour.Max() <= 0) throw new InvalidDataException($"{at}.curves: the colour cannot be black.");
+        int? keys = curveSpec.TryGetProperty("keys", out var k) ? (k.ValueKind == JsonValueKind.Number && k.TryGetInt32(out var n) && n > 0 ? n : throw new InvalidDataException($"{at}.curves: keys is a positive count.")) : null;
+        return new(preset, colour, keys);
+    }
+
+    static Dictionary<uint, double[]>? ReadColours(JsonElement e, string at)
+    {
+        if (!e.TryGetProperty("colours", out var colourSpec)) return null;
+        Dictionary<uint, double[]> colours = [];
+        foreach (var item in Object(colourSpec, $"{at}.colours"))
+            colours[Hash32().IsMatch(item.Name) ? uint.Parse(item.Name[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+                : item.Name.Length > 0 ? EngineHash.Id32(item.Name) : throw new InvalidDataException($"{at}.colours: a parameter is 0x<8 hex digits> or a name.")]
+                = Colour(item.Value, $"{at}.colours");
+        if (colours.Count == 0) throw new InvalidDataException($"{at}: colours is empty.");
+        return colours;
+    }
+
+    static ResourceEdits.LutRecolour? ReadLut(JsonElement e, string at)
+    {
+        if (!e.TryGetProperty("lut", out var lutSpec)) return null;
+        Fields(lutSpec, $"{at}.lut", "zonesFrom", "columns", "rows");
+        int? zonesFrom = lutSpec.TryGetProperty("zonesFrom", out var z) ? (z.ValueKind == JsonValueKind.Number && z.TryGetInt32(out var row) && row >= 0 ? row : throw new InvalidDataException($"{at}.lut: zonesFrom is a row number.")) : null;
+        var columns = lutSpec.TryGetProperty("columns", out var cs) ? Cells(cs, $"{at}.lut.columns") : [];
+        var rows = new Dictionary<int, IReadOnlyDictionary<int, double[]>>();
+        if (lutSpec.TryGetProperty("rows", out var rs))
+            foreach (var item in Object(rs, $"{at}.lut.rows")) rows[Index(item.Name, $"{at}.lut.rows")] = Cells(item.Value, $"{at}.lut.rows");
+        return new(zonesFrom, columns, rows);
+    }
+
+    static MeshFile? ReadMesh(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
+    {
+        if (!e.TryGetProperty("mesh", out var meshSpec)) return null;
+        if (type != ResourceTypes.Unit) throw new InvalidDataException($"{at}: mesh is for a unit copy.");
+        Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp");
+        var obj = Text(meshSpec, "obj", $"{at}.mesh").Replace('\\', '/');
+        if (Path.IsPathRooted(obj) || obj.Split('/').Any(part => part is "" or "." or "..") || !obj.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{at}.mesh: obj is an .obj file in the mod folder, such as \"models/cube.obj\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, obj))) throw new InvalidDataException($"{at}.mesh: {obj} is missing.");
+        var scale = meshSpec.TryGetProperty("scale", out var sc) ? (sc.ValueKind == JsonValueKind.Number && sc.GetDouble() is > 0 and < 1000 and var v ? v : throw new InvalidDataException($"{at}.mesh: scale is a positive number.")) : 1.0;
+        var yUp = !meshSpec.TryGetProperty("yUp", out var up) || (up.ValueKind is JsonValueKind.True or JsonValueKind.False ? up.GetBoolean() : throw new InvalidDataException($"{at}.mesh: yUp is true or false."));
+        inputs.Add(obj);
+        return new(obj, scale, yUp);
     }
 
     static bool FromSteam(JsonElement e, string at) =>

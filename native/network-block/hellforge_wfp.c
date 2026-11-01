@@ -101,6 +101,20 @@ static int Report(const wchar_t *reportPath, const char *status, const char *act
     return (strcmp(status, "failed") == 0) ? 1 : 0;
 }
 
+// A line's length without its trailing spaces and tabs.
+static size_t TrimmedLength(const char *line, size_t length){
+    while(length > 0 && (line[length - 1] == ' ' || line[length - 1] == '\t')) --length;
+    return length;
+}
+
+// One line of UTF-8 as a NUL-terminated wide string (the caller frees it).
+static wchar_t *WidenLine(const char *line, size_t length){
+    int wn = MultiByteToWideChar(CP_UTF8, 0, line, (int)length, NULL, 0);
+    wchar_t *w = (wchar_t*)malloc(((size_t)wn + 1) * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, line, (int)length, w, wn); w[wn] = 0;
+    return w;
+}
+
 // Read programsFile into a NULL-terminated array of wide paths (caller frees array and each entry). Blank lines
 // and a leading UTF-8 BOM are skipped. Returns NULL on read failure (count set to -1).
 static wchar_t **ReadPrograms(const wchar_t *path, int *count){
@@ -118,14 +132,8 @@ static wchar_t **ReadPrograms(const wchar_t *path, int *count){
     while(i < got){
         size_t j = i;
         while(j < got && data[j] != '\n' && data[j] != '\r') ++j;
-        size_t lineLen = j - i;
-        while(lineLen > 0 && (data[i + lineLen - 1] == ' ' || data[i + lineLen - 1] == '\t')) --lineLen;
-        if(lineLen > 0){
-            int wn = MultiByteToWideChar(CP_UTF8, 0, data + i, (int)lineLen, NULL, 0);
-            wchar_t *w = (wchar_t*)malloc(((size_t)wn + 1) * sizeof(wchar_t));
-            MultiByteToWideChar(CP_UTF8, 0, data + i, (int)lineLen, w, wn); w[wn] = 0;
-            list[n++] = w;
-        }
+        size_t lineLen = TrimmedLength(data + i, j - i);
+        if(lineLen > 0) list[n++] = WidenLine(data + i, lineLen);
         i = j;
         while(i < got && (data[i] == '\n' || data[i] == '\r')) ++i;
     }
@@ -137,9 +145,46 @@ static wchar_t **ReadPrograms(const wchar_t *path, int *count){
 
 static void FreePrograms(wchar_t **list){ if(!list) return; for(int i = 0; list[i]; ++i) free(list[i]); free(list); }
 
+// The permit filter's conditions after the app id, from cond[nCond]: the loopback address and, on the connect layers,
+// the one port. Returns the new condition count.
+static UINT32 AddLoopbackConditions(FWPM_FILTER_CONDITION0 *cond, UINT32 nCond, const GUID *layer,
+                                    FWP_V4_ADDR_AND_MASK *v4, FWP_V6_ADDR_AND_MASK *v6m){
+    cond[nCond].fieldKey = HF_CONDITION_IP_REMOTE_ADDRESS;
+    cond[nCond].matchType = FWP_MATCH_EQUAL;
+    if(LayerIsV6(layer)){ cond[nCond].conditionValue.type = FWP_V6_ADDR_MASK; cond[nCond].conditionValue.v6AddrMask = v6m; }
+    else                { cond[nCond].conditionValue.type = FWP_V4_ADDR_MASK; cond[nCond].conditionValue.v4AddrMask = v4; }
+    ++nCond;
+    if(gPort > 0 && LayerIsConnect(layer)){
+        cond[nCond].fieldKey = HF_CONDITION_IP_REMOTE_PORT;
+        cond[nCond].matchType = FWP_MATCH_EQUAL;
+        cond[nCond].conditionValue.type = FWP_UINT16;
+        cond[nCond].conditionValue.uint16 = gPort;
+        ++nCond;
+    }
+    return nCond;
+}
+
+// One filter of the pair on one layer: the permit (loopback) at its weight, or the block beneath it.
+static DWORD AddFilter(HANDLE engine, const GUID *provider, const GUID *layer, int permit,
+                       FWPM_FILTER_CONDITION0 *cond, UINT32 nCond){
+    FWPM_FILTER0 filter;
+    memset(&filter, 0, sizeof filter);
+    filter.displayData.name = gDisplayName;
+    filter.flags = FWPM_FILTER_FLAG_PERSISTENT;
+    filter.providerKey = (GUID*)provider;
+    filter.layerKey = *layer;
+    filter.subLayerKey = HF_SUBLAYER;
+    filter.weight.type = FWP_UINT8;
+    filter.weight.uint8 = permit ? WEIGHT_PERMIT : WEIGHT_BLOCK;
+    filter.numFilterConditions = nCond;
+    filter.filterCondition = cond;
+    filter.action.type = permit ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
+    // filterKey left zero: WFP assigns one. The provider key is how we find and remove these later.
+    return FwpmFilterAdd0(engine, &filter, NULL, NULL);
+}
+
 // Add the permit-loopback + block pair for one app id on one layer, inside our transaction.
 static DWORD AddPair(HANDLE engine, const GUID *provider, const GUID *layer, FWP_BYTE_BLOB *appId){
-    int v6 = LayerIsV6(layer);
     // Loopback as an address+mask: 127.0.0.0/8 for v4, ::1/128 for v6.
     FWP_V4_ADDR_AND_MASK v4 = { 0x7f000000u, 0xff000000u };
     FWP_V6_ADDR_AND_MASK v6m; memset(&v6m, 0, sizeof v6m); v6m.addr[15] = 1; v6m.prefixLength = 128;
@@ -155,36 +200,9 @@ static DWORD AddPair(HANDLE engine, const GUID *provider, const GUID *layer, FWP
         cond[nCond].conditionValue.byteBlob = appId;
         ++nCond;
 
-        if(permit){
-            cond[nCond].fieldKey = HF_CONDITION_IP_REMOTE_ADDRESS;
-            cond[nCond].matchType = FWP_MATCH_EQUAL;
-            if(v6){ cond[nCond].conditionValue.type = FWP_V6_ADDR_MASK; cond[nCond].conditionValue.v6AddrMask = &v6m; }
-            else  { cond[nCond].conditionValue.type = FWP_V4_ADDR_MASK; cond[nCond].conditionValue.v4AddrMask = &v4; }
-            ++nCond;
-            if(gPort > 0 && LayerIsConnect(layer)){
-                cond[nCond].fieldKey = HF_CONDITION_IP_REMOTE_PORT;
-                cond[nCond].matchType = FWP_MATCH_EQUAL;
-                cond[nCond].conditionValue.type = FWP_UINT16;
-                cond[nCond].conditionValue.uint16 = gPort;
-                ++nCond;
-            }
-        }
+        if(permit) nCond = AddLoopbackConditions(cond, nCond, layer, &v4, &v6m);
 
-        FWPM_FILTER0 filter;
-        memset(&filter, 0, sizeof filter);
-        filter.displayData.name = gDisplayName;
-        filter.flags = FWPM_FILTER_FLAG_PERSISTENT;
-        filter.providerKey = (GUID*)provider;
-        filter.layerKey = *layer;
-        filter.subLayerKey = HF_SUBLAYER;
-        filter.weight.type = FWP_UINT8;
-        filter.weight.uint8 = permit ? WEIGHT_PERMIT : WEIGHT_BLOCK;
-        filter.numFilterConditions = nCond;
-        filter.filterCondition = cond;
-        filter.action.type = permit ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
-        // filterKey left zero: WFP assigns one. The provider key is how we find and remove these later.
-
-        DWORD r = FwpmFilterAdd0(engine, &filter, NULL, NULL);
+        DWORD r = AddFilter(engine, provider, layer, permit, cond, nCond);
         if(r != ERROR_SUCCESS) return r;
     }
     return ERROR_SUCCESS;
@@ -209,6 +227,19 @@ static DWORD EnsureSubLayer(HANDLE engine){
     return (r == FWP_E_ALREADY_EXISTS) ? ERROR_SUCCESS : r;
 }
 
+// One page of the enumeration: our provider's filters counted into count, and deleted if deleteThem. Returns 0 when
+// a delete failed.
+static int VisitProviderFilters(HANDLE engine, const GUID *provider, int deleteThem, FWPM_FILTER0 **items, UINT32 n, int *count){
+    int ok = 1;
+    for(UINT32 i = 0; i < n; ++i){
+        FWPM_FILTER0 *flt = items[i];
+        if(!flt->providerKey || !IsEqualGUID(flt->providerKey, provider)) continue;
+        ++*count;
+        if(deleteThem && FwpmFilterDeleteById0(engine, flt->filterId) != ERROR_SUCCESS) ok = 0;
+    }
+    return ok;
+}
+
 // Count or delete every filter tagged with our provider. If deleteThem, removes them; otherwise just counts.
 // Returns the count (>=0) or -1 on enumeration failure.
 static int ForEachProviderFilter(HANDLE engine, const GUID *provider, int deleteThem){
@@ -220,13 +251,7 @@ static int ForEachProviderFilter(HANDLE engine, const GUID *provider, int delete
         DWORD r = FwpmFilterEnum0(engine, enumHandle, 64, &items, &n);
         if(r != ERROR_SUCCESS){ ok = 0; break; }
         if(n == 0){ if(items) FwpmFreeMemory0((void**)&items); break; }
-        for(UINT32 i = 0; i < n; ++i){
-            FWPM_FILTER0 *flt = items[i];
-            if(flt->providerKey && IsEqualGUID(flt->providerKey, provider)){
-                ++count;
-                if(deleteThem && FwpmFilterDeleteById0(engine, flt->filterId) != ERROR_SUCCESS) ok = 0;
-            }
-        }
+        if(!VisitProviderFilters(engine, provider, deleteThem, items, n, &count)) ok = 0;
         FwpmFreeMemory0((void**)&items);
     }
     FwpmFilterDestroyEnumHandle0(engine, enumHandle);
@@ -241,108 +266,155 @@ static int ParseGuid(const wchar_t *s, GUID *out){
     return CLSIDFromString((LPOLESTR)braced, out) == NOERROR;
 }
 
+enum { CMD_INSTALL, CMD_UNINSTALL, CMD_STATUS };
+
+// A command and the files its arguments name (NULL when it names none).
+typedef struct {
+    int kind;
+    const char *action;
+    const wchar_t *programsFile, *reportFile;
+} Command;
+
+// install's arguments: the display name, the programs and the one port. Returns -1, or the exit code of the failure
+// it reported.
+static int ParseInstall(int argc, wchar_t **argv, Command *c){
+    if(argc < 6) return Report(NULL, "failed", c->action, -1, -1, "install needs <providerGuid> <displayName> <programsFile> <port> [reportFile].");
+    gDisplayName = argv[3];
+    c->programsFile = argv[4];
+    c->reportFile = argc >= 7 ? argv[6] : NULL;
+    // Digits only, 1-65535: a port that does not parse must never turn into 0, which would permit every port.
+    wchar_t *end = NULL;
+    unsigned long portVal = (argv[5][0] >= L'0' && argv[5][0] <= L'9') ? wcstoul(argv[5], &end, 10) : 0;
+    if(!end || *end != L'\0' || portVal < 1 || portVal > 65535)
+        return Report(c->reportFile, "failed", c->action, -1, -1, "The port must be a number from 1 to 65535.");
+    gPort = (UINT16)portVal;
+    return -1;
+}
+
+// The command in argv[1] and its files. Returns -1, or the exit code of the failure it reported.
+static int ParseCommand(int argc, wchar_t **argv, Command *c){
+    const wchar_t *cmd = argv[1];
+    c->programsFile = NULL;
+    c->reportFile = NULL;
+    if(wcscmp(cmd, L"install") == 0){
+        c->kind = CMD_INSTALL; c->action = "install";
+        return ParseInstall(argc, argv, c);
+    }
+    if(wcscmp(cmd, L"uninstall") == 0){
+        c->kind = CMD_UNINSTALL; c->action = "uninstall";
+        c->reportFile = argc >= 4 ? argv[3] : NULL;
+        return -1;
+    }
+    if(wcscmp(cmd, L"status") != 0) return Report(NULL, "failed", "unknown", -1, -1, "Unknown command.");
+    c->kind = CMD_STATUS; c->action = "status";
+    if(argc < 4) return Report(NULL, "failed", c->action, -1, -1, "status needs <providerGuid> <programsFile> [reportFile].");
+    c->programsFile = argv[3];
+    c->reportFile = argc >= 5 ? argv[4] : NULL;
+    return -1;
+}
+
+// The command's programs list, when it names one. Returns -1, or the exit code of the failure it reported.
+static int LoadPrograms(const Command *c, wchar_t ***programs, int *nPrograms){
+    if(!c->programsFile) return -1;
+    *programs = ReadPrograms(c->programsFile, nPrograms);
+    if(!*programs || *nPrograms < 0) return Report(c->reportFile, "failed", c->action, -1, -1, "Could not read the programs list.");
+    if(*nPrograms == 0 && c->kind == CMD_INSTALL){
+        FreePrograms(*programs); *programs = NULL;
+        return Report(c->reportFile, "failed", c->action, 0, -1, "The programs list is empty.");
+    }
+    return -1;
+}
+
+// Ends the transaction: aborted after a failure, else committed. Returns the failure, if any (a failed commit's too).
+static const char *EndTransaction(HANDLE engine, const char *failure){
+    if(failure){ FwpmTransactionAbort0(engine); }
+    else if(FwpmTransactionCommit0(engine) != ERROR_SUCCESS) failure = "Could not commit the changes.";
+    return failure;
+}
+
+static int Status(HANDLE engine, const GUID *provider, const Command *c, int nPrograms){
+    int count = ForEachProviderFilter(engine, provider, 0);
+    FwpmEngineClose0(engine);
+    int expected = nPrograms * FILTERS_PER_PROGRAM;
+    const char *status = (count < 0) ? "failed" : (count >= expected && expected > 0 ? "installed" : "not_installed");
+    const char *failure = (count < 0) ? "Could not read the filters." : NULL;
+    return Report(c->reportFile, status, c->action, nPrograms, count < 0 ? -1 : count, failure);
+}
+
+// Our provider's filters, then the provider itself, removed (inside the transaction). Returns the failure, if any.
+static const char *RemoveProvider(HANDLE engine, const GUID *provider, int *removed){
+    *removed = ForEachProviderFilter(engine, provider, 1);
+    if(*removed < 0) return "Could not remove every filter.";
+    DWORD d = FwpmProviderDeleteByKey0(engine, provider);
+    if(d != ERROR_SUCCESS && d != FWP_E_PROVIDER_NOT_FOUND) return "Could not remove the provider.";
+    return NULL;
+}
+
+static int Uninstall(HANDLE engine, const GUID *provider, const Command *c){
+    DWORD r = FwpmTransactionBegin0(engine, 0);
+    int removed = -1; const char *failure = NULL;
+    if(r == ERROR_SUCCESS) failure = RemoveProvider(engine, provider, &removed);
+    else failure = "Could not begin the transaction.";
+    failure = EndTransaction(engine, failure);
+    FwpmEngineClose0(engine);
+    return Report(c->reportFile, failure ? "failed" : "uninstalled", c->action, -1, removed, failure);
+}
+
+// One program's filter pairs on the four layers, counted in added. Returns the failure, if any.
+static const char *AddProgram(HANDLE engine, const GUID *provider, const wchar_t *program, int *added){
+    FWP_BYTE_BLOB *appId = NULL;
+    DWORD g = FwpmGetAppIdFromFileName0(program, &appId);
+    if(g != ERROR_SUCCESS || !appId) return "Could not read a program's application id.";
+    const char *failure = NULL;
+    for(int L = 0; L < 4; ++L){
+        DWORD a = AddPair(engine, provider, LAYERS[L], appId);
+        if(a != ERROR_SUCCESS){ static char m[96]; _snprintf(m, sizeof m, "Could not add a filter (layer %d, 0x%08lx).", L, (unsigned long)a); failure = m; break; }
+        *added += 2;
+    }
+    FwpmFreeMemory0((void**)&appId);
+    return failure;
+}
+
+static int Install(HANDLE engine, const GUID *provider, const Command *c, wchar_t **programs, int nPrograms){
+    DWORD r = FwpmTransactionBegin0(engine, 0);
+    const char *failure = NULL; int added = 0;
+    if(r != ERROR_SUCCESS) failure = "Could not begin the transaction.";
+    if(!failure && EnsureProvider(engine, provider) != ERROR_SUCCESS) failure = "Could not add the provider.";
+    if(!failure && EnsureSubLayer(engine) != ERROR_SUCCESS) failure = "Could not add the sublayer.";
+    // Remove any filters left from an earlier install of this provider, so a re-run is clean, not doubled.
+    if(!failure && ForEachProviderFilter(engine, provider, 1) < 0) failure = "Could not clear earlier filters.";
+    for(int p = 0; !failure && programs[p]; ++p) failure = AddProgram(engine, provider, programs[p], &added);
+    failure = EndTransaction(engine, failure);
+    FwpmEngineClose0(engine);
+    return Report(c->reportFile, failure ? "failed" : "installed", c->action, nPrograms, failure ? -1 : added, failure);
+}
+
 int wmain(int argc, wchar_t **argv){
     if(argc < 3){
         fprintf(stderr, "usage: hellforge_wfp install|uninstall|status <providerGuid> [...]\n");
         return 2;
     }
-    const wchar_t *cmd = argv[1];
     GUID provider;
     if(!ParseGuid(argv[2], &provider)){ return Report(NULL, "failed", "unknown", -1, -1, "Bad provider GUID."); }
 
-    int isInstall  = (wcscmp(cmd, L"install") == 0);
-    int isUninstall = (wcscmp(cmd, L"uninstall") == 0);
-    int isStatus   = (wcscmp(cmd, L"status") == 0);
-    if(!isInstall && !isUninstall && !isStatus) return Report(NULL, "failed", "unknown", -1, -1, "Unknown command.");
-    const char *action = isInstall ? "install" : isUninstall ? "uninstall" : "status";
-
-    const wchar_t *programsFile = NULL, *reportFile = NULL;
-    if(isInstall){
-        if(argc < 6) return Report(NULL, "failed", action, -1, -1, "install needs <providerGuid> <displayName> <programsFile> <port> [reportFile].");
-        gDisplayName = argv[3];
-        programsFile = argv[4];
-        reportFile = argc >= 7 ? argv[6] : NULL;
-        // Digits only, 1-65535: a port that does not parse must never turn into 0, which would permit every port.
-        wchar_t *end = NULL;
-        unsigned long portVal = (argv[5][0] >= L'0' && argv[5][0] <= L'9') ? wcstoul(argv[5], &end, 10) : 0;
-        if(!end || *end != L'\0' || portVal < 1 || portVal > 65535)
-            return Report(reportFile, "failed", action, -1, -1, "The port must be a number from 1 to 65535.");
-        gPort = (UINT16)portVal;
-    } else if(isUninstall){
-        reportFile = argc >= 4 ? argv[3] : NULL;
-    } else { // status
-        if(argc < 4) return Report(NULL, "failed", action, -1, -1, "status needs <providerGuid> <programsFile> [reportFile].");
-        programsFile = argv[3];
-        reportFile = argc >= 5 ? argv[4] : NULL;
-    }
-
+    Command c;
+    int rc = ParseCommand(argc, argv, &c);
+    if(rc >= 0) return rc;
     wchar_t **programs = NULL; int nPrograms = -1;
-    if(programsFile){
-        programs = ReadPrograms(programsFile, &nPrograms);
-        if(!programs || nPrograms < 0) return Report(reportFile, "failed", action, -1, -1, "Could not read the programs list.");
-        if(nPrograms == 0 && isInstall) { FreePrograms(programs); return Report(reportFile, "failed", action, 0, -1, "The programs list is empty."); }
-    }
+    rc = LoadPrograms(&c, &programs, &nPrograms);
+    if(rc >= 0) return rc;
 
     HANDLE engine = NULL;
     DWORD r = FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, NULL, &engine);
     if(r != ERROR_SUCCESS){
         char msg[128]; _snprintf(msg, sizeof msg, "Could not open the filtering engine (0x%08lx). Run as administrator.", (unsigned long)r);
         FreePrograms(programs);
-        return Report(reportFile, "failed", action, nPrograms, -1, msg);
+        return Report(c.reportFile, "failed", c.action, nPrograms, -1, msg);
     }
 
-    if(isStatus){
-        int count = ForEachProviderFilter(engine, &provider, 0);
-        FwpmEngineClose0(engine);
-        int expected = nPrograms * FILTERS_PER_PROGRAM;
-        const char *status = (count < 0) ? "failed" : (count >= expected && expected > 0 ? "installed" : "not_installed");
-        const char *failure = (count < 0) ? "Could not read the filters." : NULL;
-        int rc = Report(reportFile, status, action, nPrograms, count < 0 ? -1 : count, failure);
-        FreePrograms(programs);
-        return rc;
-    }
-
-    if(isUninstall){
-        r = FwpmTransactionBegin0(engine, 0);
-        int removed = -1; const char *failure = NULL;
-        if(r == ERROR_SUCCESS){
-            removed = ForEachProviderFilter(engine, &provider, 1);
-            if(removed < 0){ failure = "Could not remove every filter."; }
-            else{
-                DWORD d = FwpmProviderDeleteByKey0(engine, &provider);
-                if(d != ERROR_SUCCESS && d != FWP_E_PROVIDER_NOT_FOUND) failure = "Could not remove the provider.";
-            }
-        } else failure = "Could not begin the transaction.";
-        if(failure){ FwpmTransactionAbort0(engine); }
-        else if(FwpmTransactionCommit0(engine) != ERROR_SUCCESS) failure = "Could not commit the changes.";
-        FwpmEngineClose0(engine);
-        FreePrograms(programs);
-        return Report(reportFile, failure ? "failed" : "uninstalled", action, -1, removed, failure);
-    }
-
-    // install
-    r = FwpmTransactionBegin0(engine, 0);
-    const char *failure = NULL; int added = 0;
-    if(r != ERROR_SUCCESS) failure = "Could not begin the transaction.";
-    if(!failure && EnsureProvider(engine, &provider) != ERROR_SUCCESS) failure = "Could not add the provider.";
-    if(!failure && EnsureSubLayer(engine) != ERROR_SUCCESS) failure = "Could not add the sublayer.";
-    // Remove any filters left from an earlier install of this provider, so a re-run is clean, not doubled.
-    if(!failure && ForEachProviderFilter(engine, &provider, 1) < 0) failure = "Could not clear earlier filters.";
-    for(int p = 0; !failure && programs[p]; ++p){
-        FWP_BYTE_BLOB *appId = NULL;
-        DWORD g = FwpmGetAppIdFromFileName0(programs[p], &appId);
-        if(g != ERROR_SUCCESS || !appId){ failure = "Could not read a program's application id."; break; }
-        for(int L = 0; L < 4; ++L){
-            DWORD a = AddPair(engine, &provider, LAYERS[L], appId);
-            if(a != ERROR_SUCCESS){ static char m[96]; _snprintf(m, sizeof m, "Could not add a filter (layer %d, 0x%08lx).", L, (unsigned long)a); failure = m; break; }
-            added += 2;
-        }
-        FwpmFreeMemory0((void**)&appId);
-    }
-    if(failure){ FwpmTransactionAbort0(engine); }
-    else if(FwpmTransactionCommit0(engine) != ERROR_SUCCESS) failure = "Could not commit the changes.";
-    FwpmEngineClose0(engine);
-    int rc = Report(reportFile, failure ? "failed" : "installed", action, nPrograms, failure ? -1 : added, failure);
+    if(c.kind == CMD_STATUS) rc = Status(engine, &provider, &c, nPrograms);
+    else if(c.kind == CMD_UNINSTALL) rc = Uninstall(engine, &provider, &c);
+    else rc = Install(engine, &provider, &c, programs, nPrograms);
     FreePrograms(programs);
     return rc;
 }

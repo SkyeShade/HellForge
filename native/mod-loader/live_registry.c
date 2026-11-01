@@ -13,7 +13,7 @@
  *
  * Install, in the game thread's step (KB hellforge-live-mod-sync-re-runtime, "A late RegisterLate"): the registry's hooks
  * (entity loader, armory builder) when the boot had none, taken on the change's thread; each new entity's rows
- * (RegisterOne, a row's key last); the loadout table and short-id list copies (made now when the boot made none); the
+ * (RegisterWeapon, a row's key last); the loadout table and short-id list copies (made now when the boot made none); the
  * network types appended (counts last); the apply switch's entries, then its bound; the armory built into a fresh object
  * and swapped in (the old one is never freed: a reader may hold it); texts. Network type indices follow the short ids as
  * at boot: a weapon whose base has no network type gets none, as RegisterNetworkTypes does. */
@@ -170,14 +170,17 @@ static void LiveNetworkEntry(const Weapon* w, uint32_t index, int found)
 }
 
 /* The network types of the entities registered since the step began, appended to the arrays RegisterNetworkTypes made
- * (count + REG_MAX_WEAPONS each); the first ever made by it. Entries first, the counts last. */
+ * (count + REG_MAX_WEAPONS each) within the type index's width (registry_load.c: 11 bits, or 12 when the boot's set
+ * needed them); the first ever made by it. Entries first, the counts last. */
 static void LiveNetworkTypes(void)
 {
     if (g_networkTypesAdded == 0) { RegisterNetworkTypes(); return; }
     uintptr_t base = ApiModuleBase(g_networkModule, NULL), holder = 0, config = 0;
     uint32_t count = 0;
+    uint8_t width = 0;
     if (g_networkTypesAdded != 2 || g_netEntries == NULL || base == 0 || SafeRead(base + g_networkRva, &holder, 8) || holder == 0 ||
-        SafeRead(holder, &config, 8) || config == 0 || SafeRead(config + 0x70, &count, 4) || count < g_networkVanillaTypes)
+        SafeRead(holder, &config, 8) || config == 0 || SafeRead(config + 0x70, &count, 4) || count < g_networkVanillaTypes ||
+        SafeRead(config + 0xC, &width, 1) || width < NET_TYPE_BITS || width > NET_WIDE_BITS)
     { Note("registry: the network types made at boot are not there; the live weapons have none (equipping them crashes)"); return; }
     uint32_t added = 0, lastKey = 0;
     memcpy(&lastKey, g_netEntries + (size_t)(count - 1) * 80, 4);
@@ -189,10 +192,12 @@ static void LiveNetworkTypes(void)
         int known = 0;
         for (uint32_t t = 0; t < g_networkTypeCount && !known; t++) known = g_networkTypes[t].entity == w->entity;
         if (w->state != 1 || known || order[k] < g_lcWeaponsBefore) continue;
-        int found = NetworkEntry(g_netEntries, g_networkVanillaTypes, w->baseShortId);
+        int found = NetworkEntryOf(g_netEntries, g_networkVanillaTypes, w->baseShortId);
         uint32_t index = count + added;
-        if (found < 0 || w->shortId <= lastKey || index >= g_networkVanillaTypes + REG_MAX_WEAPONS)
+        if (found < 0 || w->shortId <= lastKey)
         { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); continue; }
+        if (index >= g_networkVanillaTypes + REG_MAX_WEAPONS || index >= (1u << width))
+        { ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name); continue; }
         LiveNetworkEntry(w, index, found);
         lastKey = w->shortId;
         added++;
@@ -256,14 +261,19 @@ static void LiveRegistryStep(LivePlan* plan)
     uint32_t records;
     uint8_t* loadout = LoadoutTable(state, &records);
     int first = g_loadoutTable == NULL;
-    RegCtx ctx;
-    if (first && !RegistryCopies(&ctx, state, map, loadout, list)) { Note("registry: out of memory; the live weapons are not registered"); return; }
+    WeaponLoad L = {state, map};
+    if (first && !CopyLoadoutAndList(&L, loadout, list)) { Note("registry: the live weapons are not registered"); return; }
     if (!first)
     {
-        ctx = (RegCtx){state, map, g_loadoutTable, g_loadoutTable + (size_t)REG_LOADOUT_SLOTS * 16, g_regList, g_loadoutRecords, g_regListCount, 0, 0, 1};
-        memcpy(&ctx.lastShort, ctx.list + 32 + (size_t)(ctx.listCount - 1) * 8, 4);
+        L.table = g_loadoutTable - 32;
+        L.index = g_loadoutTable;
+        L.records = g_loadoutTable + (size_t)REG_LOADOUT_SLOTS * 16;
+        L.recordCount = g_loadoutRecords;
+        L.newList = g_regList;
+        L.listCount = g_regListCount;
+        memcpy(&L.lastShort, L.newList + 32 + (size_t)(L.listCount - 1) * 8, 4);
     }
-    ctx.late = 1;
+    L.late = 1;
     g_lrNetBefore = g_networkTypeCount;
     int order[REG_MAX_WEAPONS], ownedBefore = g_ownedCount;
     WeaponOrder(order);
@@ -271,15 +281,15 @@ static void LiveRegistryStep(LivePlan* plan)
     {
         Weapon* w = &g_weapons[order[k]];
         if (w->state != 2) continue;
-        if (RegisterOne(&ctx, w) && !w->plain) LiveOwn(plan, (OwnItem){OWN_WEAPON, w->id, 0, 0, w->base, 0});
+        if (RegisterWeapon(&L, w) && !w->plain) LiveOwn(plan, (OwnItem){OWN_WEAPON, w->id, 0, 0, w->base, 0});
     }
     HeldFollowFrom(ownedBefore); /* a table a registration moved takes the stats and edits held in it along */
-    if (ctx.appended == 0 && first) { VirtualFree(ctx.index - 32, 0, MEM_RELEASE); VirtualFree(ctx.list, 0, MEM_RELEASE); return; }
-    RegistryPublish(&ctx, first);
+    if (L.appended == 0 && first) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
+    PublishWeaponLoad(&L, first);
     LiveNetworkTypes();
     LiveNetSwitch(g_game);
     LiveArmory();
     HookText();
     SelfCheck("live");
-    Note("registry: %u weapon(s) and entities added live (loadout records %u, entities %u)", ctx.appended, ctx.recordCount, ctx.listCount + ctx.appended);
+    Note("registry: %u weapon(s) and entities added live (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
 }

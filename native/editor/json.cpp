@@ -18,6 +18,11 @@ Value* Value::Find(const std::string& name)
     for (auto& m : members) if (m.first == name) return &m.second;
     return nullptr;
 }
+const Value* Value::Find(const std::string& name, Kind kind) const
+{
+    const Value* found = Find(name);
+    return found != nullptr && found->kind == kind ? found : nullptr;
+}
 Value& Value::At(const std::string& name)
 {
     if (Value* found = Find(name)) return *found;
@@ -71,6 +76,17 @@ Value Value::MakeBool(bool value)
 
 namespace
 {
+/* A \u escape's code point (below 0x10000) in UTF-8. */
+void AppendUtf8(std::string& out, unsigned code)
+{
+    if (code < 0x80) out += (char)code;
+    else if (code < 0x800) { out += (char)(0xC0 | (code >> 6)); out += (char)(0x80 | (code & 0x3F)); }
+    else { out += (char)(0xE0 | (code >> 12)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
+}
+
+/* The character a one-letter escape stands for (any other letter stands for itself). */
+char Unescaped(char c) { return c == 'n' ? '\n' : c == 't' ? '\t' : c == 'r' ? '\r' : c == 'b' ? '\b' : c == 'f' ? '\f' : c; }
+
 struct Reader
 {
     const char* at;
@@ -79,52 +95,50 @@ struct Reader
 
     void Space() { while (at < end && (*at == ' ' || *at == '\t' || *at == '\r' || *at == '\n')) at++; }
     bool Eat(char c) { Space(); if (at < end && *at == c) { at++; return true; } return false; }
+    /* The escape after a backslash (at is past it), into out. */
+    void Escape(std::string& out)
+    {
+        char c = *at++;
+        if (c == 'u' && at + 4 <= end)
+        {
+            unsigned code = (unsigned)strtoul(std::string(at, 4).c_str(), nullptr, 16);
+            at += 4;
+            AppendUtf8(out, code);
+        }
+        else out += Unescaped(c);
+    }
     std::string Text()
     {
         std::string out;
         if (!Eat('"')) { ok = false; return out; }
         while (at < end && *at != '"')
         {
-            if (*at == '\\' && at + 1 < end)
-            {
-                at++;
-                char c = *at++;
-                if (c == 'u' && at + 4 <= end)
-                {
-                    unsigned code = (unsigned)strtoul(std::string(at, 4).c_str(), nullptr, 16);
-                    at += 4;
-                    if (code < 0x80) out += (char)code;
-                    else if (code < 0x800) { out += (char)(0xC0 | (code >> 6)); out += (char)(0x80 | (code & 0x3F)); }
-                    else { out += (char)(0xE0 | (code >> 12)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
-                }
-                else out += c == 'n' ? '\n' : c == 't' ? '\t' : c == 'r' ? '\r' : c == 'b' ? '\b' : c == 'f' ? '\f' : c;
-            }
+            if (*at == '\\' && at + 1 < end) { at++; Escape(out); }
             else out += *at++;
         }
         if (at >= end) ok = false; else at++;
         return out;
     }
-    Value Parse(int depth)
+    /* An object's members, past its '{'. */
+    void Members(Value& v, int depth)
     {
-        Value v;
-        Space();
-        if (at >= end || depth > 64) { ok = false; return v; }
-        if (*at == '{')
-        {
-            at++; v.kind = Value::Object;
-            if (Eat('}')) return v;
-            do { std::string name = Text(); if (!Eat(':')) { ok = false; return v; } v.members.emplace_back(name, Parse(depth + 1)); } while (ok && Eat(','));
-            if (!Eat('}')) ok = false;
-        }
-        else if (*at == '[')
-        {
-            at++; v.kind = Value::Array;
-            if (Eat(']')) return v;
-            do v.items.push_back(Parse(depth + 1)); while (ok && Eat(','));
-            if (!Eat(']')) ok = false;
-        }
-        else if (*at == '"') { v.kind = Value::String; v.text = Text(); }
-        else if (end - at >= 4 && !strncmp(at, "true", 4)) { v.kind = Value::Bool; v.boolean = true; at += 4; }
+        v.kind = Value::Object;
+        if (Eat('}')) return;
+        do { std::string name = Text(); if (!Eat(':')) { ok = false; return; } v.members.emplace_back(name, Parse(depth + 1)); } while (ok && Eat(','));
+        if (!Eat('}')) ok = false;
+    }
+    /* An array's items, past its '['. */
+    void Items(Value& v, int depth)
+    {
+        v.kind = Value::Array;
+        if (Eat(']')) return;
+        do v.items.push_back(Parse(depth + 1)); while (ok && Eat(','));
+        if (!Eat(']')) ok = false;
+    }
+    /* true, false, null or a number. */
+    void Literal(Value& v)
+    {
+        if (end - at >= 4 && !strncmp(at, "true", 4)) { v.kind = Value::Bool; v.boolean = true; at += 4; }
         else if (end - at >= 5 && !strncmp(at, "false", 5)) { v.kind = Value::Bool; at += 5; }
         else if (end - at >= 4 && !strncmp(at, "null", 4)) at += 4;
         else
@@ -134,6 +148,16 @@ struct Reader
             if (at == start) ok = false;
             v.kind = Value::Number; v.text.assign(start, at);
         }
+    }
+    Value Parse(int depth)
+    {
+        Value v;
+        Space();
+        if (at >= end || depth > 64) { ok = false; return v; }
+        if (*at == '{') { at++; Members(v, depth); }
+        else if (*at == '[') { at++; Items(v, depth); }
+        else if (*at == '"') { v.kind = Value::String; v.text = Text(); }
+        else Literal(v);
         return v;
     }
 };
@@ -150,32 +174,41 @@ void Quote(std::string& out, const std::string& text)
     out += '"';
 }
 
+void WriteValue(std::string& out, const Value& v, int indent);
+
+void WriteItems(std::string& out, const Value& v, int indent)
+{
+    if (v.items.empty()) { out += "[]"; return; }
+    std::string pad((size_t)indent * 2, ' '), inner((size_t)(indent + 1) * 2, ' ');
+    out += "[\n";
+    for (size_t i = 0; i < v.items.size(); i++) { out += inner; WriteValue(out, v.items[i], indent + 1); out += i + 1 < v.items.size() ? ",\n" : "\n"; }
+    out += pad + "]";
+}
+
+void WriteMembers(std::string& out, const Value& v, int indent)
+{
+    if (v.members.empty()) { out += "{}"; return; }
+    std::string pad((size_t)indent * 2, ' '), inner((size_t)(indent + 1) * 2, ' ');
+    out += "{\n";
+    for (size_t i = 0; i < v.members.size(); i++)
+    {
+        out += inner; Quote(out, v.members[i].first); out += ": ";
+        WriteValue(out, v.members[i].second, indent + 1);
+        out += i + 1 < v.members.size() ? ",\n" : "\n";
+    }
+    out += pad + "}";
+}
+
 void WriteValue(std::string& out, const Value& v, int indent)
 {
-    std::string pad((size_t)indent * 2, ' '), inner((size_t)(indent + 1) * 2, ' ');
     switch (v.kind)
     {
     case Value::Null: out += "null"; break;
     case Value::Bool: out += v.boolean ? "true" : "false"; break;
     case Value::Number: out += v.text; break;
     case Value::String: Quote(out, v.text); break;
-    case Value::Array:
-        if (v.items.empty()) { out += "[]"; break; }
-        out += "[\n";
-        for (size_t i = 0; i < v.items.size(); i++) { out += inner; WriteValue(out, v.items[i], indent + 1); out += i + 1 < v.items.size() ? ",\n" : "\n"; }
-        out += pad + "]";
-        break;
-    case Value::Object:
-        if (v.members.empty()) { out += "{}"; break; }
-        out += "{\n";
-        for (size_t i = 0; i < v.members.size(); i++)
-        {
-            out += inner; Quote(out, v.members[i].first); out += ": ";
-            WriteValue(out, v.members[i].second, indent + 1);
-            out += i + 1 < v.members.size() ? ",\n" : "\n";
-        }
-        out += pad + "}";
-        break;
+    case Value::Array: WriteItems(out, v, indent); break;
+    case Value::Object: WriteMembers(out, v, indent); break;
     }
 }
 } // namespace

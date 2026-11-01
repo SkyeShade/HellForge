@@ -68,10 +68,18 @@ typedef struct GameChannel {
 int  GameChannelConnect(GameChannel* ch, const wchar_t* suffix, DWORD timeoutMs);
 void GameChannelClose(GameChannel* ch);
 
-/* One call and its reply. Returns 1 with *status set when the broker answered; 0 when it did not (the channel is then
- * dead). result receives min(resultSize, capacity) bytes; *resultSize is the reply's full size. */
-int GameChannelCall(GameChannel* ch, uint32_t function, const void* args, uint32_t argsSize,
-                    void* result, uint32_t capacity, uint32_t* resultSize, uint32_t* status);
+/* Where a call's reply goes: result (may be NULL) receives min(size, capacity) bytes; size is the reply's full size and
+ * status its status, both written only when the broker answered. */
+typedef struct GameChannelReply {
+    void* result;
+    uint32_t capacity;
+    uint32_t size;
+    uint32_t status;
+} GameChannelReply;
+
+/* One call and its reply. Returns 1 with reply->status set when the broker answered; 0 when it did not (the channel is
+ * then dead). */
+int GameChannelCall(GameChannel* ch, uint32_t function, const void* args, uint32_t argsSize, GameChannelReply* reply);
 
 /* The round trips' cost since the last take, and a fresh count from now. */
 void GameChannelTakeCost(GameChannel* ch, GameChannelCost* out);

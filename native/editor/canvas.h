@@ -47,12 +47,13 @@ public:
     /* A line t units thick, round-capped. */
     void Line(float x1, float y1, float x2, float y2, ImU32 colour, int z = 0, float t = 1);
     /* An open stroke through three points (a chevron), t units thick, its corner mitred sharp, on whole pixels. */
-    void Chevron(float x1, float y1, float x2, float y2, float x3, float y3, ImU32 colour, int z = 0, float t = 1);
+    void Chevron(ImVec2 a, ImVec2 b, ImVec2 c, ImU32 colour, int z = 0, float t = 1);
     float Measure(const std::string& text, float size, Face face = BODY);
     std::string Fit(const std::string& text, float max, float size, Face face = BODY);
     /* Draws text with its cap height centred on cy; returns its width in units. */
     float Text(const std::string& text, float x, float cy, const TextOpts& o);
-    void Image(ImTextureID texture, float x, float y, float w, float h, ImVec2 uv0, ImVec2 uv1, ImU32 tint, int z = 4);
+    /* An image at (at.x, at.y), size.x by size.y units. */
+    void Image(ImTextureID texture, ImVec2 at, ImVec2 size, ImVec2 uv0, ImVec2 uv1, ImU32 tint, int z = 4);
 
     /* A clickable region for this frame (units, panel space); true when the previous frame's regions put the click on it. */
     bool Hit(float x, float y, float w, float h, uint64_t id);

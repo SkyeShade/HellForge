@@ -2,7 +2,7 @@
   "format": 1,
   "id": "hellforge.editor",
   "name": "HellForge Editor",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "The in-game editor: press F8 in game to change the stats of weapons, stratagems, armor, vehicles and boosters live. Changes are saved; in co-op everyone plays with the host's.",
   "gameplay": true,
   "icon": "icon.png",

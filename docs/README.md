@@ -49,11 +49,14 @@ Reference and related pages:
   each profile.
 - [Build patches](downpatch.md): for maintainers; how setup patches a newer Steam build and how to publish a patch after
   a game update.
+- [The published verified list](verified-list.md): for maintainers; how HellForge takes its verified list from
+  files.hf-mod.com, the signing key, and how to publish a list.
 - [Co-op and public lobbies](multiplayer.md): how HellForge's co-op, mod sync and public lobbies work, and the research
   log from building them.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
   two games under one Steam account.
 - [Stratagem selection categories](stratagem-categories.md): the research behind SDK 8's selection headings.
+- [Changelog](../CHANGELOG.md): what changed in each release, and what `dev` has that is not released yet.
 - [Roadmap](roadmap.md): what HellForge has, what is being built, and what comes next.
 - [Engine roadmap](engine-roadmap.md): planned engine work, starting with network isolation.
 - [SDK roadmap](sdk-roadmap.md): what is left in the modding SDK.

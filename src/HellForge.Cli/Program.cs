@@ -14,12 +14,14 @@ try
             prepare --manifest <appmanifest_553850.acf> --destination <new folder>
                     --build <build ID> --exe-sha256 <SHA256> --game-sha256 <SHA256>
             supported-build --manifest <appmanifest_553850.acf> --depotcache <Steam/depotcache> --out <file>
+            supported-language --name <german, japanese, ...> --dlc <app ID> --manifest <manifest ID>
+                    --depot-folder <download_depot's depot_<id> folder> [--depotcache <Steam/depotcache>] --out <file>
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
-            mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--session-mods <file>]
+            mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--sandbox yes|no] [--session-mods <file>]
             mods-live --install <folder> --session-mods <file> --target <file of mod folders, in load order> --seed <text>
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
@@ -27,18 +29,23 @@ try
             new-mod --id <owner.mod-name> --name <name> (--install <folder> | --out <folder>)
             build-mod --mod <mod folder>
             package-mod --mod <mod folder> [--out <folder>]
-            mod-hash --mod <mod folder or .zip>
+            mod-hash --mod <mod folder or .zip> [--install <folder>]
+            verified-list-keygen --out <private key file>
+            verified-list-sign --list <verified-mods.json> --key <private key file>
+            verified-list-check --list <verified-mods.json> [--signature <file>]
             mod-tools --install <installation or source folder> [--ide yes]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                 [--game-options <options>] [--wait yes] [--dry-run yes]
+                 [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
             fetch-war [--install <folder>]
             mods [--install <folder>]
+            languages [--install <folder>] [--steam-root <Steam folder>]
+            language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
             mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json>
             mod-remove [--install <folder>] --id <mod id>
             mod-switch [--install <folder>] --id <mod id> --on yes | no
@@ -47,10 +54,13 @@ try
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--strangers yes | no] [--game-options <options>]
-            logs [--install <folder>] [--run <session id>] [--export <file.zip>]
+            logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
             Steam-validated install's depot files and hashes (names and hashes only) for HellForge to target.
+            supported-language adds a language pack, downloaded by Steam at the build's manifest, to a language list
+            (src/HellForge.Core/supported-languages.json). languages lists the pinned packs (in the copy, installed in
+            Steam, the download_depot command for each); language-add copies one from Steam's download into the copy.
             build-data builds a mod's hellforge-data.json from the game data: into the installation's cache (as a
             session does), or into --out; with neither it only checks the spec.
             sdk-headers generates the mod SDK's typed headers and the loader's field table from mappings/; check
@@ -69,7 +79,9 @@ try
             run once started and returns; with it, one JSON line per status until the session ends (exit code 0 when it
             ended normally). stop asks the session to close the game. Mod changes wait until no session runs.
             settings saves the choices play and the launcher start from, and prints them. logs lists the sessions,
-            newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does.
+            newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
+            --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
+            issue), with the crash dump only with --dump yes. Nothing is uploaded.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
@@ -81,13 +93,16 @@ try
         "inspect" => ["--manifest"],
         "prepare" => ["--manifest", "--destination", "--build", "--exe-sha256", "--game-sha256"],
         "supported-build" => ["--manifest", "--depotcache", "--out"],
+        "supported-language" => ["--name", "--dlc", "--manifest", "--depot-folder", "--depotcache", "--out"],
+        "languages" => ["--install", "--steam-root"],
+        "language-add" => ["--install", "--name", "--steam-root", "--keep"],
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--session-mods"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
@@ -96,9 +111,12 @@ try
         "new-mod" => ["--id", "--name", "--install", "--out"],
         "build-mod" => ["--mod"],
         "package-mod" => ["--mod", "--out"],
-        "mod-hash" => ["--mod"],
+        "mod-hash" => ["--mod", "--install"],
+        "verified-list-keygen" => ["--out"],
+        "verified-list-sign" => ["--list", "--key"],
+        "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
@@ -108,7 +126,7 @@ try
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
         "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--game-options"],
-        "logs" => ["--install", "--run", "--export"],
+        "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -147,6 +165,12 @@ try
         case "mod-add":
             result = Launch.ModAdd(options, Required("--file"));
             break;
+        case "languages":
+            result = Launch.Languages(options);
+            break;
+        case "language-add":
+            result = Launch.LanguageAdd(options, Required("--name"));
+            break;
         case "mod-remove":
             result = Launch.ModRemove(options, Required("--id"));
             break;
@@ -177,6 +201,13 @@ try
             var build = SupportedBuild.FromSteam(Required("--manifest"), Required("--depotcache"));
             build.Save(Required("--out"));
             result = new { build.BuildId, depots = build.Depots.Count, files = build.Files.Count, bytes = build.TotalBytes };
+            break;
+        case "supported-language":
+            var language = SupportedLanguages.FromDownload(Required("--name"),
+                uint.TryParse(Required("--dlc"), out var dlc) ? dlc : throw new ArgumentException("--dlc is the language DLC's app ID."),
+                Required("--manifest"), Required("--depot-folder"), options.GetValueOrDefault("--depotcache"));
+            SupportedLanguages.With(Required("--out"), language).Save(Required("--out"));
+            result = new { language.Name, language.DlcAppId, language.ManifestId, files = language.Files.Count, bytes = language.TotalBytes };
             break;
         case "install-game":
             var target = SupportedBuild.Current;
@@ -210,20 +241,27 @@ try
             // The installation's mods: data mods are staged into the copy, and the plan and modlist digest are printed.
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
+            // the published verified list this session's runner fetched (VerifiedMods), for the synced mods' checks
+            VerifiedMods.UseInstallation(modInstall);
             // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
+            // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
+            bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
             var (mods, modProblems) = ModCatalog.Load(Path.Combine(modInstall.Root, "mods"));
             modProblems.InsertRange(0, bundledProblems);
             var loadOrder = ModCatalog.LoadOrder(ModCatalog.Active(mods)); // bottom of the Mods page first
             // --sync: the session after a mod sync plays the host's gameplay mods (ModSyncSession); if they are not all here
-            // as the host has them, the player's own mods, and the problem is reported.
+            // as the host has them, the player's own mods, and the problem is reported. --sandbox yes: the session's game is
+            // sandboxed, which a mod trusted from a stranger needs.
             string? syncedWith = null;
+            var stageSandboxed = options.GetValueOrDefault("--sandbox") is { } sandboxFlag
+                ? sandboxFlag == "yes" ? true : sandboxFlag == "no" ? false : throw new ArgumentException("--sandbox is yes or no.") : false;
             if (options.TryGetValue("--sync", out var syncFile))
             {
                 try
                 {
                     var sync = ModSyncSession.Read(syncFile);
-                    var (synced, syncProblem) = sync.Resolve(modInstall.Mods, mods);
+                    var (synced, syncProblem) = sync.Resolve(modInstall.Mods, mods, sandboxed: stageSandboxed);
                     if (synced != null) (loadOrder, syncedWith) = (synced, sync.HostName.Length > 0 ? sync.HostName : sync.Host);
                     else modProblems.Add("Mod sync: playing your own mods, because " + syncProblem);
                     foreach (var mod in loadOrder.Where(m => m.Folder.StartsWith(SyncedStore.Root(modInstall.Mods), StringComparison.OrdinalIgnoreCase)))
@@ -237,6 +275,13 @@ try
             // The synced store keeps the mods used most recently (SyncedStore.Keep), this session's among them.
             foreach (var pruned in SyncedStore.Prune(modInstall.Mods, loadOrder.Select(m => m.Folder)))
                 Console.Error.WriteLine("Mod sync: removed the downloaded mod " + pruned + ", used least recently.");
+            // Premium content mods declare (PremiumContent), against the profile's account snapshot (--premium-snapshot): a
+            // cosmetic mod the player does not own is not loaded; a gameplay one loads, its items locked by the backend
+            // (--premium-locked, which the session passes on).
+            var premium = PremiumMods.ForSession(modInstall, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current(), loadOrder);
+            loadOrder = premium.Loaded;
+            modProblems.AddRange(premium.Problems);
+            if (options.TryGetValue("--premium-locked", out var lockedFile)) PremiumMods.WriteLocked(lockedFile, premium.Locked);
             // Mods with a data spec get their data built from the copy's game data first (once per game data and spec);
             // a mod whose data cannot be built is not loaded.
             var (active, dataProblems) = ModDataCache.Prepare(modInstall, loadOrder, Console.Error.WriteLine);
@@ -277,7 +322,7 @@ try
                 loaderRequired = true, // read-only stats snapshots are also collected without mods
                 disabled = mods.Where(m => !m.Enabled).Select(m => m.Id),
                 problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedKept = ModStaging.LastCounts.Kept,
-                native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith
+                native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith, premiumLocked = premium.Locked
             };
             break;
         }
@@ -386,12 +431,50 @@ try
         case "mod-hash":
         {
             var hashed = ModHash.Of(Path.GetFullPath(Required("--mod")));
+            // --install: against that installation's saved published list (VerifiedMods), not only the embedded one
+            if (options.TryGetValue("--install", out var hashInstall)) VerifiedMods.UseInstallation(new InstallLayout(hashInstall));
             result = new
             {
                 hashed.Id, hashed.Name, hashed.Version, hashed.Hash, @class = ModSets.ClassName(hashed.Class), hashed.Files, hashed.Url,
-                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash),
+                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash), verifiedSerial = VerifiedMods.Current.Serial,
                 entry = new { id = hashed.Id, name = hashed.Name, version = hashed.Version, hash = hashed.Hash, reviewed = "YYYY-MM-DD, reviewer: what was reviewed" }
             };
+            break;
+        }
+        // The published verified list (docs/verified-list.md), for maintainers: a signing key pair, a list's signature, and
+        // a check of a list and signature against the key this HellForge carries (VerifiedMods.PublicKey).
+        case "verified-list-keygen":
+        {
+            var keyFile = Path.GetFullPath(Required("--out"));
+            if (File.Exists(keyFile)) throw new IOException($"{keyFile} exists already; a key is never overwritten.");
+            var (privateKey, publicKey) = VerifiedMods.NewKey();
+            File.WriteAllText(keyFile, privateKey);
+            result = new { privateKey = keyFile, publicKey, next = "Put publicKey in VerifiedMods.PublicKey; keep the private key off the server and out of the repository." };
+            break;
+        }
+        case "verified-list-sign":
+        {
+            var listFile = Path.GetFullPath(Required("--list"));
+            var list = File.ReadAllBytes(listFile);
+            var pem = File.ReadAllText(Path.GetFullPath(Required("--key")));
+            var signature = VerifiedMods.Sign(list, pem);
+            var publicKey = VerifiedMods.PublicKeyOf(pem);
+            var listing = VerifiedMods.Checked(list, signature, publicKey);
+            File.WriteAllText(listFile + VerifiedMods.SignatureSuffix, signature);
+            result = new
+            {
+                listing.Serial, mods = listing.Mods.Count, signature = listFile + VerifiedMods.SignatureSuffix, publicKey,
+                hellForgeKey = publicKey == VerifiedMods.PublicKey, embeddedSerial = VerifiedMods.Embedded.Serial
+            };
+            break;
+        }
+        case "verified-list-check":
+        {
+            var listFile = Path.GetFullPath(Required("--list"));
+            if (VerifiedMods.PublicKey.Length == 0) throw new InvalidDataException("This HellForge carries no key for the published list (VerifiedMods.PublicKey).");
+            var listing = VerifiedMods.Checked(File.ReadAllBytes(listFile),
+                File.ReadAllText(Path.GetFullPath(options.GetValueOrDefault("--signature") ?? listFile + VerifiedMods.SignatureSuffix)), VerifiedMods.PublicKey);
+            result = new { listing.Serial, mods = listing.Mods.Select(m => $"{m.Id} {m.Version}"), embeddedSerial = VerifiedMods.Embedded.Serial };
             break;
         }
         case "mod-tools":

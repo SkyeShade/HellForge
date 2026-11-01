@@ -52,10 +52,7 @@ static int Generate(string prefix, string original, string handwritten, string o
 {
     if (!Regex.IsMatch(prefix, "^[a-z]+$")) return Fail("Prefix must be lowercase letters.");
     var exports = PeTables.Exports(original).OrderBy(e => e.Name, StringComparer.Ordinal).ToList();
-    var declared = new Dictionary<string, HeaderFunction>(StringComparer.Ordinal);
-    foreach (var header in headers)
-        foreach (var function in HeaderFunctions.Parse(File.ReadAllText(header)))
-            declared.TryAdd(function.Name, function);
+    var declared = CollectDeclared(headers);
     var handwrittenText = File.ReadAllText(handwritten);
     var implemented = Regex.Matches(handwrittenText, @"^[\w \t\*]+?\b(?:PARTY_API|PFMULTIPLAYER_API)\s+(\w+)\s*\(", RegexOptions.Multiline)
         .Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
@@ -87,6 +84,33 @@ static int Generate(string prefix, string original, string handwritten, string o
     foreach (var export in exports)
         source.AppendLine($"    {{\"{export.Name}\", {(HasOutput(export.Name) ? "true" : "false")}}},");
     source.AppendLine("};").AppendLine("}").AppendLine();
+    var stubs = WriteStubs(source, exports, implemented, declared);
+    File.WriteAllText(Path.Combine(output, prefix + "_gen.g.cpp"), source.ToString());
+
+    var definition = new StringBuilder().AppendLine($"LIBRARY {dllName}").AppendLine("EXPORTS");
+    foreach (var export in exports.OrderBy(e => e.Ordinal)) definition.AppendLine($"    {export.Name} @{export.Ordinal}");
+    File.WriteAllText(Path.Combine(output, Path.GetFileNameWithoutExtension(dllName) + ".def"), definition.ToString());
+
+    Console.WriteLine($"{dllName}: {exports.Count} exports, {implemented.Count} hand-written, {stubs} generated stubs " +
+        $"({exports.Count(e => !implemented.Contains(e.Name) && !HasOutput(e.Name))} succeed by default).");
+    return 0;
+
+    bool HasOutput(string name) => declared.TryGetValue(name, out var function) && function.Parameters.Any(p => p.IsOutput);
+}
+
+// Every function declared across the SDK headers, the first declaration of each name winning.
+static Dictionary<string, HeaderFunction> CollectDeclared(string[] headers)
+{
+    var declared = new Dictionary<string, HeaderFunction>(StringComparer.Ordinal);
+    foreach (var header in headers)
+        foreach (var function in HeaderFunctions.Parse(File.ReadAllText(header)))
+            declared.TryAdd(function.Name, function);
+    return declared;
+}
+
+// A generated stub for every export the hand-written source does not implement; returns how many were written.
+static int WriteStubs(StringBuilder source, IReadOnlyList<PeExport> exports, HashSet<string> implemented, Dictionary<string, HeaderFunction> declared)
+{
     var stubs = 0;
     foreach (var export in exports.Where(e => !implemented.Contains(e.Name)))
     {
@@ -105,17 +129,7 @@ static int Generate(string prefix, string original, string handwritten, string o
             .AppendLine("}").AppendLine();
         stubs++;
     }
-    File.WriteAllText(Path.Combine(output, prefix + "_gen.g.cpp"), source.ToString());
-
-    var definition = new StringBuilder().AppendLine($"LIBRARY {dllName}").AppendLine("EXPORTS");
-    foreach (var export in exports.OrderBy(e => e.Ordinal)) definition.AppendLine($"    {export.Name} @{export.Ordinal}");
-    File.WriteAllText(Path.Combine(output, Path.GetFileNameWithoutExtension(dllName) + ".def"), definition.ToString());
-
-    Console.WriteLine($"{dllName}: {exports.Count} exports, {implemented.Count} hand-written, {stubs} generated stubs " +
-        $"({exports.Count(e => !implemented.Contains(e.Name) && !HasOutput(e.Name))} succeed by default).");
-    return 0;
-
-    bool HasOutput(string name) => declared.TryGetValue(name, out var function) && function.Parameters.Any(p => p.IsOutput);
+    return stubs;
 }
 
 // The stand-in must export exactly the original's names and ordinals and depend only on Windows system modules.

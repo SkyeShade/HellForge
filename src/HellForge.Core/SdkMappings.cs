@@ -107,64 +107,7 @@ public sealed class SdkMappings
         if (Int(root, "format") != 1) throw new InvalidDataException("mappings/components.json: format must be 1.");
         var build = Text(root, "build");
         var list = new List<SdkComponent>();
-        foreach (var entry in Property(root, "components").EnumerateObject())
-        {
-            var where = $"component {entry.Name}";
-            Identifier(entry.Name, where);
-            if (Reserved.Contains(entry.Name)) throw new InvalidDataException($"{where}: Hf{entry.Name} is an SDK type already.");
-            var c = entry.Value;
-            Allowed(c, where, "component", "index", "row", "table", "stride", "layout", "meaning", "applies", "appliesVerified", "appliesSource",
-                "fields", "groups");
-            var row = c.TryGetProperty("row", out _) ? Text(c, "row") : null;
-            if (row != null) Identifier(row, where);
-            var table = row != null || (c.TryGetProperty("table", out _) && Bool(c, "table"));
-            var applies = Applies(c, where, null);
-            var appliesVerified = c.TryGetProperty("appliesVerified", out _) && Bool(c, "appliesVerified");
-            var stride = Int(c, "stride");
-            var fields = new List<SdkField>();
-            foreach (var f in Property(c, "fields").EnumerateObject())
-            {
-                var at = $"{entry.Name}.{f.Name}";
-                Identifier(f.Name, at);
-                if (f.Name.StartsWith("_unknown", StringComparison.Ordinal)) throw new InvalidDataException($"{at}: _unknown names are generated.");
-                var v = f.Value;
-                Allowed(v, at, "offset", "type", "count", "meaning", "verified", "source", "applies", "appliesVerified", "appliesSource", "ref");
-                var type = Text(v, "type");
-                TypeSize(type);
-                var count = v.TryGetProperty("count", out _) ? Int(v, "count") : 1;
-                var field = new SdkField(f.Name, Int(v, "offset"), type, count, Text(v, "meaning"), Bool(v, "verified"), Text(v, "source"))
-                {
-                    Applies = Applies(v, at, applies),
-                    AppliesVerified = v.TryGetProperty("applies", out _) ? v.TryGetProperty("appliesVerified", out _) && Bool(v, "appliesVerified") : appliesVerified,
-                    Ref = v.TryGetProperty("ref", out _) ? Text(v, "ref") : null
-                };
-                // an array of u32 references is checked element by element (a magazine's projectile pattern)
-                if (field.Ref != null && (!RefValues.Contains(field.Ref) || type != (field.Ref is "mount" or "pickup" ? "u64" : "u32") ||
-                                          (count != 1 && field.Ref is "mount" or "pickup")))
-                    throw new InvalidDataException($"{at}: ref must be projectile, explosion, status or damage on u32s, or mount on a single u64.");
-                if (count < 1 || field.Offset < 0 || field.Offset + field.Size > stride || field.Offset % Math.Min(TypeSize(type), 4) != 0)
-                    throw new InvalidDataException($"{at}: outside the {stride}-byte record or misaligned.");
-                fields.Add(field);
-            }
-            fields.Sort((a, b) => a.Offset.CompareTo(b.Offset));
-            for (var i = 1; i < fields.Count; i++)
-                if (fields[i].Offset < fields[i - 1].Offset + fields[i - 1].Size)
-                    throw new InvalidDataException($"{entry.Name}: {fields[i - 1].Name} and {fields[i].Name} overlap.");
-            var groups = new List<SdkGroup>();
-            if (c.TryGetProperty("groups", out var groupsElement))
-                foreach (var g in groupsElement.EnumerateObject())
-                {
-                    var at = $"{entry.Name} group {g.Name}";
-                    Identifier(g.Name, at);
-                    Allowed(g.Value, at, "meaning", "fields");
-                    var names = Property(g.Value, "fields").EnumerateArray().Select(n => n.GetString() ?? "").ToList();
-                    if (names.Count == 0 || names.Distinct().Count() != names.Count || names.Any(n => fields.All(f => f.Name != n)))
-                        throw new InvalidDataException($"{at}: its fields must be distinct fields of {entry.Name}.");
-                    groups.Add(new SdkGroup(g.Name, Text(g.Value, "meaning"), names));
-                }
-            list.Add(new SdkComponent(entry.Name, Text(c, "component"), table ? -1 : Int(c, "index"), stride,
-                uint.Parse(Text(c, "layout"), CultureInfo.InvariantCulture), Text(c, "meaning"), fields, groups) { Row = row, Table = table });
-        }
+        foreach (var entry in Property(root, "components").EnumerateObject()) list.Add(ParseComponent(entry));
 
         var croot = catalog.RootElement;
         Allowed(croot, "catalog", ["format", "build", .. Kinds.Select(k => k.Key)]);
@@ -174,22 +117,93 @@ public sealed class SdkMappings
         foreach (var kind in Kinds)
         {
             if (!croot.TryGetProperty(kind.Key, out var section)) continue;
-            foreach (var item in section.EnumerateObject())
-            {
-                var at = $"{kind.Key} \"{item.Name}\"";
-                Allowed(item.Value, at, "constant", "id", "note");
-                var constant = item.Value.TryGetProperty("constant", out _) ? Text(item.Value, "constant") : Constant(item.Name);
-                if (constant.Length == 0 || !constant.All(ch => ch is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_') || !constants.Add(kind.Prefix + constant))
-                    throw new InvalidDataException($"{at}: constant {constant} is not a unique C name.");
-                var idText = Text(item.Value, "id");
-                var id = idText.StartsWith("0x", StringComparison.Ordinal)
-                    ? ulong.Parse(idText[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture)
-                    : ulong.Parse(idText, CultureInfo.InvariantCulture);
-                if (!kind.Wide && id > uint.MaxValue) throw new InvalidDataException($"{at}: id is wider than 32 bits.");
-                content.Add(new SdkContent(kind.Key, item.Name, constant, id, item.Value.TryGetProperty("note", out _) ? Text(item.Value, "note") : ""));
-            }
+            foreach (var item in section.EnumerateObject()) content.Add(ParseContent(kind, item, constants));
         }
         return new SdkMappings { Build = build, Components = list, Content = content };
+    }
+
+    static SdkComponent ParseComponent(JsonProperty entry)
+    {
+        var where = $"component {entry.Name}";
+        Identifier(entry.Name, where);
+        if (Reserved.Contains(entry.Name)) throw new InvalidDataException($"{where}: Hf{entry.Name} is an SDK type already.");
+        var c = entry.Value;
+        Allowed(c, where, "component", "index", "row", "table", "stride", "layout", "meaning", "applies", "appliesVerified", "appliesSource",
+            "fields", "groups");
+        var row = c.TryGetProperty("row", out _) ? Text(c, "row") : null;
+        if (row != null) Identifier(row, where);
+        var table = row != null || (c.TryGetProperty("table", out _) && Bool(c, "table"));
+        var applies = Applies(c, where, null);
+        var appliesVerified = c.TryGetProperty("appliesVerified", out _) && Bool(c, "appliesVerified");
+        var stride = Int(c, "stride");
+        var fields = new List<SdkField>();
+        foreach (var f in Property(c, "fields").EnumerateObject()) fields.Add(ParseField(entry.Name, f, applies, appliesVerified, stride));
+        fields.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+        for (var i = 1; i < fields.Count; i++)
+            if (fields[i].Offset < fields[i - 1].Offset + fields[i - 1].Size)
+                throw new InvalidDataException($"{entry.Name}: {fields[i - 1].Name} and {fields[i].Name} overlap.");
+        var groups = ParseGroups(entry.Name, c, fields);
+        return new SdkComponent(entry.Name, Text(c, "component"), table ? -1 : Int(c, "index"), stride,
+            uint.Parse(Text(c, "layout"), CultureInfo.InvariantCulture), Text(c, "meaning"), fields, groups) { Row = row, Table = table };
+    }
+
+    // A component's field; its applies and appliesVerified default to the component's.
+    static SdkField ParseField(string component, JsonProperty f, string applies, bool appliesVerified, int stride)
+    {
+        var at = $"{component}.{f.Name}";
+        Identifier(f.Name, at);
+        if (f.Name.StartsWith("_unknown", StringComparison.Ordinal)) throw new InvalidDataException($"{at}: _unknown names are generated.");
+        var v = f.Value;
+        Allowed(v, at, "offset", "type", "count", "meaning", "verified", "source", "applies", "appliesVerified", "appliesSource", "ref");
+        var type = Text(v, "type");
+        TypeSize(type);
+        var count = v.TryGetProperty("count", out _) ? Int(v, "count") : 1;
+        var field = new SdkField(f.Name, Int(v, "offset"), type, count, Text(v, "meaning"), Bool(v, "verified"), Text(v, "source"))
+        {
+            Applies = Applies(v, at, applies),
+            AppliesVerified = v.TryGetProperty("applies", out _) ? v.TryGetProperty("appliesVerified", out _) && Bool(v, "appliesVerified") : appliesVerified,
+            Ref = v.TryGetProperty("ref", out _) ? Text(v, "ref") : null
+        };
+        // an array of u32 references is checked element by element (a magazine's projectile pattern)
+        if (field.Ref != null && (!RefValues.Contains(field.Ref) || type != (field.Ref is "mount" or "pickup" ? "u64" : "u32") ||
+                                  (count != 1 && field.Ref is "mount" or "pickup")))
+            throw new InvalidDataException($"{at}: ref must be projectile, explosion, status or damage on u32s, or mount on a single u64.");
+        if (count < 1 || field.Offset < 0 || field.Offset + field.Size > stride || field.Offset % Math.Min(TypeSize(type), 4) != 0)
+            throw new InvalidDataException($"{at}: outside the {stride}-byte record or misaligned.");
+        return field;
+    }
+
+    static List<SdkGroup> ParseGroups(string component, JsonElement c, List<SdkField> fields)
+    {
+        var groups = new List<SdkGroup>();
+        if (!c.TryGetProperty("groups", out var groupsElement)) return groups;
+        foreach (var g in groupsElement.EnumerateObject())
+        {
+            var at = $"{component} group {g.Name}";
+            Identifier(g.Name, at);
+            Allowed(g.Value, at, "meaning", "fields");
+            var names = Property(g.Value, "fields").EnumerateArray().Select(n => n.GetString() ?? "").ToList();
+            if (names.Count == 0 || names.Distinct().Count() != names.Count || names.Any(n => fields.All(f => f.Name != n)))
+                throw new InvalidDataException($"{at}: its fields must be distinct fields of {component}.");
+            groups.Add(new SdkGroup(g.Name, Text(g.Value, "meaning"), names));
+        }
+        return groups;
+    }
+
+    // A catalog entry: its constant (named, or made from its name) unique among its kind's, and its id.
+    static SdkContent ParseContent((string Key, string Prefix, bool Wide, string Doc) kind, JsonProperty item, HashSet<string> constants)
+    {
+        var at = $"{kind.Key} \"{item.Name}\"";
+        Allowed(item.Value, at, "constant", "id", "note");
+        var constant = item.Value.TryGetProperty("constant", out _) ? Text(item.Value, "constant") : Constant(item.Name);
+        if (constant.Length == 0 || !constant.All(ch => ch is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_') || !constants.Add(kind.Prefix + constant))
+            throw new InvalidDataException($"{at}: constant {constant} is not a unique C name.");
+        var idText = Text(item.Value, "id");
+        var id = idText.StartsWith("0x", StringComparison.Ordinal)
+            ? ulong.Parse(idText[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+            : ulong.Parse(idText, CultureInfo.InvariantCulture);
+        if (!kind.Wide && id > uint.MaxValue) throw new InvalidDataException($"{at}: id is wider than 32 bits.");
+        return new SdkContent(kind.Key, item.Name, constant, id, item.Value.TryGetProperty("note", out _) ? Text(item.Value, "note") : "");
     }
 
     // "MG-206 Heavy Machine Gun" -> MG206_HEAVY_MACHINE_GUN, as the SDK's constants have always been named.
@@ -342,7 +356,7 @@ public sealed class SdkMappings
             contents[^1].Entries.Add((title, heading));
             s.Append($"\n### {heading}\n");
         }
-        if (apiHeader != null)
+        void Api(string header)
         {
             Section("API", """
                 The `HfApi` table a mod's `hellforge_mod_init(const HfApi* hf, HfMod* mod)` receives. Functions are only ever added at
@@ -356,7 +370,7 @@ public sealed class SdkMappings
                 `write`; [Debugging](modding/debugging.md) for the mod's log and refusals.
 
                 """);
-            foreach (var line in ApiReference(apiHeader))
+            foreach (var line in ApiReference(header))
             {
                 if (line.StartsWith("\n### ", StringComparison.Ordinal))
                 {
@@ -368,6 +382,7 @@ public sealed class SdkMappings
                 else s.Append(line).Append('\n');
             }
         }
+        if (apiHeader != null) Api(apiHeader);
         string Applies(SdkField f) => f.Applies + (f.AppliesVerified ? "" : "?");
         void Component(SdkComponent c)
         {
@@ -490,27 +505,38 @@ public sealed class SdkMappings
             }
             if (inComment || line.StartsWith("/*", StringComparison.Ordinal))
             {
-                var text = line.TrimStart('/').TrimStart('*').Trim();
-                inComment = !line.EndsWith("*/", StringComparison.Ordinal);
-                if (text.EndsWith("*/", StringComparison.Ordinal)) text = text[..^2].Trim();
-                if (text.Length > 0) comment.Add(text);
+                inComment = AddComment(line, comment);
                 continue;
             }
-            var member = System.Text.RegularExpressions.Regex.Match(line, @"^(.+?)\s*\(\*(\w+)\)\((.*)\);");
-            var data = System.Text.RegularExpressions.Regex.Match(line, @"^(\w+)\s+(\w+);\s*(?:/\*\s*(.*?)\s*\*/)?$");
-            if (member.Success)
+            if (MemberEntry(line, comment) is { } entry)
             {
-                yield return $"- `{member.Groups[2].Value}`: `{member.Groups[1].Value} ({member.Groups[3].Value})`" +
-                    (comment.Count > 0 ? ". " + string.Join(" ", comment) : "");
-                comment.Clear();
-            }
-            else if (data.Success)
-            {
-                yield return $"- `{data.Groups[2].Value}`: `{data.Groups[1].Value}`" + (data.Groups[3].Value.Length > 0 ? ". " + data.Groups[3].Value : "");
+                yield return entry;
                 comment.Clear();
             }
             else if (line.Length == 0) comment.Clear();
         }
+    }
+
+    // A comment line's text, added to comment: true while the comment goes on past this line.
+    static bool AddComment(string line, List<string> comment)
+    {
+        var text = line.TrimStart('/').TrimStart('*').Trim();
+        if (text.EndsWith("*/", StringComparison.Ordinal)) text = text[..^2].Trim();
+        if (text.Length > 0) comment.Add(text);
+        return !line.EndsWith("*/", StringComparison.Ordinal);
+    }
+
+    // A member's entry: a function with the comment above it, or a data member with its own; null for any other line.
+    static string? MemberEntry(string line, List<string> comment)
+    {
+        var member = System.Text.RegularExpressions.Regex.Match(line, @"^(.+?)\s*\(\*(\w+)\)\((.*)\);");
+        var data = System.Text.RegularExpressions.Regex.Match(line, @"^(\w+)\s+(\w+);\s*(?:/\*\s*(.*?)\s*\*/)?$");
+        if (member.Success)
+            return $"- `{member.Groups[2].Value}`: `{member.Groups[1].Value} ({member.Groups[3].Value})`" +
+                (comment.Count > 0 ? ". " + string.Join(" ", comment) : "");
+        if (data.Success)
+            return $"- `{data.Groups[2].Value}`: `{data.Groups[1].Value}`" + (data.Groups[3].Value.Length > 0 ? ". " + data.Groups[3].Value : "");
+        return null;
     }
 
     // HF_ITEM_ -> HF_KIND_ITEM

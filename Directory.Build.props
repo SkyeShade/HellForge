@@ -9,6 +9,6 @@
     <Version>0.3.0-beta</Version>
     <!-- The engine's version (the session runner, local backend, mod loader and stand-ins: scripts/Build-Engine.ps1's
          hellforge-engine-<version>.zip and its engine.json), one line per engine change. -->
-    <EngineVersion>0.1.40</EngineVersion>
+    <EngineVersion>0.1.41</EngineVersion>
   </PropertyGroup>
 </Project>

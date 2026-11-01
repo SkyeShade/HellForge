@@ -7,38 +7,21 @@ namespace HellForge.Launcher;
 // scripts/Build-Engine.ps1 last staged in artifacts/engine-package/staging, and the data comes from data/.
 sealed class LauncherPaths : ISessionPaths
 {
-    LauncherPaths(string root, string? installRoot, string hostRoot, string session, string scripts, string backend, string templates,
-        string progression, string profilesRoot, string settingsFile, string sessionFile, string runsFolder)
-    {
-        Root = root;
-        InstallRoot = installRoot;
-        HostRoot = hostRoot;
-        Session = session;
-        ScriptsFolder = scripts;
-        Backend = backend;
-        TemplatesFile = templates;
-        ProgressionFile = progression;
-        ProfilesRoot = profilesRoot;
-        SettingsFile = settingsFile;
-        SessionFile = sessionFile;
-        RunsFolder = runsFolder;
-    }
-
-    public string Root { get; }
-    public string? InstallRoot { get; }
-    public string HostRoot { get; }
+    public required string Root { get; init; }
+    public required string? InstallRoot { get; init; }
+    public required string HostRoot { get; init; }
     // The engine's session runner (HellForge.Session.exe play ...): it owns every step of a session.
-    public string Session { get; }
+    public required string Session { get; init; }
     // The engine's readable scripts: the network block (WFP filters, or the older Windows Firewall rules) and the Steam ownership check.
-    public string ScriptsFolder { get; }
-    public string Backend { get; }
-    public string TemplatesFile { get; }
+    public required string ScriptsFolder { get; init; }
+    public required string Backend { get; init; }
+    public required string TemplatesFile { get; init; }
     // The progression packages the backend serves (weapon mastery tracks for the profile page's weapon levels).
-    public string ProgressionFile { get; }
-    public string ProfilesRoot { get; }
-    public string SettingsFile { get; }
-    public string SessionFile { get; }
-    public string RunsFolder { get; }
+    public required string ProgressionFile { get; init; }
+    public required string ProfilesRoot { get; init; }
+    public required string SettingsFile { get; init; }
+    public required string SessionFile { get; init; }
+    public required string RunsFolder { get; init; }
     // Mods load in installations only (<installation>/mods, docs/mods.md).
     public string? ModsFolder => InstallRoot != null ? Path.Combine(InstallRoot, "mods") : null;
 
@@ -46,19 +29,28 @@ sealed class LauncherPaths : ISessionPaths
     {
         var host = Path.Combine(root, "artifacts", "host-startup");
         var engine = Path.Combine(root, "artifacts", "engine-package", "staging");
-        return new(root, null, host, Path.Combine(engine, "session", "HellForge.Session.exe"), Path.Combine(engine, "scripts"),
-            Path.Combine(engine, "backend", "HellForge.LocalBackend.exe"),
-            Path.Combine(root, "data", "profile-templates.json"),
-            Path.Combine(root, "data", "progression-data.json"), Path.Combine(host, "profiles"),
-            Path.Combine(host, "launcher-settings.json"), Path.Combine(host, "play-session.json"),
-            Path.Combine(host, "local-boots"));
+        return new LauncherPaths
+        {
+            Root = root, InstallRoot = null, HostRoot = host,
+            Session = Path.Combine(engine, "session", "HellForge.Session.exe"), ScriptsFolder = Path.Combine(engine, "scripts"),
+            Backend = Path.Combine(engine, "backend", "HellForge.LocalBackend.exe"),
+            TemplatesFile = Path.Combine(root, "data", "profile-templates.json"),
+            ProgressionFile = Path.Combine(root, "data", "progression-data.json"), ProfilesRoot = Path.Combine(host, "profiles"),
+            SettingsFile = Path.Combine(host, "launcher-settings.json"), SessionFile = Path.Combine(host, "play-session.json"),
+            RunsFolder = Path.Combine(host, "local-boots")
+        };
     }
 
     public static LauncherPaths ForInstall(InstallLayout install)
     {
         var files = new InstallSessionPaths(install);
-        return new(files.Root, files.InstallRoot, files.HostRoot, files.Session, files.ScriptsFolder, files.Backend, files.TemplatesFile,
-            files.ProgressionFile, files.ProfilesRoot, files.SettingsFile, files.SessionFile, files.RunsFolder);
+        return new LauncherPaths
+        {
+            Root = files.Root, InstallRoot = files.InstallRoot, HostRoot = files.HostRoot, Session = files.Session,
+            ScriptsFolder = files.ScriptsFolder, Backend = files.Backend, TemplatesFile = files.TemplatesFile,
+            ProgressionFile = files.ProgressionFile, ProfilesRoot = files.ProfilesRoot, SettingsFile = files.SettingsFile,
+            SessionFile = files.SessionFile, RunsFolder = files.RunsFolder
+        };
     }
 
     // The installation containing the launcher, else the repository it was built in (the folder with the solution).

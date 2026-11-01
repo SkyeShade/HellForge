@@ -80,14 +80,18 @@ public sealed class PartyService
                 if (hosted.ContainsKey(networkId) && (Requests.Contains(frame.Type) || frame.Type == "party.message")) Handle(peer, frame);
                 else if (frame.Type == "party.connect") Answer(peer, frame.Text(0), networkId, refused: true);
                 else if ((Events.Contains(frame.Type) || frame.Type == "party.message") && remote.TryGetValue(networkId, out var host) && host == peer)
-                {
-                    if (frame.Type == "party.networkGone" || frame.Type == "party.connected" && frame.Text(1) != "0") remote.Remove(networkId);
-                    if (frame.Type == "party.message") CountRemote(networkId, "received");
-                    toLocal(frame);
-                }
+                    FromHost(networkId, frame);
             }
             catch (InvalidDataException error) { log($"Bad {frame.Type} from a peer: {error.Message}"); }
         }
+    }
+
+    // An event or message from the host of a friend's network this machine's DLL is in.
+    void FromHost(string networkId, Frame frame)
+    {
+        if (frame.Type == "party.networkGone" || frame.Type == "party.connected" && frame.Text(1) != "0") remote.Remove(networkId);
+        if (frame.Type == "party.message") CountRemote(networkId, "received");
+        toLocal(frame);
     }
 
     // This machine's game closed: networks it hosted end for everyone; it leaves friends' networks.
@@ -169,11 +173,7 @@ public sealed class PartyService
         }
         if (frame.Type == "party.connect")
         {
-            var networkId = frame.Text(1);
-            if (hosted.ContainsKey(networkId)) { Handle(LobbyService.LocalNode, frame); return; }
-            if (!LobbyService.TryNode(frame.Text(2), out var host) || transport == null || host == LocalId) { Answer(LobbyService.LocalNode, frame.Text(0), networkId, refused: true); return; }
-            remote[networkId] = host;
-            Send(host, frame, true);
+            Connect(frame);
             return;
         }
         var id = frame.Text(0);
@@ -184,93 +184,115 @@ public sealed class PartyService
         Send(owner, frame, frame.Type != "party.message" || (frame.Int(2) & GuaranteedDelivery) != 0);
     }
 
+    // This machine's DLL connects to a network: one hosted here, or a friend's through its host.
+    void Connect(Frame frame)
+    {
+        var networkId = frame.Text(1);
+        if (hosted.ContainsKey(networkId)) { Handle(LobbyService.LocalNode, frame); return; }
+        if (!LobbyService.TryNode(frame.Text(2), out var host) || transport == null || host == LocalId) { Answer(LobbyService.LocalNode, frame.Text(0), networkId, refused: true); return; }
+        remote[networkId] = host;
+        Send(host, frame, true);
+    }
+
     // Requests for a network hosted here, from this machine's DLL (LocalNode) or a friend's backend.
     void Handle(ulong node, Frame frame)
     {
         switch (frame.Type)
         {
-            case "party.connect":
-            {
-                var network = hosted[frame.Text(1)];
-                // Only players in one of this machine's lobbies (which checked their mods) may join its network.
-                if (node != LobbyService.LocalNode && !inHostedLobby(node)) { log("Refused a Party connection from a player outside the lobby."); Answer(node, frame.Text(0), network.Id, refused: true); return; }
-                // A friend's machine connecting again while still in the network (its game crashed and came back): its earlier
-                // endpoints go first, or the new game's endpoints, numbered from the same block, would be ignored as taken.
-                if (node != LobbyService.LocalNode && network.Nodes.Contains(node))
-                {
-                    log($"A friend connected to Party network {network.Id} again; their earlier endpoints were removed first.");
-                    RemoveNode(network, node);
-                }
-                var joining = network.Nodes.Add(node);
-                if (node != LobbyService.LocalNode && !network.Blocks.ContainsKey(node) && network.NextBlock <= ushort.MaxValue - EndpointBlock)
-                {
-                    network.Blocks[node] = (ushort)network.NextBlock;
-                    network.NextBlock += EndpointBlock;
-                }
-                Answer(node, frame.Text(0), network.Id, refused: false);
-                if (joining)
-                {
-                    log($"A friend joined Party network {network.Id} ({network.Nodes.Count} machines).");
-                    Broadcast(network, new Frame("party.deviceJoined").Add(network.Id).Add(Hex(Absolute(node))), except: node);
-                }
-                return;
-            }
-            case "party.endpoint":
-            {
-                var network = hosted[frame.Text(0)];
-                if (!network.Nodes.Contains(node)) return;
-                var op = frame.Text(1);
-                ushort uid;
-                if (frame.Text(2).Length > 0)
-                {
-                    // An id the machine chose: the host's own below FirstRemoteEndpoint, a friend's inside its block.
-                    if (!ushort.TryParse(frame.Text(2), out uid) || uid == 0 || network.Endpoints.ContainsKey(uid)) return;
-                    var allowed = node == LobbyService.LocalNode ? uid < FirstRemoteEndpoint
-                        : network.Blocks.TryGetValue(node, out var block) && uid >= block && uid < block + EndpointBlock;
-                    if (!allowed) return;
-                }
-                else
-                {
-                    uid = network.NextRemote++;
-                    if (uid < FirstRemoteEndpoint) return;
-                }
-                var endpoint = new PartyEndpoint(uid, node, frame.Text(3));
-                network.Endpoints[uid] = endpoint;
-                var created = Created(network, endpoint, "");
-                if (op.Length > 0) Send(node, Created(network, endpoint, op), true);
-                Broadcast(network, created, except: node);
-                return;
-            }
-            case "party.endpointGone":
-            {
-                var network = hosted[frame.Text(0)];
-                if (!ushort.TryParse(frame.Text(1), out var uid) || !network.Endpoints.TryGetValue(uid, out var endpoint) || endpoint.Node != node) return;
-                network.Endpoints.Remove(uid);
-                Broadcast(network, new Frame("party.endpointDestroyed").Add(network.Id).Add(uid), except: node);
-                return;
-            }
-            case "party.leave":
-            {
-                var network = hosted[frame.Text(0)];
-                if (node == LobbyService.LocalNode) Close(network);
-                else if (network.Nodes.Contains(node)) RemoveNode(network, node);
-                return;
-            }
-            case "party.message":
-            {
-                var network = hosted[frame.Text(0)];
-                if (!ushort.TryParse(frame.Text(1), out var sender) || !network.Endpoints.TryGetValue(sender, out var from) || from.Node != node) return;
-                var reliable = (frame.Int(2) & GuaranteedDelivery) != 0;
-                network.Count(node == LobbyService.LocalNode ? "host" : "friend", log);
-                var targets = frame.Text(3);
-                IEnumerable<ulong> nodes = targets.Length == 0
-                    ? network.Nodes
-                    : targets.Split(',').Select(t => ushort.TryParse(t, out var uid) && network.Endpoints.TryGetValue(uid, out var e) ? e.Node : ulong.MaxValue)
-                        .Where(n => n != ulong.MaxValue).Distinct();
-                foreach (var target in nodes.Where(n => n != node).ToList()) Send(target, frame, reliable);
-                return;
-            }
+            case "party.connect": HandleConnect(node, frame); return;
+            case "party.endpoint": HandleEndpoint(node, frame); return;
+            case "party.endpointGone": HandleEndpointGone(node, frame); return;
+            case "party.leave": HandleLeave(node, frame); return;
+            case "party.message": HandleMessage(node, frame); return;
         }
+    }
+
+    void HandleConnect(ulong node, Frame frame)
+    {
+        var network = hosted[frame.Text(1)];
+        // Only players in one of this machine's lobbies (which checked their mods) may join its network.
+        if (node != LobbyService.LocalNode && !inHostedLobby(node)) { log("Refused a Party connection from a player outside the lobby."); Answer(node, frame.Text(0), network.Id, refused: true); return; }
+        // A friend's machine connecting again while still in the network (its game crashed and came back): its earlier
+        // endpoints go first, or the new game's endpoints, numbered from the same block, would be ignored as taken.
+        if (node != LobbyService.LocalNode && network.Nodes.Contains(node))
+        {
+            log($"A friend connected to Party network {network.Id} again; their earlier endpoints were removed first.");
+            RemoveNode(network, node);
+        }
+        var joining = network.Nodes.Add(node);
+        if (node != LobbyService.LocalNode && !network.Blocks.ContainsKey(node) && network.NextBlock <= ushort.MaxValue - EndpointBlock)
+        {
+            network.Blocks[node] = (ushort)network.NextBlock;
+            network.NextBlock += EndpointBlock;
+        }
+        Answer(node, frame.Text(0), network.Id, refused: false);
+        if (joining)
+        {
+            log($"A friend joined Party network {network.Id} ({network.Nodes.Count} machines).");
+            Broadcast(network, new Frame("party.deviceJoined").Add(network.Id).Add(Hex(Absolute(node))), except: node);
+        }
+    }
+
+    void HandleEndpoint(ulong node, Frame frame)
+    {
+        var network = hosted[frame.Text(0)];
+        if (!network.Nodes.Contains(node)) return;
+        var op = frame.Text(1);
+        if (EndpointId(network, node, frame.Text(2)) is not { } uid) return;
+        var endpoint = new PartyEndpoint(uid, node, frame.Text(3));
+        network.Endpoints[uid] = endpoint;
+        var created = Created(network, endpoint, "");
+        if (op.Length > 0) Send(node, Created(network, endpoint, op), true);
+        Broadcast(network, created, except: node);
+    }
+
+    // A new endpoint's id: the one the machine chose, or the next one when it chose none (""); null when it cannot have it.
+    static ushort? EndpointId(HostedNetwork network, ulong node, string chosen)
+    {
+        ushort uid;
+        if (chosen.Length > 0)
+        {
+            // An id the machine chose: the host's own below FirstRemoteEndpoint, a friend's inside its block.
+            if (!ushort.TryParse(chosen, out uid) || uid == 0 || network.Endpoints.ContainsKey(uid)) return null;
+            var allowed = node == LobbyService.LocalNode ? uid < FirstRemoteEndpoint
+                : network.Blocks.TryGetValue(node, out var block) && uid >= block && uid < block + EndpointBlock;
+            if (!allowed) return null;
+        }
+        else
+        {
+            uid = network.NextRemote++;
+            if (uid < FirstRemoteEndpoint) return null;
+        }
+        return uid;
+    }
+
+    void HandleEndpointGone(ulong node, Frame frame)
+    {
+        var network = hosted[frame.Text(0)];
+        if (!ushort.TryParse(frame.Text(1), out var uid) || !network.Endpoints.TryGetValue(uid, out var endpoint) || endpoint.Node != node) return;
+        network.Endpoints.Remove(uid);
+        Broadcast(network, new Frame("party.endpointDestroyed").Add(network.Id).Add(uid), except: node);
+    }
+
+    void HandleLeave(ulong node, Frame frame)
+    {
+        var network = hosted[frame.Text(0)];
+        if (node == LobbyService.LocalNode) Close(network);
+        else if (network.Nodes.Contains(node)) RemoveNode(network, node);
+    }
+
+    void HandleMessage(ulong node, Frame frame)
+    {
+        var network = hosted[frame.Text(0)];
+        if (!ushort.TryParse(frame.Text(1), out var sender) || !network.Endpoints.TryGetValue(sender, out var from) || from.Node != node) return;
+        var reliable = (frame.Int(2) & GuaranteedDelivery) != 0;
+        network.Count(node == LobbyService.LocalNode ? "host" : "friend", log);
+        var targets = frame.Text(3);
+        IEnumerable<ulong> nodes = targets.Length == 0
+            ? network.Nodes
+            : targets.Split(',').Select(t => ushort.TryParse(t, out var uid) && network.Endpoints.TryGetValue(uid, out var e) ? e.Node : ulong.MaxValue)
+                .Where(n => n != ulong.MaxValue).Distinct();
+        foreach (var target in nodes.Where(n => n != node).ToList()) Send(target, frame, reliable);
     }
 
     Frame Created(HostedNetwork network, PartyEndpoint endpoint, string op) =>

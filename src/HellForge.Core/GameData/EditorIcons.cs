@@ -37,6 +37,8 @@ public static class EditorIcons
         System.Security.Cryptography.SHA256.HashData(typeof(EditorIcons).Assembly.GetManifestResourceStream("HellForge.Core.mappings.hud-icons.json")!));
 
     public sealed record Icon(int Kind, string Name, int Width, int Height, int Channels, byte[] Pixels);
+    // A texture page: its mip 0 pixels, its size and its DXGI format.
+    public sealed record Page(byte[] Pixels, int Width, int Height, int Format);
 
     // {group: {name: sprite}} from the embedded mappings.
     public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, ulong>> Sprites()
@@ -52,6 +54,29 @@ public static class EditorIcons
 
     // Every icon the game data has; missing: names whose sprite no atlas holds.
     public static IReadOnlyList<Icon> Extract(GameDataReader data, out IReadOnlyList<string> missing)
+    {
+        var records = SpriteRecords(data);
+        var wantedPages = new HashSet<ResourceKey>();
+        var sprites = Sprites();
+        foreach (var group in sprites.Values)
+            foreach (var sprite in group.Values)
+                if (records.TryGetValue(sprite, out var rec)) wantedPages.Add(new(ResourceTypes.Texture, rec.Page));
+        var pageAt = data.Find(wantedPages);
+        var pages = new Dictionary<ulong, Page>();
+        var icons = new List<Icon>();
+        var lost = new List<string>();
+        foreach (var group in Groups)
+            foreach (var (name, sprite) in sprites[group].OrderBy(p => p.Key, StringComparer.Ordinal))
+            {
+                if (SpritePixels(data, records, pageAt, pages, sprite) is { } image) AddIcons(icons, group, name, image);
+                else lost.Add(name);
+            }
+        missing = lost;
+        return icons;
+    }
+
+    // Every texture_atlas resource's sprite records, by sprite name (the first atlas that has one).
+    static Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)> SpriteRecords(GameDataReader data)
     {
         var records = new Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)>();
         foreach (var at in data.All(TextureAtlas).Values)
@@ -69,64 +94,66 @@ public static class EditorIcons
                     BinaryPrimitives.ReadSingleLittleEndian(r[32..]), BinaryPrimitives.ReadSingleLittleEndian(r[36..])));
             }
         }
-        var wantedPages = new HashSet<ResourceKey>();
-        var sprites = Sprites();
-        foreach (var group in sprites.Values)
-            foreach (var sprite in group.Values)
-                if (records.TryGetValue(sprite, out var rec)) wantedPages.Add(new(ResourceTypes.Texture, rec.Page));
-        var pageAt = data.Find(wantedPages);
-        var pages = new Dictionary<ulong, (int W, int H, int Format, byte[] Pixels)>();
-        var icons = new List<Icon>();
-        var lost = new List<string>();
-        foreach (var group in Groups)
-            foreach (var (name, sprite) in sprites[group].OrderBy(p => p.Key, StringComparer.Ordinal))
-            {
-                if (!records.TryGetValue(sprite, out var rec) || !pageAt.TryGetValue(new(ResourceTypes.Texture, rec.Page), out var location))
-                { lost.Add(name); continue; }
-                if (!pages.TryGetValue(rec.Page, out var page))
-                {
-                    var parts = data.Read(location);
-                    var dds = parts.Main.AsSpan(TextureHeader);
-                    if (dds.Length < 148 || Encoding.ASCII.GetString(dds[..4]) != "DDS " || Encoding.ASCII.GetString(dds.Slice(84, 4)) != "DX10")
-                    { lost.Add(name); continue; }
-                    page = ((int)BinaryPrimitives.ReadUInt32LittleEndian(dds[16..]), (int)BinaryPrimitives.ReadUInt32LittleEndian(dds[12..]),
-                        (int)BinaryPrimitives.ReadUInt32LittleEndian(dds[128..]), parts.Gpu);
-                    pages[rec.Page] = page;
-                }
-                int x = (int)Math.Round(rec.U * page.W), y = (int)Math.Round(rec.V * page.H);
-                if (Math.Abs(rec.Du * page.W - rec.W) > 0.5 || Math.Abs(rec.Dv * page.H - rec.H) > 0.5 || rec.W <= 0 || rec.H <= 0 ||
-                    rec.W > 1024 || rec.H > 1024 || Decode(page.Pixels, page.W, page.H, page.Format, x, y, rec.W, rec.H) is not { } decoded)
-                { lost.Add(name); continue; }
-                var (w, h, rgba) = Shrink(rec.W, rec.H, decoded);
-                switch (group)
-                {
-                    case "factions":
-                        var opaque = true;
-                        for (var i = 3; i < rgba.Length && opaque; i += 4) opaque = rgba[i] == 255;
-                        icons.Add(new(7, name, w, h, 1, opaque ? Channel(rgba, 0, true) : Channel(rgba, 3, false)));
-                        break;
-                    case "difficulties":
-                        icons.Add(new(8, name, w, h, 4, rgba));
-                        break;
-                    case "weapons" or "throwables":
-                        icons.Add(new(group == "weapons" ? 0 : 1, name, w, h, 1, Channel(rgba, 0, false)));
-                        break;
-                    case "stratagems": /* the masks as the game composes them: each layer where the sprite is opaque */
-                        icons.Add(new(2, name, w, h, 1, Channel(rgba, 0, true)));
-                        icons.Add(new(3, name, w, h, 1, Channel(rgba, 1, true)));
-                        break;
-                    case "boosters":
-                        icons.Add(new(4, name, w, h, 4, rgba));
-                        break;
-                    default: /* the glyph is the dark part */
-                        var glyph = Channel(rgba, 0, false);
-                        for (var i = 0; i < glyph.Length; i++) glyph[i] = (byte)((255 - glyph[i]) * rgba[i * 4 + 3] / 255);
-                        icons.Add(new(5, name, w, h, 1, glyph));
-                        break;
-                }
-            }
-        missing = lost;
-        return icons;
+        return records;
+    }
+
+    // A sprite's pixels as RGBA, at most Largest a side; null when no atlas or page has it, or its page or rectangle cannot
+    // be read. pages: the pages read so far, by name.
+    static (int W, int H, byte[] Rgba)? SpritePixels(GameDataReader data, Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)> records,
+        Dictionary<ResourceKey, GameDataReader.Location> pageAt, Dictionary<ulong, Page> pages, ulong sprite)
+    {
+        if (!records.TryGetValue(sprite, out var rec) || !pageAt.TryGetValue(new(ResourceTypes.Texture, rec.Page), out var location)) return null;
+        if (!pages.TryGetValue(rec.Page, out var page))
+        {
+            if (ReadPage(data.Read(location)) is not { } read) return null;
+            pages[rec.Page] = page = read;
+        }
+        int x = (int)Math.Round(rec.U * page.Width), y = (int)Math.Round(rec.V * page.Height);
+        if (Math.Abs(rec.Du * page.Width - rec.W) > 0.5 || Math.Abs(rec.Dv * page.Height - rec.H) > 0.5 || rec.W <= 0 || rec.H <= 0 ||
+            rec.W > 1024 || rec.H > 1024 || Decode(page, x, y, rec.W, rec.H) is not { } decoded)
+            return null;
+        return Shrink(rec.W, rec.H, decoded);
+    }
+
+    // A texture's page: its DX10 DDS header after the texture header, its pixels the GPU part; null for another layout.
+    static Page? ReadPage(ResourceParts parts)
+    {
+        var dds = parts.Main.AsSpan(TextureHeader);
+        if (dds.Length < 148 || Encoding.ASCII.GetString(dds[..4]) != "DDS " || Encoding.ASCII.GetString(dds.Slice(84, 4)) != "DX10") return null;
+        return new(parts.Gpu, (int)BinaryPrimitives.ReadUInt32LittleEndian(dds[16..]), (int)BinaryPrimitives.ReadUInt32LittleEndian(dds[12..]),
+            (int)BinaryPrimitives.ReadUInt32LittleEndian(dds[128..]));
+    }
+
+    // A sprite's icons, by its group.
+    static void AddIcons(List<Icon> icons, string group, string name, (int W, int H, byte[] Rgba) image)
+    {
+        var (w, h, rgba) = image;
+        switch (group)
+        {
+            case "factions":
+                var opaque = true;
+                for (var i = 3; i < rgba.Length && opaque; i += 4) opaque = rgba[i] == 255;
+                icons.Add(new(7, name, w, h, 1, opaque ? Channel(rgba, 0, true) : Channel(rgba, 3, false)));
+                break;
+            case "difficulties":
+                icons.Add(new(8, name, w, h, 4, rgba));
+                break;
+            case "weapons" or "throwables":
+                icons.Add(new(group == "weapons" ? 0 : 1, name, w, h, 1, Channel(rgba, 0, false)));
+                break;
+            case "stratagems": /* the masks as the game composes them: each layer where the sprite is opaque */
+                icons.Add(new(2, name, w, h, 1, Channel(rgba, 0, true)));
+                icons.Add(new(3, name, w, h, 1, Channel(rgba, 1, true)));
+                break;
+            case "boosters":
+                icons.Add(new(4, name, w, h, 4, rgba));
+                break;
+            default: /* the glyph is the dark part */
+                var glyph = Channel(rgba, 0, false);
+                for (var i = 0; i < glyph.Length; i++) glyph[i] = (byte)((255 - glyph[i]) * rgba[i * 4 + 3] / 255);
+                icons.Add(new(5, name, w, h, 1, glyph));
+                break;
+        }
     }
 
     // One channel of an RGBA image as coverage (times its alpha, when asked).
@@ -203,55 +230,75 @@ public static class EditorIcons
     // ---- pixels ----
 
     // RGBA of the w x h rectangle at (x, y) of a page's mip 0, or null for a format it does not read.
-    public static byte[]? Decode(byte[] pixels, int width, int height, int format, int x, int y, int w, int h)
+    public static byte[]? Decode(Page page, int x, int y, int w, int h)
     {
-        if (x < 0 || y < 0 || x + w > width || y + h > height) return null;
+        if (x < 0 || y < 0 || x + w > page.Width || y + h > page.Height) return null;
         var output = new byte[w * h * 4];
-        switch (format)
+        return page.Format switch
         {
-            case 28 or 29 or 87 or 91: /* R8G8B8A8, B8G8R8A8 */
-                var bgra = format is 87 or 91;
-                for (var row = 0; row < h; row++)
-                    for (var col = 0; col < w; col++)
-                    {
-                        var s = ((y + row) * width + x + col) * 4;
-                        if (s + 4 > pixels.Length) return null;
-                        var d = (row * w + col) * 4;
-                        output[d] = pixels[s + (bgra ? 2 : 0)]; output[d + 1] = pixels[s + 1]; output[d + 2] = pixels[s + (bgra ? 0 : 2)]; output[d + 3] = pixels[s + 3];
-                    }
-                return output;
-            case 71 or 72 or 77 or 78 or 80:
-                var size = format is 77 or 78 ? 16 : 8;
-                var blocksWide = (width + 3) / 4;
-                var texels = new byte[64];
-                var alpha = new byte[16];
-                for (var by = y / 4; by < (y + h + 3) / 4; by++)
-                    for (var bx = x / 4; bx < (x + w + 3) / 4; bx++)
-                    {
-                        var offset = (by * blocksWide + bx) * size;
-                        if (offset + size > pixels.Length) return null;
-                        var block = pixels.AsSpan(offset, size);
-                        if (format is 71 or 72) ColourBlock(block, false, texels);
-                        else if (format is 77 or 78)
-                        {
-                            ColourBlock(block[8..], true, texels);
-                            AlphaBlock(block, alpha);
-                            for (var i = 0; i < 16; i++) texels[i * 4 + 3] = alpha[i];
-                        }
-                        else
-                        {
-                            AlphaBlock(block, alpha);
-                            for (var i = 0; i < 16; i++) { texels[i * 4] = texels[i * 4 + 1] = texels[i * 4 + 2] = alpha[i]; texels[i * 4 + 3] = 255; }
-                        }
-                        for (var i = 0; i < 16; i++)
-                        {
-                            int px = bx * 4 + i % 4 - x, py = by * 4 + i / 4 - y;
-                            if (px >= 0 && px < w && py >= 0 && py < h) texels.AsSpan(i * 4, 4).CopyTo(output.AsSpan((py * w + px) * 4));
-                        }
-                    }
-                return output;
+            28 or 29 or 87 or 91 => DecodeRgba(page, x, y, w, h, output), /* R8G8B8A8, B8G8R8A8 */
+            71 or 72 or 77 or 78 or 80 => DecodeBlocks(page, x, y, w, h, output),
+            _ => null,
+        };
+    }
+
+    static byte[]? DecodeRgba(Page page, int x, int y, int w, int h, byte[] output)
+    {
+        var pixels = page.Pixels;
+        var bgra = page.Format is 87 or 91;
+        for (var row = 0; row < h; row++)
+            for (var col = 0; col < w; col++)
+            {
+                var s = ((y + row) * page.Width + x + col) * 4;
+                if (s + 4 > pixels.Length) return null;
+                var d = (row * w + col) * 4;
+                output[d] = pixels[s + (bgra ? 2 : 0)]; output[d + 1] = pixels[s + 1]; output[d + 2] = pixels[s + (bgra ? 0 : 2)]; output[d + 3] = pixels[s + 3];
+            }
+        return output;
+    }
+
+    // BC1 (71, 72), BC3 (77, 78) and BC4 (80, grey): each 4 x 4 block the rectangle touches, decoded, its texels inside it
+    // copied.
+    static byte[]? DecodeBlocks(Page page, int x, int y, int w, int h, byte[] output)
+    {
+        var size = page.Format is 77 or 78 ? 16 : 8;
+        var blocksWide = (page.Width + 3) / 4;
+        var texels = new byte[64];
+        var alpha = new byte[16];
+        void Place(int bx, int by)
+        {
+            for (var i = 0; i < 16; i++)
+            {
+                int px = bx * 4 + i % 4 - x, py = by * 4 + i / 4 - y;
+                if (px >= 0 && px < w && py >= 0 && py < h) texels.AsSpan(i * 4, 4).CopyTo(output.AsSpan((py * w + px) * 4));
+            }
         }
-        return null;
+        for (var by = y / 4; by < (y + h + 3) / 4; by++)
+            for (var bx = x / 4; bx < (x + w + 3) / 4; bx++)
+            {
+                var offset = (by * blocksWide + bx) * size;
+                if (offset + size > page.Pixels.Length) return null;
+                BlockTexels(page.Pixels.AsSpan(offset, size), page.Format, texels, alpha);
+                Place(bx, by);
+            }
+        return output;
+    }
+
+    // A block's 16 texels as RGBA: BC1's colours, BC3's colours with its alpha, or BC4's one channel as opaque grey.
+    static void BlockTexels(ReadOnlySpan<byte> block, int format, byte[] texels, byte[] alpha)
+    {
+        if (format is 71 or 72) ColourBlock(block, false, texels);
+        else if (format is 77 or 78)
+        {
+            ColourBlock(block[8..], true, texels);
+            AlphaBlock(block, alpha);
+            for (var i = 0; i < 16; i++) texels[i * 4 + 3] = alpha[i];
+        }
+        else
+        {
+            AlphaBlock(block, alpha);
+            for (var i = 0; i < 16; i++) { texels[i * 4] = texels[i * 4 + 1] = texels[i * 4 + 2] = alpha[i]; texels[i * 4 + 3] = 255; }
+        }
     }
 
     static (int, int, int) Rgb565(int c)

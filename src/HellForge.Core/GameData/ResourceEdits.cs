@@ -58,8 +58,14 @@ public static class ResourceEdits
         if (used is 0 or 10) return false;
         for (var k = used; k < 10; k++) if (c[k] != 10000f) return false;
         for (var k = 0; k < used; k++) if (!(c[k] >= 0f && c[k] <= 1f) || (k > 0 && c[k] < c[k - 1])) return false;
+        return ColourKeys(c[10..40]);
+    }
+
+    // A curve's 30 colour values: each on 0..1024, the brightest at least 2.
+    static bool ColourKeys(ReadOnlySpan<float> values)
+    {
         var max = float.MinValue;
-        foreach (var v in c[10..40])
+        foreach (var v in values)
         {
             if (!(v >= 0f && v <= 1024f)) return false;
             max = Math.Max(max, v);
@@ -179,6 +185,25 @@ public static class ResourceEdits
     // levels). `main` is the texture's main part, whose DDS header gives the format; returns the new GPU part.
     public static byte[] RecolourLut(byte[] main, byte[] gpu, LutRecolour edit)
     {
+        var (width, height, mips) = LutSize(main, gpu, edit);
+        var level = RecolouredLevel(gpu, width, height, edit);
+        using var output = new MemoryStream();
+        var half = new byte[2];
+        for (int m = 0, w = width, h = height; ; m++)
+        {
+            WriteLevel(output, level, half);
+            if (m + 1 == mips) break;
+            int nw = Math.Max(1, w / 2), nh = Math.Max(1, h / 2);
+            (level, w, h) = (HalfLevel(level, w, h, nw, nh), nw, nh);
+        }
+        var bytes = output.ToArray();
+        return bytes.Length == gpu.Length ? bytes
+            : throw new InvalidDataException($"the rebuilt mip chain ({bytes.Length} bytes) differs in size from the texture's ({gpu.Length}).");
+    }
+
+    // The colour lookup texture's size and mip count from its DDS header, checked against its pixels and the edit.
+    static (int Width, int Height, int Mips) LutSize(byte[] main, byte[] gpu, LutRecolour edit)
+    {
         var dds = main.AsSpan().IndexOf("DDS "u8);
         if (dds < 0 || dds + 148 > main.Length) throw new InvalidDataException("the texture has no DDS header.");
         var height = BinaryPrimitives.ReadInt32LittleEndian(main.AsSpan(dds + 12));
@@ -191,6 +216,12 @@ public static class ResourceEdits
         if (edit.ZonesFrom is { } from && from >= height) throw new InvalidDataException($"the texture has {height} rows, no row {from}.");
         if (edit.Columns.Keys.Concat(edit.Rows.Values.SelectMany(r => r.Keys)).Any(x => x >= width) || edit.Rows.Keys.Any(y => y >= height))
             throw new InvalidDataException($"the texture is {width} x {height}; a recoloured cell is outside it.");
+        return (width, height, mips);
+    }
+
+    // Mip 0 recoloured: each row from ZonesFrom (or itself), then the edit's columns and cells.
+    static double[][][] RecolouredLevel(byte[] gpu, int width, int height, LutRecolour edit)
+    {
         double[] Pixel(int x, int y) => [.. Enumerable.Range(0, 4).Select(c => (double)BinaryPrimitives.ReadHalfLittleEndian(gpu.AsSpan((y * width + x) * 8 + 2 * c)))];
         var level = new double[height][][];
         for (var y = 0; y < height; y++)
@@ -204,40 +235,42 @@ public static class ResourceEdits
                 level[y][x] = px;
             }
         }
-        using var output = new MemoryStream();
-        var half = new byte[2];
-        for (int m = 0, w = width, h = height; ; m++)
-        {
-            foreach (var row in level)
-                foreach (var px in row)
-                    foreach (var v in px)
-                    {
-                        BinaryPrimitives.WriteHalfLittleEndian(half, (Half)v);
-                        output.Write(half);
-                    }
-            if (m + 1 == mips) break;
-            int nw = Math.Max(1, w / 2), nh = Math.Max(1, h / 2);
-            var next = new double[nh][][];
-            for (var y = 0; y < nh; y++)
-            {
-                next[y] = new double[nw][];
-                for (var x = 0; x < nw; x++)
+        return level;
+    }
+
+    static void WriteLevel(MemoryStream output, double[][][] level, byte[] half)
+    {
+        foreach (var row in level)
+            foreach (var px in row)
+                foreach (var v in px)
                 {
-                    var px = new double[4];
-                    for (var c = 0; c < 4; c++)
-                    {
-                        var sum = 0.0;
-                        for (var dy = 0; dy < 2; dy++)
-                            for (var dx = 0; dx < 2; dx++) sum += level[Math.Min(2 * y + dy, h - 1)][Math.Min(2 * x + dx, w - 1)][c];
-                        px[c] = sum / 4.0;
-                    }
-                    next[y][x] = px;
+                    BinaryPrimitives.WriteHalfLittleEndian(half, (Half)v);
+                    output.Write(half);
                 }
-            }
-            (level, w, h) = (next, nw, nh);
+    }
+
+    // The next mip (nw x nh) of a w x h one: each texel the mean of its 2 x 2 block, unrounded.
+    static double[][][] HalfLevel(double[][][] level, int w, int h, int nw, int nh)
+    {
+        var next = new double[nh][][];
+        for (var y = 0; y < nh; y++)
+        {
+            next[y] = new double[nw][];
+            for (var x = 0; x < nw; x++) next[y][x] = BlockMean(level, w, h, x, y);
         }
-        var bytes = output.ToArray();
-        return bytes.Length == gpu.Length ? bytes
-            : throw new InvalidDataException($"the rebuilt mip chain ({bytes.Length} bytes) differs in size from the texture's ({gpu.Length}).");
+        return next;
+    }
+
+    static double[] BlockMean(double[][][] level, int w, int h, int x, int y)
+    {
+        var px = new double[4];
+        for (var c = 0; c < 4; c++)
+        {
+            var sum = 0.0;
+            for (var dy = 0; dy < 2; dy++)
+                for (var dx = 0; dx < 2; dx++) sum += level[Math.Min(2 * y + dy, h - 1)][Math.Min(2 * x + dx, w - 1)][c];
+            px[c] = sum / 4.0;
+        }
+        return px;
     }
 }

@@ -65,6 +65,22 @@ static inline int HfPrivacyWordChar(char c)
 
 static inline char HfPrivacyLower(char c) { return c >= 'A' && c <= 'Z' ? (char)(c + 32) : c; }
 
+/* How many bytes of text, from t, one slash of a folder takes: a slash, or one or two backslashes (0: none there). */
+static inline size_t HfPrivacySeparator(const char* text, size_t length, size_t t)
+{
+    if (t >= length) return 0;
+    if (text[t] == '/') return 1;
+    if (text[t] != '\\') return 0;
+    return t + 1 < length && text[t + 1] == '\\' ? 2 : 1;
+}
+
+/* How many bytes of text, from t, match the name's character c (0 when they do not). */
+static inline size_t HfPrivacyStep(const char* text, size_t length, size_t t, char c, int folder)
+{
+    if (folder && (c == '\\' || c == '/')) return HfPrivacySeparator(text, length, t);
+    return t < length && HfPrivacyLower(text[t]) == HfPrivacyLower(c) ? 1 : 0;
+}
+
 /* How many bytes of text, from at, are the name (0 when they are not). */
 static inline size_t HfPrivacyMatch(const char* text, size_t length, size_t at, const HfPrivacyName* name)
 {
@@ -72,19 +88,24 @@ static inline size_t HfPrivacyMatch(const char* text, size_t length, size_t at, 
     if (!name->folder && at > 0 && HfPrivacyWordChar(text[at - 1])) return 0;
     for (size_t k = 0; k < name->length; k++)
     {
-        char c = name->text[k];
-        if (name->folder && (c == '\\' || c == '/'))
-        {
-            if (t < length && text[t] == '\\') { t++; if (t < length && text[t] == '\\') t++; }
-            else if (t < length && text[t] == '/') t++;
-            else return 0;
-        }
-        else if (t < length && HfPrivacyLower(text[t]) == HfPrivacyLower(c)) t++;
-        else return 0;
+        size_t step = HfPrivacyStep(text, length, t, name->text[k], name->folder);
+        if (step == 0) return 0;
+        t += step;
     }
     /* A hyphen ends a computer name (the game's console_<time>-<id>-<computer>.txt) but not a folder name. */
     if (t < length && (HfPrivacyWordChar(text[t]) || (name->folder && text[t] == '-'))) return 0;
     return t - at;
+}
+
+/* How many bytes of text, from i, the first name that matches there takes, with its mark (0: none matches). */
+static inline size_t HfPrivacyMatchAny(const char* text, size_t length, size_t i, const char** mark)
+{
+    for (int n = 0; n < g_hfPrivacyCount; n++)
+    {
+        size_t matched = HfPrivacyMatch(text, length, i, &g_hfPrivacy[n]);
+        if (matched) { *mark = g_hfPrivacy[n].mark; return matched; }
+    }
+    return 0;
 }
 
 /* text[0..length) scrubbed in place, within capacity bytes (a longer result is cut there): the new length. */
@@ -97,10 +118,8 @@ static inline size_t HfPrivacyScrub(char* text, size_t length, size_t capacity)
     int changed = 0;
     for (size_t i = 0; i < length && o < limit;)
     {
-        size_t matched = 0;
         const char* mark = NULL;
-        for (int n = 0; n < g_hfPrivacyCount && !matched; n++)
-            if ((matched = HfPrivacyMatch(text, length, i, &g_hfPrivacy[n])) != 0) mark = g_hfPrivacy[n].mark;
+        size_t matched = HfPrivacyMatchAny(text, length, i, &mark);
         if (!matched) { out[o++] = text[i++]; continue; }
         for (const char* m = mark; *m && o < limit; m++) out[o++] = *m;
         i += matched;

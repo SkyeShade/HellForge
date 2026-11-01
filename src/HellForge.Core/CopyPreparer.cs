@@ -39,23 +39,7 @@ public static class CopyPreparer
         var copied = new List<CopiedFile>();
         foreach (var file in files)
         {
-            var source = Path.Combine(report.Source, file.RelativePath);
-            var target = Path.Combine(content, file.RelativePath);
-            LocalInstall.NoLinks(source);
-            LocalInstall.NoLinks(target);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                if (input.Length != file.Length) throw new IOException($"Source changed during preparation: {file.RelativePath}");
-                input.CopyTo(output);
-                output.Flush(true);
-                input.Position = 0;
-                var sourceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(input));
-                copied.Add(new(file.RelativePath, input.Length, sourceHash));
-            }
-            if (LocalInstall.Hash(target) != copied[^1].Sha256)
-                throw new IOException($"Copy verification failed: {file.RelativePath}");
+            copied.Add(CopyFile(report.Source, content, file));
             progress?.Invoke(copied.Count, files.Count);
         }
         if (!files.SequenceEqual(LocalInstall.Inventory(report.Source)) || LocalInstall.Inspect(manifestPath).Pin != expected)
@@ -69,5 +53,29 @@ public static class CopyPreparer
         marker.Dispose();
         File.Delete(Path.Combine(destination, "preparing.lock"));
         return receipt;
+    }
+
+    // One file into the copy, hashed from the source and verified in the copy.
+    static CopiedFile CopyFile(string sourceRoot, string content, InventoryFile file)
+    {
+        var source = Path.Combine(sourceRoot, file.RelativePath);
+        var target = Path.Combine(content, file.RelativePath);
+        LocalInstall.NoLinks(source);
+        LocalInstall.NoLinks(target);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        CopiedFile copied;
+        using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))
+        using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            if (input.Length != file.Length) throw new IOException($"Source changed during preparation: {file.RelativePath}");
+            input.CopyTo(output);
+            output.Flush(true);
+            input.Position = 0;
+            var sourceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(input));
+            copied = new(file.RelativePath, input.Length, sourceHash);
+        }
+        if (LocalInstall.Hash(target) != copied.Sha256)
+            throw new IOException($"Copy verification failed: {file.RelativePath}");
+        return copied;
     }
 }

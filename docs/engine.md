@@ -36,7 +36,8 @@ A few things the engine uses live elsewhere in the repository:
 
 Some parts are not in the engine package. The in-game editor (`native/editor`) is a bundled code mod built by
 `scripts/Build-Editor.ps1`. `native/launcher-stub` is the top-level `HellForge.exe`, which starts
-`app\launcher\HellForge.Launcher.exe`. `src/HellForge.SteamProbe` is the Steam ownership probe. All three are built by
+`app\launcher\HellForge.Launcher.exe`. `src/HellForge.SteamProbe` is the Steam ownership probe, and
+`src/HellForge.CaptureProxy` (`app\capture`) is the launcher's Sync Inventory capture. All four are built by
 `scripts/Publish-HellForge.ps1`.
 
 The session runner's `src/HellForge.Session/EarlyConstructor.cs` is generated from `scripts/EarlyConstructorExperiment.cs`
@@ -45,7 +46,7 @@ The session runner's `src/HellForge.Session/EarlyConstructor.cs` is generated fr
 
 ## The package and its version
 
-The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.40). HellForge's own version,
+The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.41). HellForge's own version,
 `Version` in the same file, is separate (currently 0.3.0-beta).
 
 Besides the folders in the table, the package holds `engine.json` and the licences (`LICENSE`, `LICENSE-EXCEPTION`).
@@ -115,7 +116,9 @@ the engine that `scripts/Build-Engine.ps1` last staged in `artifacts/engine-pack
 | `dotnet run --project tests/HellForge.LocalBackend.Tests` | the local backend checks (multiplayer, stats sharing, live and open war, registered items) | no |
 | `py -m unittest discover -s scripts -p test_export_stats_schema.py` | the stats schema exporter | no |
 | `./scripts/Build-Engine.ps1` | the native and smoke tests below | yes |
+| `./scripts/Build-Engine.ps1 -NoSteamApi` | the same, but the `steam_api64.dll` stand-in is built against a synthetic export table instead of Valve's DLL: no Steam bridge, broker or bridge test, no package (CI runs this) | no |
 | `./scripts/Build-Editor.ps1 -Test` | the in-game editor against real D3D12 and D3D11 swap chains (`overlay_test`), and its saving into Local Stats (`local_stats_test`) | no |
+| `./scripts/Build-Editor.ps1 -Test -SkipOverlayTest` | the editor build and `local_stats_test` only, without a GPU (CI runs this) | no |
 
 The engine build runs:
 

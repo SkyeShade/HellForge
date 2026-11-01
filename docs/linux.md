@@ -232,7 +232,8 @@ DreamyBranch's guided script (on CachyOS).
 - Co-op on Linux. Friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace, but the one test so far did not connect (see [above](#problems-players-have-reported)).
 - Steam as a Flatpak or Snap (its own `/tmp` and paths), and the Steam Deck (no `socat` by default), are untested.
-- The Steam ownership check under Proton. Setup and every session run it, as on Windows: under Wine, HellForge starts
+- The Steam ownership check under Proton. Setup and sessions run it, as on Windows (a session reuses a check that passed
+  within 7 days for the same installation, account and build, where it can see Steam's signed-in account): under Wine, HellForge starts
   its Steam probe (`app\steamprobe\HellForge.SteamProbe.exe`) directly, because Wine's `powershell.exe` runs nothing.
   The probe must confirm the game on the signed-in Steam account, or setup and the session stop. It has not yet been
   run on a Linux machine, so if setup or a session stops at "The ownership check did not pass", please report it with

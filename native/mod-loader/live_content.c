@@ -33,7 +33,7 @@
 #include "ownership.c" /* items made owned, and given back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
-#define LC_MAX 64 /* entries of any kind HellForge has room for */
+#define LC_MAX 512 /* entries of any kind HellForge has room for (weapons and entities the most: REG_MAX_WEAPONS) */
 /* table: the settings table edits name its rows in by their number (fields.c), or NULL */
 typedef struct LiveKind { const char* name; void* entries; size_t stride, nameAt; uint32_t* count; uint32_t max, first; const char* table; } LiveKind;
 _Static_assert(offsetof(Stratagem, mod) == 0 && offsetof(Projectile, mod) == 0 && offsetof(Damage, mod) == 0 && offsetof(Behaviour, mod) == 0 &&

@@ -183,6 +183,31 @@ void *SteamCensusWrap(void *real, const char *version)
 
 static DWORD g_period = 15000;
 
+// Each export's count that changed since the last report (g_censusLock held).
+static void ReportExports(void)
+{
+    for (int i = 0; i < g_censusExportCount && i < CENSUS_EXPORTS; i++)
+    {
+        LONG calls = g_exportCalls[i];
+        if (calls != g_exportReported[i]) { g_exportReported[i] = calls; Line("calls", g_censusExportNames[i], calls); }
+    }
+}
+
+// Each interface slot's count that changed since the last report (g_censusLock held).
+static void ReportSlots(void)
+{
+    for (int i = 0; i < g_interfaceCount; i++)
+        for (int k = 0; k < CENSUS_SLOTS; k++)
+        {
+            LONG calls = g_slotCalls[i][k];
+            if (calls == g_slotReported[i][k]) continue;
+            g_slotReported[i][k] = calls;
+            char name[96];
+            snprintf(name, sizeof name, "%s#%d", g_interfaceNames[i], k);
+            Line("calls", name, calls);
+        }
+}
+
 // Every period: each count that changed since the last report.
 static DWORD WINAPI Rates(void *parameter)
 {
@@ -190,28 +215,39 @@ static DWORD WINAPI Rates(void *parameter)
     {
         Sleep(g_period);
         EnterCriticalSection(&g_censusLock);
-        for (int i = 0; i < g_censusExportCount && i < CENSUS_EXPORTS; i++)
-        {
-            LONG calls = g_exportCalls[i];
-            if (calls != g_exportReported[i]) { g_exportReported[i] = calls; Line("calls", g_censusExportNames[i], calls); }
-        }
-        for (int i = 0; i < g_interfaceCount; i++)
-            for (int k = 0; k < CENSUS_SLOTS; k++)
-            {
-                LONG calls = g_slotCalls[i][k];
-                if (calls == g_slotReported[i][k]) continue;
-                g_slotReported[i][k] = calls;
-                char name[96];
-                snprintf(name, sizeof name, "%s#%d", g_interfaceNames[i], k);
-                Line("calls", name, calls);
-            }
+        ReportExports();
+        ReportSlots();
         LeaveCriticalSection(&g_censusLock);
     }
     return 0;
 }
+
+// HELLFORGE_STEAM_CENSUS_PERIOD_MS (50 to 600000) sets the period; the reporting thread starts.
+static void StartRates(void)
+{
+    wchar_t period[16];
+    DWORD periodLength = GetEnvironmentVariableW(L"HELLFORGE_STEAM_CENSUS_PERIOD_MS", period, 16);
+    long milliseconds = periodLength > 0 && periodLength < 16 ? wcstol(period, NULL, 10) : 0;
+    if (milliseconds >= 50 && milliseconds <= 600000) g_period = (DWORD)milliseconds;
+    HANDLE rates = CreateThread(NULL, 0, Rates, NULL, 0, NULL);
+    if (rates) CloseHandle(rates);
+}
 #else
 void *SteamCensusWrap(void *real, const char *version) { (void)version; return real; }
 #endif
+
+// kernel32's GetProcAddress jumps to kernelbase's GetProcAddressForCaller, not to kernelbase's GetProcAddress, so the
+// hook goes there (and on GetProcAddress only where Windows has no GetProcAddressForCaller). ready: MH_Initialize's.
+static bool HookLookups(MH_STATUS ready)
+{
+    HMODULE kernelbase = GetModuleHandleW(L"kernelbase.dll");
+    void *forCaller = kernelbase ? (void *)GetProcAddress(kernelbase, "GetProcAddressForCaller") : NULL;
+    void *target = forCaller ? forCaller : kernelbase ? (void *)GetProcAddress(kernelbase, "GetProcAddress") : NULL;
+    void *hook = forCaller ? (void *)HookGetProcAddressForCaller : (void *)HookGetProcAddress;
+    void **original = forCaller ? (void **)&g_getProcAddressForCaller : (void **)&g_getProcAddress;
+    return (ready == MH_OK || ready == MH_ERROR_ALREADY_INITIALIZED) && target &&
+        MH_CreateHook(target, hook, original) == MH_OK && MH_EnableHook(target) == MH_OK;
+}
 
 void SteamCensusStart(HMODULE self)
 {
@@ -223,23 +259,10 @@ void SteamCensusStart(HMODULE self)
     if (g_log == INVALID_HANDLE_VALUE) return;
     g_census = self;
     MH_STATUS ready = MH_Initialize(); /* the network gate may have done it already */
-    // kernel32's GetProcAddress jumps to kernelbase's GetProcAddressForCaller, not to kernelbase's GetProcAddress, so the
-    // hook goes there (and on GetProcAddress only where Windows has no GetProcAddressForCaller).
-    HMODULE kernelbase = GetModuleHandleW(L"kernelbase.dll");
-    void *forCaller = kernelbase ? (void *)GetProcAddress(kernelbase, "GetProcAddressForCaller") : NULL;
-    void *target = forCaller ? forCaller : kernelbase ? (void *)GetProcAddress(kernelbase, "GetProcAddress") : NULL;
-    void *hook = forCaller ? (void *)HookGetProcAddressForCaller : (void *)HookGetProcAddress;
-    void **original = forCaller ? (void **)&g_getProcAddressForCaller : (void **)&g_getProcAddress;
-    bool hooked = (ready == MH_OK || ready == MH_ERROR_ALREADY_INITIALIZED) && target &&
-        MH_CreateHook(target, hook, original) == MH_OK && MH_EnableHook(target) == MH_OK;
+    bool hooked = HookLookups(ready);
 #ifdef HELLFORGE_STEAM_CENSUS_THUNKS
     Write("census", hooked ? "started (census build)" : "started (census build) without function names", (long long)GetCurrentProcessId());
-    wchar_t period[16];
-    DWORD periodLength = GetEnvironmentVariableW(L"HELLFORGE_STEAM_CENSUS_PERIOD_MS", period, 16);
-    long milliseconds = periodLength > 0 && periodLength < 16 ? wcstol(period, NULL, 10) : 0;
-    if (milliseconds >= 50 && milliseconds <= 600000) g_period = (DWORD)milliseconds;
-    HANDLE rates = CreateThread(NULL, 0, Rates, NULL, 0, NULL);
-    if (rates) CloseHandle(rates);
+    StartRates();
 #else
     Write("census", hooked ? "started" : "started-without-function-names", (long long)GetCurrentProcessId());
 #endif

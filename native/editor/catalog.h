@@ -83,6 +83,9 @@ struct Nav { std::string id, label, group, tone; std::vector<std::string> filter
 
 /* Where a copy of a page points (Catalog::AddCopy): the page's ids for its kinds and the copy's own for each. */
 struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage; };
+/* A copy's names (Catalog::AddCopy): its id and name, its rows' Local Stats entry (category, target), and its loadout
+ * section (nav; "" its page's). */
+struct CopyNames { std::string id, name, category, target, nav; };
 
 struct Catalog
 {
@@ -107,9 +110,9 @@ struct Catalog
     const Object* StratagemObject(uint64_t type) const;
     /* A new object with a copy of like's page pointed through remap (a mod's stratagem: its own settings row, entities,
      * projectile and damage): rows with nothing to point at are left out, and so are rows HellForge's catalogue reads
-     * another way (stats snapshot reads, choices, arm swaps). Its rows' Local Stats entry is (category, target, key). */
-    Object* AddCopy(const Object& like, const std::string& id, const std::string& name, const std::string& category,
-        const std::string& target, const Remap& remap, const std::string& nav = "",
+     * another way (stats snapshot reads, choices, arm swaps). Its rows' Local Stats entry is (names.category,
+     * names.target, key). */
+    Object* AddCopy(const Object& like, const CopyNames& names, const Remap& remap,
         const std::function<bool(const Row&, uint64_t ref)>& keep = nullptr);
     const std::vector<Row*>& Siblings(const Row* row) const;
     Row* Entry(const std::string& category, const std::string& target, const std::string& key) const;

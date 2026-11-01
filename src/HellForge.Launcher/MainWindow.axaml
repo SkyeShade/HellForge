@@ -74,6 +74,11 @@
                 <SelectableTextBlock x:Name="FailureText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock x:Name="HintText" Classes="muted" TextWrapping="Wrap" />
                 <ProgressBar x:Name="BootProgress" Classes="detail" Minimum="0" Maximum="1000" IsVisible="False" Margin="0,6,0,0" />
+                <!-- After a session that ended in a crash (CrashReport): one zip for a GitHub issue, saved to the Desktop -->
+                <StackPanel x:Name="CrashReportPanel" Orientation="Horizontal" Spacing="10" Margin="0,8,0,0" IsVisible="False">
+                  <Button x:Name="CrashReportButton" Classes="ghost" Content="Save crash report" />
+                  <Button x:Name="CrashIssueButton" Classes="ghost" Content="Open a GitHub issue" IsVisible="False" />
+                </StackPanel>
               </StackPanel>
             </Grid>
           </Border>
@@ -210,6 +215,37 @@
               </StackPanel>
             </Border>
           </UniformGrid>
+          <Border x:Name="SyncCard" Classes="card" Margin="0,0,0,16">
+            <StackPanel Spacing="10">
+              <TextBlock Text="ACCOUNT SYNC" Classes="h2" Margin="0" />
+              <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                         Text="Brings your own HELLDIVERS 2 account into this profile. Warbonds, Superstore items and DLC gear you bought always follow your latest sync; everything else is imported only as you choose, and the profile is backed up first. Super Credits are never imported or usable. Sync opens the normal game through Steam; log in and pass the title screen. Each sync asks for administrator access: until the normal game exits, the game's server name points at this PC and a temporary certificate is trusted. Both are removed when it exits." />
+              <TextBlock x:Name="SyncWarning" Foreground="#FFA235" FontSize="12" TextWrapping="Wrap"
+                         Text="Experimental. During a sync the normal game shows &quot;Could not connect to Easy Anti Cheat network&quot; after the login and closes itself. The sync is finished by then, so this does not stop it; close the game if it stays open. We are looking into the cause." />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button x:Name="SyncButton" Classes="primary" Content="Sync Inventory" />
+                <TextBlock x:Name="SyncStatusText" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" />
+              </StackPanel>
+              <TextBlock x:Name="SyncDetailText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+              <Border x:Name="ImportPanel" IsVisible="False" BorderBrush="#3A3E46" BorderThickness="1" CornerRadius="4" Padding="12">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="IMPORT FROM THE LAST SYNC" FontSize="12" FontWeight="SemiBold" />
+                  <TextBlock x:Name="ImportPremiumText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <StackPanel x:Name="ImportRows" Spacing="6" />
+                  <CheckBox x:Name="ImportAutoBox" Content="Apply future syncs automatically with these choices" />
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="ImportApplyButton" Classes="primary" Content="Apply import" />
+                    <Button x:Name="ImportCancelButton" Classes="ghost" Content="Not now" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button x:Name="ReviewImportButton" Classes="ghost" Content="Review import" IsVisible="False" />
+                <ComboBox x:Name="BackupCombo" MinWidth="300" PlaceholderText="Profile backups" IsVisible="False" />
+                <Button x:Name="RestoreBackupButton" Classes="ghost" Content="Restore backup" IsVisible="False" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
           <Border Classes="card" Margin="0,0,0,16">
             <StackPanel Spacing="10">
               <TextBlock Text="GAME SETTINGS" Classes="h2" Margin="0" />

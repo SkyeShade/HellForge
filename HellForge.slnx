@@ -2,6 +2,7 @@
   <Project Path="src/HellForge.Core/HellForge.Core.csproj" />
   <Project Path="src/HellForge.Cli/HellForge.Cli.csproj" />
   <Project Path="src/HellForge.SteamProbe/HellForge.SteamProbe.csproj" />
+  <Project Path="src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj" />
   <Project Path="src/HellForge.Launcher/HellForge.Launcher.csproj" />
   <Project Path="src/HellForge.Setup/HellForge.Setup.csproj" />
   <Project Path="src/HellForge.Session/HellForge.Session.csproj" />
