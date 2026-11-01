@@ -44,18 +44,21 @@ public sealed class GameDataReader : IDisposable
 
     readonly Bundle[] bundles;
     readonly Dictionary<string, Item> items = new(StringComparer.Ordinal);
-    readonly Dictionary<string, FileStream> files = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, Stream> files = new(StringComparer.OrdinalIgnoreCase);
+    readonly IDataFiles source;
     // The last chunks decompressed: the resources of one archive are read one after the other from the same chunks.
     readonly Dictionary<(int, int), byte[]> chunkCache = [];
     readonly Queue<(int, int)> chunkOrder = new();
 
-    public string Folder { get; }
+    public string Folder => source.Name;
 
-    public GameDataReader(string folder)
+    public GameDataReader(string folder) : this(new FolderFiles(folder)) { }
+
+    public GameDataReader(IDataFiles source)
     {
-        Folder = Path.GetFullPath(folder);
-        var nxa = Path.Combine(Folder, IndexFile);
-        if (!File.Exists(nxa)) throw new InvalidDataException($"{nxa} is missing: not the game's data folder.");
+        this.source = source;
+        var nxa = IndexFile;
+        if (!source.Exists(nxa)) throw new InvalidDataException($"{Path.Combine(source.Name, nxa)} is missing: not the game's data folder.");
         using var index = new MemoryStream();
         foreach (var chunk in Dsar(nxa)) index.Write(Decompress(ReadRaw(nxa, chunk), chunk));
         var d = index.ToArray();
@@ -65,7 +68,7 @@ public sealed class GameDataReader : IDisposable
         bundles = new Bundle[nxaCount];
         for (var i = 0; i < nxaCount; i++)
         {
-            var file = Path.Combine(Folder, CString(d, BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(24 + 24 * itemCount + 4 * i))));
+            var file = CString(d, BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(24 + 24 * itemCount + 4 * i)));
             var chunks = Dsar(file);
             var byOffset = new Dictionary<ulong, int>();
             for (var c = 0; c < chunks.Length; c++) byOffset.TryAdd(chunks[c].UncompressedOffset, c);
@@ -257,7 +260,7 @@ public sealed class GameDataReader : IDisposable
     {
         if (c.CompressedSize > MaxRead || c.UncompressedSize > MaxRead) throw new InvalidDataException("A bundle chunk is too large.");
         if (!files.TryGetValue(file, out var stream))
-            files[file] = stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            files[file] = stream = source.Open(file);
         var raw = new byte[c.CompressedSize];
         stream.Position = (long)c.CompressedOffset;
         stream.ReadExactly(raw);
@@ -271,9 +274,9 @@ public sealed class GameDataReader : IDisposable
         _ => throw new InvalidDataException($"Unsupported bundle compression {c.Compression}.")
     };
 
-    static Chunk[] Dsar(string file)
+    Chunk[] Dsar(string file)
     {
-        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = source.Open(file);
         var header = new byte[32];
         stream.ReadExactly(header);
         if (Encoding.ASCII.GetString(header, 0, 4) != "DSAR") throw new InvalidDataException($"{Path.GetFileName(file)} is not a DSAR bundle.");

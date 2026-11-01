@@ -42,9 +42,11 @@ public static class Parts
 }
 
 // A data folder as Steam ships it (bundles.nxa), read through GameDataReader.
-public sealed class GameResources(string folder, string build) : IGameResources, IDisposable
+public sealed class GameResources(IDataFiles files, string build) : IGameResources, IDisposable
 {
-    readonly GameDataReader reader = new(folder);
+    readonly GameDataReader reader = new(files);
+
+    public GameResources(string folder, string build) : this(new FolderFiles(folder), build) { }
     Dictionary<ResourceKey, GameDataReader.Location>? locations;
 
     public string Build => build;
@@ -277,8 +279,10 @@ public sealed class SourceIndex
 // A data folder in the layout older builds shipped (before bundles.nxa): one Stingray archive per file, named by its
 // 16-hex-digit hash, with <name>.gpu_resources and <name>.stream beside it. Each resource key is taken from the first
 // archive in name order that has it, as GameDataReader does.
-public sealed class LooseGameResources(string folder, string build) : IGameResources
+public sealed class LooseGameResources(IDataFiles files, string build) : IGameResources
 {
+    public LooseGameResources(string folder, string build) : this(new FolderFiles(folder), build) { }
+
     const uint Magic = 0xF0000011;
     Dictionary<ResourceKey, (string Archive, long[] Offsets, int[] Sizes)>? entries;
 
@@ -288,9 +292,9 @@ public sealed class LooseGameResources(string folder, string build) : IGameResou
     {
         if (entries is not null) return entries;
         entries = [];
-        foreach (var file in Directory.EnumerateFiles(folder).Where(f => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(f), "^[0-9a-f]{16}$")).Order(StringComparer.Ordinal))
+        foreach (var file in files.List().Where(f => System.Text.RegularExpressions.Regex.IsMatch(f, "^[0-9a-f]{16}$")).Order(StringComparer.Ordinal))
         {
-            using var s = File.OpenRead(file);
+            using var s = files.Open(file);
             var head = new byte[72];
             if (s.Read(head) < 72 || BitConverter.ToUInt32(head, 0) != Magic) continue;
             var types = BitConverter.ToInt32(head, 4);
@@ -310,10 +314,10 @@ public sealed class LooseGameResources(string folder, string build) : IGameResou
         return entries;
     }
 
-    static byte[] Slice(string file, long offset, int size)
+    byte[] Slice(string file, long offset, int size)
     {
-        if (size <= 0 || !File.Exists(file)) return [];
-        using var s = File.OpenRead(file);
+        if (size <= 0 || !files.Exists(file)) return [];
+        using var s = files.Open(file);
         var bytes = new byte[size];
         s.Position = offset;
         s.ReadExactly(bytes);
@@ -328,7 +332,7 @@ public sealed class LooseGameResources(string folder, string build) : IGameResou
     public IEnumerable<(ResourceKey Key, ResourceParts Parts, string Archive)> All()
     {
         foreach (var (key, e) in Entries())
-            yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)), Path.GetFileName(e.Archive));
+            yield return (key, new ResourceParts(Part(e, PartKind.Main), Part(e, PartKind.Gpu), Part(e, PartKind.Stream)), e.Archive);
     }
 
     public byte[]? Read(ResourceKey key, PartKind part) => Entries().TryGetValue(key, out var e) ? Part(e, part) : null;

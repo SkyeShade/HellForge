@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Proof of concept: turns a mod into a recipe that rebuilds it from the player's own game files. -->
+  <!-- The asset migrator: turns a mod into a recipe that rebuilds it from the player's own game files. A maintainer and
+       site tool; it reads past builds from Steam's depots (SteamKit2), and the launcher never ships it. -->
   <PropertyGroup><OutputType>Exe</OutputType><ServerGarbageCollection>true</ServerGarbageCollection></PropertyGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SteamKit2" Version="3.5.0" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+  </ItemGroup>
 </Project>

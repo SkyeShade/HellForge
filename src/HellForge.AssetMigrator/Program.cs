@@ -14,6 +14,7 @@ using HellForge.Core.GameData;
 //   compare <folder> <folder>
 //   kitbash-fixture --game <build>=<data folder> --out <mod folder>   (a test kitbash made from real game resources)
 var args_ = args.ToList();
+SteamDepots? steam = null;
 if (args_.Count == 0) return Usage();
 try
 {
@@ -25,13 +26,24 @@ try
         "compare" => Compare(args_[1], args_[2]),
         "kitbash-fixture" => KitbashFixture(),
         "catalog-import" => CatalogImport(),
+        "login" => Login(),
+        "depot-files" => DepotFilesCommand(),
         _ => Usage(),
     };
 }
-catch (Exception e) when (e is InvalidDataException or IOException or ArgumentException)
+catch (Exception e) when (e is InvalidDataException or IOException or ArgumentException or InvalidOperationException or TimeoutException)
 {
     Console.Error.WriteLine($"error: {e.Message}");
     return 1;
+}
+finally
+{
+    if (steam is not null)
+    {
+        Console.Error.WriteLine($"Steam: {steam.ChunksDownloaded:N0} chunks downloaded ({steam.BytesDownloaded / 1e6:F0} MB), {steam.ChunksFromDisk:N0} from the cache.");
+        steam.TrimCache();
+        steam.Dispose();
+    }
 }
 
 // A kitbash as an author would make one from the game: weapon model A's mesh data with a stretch of weapon model B's
@@ -99,15 +111,54 @@ List<string> All(string flag)
 string One(string flag) => All(flag).SingleOrDefault() ?? throw new ArgumentException($"{flag} is required.");
 
 // A data folder with bundles.nxa is read as Steam ships it today; one without, as the loose archives of older builds.
+// "steam:<depot>:<manifest>[:<branch>]" reads that manifest of a depot from Steam, fetching only what is read.
 List<IGameResources> Games() => All("--game").Select(g =>
 {
     var split = g.IndexOf('=');
-    if (split <= 0) throw new ArgumentException("--game takes <build>=<data folder>.");
-    var folder = g[(split + 1)..];
-    return File.Exists(Path.Combine(folder, GameDataReader.IndexFile))
-        ? (IGameResources)new GameResources(folder, g[..split])
-        : new LooseGameResources(folder, g[..split]);
+    if (split <= 0) throw new ArgumentException("--game takes <build>=<data folder> or <build>=steam:<depot>:<manifest>.");
+    return Game(g[..split], g[(split + 1)..]);
 }).ToList();
+
+IGameResources Game(string label, string where)
+{
+    IDataFiles files = where.StartsWith("steam:", StringComparison.Ordinal) ? Depot(where) : new FolderFiles(where);
+    return files.Exists(GameDataReader.IndexFile) ? new GameResources(files, label) : new LooseGameResources(files, label);
+}
+
+SteamDepots Steam() => steam ??= SteamDepots.Connect().GetAwaiter().GetResult();
+
+DepotFiles Depot(string where)
+{
+    var parts = where.Split(':');
+    if (parts.Length < 3) throw new ArgumentException("steam:<depot>:<manifest>[:<branch>]");
+    var manifest = Steam().Manifest(uint.Parse(parts[1]), ulong.Parse(parts[2]), parts.Length > 3 ? parts[3] : "public").GetAwaiter().GetResult();
+    return new DepotFiles(Steam(), manifest);
+}
+
+// login --qr | --password: logs in to Steam once (QR code in the Steam app, or account name, password and Steam Guard
+// code); the token is saved for the other commands. Run it in a terminal of your own: it asks questions.
+int Login()
+{
+    var method = args_.Contains("--qr") ? SteamDepots.LoginMethod.Qr
+        : args_.Contains("--password") ? SteamDepots.LoginMethod.Password
+        : throw new ArgumentException("login takes --qr (scan a code in the Steam mobile app) or --password (account name, password and Steam Guard code).");
+    using var s = SteamDepots.Connect(method).GetAwaiter().GetResult();
+    Console.WriteLine("Logged in to Steam; the login is saved for the migrator's other commands.");
+    return 0;
+}
+
+// depot-files steam:<depot>:<manifest>: the manifest's data files, their sizes and the data layout.
+int DepotFilesCommand()
+{
+    var files = Depot(args_[1]);
+    var list = files.List().Select(n => (n, (long)files.File(n).TotalSize)).OrderByDescending(x => x.Item2).ToList();
+    Console.WriteLine($"{files.Name}: {files.Manifest.Files?.Count ?? 0} files in the depot, {list.Count} in data/ ({list.Sum(x => x.Item2) / 1e9:F1} GB); " +
+        $"layout {(files.Exists(GameDataReader.IndexFile) ? "nxa" : "loose")}; created {files.Manifest.CreationTime:yyyy-MM-dd}");
+    foreach (var (n, size) in list.Take(8)) Console.WriteLine($"  {size / 1e6,10:F1} MB  {n}");
+    var other = (files.Manifest.Files ?? []).Where(f => !f.FileName.Replace('\\', '/').StartsWith("data/", StringComparison.OrdinalIgnoreCase)).Select(f => f.FileName).Take(8);
+    Console.WriteLine($"  outside data/: {string.Join(", ", other)}");
+    return 0;
+}
 
 int Index()
 {
