@@ -30,29 +30,32 @@ static const uint8_t kTerrainRampStub[44] = {
 static const struct { uint32_t site; uint8_t pin[13]; } kTerrainStores[2] = {
     {0xF655A4u, {0xE8, 0xB7, 0xF4, 0xFF, 0xFF, 0xF3, 0x0F, 0x11, 0x83, 0x88, 0x00, 0x00, 0x00}},
     {0xF656F4u, {0xE8, 0x67, 0xF3, 0xFF, 0xFF, 0xF3, 0x0F, 0x11, 0x83, 0x88, 0x00, 0x00, 0x00}}};
-/* At the store a call has just returned, so the volatile registers are free but xmm0 (the height); r13 is the pass
- * context ([r13+8] = lg+0x2D20, [r13+0x18] = lg), rbx the area (position +0x80, height +0x88), rsp 16-aligned. */
-static const uint8_t kTerrainStoreStub[88] = {
-    0x49, 0x8B, 0x45, 0x08,                                           /*  0 mov rax, [r13+8] (lg+0x2D20) */
-    0x81, 0x78, 0x5C, 0, 0, 0, 0,                                     /*  4 cmp dword [rax+0x5c], the larger disk (at 7) */
-    0x75, 0x37,                                                       /* 11 jne 68 */
-    0x0F, 0x2F, 0x05, 0, 0, 0, 0,                                     /* 13 comiss xmm0, [rip+0.0] (rel32 at 16) */
-    0x73, 0x2E,                                                       /* 20 jae 68 */
-    0x48, 0x83, 0xEC, 0x30,                                           /* 22 sub rsp, 0x30 */
-    0xF3, 0x0F, 0x11, 0x44, 0x24, 0x20,                               /* 26 movss [rsp+0x20], xmm0 */
-    0x49, 0x8B, 0x4D, 0x18,                                           /* 32 mov rcx, [r13+0x18] (lg) */
-    0x48, 0x8B, 0xD3,                                                 /* 36 mov rdx, rbx (the area) */
-    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /* 39 mov rax, TerrainNearObjective (imm64 at 41) */
-    0xFF, 0xD0,                                                       /* 49 call rax */
-    0xF3, 0x0F, 0x10, 0x44, 0x24, 0x20,                               /* 51 movss xmm0, [rsp+0x20] */
-    0x48, 0x83, 0xC4, 0x30,                                           /* 57 add rsp, 0x30 */
-    0x85, 0xC0,                                                       /* 61 test eax, eax */
-    0x74, 0x03,                                                       /* 63 je 68 */
-    0x0F, 0x57, 0xC0,                                                 /* 65 xorps xmm0, xmm0 (raised to 0) */
-    0xF3, 0x0F, 0x11, 0x83, 0x88, 0x00, 0x00, 0x00,                   /* 68 movss [rbx+0x88], xmm0 */
-    0xE9, 0, 0, 0, 0,                                                 /* 76 jmp back (rel32 at 77) */
-    0, 0, 0,                                                          /* 81 */
-    0, 0, 0, 0};                                                      /* 84 0.0 */
+/* At the store a call has just returned, so the volatile registers are free but xmm0 (the height); rbx is the area
+ * (position +0x80, height +0x88), rsp 16-aligned. r13 is not the pass context here (0xF654E2 reuses it until 0xF65731):
+ * the context is the frame's [rbp-0x40] (0xF64E91), [ctx+8] = lg+0x2D20, [ctx+0x18] = lg. */
+static const uint8_t kTerrainStoreStub[96] = {
+    0x48, 0x8B, 0x45, 0xC0,                                           /*  0 mov rax, [rbp-0x40] (the context) */
+    0x48, 0x8B, 0x40, 0x08,                                           /*  4 mov rax, [rax+8] (lg+0x2D20) */
+    0x81, 0x78, 0x5C, 0, 0, 0, 0,                                     /*  8 cmp dword [rax+0x5c], the larger disk (at 11) */
+    0x75, 0x3B,                                                       /* 15 jne 76 */
+    0x0F, 0x2F, 0x05, 0, 0, 0, 0,                                     /* 17 comiss xmm0, [rip+0.0] (rel32 at 20) */
+    0x73, 0x32,                                                       /* 24 jae 76 */
+    0x48, 0x83, 0xEC, 0x30,                                           /* 26 sub rsp, 0x30 */
+    0xF3, 0x0F, 0x11, 0x44, 0x24, 0x20,                               /* 30 movss [rsp+0x20], xmm0 */
+    0x48, 0x8B, 0x4D, 0xC0,                                           /* 36 mov rcx, [rbp-0x40] (the context) */
+    0x48, 0x8B, 0x49, 0x18,                                           /* 40 mov rcx, [rcx+0x18] (lg) */
+    0x48, 0x8B, 0xD3,                                                 /* 44 mov rdx, rbx (the area) */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /* 47 mov rax, TerrainNearObjective (imm64 at 49) */
+    0xFF, 0xD0,                                                       /* 57 call rax */
+    0xF3, 0x0F, 0x10, 0x44, 0x24, 0x20,                               /* 59 movss xmm0, [rsp+0x20] */
+    0x48, 0x83, 0xC4, 0x30,                                           /* 65 add rsp, 0x30 */
+    0x85, 0xC0,                                                       /* 69 test eax, eax */
+    0x74, 0x03,                                                       /* 71 je 76 */
+    0x0F, 0x57, 0xC0,                                                 /* 73 xorps xmm0, xmm0 (raised to 0) */
+    0xF3, 0x0F, 0x11, 0x83, 0x88, 0x00, 0x00, 0x00,                   /* 76 movss [rbx+0x88], xmm0 */
+    0xE9, 0, 0, 0, 0,                                                 /* 84 jmp back (rel32 at 85) */
+    0, 0, 0,                                                          /* 89 */
+    0, 0, 0, 0};                                                      /* 92 0.0 */
 #define DIF_OBJECTIVE_LOCATIONS 0x8996B0u /* G+: the important locations, 0x108 each */
 #define DIF_OBJECTIVE_COUNT 0x11A715Cu    /* G+: their count, at most 256 */
 #define DIF_OBJECTIVE_MARGIN 16.0f        /* m past the stamp's radius */
@@ -188,10 +191,10 @@ static const char* InstallTerrain(DifficultyInstall* d)
     {
         uint8_t* p = storeStubs[i] = code + 0x40 + 0x60 * i;
         memcpy(p, kTerrainStoreStub, sizeof kTerrainStoreStub);
-        memcpy(p + 7, &diskBits, 4);
-        TerrainRel32(p + 16, (uintptr_t)(p + 84));
-        memcpy(p + 41, &check, 8);
-        TerrainRel32(p + 77, game + kTerrainStores[i].site + 13);
+        memcpy(p + 11, &diskBits, 4);
+        TerrainRel32(p + 20, (uintptr_t)(p + 92));
+        memcpy(p + 49, &check, 8);
+        TerrainRel32(p + 85, game + kTerrainStores[i].site + 13);
     }
     DWORD protect;
     if (!VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the terrain heights' stubs could not be made executable";
