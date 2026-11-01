@@ -43,10 +43,10 @@ On `dev`, since 0.3.0-beta.
 ### Fixed
 
 - A game that crashed while starting showed "The game could not be connected to the local backend.", as if HellForge's
-  backend were the problem (#203). It now says the game closed while starting, with its exit code and, when Windows
-  recorded the crash, the file the game crashed in. When that file belongs to another program that puts itself into
-  games (an overlay, a recorder, RGB or security software), the message names it as the one to close. The crash report
-  carries Windows' record too, also for crashes later in a session.
+  backend were the problem (#203, #212). It now says the game closed while starting, with its exit code and, when
+  Windows recorded the crash, the file the game crashed in. When that file belongs to another program that puts itself
+  into games (an overlay, a recorder, RGB or security software), the message names it as the one to close. The crash
+  report carries Windows' record too, also for crashes later in a session.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -107,7 +107,7 @@ On `dev`, since 0.3.0-beta.
   and why a published list was not taken.
 - A session's `result.json` has `prepare` and `connect`, how the two launch edits ended (`outcome`, the wait, and when
   `game.dll` appeared), and `windowsCrash`: Windows' record of a game crash (`module`, `offset`, `code`, `modulePath`,
-  `owner`), or `none` (#203).
+  `owner`), or `none` (#203, #212).
 
 ## 0.3.0-beta (2026-10-26)
 
