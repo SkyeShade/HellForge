@@ -311,6 +311,13 @@ sealed class DepotFiles : IDataFiles
     string? IDataFiles.Hash(string name) => Hash(name);
     public string? Hash(string name) => files.TryGetValue(name, out var f) && f.FileHash is { } h ? Convert.ToHexString(h).ToLowerInvariant() : null;
 
+    // Downloads the first chunk of each of these files (where their tables are) into the disk cache, many at a time.
+    public void PrefetchFirstChunks(IEnumerable<string> names, int parallel = 32)
+    {
+        var firsts = names.Where(files.ContainsKey).Select(n => files[n].Chunks.OrderBy(c => c.Offset).FirstOrDefault()).OfType<DepotManifest.ChunkData>().ToList();
+        Parallel.ForEachAsync(firsts, new ParallelOptions { MaxDegreeOfParallelism = parallel }, async (c, _) => await steam.Chunk(depot, c)).GetAwaiter().GetResult();
+    }
+
     internal byte[] Chunk(DepotManifest.ChunkData chunk, IEnumerable<DepotManifest.ChunkData> next)
     {
         var id = Convert.ToHexString(chunk.ChunkID!);
@@ -340,6 +347,7 @@ sealed class DepotStream : Stream
     readonly DepotManifest.ChunkData[] chunks;
     readonly long length;
     long position;
+    int lastChunk = -1;
 
     public DepotStream(DepotFiles owner, DepotManifest.FileData file)
     {
@@ -364,7 +372,9 @@ sealed class DepotStream : Stream
             var i = Find(position);
             if (i < 0) break;
             var c = chunks[i];
-            var data = owner.Chunk(c, chunks.Skip(i + 1).Take(12));
+            // Read ahead only once the file is being read in order: a table read needs just its first chunk.
+            var data = owner.Chunk(c, i == lastChunk + 1 && lastChunk >= 0 ? chunks.Skip(i + 1).Take(12) : []);
+            lastChunk = i;
             var within = (int)(position - (long)c.Offset);
             var n = Math.Min(buffer.Length, data.Length - within);
             if (n <= 0) break;

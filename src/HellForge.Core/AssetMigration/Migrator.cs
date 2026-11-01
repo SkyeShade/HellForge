@@ -61,6 +61,9 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
             var inRecipe = fromGame > 0;
             report.Files.Add(new(path, bytes.Length, fromGame, bytes.Length - fromGame - fill, fill, inRecipe));
             log?.Invoke($"{path}: {bytes.Length:N0} bytes, {fromGame:N0} from the game ({candidates} game parts compared)");
+            // Every archive's resources are reported, with game content in it or not: one with none may still hold
+            // resources the game has by name (cut content from a build the index does not hold).
+            Attribute(report, layout.Where(l => l.File == path), ops);
             if (!inRecipe) continue;
             var file = new RecipeFile { Path = path, Size = bytes.Length, Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() };
             long at = 0;
@@ -89,7 +92,6 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 at += op.Length;
             }
             recipe.Files.Add(file);
-            Attribute(report, layout.Where(l => l.File == path), ops);
         }
         return (recipe, literals.ToArray(), report);
     }

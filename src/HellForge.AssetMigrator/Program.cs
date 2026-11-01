@@ -15,6 +15,7 @@ using HellForge.Core.GameData;
 //   kitbash-fixture --game <build>=<data folder> --out <mod folder>   (a test kitbash made from real game resources)
 var args_ = args.ToList();
 SteamDepots? steam = null;
+DepotFiles? lastDepot = null;
 if (args_.Count == 0) return Usage();
 try
 {
@@ -30,6 +31,8 @@ try
         "depot-files" => DepotFilesCommand(),
         "manifests" => ManifestsCommand(),
         "backfill" => Backfill(),
+        "names" => Names(),
+        "resolve" => Resolve(),
         _ => Usage(),
     };
 }
@@ -121,6 +124,22 @@ List<IGameResources> Games() => All("--game").Select(g =>
     return Game(g[..split], g[(split + 1)..]);
 }).ToList();
 
+// A build read only when it is first needed: the index's builds read from Steam ("<depot>:<manifest>") are given to the
+// migrator this way, so only the ones a mod needs are opened.
+IGameResources Lazy(string label, Func<IGameResources> open) => new LazyGame(label, open);
+
+// The index's Steam builds ("<depot>:<manifest>"), lazily, with the branch from the depot history.
+IEnumerable<IGameResources> SteamBuilds(SourceIndex index, IEnumerable<string> have)
+{
+    var catalog = All("--catalog").Count > 0 ? BuildCatalog.LoadWithHistory(One("--catalog")) : null;
+    foreach (var label in index.Builds.Where(b => b.Contains(':') && !have.Contains(b)))
+    {
+        var parts = label.Split(':');
+        var branch = catalog?.History?.FirstOrDefault(h => h.Manifest.ToString() == parts[1])?.Branch ?? "public";
+        yield return Lazy(label, () => Game(label, $"steam:{parts[0]}:{parts[1]}:{branch}"));
+    }
+}
+
 IGameResources Game(string label, string where)
 {
     IDataFiles files = where.StartsWith("steam:", StringComparison.Ordinal) ? Depot(where) : new FolderFiles(where);
@@ -136,7 +155,7 @@ DepotFiles Depot(string where)
     var parts = where.Split(':');
     if (parts.Length < 3) throw new ArgumentException("steam:<depot>:<manifest>[:<branch>]");
     var manifest = Steam().Manifest(uint.Parse(parts[1]), ulong.Parse(parts[2]), parts.Length > 3 ? parts[3] : "public").GetAwaiter().GetResult();
-    return new DepotFiles(Steam(), manifest);
+    return lastDepot = new DepotFiles(Steam(), manifest);
 }
 
 // login --qr | --password: logs in to Steam once (QR code in the Steam app, or account name, password and Steam Guard
@@ -149,6 +168,88 @@ int Login()
     using var s = SteamDepots.Connect(method).GetAwaiter().GetResult();
     Console.WriteLine("Logged in to Steam; the login is saved for the migrator's other commands.");
     return 0;
+}
+
+// names --map <file> --depot <id> --history <file>: the name map of every manifest in the depot's history, oldest first,
+// from the archives' tables only (unchanged archives are not read again); saved after every build, so it resumes.
+int Names()
+{
+    var path = One("--map");
+    var depot = uint.Parse(One("--depot"));
+    var history = DepotHistory.Load(One("--history")).OrderBy(h => h.Time).ToList();
+    var unavailable = Path.ChangeExtension(One("--history"), ".unavailable");
+    var skip = File.Exists(unavailable) ? File.ReadLines(unavailable).Select(l => l.Split('#')[0].Trim()).Where(l => l.Length > 0).ToHashSet() : [];
+    var map = File.Exists(path) ? NameMap.Load(path) : new NameMap();
+    var total = Stopwatch.StartNew();
+    foreach (var h in history)
+    {
+        var label = $"{depot}:{h.Manifest}";
+        if (map.Builds.Contains(label) || skip.Contains(h.Manifest.ToString())) continue;
+        var clock = Stopwatch.StartNew();
+        var downloaded = Steam().BytesDownloaded;
+        var (read, reused) = (map.TablesRead, map.TablesReused);
+        var game = Game(label, $"steam:{depot}:{h.Manifest}:{h.Branch ?? "public"}");
+        // The tables of archives the map does not know yet are fetched in parallel first; reading them is then local.
+        if (lastDepot is { } files)
+        {
+            var fresh = files.List().Where(n => n.Length == 16 && !n.Contains('.') && (game.ArchiveHash(n) is not { } hash || !map.Knows(hash))).ToList();
+            files.PrefetchFirstChunks(fresh);
+        }
+        map.Add(game, n => Console.Write($"\r{h.Time:yyyy-MM-dd} {label}: {n:N0} archives   "));
+        (game as IDisposable)?.Dispose();
+        map.Save(path);
+        Console.WriteLine($"\r{h.Time:yyyy-MM-dd} {label}{(h.Branch is null ? "" : " " + h.Branch)}: {map.TablesRead - read:N0} tables read, {map.TablesReused - reused:N0} unchanged, " +
+            $"{(Steam().BytesDownloaded - downloaded) / 1e6:F0} MB downloaded, {clock.Elapsed.TotalSeconds:F0} s");
+    }
+    Console.WriteLine($"Name map: {map.Builds.Count} builds, {map.ArchiveCount:N0} distinct archive tables; {Steam().BytesDownloaded / 1e9:F2} GB downloaded in {total.Elapsed.TotalMinutes:F1} min.");
+    return 0;
+}
+
+// resolve --index <file> --map <name map> --catalog <game-builds.json> --game <build>=<folder> [...] --mod <folder> --out <folder>
+// Migrates the mod; the leftover resources whose names the game has (in some build, by the name map) get their archives
+// fingerprinted from Steam (only those archives, in the newest build that has them, sharing builds where it can), into
+// the index as partial builds; then the mod is migrated again with them.
+int Resolve()
+{
+    var indexPath = One("--index");
+    var index = SourceIndex.Load(indexPath);
+    var names = NameMap.Load(One("--map"));
+    var catalog = BuildCatalog.LoadWithHistory(One("--catalog"));
+    var modFolder = Path.GetFullPath(One("--mod"));
+    var files = Directory.EnumerateFiles(modFolder, "*", SearchOption.AllDirectories)
+        .Select(f => (Path.GetRelativePath(modFolder, f).Replace('\\', '/'), File.ReadAllBytes(f)))
+        .OrderBy(f => f.Item1, StringComparer.Ordinal).ToList();
+    var games = Games();
+    games.AddRange(SteamBuilds(index, games.Select(g => g.Build).ToList()));
+    var (_, _, report) = new Migrator(index, games).Migrate(files);
+    var wanted = report.Resources.Where(r => !r.InIndex && r.Literal > 0 && names.Has(r.Key)).Select(r => r.Key).Distinct().ToList();
+    Console.WriteLine($"{wanted.Count} leftover resources are the game's by name.");
+    DateTime When(string build) => catalog.History?.FirstOrDefault(h => $"{catalog.DataDepot}:{h.Manifest}" == build)?.Time ?? DateTime.MinValue;
+    var plan = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+    foreach (var key in wanted)
+    {
+        var found = names.Find(key).ToList();
+        var pick = found.FirstOrDefault(f => plan.ContainsKey(f.Build));
+        if (pick.Build is null) pick = found.OrderByDescending(f => When(f.Build)).First();
+        if (!plan.TryGetValue(pick.Build, out var set)) plan[pick.Build] = set = new(StringComparer.Ordinal);
+        set.Add(pick.Archive);
+    }
+    foreach (var (build, archives) in plan)
+    {
+        var parts = build.Split(':');
+        var branch = catalog.History?.FirstOrDefault(h => h.Manifest.ToString() == parts[1])?.Branch ?? "public";
+        var clock = Stopwatch.StartNew();
+        var downloaded = Steam().BytesDownloaded;
+        var game = Game(build, $"steam:{parts[0]}:{parts[1]}:{branch}");
+        index.Add(game, (n, bytes) => Console.Write($"\r  {When(build):yyyy-MM-dd} {build}: {archives.Count} archives, {n:N0} resources, {bytes / 1e9:F2} GB read   "), archives);
+        Console.WriteLine($"\r  {When(build):yyyy-MM-dd} {build}: fingerprinted {archives.Count} archives in {clock.Elapsed.TotalSeconds:F0} s, {(Steam().BytesDownloaded - downloaded) / 1e9:F2} GB downloaded");
+    }
+    if (plan.Count > 0)
+    {
+        index.Save(indexPath + ".tmp");
+        File.Move(indexPath + ".tmp", indexPath, true);
+    }
+    return Migrate();
 }
 
 // backfill --index <file> --depot <id> --history <file> [--limit <n>]: indexes the depot's manifests from Steam, oldest
@@ -199,7 +300,8 @@ int ManifestsCommand()
     var depot = uint.Parse(One("--depot"));
     var history = DepotHistory.Load(One("--history"));
     int ok = 0, refused = 0;
-    long total = 0, unique = 0, chunkBytes = 0, chunkCompressed = 0;
+    long total = 0, unique = 0, chunkBytes = 0, chunkCompressed = 0, tableChunks = 0, tableBytes = 0;
+    var tableSeen = new HashSet<string>(StringComparer.Ordinal);
     var seen = new HashSet<string>(StringComparer.Ordinal);
     var chunkSeen = new HashSet<string>(StringComparer.Ordinal);
     foreach (var h in history)
@@ -213,6 +315,9 @@ int ManifestsCommand()
             foreach (var n in files.List())
             {
                 if (seen.Add(files.Hash(n) ?? n + h.Manifest)) added += (long)files.File(n).TotalSize;
+                // What the name map reads: the chunk at the start of each distinct archive (and of bundles.nxa's files).
+                var first = files.File(n).Chunks.OrderBy(c => c.Offset).FirstOrDefault();
+                if (first is not null && (n.Length == 16 || n.EndsWith(".nxa")) && tableSeen.Add(Convert.ToHexString(first.ChunkID!))) { tableChunks++; tableBytes += first.CompressedLength; }
                 foreach (var c in files.File(n).Chunks)
                     if (chunkSeen.Add(Convert.ToHexString(c.ChunkID!))) { chunkBytes += c.UncompressedLength; chunkCompressed += c.CompressedLength; }
             }
@@ -229,7 +334,8 @@ int ManifestsCommand()
         }
     }
     Console.WriteLine($"{ok} manifests served, {refused} refused; {total / 1e12:F2} TB of data across the served ones, {unique / 1e12:F2} TB in distinct files, " +
-        $"{chunkBytes / 1e12:F2} TB in distinct Steam chunks ({chunkCompressed / 1e12:F2} TB to download).");
+        $"{chunkBytes / 1e12:F2} TB in distinct Steam chunks ({chunkCompressed / 1e12:F2} TB to download). " +
+        $"The name map's first chunks: {tableChunks:N0} distinct, {tableBytes / 1e9:F1} GB to download (packed builds read more inside bundles.*.nxa).");
     return 0;
 }
 
@@ -269,6 +375,7 @@ int Migrate()
 {
     var index = SourceIndex.Load(One("--index"));
     var games = Games();
+    games.AddRange(SteamBuilds(index, games.Select(g => g.Build).ToList()));
     var modFolder = Path.GetFullPath(One("--mod"));
     var outFolder = Path.GetFullPath(One("--out"));
     var shipped = Path.Combine(outFolder, "mod");
@@ -292,7 +399,8 @@ int Migrate()
             if (!rebuilt[path].AsSpan().SequenceEqual(bytes)) throw new InvalidDataException($"{path} rebuilt differently.");
     }
     catch (InvalidDataException e) { rebuildError = e.Message; }
-    var decided = MigrationVerdict.Decide(report, index, BuildCatalog.LoadWithHistory(One("--catalog")), recipe.Files.Count, rebuildError);
+    var decided = MigrationVerdict.Decide(report, index, BuildCatalog.LoadWithHistory(One("--catalog")), recipe.Files.Count, rebuildError,
+        All("--map").Count > 0 ? NameMap.Load(One("--map")) : null);
     if (decided.Kind is VerdictKind.NotMigrated or VerdictKind.NeedsReview) recipe = new Recipe();
     var verdict = decided.Text;
     Console.WriteLine(verdict);
@@ -443,4 +551,15 @@ string Report(SourceIndex index, Recipe recipe, MigrationReport report, List<(st
     }
     if (report.SourceBytes.Count > 40) s.AppendLine($"| ... and {report.SourceBytes.Count - 40} more | | | |");
     return s.ToString();
+}
+
+sealed class LazyGame(string label, Func<IGameResources> open) : IGameResources
+{
+    IGameResources? game;
+    IGameResources Game => game ??= open();
+    public string Build => label;
+    public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive, Func<HellForge.Core.GameData.ResourceParts> Read)> All() => Game.All();
+    public string? ArchiveHash(string archive) => Game.ArchiveHash(archive);
+    public IEnumerable<(string Archive, Func<IReadOnlyList<HellForge.Core.GameData.ResourceKey>> Keys)> Tables() => Game.Tables();
+    public byte[]? Read(HellForge.Core.GameData.ResourceKey key, PartKind part) => Game.Read(key, part);
 }

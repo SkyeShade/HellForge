@@ -31,6 +31,9 @@ public interface IGameResources
     // A hash of the archive's files known without reading them (a depot manifest's SHA-1s), or null: an archive with
     // the same hash in an earlier build holds the same resources, so the index takes them without reading.
     string? ArchiveHash(string archive) => null;
+    // Each archive with its resource keys, read only when asked for (a loose build reads just that archive's table).
+    IEnumerable<(string Archive, Func<IReadOnlyList<ResourceKey>> Keys)> Tables() =>
+        All().GroupBy(r => r.Archive).Select(g => (g.Key, (Func<IReadOnlyList<ResourceKey>>)(() => g.Select(r => r.Key).ToList())));
     byte[]? Read(ResourceKey key, PartKind part);
 }
 
@@ -98,7 +101,7 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
 public sealed class SourceIndex
 {
     const string Magic = "HFSI";
-    const int Version = 4;
+    const int Version = 5;
     // An anchor found in more contents than this (shared headers, common tables) is kept only for the first ones.
     const int MaxPerChunk = 16;
 
@@ -119,8 +122,18 @@ public sealed class SourceIndex
 
     public int AnchorCount => hashes.Length;
 
-    public void Add(IGameResources game, Action<long, long>? progress = null)
+    // Builds only some of whose archives were indexed (the ones a held upload needed): not counted as covered.
+    public HashSet<string> PartialBuilds { get; } = new(StringComparer.Ordinal);
+
+    // Adds a build; with archives, only those archives (a partial build, for targeted indexing). A partial build added
+    // again takes the archives it did not have yet.
+    public void Add(IGameResources game, Action<long, long>? progress = null, IReadOnlySet<string>? archives = null)
     {
+        if (archives is not null || PartialBuilds.Contains(game.Build))
+        {
+            AddPartial(game, archives, progress);
+            return;
+        }
         if (Builds.Contains(game.Build)) throw new InvalidOperationException($"Build {game.Build} is already in the index.");
         Unseal();
         var build = Builds.Count;
@@ -182,6 +195,55 @@ public sealed class SourceIndex
         }
         Finish();
         progress?.Invoke(resources, bytes);
+        byKey = null;
+    }
+
+    readonly Dictionary<string, HashSet<string>> partialArchives = new(StringComparer.Ordinal);
+
+    void AddPartial(IGameResources game, IReadOnlySet<string>? archives, Action<long, long>? progress)
+    {
+        Unseal();
+        var build = Builds.IndexOf(game.Build);
+        if (build < 0)
+        {
+            build = Builds.Count;
+            Builds.Add(game.Build);
+            PartialBuilds.Add(game.Build);
+        }
+        if (!partialArchives.TryGetValue(game.Build, out var done)) partialArchives[game.Build] = done = new(StringComparer.Ordinal);
+        long resources = 0, bytes = 0;
+        foreach (var (key, archiveName, read) in game.All())
+        {
+            if (archives is not null && !archives.Contains(archiveName) || done.Contains(archiveName) && (archives is null || !archives.Contains(archiveName))) continue;
+            resources++;
+            if (!archiveIds.TryGetValue(archiveName, out var archive))
+            {
+                archive = Archives.Count;
+                Archives.Add(archiveName);
+                archiveIds[archiveName] = archive;
+            }
+            var parts = read();
+            foreach (var kind in Parts.Kinds)
+            {
+                var data = Parts.Of(parts, kind);
+                if (data.Length == 0) continue;
+                bytes += data.Length;
+                var sha = SHA256.HashData(data);
+                var hex = Convert.ToHexString(sha);
+                if (!bySha.TryGetValue(hex, out var id))
+                {
+                    id = Contents.Count;
+                    Contents.Add(new Content(sha, data.Length));
+                    bySha[hex] = id;
+                    IndexedBytes += data.Length;
+                    foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
+                }
+                var place = new Place(build, key, kind, archive);
+                if (!Contents[id].Places.Contains(place)) Contents[id].Places.Add(place);
+            }
+            progress?.Invoke(resources, bytes);
+        }
+        if (archives is not null) done.UnionWith(archives);
         byKey = null;
     }
 
@@ -268,6 +330,13 @@ public sealed class SourceIndex
                 w.Write(p.Archive);
             }
         }
+        w.Write(partialArchives.Count);
+        foreach (var (label, set) in partialArchives)
+        {
+            w.Write(label);
+            w.Write(set.Count);
+            foreach (var name in set) w.Write(name);
+        }
         w.Write(archiveMemo.Count);
         foreach (var (hash, entries) in archiveMemo)
         {
@@ -313,6 +382,16 @@ public sealed class SourceIndex
             index.Contents.Add(c);
             index.IndexedBytes += c.Size;
         }
+        var partials = r.ReadInt32();
+        for (var i = 0; i < partials; i++)
+        {
+            var label = r.ReadString();
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            var n = r.ReadInt32();
+            for (var e = 0; e < n; e++) set.Add(r.ReadString());
+            index.partialArchives[label] = set;
+            index.PartialBuilds.Add(label);
+        }
         var memos = r.ReadInt32();
         for (var i = 0; i < memos; i++)
         {
@@ -345,31 +424,43 @@ public sealed class LooseGameResources(IDataFiles files, string build) : IGameRe
 
     public string Build => build;
 
+    IEnumerable<string> ArchiveFiles() =>
+        files.List().Where(f => System.Text.RegularExpressions.Regex.IsMatch(f, "^[0-9a-f]{16}$")).Order(StringComparer.Ordinal);
+
+    // One archive's resource table: only its first bytes are read.
+    List<(ResourceKey Key, long[] Offsets, int[] Sizes)> TableOf(string file)
+    {
+        var rows = new List<(ResourceKey, long[], int[])>();
+        using var s = files.Open(file);
+        var head = new byte[72];
+        if (s.Read(head) < 72 || BitConverter.ToUInt32(head, 0) != Magic) return rows;
+        var types = BitConverter.ToInt32(head, 4);
+        var count = BitConverter.ToInt32(head, 8);
+        if (count < 0 || count > 1_000_000 || types < 0 || types > 10_000) return rows;
+        var table = new byte[80L * count];
+        s.Position = 72 + 32L * types;
+        if (s.Read(table) < table.Length) return rows;
+        for (var i = 0; i < count; i++)
+        {
+            var at = 80 * i;
+            rows.Add((new ResourceKey(BitConverter.ToUInt64(table, at + 8), BitConverter.ToUInt64(table, at)),
+                [BitConverter.ToInt64(table, at + 16), BitConverter.ToInt64(table, at + 32), BitConverter.ToInt64(table, at + 24)],
+                [BitConverter.ToInt32(table, at + 56), BitConverter.ToInt32(table, at + 64), BitConverter.ToInt32(table, at + 60)]));
+        }
+        return rows;
+    }
+
     Dictionary<ResourceKey, (string Archive, long[] Offsets, int[] Sizes)> Entries()
     {
         if (entries is not null) return entries;
         entries = [];
-        foreach (var file in files.List().Where(f => System.Text.RegularExpressions.Regex.IsMatch(f, "^[0-9a-f]{16}$")).Order(StringComparer.Ordinal))
-        {
-            using var s = files.Open(file);
-            var head = new byte[72];
-            if (s.Read(head) < 72 || BitConverter.ToUInt32(head, 0) != Magic) continue;
-            var types = BitConverter.ToInt32(head, 4);
-            var count = BitConverter.ToInt32(head, 8);
-            var table = new byte[80L * count];
-            s.Position = 72 + 32L * types;
-            if (s.Read(table) < table.Length) continue;
-            for (var i = 0; i < count; i++)
-            {
-                var at = 80 * i;
-                var key = new ResourceKey(BitConverter.ToUInt64(table, at + 8), BitConverter.ToUInt64(table, at));
-                entries.TryAdd(key, (file,
-                    [BitConverter.ToInt64(table, at + 16), BitConverter.ToInt64(table, at + 32), BitConverter.ToInt64(table, at + 24)],
-                    [BitConverter.ToInt32(table, at + 56), BitConverter.ToInt32(table, at + 64), BitConverter.ToInt32(table, at + 60)]));
-            }
-        }
+        foreach (var file in ArchiveFiles())
+            foreach (var (key, offsets, sizes) in TableOf(file)) entries.TryAdd(key, (file, offsets, sizes));
         return entries;
     }
+
+    public IEnumerable<(string Archive, Func<IReadOnlyList<ResourceKey>> Keys)> Tables() =>
+        ArchiveFiles().Select(f => (f, (Func<IReadOnlyList<ResourceKey>>)(() => TableOf(f).Select(r => r.Key).ToList())));
 
     byte[] Slice(string file, long offset, int size)
     {

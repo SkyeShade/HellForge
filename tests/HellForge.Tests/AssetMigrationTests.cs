@@ -241,6 +241,70 @@ static class AssetMigrationTests
             check(content.Places.Select(p => index.Builds[p.Build]).Distinct().SequenceEqual(["1", "2"]), "the second build is not a place of the rifle");
         });
 
+        // Two old-layout builds as a depot history: build 553853:1 has the APC's archive, 553853:2 (newer) has it unchanged.
+        var apcKey = new ResourceKey(ResourceTypes.Unit, 0x6666);
+        var apcParts = new ResourceParts(Noise(21, 1500), Noise(22, 70_000), Noise(23, 4000));
+        (LooseGameResources Game, HashedFolder Files)[] History()
+        {
+            var (archive, gpu, stream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [apcKey] = apcParts });
+            return new[] { "553853:1", "553853:2" }.Select(label =>
+            {
+                var folder = Path.Combine(root, "history-" + label.Replace(':', '-'));
+                Directory.CreateDirectory(folder);
+                File.WriteAllBytes(Path.Combine(folder, "00000000000000dd"), archive);
+                File.WriteAllBytes(Path.Combine(folder, "00000000000000dd.gpu_resources"), gpu);
+                File.WriteAllBytes(Path.Combine(folder, "00000000000000dd.stream"), stream);
+                var files = new HashedFolder(folder);
+                return (new LooseGameResources(files, label), files);
+            }).ToArray();
+        }
+        BuildCatalog HistoryCatalog()
+        {
+            var catalog = BuildCatalog.Parse("""{"schemaVersion": 1, "appId": "553850", "historyComplete": true, "dataDepot": 553853, "builds": []}""");
+            catalog.History = DepotHistory.Parse(["2024-04-29T09:00:20Z 1", "2024-05-02T09:00:21Z 2"]);
+            return catalog;
+        }
+        var apcMod = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [apcKey] = apcParts, [unknownKey] = unknownParts });
+        IReadOnlyList<(string, byte[])> apcFiles = [("data/ee.patch_0", apcMod.Archive), ("data/ee.patch_0.gpu_resources", apcMod.Gpu), ("data/ee.patch_0.stream", apcMod.Stream)];
+
+        test("The name map lists every build's resources from their tables, reading an unchanged archive's table once", () =>
+        {
+            var builds = History();
+            var map = new NameMap();
+            foreach (var (game, _) in builds) map.Add(game);
+            check(map.TablesRead == 1 && map.TablesReused == 1, $"read {map.TablesRead}, reused {map.TablesReused}");
+            var file = Path.Combine(root, "names.hfnm");
+            map.Save(file);
+            map = NameMap.Load(file);
+            check(map.Find(apcKey).Select(f => f.Build).SequenceEqual(["553853:1", "553853:2"]), string.Join(",", map.Find(apcKey)));
+            check(map.Has(apcKey) && !map.Has(unknownKey), "the map has the wrong resources");
+        });
+
+        test("A leftover resource the game has by name needs review until its archive is fingerprinted; a name no build has is the author's", () =>
+        {
+            var builds = History();
+            var map = new NameMap();
+            foreach (var (game, _) in builds) map.Add(game);
+            var index = Index();
+            var (recipe, literals, report) = new Migrator(index, [oldBuild, newBuild]).Migrate(apcFiles);
+            var before = MigrationVerdict.Decide(report, index, HistoryCatalog(), recipe.Files.Count, null, map);
+            check(before.Kind == VerdictKind.PartlyMigrated && before.Text.Contains("by name"), before.Text);
+
+            // resolve: only the archive that holds the resource, in the newest build that has it.
+            index.Add(builds[1].Game, null, new HashSet<string> { "00000000000000dd" });
+            index.Seal();
+            check(index.PartialBuilds.Contains("553853:2") && HistoryCatalog().Missing(index).Count == 2, "a partial build counts as covered");
+            (recipe, literals, report) = new Migrator(index, [oldBuild, newBuild, builds[1].Game]).Migrate(apcFiles);
+            var after = MigrationVerdict.Decide(report, index, HistoryCatalog(), recipe.Files.Count, null, map);
+            check(after.Kind == VerdictKind.Verified && after.Text.Contains("author's own"), after.Text);
+            check(report.Resources.Where(r => r.Key == apcKey).All(r => r.Literal == 0), "the APC's parts were not purged");
+            check(RecipeRebuilder.Rebuild(recipe, literals, [oldBuild, newBuild, builds[1].Game]).Count == 3, "the mod does not rebuild");
+
+            var partial = HistoryCatalog();
+            partial.History!.Add(new DepotHistory(new DateTime(2024, 6, 1), 3, null));
+            check(MigrationVerdict.Decide(report, index, partial, recipe.Files.Count, null, map).Kind == VerdictKind.PartlyMigrated, "a name map missing a build passed");
+        });
+
         test("The same piece at any byte offset is found", () =>
         {
             for (var shift = 0; shift < 20; shift++)

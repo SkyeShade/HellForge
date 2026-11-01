@@ -52,11 +52,20 @@ public sealed class BuildCatalog
     public List<string> Missing(SourceIndex index)
     {
         if (History is null) return Builds.Where(b => !index.Builds.Contains(b.BuildId)).Select(b => b.BuildId).ToList();
-        var indexed = index.Builds.ToHashSet();
+        var indexed = index.Builds.Where(b => !index.PartialBuilds.Contains(b)).ToHashSet();
         foreach (var b in Builds.Where(b => indexed.Contains(b.BuildId)))
             foreach (var d in b.Depots.Where(d => d.Id == DataDepot)) indexed.Add($"{DataDepot}:{d.ManifestId}");
         return History.Where(h => !Unavailable.Contains(h.Manifest) && !indexed.Contains($"{DataDepot}:{h.Manifest}"))
             .Select(h => $"{h.Time:yyyy-MM-dd} ({DataDepot}:{h.Manifest}{(h.Branch is null ? "" : ", " + h.Branch)})").ToList();
+    }
+
+    // The data manifests of the history (that Steam serves) the name map does not have yet.
+    public List<string> MissingNames(NameMap names)
+    {
+        if (History is null) return [];
+        var have = names.Builds.ToHashSet(StringComparer.Ordinal);
+        return History.Where(h => !Unavailable.Contains(h.Manifest) && !have.Contains($"{DataDepot}:{h.Manifest}"))
+            .Select(h => $"{h.Time:yyyy-MM-dd} ({DataDepot}:{h.Manifest})").ToList();
     }
 
     // Every build since release that can be indexed is: content found in none of them is not the game's.
@@ -122,6 +131,39 @@ public enum VerdictKind { Verified, NoGameContent, PartlyMigrated, NeedsReview, 
 public sealed record MigrationVerdict(VerdictKind Kind, string Text)
 {
     public bool Publishable => Kind is VerdictKind.Verified or VerdictKind.NoGameContent;
+
+    // With a name map that covers the history, a leftover resource is checked by name against every build: a name the
+    // game has (in any build) is the game's, and stays in review until its content is fingerprinted (resolve does it);
+    // a name no build has is the author's own. Without one, the content index's coverage decides, as before.
+    public static MigrationVerdict Decide(MigrationReport report, SourceIndex index, BuildCatalog catalog, int recipeFiles, string? rebuildError, NameMap? names)
+    {
+        if (names is null) return Decide(report, index, catalog, recipeFiles, rebuildError);
+        if (rebuildError is not null) return new(VerdictKind.NotMigrated, $"NOT MIGRATED: {rebuildError} The mod is kept as it was, for review.");
+        if (report.Unreadable.Count > 0) return Decide(report, index, catalog, recipeFiles, rebuildError);
+        var unknown = report.Resources.Where(r => !r.InIndex && r.Literal > 0).ToList();
+        var byName = unknown.Where(r => names.Has(r.Key)).ToList();
+        var own = unknown.Except(byName).ToList();
+        if (byName.Count > 0)
+        {
+            var builds = byName.SelectMany(r => names.Find(r.Key)).Select(f => f.Build).Distinct().ToList();
+            return new(VerdictKind.PartlyMigrated,
+                $"PARTLY MIGRATED, NEEDS REVIEW: {byName.Count} resource parts ({byName.Sum(r => r.Literal):N0} bytes) are game resources by name, from {builds.Count} builds " +
+                $"({string.Join(", ", builds.Take(4))}{(builds.Count > 4 ? ", ..." : "")}), whose content is not fingerprinted yet: resolve fingerprints them and migrates again.");
+        }
+        var missing = catalog.MissingNames(names);
+        if (own.Count > 0 && (!catalog.HistoryComplete || missing.Count > 0))
+            return new(VerdictKind.PartlyMigrated,
+                $"PARTLY MIGRATED, NEEDS REVIEW: {own.Count} resource parts ({own.Sum(r => r.Literal):N0} bytes) are in no build checked, but the name map lacks {missing.Count} builds " +
+                $"({string.Join(", ", missing.Take(4))}{(missing.Count > 4 ? ", ..." : "")}).");
+        if (recipeFiles == 0 && own.Count == 0) return new(VerdictKind.NoGameContent, "NO GAME CONTENT FOUND: the mod ships as it is.");
+        var rest = own.Count > 0
+            ? $" {own.Count} resource parts ({own.Sum(r => r.Literal):N0} bytes) have names no build since release has (checked by name against all {names.Builds.Count} builds; " +
+              $"by content against {index.Builds.Count - index.PartialBuilds.Count} whole builds and parts of {index.PartialBuilds.Count}): the author's own."
+            : "";
+        return recipeFiles == 0
+            ? new(VerdictKind.NoGameContent, $"NO GAME CONTENT FOUND: the mod ships as it is.{rest}")
+            : new(VerdictKind.Verified, $"VERIFIED: all {recipeFiles} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.{rest}");
+    }
 
     public static MigrationVerdict Decide(MigrationReport report, SourceIndex index, BuildCatalog catalog, int recipeFiles, string? rebuildError)
     {
