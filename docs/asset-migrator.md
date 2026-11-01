@@ -48,7 +48,7 @@ dotnet $M compare <mod folder> rebuilt/<mod>
 | Kitbash from real resources: unit with 1.65 MB of another unit spliced in, texture with 64 KB repainted, 20 KB new | 5.04 MB | 98.3% (both units and the texture found) | 91 KB (the repaint and the new resource) | Verified, rebuilt byte-identical |
 | R-40, migrated with only the pinned build | 8.50 MB | content from 26251122 the migrator cannot read | unchanged | Needs review |
 | Bingus Shared Loader (Lua) | 89.5 KB | 11.5% (a game Lua script it embeds) | 80.5 KB | Verified |
-| APC & Stalwart Battlement (uploaded mod; 521 resources, cut APC content from older depot builds) | 290.17 MB | 89.5% from 25480438/26251122 | 30.73 MB | Verified, rebuilt byte-identical; 70 parts (28.5 MB) whose resources are in neither build stay in the mod until an older build is indexed |
+| APC & Stalwart Battlement (uploaded mod; 521 resources, cut APC content from older depot builds) | 290.17 MB | 89.5% from 25480438/26251122 | 30.73 MB | Partly migrated, needs review: rebuilt byte-identical, but 69 parts (28.5 MB) whose resources are in neither build stay in the mod until an older build is indexed |
 
 Builds older than `bundles.nxa` (loose archives named by hash, with `.gpu_resources` and `.stream` beside them) are
 read too: a `--game` folder without `bundles.nxa` is read that way. Cut content (the APC) needs such a build in the

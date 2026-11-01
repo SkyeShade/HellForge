@@ -140,7 +140,10 @@ int Migrate()
             ? $"NEEDS REVIEW: the mod shares content with {report.Unreadable.Count} game resource parts from builds not given here ({string.Join(", ", report.Unreadable.SelectMany(c => index.Contents[c].Places).Select(p => index.Builds[p.Build]).Distinct())}); it is kept as it was."
             : rebuilt.Count == 0
                 ? "NO GAME CONTENT FOUND: the mod ships as it is."
-                : $"VERIFIED: all {rebuilt.Count} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.";
+                : Unaccounted() is var (parts, kept) && kept >= 256 * 1024 // less (headers, small new resources) needs no review on its own
+                    ? $"PARTLY MIGRATED, NEEDS REVIEW: the recipe rebuilds all {rebuilt.Count} files byte for byte (SHA-256) and the content of the indexed builds is purged, " +
+                      $"but {parts} resource parts ({Size(kept)}) are resources that no indexed build has, and they stay in the mod. They may be cut content from an older build: index it, or review them."
+                    : $"VERIFIED: all {rebuilt.Count} recipe files rebuilt from the game folders match the originals (SHA-256); game content purged.";
         if (report.Unreadable.Count > 0) recipe = new Recipe();
     }
     catch (InvalidDataException e)
@@ -149,6 +152,13 @@ int Migrate()
         recipe = new Recipe();
     }
     Console.WriteLine(verdict);
+
+    // Resource parts of the mod's archives whose resource no indexed build has, and how many of their bytes still ship.
+    (int Parts, long Bytes) Unaccounted()
+    {
+        var lines = report.Resources.Where(r => !index.WithKey(r.Key).Any(c => index.Contents[c].Places.Any(p => p.Key == r.Key && p.Part == r.Part))).ToList();
+        return (lines.Count(r => r.Literal > 0), lines.Sum(r => r.Literal));
+    }
     File.WriteAllText(Path.Combine(outFolder, "verdict.txt"), verdict + Environment.NewLine);
 
     foreach (var (path, bytes) in files)
