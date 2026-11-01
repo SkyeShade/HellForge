@@ -87,11 +87,18 @@ dotnet $M resolve --index hd2.hfsi --catalog data/game-builds.json --game "$PINN
 | R-40, migrated with only the pinned build | 8.50 MB | content from 26251122 the migrator cannot read | unchanged | Needs review |
 | Bingus Shared Loader (Lua) | 89.5 KB | 11.5% (a game Lua script it embeds) | 80.5 KB | Verified |
 | APC & Stalwart Battlement (uploaded mod; 521 resources, cut APC content from older depot builds) | 290.17 MB | 89.5% from 25480438/26251122 | 30.73 MB | Partly migrated, needs review: rebuilt byte-identical, but 69 parts (28.5 MB) whose resources are in neither build stay in the mod until an older build is indexed |
+| APC, after `scan` and `resolve --chunks` | 290.17 MB | 99.4%: the scan proved 24.9 MB of the leftover to be launch-era chunks (`d8c47e565857b36a`, 17 builds 2024-02-08 to 2024-03-26), and resolve fingerprinted 9 resources of 2 archives from 2 builds | 1.27 MB | Partly migrated, needs review: rebuilt byte-identical; no byte it still ships is a Steam chunk; 62 parts (228 KB) have names no indexed build has, which the name map decides once it covers every build |
 
 Builds older than `bundles.nxa` (loose archives named by hash, with `.gpu_resources` and `.stream` beside them) are
 read too: a `--game` folder without `bundles.nxa` is read that way. Authors do not need to know which build their
 content came from: the site indexes the builds in the catalog, and the index says which build (and which archive)
 each piece is in. Each extra build is about a minute of indexing and adds to the index only what is new in it.
+
+In periodic data (texture blocks), the same 32-byte window is at many offsets of many candidates: each candidate
+gets its own tries (8 offsets, up to 64 candidates), so a similar resource that matches most of each block cannot use
+them all up. On the APC that alone took 1.4 KB of a texture variant (and the rest of the launch-era resources) out of
+what the mod ships. A part is read from the archive the index names: a build can hold one resource in two archives (or,
+in a transition build, packed and loose) with different bytes.
 
 Archives are matched one resource part at a time, each with its own candidates, so an archive of hundreds of
 resources is matched completely (the APC's first run, matched per file, missed 7.4 MB of resources identical to the

@@ -49,7 +49,7 @@ public sealed class MigrationReport
 // of one byte become fills; the rest is the mod's own bytes.
 public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResources> games)
 {
-    const int Window = 32, Step = 16, MinCopy = 48, MinFill = 32, MaxCandidates = 96;
+    const int Window = 32, Step = 16, MinCopy = 48, MinFill = 32, MaxCandidates = 96, TriesPerSource = 8, MaxSourcesTried = 64;
     const long MaxCandidateBytes = 1L << 30;
     const ulong Base = 0x100000001B3;
     static readonly ulong Top = Pow(Base, Window - 1);
@@ -202,8 +202,13 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
                 h = Roll(h, src[i], src[i + Window]);
             }
         }
-        table.Sort((a, b) => a.Hash.CompareTo(b.Hash));
+        table.Sort((a, b) => a.Hash != b.Hash ? a.Hash.CompareTo(b.Hash) : a.Candidate != b.Candidate ? a.Candidate.CompareTo(b.Candidate) : a.Offset.CompareTo(b.Offset));
         var keysSorted = table.Select(t => t.Hash).ToArray();
+        // Where each run of one hash in one candidate ends: periodic data has the same window at many offsets of many
+        // candidates, and every candidate gets its own tries (else one similar candidate can use them all up).
+        var groupEnd = new int[table.Count];
+        for (var i = table.Count - 1; i >= 0; i--)
+            groupEnd[i] = i + 1 < table.Count && table[i + 1].Hash == table[i].Hash && table[i + 1].Candidate == table[i].Candidate ? groupEnd[i + 1] : i + 1;
 
         int literalStart = from, pos = from;
         ulong hash = 0;
@@ -232,15 +237,20 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
             if (at >= 0)
             {
                 while (at > 0 && keysSorted[at - 1] == hash) at--;
-                for (var tried = 0; at < keysSorted.Length && keysSorted[at] == hash && tried < 32; at++, tried++)
+                for (var sources = 0; at < keysSorted.Length && keysSorted[at] == hash && sources < MaxSourcesTried; sources++)
                 {
-                    var (_, c, off) = table[at];
-                    var src = candidates[c].Bytes;
-                    if (!data.AsSpan(pos, Window).SequenceEqual(src.AsSpan(off, Window))) continue;
-                    var forward = Window + Common(data.AsSpan(pos + Window, to - pos - Window), src.AsSpan(off + Window));
-                    var back = 0;
-                    while (pos - back > literalStart && off - back > 0 && data[pos - back - 1] == src[off - back - 1]) back++;
-                    if (forward + back > bestLength) (bestLength, bestBack, bestCandidate, bestOffset) = (forward + back, back, c, off);
+                    var end = groupEnd[at];
+                    for (var k = at; k < Math.Min(end, at + TriesPerSource); k++)
+                    {
+                        var (_, c, off) = table[k];
+                        var src = candidates[c].Bytes;
+                        if (!data.AsSpan(pos, Window).SequenceEqual(src.AsSpan(off, Window))) continue;
+                        var forward = Window + Common(data.AsSpan(pos + Window, to - pos - Window), src.AsSpan(off + Window));
+                        var back = 0;
+                        while (pos - back > literalStart && off - back > 0 && data[pos - back - 1] == src[off - back - 1]) back++;
+                        if (forward + back > bestLength) (bestLength, bestBack, bestCandidate, bestOffset) = (forward + back, back, c, off);
+                    }
+                    at = end;
                 }
             }
             if (bestLength >= MinCopy)
@@ -298,8 +308,10 @@ public sealed partial class Migrator(SourceIndex index, IReadOnlyList<IGameResou
         foreach (var place in c.Places)
         {
             var game = games.FirstOrDefault(g => g.Build == index.Builds[place.Build]);
-            var bytes = game?.Read(place.Key, place.Part);
-            if (bytes is not null && bytes.Length == c.Size && SHA256.HashData(bytes).AsSpan().SequenceEqual(c.Sha256)) { found = bytes; break; }
+            if (game is null) continue;
+            found = game.ReadIn(place.Key, place.Part, index.Archives[place.Archive])
+                .FirstOrDefault(bytes => bytes.Length == c.Size && SHA256.HashData(bytes).AsSpan().SequenceEqual(c.Sha256));
+            if (found is not null) break;
         }
         loaded[content] = found;
         return found;

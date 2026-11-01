@@ -323,6 +323,55 @@ static class AssetMigrationTests
             check(RecipeRebuilder.Rebuild(recipe, literals, [oldBuild, newBuild])["x"].AsSpan().SequenceEqual(file), "padding does not rebuild");
         });
 
+        test("In periodic data, the source that matches throughout wins over a similar one that matches most of each period", () =>
+        {
+            // Two textures of 256-byte blocks: the same 242 bytes in each block, and 14 bytes that differ between them.
+            var unit = Noise(80, 242);
+            byte[] Blocks(int seed) { var tail = Noise(seed, 14); return Enumerable.Range(0, 400).SelectMany(_ => unit.Concat(tail)).ToArray(); }
+            // Each with data of its own before the blocks, which brings it in as a candidate; the mod has more of the
+            // similar one's, so that one is tried first.
+            var shared = Noise(83, 12_000);
+            var similar = Concat(shared, Blocks(81));
+            var exact = Concat(Noise(84, 4000), Blocks(82));
+            var game = new FakeGame("300", new()
+            {
+                [new ResourceKey(ResourceTypes.Texture, 0x8001)] = new([], similar, []),
+                [new ResourceKey(ResourceTypes.Texture, 0x8002)] = new([], exact, []),
+            });
+            var index = new SourceIndex();
+            index.Add(game);
+            index.Seal();
+            var mod = Concat(shared, exact);
+            var (recipe, literals, report) = new Migrator(index, [game]).Migrate([("data/tex.stream", mod)]);
+            check(report.Files[0].Literal == 0 && literals.Length == 0, $"{report.Files[0].Literal} literal bytes");
+            check(RecipeRebuilder.Rebuild(recipe, literals, [game])["data/tex.stream"].AsSpan().SequenceEqual(mod), "it does not rebuild");
+        });
+
+        test("A resource two archives of a build hold with different bytes is read from the archive the index names", () =>
+        {
+            var folder = Path.Combine(root, "two-copies");
+            Directory.CreateDirectory(folder);
+            var hull = new ResourceKey(ResourceTypes.Unit, 0x9001);
+            var older = new ResourceParts(Noise(91, 600), Noise(92, 30_000), []);
+            var newer = new ResourceParts(Noise(93, 600), Noise(94, 30_000), []);
+            foreach (var (name, parts) in new[] { ("00000000000000aa", newer), ("00000000000000bb", older) })
+            {
+                var (archive, gpu, stream) = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [hull] = parts });
+                File.WriteAllBytes(Path.Combine(folder, name), archive);
+                File.WriteAllBytes(Path.Combine(folder, name + ".gpu_resources"), gpu);
+                File.WriteAllBytes(Path.Combine(folder, name + ".stream"), stream);
+            }
+            var game = new LooseGameResources(folder, "553853:7");
+            check(game.Read(hull, PartKind.Gpu)!.AsSpan().SequenceEqual(newer.Gpu), "the first archive's copy is not the build's own");
+            var index = new SourceIndex();
+            index.Add(game, null, new HashSet<string> { "00000000000000bb" });
+            index.Seal();
+            var mod = Concat(older.Gpu, Noise(95, 500));
+            var (recipe, literals, report) = new Migrator(index, [game]).Migrate([("data/hull.gpu_resources", mod)]);
+            check(report.Unreadable.Count == 0 && report.Files[0].FromGame == older.Gpu.Length, $"from game {report.Files[0].FromGame}, unreadable {report.Unreadable.Count}");
+            check(RecipeRebuilder.Rebuild(recipe, literals, [game])["data/hull.gpu_resources"].AsSpan().SequenceEqual(mod), "it does not rebuild from the second archive");
+        });
+
         // A depot manifest's view of a game file: its chunks' offsets, lengths, SHA-1s and Adler-32s. Steam cuts files
         // into 1 MiB chunks and keeps old chunks at any offset, so a manifest has odd-length chunks too.
         const int MiB = SteamChunkIndex.Window;

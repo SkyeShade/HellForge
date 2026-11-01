@@ -262,7 +262,8 @@ sealed class SteamDepots : IDisposable
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 last = e;
-                await Task.Delay(250 * (attempt + 1));
+                // A content server under load answers 503 for a while: back off (0.5 s doubling to 16 s), next server.
+                await Task.Delay(500 << attempt);
             }
         }
         throw new IOException($"Could not download chunk {id} of depot {depot}: {last?.Message}");

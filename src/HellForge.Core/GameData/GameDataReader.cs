@@ -170,11 +170,19 @@ public sealed class GameDataReader : IDisposable
         }
     }
 
-    // The resource table entries of the archives, in archive name order: each archive's table (read as its entries are
-    // asked for) and where an 80-byte entry starts in it.
-    IEnumerable<(string Archive, byte[] Table, int Entry)> TableEntries()
+    // Every resource of just these archives (each archive's own entries), reading only their tables.
+    public IEnumerable<(ResourceKey Key, Location At)> ResourcesIn(IEnumerable<string> archives)
     {
-        foreach (var archive in items.Keys.Where(n => n.Length == 16 && !n.Contains('.')).Order(StringComparer.Ordinal))
+        foreach (var (archive, table, at) in TableEntries(archives.Where(items.ContainsKey).Order(StringComparer.Ordinal)))
+            yield return (new ResourceKey(BinaryPrimitives.ReadUInt64LittleEndian(table.AsSpan(at + 8)), BinaryPrimitives.ReadUInt64LittleEndian(table.AsSpan(at))),
+                LocationOf(archive, table.AsSpan(at, 80)));
+    }
+
+    // The resource table entries of the archives (all of them, or just these), in archive name order: each archive's
+    // table (read as its entries are asked for) and where an 80-byte entry starts in it.
+    IEnumerable<(string Archive, byte[] Table, int Entry)> TableEntries(IEnumerable<string>? only = null)
+    {
+        foreach (var archive in only ?? items.Keys.Where(n => n.Length == 16 && !n.Contains('.')).Order(StringComparer.Ordinal))
         {
             var head = ItemBytes(archive, 0, 72);
             if (head.Length < 72 || BinaryPrimitives.ReadUInt32LittleEndian(head) != TableMagic) continue;

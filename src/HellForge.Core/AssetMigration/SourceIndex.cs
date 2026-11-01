@@ -45,6 +45,10 @@ public interface IGameResources
     IEnumerable<(string Archive, Func<IReadOnlyList<ResourceKey>> Keys)> Tables() =>
         All().GroupBy(r => r.Archive).Select(g => (g.Key, (Func<IReadOnlyList<ResourceKey>>)(() => g.Select(r => r.Key).ToList())));
     byte[]? Read(ResourceKey key, PartKind part);
+    // The part as this archive holds it: a build can have one resource in several archives (or, in a transition build,
+    // both packed and loose) with different bytes. Every copy the build has there, for the caller to check by hash;
+    // without an archive, or for a layout that does not say, the build's own copy.
+    IReadOnlyList<byte[]> ReadIn(ResourceKey key, PartKind part, string? archive) => Read(key, part) is { } bytes ? [bytes] : [];
 }
 
 public static class Parts
@@ -72,9 +76,15 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
     // Parts the reader cannot read whole (over its 256 MB limit) are left out and counted.
     public int Skipped { get; private set; }
 
-    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All()
+    public bool HasArchive(string archive) => reader.HasArchive(archive);
+
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> In(IReadOnlySet<string> archives) => Entries(reader.ResourcesIn(archives));
+
+    public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> All() => Entries(reader.Resources());
+
+    IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> Entries(IEnumerable<(ResourceKey Key, GameDataReader.Location At)> resources)
     {
-        foreach (var (key, at) in reader.Resources())
+        foreach (var (key, at) in resources)
         {
             byte[] Part(GameDataReader.Location only, PartKind kind)
             {
@@ -98,8 +108,32 @@ public sealed class GameResources(IDataFiles files, string build) : IGameResourc
             PartKind.Gpu => at with { MainSize = 0, StreamSize = 0 },
             _ => at with { MainSize = 0, GpuSize = 0 },
         };
+        return ReadAt(at, part);
+    }
+
+    byte[]? ReadAt(GameDataReader.Location at, PartKind part)
+    {
+        var only = part switch
+        {
+            PartKind.Main => at with { GpuSize = 0, StreamSize = 0 },
+            PartKind.Gpu => at with { MainSize = 0, StreamSize = 0 },
+            _ => at with { MainSize = 0, GpuSize = 0 },
+        };
         try { return Parts.Of(reader.Read(only), part); }
         catch (InvalidDataException) { return null; }
+    }
+
+    readonly Dictionary<string, Dictionary<ResourceKey, GameDataReader.Location>> archiveTables = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<byte[]> ReadIn(ResourceKey key, PartKind part, string? archive)
+    {
+        if (archive is null || !reader.HasArchive(archive)) return Read(key, part) is { } own ? [own] : [];
+        if (!archiveTables.TryGetValue(archive, out var table))
+        {
+            archiveTables[archive] = table = [];
+            foreach (var (k, at) in reader.ResourcesIn([archive])) table.TryAdd(k, at);
+        }
+        return table.TryGetValue(key, out var location) && ReadAt(location, part) is { } bytes ? [bytes] : [];
     }
 
     public void Dispose() => reader.Dispose();
@@ -523,6 +557,24 @@ public sealed class LooseGameResources(IDataFiles files, string build) : IGameRe
     }
 
     public byte[]? Read(ResourceKey key, PartKind part) => Entries().TryGetValue(key, out var e) ? Part(e, part) : null;
+
+    readonly Dictionary<string, Dictionary<ResourceKey, (long[] Offsets, int[] Sizes)>> archiveTables = new(StringComparer.Ordinal);
+
+    public bool HasArchive(string archive) => files.Exists(archive);
+
+    // Reads only that archive's table, where Read reads every table of the build first.
+    public IReadOnlyList<byte[]> ReadIn(ResourceKey key, PartKind part, string? archive)
+    {
+        if (archive is null || !files.Exists(archive)) return Read(key, part) is { } own ? [own] : [];
+        if (!archiveTables.TryGetValue(archive, out var table))
+        {
+            archiveTables[archive] = table = [];
+            foreach (var (k, offsets, sizes) in TableOf(archive)) table.TryAdd(k, (offsets, sizes));
+        }
+        if (!table.TryGetValue(key, out var e)) return [];
+        var bytes = Part((archive, e.Offsets, e.Sizes), part);
+        return bytes.Length > 0 ? [bytes] : [];
+    }
 }
 
 // A data folder with both layouts (the transition builds of December 2025 to January 2026): what bundles.nxa lists, then
@@ -544,12 +596,20 @@ public sealed class MixedGameResources(IDataFiles files, string build) : IGameRe
     public string? ArchiveHash(string archive) => ((IGameResources)loose).ArchiveHash(archive);
     public string? TableHash(string archive) => loose.TableHash(archive);
 
+    // Each archive from every side that has it, reading only its table: a transition build can hold an archive both in
+    // bundles.nxa and as loose files, with different contents (a chunk the Steam scan finds is in the loose files).
     public IEnumerable<(ResourceKey Key, string Archive, Func<ResourceParts> Read)> In(IReadOnlySet<string> archives) =>
-        ((IGameResources)packed).In(archives).Concat(loose.In(archives));
+        packed.In(archives.Where(packed.HasArchive).ToHashSet(StringComparer.Ordinal)).Concat(loose.In(archives));
 
     public IEnumerable<(ResourceKey Key, string Archive)> At(string file, long offset, long length) => loose.At(file, offset, length);
 
     public byte[]? Read(ResourceKey key, PartKind part) => packed.Read(key, part) ?? loose.Read(key, part);
+
+    public IReadOnlyList<byte[]> ReadIn(ResourceKey key, PartKind part, string? archive)
+    {
+        if (archive is null || !packed.HasArchive(archive) && !loose.HasArchive(archive)) return Read(key, part) is { } own ? [own] : [];
+        return [.. packed.HasArchive(archive) ? packed.ReadIn(key, part, archive) : [], .. loose.HasArchive(archive) ? loose.ReadIn(key, part, archive) : []];
+    }
 
     public void Dispose() => packed.Dispose();
 }

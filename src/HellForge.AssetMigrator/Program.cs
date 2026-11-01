@@ -262,20 +262,20 @@ int Resolve()
         return opened[build] = Game(build, $"steam:{parts[0]}:{parts[1]}:{branch}");
     }
 
-    // The Steam chunks the leftover bytes are: each is found in a build (the latest that has it, or one already
-    // planned), at a place in a game file; the game resources at that place, and the leftover resources of the same mod
-    // file, are fingerprinted from that archive alone.
+    // The Steam chunks the bytes the mod still ships are: each is found in a build (the latest that has it, or one
+    // already planned), at a place in a game file; the game resources at that place, and the mod file's leftover
+    // resources no indexed build has by name (smaller than a chunk, so the scan cannot prove them), are fingerprinted
+    // from that archive alone.
     if (chunks is not null)
     {
         var clock = Stopwatch.StartNew();
         foreach (var (path, bytes) in files)
         {
-            var mine = left.Where(r => r.File == path).ToList();
-            var whole = report.Files.FirstOrDefault(f => f.Path == path) is { Literal: > 0 } && !report.Resources.Any(r => r.File == path);
-            if (mine.Count == 0 && !whole) continue;
+            if (!report.Kept.TryGetValue(path, out var kept) || kept.Count == 0) continue;
+            var mine = left.Where(r => r.File == path && !r.InIndex).ToList();
             foreach (var m in chunks.Scan(bytes))
             {
-                if (!whole && !mine.Any(r => r.Start < m.Offset + m.Length && m.Offset < r.Start + r.Size)) continue;
+                if (!kept.Any(k => k.Start < m.Offset + m.Length && m.Offset < k.Start + k.Length)) continue;
                 var ids = chunks.BuildIdsOf(m.Chunk).ToList();
                 var pick = ids.Where(b => plan.ContainsKey(chunks.Builds[b].Label)).DefaultIfEmpty(ids.MaxBy(b => chunks.Builds[b].Time)).First();
                 var build = chunks.Builds[pick].Label;
@@ -834,4 +834,5 @@ sealed class LazyGame(string label, Func<IGameResources> open) : IGameResources
     public byte[]? Read(HellForge.Core.GameData.ResourceKey key, PartKind part) => Game.Read(key, part);
     public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive, Func<HellForge.Core.GameData.ResourceParts> Read)> In(IReadOnlySet<string> archives) => Game.In(archives);
     public IEnumerable<(HellForge.Core.GameData.ResourceKey Key, string Archive)> At(string file, long offset, long length) => Game.At(file, offset, length);
+    public IReadOnlyList<byte[]> ReadIn(HellForge.Core.GameData.ResourceKey key, PartKind part, string? archive) => Game.ReadIn(key, part, archive);
 }

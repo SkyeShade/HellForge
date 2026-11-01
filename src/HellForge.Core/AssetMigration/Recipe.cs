@@ -117,9 +117,9 @@ public static class RecipeRebuilder
         foreach (var place in source.Places)
             foreach (var game in games.OrderBy(g => g.Build == place.Build ? 0 : 1))
             {
-                var bytes = game.Read(place.Key, place.Kind);
-                if (bytes is not null && bytes.Length == source.Size && Convert.ToHexString(SHA256.HashData(bytes)).Equals(source.Sha256, StringComparison.OrdinalIgnoreCase))
-                    return bytes;
+                foreach (var bytes in game.ReadIn(place.Key, place.Kind, place.Archive))
+                    if (bytes.Length == source.Size && Convert.ToHexString(SHA256.HashData(bytes)).Equals(source.Sha256, StringComparison.OrdinalIgnoreCase))
+                        return bytes;
             }
         return null;
     }
