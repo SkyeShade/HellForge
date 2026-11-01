@@ -93,6 +93,30 @@ static void LiveShortIds(uint32_t* first, uint32_t* last)
     if (!registered) { *first = LiveVanillaLastShort() + 1; *last = *first - 1; }
 }
 
+/* The network type index's width a boot of the change's mods would have against the session's. A boot sends it in 12
+ * bits only when its entities need them (registry_load.c NetworkTypesToAdd), else in 11; a session keeps what its boot
+ * set (a width is never narrowed, and widened only before the session has connections). A friend with these mods reads
+ * and writes type indices in the boot's width, so a change that would need another refuses. Only a change that adds or
+ * takes out entities (an earlier change was checked with the rest); after: the entities registered after it. NULL, or
+ * "<reason>\t<why>". */
+static const char* LiveNetWidthCheck(uint32_t after, char* why, size_t size)
+{
+    int changed = 0;
+    for (int i = 0; i < g_weaponCount && !changed; i++)
+        changed = i >= g_lcWeaponsBefore ? g_weapons[i].state == 2 && !LiveWeaponIsCarry(i)
+                                         : g_weapons[i].state == 1 && !LiveTomb(LC_WEAPON, (uint32_t)i) && LiveLeaves(g_weapons[i].mod) && !LiveCarried(i);
+    if (!changed) return NULL;
+    NetworkConfig n;
+    uint8_t width = 0;
+    if (!ReadNetworkConfig(&n) || SafeRead(n.config + 0xC, &width, 1)) return NULL; /* not loaded: nothing is numbered in it yet */
+    uint32_t vanilla = g_networkVanillaTypes != 0 ? g_networkVanillaTypes : n.count;
+    uint32_t needed = vanilla + after > (1u << NET_TYPE_BITS) ? NET_WIDE_BITS : NET_TYPE_BITS;
+    if (width == needed) return NULL;
+    snprintf(why, size, "capability	these mods' %u weapons and entities take a %u-bit network type index, and this session's is %u bits; a restart "
+        "sets it as the host's", after, needed, width);
+    return why;
+}
+
 static const char* LiveWeaponsCheck(char* why, size_t size)
 {
     for (int i = 0; i < REG_MAX_WEAPONS; i++) g_lrCarry[i] = -1;
@@ -114,7 +138,7 @@ static const char* LiveWeaponsCheck(char* why, size_t size)
             w->mod->id, w->plain ? "entity" : "weapon", w->name, i < g_lcWeaponsBefore ? "has" : "would take", has, expected);
         return why;
     }
-    return NULL;
+    return LiveNetWidthCheck(rank, why, size);
 }
 
 /* Once the change is made: each carried registration is the new version's, its item owned again (a mod taken out gave
