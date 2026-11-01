@@ -1,6 +1,6 @@
-/* The network types RegisterNetworkTypes adds (registry.c): a fake network configuration whose 80-byte entries own two
- * arrays each, as the engine's do (constructor exe 0x175C40, destructor 0x175B60), and a fake engine allocator whose
- * allocate helper is the reviewed one (exe 0x58EC0, byte for byte). After the types are added, the engine's teardown is
+/* The network types RegisterNetworkTypes adds (registry_load.c), and a live change after it (live_registry.c
+ * LiveNetworkTypes): a fake network configuration whose 80-byte entries own two arrays each, as the engine's do
+ * (constructor exe 0x175C40, destructor 0x175B60), and a fake engine allocator whose allocate helper is the reviewed one (exe 0x58EC0, byte for byte). After the types are added, the engine's teardown is
  * run over every entry with a free that refuses a block freed twice: a byte copy of the base's entry freed its arrays
  * twice when the game quit (helldivers2.exe+0x5B7A43, 2026-10-25). Included by stats_test.c. */
 
@@ -82,6 +82,7 @@ static void NetworkTypesFixture(void)
     NtArray(config + 0x70, &allocator, 3, 3, 80, 0);
     NtArray(config + 0x28, &allocator, 3, 3, 4, 0);
     NtArray(config + 0x40, &allocator, 3, 3, 1, 0);
+    config[0xC] = 11; /* the type index's width: these fit it */
     uint8_t* entries = NtPointer(config + 0x78);
     for (uint32_t i = 0; i < 3; i++)
     {
@@ -101,8 +102,8 @@ static void NetworkTypesFixture(void)
     uint32_t savedRva = g_networkRva, savedTypeCount = g_networkTypeCount, savedVanilla = g_networkVanillaTypes;
     LONG savedAdded = g_networkTypesAdded;
     uint8_t* savedLoadout = g_loadoutTable;
-    int savedWeaponCount = g_weaponCount;
-    Weapon savedWeapons[2];
+    int savedWeaponCount = g_weaponCount, savedBefore = g_lcWeaponsBefore;
+    Weapon savedWeapons[3];
     memcpy(savedWeapons, g_weapons, sizeof savedWeapons);
     snprintf(g_networkModule, sizeof g_networkModule, "%s", name);
     g_networkRva = (uint32_t)((uintptr_t)&g_ntHolder - (uintptr_t)GetModuleHandleA(NULL));
@@ -130,10 +131,21 @@ static void NetworkTypesFixture(void)
     /* an empty list is not shared either: no data, nothing to free */
     assert(NtU32(emptyCopy + 0x30) == 0 && NtU32(emptyCopy + 0x34) == 0 && NtPointer(emptyCopy + 0x38) == NULL);
     assert(NtPointer(emptyCopy + 0x20) != NtPointer(emptyBase + 0x20));
+    /* a live change's weapon (live_registry.c LiveNetworkTypes): appended after them, its lists its own too */
+    g_lcWeaponsBefore = 2;
+    g_weaponCount = 3;
+    g_weapons[2] = (Weapon){.entity = 0x300, .state = 1, .shortId = 33, .baseShortId = 30, .name = "fixture/live-copy-of-30"};
+    LiveNetworkTypes();
+    uint8_t *live = added + 5 * 80, *liveBase = added + 2 * 80;
+    assert(NtU32(config + 0x70) == 6 && NtPointer(config + 0x78) == added && g_networkTypeCount == 3 && NtU32(live) == 33);
+    for (uint32_t at = 0x18; at <= 0x30; at += 0x18)
+        assert(NtU32(live + at) == NtU32(liveBase + at) && NtU32(live + at + 4) == NtU32(live + at) &&
+            NtPointer(live + at + 8) != NtPointer(liveBase + at + 8) &&
+            !memcmp(NtPointer(live + at + 8), NtPointer(liveBase + at + 8), (size_t)NtU32(liveBase + at) * 4));
     /* the quit: every entry destroyed, no block freed twice */
     g_ntFreedCount = 0;
-    for (uint32_t i = 0; i < 5; i++) NtDestroyEntry(added + (size_t)i * 80);
-    assert(g_ntFreedCount == 3 * 2 + 2 + 1); /* the vanilla entries' two lists each, the copies' own lists */
+    for (uint32_t i = 0; i < 6; i++) NtDestroyEntry(added + (size_t)i * 80);
+    assert(g_ntFreedCount == 3 * 2 + 2 + 1 + 2); /* the vanilla entries' two lists each, the copies' own lists */
 
     /* an allocator that is not the reviewed one: the copy keeps its base's lists but does not own them */
     static void* foreignVtable[9];
@@ -158,6 +170,7 @@ static void NetworkTypesFixture(void)
     g_networkTypesAdded = savedAdded;
     g_loadoutTable = savedLoadout;
     g_weaponCount = savedWeaponCount;
+    g_lcWeaponsBefore = savedBefore;
     memcpy(g_weapons, savedWeapons, sizeof savedWeapons);
     g_ntConfigSlot = NULL;
 }

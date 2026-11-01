@@ -31,6 +31,49 @@ static class DataBuilderTests
                 ResourceTypes.Particles == 0xA8193123526FAD64, "Type names hash differently from the game's.");
         });
 
+        test("A live change's hot package: new names as they are, loaded names under names of their own and overridden, a removed mod's bytes back", () =>
+        {
+            var game = Path.Combine(root, "live-data-game");
+            WriteGameData(game);
+            static string Patch(string folder, string name, Dictionary<ResourceKey, ResourceParts> resources)
+            {
+                Directory.CreateDirectory(folder);
+                var (archive, gpu, stream) = ResourceArchive.Write(resources);
+                var main = Path.Combine(folder, name);
+                File.WriteAllBytes(main, archive);
+                File.WriteAllBytes(main + ".gpu_resources", gpu);
+                File.WriteAllBytes(main + ".stream", stream);
+                return main;
+            }
+            var material = new ResourceKey(ResourceTypes.Material, 0x1111);
+            var texture = new ResourceKey(ResourceTypes.Texture, 0x9999);
+            var unit = new ResourceKey(ResourceTypes.Unit, 0x3333);
+            var particles = new ResourceKey(ResourceTypes.Particles, 0x7777);
+            var added = Patch(Path.Combine(root, "live-data-add"), "1111111111111111.patch_0", new()
+            {
+                [material] = new("new material"u8.ToArray(), [], []), /* the game's own: overridden */
+                [texture] = new("new texture"u8.ToArray(), [1, 2], []), /* new: as it is */
+            });
+            var removed = Patch(Path.Combine(root, "live-data-remove"), "1111111111111111.patch_0", new()
+            {
+                [unit] = new("mod unit"u8.ToArray(), [], []),           /* the game's own: its bytes back */
+                [particles] = new("mod particles"u8.ToArray(), [], []), /* the mod's own: left */
+            });
+            var data = LiveData.Build(game, [], [new("adds", [added])], [new("goes", [removed])], "seed");
+            var id = data.PackageId!;
+            var files = data.Files;
+            check(id.Length == 16 && files.Count == 3 && files[^1] == Path.Combine(game, id) && files.All(File.Exists), "The package's files are wrong.");
+            var package = ResourceArchive.Read(File.ReadAllBytes(files[^1]), File.ReadAllBytes(files[0]), File.ReadAllBytes(files[1]));
+            var overrides = data.Lines.Where(l => l[0] == "modres").ToDictionary(l => Convert.ToUInt64(l[3], 16), l => Convert.ToUInt64(l[4], 16));
+            check(data.Lines[0].SequenceEqual(["moddata", "-", id]) && overrides.Count == 2 && data.Lines.All(l => l[1] == "-"), "The package's lines are wrong.");
+            check(package.Count == 3 && package[texture].Main.SequenceEqual("new texture"u8.ToArray()) &&
+                package[new(ResourceTypes.Material, overrides[material.Name])].Main.SequenceEqual("new material"u8.ToArray()) &&
+                !package.ContainsKey(material) && !package.Keys.Any(k => k.Name == particles.Name), "The package's resources are wrong.");
+            using (var reader = new GameDataReader(game))
+                check(package[new(ResourceTypes.Unit, overrides[unit.Name])].Main.SequenceEqual(reader.Read(reader.Find([unit])[unit]).Main), "The game's unit did not come back.");
+            check(LiveData.Build(game, [], [], [], "empty").PackageId == null, "An empty change made a package.");
+        });
+
         test("Colour curves: warm keys turn blue (or towards a colour), everything else is kept", () =>
         {
             var floats = new List<float> { 3f, 10000f, 0.25f };

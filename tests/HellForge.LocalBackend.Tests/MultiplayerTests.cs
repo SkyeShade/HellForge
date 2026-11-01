@@ -187,6 +187,17 @@ static class MultiplayerTests
             plain.Lines.SequenceEqual(["Your gameplay mods don't match the host's.", "Turn on the same gameplay mods on the launcher's MODS page, then start a new session."]),
             "Without a modlist the joiner is told what to do: " + string.Join(" | ", plain.Lines ?? []));
         check(host.Notices.TryTake(out var plainTold, TimeSpan.FromSeconds(5)) && plainTold.Lines.SequenceEqual(["Their gameplay mods don't match yours."]), "The host's line without a modlist");
+        // While a live change of the host's mods is being made (LiveMods), a friend with the host's mods waits: refused for
+        // now, never checked against a digest the host's game may no longer play.
+        host.Lobby.ModsChanging(true);
+        var early = new Node(network, StrangerId + 40, "mods-a");
+        early.Lobby.FromLocal(Join("j7", StrangerId + 40, connection));
+        check(early.Next("lobby.result", check).Text(2) == LobbyService.LobbyNotJoinable.ToString() &&
+            early.Notices.TryTake(out var wait, TimeSpan.FromSeconds(5)) && wait.Lines.SequenceEqual(["The host's gameplay mods are changing.", "Join them again in a moment."]),
+            "A join while the host's mods change was let in, or not told why");
+        check(host.Notices.TryTake(out var waitTold, TimeSpan.FromSeconds(5)) && waitTold.Lines.SequenceEqual(["A friend tried to join while your mods were changing."]),
+            "The host is not told of a join while its mods change");
+        host.Lobby.ModsChanging(false);
         host.Quiet(check, "Refused joins are not announced");
 
         // Events about a lobby only count from its owner.

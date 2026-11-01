@@ -15,3 +15,6 @@ __declspec(dllexport) __attribute__((noinline)) int hellforge_fake_target(int x)
     y = y * 3 + 1;
     return y;
 }
+
+/* A cell a live test mod writes through the API, and the loader puts back when it takes the mod out (live_mods_test.c). */
+__declspec(dllexport) volatile uint32_t hellforge_fake_cell = 5;

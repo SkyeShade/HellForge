@@ -3,8 +3,9 @@ using HellForge.Core;
 namespace HellForge.LocalBackend.Multiplayer;
 
 // Rejoining by itself after a mod sync (docs/multiplayer.md "Mod sync"). The session the launcher restarts with a host's
-// mods (--mod-sync) passes the same file to its backend (--rejoin, a ModSyncSession), which brings the game back into
-// that host's lobby through the game's own invitation path, the one a friend's invitation takes:
+// mods (--mod-sync) passes the same file to its backend (--rejoin, a ModSyncSession); a session whose running game took
+// the host's mods without a restart (LiveMods) starts it at once, past Waiting when its game has its own lobby. Either brings
+// the game back into that host's lobby through the game's own invitation path, the one a friend's invitation takes:
 //   Waiting   until this machine's game creates its own lobby (LobbyService.LocalLobbyCreated: it is on the ship and has
 //             listened for invitations since it booted), at most ReadyTimeout from the start;
 //   Settling  Settle more, so the ship's screens are up;
@@ -78,6 +79,13 @@ public sealed class AutoRejoin : IDisposable
         {
             return (null, "the mod sync file could not be read (" + error.Message + ").");
         }
+        return From(session, localId, ownDigest);
+    }
+
+    // Whom a mod sync's session rejoins (the file a restart passes, or the running game's mods changed live: LiveMods), or
+    // why it does not: checked as if this machine had not written it.
+    public static (Target? Target, string? Reason) From(ModSyncSession session, ulong localId, string ownDigest)
+    {
         var parts = session.Connection.Split(';');
         if (!session.Connection.StartsWith(LobbyService.ConnectionPrefix, StringComparison.Ordinal) || parts.Length != 3 || parts[1].Length is 0 or > 100 ||
             !LobbyService.TryNode(parts[2], out var host) || !LobbyService.TryNode(session.Host, out var named) || named != host)
@@ -90,16 +98,29 @@ public sealed class AutoRejoin : IDisposable
     // Follows this machine's lobby service: its game's own lobby, its joins, and the host's answer.
     public void Attach(LobbyService lobby)
     {
+        attached = lobby;
         lobby.LocalLobbyCreated += GameReady;
         lobby.LocalJoinStarted += JoinStarted;
         lobby.LocalJoinFinished += JoinFinished;
         lobby.RejoinAnswered += Answered;
     }
 
+    LobbyService? attached;
+
     // Ticks once a second.
     public void Start() => timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
-    public void Dispose() => timer?.Dispose();
+    // Stops following the lobby service too: a later mod sync's rejoin takes over (MultiplayerHost).
+    public void Dispose()
+    {
+        timer?.Dispose();
+        if (attached is not { } lobby) return;
+        lobby.LocalLobbyCreated -= GameReady;
+        lobby.LocalJoinStarted -= JoinStarted;
+        lobby.LocalJoinFinished -= JoinFinished;
+        lobby.RejoinAnswered -= Answered;
+        attached = null;
+    }
 
     // Whether the host's answers and what follows are taken from it (a stranger too: StrangerGate).
     public bool Related(ulong peer)

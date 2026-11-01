@@ -67,6 +67,7 @@ HF_LUA_API HfMod* hellforge_lua_mod(const char* name)
         m->log = OpenLog(logName);
         m->lua = 1;
         m->loaded = 1;
+        m->order = g_modCount;
         MemoryBarrier(); /* the entry is whole before anything counting the mods sees it */
         g_modCount++;
         mod = m;

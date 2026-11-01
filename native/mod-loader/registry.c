@@ -142,7 +142,7 @@ typedef struct Weapon
     uint32_t behaviour;  /* add_entity: the behaviour it runs, or 0 for the base's */
     uint64_t modelFrom;  /* add_entity: the entity whose model (and model-tied records) it takes, or 0 */
     char name[192];
-    int state; /* 0 pending, 1 registered, -1 refused */
+    int state; /* 0 pending, 1 registered, -1 refused, 2 a live set-up's, registered when the change is made (live_registry.c) */
     uint32_t text[4]; /* text ids of its own: name, upper-case name, description, designation (0: the base's) */
     uint32_t shortId, baseShortId;
     uint32_t projectile, baseProjectile;   /* HfWeapon.projectile, and what its base fires */
@@ -170,6 +170,7 @@ static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
 typedef struct NetworkType { uint32_t index, base; uint64_t entity, baseEntity; const char* name; HfMod* mod; } NetworkType;
 static NetworkType g_networkTypes[REG_MAX_WEAPONS];
 static uint32_t g_networkTypeCount, g_networkVanillaTypes;
+static uint8_t *g_netEntries, *g_netOwn, *g_netValues; /* the arrays it made (count + REG_MAX_WEAPONS each), once it has */
 
 typedef void (*EntityLoaderFn)(void* state);
 typedef void (*ArmoryBuilderFn)(void* list);
@@ -194,9 +195,13 @@ static void WeaponOrder(int order[REG_MAX_WEAPONS])
 static uintptr_t g_game;
 static uint8_t* g_loadoutTable; /* HellForge's copy of component 29 (pointer to its index, as the game's) */
 static uint32_t g_loadoutRecords;
+static uint8_t* g_regList;      /* HellForge's copy of the short-id list (its 32-byte header first: room for REG_MAX_WEAPONS more) */
+static uint32_t g_regListCount; /* its entries */
 static uint8_t* g_armory;
 /* HellForge's copies of component tables that registered weapons have records of their own in (besides component 29). */
-typedef struct OwnedTable { uint32_t component, stride, first, next, end; uint8_t* index; } OwnedTable;
+/* from: the table the copy was made of (fromBytes after its header), which HellForge's addresses in it follow out of
+ * (live_own.c HeldFollow). */
+typedef struct OwnedTable { uint32_t component, stride, first, next, end; uint8_t* index; uint8_t* from; uint32_t fromBytes; } OwnedTable;
 static OwnedTable g_owned[REG_MAX_OWNED];
 static int g_ownedCount;
 static EntityLoaderFn g_entityLoader;
@@ -336,7 +341,7 @@ static int RegisteredItemsText(char* text, int size)
     int n = snprintf(text, size, "{\"format\":1,\"items\":[");
     int listed = 0;
     for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
-        if (!g_weapons[i].plain)
+        if (!g_weapons[i].plain && g_weapons[i].state != 2 && !LiveTomb(LC_WEAPON, (uint32_t)i))
             n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
                 g_weapons[i].id, g_weapons[i].base, JsonText(g_weapons[i].mod->id, mod, sizeof mod), JsonText(g_weapons[i].name, name, sizeof name));
     int before = n;
@@ -426,10 +431,10 @@ static int OwnComponents(HfMod* mod, const char* what, const char* name, const c
 }
 
 /* Whether a weapon of this unit can be added now; logged when not. */
-static int WeaponAddable(HfMod* mod, const char* unit)
+static int WeaponAddable(HfMod* mod, const char* unit, int live)
 {
     if (unit == NULL || unit[0] == 0 || strlen(unit) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_weapon: it needs a unit name (under 192 bytes)"); return 0; }
-    if (g_fired[HF_EVENT_ENTITIES_READY] || g_weaponCount >= REG_MAX_WEAPONS)
+    if ((g_fired[HF_EVENT_ENTITIES_READY] && !live) || g_weaponCount >= REG_MAX_WEAPONS)
     {
         ApiLog(mod, "add_weapon(%s): too late or too many weapons; call it from hellforge_mod_init", unit);
         return 0;
@@ -472,12 +477,13 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
         return 0;
     }
     const char* unit = def->unit;
-    if (!WeaponAddable(mod, unit)) return 0;
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_registry.c) */
+    if (!WeaponAddable(mod, unit, live)) return 0;
     uint64_t entity = Murmur64A(unit, strlen(unit));
     uint32_t id = (uint32_t)(entity >> 32);
     if (id == 0) id = 1;
     for (int i = 0; i < g_weaponCount; i++)
-        if (g_weapons[i].entity == entity || g_weapons[i].id == id)
+        if (!LiveGone(LC_WEAPON, (uint32_t)i) && (g_weapons[i].entity == entity || g_weapons[i].id == id))
         {
             ApiLog(mod, "add_weapon(%s): already added by %s", unit, g_weapons[i].mod->id);
             return 0;
@@ -491,19 +497,22 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
     WeaponText(def, unit, &w);
-    g_weapons[g_weaponCount++] = w;
+    w.state = live ? 2 : 0;
+    g_weapons[g_weaponCount] = w;
+    MemoryBarrier(); /* the entry is whole before the count shows it */
+    g_weaponCount++;
     ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %d record(s) of its own",
         unit, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
         (unsigned long long)entity, id, def->base, w.ownCount);
-    WriteRegisteredItems();
+    if (!live) WriteRegisteredItems(); /* a live change writes it once made */
     return id;
 }
 
 /* Whether an entity of this name can be added now; logged when not. */
-static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name)
+static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name, int live)
 {
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_entity: it needs a name (under 192 bytes)"); return 0; }
-    if (g_fired[HF_EVENT_ENTITIES_READY] || g_weaponCount >= REG_MAX_WEAPONS)
+    if ((g_fired[HF_EVENT_ENTITIES_READY] && !live) || g_weaponCount >= REG_MAX_WEAPONS)
     {
         ApiLog(mod, "add_entity(%s): too late or too many entities; call it from hellforge_mod_init", name);
         return 0;
@@ -552,10 +561,11 @@ static uint64_t ApiAddEntity(HfMod* mod, const HfEntity* def)
     }
     char identity[256];
     const char* name = Identity(mod, def->name, identity, sizeof identity);
-    if (!EntityAddable(mod, def, name)) return 0;
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_registry.c) */
+    if (!EntityAddable(mod, def, name, live)) return 0;
     uint64_t entity = Murmur64A(name, strlen(name));
     for (int i = 0; i < g_weaponCount; i++)
-        if (g_weapons[i].entity == entity) { ApiLog(mod, "add_entity(%s): already added by %s", name, g_weapons[i].mod->id); return 0; }
+        if (!LiveGone(LC_WEAPON, (uint32_t)i) && g_weapons[i].entity == entity) { ApiLog(mod, "add_entity(%s): already added by %s", name, g_weapons[i].mod->id); return 0; }
     Weapon w = {0};
     w.mod = mod;
     w.plain = 1;
@@ -566,7 +576,10 @@ static uint64_t ApiAddEntity(HfMod* mod, const HfEntity* def)
     EntityOptions(def, &w);
     EntityText(def, name, &w);
     if (OwnComponents(mod, "add_entity", name, def->own_components, &w)) return 0;
-    g_weapons[g_weaponCount++] = w;
+    w.state = live ? 2 : 0;
+    g_weapons[g_weaponCount] = w;
+    MemoryBarrier(); /* the entry is whole before the count shows it */
+    g_weaponCount++;
     if (w.ownAll) ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx with records of its own in every component", name,
         (unsigned long long)entity, (unsigned long long)def->base);
     else ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx, %d record(s) of its own", name, (unsigned long long)entity,
@@ -784,7 +797,7 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     if (copy == NULL) return NULL;
     memcpy(copy, table - 32, 32 + (size_t)bytes);
     owned = &g_owned[g_ownedCount++];
-    *owned = (OwnedTable){c, stride, first, first, first + REG_MAX_WEAPONS, copy + 32};
+    *owned = (OwnedTable){c, stride, first, first, first + REG_MAX_WEAPONS, copy + 32, table, bytes};
     SetStatePointer(state, REG_TABLES + 8 * c, owned->index);
     Note("registry: component %u copied (%u slots, %u-byte records, new records from %u)", c, slots, stride, first);
     return owned;
@@ -822,7 +835,7 @@ static EngineTextFn g_engineText;
 /* The engine's text function with the mods' text first. */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)
 {
-    for (int i = 0; i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
+    for (int i = g_textCount - 1; i >= 0; i--) if (g_texts[i].id == id) return g_texts[i].text; /* the newest: a live change's new version */
     return g_engineText != NULL ? g_engineText(id, a, b, c) : "";
 }
 
@@ -854,6 +867,8 @@ static uint32_t AddText(const char* text, const char* key, uint32_t salt)
     memcpy(copy, text, length + 1);
     uint32_t id = (uint32_t)(Murmur64A(key, strlen(key)) >> 32) ^ salt;
     if (id == 0) id = salt;
-    g_texts[g_textCount++] = (ModText){id, copy};
+    g_texts[g_textCount] = (ModText){id, copy};
+    MemoryBarrier(); /* the game thread looks texts up while a live change adds them (TextDetour) */
+    g_textCount++;
     return id;
 }

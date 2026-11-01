@@ -137,8 +137,6 @@ sealed partial class PlaySession
         SandboxBind(Path.Combine(hostInstall, "app", "session"));
         var hostLoader = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll");
         if (File.Exists(hostLoader)) SandboxBind(hostLoader);
-        if (nativeFolders != null)
-            foreach (var folder in nativeFolders) SandboxBind(SandboxWinePath(folder));
         var relay = StartSandboxPipeRelay((string)result["runId"]!);
         var control = Directory.CreateDirectory(Path.Combine(run, "control")).FullName;
         var heartbeat = Path.Combine(control, "runner.heartbeat");
@@ -169,8 +167,10 @@ sealed partial class PlaySession
             RelayPort = relay.Port,
             RelayToken = relay.Token,
             LocalPlayFab = options.LocalPlayFab,
-            NativeMods = modNative,
-            NativeFolders = nativeFolders?.Select(SandboxWinePath).ToList() ?? [],
+            // network field type edits are the in-game loader's (its plan's nettype lines, and live changes'): the domain
+            // host's native mod applier no longer runs, so it needs no mod folders either
+            NativeMods = false,
+            NativeFolders = [],
             GameArguments = SandboxGameArguments(),
             Environment = SandboxGameEnvironment(),
             ReadOnlyBinds = [.. sandboxBinds],

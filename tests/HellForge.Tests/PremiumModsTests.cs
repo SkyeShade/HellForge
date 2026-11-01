@@ -1,7 +1,8 @@
 using HellForge.Core;
 
 // Mods built on premium content (PremiumContent, PremiumMods, the manifest's "premium"): the entries a manifest may name,
-// what a synced account owns, and what a session does with a mod the player does not own. Synthetic files only.
+// what a synced account owns, and what a session, or a live change of a running one, does with a mod the player does not
+// own. Synthetic files only.
 static class PremiumModsTests
 {
     const uint PremiumWarbond = 610512218, PremiumToken = 2021502022, Knight = 2161995568;
@@ -48,6 +49,56 @@ static class PremiumModsTests
             check(!PremiumContent.ForSnapshot(data, snapshot, Account + 1).Owns("item:" + Knight) && !PremiumContent.ForSnapshot(data, snapshot, null).Owns("item:" + Knight),
                 "Another Steam account, or none, owned the snapshot's items.");
             check(!PremiumContent.ForSnapshot(data, null, Account).Owns("item:" + Knight), "A profile without a snapshot owned something.");
+            // a live change of the running session follows the same sealed snapshot and account
+            var install = new InstallLayout(Path.Combine(root, "premium-install"));
+            File.Copy(data, Path.Combine(Directory.CreateDirectory(install.App).FullName, "progression-data.json"), overwrite: true);
+            check(PremiumMods.ForLiveChange(install, snapshot, Account).Owns("dlc:super-citizen-edition") && !PremiumMods.ForLiveChange(install, snapshot, Account + 1).Owns("item:" + Knight),
+                "A live change did not follow the sealed snapshot as the session does.");
+        });
+
+        test("A live change counts nothing premium as owned without the session's snapshot, Steam account or readable progression data", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "premium-live-install"));
+            var snapshot = Directory.CreateDirectory(Path.Combine(install.Root, InventorySync.SnapshotFolder, "player")).FullName;
+            var free = "warbond:" + PremiumContent.FreeWarbond;
+            check(!PremiumMods.ForLiveChange(install, snapshot, Account).Owns(free), "Without progression data a live change owned the free warbond.");
+            var data = Path.Combine(Directory.CreateDirectory(install.App).FullName, "progression-data.json");
+            File.Copy(ProgressionData(root), data, overwrite: true);
+            check(!PremiumMods.ForLiveChange(install, null, Account).Owns(free) && !PremiumMods.ForLiveChange(install, snapshot, null).Owns(free),
+                "Without the session's snapshot or Steam account a live change owned the free warbond.");
+            check(PremiumMods.ForLiveChange(install, snapshot, Account).Owns(free) && !PremiumMods.ForLiveChange(install, snapshot, Account).Owns("warbond:" + PremiumWarbond),
+                "With both, a live change did not follow the session's rule (an unsealed snapshot owns the free warbond alone).");
+            File.WriteAllText(data, "{\"seasonPassDetails\":");
+            check(!PremiumMods.ForLiveChange(install, snapshot, Account).Owns(free), "Unreadable progression data owned something.");
+        });
+
+        test("A live change holds back for a restart a mod it brings built on premium content not owned; an owned one, or one without any, goes live", () =>
+        {
+            var data = ProgressionData(root);
+            var mods = Path.Combine(root, "premium-live", "mods");
+            StatsMod(mods, "s1", null, 900);
+            StatsMod(mods, "knight", """["dlc:super-citizen-edition"]""", 800);
+            List<ModManifest> Session() => ModCatalog.LoadOrder(ModCatalog.Active(ModCatalog.Load(mods).Mods));
+            var current = SessionMods.Of(Session(), Session(), "");
+            var reads = 0;
+            Func<PremiumContent> Owned(params uint[] held) => () => { reads++; return PremiumContent.Load(data, held); };
+
+            // a change without premium mods does not read the snapshot
+            StatsMod(mods, "s1", null, 700);
+            check(LiveModPlan.Make(current, Session()).WithPremium(Owned()).Live && reads == 0, "A change without premium mods read ownership or was held back.");
+            // a premium mod's new version, and a new one, are held back unless owned
+            StatsMod(mods, "knight", """["dlc:super-citizen-edition"]""", 600);
+            StatsMod(mods, "port", "[\"warbond:" + PremiumWarbond + "\"]", 500);
+            var plan = LiveModPlan.Make(current, Session());
+            var none = plan.WithPremium(Owned());
+            check(plan.Live && !none.Live && none.Blocking.Order(StringComparer.Ordinal).SequenceEqual([
+                "knight: it uses the Super Citizen Edition, which this Steam account has not synced, so it needs a restart",
+                "port: it uses warbond " + PremiumWarbond + ", which this Steam account has not synced, so it needs a restart"]) && reads == 1,
+                "Premium mods not owned were not held back: " + string.Join(" | ", none.Blocking));
+            check(!plan.WithPremium(() => PremiumContent.Nothing).Live, "Owning nothing let a premium mod go live.");
+            var knightOnly = plan.WithPremium(Owned(Knight));
+            check(knightOnly.Blocking.Single().StartsWith("port:", StringComparison.Ordinal), "An owned premium mod was held back, or an unowned one was not.");
+            check(plan.WithPremium(Owned(Knight, PremiumToken)).Live, "A change of owned premium mods was held back.");
         });
 
         test("A session keeps a gameplay mod the player does not own but locks its items, and leaves such a cosmetic mod out", () =>
@@ -106,6 +157,15 @@ static class PremiumModsTests
         File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName),
             "{\"format\":1,\"id\":\"test." + name + "\",\"name\":\"" + name + "\",\"version\":\"1\"" + (premium == null ? "" : ",\"premium\":" + premium) + "}");
         return folder;
+    }
+
+    // A stats mod (one weapon's rate of fire) named as its id, with the given premium list (JSON), or none.
+    static void StatsMod(string mods, string id, string? premium, int rpm)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(mods, id)).FullName;
+        File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName),
+            "{\"format\":1,\"id\":\"" + id + "\",\"name\":\"" + id + "\",\"version\":\"1\"" + (premium == null ? "" : ",\"premium\":" + premium) + "}");
+        File.WriteAllText(Path.Combine(folder, StatsData.FileName), "{\"format\":1,\"weapons\":{\"AR-23 Liberator\":{\"rpm\":" + rpm + "}}}");
     }
 
     // The free warbond, one premium warbond with its token, and the Super Citizen Edition's package.

@@ -530,6 +530,7 @@ public partial class MainWindow : Window
     {
         var stopped = !runner.IsRunning;
         var status = SessionFiles.Text(state, "status");
+        SetLiveBackend(stopped ? null : SessionFiles.Text(state, "backendOrigin"));
         ShowModProblems(state);
         if (stopped && !state.TryGetProperty("completedUtc", out _))
         {
@@ -881,6 +882,7 @@ public partial class MainWindow : Window
         ProfileCombo.IsEnabled = NewProfileButton.IsEnabled = !running;
         CreateProfileButton.IsEnabled = !running && TemplateCombo.SelectedItem != null;
         if (running && NewProfileForm.IsVisible) ShowNewProfileForm(false);
+        if (!running) SetLiveBackend(null);
         SetModsLocked(running);
         SetWeaponLevelsLocked(running);
         UpdateSettingsImport();

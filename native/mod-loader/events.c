@@ -86,7 +86,7 @@ static void EventsTick(void)
 /* SDK 7: a listener for one kind of event. */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority)
 {
-    if (mod == NULL || listener == NULL) return 0;
+    if (mod == NULL || listener == NULL || ModGone(mod)) return 0;
     if (kind == 0 || kind >= EVT_KINDS || EventName(kind)[0] == '?') { ApiLog(mod, "subscribe: no event kind %u", kind); return 0; }
     if (g_tickState < 0) { ApiLog(mod, "subscribe(%s): the game thread's update is not hooked (modloader.log says why)", EventName(kind)); return 0; }
     AcquireSRWLockExclusive(&g_eventsLock);

@@ -585,17 +585,21 @@ static bool AddStratagemPage(const HfContent& s, const std::vector<HfContent>& a
     return true;
 }
 
+/* The stratagems that have a page (by name): a live change's AddModContent adds the others. */
+static std::set<std::string> g_contentPages;
+static volatile LONG g_modsChanged;
+
+void ModsChanged() { InterlockedExchange(&g_modsChanged, 1); }
+
 void AddModContent()
 {
-    static bool done;
-    if (done || !g_catalogOk) return;
-    done = true;
+    if (!g_catalogOk) return;
     const HfApi* api = g_host.api;
     if (api->size < offsetof(HfApi, content) + sizeof(void*) || api->content == nullptr) return;
     std::vector<HfContent> all = AllContent(api);
     int pages = 0;
     for (const HfContent& s : all)
-        if (s.kind == HF_KIND_STRATAGEM && AddStratagemPage(s, all)) pages++;
+        if (s.kind == HF_KIND_STRATAGEM && g_contentPages.insert(s.name).second && AddStratagemPage(s, all)) pages++;
     /* their saved values, to the game: the stats pass does not know them (joined to a friend, Tick swaps in the host's) */
     int applied = ApplyModValues(localstats::OwnEntries(), "this machine's", "HellForge refused its saved value");
     g_modRole = HF_SESSION_SOLO;
@@ -604,6 +608,7 @@ void AddModContent()
 
 void Tick()
 {
+    if (InterlockedExchange(&g_modsChanged, 0)) AddModContent();
     ReadSync();
     static ULONGLONG next, nextNotice;
     ULONGLONG now = GetTickCount64();

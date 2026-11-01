@@ -917,9 +917,11 @@ int main(int argc, char** argv)
         if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-sync-progress.bmp"); Screenshot(shot, width, height); }
         Key(window, VK_ESCAPE); frames(4); /* hides the window: the download goes on */
         bool kept = g_syncAnswers[HF_SYNC_DECLINE] == 1;
-        SyncOffer(HF_SYNC_READY, 2, 3u << 20, 3u << 20); armed();
+        SyncOffer(HF_SYNC_READY, 2, 3u << 20, 3u << 20); g_syncNow.flags = HF_SYNC_LIVE; armed(); /* the running game takes them */
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-sync-live.bmp"); Screenshot(shot, width, height); }
         Key(window, VK_RETURN); frames(4);
         bool restarted = g_syncAnswers[HF_SYNC_RESTART] == 1;
+        g_syncNow.flags = 0;
         SyncOffer(HF_SYNC_OFFER, 3, 3u << 20, 0); armed();
         Key(window, 'B'); frames(4);
         bool blocked = g_syncAnswers[HF_SYNC_BLOCK] == 1 && !strcmp(g_syncBlocked, "friend.tanks");

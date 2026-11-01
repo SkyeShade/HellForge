@@ -127,10 +127,14 @@ static int StatsSelectedRecord(const Component* c, const uint8_t* table, uint64_
     return owners == 1;
 }
 
+/* The end of the edits before e: e itself in g_stats, else all of them (a live change's line, which is not in g_stats:
+ * live_stats.c). */
+static const StatEdit* StatsBefore(const StatEdit* e) { return e >= g_stats && e < g_stats + MAX_STATS ? e : g_stats + g_statCount; }
+
 /* A preceding own edit for this entity has already checked its vanilla record identity. Reuse that clone. */
 static int StatsCloned(const StatEdit* e, uintptr_t record)
 {
-    for (const StatEdit* earlier = g_stats; earlier < e; earlier++)
+    for (const StatEdit* earlier = g_stats; earlier < StatsBefore(e); earlier++)
         if (earlier->applied && earlier->own && earlier->resource == e->resource && !strcmp(earlier->component, e->component) &&
             earlier->address - earlier->offset == record) return 1;
     return 0;
@@ -143,7 +147,7 @@ static int StatsExpectHolds(const StatEdit* e, uintptr_t address, uint32_t size)
     uint32_t current = 0;
     if (SafeRead(address, &current, size)) return 0;
     uint32_t original = e->hasBaseline ? e->original : current;
-    for (const StatEdit* earlier = g_stats; earlier < e; earlier++)
+    for (const StatEdit* earlier = g_stats; earlier < StatsBefore(e); earlier++)
         if (earlier->applied && earlier->address == address) original = earlier->original;
     return original == e->expect;
 }
@@ -155,7 +159,7 @@ static uintptr_t StatsOwnRecord(StatEdit* e, uint8_t* state, const Component* c,
     uint8_t* copy = OwnRecord(state, c->index, c->stride, e->resource, e->resource);
     uint8_t* moved = StatePointer(state, REG_TABLES + 8 * c->index);
     if (copy && moved != table)
-        for (StatEdit* earlier = g_stats; earlier < e; earlier++)
+        for (StatEdit* earlier = g_stats; earlier < StatsBefore(e); earlier++)
             if (earlier->applied && !strcmp(earlier->component, e->component) &&
                 earlier->address >= (uintptr_t)table + c->recordOffset && earlier->address < (uintptr_t)table + extent)
                 earlier->address = (uintptr_t)moved + (earlier->address - (uintptr_t)table);
@@ -262,30 +266,33 @@ static uintptr_t StatsTableRow(int phase, uintptr_t table, uint32_t first, uint3
     return matches == 1 ? found : 0;
 }
 
-static void StatsApplyRow(StatEdit* e, int phase, uintptr_t table, uint32_t count, uint32_t stride)
+/* phase: projectile, damage, stratagem. The edit's field in its row (the moved table's, which takes precedence over the
+ * original), or 0 with *why. Also live_stats.c's lookup. */
+static uintptr_t StatsTableField(int phase, uintptr_t game, const StatEdit* e, const char** why)
 {
+    uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
+    uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     if (strcmp(g_build, "25480438") || e->own || e->offset < 4 || e->offset > stride - 4 || e->offset % 4)
-    { StatsRefuse(e, "unsupported build or table layout"); return; }
-    uintptr_t found = StatsTableRow(phase, table, 1, count, e->record);
+    { *why = "unsupported build or table layout"; return 0; }
+    uintptr_t found = StatsTableRow(phase, StatsTableOf(phase, game), 1, count, e->record);
     uint8_t layout[STR_ROW];
-    if (!found || SafeRead(found, layout, stride)) { StatsRefuse(e, "table row identity/layout is not unique or readable"); return; }
-    StatsWrite(e, found + e->offset);
+    if (!found || SafeRead(found, layout, stride)) { *why = "table row identity/layout is not unique or readable"; return 0; }
+    return found + e->offset;
 }
 
-/* phase: projectile, damage, stratagem. Moved tables always take precedence over the original. */
 static void StatsApplyTable(int phase, uintptr_t game)
 {
     if (g_statsTablesDone[phase]) return;
     g_statsTablesDone[phase] = 1;
     const char* kind = StatsTableName(phase);
-    uintptr_t table = StatsTableOf(phase, game);
-    uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
-    uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     for (int i = 0; i < g_statCount; i++)
     {
         StatEdit* e = &g_stats[i];
         if (strcmp(e->kind, kind) || !e->mod->loaded) continue;
-        StatsApplyRow(e, phase, table, count, stride);
+        const char* why = NULL;
+        uintptr_t at = StatsTableField(phase, game, e, &why);
+        if (!at) StatsRefuse(e, why);
+        else StatsWrite(e, at);
     }
 }
 
@@ -321,12 +328,13 @@ static int StatsFlagsValid(char** f)
     return 1;
 }
 
-static int StatsParse(char** f, int n)
+/* A plan's stat line (f[0] "stat", f[1] the mod id) into *out, its mod left NULL; 1 when malformed. Also live_mods.c's
+ * modstat lines. */
+static int StatsParseInto(char** f, int n, StatEdit* out)
 {
-    if (n != 14 || g_statCount >= MAX_STATS) return 1;
+    if (n != 14) return 1;
     StatEdit e = {0};
-    e.mod = StatsModNamed(f[1]);
-    if (!e.mod || strlen(f[2]) >= sizeof e.kind || strlen(f[3]) >= sizeof e.component || strlen(f[13]) >= sizeof e.label) return 1;
+    if (strlen(f[2]) >= sizeof e.kind || strlen(f[3]) >= sizeof e.component || strlen(f[13]) >= sizeof e.label) return 1;
     if (strcmp(f[2], "component") && !StatsTableKind(f[2]) && StatsExtraKind(f[2]) < 0) return 1;
     if (!StatsStorageKnown(f[7])) return 1;
     if (!strcmp(f[7], "u8") && strcmp(f[2], "component")) return 1; /* one-byte flags are components' only */
@@ -338,6 +346,17 @@ static int StatsParse(char** f, int n)
     if (!StatsFlagsValid(f)) return 1;
     e.own = f[10][0] == '1'; e.shared = f[11][0] == '1'; e.unverified = f[12][0] == '1'; e.floating = !strcmp(f[7], "f32");
     if (e.floating && !StatsFiniteBits(e.value)) return 1;
+    *out = e;
+    return 0;
+}
+
+static int StatsParse(char** f, int n)
+{
+    if (n != 14 || g_statCount >= MAX_STATS) return 1;
+    HfMod* mod = StatsModNamed(f[1]);
+    StatEdit e;
+    if (!mod || StatsParseInto(f, n, &e)) return 1;
+    e.mod = mod;
     g_stats[g_statCount++] = e;
     return 0;
 }

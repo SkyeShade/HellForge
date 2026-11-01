@@ -22,6 +22,11 @@ public sealed record LiveApplies(string When, bool Verified)
     } + (Verified ? "" : " (expected)");
 }
 
+// Mod sync's state for the in-game editor (LiveEditServer.SyncStateAsync): the offer's version, its state word, the host,
+// the download's bytes and how many are done, the offer's mods, and the message. Live: answering "restart" changes the
+// running game's mods instead of restarting it (HF_SYNC_LIVE, SDK 16).
+public readonly record struct SyncStateLine(int Version, string State, string Host, long Bytes, long Done, int Mods, bool Live, string Message);
+
 public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 {
     public static readonly LiveResult NotConnected = new(false, "the game is not connected");
@@ -169,8 +174,9 @@ public sealed class LiveEditServer : IAsyncDisposable
         SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class),
             Invariant(item.Mod.Bytes), Field(item.Mod.Id), Field(item.Mod.Name), Field(item.Mod.Version), ModCatalog.WebAddress(item.Mod.Url) ?? "-") +
             (stranger ? "\tstranger" : ""));
-    public Task<LiveResult> SyncStateAsync(int version, string state, string host, long bytes, long done, int mods, string message) =>
-        SendAsync("syncstate", string.Join('\t', Invariant(version), state, Field(host), Invariant(bytes), Invariant(done), Invariant(mods), Field(message)));
+    public Task<LiveResult> SyncStateAsync(SyncStateLine line) =>
+        SendAsync("syncstate", string.Join('\t', Invariant(line.Version), line.State, Field(line.Host), Invariant(line.Bytes), Invariant(line.Done),
+            Invariant(line.Mods), line.Live ? "1" : "0", Field(line.Message)));
 
     static string Invariant(long number) => number.ToString(CultureInfo.InvariantCulture);
     // Text inside one field: no tabs, line breaks or other control characters, at most 200 characters.
@@ -195,7 +201,16 @@ public sealed class LiveEditServer : IAsyncDisposable
         var parts = reply.Split('\t');
         if (parts.Length >= 3 && parts[1] == "ok")
             return new(true, parts[2], parts.Length >= 4 && uint.TryParse(parts[3], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var bits) ? bits : null);
-        return new(false, parts.Length >= 3 ? parts[2] : "malformed reply");
+        // a refusal's reason, and for a live mod change its explanation after a tab
+        return new(false, parts.Length >= 3 ? string.Join('\t', parts[2..]) : "malformed reply");
+    }
+
+    // A line of a live change of the session's mods (LiveModPlan.Lines; native/mod-loader/live_mods.c), its fields sent as
+    // they are: a stats label, a folder. Field-level text was checked by the plan (no tabs or line breaks).
+    public Task<LiveResult> ModAsync(string verb, IReadOnlyList<string> fields)
+    {
+        if (fields.Any(f => f.Length == 0 || f.Any(char.IsControl))) return Task.FromResult(new LiveResult(false, "malformed\ta field is empty or holds a control character"));
+        return SendAsync(verb, string.Join('\t', fields));
     }
 
     public async ValueTask DisposeAsync()

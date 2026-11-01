@@ -9,7 +9,9 @@
  *   network_config <module> <rva hex>       ([[module+rva]] is the engine's network configuration)
  *   entity_region <size> <map header hex>
  *   component <name> <offset> <header hex> <index> <indices> <records> <record offset> <stride>
- *   mod <id> <folder> <dll> */
+ *   mod <id> <folder> <dll> [live]           (live: SDK 16, it may be taken out while the game runs)
+ *   stat <mod id> ...                       (stats.c)
+ *   nettype <mod id> <name> <kind> <expect bits> <expect min> <bits>   (a mod's networkFieldTypes: nettypes.c) */
 #define WIN32_LEAN_AND_MEAN
 #define HF_MOD_LOADER
 #include <windows.h>
@@ -41,6 +43,19 @@ struct HfMod
     char last[512]; /* its last log line (last_log: why a call was refused) */
     int lua;        /* a Lua mod (lua.<name>), registered through the Lua bridge while the game runs (lua_bridge.c) */
     char name[128]; /* a Lua mod's name as its runtime gave it (SDK 10, mods) */
+    int order;      /* its place in load order (0 loads first): its index, until a live change reorders (live_mods.c) */
+    /* SDK 16, live mods (live_code.c): its manifest's "live": true (the plan's "live", or a live change's), so it may be
+     * set up and taken out while the game runs; how it was set up (HF_LOAD_BOOT, HF_LOAD_LIVE); taken out, or being:
+     * the API refuses what it would add then; its DLL's image (the writes and threads it started are known by address);
+     * its optional hellforge_mod_unload. */
+    int live;
+    uint32_t phase;
+    volatile LONG removing;
+    int removed;
+    int staging; /* a new version set up beside the running one until the change is made (live_mods.c) */
+    int leftover; /* taken out with something of it possibly left (live_code.c CodeRemove): its entry is never set up again */
+    uintptr_t imageBase, imageEnd;
+    int (*unload)(const HfApi* api, HfMod* mod, uint32_t reason);
 };
 
 typedef struct Component
@@ -80,7 +95,7 @@ static int g_modCount;
  * player's load order (2026-10-18: friends with the same mods in another order). g_mods stays in load order: the
  * deferred edits queued while they set up apply in it (fields.c), so the top mod still wins a conflict. */
 static int g_modsSettingUp;
-static int ModLoadIndex(const HfMod* mod) { return mod >= g_mods && mod < g_mods + g_modCount ? (int)(mod - g_mods) : MAX_MODS; }
+static int ModLoadIndex(const HfMod* mod) { return mod >= g_mods && mod < g_mods + g_modCount ? mod->order : MAX_MODS; }
 /* The code mods' set-up order: indices into g_mods by mod id. */
 static void SetupOrder(int order[MAX_MODS])
 {
@@ -95,7 +110,28 @@ static void SetupOrder(int order[MAX_MODS])
 }
 static Callback g_callbacks[MAX_CALLBACKS];
 static int g_callbackCount;
-static volatile LONG g_fired[5];
+static SRWLOCK g_callbacksLock = SRWLOCK_INIT; /* a live change takes a mod's callbacks out (live_code.c) */
+static volatile LONG g_fired[HF_EVENT_MODS_CHANGED + 1];
+/* The load events in the order they fired (a mod set up while the game runs hears them in it: live_code.c). */
+static HfEvent g_fireOrder[4];
+static volatile LONG g_fireCount;
+/* The mod a live change is setting up (live_code.c): on() calls it back after its init, not inside it. */
+static HfMod* g_liveSetup;
+/* The mod whose hellforge_mod_init or event callback this thread is running, or NULL: a write's mod when the write was a
+ * tail call (live_code.c ModOfWrite). */
+static _Thread_local HfMod* g_callingMod;
+/* A mod being taken out by a live change: what it asks to add is refused (live_code.c). */
+static int ModGone(const HfMod* mod) { return mod != NULL && mod->removing; }
+/* Numbered content a live set-up registers (live_content.c): the kinds numbered in call order, where a registration's
+ * entry goes (the array's next one, or a stand-in for the entry of a mod the change takes out; NULL when the change's
+ * numbering refuses it), and which entries a mod taken out left (tomb) or the change takes out (gone). */
+enum { LC_STRATAGEM, LC_PROJECTILE, LC_DAMAGE, LC_BEHAVIOUR, LC_ABILITY, LC_KINDS, LC_WEAPON = LC_KINDS }; /* weapons: tombs only */
+static void* LiveEntry(int kind, HfMod* mod, const char* name, uint32_t* index);
+static int LiveTomb(int kind, uint32_t index);
+static int LiveGone(int kind, uint32_t index);
+static void LiveRefuse(HfMod* mod, const char* kind, const char* name, const char* why);
+/* Where content installs write game memory: ApiWrite at boot, a live change's batch (live_content.c LivePut). */
+typedef int (*PutFn)(uintptr_t address, const void* bytes, size_t size);
 static uintptr_t g_region;
 static SRWLOCK g_lock = SRWLOCK_INIT;
 static int g_hooksReady;
@@ -222,8 +258,14 @@ static void NoteRewrite(uintptr_t address, size_t size)
     ReleaseSRWLockExclusive(&g_rewriteLock);
 }
 
+/* A live change's install of a boot-time patch (live_content.c, the difficulty's): that thread's writes are queued for the
+ * change's freeze instead. */
+static volatile DWORD g_writeQueueThread;
+static int (*g_writeQueue)(uintptr_t address, const void* data, size_t size);
+
 static int ApiWrite(uintptr_t address, const void* data, size_t size)
 {
+    if (g_writeQueueThread != 0 && g_writeQueueThread == GetCurrentThreadId()) return g_writeQueue(address, data, size);
     DWORD previous;
     if (!VirtualProtect((void*)address, size, PAGE_EXECUTE_READWRITE, &previous)) return 1;
     memcpy((void*)address, data, size);
@@ -422,19 +464,7 @@ static int ApiNetworkFieldType(const char* name, HfFieldType* type)
     return 0;
 }
 
-static int ApiSetNetworkFieldBits(HfMod* mod, const char* name, HfFieldType expect, int32_t bits)
-{
-    HfFieldType current;
-    if (ApiNetworkFieldType(name, &current)) { ApiLog(mod, "network field type %s: not found", name); return 1; }
-    if (expect.kind != 1 || bits <= expect.bits || bits > 31 || current.kind != expect.kind || current.min != expect.min)
-    { ApiLog(mod, "network field type %s left alone: only an integer type can be widened, to at most 31 bits", name); return 1; }
-    if (current.bits == bits) return 0;
-    if (current.bits != expect.bits) { ApiLog(mod, "network field type %s left alone: %d bits, expected %d", name, current.bits, expect.bits); return 1; }
-    uint8_t value = (uint8_t)bits;
-    if (ApiWrite(FindFieldType(name) + 13, &value, 1)) return 1;
-    ApiLog(mod, "network field type %s: %d -> %d bits", name, expect.bits, bits);
-    return 0;
-}
+#include "nettypes.c" /* what mods ask of the field types: the plan's nettype lines, set_network_field_bits, live changes */
 
 /* ---- entity component records ----------------------------------------------------------------------------------- */
 
@@ -616,20 +646,37 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 
-static void Deliver(HfEvent event)
+/* An event to the mods registered for it (only: one mod's, a live set-up's replay), from a copy of the list taken
+ * under its lock, so a callback may register more. */
+static void DeliverTo(HfEvent event, const HfMod* only)
 {
+    static Callback copy[MAX_CALLBACKS];
+    static SRWLOCK copying = SRWLOCK_INIT; /* the copy is one: the watch thread and a live change never deliver at once */
+    AcquireSRWLockExclusive(&copying);
+    int n = 0;
+    AcquireSRWLockShared(&g_callbacksLock);
     for (int i = 0; i < g_callbackCount; i++)
-        if (g_callbacks[i].event == event && g_callbacks[i].mod->loaded)
-        {
-            Note("event %d -> %s", (int)event, g_callbacks[i].mod->id);
-            g_callbacks[i].function(g_callbacks[i].mod, event, g_callbacks[i].user);
-        }
+        if (g_callbacks[i].event == event && g_callbacks[i].mod->loaded && (only == NULL || g_callbacks[i].mod == only)) copy[n++] = g_callbacks[i];
+    ReleaseSRWLockShared(&g_callbacksLock);
+    for (int i = 0; i < n; i++)
+    {
+        Note("event %d -> %s", (int)event, copy[i].mod->id);
+        HfMod* outer = g_callingMod;
+        g_callingMod = copy[i].mod;
+        copy[i].function(copy[i].mod, event, copy[i].user);
+        g_callingMod = outer;
+    }
+    ReleaseSRWLockExclusive(&copying);
 }
+
+static void Deliver(HfEvent event) { DeliverTo(event, NULL); }
 
 static void Fire(HfEvent event)
 {
     if (event == HF_EVENT_ENTITIES_READY) StratagemPayloadsCheck(); /* nothing calls in an entity that is not there */
     if (event == HF_EVENT_ENTITIES_READY) ApplyFieldEdits(); /* SDK 6 deferred edits, before any mod hears of it */
+    LONG at = g_fireCount;
+    if (!g_fired[event] && at < 4) { g_fireOrder[at] = event; InterlockedExchange(&g_fireCount, at + 1); }
     InterlockedExchange(&g_fired[event], 1);
     Deliver(event);
 }
@@ -638,9 +685,14 @@ static uint64_t ApiResourceHash(const char* name) { return name != NULL ? Murmur
 
 static int ApiOn(HfMod* mod, HfEvent event, HfEventCallback callback, void* user)
 {
-    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_PROJECTILES_READY || g_callbackCount >= MAX_CALLBACKS) return 1;
-    g_callbacks[g_callbackCount++] = (Callback){mod, event, callback, user};
-    if (g_fired[event]) callback(mod, event, user);
+    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_MODS_CHANGED || ModGone(mod)) return 1;
+    AcquireSRWLockExclusive(&g_callbacksLock);
+    int ok = g_callbackCount < MAX_CALLBACKS;
+    if (ok) g_callbacks[g_callbackCount++] = (Callback){mod, event, callback, user};
+    ReleaseSRWLockExclusive(&g_callbacksLock);
+    if (!ok) return 1;
+    /* an event that fired already calls back at once, but not inside a live set-up: its replay delivers them in order */
+    if (event != HF_EVENT_MODS_CHANGED && g_fired[event] && mod != g_liveSetup) callback(mod, event, user);
     return 0;
 }
 
@@ -776,7 +828,7 @@ static void WatchDifficulty(void)
     if (game == 0) return;
     if (difficultySeen == 0) { difficultySeen = GetTickCount64(); g_difficultySeen = difficultySeen; }
     if (g_game == 0) g_game = game;
-    InstallDifficulty(game, GetTickCount64() - difficultySeen >= 20000);
+    InstallDifficultyPolled(game, GetTickCount64() - difficultySeen >= 20000);
 }
 
 /* The stats passes over the game's tables, and the per-player shots. */
@@ -820,7 +872,11 @@ static void WatchNetwork(void)
 {
     uintptr_t rows;
     uint32_t count;
-    if (!g_fired[HF_EVENT_NETWORK_READY] && !FieldTypes(&rows, &count)) { Note("network configuration ready (%u field types)", count); RegisterNetworkTypes(); Fire(HF_EVENT_NETWORK_READY); }
+    if (g_fired[HF_EVENT_NETWORK_READY] || FieldTypes(&rows, &count)) return;
+    Note("network configuration ready (%u field types)", count);
+    RegisterNetworkTypes();
+    NetApplyAll(); /* the mods' networkFieldTypes (nettypes.c) */
+    Fire(HF_EVENT_NETWORK_READY);
 }
 
 /* The entity data's region now: the one known while it still holds the map header, else found again. */
@@ -886,6 +942,7 @@ static void WatchRunning(void)
     FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1) DifficultyArtillery();
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
+    if (g_difficultyCapPending) DifficultyCapTick(g_game); /* a live level 11 (live_content.c) */
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
     AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
@@ -1015,12 +1072,14 @@ static void PlanData(char** f, int n)
         c->stride = (uint32_t)strtoul(f[8], NULL, 10);
         if (ParseHex(f[3], c->header, 28) == 28 && c->offset >= 4) g_componentCount++;
     }
-    else if (n == 4 && strcmp(f[0], "mod") == 0 && g_modCount < MAX_MODS)
+    else if ((n == 4 || (n == 5 && !strcmp(f[4], "live"))) && strcmp(f[0], "mod") == 0 && g_modCount < MAX_MODS)
     {
-        HfMod* mod = &g_mods[g_modCount++];
+        HfMod* mod = &g_mods[g_modCount];
+        mod->order = g_modCount++;
         snprintf(mod->id, sizeof mod->id, "%s", f[1]);
         snprintf(mod->folder, sizeof mod->folder, "%s", f[2]);
         Utf8ToWide(f[3], mod->dll, MAX_PATH);
+        mod->live = n == 5; /* SDK 16: it may be taken out while the game runs */
     }
 }
 
@@ -1030,6 +1089,7 @@ static int PlanLine(char* line)
     char* f[16];
     int n = Split(line, f, 16);
     if (n > 0 && !strcmp(f[0], "stat")) return StatsParse(f, n) != 0;
+    if (n > 0 && !strcmp(f[0], "nettype")) return NetParse(f, n) != 0;
     /* an observation only feeds the editors' values: one that cannot be read is skipped, not the session's mods */
     if (n > 0 && !strcmp(f[0], "observe")) { if (StatsParseProbe(f, n)) g_statsProbesSkipped++; return 0; }
     if (n == 2 && !strcmp(f[0], "stats_schema")) return PlanSchema(f[1]);
@@ -1062,12 +1122,26 @@ static int ReadPlan(const wchar_t* path)
 }
 
 #include "live.c"
-#include "lua_bridge.c"
 #include "netapply.c" /* after live.c: the co-op role */
+#include "lua_bridge.c"
+#include "live_mods.c" /* after lua_bridge.c: it adds mods under the bridge's lock; after netapply.c: live weapons extend its switch */
 #include "netreap.c"
 #include "coop_diag.c" /* after live.c: the co-op role */
 
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
+
+/* The SDK's table of functions, handed to every mod. */
+static void ApiInit(void)
+{
+    g_api = (HfApi){HF_MOD_SDK_VERSION, sizeof(HfApi), ApiLog, ApiBuildId, ApiModId, ApiModFolder, ApiOn, ApiModuleBase, ApiFindPattern,
+        SafeRead, ApiModWrite, ApiModWriteU32If, ApiHook, ApiNetworkFieldType, ApiSetNetworkFieldBits, ApiComponentRecord, ApiAddWeapon, ApiWeaponEntity, ApiAddProjectile, ApiProjectileRow, ApiAddDamage, ApiDamageRow, ApiResourceHash,
+        ApiAddStratagem, ApiStratagemRow, ApiAddEntity, ApiAddBehaviour, ApiAddDifficulty, ApiDifficultyRow,
+        ApiRegisterEntity, ApiCopyField, ApiSetField, ApiSetTag, ApiMount, ApiRecord, ApiFind, ApiEditEntity, ApiSetLive, ApiGetLive, ApiSetPassives, ApiGetPassives,
+        ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
+        ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
+        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
+        ApiLoadPhase, ApiUnhook};
+}
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
 static void SetupMod(HfMod* mod)
@@ -1078,6 +1152,7 @@ static void SetupMod(HfMod* mod)
     mod->log = OpenLog(logName);
     if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
     mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    ModImage(mod); /* live_code.c: its image, and its unload export */
     InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
     /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
@@ -1089,7 +1164,9 @@ static void SetupMod(HfMod* mod)
     }
     Note("%s: initializing", mod->id);
     mod->loaded = 1;
+    g_callingMod = mod;
     int result = init(&g_api, mod);
+    g_callingMod = NULL;
     if (result != 0)
     {
         mod->loaded = 0;
@@ -1113,13 +1190,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_log = OpenLog(L"modloader.log");
     if (g_statsProbesSkipped) Note("stats: %d observation(s) in the plan could not be read and are not shown", g_statsProbesSkipped);
     Note("HellForge mod loader, SDK %d, game build %s: %d code mod(s)", HF_MOD_SDK_VERSION, g_build, g_modCount);
-    g_api = (HfApi){HF_MOD_SDK_VERSION, sizeof(HfApi), ApiLog, ApiBuildId, ApiModId, ApiModFolder, ApiOn, ApiModuleBase, ApiFindPattern,
-        SafeRead, ApiWrite, ApiWriteU32If, ApiHook, ApiNetworkFieldType, ApiSetNetworkFieldBits, ApiComponentRecord, ApiAddWeapon, ApiWeaponEntity, ApiAddProjectile, ApiProjectileRow, ApiAddDamage, ApiDamageRow, ApiResourceHash,
-        ApiAddStratagem, ApiStratagemRow, ApiAddEntity, ApiAddBehaviour, ApiAddDifficulty, ApiDifficultyRow,
-        ApiRegisterEntity, ApiCopyField, ApiSetField, ApiSetTag, ApiMount, ApiRecord, ApiFind, ApiEditEntity, ApiSetLive, ApiGetLive, ApiSetPassives, ApiGetPassives,
-        ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
-        ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
-        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource};
+    ApiInit();
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");

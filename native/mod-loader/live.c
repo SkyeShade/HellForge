@@ -18,11 +18,13 @@
  *             syncmod <seq> <version> <index> <have|download|manual|blocked|update|off|trust> <content|code|bundled|raw> <bytes>
  *                     <id> <name> <mod version> <https:// url or -> [stranger]   (stranger: HF_SYNC_FLAG_STRANGER)
  *             syncstate <seq> <version> <none|offer|blocked|downloading|ready|failed> <host name> <bytes> <done> <mods>
- *                       <message>                                      (syncmod, syncstate: SDK 14, mod sync)
+ *                       <flags> <message>                              (syncmod, syncstate: SDK 14, mod sync)
  *   loader:   <seq> ok <now|respawn|mission> [<value hex>]     or     <seq> refused <reason>
  *             syncanswer <version> <accept|decline|restart|block|trust|open> <mod id or ->   (unasked: the player's answer)
  *             packages <package id hex>,... or -          (unasked: this machine's own packages, sent on connecting and
  *                                                           whenever they change, for friends to load: packages.c)
+ *   backend:  mod... lines: a live change of the session's mods (live_mods.c, which lists them and the loader's
+ *             modstate and modresult lines)
  * A request names a field as the stats schema does (kind "component" and a component record, or a settings kind and
  * its row id; a stratagem by its stable id), so the editor sends what it would save. Each becomes a set_live edit of the
  * Local Stats mod (zz.local.stats), whose file the editor saves into: same checks, same conflict reports. */
@@ -123,9 +125,10 @@ static HfSyncMod g_syncMods[SYNC_MAX_MODS];
 static HfSyncMod g_syncNext[SYNC_MAX_MODS];
 static uint32_t g_syncNextVersion;
 static uint64_t g_syncNextSeen[SYNC_MAX_MODS / 64]; /* the indices of g_syncNext that arrived, a bit each */
-/* Lines for LiveWatch to write (the answers), and whether a backend is connected to take them. */
+/* Lines for LiveWatch to write (the answers, a live mod change's results), and whether a backend is connected to take
+ * them. */
 static SRWLOCK g_liveOutLock = SRWLOCK_INIT;
-static char g_liveOut[1024];
+static char g_liveOut[16384];
 static size_t g_liveOutUsed;
 static int g_liveConnected;
 static HANDLE g_liveOutEvent;
@@ -169,6 +172,28 @@ static void PreloadLine(const char* seq, const char* list, char* reply, size_t s
             refused, why != NULL ? ": " : "", why != NULL ? why : "");
     snprintf(reply, size, "%s\tok\tnow", seq);
 }
+
+/* Queues a line the loader sends on its own (written by LiveWatch, the pipe's only writer): 0 when no backend is
+ * connected or the queue is full. */
+static int LiveQueue(const char* line)
+{
+    size_t length = strlen(line);
+    AcquireSRWLockExclusive(&g_liveOutLock);
+    int queued = g_liveConnected && length > 0 && g_liveOutUsed + length + 1 <= sizeof g_liveOut;
+    if (queued)
+    {
+        memcpy(g_liveOut + g_liveOutUsed, line, length);
+        g_liveOut[g_liveOutUsed + length] = '\n';
+        g_liveOutUsed += length + 1;
+    }
+    ReleaseSRWLockExclusive(&g_liveOutLock);
+    if (queued && g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
+    return queued;
+}
+
+/* live_mods.c: a live change of the session's mods (its verbs), and the change dropped when the backend goes. */
+static int LiveModsRequest(char* line, char* reply, size_t size);
+static void LiveModsAbort(const char* why);
 
 static int SyncName(const char* text, const char* const* names, int count)
 {
@@ -275,12 +300,13 @@ static const char* SyncStateRefused(int fresh, uint64_t version, uint64_t mods, 
 
 static void SyncStateLine(char* line, char* reply, size_t size)
 {
-    char* f[9];
-    int n = SplitAll(line, f, 9);
-    uint64_t version = 0, bytes = 0, done = 0, mods = 0;
-    int state = n == 9 ? SyncName(f[3], kSyncStates, 6) : -1;
-    if (n != 9 || !SyncNumber(f[2], &version) || version > UINT32_MAX || state < 0 || !SyncNumber(f[5], &bytes) || !SyncNumber(f[6], &done) ||
-        !SyncNumber(f[7], &mods))
+    char* f[10];
+    int n = SplitAll(line, f, 10);
+    uint64_t version = 0, bytes = 0, done = 0, mods = 0, flags = 0;
+    /* <flags> (HF_SYNC_LIVE) came with SDK 16; a line without it says 0 */
+    int state = n >= 9 ? SyncName(f[3], kSyncStates, 6) : -1, flagged = n == 10;
+    if (n < 9 || !SyncNumber(f[2], &version) || version > UINT32_MAX || state < 0 || !SyncNumber(f[5], &bytes) || !SyncNumber(f[6], &done) ||
+        !SyncNumber(f[7], &mods) || (flagged && (!SyncNumber(f[8], &flags) || flags > HF_SYNC_LIVE)))
     { snprintf(reply, size, "%s\trefused\tmalformed syncstate", n >= 2 ? f[1] : "-"); return; }
     if (mods > SYNC_MAX_MODS) { snprintf(reply, size, "%s\trefused\tan offer lists at most %d mods", f[1], SYNC_MAX_MODS); return; }
     int seen = SyncNextSeen(mods);
@@ -301,8 +327,9 @@ static void SyncStateLine(char* line, char* reply, size_t size)
     g_sync.mods = (uint32_t)mods;
     g_sync.bytes = bytes;
     g_sync.done = done;
+    g_sync.flags = (uint32_t)flags;
     SyncCopy(g_sync.host, sizeof g_sync.host, f[4]);
-    SyncCopy(g_sync.message, sizeof g_sync.message, f[8]);
+    SyncCopy(g_sync.message, sizeof g_sync.message, f[flagged ? 9 : 8]);
     HfSyncState noted = g_sync;
     ReleaseSRWLockExclusive(&g_syncLock);
     /* logged after the lock: the editor's render thread reads the state under it */
@@ -367,17 +394,6 @@ static size_t SyncAnswerId(const char* modId, char* id, size_t size)
     return n;
 }
 
-/* A line queued for LiveWatch to write, when a backend is connected and it fits; whether it was. */
-static int LiveQueue(const char* line, int length)
-{
-    AcquireSRWLockExclusive(&g_liveOutLock);
-    int queued = g_liveConnected && length > 0 && g_liveOutUsed + (size_t)length <= sizeof g_liveOut;
-    if (queued) { memcpy(g_liveOut + g_liveOutUsed, line, (size_t)length); g_liveOutUsed += (size_t)length; }
-    ReleaseSRWLockExclusive(&g_liveOutLock);
-    if (queued && g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
-    return queued;
-}
-
 /* SDK 14, sync_answer: the player's answer to the offer of that version, queued for the backend. 0 when another offer
  * came since, none stands, or no backend is connected. */
 static int ApiSyncAnswer(HfMod* mod, uint32_t version, uint32_t answer, const char* modId)
@@ -393,8 +409,8 @@ static int ApiSyncAnswer(HfMod* mod, uint32_t version, uint32_t answer, const ch
     ReleaseSRWLockShared(&g_syncLock);
     if (!current) { Note("mod sync: answer %s to offer %u dropped: it is not the current offer", word, version); return 0; }
     char line[128];
-    int length = snprintf(line, sizeof line, "syncanswer\t%u\t%s\t%s\n", version, word, id);
-    int queued = LiveQueue(line, length);
+    snprintf(line, sizeof line, "syncanswer\t%u\t%s\t%s", version, word, id);
+    int queued = LiveQueue(line);
     Note("mod sync %u: the player answered %s%s%s%s", version, word, named ? " " : "", named ? id : "",
         queued ? "" : " (not sent: no backend connected)");
     return queued;
@@ -784,6 +800,7 @@ static void LiveRequest(char* line, char* reply, size_t size)
 {
     if (!strncmp(line, "syncmod\t", 8)) { SyncModLine(line, reply, size); return; }
     if (!strncmp(line, "syncstate\t", 10)) { SyncStateLine(line, reply, size); return; }
+    if (!strncmp(line, "mod", 3) && LiveModsRequest(line, reply, size)) return;
     char* f[12];
     int n = Split(line, f, 12);
     if (n < 2) { snprintf(reply, size, "-\trefused\tmalformed request"); return; }
@@ -821,7 +838,7 @@ static int LiveSend(HANDLE pipe, OVERLAPPED* op, const char* text)
  * pipe's only writer. */
 static int LiveFlush(HANDLE pipe, OVERLAPPED* op)
 {
-    char out[sizeof g_liveOut];
+    static char out[sizeof g_liveOut]; /* this thread's alone: too large for its stack */
     AcquireSRWLockExclusive(&g_liveOutLock);
     size_t used = g_liveOutUsed;
     memcpy(out, g_liveOut, used);
@@ -913,6 +930,7 @@ static void LiveConnected(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
     ShotsSetRules("-", &none); /* nor whose swaps friends' shots fire */
     RoundsSetLobby("-", &none); /* nor their edited rounds */
     SyncClear();
+    LiveModsAbort("the backend disconnected");
 }
 
 /* Connects to the launcher's pipe while the session runs; one connection at a time. The pipe is overlapped: a

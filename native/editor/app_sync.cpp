@@ -125,7 +125,9 @@ void ReadSync()
     g_host.api->sync_state(g_host.mod, &now);
     HfSyncState& was = g_sync.state;
     bool turned = now.version != was.version || now.state != was.state;
-    if (!turned && now.done == was.done && now.bytes == was.bytes && !strcmp(now.message, was.message) && !strcmp(now.host, was.host)) return;
+    /* the flags too: HF_SYNC_LIVE changing alone relabels the dialog's buttons */
+    bool same = now.done == was.done && now.bytes == was.bytes && now.flags == was.flags && !strcmp(now.message, was.message) && !strcmp(now.host, was.host);
+    if (!turned && same) return;
     if (now.version != was.version || now.mods != g_sync.mods.size()) ReadSyncMods(now.mods);
     g_sync.state = now;
     if (turned) SyncTurned(now);
@@ -197,14 +199,17 @@ static bool TrustDownloads(int i)
     return true;
 }
 
+/* The running game takes the host's mods without a restart (HF_SYNC_LIVE: the backend can change them live). */
+static bool SyncLive() { return (g_sync.state.flags & HF_SYNC_LIVE) != 0; }
+
 /* The dialog's first button and its answer, by state ("" none). */
 static const char* SyncPrimary(uint32_t* answer)
 {
     const HfSyncState& s = g_sync.state;
     *answer = s.state == HF_SYNC_OFFER ? (s.bytes > 0 ? HF_SYNC_ACCEPT : HF_SYNC_RESTART) : s.state == HF_SYNC_READY ? HF_SYNC_RESTART :
         s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED ? HF_SYNC_DECLINE : 0;
-    if (s.state == HF_SYNC_OFFER) return s.bytes > 0 ? "DOWNLOAD AND RESTART" : "RESTART TO JOIN";
-    if (s.state == HF_SYNC_READY) return "RESTART TO JOIN";
+    if (s.state == HF_SYNC_OFFER) return s.bytes > 0 ? "DOWNLOAD AND RESTART" : SyncLive() ? "APPLY AND JOIN" : "RESTART TO JOIN";
+    if (s.state == HF_SYNC_READY) return SyncLive() ? "APPLY AND JOIN" : "RESTART TO JOIN";
     if (s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED) return "OK";
     return "";
 }
@@ -341,7 +346,8 @@ static std::string SyncMessage(const HfSyncState& s)
     return s.message[0] ? s.message :
         s.state == HF_SYNC_OFFER ? "The host plays with gameplay mods you don't have. Get them and restart with the host's mods: their invitation waits on your ship." :
         s.state == HF_SYNC_DOWNLOADING ? "Downloading the host's mods; each file is checked before it is kept." :
-        s.state == HF_SYNC_READY ? "Every mod is here. Restart with the host's mods: their invitation waits on your ship." :
+        s.state == HF_SYNC_READY ? (SyncLive() ? "Every mod is here. Play with the host's mods now, without a restart: their invitation comes at once." :
+            "Every mod is here. Restart with the host's mods: their invitation waits on your ship.") :
         s.state == HF_SYNC_BLOCKED ? "You cannot join this lobby with these mods." : "The download failed.";
 }
 
@@ -416,7 +422,10 @@ static void DrawSyncSize(const HfSyncState& s, float x, float fy, float w)
 }
 
 /* The first button while an answer is on its way: what it waits for. */
-static const char* PrimaryLabel(uint32_t answer, const char* primary) { return g_sync.sent ? (answer == HF_SYNC_RESTART ? "RESTARTING..." : "STARTING...") : primary; }
+static const char* PrimaryLabel(uint32_t answer, const char* primary)
+{
+    return g_sync.sent ? (answer == HF_SYNC_RESTART ? (SyncLive() ? "APPLYING..." : "RESTARTING...") : "STARTING...") : primary;
+}
 static Style PrimaryStyle(bool bad) { return g_sync.sent || !SyncArmed() ? DISABLED : bad ? NORMAL : PRIMARY; }
 
 /* The dialog's second button (CANCEL, LATER) and its first, by state, from the right; returns the x left of them. */

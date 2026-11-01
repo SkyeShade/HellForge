@@ -11,6 +11,21 @@
  * pointer: it is valid for the whole session. Register for events to act once the game's code and data exist; load
  * events are delivered on the loader's watch thread, in the order mods registered, never two at once.
  *
+ * SDK 16, live mods: a mod whose manifest says "code": {"dll": ..., "sdk": 16, "live": true} may also be set up while
+ * the game runs (a live change of the session's mods: mod sync giving a joining player the host's mods, the launcher's
+ * Mods page), and taken out again. Its hellforge_mod_init then runs on the loader's change thread with the game on the
+ * ship or the title screen; on() does not call back inside it, and every load event that already fired is delivered to
+ * it right after init returns, in the order the game fired them. load_phase says which kind of set-up it is. Taking it
+ * out revokes everything it made through the API: its hooks leave their chains, its writes are put back, its callbacks,
+ * listeners, game-thread callbacks, queued actions, shot rules, edits and live edits go, its content is retired (hidden,
+ * never freed or renumbered). Before that the loader calls its optional
+ *
+ *     HF_MOD_EXPORT int hellforge_mod_unload(const HfApi* api, HfMod* mod, uint32_t reason);
+ *
+ * which must stop and undo what it started outside the API (threads, timers, OS callbacks, hooks or writes of its own)
+ * and return 0; a mod that starts nothing outside the API needs no unload export. Its DLL stays loaded for the session
+ * (a call may still be returning into it), and its in-memory state does not carry over to a new version of it.
+ *
  * Everything runs inside HellForge's own local copy only; the normal game is never touched. The loader does not catch a mod's crashes; the session log names the mod that was running. */
 #ifndef HELLFORGE_MOD_H
 #define HELLFORGE_MOD_H
@@ -22,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 15
+#define HF_MOD_SDK_VERSION 16
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -39,7 +54,16 @@ typedef enum HfEvent
     /* SDK 3: the game's projectile and damage lists are loaded, with every projectile and damage type mods added
      * (add_projectile, add_damage): projectile_row and damage_row return their rows from now on. */
     HF_EVENT_PROJECTILES_READY = 4,
+    /* SDK 16: the session's mods changed while the game runs (a live change: mods() and content() answer anew). Delivered
+     * to every loaded mod after each change, on the loader's change thread; never fired at boot. */
+    HF_EVENT_MODS_CHANGED = 5,
 } HfEvent;
+
+/* SDK 16: why hellforge_mod_unload is called, and load_phase's answers. */
+#define HF_UNLOAD_REMOVE 1u  /* the mod is taken out of the running game */
+#define HF_UNLOAD_REPLACE 2u /* a new version of it is set up right after */
+#define HF_LOAD_BOOT 0u      /* set up as the game started */
+#define HF_LOAD_LIVE 1u      /* set up while the game runs (SDK 16, "live": true) */
 
 typedef void (*HfEventCallback)(HfMod* mod, HfEvent event, void* user);
 /* SDK 6, on_game_thread: called every game update on the game thread, dt in seconds. */
@@ -802,6 +826,7 @@ typedef struct HfModInfo
 #define HF_SYNC_DOWNLOADING 3u /* downloading from the host: done of bytes */
 #define HF_SYNC_READY 4u       /* everything is here: HF_SYNC_RESTART restarts the session with the host's mods */
 #define HF_SYNC_FAILED 5u      /* the download or its checks failed (message says why) */
+#define HF_SYNC_LIVE 1u        /* flags: HF_SYNC_RESTART changes the running game's mods instead of restarting it */
 typedef struct HfSyncState
 {
     uint32_t size;      /* sizeof(HfSyncState): set by the caller */
@@ -812,6 +837,7 @@ typedef struct HfSyncState
     uint64_t done;      /* downloaded so far */
     char host[64];      /* the host's name (UTF-8) */
     char message[192];  /* what the backend says about it (UTF-8), or "" */
+    uint32_t flags;     /* SDK 16: HF_SYNC_LIVE (an older loader leaves it 0) */
 } HfSyncState;
 
 /* One mod of an offer (sync_mod): what happens to it. */
@@ -848,7 +874,8 @@ typedef struct HfSyncMod
 /* The player's answer to an offer (sync_answer). */
 #define HF_SYNC_ACCEPT 1u  /* download (HF_SYNC_OFFER) */
 #define HF_SYNC_DECLINE 2u /* no: the offer goes (a download stops) */
-#define HF_SYNC_RESTART 3u /* restart the session with the host's mods (HF_SYNC_READY, or an offer with nothing to download) */
+#define HF_SYNC_RESTART 3u /* play with the host's mods (HF_SYNC_READY, or an offer with nothing to download): the session
+                            * restarts with them, or with HF_SYNC_LIVE the running game takes them */
 #define HF_SYNC_BLOCK 4u   /* put mod_id on the blocklist; the offer goes */
 #define HF_SYNC_TRUST 5u   /* trust mod_id (an HF_SYNC_MOD_TRUST row: that exact content) and download it once nothing else
                             * waits; a new offer follows. Ask the player first: the mod runs its own code on their PC */
@@ -1203,6 +1230,13 @@ typedef struct HfApi
     /* ---- SDK 15 --------------------------------------------------------------------------------------------------- */
     /* Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size. */
     uint32_t (*stats_source)(HfMod* mod);
+
+    /* ---- SDK 16: live mods (see the top of this file; check hf->size before calling) --------------------------------- */
+    /* How the mod was set up: HF_LOAD_BOOT, or HF_LOAD_LIVE while the game runs. */
+    uint32_t (*load_phase)(HfMod* mod);
+    /* Takes the mod's own hook of target out of its chain (the function runs as if it had not been hooked by this mod;
+     * a call already inside the detour finishes). 0 on success, 1 when the mod has no hook there. */
+    int (*unhook)(HfMod* mod, uintptr_t target);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

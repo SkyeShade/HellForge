@@ -34,8 +34,12 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public bool HasSource { get; init; }
     public string? BuiltDll { get; init; }
     public string? DllPath => BuiltDll ?? (CodeDll != null && !HasSource ? Path.Combine(Folder, CodeDll) : null);
+    // Its code may be set up and taken out while the game runs (the manifest's "code": {"live": true}, SDK 16): a live
+    // change of the session's mods takes it without a restart (LiveModPlan).
+    public bool Live { get; init; }
     public IReadOnlyList<StatsEdit> Stats { get; init; } = [];
-    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0;
+    // The in-game loader applies its code, stats and component writes, and its network field types (its nettype lines).
+    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0;
     // Off in the installation's hellforge-mods.json (the launcher's Mods page): listed, but not loaded.
     public bool Enabled { get; init; } = true;
     // The zip in the mods folder this mod was unpacked from (its Folder is then under mods/.unpacked), or null.
@@ -76,7 +80,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 15;
+    public const int SdkVersion = 16;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -240,7 +244,7 @@ public static partial class ModCatalog
         var gameplay = !root.TryGetProperty("gameplay", out var flag) || flag.ValueKind != JsonValueKind.False;
 
         var (types, writes) = ReadNative(root, profile);
-        var (code, source) = ReadCode(root, folder);
+        var (code, source, live) = ReadCode(root, folder);
         var (data, lua) = ReadDataFiles(folder);
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
         var dataSpec = DataSpecs.Load(folder);
@@ -254,7 +258,7 @@ public static partial class ModCatalog
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         return new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
+            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
               Premium = PremiumList(root) };
     }
 
@@ -330,12 +334,15 @@ public static partial class ModCatalog
         return new ComponentWrite(component, resource, fields);
     }
 
-    // The manifest's code DLL, and whether HellForge builds it from the mod's sources; (null, false) without one.
-    static (string? Code, bool Source) ReadCode(JsonElement root, string folder)
+    // The manifest's code DLL, whether HellForge builds it from the mod's sources, and whether it may change while the game
+    // runs ("live"); (null, false, false) without one.
+    static (string? Code, bool Source, bool Live) ReadCode(JsonElement root, string folder)
     {
-        if (!root.TryGetProperty("code", out var codeElement)) return (null, false);
+        if (!root.TryGetProperty("code", out var codeElement)) return (null, false, false);
         var dll = Text(codeElement, "dll");
         var sdk = Integer(codeElement, "sdk");
+        // "live": true says the mod may be set up and taken out while the game runs, which SDK 16 defines
+        var live = sdk >= 16 && codeElement.TryGetProperty("live", out var liveElement) && liveElement.ValueKind == JsonValueKind.True;
         if (sdk < 1 || sdk > SdkVersion) throw new InvalidDataException($"needs HellForge mod SDK {sdk}; this HellForge provides SDK {SdkVersion}.");
         if (!DllName().IsMatch(dll)) throw new InvalidDataException("code.dll must be a DLL file name in the mod folder.");
         // A mod with its sources is built by HellForge (ModBuilds); "prebuilt": true keeps a shipped DLL instead.
@@ -348,7 +355,7 @@ public static partial class ModCatalog
             if (codeElement.TryGetProperty("game", out var game) && game.ValueKind == JsonValueKind.String && game.GetString() != SupportedBuild.Current.BuildId)
                 throw new InvalidDataException($"{dll} was built for game build {game.GetString()}; HellForge runs build {SupportedBuild.Current.BuildId}. Ask its author for a new build.");
         }
-        return (dll, source);
+        return (dll, source, live);
     }
 
     // The mod's data/ patch files, in order, and whether one of them holds Lua.
@@ -727,12 +734,32 @@ public static class ModLoaderPlan
         foreach (var mod in mods)
         {
             if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
-            lines.Add($"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}");
-            foreach (var e in StatsData.Edits(mod))
-                lines.Add(FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}"));
+            lines.Add($"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}{(mod.HasCode && mod.Live ? "\tlive" : "")}");
+            foreach (var e in StatsData.Edits(mod)) lines.Add("stat\t" + string.Join('\t', StatFields(mod, e)));
+            foreach (var t in mod.NetworkFieldTypes) lines.Add("nettype\t" + string.Join('\t', NetFields(mod, t)));
         }
         if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
         return string.Join("\n", lines) + "\n";
+    }
+
+    // A network field type edit's fields after "nettype" in the plan (and after a live change's "modnet"), the mod id first:
+    // the type's name, the kind and width it must have now, its minimum, and the width the mod asks.
+    public static string[] NetFields(ModManifest mod, NetworkFieldTypeEdit t)
+    {
+        var invariant = CultureInfo.InvariantCulture;
+        if (t.Name.Contains('\t') || t.Name.Contains('\n') || t.Name.Contains('\r')) throw new InvalidDataException("A network field type's name contains a tab or line break.");
+        return [mod.Id, t.Name, t.ExpectKind.ToString(invariant), t.ExpectBits.ToString(invariant), t.ExpectMin.ToString(invariant), t.Bits.ToString(invariant)];
+    }
+
+    // A stats edit's fields after "stat" in the plan (and after a live change's "modstat"), the mod id first.
+    public static string[] StatFields(ModManifest mod, StatsEdit e)
+    {
+        static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
+            ? throw new InvalidDataException("A stats label contains a tab or line break.") : value;
+        var invariant = CultureInfo.InvariantCulture;
+        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant), e.Record.ToString(invariant),
+            e.Offset.ToString(invariant), e.Storage, e.Value.ToString("X8", invariant), e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
+            e.Own ? "1" : "0", e.Shared ? "1" : "0", e.Unverified ? "1" : "0", Field(e.Label)];
     }
 }
 
@@ -954,6 +981,55 @@ public sealed record TrustedMod(string Id, string Hash, string Name, string Vers
 public static class ModStaging
 {
     const string RecordName = "staged-mods.json";
+    const string LiveRecordName = "live-packages.json";
+
+    // A mod's patches as Stage stages them, each a patch's main file: its data/ folder's, then its generated data's.
+    public static List<string> Patches(ModManifest mod)
+    {
+        var patches = mod.DataFiles.Where(f => ModCatalog.PatchFile().Match(f).Groups[2].Length == 0).Select(f => Path.Combine(mod.Folder, "data", f)).ToList();
+        if (mod.GeneratedData != null)
+            patches.AddRange(Directory.GetFiles(mod.GeneratedData).Where(f => ModCatalog.PatchFile().Match(Path.GetFileName(f)) is { Success: true } m && m.Groups[2].Length == 0)
+                .Order(StringComparer.Ordinal));
+        return patches;
+    }
+
+    // A live change's hot packages (GameData.LiveData) in game/data: recorded, so the next session's staging removes them.
+    public static void RecordLive(InstallLayout install, IEnumerable<string> files)
+    {
+        Directory.CreateDirectory(install.Temp);
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        var names = LivePackages(install);
+        names.AddRange(files.Select(Path.GetFileName).OfType<string>());
+        File.WriteAllText(record, JsonSerializer.Serialize(names.Distinct(StringComparer.Ordinal).ToList()));
+    }
+
+    static List<string> LivePackages(InstallLayout install)
+    {
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        try { return File.Exists(record) ? JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? [] : []; }
+        catch (JsonException) { return []; }
+    }
+
+    static bool IsLivePackage(string name)
+    {
+        var stem = name.EndsWith(".gpu_resources", StringComparison.Ordinal) ? name[..^14] : name.EndsWith(".stream", StringComparison.Ordinal) ? name[..^7] : name;
+        return stem.Length == 16 && stem.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    }
+
+    // The last sessions' hot packages removed (a name of 16 hex digits and its sidecars only); those still held stay listed.
+    static void RemoveLive(InstallLayout install, string data)
+    {
+        var left = new List<string>();
+        foreach (var name in LivePackages(install).Where(IsLivePackage))
+        {
+            var path = Path.Combine(data, name);
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { left.Add(name); }
+        }
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        if (left.Count > 0) File.WriteAllText(record, JsonSerializer.Serialize(left));
+        else if (File.Exists(record)) File.Delete(record);
+    }
 
     // What the last Stage did: files copied, and files kept from the session before (the same source, unchanged).
     public static (int Copied, int Kept) LastCounts { get; private set; }
@@ -966,6 +1042,7 @@ public static class ModStaging
     public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods)
     {
         var data = Path.Combine(install.Game, "data");
+        RemoveLive(install, data);
         var previous = Previous(install);
         var plan = Plan(mods, data, previous);
         var wanted = plan.Select(p => p.Target).ToHashSet(StringComparer.Ordinal);
