@@ -46,7 +46,7 @@ static const char* const kInstallStepNames[] = {
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
     "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallFootprintWatch", "InstallNavGrid",
     "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
-    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
+    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs", "InstallArtilleryShells"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
     "every install step needs a name");
 #define DIF_STEP_COUNT (sizeof kInstallSteps / sizeof kInstallSteps[0])
