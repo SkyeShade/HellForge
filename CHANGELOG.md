@@ -42,6 +42,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- With the sandbox on (Settings > Sandbox), a Steam Controller and other controllers that work only through Steam
+  Input did nothing in the game, and nothing said why (#94, #204): Steam Input can't reach a sandboxed game yet. While
+  the game runs, the launcher now names the controller Steam Input is handling and says it won't work, and that Steam
+  may send its desktop keys instead (A presses Enter, which opens the chat). Xbox controllers work. Settings > Sandbox
+  says so too.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -100,6 +105,9 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A sandboxed session's `result.json` has `steamInput` once the Steam broker has asked Steam: `controllers` (names),
+  `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null). `HellForge.Cli play` writes a
+  `steam-input` event with the note when it changes; `SteamInputNote.Of` reads it.
 
 ## 0.3.0-beta (2026-10-26)
 
