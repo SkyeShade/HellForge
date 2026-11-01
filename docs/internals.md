@@ -459,7 +459,15 @@ proxy units G+0x118BEFC and G+0x118FEFC, 4096 and 16384 x 4) follow with 4 x the
 ran over the scatter into the terrain merge slots (G+0x8758A8). The block is then 0x15A9280 bytes.
 
 Blocks are made with a world, after the loader installs this; if one exists already, the move is skipped. Structured
-maps (map type 2, another generator) keep level 10's size.
+maps (map type 2, the mega cities, another generator) grow too: their revoronoi, grid and vertex buckets are scaled the
+same way (difficulty_cities.c).
+
+City streets: FlattenCityRoads (0xFAF130) gives a street its end pieces (+0x240/+0x250) and spaced props (+0x270) only
+up to their reach (30 m on most city types) past the playable radius, and the road-prop placer (0xFB1DB0) tests each
+position the same way. On a larger map those four tests measure from the border, as the town placers do
+(difficulty_streets.c, `HELLFORGE_D11_TOWN_BORDER=0` keeps the radius), so streets are dressed wherever buildings stand.
+The road props per edge (`rand % type+0x230 + 1`, 0xFB2925) are a fixed count; on a larger map's 1.5 x longer edges the
+count is x 3/2 (`HELLFORGE_D11_STREET_PROPS=0` keeps it).
 
 The mission distance factors (10 levels x 3, read unclamped at 7 sites) move to a table with level 11's.
 

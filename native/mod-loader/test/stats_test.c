@@ -354,6 +354,8 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
     memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
     for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    for (int i = 0; i < 4; i++) memcpy(game + kStreetBorderSites[i].site, kStreetBorderSites[i].pin, kStreetBorderSites[i].length);
+    memcpy(game + DIF_STREET_PROPS_SITE, kStreetPropsPin, sizeof kStreetPropsPin);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);

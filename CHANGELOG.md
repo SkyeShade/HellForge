@@ -69,6 +69,12 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- Mega cities on difficulty 11's larger maps had streets with bare road and lone junction pieces, especially toward the
+  edge. The game dresses a street (the pieces that finish its ends, and its props) only up to 30 m past the playable
+  radius, where level 10 stops building; on difficulty 11 buildings stand all the way to the border, so their streets
+  are now dressed that far too (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius). Streets are also 1.5x longer
+  there but kept level 10's number of props per street; they now get 1.5x as many (`HELLFORGE_D11_STREET_PROPS=0`
+  keeps level 10's).
 - A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
   separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
   does, and the session log counts them.
