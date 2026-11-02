@@ -1158,6 +1158,7 @@ static void WorldScatterNote(void)
 /* Research (ground types): the subregion cells (G+0x92F328, 0x20 each, count G+0x11A71C4; +0xC the type, the zone id the
  * scatter brushes match: 0x41/0x43/0x44/0x46 on planet 157; +0x18 the route cell, its position at +0/+4), written out as
  * subregions-<level>.tsv and summarised, vanilla and larger. */
+static uint64_t g_pass74, g_ctx74;
 static void WorldSubregionNote(void)
 {
     static LONG noted = -1;
@@ -1191,6 +1192,38 @@ static void WorldSubregionNote(void)
         }
     }
     if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+    /* op 0x74's inputs: the kind byte per subregion ([pass+0x10][entry+8]), the region's settings ([[context+8]+0xB0]):
+     * the four noise weights (+0xC..+0x18, binned from +0x18), the random share +0x20, kinds at +0x80 (0x1C each: the
+     * kind byte at +0, flags at +0x18, flag 2 = group 1). */
+    uint64_t kinds = 0, region = 0, contextSettings = 0;
+    if (g_pass74 && !SafeRead(g_pass74 + 0x10, &kinds, 8) && kinds && g_ctx74 && !SafeRead(g_ctx74 + 8, &contextSettings, 8) && contextSettings &&
+        !SafeRead(contextSettings + 0xB0, &region, 8) && region)
+    {
+        float w[6] = {0};
+        SafeRead(region + 0xC, w, sizeof w);
+        uint32_t kindCount[256] = {0}, kindGroup1[256] = {0};
+        for (uint32_t i = 0; i < count; i++)
+        {
+            uint8_t entry[0x20]; uint8_t kind = 0xFF;
+            if (SafeRead(gen + 0x92F328u + 0x20u * (uintptr_t)i, entry, sizeof entry)) break;
+            uint32_t idx; int32_t group; memcpy(&idx, entry + 8, 4); memcpy(&group, entry + 4, 4);
+            if (idx != 0xFFFFFFFFu) SafeRead(kinds + idx, &kind, 1);
+            kindCount[kind]++; if (group == 1) kindGroup1[kind]++;
+        }
+        char ks[300]; int ka = 0;
+        for (int k = 0; k < 256 && ka < 260; k++) if (kindCount[k]) ka += snprintf(ks + ka, sizeof ks - ka, " %d:%u(g1 %u)", k == 255 ? -1 : k, kindCount[k], kindGroup1[k]);
+        ks[ka] = 0;
+        Note("difficulty: subregions (%.0fx): weights %.3f %.3f %.3f %.3f, random %.3f; kinds%s", (double)g_world.current, (double)w[3], (double)w[2], (double)w[1], (double)w[0], (double)w[5], ks);
+        ka = 0;
+        for (int k = 0; k < 7; k++)
+        {
+            uint8_t e[0x1C] = {0};
+            SafeRead(region + 0x80 + 0x1C * (uintptr_t)k, e, sizeof e);
+            ka += snprintf(ks + ka, sizeof ks - ka, " [%u f%02X]", e[0], e[0x18]);
+        }
+        ks[ka] = 0;
+        Note("difficulty: subregions (%.0fx): kind table%s", (double)g_world.current, ks);
+    }
     char summary[400]; int at = 0;
     for (int t = 0; t < 256 && at < 360; t++) if (types[t]) at += snprintf(summary + at, sizeof summary - at, " 0x%X:%u", t, types[t]);
     summary[at] = 0;
@@ -1303,6 +1336,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uintptr_t vanillaBlock = 0;
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
+    { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (zoneSet)
