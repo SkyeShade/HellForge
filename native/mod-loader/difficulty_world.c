@@ -473,10 +473,23 @@ static void WorldZoneGridNote(void)
  * record is copied and every pointer into the block moved onto the copy. Handlers are called as the dispatcher does:
  * (record + 8, record, context). Runs once per level at CullUnitsOutsidePlayableArea (op 0x6D), after the level's own
  * Voronoi geometry is destroyed (op 0x3B). HELLFORGE_XL_TILE=<extent in m> (256..2048) turns it on. */
-#define GEN_BLOCK_SIZE 0x11A7268u
+#define GEN_BLOCK_SIZE_VANILLA 0x11A7268u
+static uint32_t WorldBlockSize(void); /* difficulty_block.c: the enlarged block of a larger map */
+#define GEN_BLOCK_SIZE (g_world.current > 1.0f ? WorldBlockSize() : GEN_BLOCK_SIZE_VANILLA)
 static uint64_t g_rec25, g_tileContext;
 static LONG g_tileDone = -1;
 static uint8_t* g_tileBlock;
+
+static void WorldTileRelocateIn(uint8_t* data, size_t bytes, uintptr_t from, uintptr_t to)
+{
+    uint32_t size = GEN_BLOCK_SIZE;
+    for (size_t o = 0; o + 8 <= bytes; o += 8)
+    {
+        uint64_t v;
+        memcpy(&v, data + o, 8);
+        if (v >= from && v < from + size) { v = v - from + to; memcpy(data + o, &v, 8); }
+    }
+}
 
 static void WorldTileRelocate(uint8_t* record, uintptr_t from, uintptr_t to)
 {
@@ -627,6 +640,9 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     if (g_tileBlock == NULL || SafeRead(gen, g_tileBlock, GEN_BLOCK_SIZE) || SafeRead(g_rec25, record, sizeof record))
     { Note("difficulty: terrain tile: the generator block did not copy"); return; }
     WorldTileRelocate(record, gen, (uintptr_t)g_tileBlock);
+    /* The block points into itself (array descriptors, cell -> edge -> vertex links): the copy's own pointers move too,
+     * or passes on the copy write through them into the level's block. */
+    WorldTileRelocateIn(g_tileBlock, GEN_BLOCK_SIZE, gen, (uintptr_t)g_tileBlock);
     uint32_t size = 0; float lo = 0, hi = 0, radius = 0, spacing = 0;
     SafeRead(settings + 0x2C, &size, 4); SafeRead(settings + 0x64, &lo, 4); SafeRead(settings + 0x68, &hi, 4);
     SafeRead(settings + 0x6C, &radius, 4); SafeRead(spacingAt, &spacing, 4);

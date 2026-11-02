@@ -369,3 +369,6 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
         sizeof kStampRefs / sizeof kStampRefs[0], sizeof kLocationCaps / sizeof kLocationCaps[0], sizeof kLocationTypeCaps / sizeof kLocationTypeCaps[0]);
     return NULL;
 }
+
+/* The generation block's size on a larger map (difficulty_world.c's terrain tiles copy it whole). */
+static uint32_t WorldBlockSize(void) { return DIF_BLOCK_NEW; }
