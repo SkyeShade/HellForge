@@ -651,6 +651,12 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
                 for (uint32_t k = 0; k < 16; k++) { uint64_t v; memcpy(&v, cell + 8 + k * 8, 8); if (v) edges++; }
                 if (edges > most) { most = edges; mostCell = c; }
             }
+            uint64_t merged0 = 0, list0 = 0;
+            uint32_t mergedCount = 0, listCount = 0;
+            memcpy(&merged0, g_tileBlock + 0x8E9328, 8); memcpy(&list0, g_tileBlock + 0x10CB8C0, 8);
+            memcpy(&mergedCount, g_tileBlock + 0x11A71BC, 4); memcpy(&listCount, g_tileBlock + 0x11A71EC, 4);
+            Note("difficulty: terrain tile: op 0x%02X lists: merged[0] = 0x%llX (count %u), associated[0] = 0x%llX (count %u)", op,
+                (unsigned long long)merged0, mergedCount, (unsigned long long)list0, listCount);
             uint32_t routeEdges = 0, routeVertices = 0;
             memcpy(&routeEdges, g_tileBlock + 0x11A71B4, 4); memcpy(&routeVertices, g_tileBlock + 0x11A71CC, 4);
             Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); route cells %u, edges %u (room for ~978), vertices %u (room for ~1621); counts +1BC/+1C4/+1C8 %u %u %u",
