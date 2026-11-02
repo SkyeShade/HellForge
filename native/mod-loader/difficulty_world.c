@@ -1170,6 +1170,8 @@ static void WorldSubregionNote(void)
     swprintf(name, 48, L"subregions-%ld.tsv", (long)g_world.levels);
     HANDLE file = OpenLog(name);
     uint32_t types[256] = {0};
+    static uint32_t byGroup[8][256]; /* height group (0x74/0x77, entry +4; -1..6) x type */
+    memset(byGroup, 0, sizeof byGroup);
     char line[160];
     DWORD wrote;
     for (uint32_t i = 0; i < count; i++)
@@ -1178,12 +1180,13 @@ static void WorldSubregionNote(void)
         uint64_t cell = 0;
         float pos[2] = {0};
         if (SafeRead(gen + 0x92F328u + 0x20u * (uintptr_t)i, entry, sizeof entry)) break;
-        int32_t type; memcpy(&type, entry + 0xC, 4); memcpy(&cell, entry + 0x18, 8);
+        int32_t type, group; memcpy(&type, entry + 0xC, 4); memcpy(&group, entry + 0x4, 4); memcpy(&cell, entry + 0x18, 8);
         if (cell) SafeRead(cell, pos, 8);
         if (type >= 0 && type < 256) types[type]++;
+        if (group >= -1 && group < 7 && type >= 0 && type < 256) byGroup[group + 1][type]++;
         if (file != INVALID_HANDLE_VALUE)
         {
-            int n = snprintf(line, sizeof line, "%u\t%d\t%.1f\t%.1f\n", i, type, (double)pos[0], (double)pos[1]);
+            int n = snprintf(line, sizeof line, "%u\t%d\t%d\t%.1f\t%.1f\n", i, type, group, (double)pos[0], (double)pos[1]);
             WriteFile(file, line, (DWORD)n, &wrote, NULL);
         }
     }
@@ -1192,6 +1195,13 @@ static void WorldSubregionNote(void)
     for (int t = 0; t < 256 && at < 360; t++) if (types[t]) at += snprintf(summary + at, sizeof summary - at, " 0x%X:%u", t, types[t]);
     summary[at] = 0;
     Note("difficulty: subregions (%.0fx): %u cells, types%s", (double)g_world.current, count, summary);
+    for (int g = 0; g < 8; g++)
+    {
+        at = 0;
+        for (int t = 0; t < 256 && at < 360; t++) if (byGroup[g][t]) at += snprintf(summary + at, sizeof summary - at, " 0x%X:%u", t, byGroup[g][t]);
+        summary[at] = 0;
+        if (at) Note("difficulty: subregions (%.0fx): group %d:%s", (double)g_world.current, g - 1, summary);
+    }
 }
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
