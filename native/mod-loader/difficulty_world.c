@@ -319,8 +319,52 @@ static void OverlapFlush(void); /* difficulty_world_overlap.c: notes the stamp o
 static float* g_heightCopy; /* the layer heightfield the loader keeps (below) */
 static uint64_t g_heightSource, g_heightBytes;
 static volatile LONG g_worldStampNotes;
+/* Research (the smooth 16 km terrain): the kept layer heightfield written to the session's logs once per level, when the
+ * dispatcher reaches CullUnitsOutsidePlayableArea (op 0x6D, after the layers' heights are final), on any level, so a
+ * vanilla map gives a file to compare with. heightfield-<n>.f32 holds the floats row by row; heightfield-<n>.txt its
+ * descriptor (origin, extent, columns, rows) and the level's difficulty and world scale. */
+static uint8_t g_heightField[0x28];
+static LONG g_heightDumped = -1;
+static volatile LONG g_heightDumps;
+static void WorldDumpHeight(void)
+{
+    if (g_heightCopy == NULL || g_heightBytes == 0 || g_heightDumped == g_world.levels) return;
+    g_heightDumped = g_world.levels;
+    LONG n = InterlockedIncrement(&g_heightDumps);
+    if (n > 6) return;
+    float origin[2], extent[2];
+    uint32_t dims[2];
+    memcpy(origin, g_heightField + 8, 8); memcpy(extent, g_heightField + 0x14, 8); memcpy(dims, g_heightField + 0x1C, 8);
+    uint8_t difficulty = 0;
+    if (g_worldLevel != 0) SafeRead(g_worldLevel + 0xF9, &difficulty, 1);
+    wchar_t name[64];
+    swprintf(name, 64, L"heightfield-%ld.f32", (long)n);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    DWORD wrote = 0;
+    BOOL ok = WriteFile(file, g_heightCopy, (DWORD)g_heightBytes, &wrote, NULL);
+    CloseHandle(file);
+    swprintf(name, 64, L"heightfield-%ld.txt", (long)n);
+    file = OpenLog(name);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        char text[256];
+        int len = snprintf(text, sizeof text, "origin %g %g\nextent %g %g\ncolumns %u\nrows %u\ndifficulty %u\nworld_scale %g\n",
+            (double)origin[0], (double)origin[1], (double)extent[0], (double)extent[1], dims[0], dims[1], (unsigned)difficulty, (double)g_world.current);
+        WriteFile(file, text, (DWORD)len, &wrote, NULL);
+        CloseHandle(file);
+    }
+    Note("difficulty: extra large maps: wrote heightfield-%ld (%u x %u, %s) for difficulty %u at %.0fx", (long)n, dims[0], dims[1],
+        ok ? "complete" : "failed", (unsigned)difficulty, (double)g_world.current);
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    if (g_heightCopy != NULL)
+    {
+        uint32_t i = 0, o = 0;
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) WorldDumpHeight();
+    }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
     int watch = g_world.current > 1.0f && g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 &&
@@ -343,7 +387,21 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         InterlockedDecrement(&depth);
     }
     if (!watch) return r;
-    if (op == 0x2B) OverlapFlush();
+    if (op == 0x2B)
+    {
+        OverlapFlush();
+        /* The locations without a resource (+0x90 of a 0xE0 record; GenerateResourceHash, 0xC176B8, reads it unchecked),
+         * at the address the hash pass uses (moved for larger maps: add rbx, A + 0x90 at 0xC176A7). */
+        uint32_t offset = 0, total = 0, empty = 0, firstEmpty = 0xFFFFFFFFu;
+        if (!SafeRead(g_world.game + 0xC176A7 + 3, &offset, 4) && !SafeRead(block + 0x11A7108, &total, 4))
+            for (uint32_t i = 0; i < total && i < 65536; i++)
+            {
+                uint64_t resource = 1;
+                if (SafeRead(block + offset + (uint64_t)i * 0xE0, &resource, 8)) break;
+                if (resource == 0) { empty++; if (firstEmpty == 0xFFFFFFFFu) firstEmpty = i; }
+            }
+        Note("difficulty: extra large maps: after op 0x2B: %u locations, %u without a resource (first %d)", total, empty, (int)firstEmpty);
+    }
     if (op == 0x6C && g_heightCopy != NULL && g_heightSource != 0) /* streaming research: keep the heights the layers saw last */
     {
         MEMORY_BASIC_INFORMATION mbi;
@@ -434,8 +492,26 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
     uint64_t r = g_placeJob(a, b, c, job);
     QueryPerformanceCounter(&end);
     QueryPerformanceFrequency(&hz);
-    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu: %.1f ms", range[0], range[1], items,
-        (unsigned long)GetCurrentThreadId(), (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart);
+    /* The job's slice (+0x20, capacity +0x38 records of 0x130, cleared at the job's start, 0xF3253B): records written
+     * (a box or a resource) and those of them without a resource (+0x90), which become locations without one. */
+    uint64_t slice = 0;
+    uint32_t capacity = 0, written = 0, empty = 0, lastWritten = 0;
+    if (!SafeRead(job + 0x20, &slice, 8) && !SafeRead(job + 0x38, &capacity, 4) && slice != 0 && capacity <= 0x100000)
+        for (uint32_t i = 0; i < capacity; i++)
+        {
+            uint8_t box[16];
+            uint64_t resource = 0;
+            if (SafeRead(slice + 8 + (uint64_t)i * 0x130 + 0x90, &resource, 8) || SafeRead(slice + 8 + (uint64_t)i * 0x130 + 0xB0, box, 16)) break;
+            int any = resource != 0;
+            for (int k = 0; k < 16 && !any; k++) any = box[k] != 0;
+            if (!any) continue;
+            written++;
+            lastWritten = i;
+            if (resource == 0) empty++;
+        }
+    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu: %.1f ms; slice %u records written (last %u), %u without a resource",
+        range[0], range[1], items, (unsigned long)GetCurrentThreadId(), (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart,
+        written, lastWritten, empty);
     return r;
 }
 
@@ -446,7 +522,7 @@ static const char kLayerSnapPin[] = "48 8B C4 89 50 10 55 53 56 41 55 48 8D A8 7
 static WorldSpawnFn g_layerSnap;
 static float* g_heightCopy;
 static uint64_t g_heightSource, g_heightBytes;
-static uint8_t g_heightField[0x28]; /* the generator's descriptor (its data pointer replaced by the copy) */
+/* g_heightField (above WorldDispatch): the generator's descriptor, its data pointer replaced by the copy */
 static volatile LONG g_heightLent;
 static uint64_t WorldLayerSnap(uint64_t a, uint64_t b, uint64_t c, uint64_t field, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {

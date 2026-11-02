@@ -632,6 +632,23 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q, uintptr_
     if (t->cacheEntry != NULL && t->cacheGeneration == generation && t->cacheBase == base) e = t->cacheEntry;
     else
     {
+        /* Each stamp item starts its own slice at the job's count (0xF326B5), so a thread moves on to a new base per
+         * item and never returns to the last one: its entry is freed for the next. */
+        if (t->cacheEntry != NULL && t->cacheGeneration == generation)
+        {
+            OverlapBuffer* old = t->cacheEntry;
+            AcquireSRWLockExclusive(&g_overlapTableLock);
+            AcquireSRWLockExclusive(&old->lock);
+            if (old->used && old->base == t->cacheBase)
+            {
+                OverlapFreeEntry(old);
+                old->used = 0;
+                old->base = 0;
+            }
+            ReleaseSRWLockExclusive(&old->lock);
+            ReleaseSRWLockExclusive(&g_overlapTableLock);
+        }
+        t->cacheEntry = NULL;
         e = OverlapBufferFor(base, generation);
         if (e == NULL)
         {
