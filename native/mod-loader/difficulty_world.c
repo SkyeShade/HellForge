@@ -580,13 +580,20 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         ran++;
         { /* research: route cell 0's first edge pointer and the route cell counts after each op (a vertex written over it
            * crashed CellularAutomata at 0xF6D9A0) */
-            uint64_t edge0 = 0;
             uint32_t rc[4] = {0};
-            memcpy(&edge0, g_tileBlock + 0x8EB328 + 8, 8);
             memcpy(rc, g_tileBlock + 0x11A71BC, 16);
-            Note("difficulty: terrain tile: op 0x%02X (%d calls): route cell 0 +8 = 0x%llX%s; counts +1BC..+1C8 %u %u %u %u", op, calls,
-                (unsigned long long)edge0, edge0 >= (uint64_t)(uintptr_t)g_tileBlock && edge0 < (uint64_t)(uintptr_t)g_tileBlock + GEN_BLOCK_SIZE ? " (in the copy)" : "",
-                rc[0], rc[1], rc[2], rc[3]);
+            uint32_t cellsN = rc[1] < 1024u ? rc[1] : 1024u, bad = 0, firstCell = 0, firstSlot = 0;
+            uint64_t firstValue = 0;
+            for (uint32_t c = 0; c < cellsN; c++)
+                for (uint32_t k = 0; k < 16; k++)
+                {
+                    uint64_t v;
+                    memcpy(&v, g_tileBlock + 0x8EB328 + (size_t)c * 0x110 + 8 + k * 8, 8);
+                    if (v != 0 && !(v >= (uint64_t)(uintptr_t)g_tileBlock && v < (uint64_t)(uintptr_t)g_tileBlock + GEN_BLOCK_SIZE))
+                    { if (bad++ == 0) { firstCell = c; firstSlot = k; firstValue = v; } }
+                }
+            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u route cell edge slots outside the copy (first: cell %u slot %u = 0x%llX); counts +1BC..+1C8 %u %u %u %u",
+                op, calls, bad, firstCell, firstSlot, (unsigned long long)firstValue, rc[0], rc[1], rc[2], rc[3]);
         }
         if (n < (int)sizeof text - 32)
             n += snprintf(text + n, sizeof text - n, " %02X:%.1f%s", op, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, calls > 1 ? "+" : "");
