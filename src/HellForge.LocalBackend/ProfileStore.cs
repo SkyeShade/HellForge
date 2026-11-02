@@ -118,7 +118,7 @@ public sealed class ProfileStore : IDisposable
                 if (section == "inventory")
                     body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
                 else if (section == "progression" && Ownership != null)
-                    body = Ownership.FilterProgressionResponse(body);
+                    body = Ownership.FilterProgressionResponse(body, JsonSerializer.SerializeToElement(profile["inventory"], BackendJson.Default.JsonNode));
             }
             return true;
         }
@@ -366,10 +366,10 @@ public sealed class ProfileStore : IDisposable
         inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId) is { } entry ? Number(entry["amount"]!) : 0;
 
     // Adds (or with a negative amount takes) an item in an inventory list, within 0 and the catalogue maxCap. Super Credits
-    // are never added. Returns the change made.
+    // are never added, but for Forge Credits (PaidContentSet.ForgeCreditsWallet). Returns the change made.
     public static long AddItem(JsonArray inventory, uint mixId, long amount)
     {
-        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId)) return 0;
+        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId) && !PaidContentSet.IsForgeCredits(mixId)) return 0;
         var entry = inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId);
         if (entry == null)
         {

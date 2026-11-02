@@ -32,6 +32,65 @@ static class AccountSyncTests
         DuplicateItems(root, ids, check);
         ShipAwayFromPlanet(root, ids, check);
         ModItems(root, paid, check);
+        ForgeCredits(paid, check);
+    }
+
+    // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
+    // served, and a profile that earns its warbonds buys an owned premium warbond's token with them, never one not owned.
+    static void ForgeCredits(PaidContentSet paid, Action<bool, string> check)
+    {
+        const uint Wallet = PaidContentSet.ForgeCreditsWallet;
+        using var store = ProfileStore.Open(null, "starter");
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var other = paid.Warbonds.First(w => w.Tokens.Length > 0 && w.Id != steeled.Id);
+        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]) { EarnWarbonds = true };
+        var missions = new MissionService(store);
+        JsonArray Activity(uint activity, long pile)
+        {
+            using var body = JsonDocument.Parse("{\"missionId\":\"m1\",\"activityId32\":" + activity + ",\"objectId\":" + pile + ",\"participants\":[" +
+                Player + "," + Sibling + "],\"gmiStr\":\"\"}");
+            return (JsonArray)missions.Handle("/Operation/Mission/Activity", body.RootElement).Reply["rewards"]!;
+        }
+        var amount = MissionService.Rewards.ForgeCredits(123456);
+        var rewards = Activity(MissionService.ForgeCreditsActivity, 123456);
+        check(rewards.Count == 2 && rewards.All(r => r!["platformAccountId"]!.GetValueKind() == JsonValueKind.String &&
+                (uint)Whole(r["rewards"]![0]!["mixId"]) == Wallet && Whole(r["rewards"]![0]!["amount"]) == amount) &&
+            (string)rewards[1]!["platformAccountId"]! == Sibling.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "A Forge Credits pile did not pay every participant: " + rewards.ToJsonString());
+        check(Items(store.Current())[Wallet] == amount && Served(store).Contains(Wallet), "The pile's Forge Credits were not kept and served.");
+        check(Activity(MissionService.ForgeCreditsActivity, 123456).Count == 0 && Items(store.Current())[Wallet] == amount, "A pile paid twice.");
+        check(Activity(0x0A2ECD4E, 99).Count == 0, "Another activity paid Forge Credits.");
+        check(new[] { 10L, 20, 50, 100 }.Contains(amount), "A pile's amount is " + amount);
+
+        // The owned warbond waits for its token; its price comes out of the wallet once there is enough.
+        var catalogue = LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray()
+            .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32())
+            .ToDictionary(g => g.Key, g => g.First());
+        var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null);
+        var price = catalogue[steeled.Tokens[0]].GetProperty("buyPrice").EnumerateArray().Single().GetProperty("amount").GetInt64();
+        (int Status, JsonNode Reply) Buy(uint token)
+        {
+            using var body = JsonDocument.Parse("{\"mixId\":" + token + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice +
+                ",\"amount\":" + price + "}]}");
+            var (status, reply, _) = purchases.Handle("/Progression/buy/v2", body.RootElement);
+            return (status, reply);
+        }
+        check(!Served(store).Contains(steeled.Tokens[0]) && !Served(store).Contains(steeled.Items[0].MixId), "A profile that earns its warbonds was handed an owned one.");
+        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold without the Forge Credits for it.");
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, Wallet, price) > 0);
+        var before = Items(store.Current())[Wallet];
+        check(Buy(other.Tokens[0]).Status == 400, "A warbond not owned on the live game was sold for Forge Credits.");
+        var (status, reply) = Buy(steeled.Tokens[0]);
+        check(status == 200 && reply is JsonArray bought && bought.Count == 2 && (uint)Whole(bought[0]!["mixId"]) == steeled.Tokens[0] && Whole(bought[0]!["amount"]) == 1 &&
+            (uint)Whole(bought[1]!["mixId"]) == Wallet && Whole(bought[1]!["amount"]) == -price, "The warbond purchase replied " + reply.ToJsonString());
+        check(Items(store.Current())[Wallet] == before - price && Served(store).Contains(steeled.Tokens[0]),
+            "The bought warbond is not open, or its price was not taken.");
+        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold twice.");
+
+        // An unlock-all profile is handed it, as before.
+        using var dev = ProfileStore.Open(null, "unlock-all");
+        dev.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(Served(dev).Contains(steeled.Tokens[0]), "An unlock-all profile was not handed its owned warbond.");
     }
 
     // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The

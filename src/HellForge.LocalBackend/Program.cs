@@ -94,6 +94,8 @@ try
     {
         var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
         profile.Ownership = OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, HellForge.Core.SteamAccount.Current(), out var refusal);
+        // Every profile but an unlock-all one buys its owned premium warbonds with Forge Credits.
+        profile.Ownership.EarnWarbonds = profileTemplate == null || !profileTemplate.Contains("unlock-all", StringComparison.Ordinal);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }

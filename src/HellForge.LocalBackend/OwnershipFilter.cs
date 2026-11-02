@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace HellForge.LocalBackend;
 
 // Which items a profile's /Progression/inventory may serve (PaidContentSet says what is paid):
-// - Super Credits never.
+// - Super Credits never, but for the Forge Credits the player earned (PaidContentSet.ForgeCreditsWallet).
 // - paid items (premium warbond tokens, Superstore items) only when the verified account snapshot holds them. Those it
 //   holds are served even when the profile lacks them, so premium ownership always follows the latest sync, whatever
 //   the player chose to import.
@@ -12,9 +12,14 @@ namespace HellForge.LocalBackend;
 // /Progression drops the purchases on a premium warbond's pages without an owned token, so its pages show nothing bought
 // (an unlock-all profile has bought every page). The profile keeps them for when the warbond is owned.
 // Everything else passes through. Without a verified snapshot no paid item is served.
+// A profile that earns its warbonds (EarnWarbonds: every template but unlock-all) is not handed the premium warbond tokens
+// the account owns: it buys each one with Forge Credits (Purchases.WarbondToken), and only then is the warbond open.
 public sealed class OwnershipFilter
 {
     readonly Dictionary<uint, JsonObject> owned = [];
+
+    // Whether the verified snapshot holds this paid item (a premium warbond's token: bought on live).
+    public bool Owns(uint mixId) => owned.ContainsKey(mixId);
 
     public OwnershipFilter(PaidContentSet paid, IEnumerable<JsonObject>? snapshotItems)
     {
@@ -32,12 +37,29 @@ public sealed class OwnershipFilter
     // The paid items the snapshot holds.
     public int OwnedPaidCount => owned.Count;
 
-    public bool IsAllowed(uint mixId)
+    // Whether owned premium warbond tokens wait for a Forge Credits purchase instead of being served.
+    public bool EarnWarbonds { get; set; }
+
+    // A premium warbond's token that opens it: owned on the live game and, on a profile that earns its warbonds, bought here
+    // too (held: the tokens the profile holds).
+    bool Unlocked(uint token, IReadOnlySet<uint> held) => owned.ContainsKey(token) && (!EarnWarbonds || held.Contains(token));
+
+    public bool IsAllowed(uint mixId) => IsAllowed(mixId, owned.Keys.ToHashSet());
+
+    bool IsAllowed(uint mixId, IReadOnlySet<uint> held)
     {
-        if (PaidContentSet.IsSuperCredits(mixId)) return false;
+        if (PaidContentSet.IsSuperCredits(mixId)) return PaidContentSet.IsForgeCredits(mixId);
+        if (Paid.WarbondTokens.Contains(mixId)) return Unlocked(mixId, held);
         if (Paid.IsPaid(mixId)) return owned.ContainsKey(mixId);
-        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(owned.ContainsKey);
+        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(t => Unlocked(t, held));
     }
+
+    // The paid items an inventory section holds (amount above 0).
+    static HashSet<uint> Held(JsonElement inventorySection) =>
+        inventorySection.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            ? [.. items.EnumerateArray().Where(i => i.TryGetProperty("amount", out var a) && a.ValueKind == JsonValueKind.Number && a.GetInt64() > 0 &&
+                i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).Select(i => i.GetProperty("mixId").GetUInt32())]
+            : [];
 
     // The inventory section as served: disallowed items removed, owned paid items the profile lacks added.
     public JsonElement FilterInventoryResponse(JsonElement inventorySection)
@@ -45,26 +67,29 @@ public sealed class OwnershipFilter
         var node = JsonNode.Parse(inventorySection.GetRawText())!.AsObject();
         var served = new JsonArray();
         var present = new HashSet<uint>();
+        var held = Held(inventorySection);
         foreach (var item in node["items"] as JsonArray ?? [])
         {
             if (item is not JsonObject entry) continue;
             if (MixId(entry) is { } id)
             {
-                if (!IsAllowed(id)) continue;
+                if (!IsAllowed(id, held)) continue;
                 present.Add(id);
             }
             served.Add(entry.DeepClone());
         }
         foreach (var (id, item) in owned)
-            if (!present.Contains(id)) served.Add(item.DeepClone());
+            if (!present.Contains(id) && !(EarnWarbonds && Paid.WarbondTokens.Contains(id))) served.Add(item.DeepClone());
         node["items"] = served;
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
 
-    // The progression section as served: purchasedSeasonPassItems without the items of a premium warbond not owned.
-    public JsonElement FilterProgressionResponse(JsonElement progressionSection)
+    // The progression section as served: purchasedSeasonPassItems without the items of a premium warbond not open
+    // (inventorySection: the profile's, for the tokens it bought).
+    public JsonElement FilterProgressionResponse(JsonElement progressionSection, JsonElement inventorySection)
     {
-        var locked = Paid.Warbonds.Where(warbond => warbond.Tokens.Length > 0 && !warbond.Tokens.Any(owned.ContainsKey))
+        var held = Held(inventorySection);
+        var locked = Paid.Warbonds.Where(warbond => warbond.Tokens.Length > 0 && !warbond.Tokens.Any(t => Unlocked(t, held)))
             .SelectMany(warbond => warbond.Items.Select(item => item.ItemId)).ToHashSet();
         if (locked.Count == 0 || !progressionSection.TryGetProperty("purchasedSeasonPassItems", out var bought) || bought.ValueKind != JsonValueKind.Array)
             return progressionSection;
@@ -76,12 +101,12 @@ public sealed class OwnershipFilter
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
 
-    // Without a filter (a profile served with no ownership rules, as in tests), Super Credits still never leave.
+    // Without a filter (a profile served with no ownership rules, as in tests), Super Credits still never leave (Forge Credits do).
     public static JsonElement WithoutSuperCredits(JsonElement inventorySection)
     {
         var node = JsonNode.Parse(inventorySection.GetRawText())!.AsObject();
         if (node["items"] is not JsonArray items) return inventorySection;
-        foreach (var item in items.OfType<JsonObject>().Where(i => MixId(i) is { } id && PaidContentSet.IsSuperCredits(id)).ToList())
+        foreach (var item in items.OfType<JsonObject>().Where(i => MixId(i) is { } id && PaidContentSet.IsSuperCredits(id) && !PaidContentSet.IsForgeCredits(id)).ToList())
             items.Remove(item);
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
