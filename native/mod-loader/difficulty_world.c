@@ -841,8 +841,139 @@ static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
     CloseHandle(file);
 }
 
+/* Research (XL visuals): the engine's camera interface, [[game+0x3326308]+0x20] (as SetupTerrainMerge's camera setup
+ * 0xF487B0 uses it): +0x20 set_local_position(camera, node, const float xyz[3]), +0x28 set_local_rotation(camera, node,
+ * const float xyzw[4]), +0x68 / +0x70 near / far range (camera, float). The game sets its gameplay camera natively after
+ * Lua's update, so a high vantage over an extra large map needs this. The three entries are swapped for wrappers once
+ * generation runs (the interface is set by then):
+ *   research: the callers of set_local_position (module + RVA), their camera, call count and last position are noted
+ *   every 20 s for 10 minutes from the first call (the first extra large level);
+ *   HELLFORGE_XL_VANTAGE=x,y,z,yaw,pitch (world metres, degrees; pitch down from level) with
+ *   HELLFORGE_XL_VANTAGE_CALLER=g:<rva> or x:<rva> (game.dll or the exe): that caller's camera gets the vantage pose
+ *   (Z up, cameras look along +Y: yaw about Z, then pitch about X) and a 30 km far range. */
+typedef void (*CamPoseFn)(uint64_t camera, uint32_t node, const float* v);
+typedef void (*CamRangeFn)(uint64_t camera, float v);
+static CamPoseFn g_camSetPosition, g_camSetRotation;
+static CamRangeFn g_camSetFar;
+typedef struct { uintptr_t at; uint64_t camera; volatile LONG calls; float position[3]; } CamCaller;
+static CamCaller g_camCallers[48];
+static volatile LONG g_camCallerCount;
+static uintptr_t g_vantageCaller;
+static float g_vantagePosition[3], g_vantageRotation[4];
+static int g_vantageOn;
+static LARGE_INTEGER g_camStart;
+static LONG g_camNotes;
+
+static int WorldCamFromVantage(uintptr_t at)
+{
+    return g_vantageOn && at == g_vantageCaller;
+}
+
+static void WorldCamNote(void)
+{
+    LARGE_INTEGER now, hz;
+    QueryPerformanceCounter(&now); QueryPerformanceFrequency(&hz);
+    if (g_camStart.QuadPart == 0) { g_camStart = now; return; }
+    double seconds = (double)(now.QuadPart - g_camStart.QuadPart) / (double)hz.QuadPart;
+    if (g_camNotes >= 30 || seconds < 20.0 * (g_camNotes + 1)) return;
+    g_camNotes++;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48;
+    for (LONG i = 0; i < n; i++)
+    {
+        CamCaller* c = &g_camCallers[i];
+        int inGame = c->at >= g_world.game && c->at < g_world.game + 0x4000000u;
+        Note("difficulty: camera (%.0f s): set_local_position from %s:%llX on camera 0x%llX, %ld calls, last (%.1f, %.1f, %.1f)%s", seconds,
+            inGame ? "g" : "x", (unsigned long long)(c->at - (inGame ? g_world.game : exe)), (unsigned long long)c->camera, (long)c->calls,
+            (double)c->position[0], (double)c->position[1], (double)c->position[2], WorldCamFromVantage(c->at) ? " (vantage)" : "");
+    }
+}
+
+static void WorldCamSetPosition(uint64_t camera, uint32_t node, const float* v)
+{
+    uintptr_t at = (uintptr_t)__builtin_return_address(0);
+    LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48, i;
+    for (i = 0; i < n; i++) if (g_camCallers[i].at == at) break;
+    if (i == n && n < 48) { i = InterlockedIncrement(&g_camCallerCount) - 1; if (i < 48) g_camCallers[i].at = at; }
+    if (i < 48)
+    {
+        CamCaller* c = &g_camCallers[i];
+        c->camera = camera;
+        InterlockedIncrement(&c->calls);
+        if (v) memcpy(c->position, v, 12);
+    }
+    if (g_world.current == 8.0f) WorldCamNote();
+    if (WorldCamFromVantage(at))
+    {
+        g_camSetPosition(camera, node, g_vantagePosition);
+        if (g_camSetFar) g_camSetFar(camera, 30000.0f);
+        return;
+    }
+    g_camSetPosition(camera, node, v);
+}
+
+static void WorldCamSetRotation(uint64_t camera, uint32_t node, const float* v)
+{
+    /* the rotation is set right after the position by the same code: its caller is the position's caller + a few bytes,
+     * so the camera is matched instead (the last camera the vantage caller positioned) */
+    uintptr_t at = g_vantageCaller;
+    LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48;
+    for (LONG i = 0; g_vantageOn && i < n; i++)
+        if (g_camCallers[i].at == at && g_camCallers[i].camera == camera) { g_camSetRotation(camera, node, g_vantageRotation); return; }
+    g_camSetRotation(camera, node, v);
+}
+
+static void WorldCamSetFar(uint64_t camera, float v)
+{
+    LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48;
+    for (LONG i = 0; g_vantageOn && i < n; i++)
+        if (g_camCallers[i].at == g_vantageCaller && g_camCallers[i].camera == camera) { g_camSetFar(camera, 30000.0f); return; }
+    g_camSetFar(camera, v);
+}
+
+static void WorldCamInstall(void)
+{
+    static int done;
+    if (done) return;
+    uint64_t api = 0, table = 0;
+    if (SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0x20, &table, 8) || table == 0) return;
+    done = 1;
+    char text[96] = "";
+    if (GetEnvironmentVariableA("HELLFORGE_XL_VANTAGE", text, sizeof text) > 0)
+    {
+        float p[5] = {0};
+        if (sscanf(text, "%f,%f,%f,%f,%f", &p[0], &p[1], &p[2], &p[3], &p[4]) == 5)
+        {
+            char who[48] = "";
+            unsigned long long rva = 0;
+            char module = 0;
+            if (GetEnvironmentVariableA("HELLFORGE_XL_VANTAGE_CALLER", who, sizeof who) > 0 && sscanf(who, "%c:%llx", &module, &rva) == 2 && (module == 'g' || module == 'x'))
+            {
+                g_vantageCaller = (module == 'g' ? g_world.game : (uintptr_t)GetModuleHandleW(NULL)) + (uintptr_t)rva;
+                memcpy(g_vantagePosition, p, 12);
+                float yaw = p[3] * 3.14159265f / 180.0f, pitch = -p[4] * 3.14159265f / 180.0f;
+                float sz = sinf(yaw * 0.5f), cz = cosf(yaw * 0.5f), sx = sinf(pitch * 0.5f), cx = cosf(pitch * 0.5f);
+                g_vantageRotation[0] = cz * sx; g_vantageRotation[1] = sz * sx; g_vantageRotation[2] = sz * cx; g_vantageRotation[3] = cz * cx;
+                g_vantageOn = 1;
+            }
+        }
+    }
+    void** slots = (void**)(uintptr_t)table;
+    DWORD old = 0;
+    if (!VirtualProtect(slots + 4, 0x58, PAGE_READWRITE, &old)) { Note("difficulty: camera: the interface table did not open"); return; }
+    g_camSetPosition = (CamPoseFn)slots[0x20 / 8]; g_camSetRotation = (CamPoseFn)slots[0x28 / 8]; g_camSetFar = (CamRangeFn)slots[0x70 / 8];
+    InterlockedExchangePointer(&slots[0x20 / 8], (void*)WorldCamSetPosition);
+    InterlockedExchangePointer(&slots[0x28 / 8], (void*)WorldCamSetRotation);
+    InterlockedExchangePointer(&slots[0x70 / 8], (void*)WorldCamSetFar);
+    VirtualProtect(slots + 4, 0x58, old, &old);
+    Note("difficulty: camera: the interface's position, rotation and far range are watched%s (vantage %.0f, %.0f, %.0f from caller 0x%llX)",
+        g_vantageOn ? " and the vantage is on" : "", (double)g_vantagePosition[0], (double)g_vantagePosition[1], (double)g_vantagePosition[2],
+        (unsigned long long)g_vantageCaller);
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    if (g_world.current == 8.0f) WorldCamInstall();
     {
         uint32_t i = 0, o = 0xFFFFFFFFu;
         InterlockedIncrement(&g_genCalls);
