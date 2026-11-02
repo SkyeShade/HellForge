@@ -1192,7 +1192,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
     uintptr_t vanillaBlock = 0;
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
-        vanillaOp == 0x2B && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
+        vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (zoneSet)
@@ -1205,11 +1205,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             FlushInstructionCache(GetCurrentProcess(), (void*)zoneLoad, 4);
         }
     }
-    if (vanilla2B) /* research: a vanilla map's stamp placement, to compare densities with */
+    if (vanilla2B) /* research: a vanilla map's locations per op (the baseline the larger maps' densities compare with) */
     {
         uint32_t vanillaAfter = 0;
         SafeRead(vanillaBlock + 0x11A7108, &vanillaAfter, 4);
-        Note("difficulty: extra large maps: op 0x2B (record %u) at %.0fx: locations %u -> %u", vanillaAt, (double)g_world.current, vanillaBefore, vanillaAfter);
+        if (vanillaAfter != vanillaBefore) Note("difficulty: extra large maps: op 0x%X (record %u) at %.0fx: locations %u -> %u", vanillaOp, vanillaAt, (double)g_world.current, vanillaBefore, vanillaAfter);
     }
     if (profile)
     {
