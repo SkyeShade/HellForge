@@ -471,8 +471,8 @@ static void WorldZoneGridNote(void)
  * (settings +0x64/+0x68, square) is [0, extent], the keep radius (+0x6C) covers the box, and the lattice spacing
  * ([[[context+0x18]+0x2D0]+0x68]) is 16 m; everything is put back after. Pass records point into the block, so the
  * record is copied and every pointer into the block moved onto the copy. Handlers are called as the dispatcher does:
- * (record + 8, record, context). Runs once per level at CullUnitsOutsidePlayableArea (op 0x6D), after the level's own
- * Voronoi geometry is destroyed (op 0x3B). HELLFORGE_XL_TILE=<extent in m> (256..2048) turns it on. */
+ * (record + 8, record, context). Runs once per level as SetupTerrainMerge (op 0x38) begins (see WorldDispatch).
+ * HELLFORGE_XL_TILE=<extent in m> (256..2048) turns it on; 768 keeps the route cells within the game's arrays. */
 #define GEN_BLOCK_SIZE_VANILLA 0x11A7268u
 static uint32_t WorldBlockSize(void); /* difficulty_block.c: the enlarged block of a larger map */
 #define GEN_BLOCK_SIZE (g_world.current > 1.0f ? WorldBlockSize() : GEN_BLOCK_SIZE_VANILLA)
@@ -839,7 +839,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) { WorldRecordMap(records, (uint32_t)d); WorldTileProbe(records, (uint32_t)d, b, e, f, g, h); } }
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) WorldRecordMap(records, (uint32_t)d); }
+        /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
+         * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
+         * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
+        if (o == 0x38 && g_world.current == 8.0f) WorldTileProbe(records, (uint32_t)d, b, e, f, g, h);
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
