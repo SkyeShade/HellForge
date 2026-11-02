@@ -679,6 +679,7 @@ static const char* MakeLevelRow(DifficultyInstall* d)
      * map_scale alone, a 16384 m world's radius came out 8 x too large (7.6 x 8192 m): no subregion lay outside its
      * ring, so the map had none of its vegetated zone, and a Poisson pass covered a 124 km square. */
     float radiusScale = g_difficulty.mapScale / (float)WorldScaleFor(g_difficulty.mapScale);
+    { char t[4] = ""; if (GetEnvironmentVariableA("HELLFORGE_XL_RADIUS_OLD", t, sizeof t) > 0 && t[0] == '1') radiusScale = g_difficulty.mapScale; } /* research A/B */
     for (int k = 0; g_difficulty.mapScale > 0.0f && k < 4; k++)
     {
         float radius;

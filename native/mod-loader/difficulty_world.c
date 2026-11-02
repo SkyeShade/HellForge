@@ -1172,7 +1172,7 @@ static int WorldDropCompare(const void* a, const void* b)
 static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
 {
     static LONG suggested = -1;
-    if (g_world.current <= 1.0f || suggested == g_world.levels || count == 0 || count > 8192) return;
+    if (suggested == g_world.levels || count == 0 || count > 8192) return;
     suggested = g_world.levels;
     /* Heights: the main Voronoi's vertices (G+0x9F310, 0x48 each, x/y at +0; count G+0x11A7090) and their heights
      * (G+0x1F8A30, floats; 0..~0.08 before the settings' x512), set before SetupTerrainMerge (op 0x38). */
@@ -1181,6 +1181,12 @@ static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
     static float vxy[65536][2], vh[65536];
     for (uint32_t v = 0; v < vertices; v++)
         if (SafeRead(gen + 0x9F310u + 0x48u * (uintptr_t)v, vxy[v], 8) || SafeRead(gen + 0x1F8A30u + 4u * (uintptr_t)v, &vh[v], 4)) { vertices = v; break; }
+    { /* relief: the vertex heights' spread over the whole level (the terrain's shape before the merge) */
+        double sum = 0, sum2 = 0; float lo = 3e38f, hi = -3e38f; uint32_t m = 0;
+        for (uint32_t v = 0; v < vertices; v++) if (vh[v] > -1e30f && vh[v] < 1e30f) { sum += vh[v]; sum2 += (double)vh[v] * vh[v]; m++; if (vh[v] < lo) lo = vh[v]; if (vh[v] > hi) hi = vh[v]; }
+        double mean = m ? sum / m : 0, sd = m ? sqrt(sum2 / m - mean * mean) : 0;
+        Note("difficulty: relief (%.0fx): %u vertices, heights %.4f..%.4f, mean %.4f, sd %.4f (x512: sd %.1f m)", (double)g_world.current, m, (double)lo, (double)hi, mean, sd, sd * 512.0);
+    }
     static float picks[8192][3];
     uint32_t n = 0;
     for (uint32_t i = 0; i < count && n < 8192; i++)
@@ -1199,6 +1205,27 @@ static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
         }
         if (!(h > -1e30f && h < 1e30f)) continue;
         picks[n][0] = pos[0]; picks[n][1] = pos[1]; picks[n][2] = h; n++;
+    }
+    { /* relief per height group and type: nearest-vertex heights of every subregion cell */
+        static double gs[8][3]; static uint32_t gt[8][8]; memset(gs, 0, sizeof gs); memset(gt, 0, sizeof gt);
+        static const int32_t kTypes[8] = {0x41, 0x43, 0x44, 0x46, 0x47, 0x1E, -1, -2};
+        for (uint32_t i = 0; i < count; i++)
+        {
+            uint8_t entry[0x20]; uint64_t cell = 0; float pos[2];
+            if (SafeRead(gen + 0x92F328u + 0x20u * (uintptr_t)i, entry, sizeof entry)) break;
+            int32_t group, type; memcpy(&group, entry + 4, 4); memcpy(&type, entry + 0xC, 4); memcpy(&cell, entry + 0x18, 8);
+            if (cell == 0 || SafeRead(cell, pos, 8) || group < -1 || group > 6) continue;
+            float best = 3.0e38f, h = 0.0f;
+            for (uint32_t v = 0; v < vertices; v++) { float dx = vxy[v][0] - pos[0], dy = vxy[v][1] - pos[1], d = dx * dx + dy * dy; if (d < best) { best = d; h = vh[v]; } }
+            gs[group + 1][0] += 1; gs[group + 1][1] += h; gs[group + 1][2] += (double)h * h;
+            int t = 6; for (int k = 0; k < 6; k++) if (kTypes[k] == type) t = k; gt[group + 1][t]++;
+        }
+        for (int g = 0; g < 8; g++) if (gs[g][0] > 0)
+        {
+            double mean = gs[g][1] / gs[g][0], sd = sqrt(gs[g][2] / gs[g][0] - mean * mean);
+            Note("difficulty: relief (%.0fx): group %d: %.0f cells, height mean %.4f sd %.4f; types 41:%u 43:%u 44:%u 46:%u 47:%u 1E:%u other:%u",
+                (double)g_world.current, g - 1, gs[g][0], mean, sd, gt[g][0], gt[g][1], gt[g][2], gt[g][3], gt[g][4], gt[g][5], gt[g][6]);
+        }
     }
     if (n == 0) { Note("difficulty: drop suggestion: no vegetated cell"); return; }
     qsort(picks, n, sizeof picks[0], WorldDropCompare);
@@ -1332,7 +1359,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
-        if (o == 0x38 && g_world.current > 1.0f && g_worldLevel != 0)
+        if (o == 0x38 && g_worldLevel != 0)
         {
             uintptr_t genAt = 0; uint32_t subs = 0;
             if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0 && !SafeRead(genAt + 0x11A71C4u, &subs, 4)) WorldSuggestDrop(genAt, subs);
