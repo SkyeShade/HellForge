@@ -358,6 +358,77 @@ static void WorldDumpHeight(void)
         ok ? "complete" : "failed", (unsigned)difficulty, (double)g_world.current);
 }
 
+/* Research (terrain resolution): after a terrain pass (SetupTerrainMerge 0x38, RenderHeightmapVoronoi 0x3C, SmoothHeightmap
+ * 0x40, RenderZoneHeightmap 0x3D, CaptureHeightmapFinalize 0x5E, SpawnTerrainWork 0x6A) on the first two levels: its pass
+ * record and the memory its first pointers reach, hex, into terrain-probe-<level>.txt, with the engine functions the
+ * passes call through [game+0x3326308] (+0x10 table +0x190/+0x1D0/+0x1D8/+0x218/+0x470, +8 table +0x1A8) and every
+ * dword 4096 / float 4096 / float 0.5 found. */
+static int ModuleAt(uintptr_t at, char* out, size_t size); /* crash_notes.c */
+static void ProbeHex(HANDLE file, const char* title, uint64_t at, uint32_t bytes)
+{
+    char line[256];
+    DWORD wrote;
+    int n = snprintf(line, sizeof line, "%s at 0x%llX (%u bytes)\n", title, (unsigned long long)at, bytes);
+    WriteFile(file, line, (DWORD)n, &wrote, NULL);
+    for (uint32_t o = 0; o < bytes; o += 32)
+    {
+        uint8_t row[32];
+        if (SafeRead(at + o, row, 32)) { n = snprintf(line, sizeof line, "  +%04X unreadable\n", o); WriteFile(file, line, (DWORD)n, &wrote, NULL); break; }
+        n = snprintf(line, sizeof line, "  +%04X", o);
+        for (int k = 0; k < 32; k += 4) { uint32_t v; memcpy(&v, row + k, 4); n += snprintf(line + n, sizeof line - n, " %08x", v); }
+        for (int k = 0; k < 32; k += 4)
+        {
+            uint32_t v; float fv; memcpy(&v, row + k, 4); memcpy(&fv, row + k, 4);
+            if (v == 4096u || v == 2048u || v == 8192u || v == 16384u || fv == 4096.0f || fv == 2048.0f || fv == 16384.0f || fv == 512.0f || fv == 0.5f || fv == 4.0f)
+                n += snprintf(line + n, sizeof line - n, " [+%X=%s%g]", o + k, (v >= 512u && v <= 16384u) ? "u" : "f", (v >= 512u && v <= 16384u) ? (double)v : (double)fv);
+        }
+        line[n++] = '\n';
+        WriteFile(file, line, (DWORD)n, &wrote, NULL);
+    }
+}
+
+static volatile LONG g_terrainProbes;
+static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
+{
+    static LONG levelSeen = -1, levels;
+    if (levelSeen != g_world.levels) { levelSeen = g_world.levels; levels++; }
+    if (levels > 2) return;
+    wchar_t name[64];
+    swprintf(name, 64, L"terrain-probe-%ld.txt", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    char title[96];
+    DWORD wrote;
+    uint64_t record = records + (uint64_t)at * 0x19B0u;
+    int n = snprintf(title, sizeof title, "\n==== op 0x%X (record %u), world scale %g\n", op, at, (double)g_world.current);
+    WriteFile(file, title, (DWORD)n, &wrote, NULL);
+    if (op == 0x38)
+    {
+        uint64_t engine = 0, table = 0, world = 0;
+        SafeRead(g_world.game + 0x3326308, &engine, 8); SafeRead(engine + 0x10, &table, 8); SafeRead(engine + 8, &world, 8);
+        static const uint32_t slots[] = {0x190, 0x1D0, 0x1D8, 0x218, 0x470};
+        for (size_t k = 0; k < sizeof slots / sizeof slots[0]; k++)
+        {
+            uint64_t fn = 0; char where[160] = "?";
+            SafeRead(table + slots[k], &fn, 8); ModuleAt((uintptr_t)fn, where, sizeof where);
+            n = snprintf(title, sizeof title, "engine +0x10 table +0x%X: %s\n", slots[k], where); WriteFile(file, title, (DWORD)n, &wrote, NULL);
+        }
+        uint64_t fn = 0; char where[160] = "?";
+        SafeRead(world + 0x1A8, &fn, 8); ModuleAt((uintptr_t)fn, where, sizeof where);
+        n = snprintf(title, sizeof title, "engine +8 table +0x1A8: %s\n", where); WriteFile(file, title, (DWORD)n, &wrote, NULL);
+    }
+    ProbeHex(file, "pass record", record, 0x200);
+    for (uint32_t k = 0; k < 0x80; k += 8)
+    {
+        uint64_t p = 0, q = 0;
+        if (SafeRead(record + 8 + k, &p, 8) || p < 0x10000 || SafeRead(p, &q, 8)) continue;
+        snprintf(title, sizeof title, "[pass+8+0x%X]", k);
+        ProbeHex(file, title, p, 0x100);
+        if (q >= 0x10000 && !SafeRead(q, &p, 8)) { snprintf(title, sizeof title, "[[pass+8+0x%X]]", k); ProbeHex(file, title, q, 0x300); }
+    }
+    CloseHandle(file);
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_heightCopy != NULL)
@@ -385,6 +456,12 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         QueryPerformanceCounter(&end); QueryPerformanceFrequency(&hz);
         WorldProfileEnd(op, (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart);
         InterlockedDecrement(&depth);
+    }
+    {
+        uint32_t pat = 0, pop = 0xFFFFFFFFu;
+        if (!SafeRead(index, &pat, 4) && !SafeRead(records + (uint64_t)pat * 0x19B0u, &pop, 4) &&
+            (pop == 0x38 || pop == 0x3C || pop == 0x40 || pop == 0x3D || pop == 0x5E || pop == 0x6A) && InterlockedIncrement(&g_terrainProbes) <= 40)
+            WorldTerrainProbe(records, pat, pop);
     }
     if (!watch) return r;
     if (op == 0x2B)
