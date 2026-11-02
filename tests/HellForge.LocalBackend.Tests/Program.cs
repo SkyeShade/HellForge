@@ -450,12 +450,21 @@ try
                 experienceBefore = json.RootElement.GetProperty("experience").GetInt64();
             using (var created = await Post("/Operation/Create", "{\"operations\":[{\"id\":7,\"difficulty\":4,\"missions\":[]}]}"))
                 Check(created.RootElement.GetProperty("operations")[0].GetProperty("id").GetInt64() == 7, "Operation id not echoed.");
+            string missionId;
             using (var started = await Post("/Operation/Mission/Start", "{\"operationId\":7,\"missionIndex\":0}"))
-                Check(Guid.TryParse(started.RootElement.GetProperty("missionId").GetString(), out _), "Mission id is not a GUID.");
+            {
+                missionId = started.RootElement.GetProperty("missionId").GetString()!;
+                Check(Guid.TryParse(missionId, out _), "Mission id is not a GUID.");
+            }
             const uint commonSamples = 0xEDF6EAF5;
-            using (var ended = await Post("/Operation/Mission/end", "{\"operationId\":7,\"missionIndex\":0,\"missionSuccess\":true,\"difficultyType\":4," +
-                "\"objectives\":[{\"succeeded\":true}],\"players\":[{\"lootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":5}]}]}"))
+            var firstEnd = "{\"operationId\":7,\"missionIndex\":0,\"missionId\":\"" + missionId + "\",\"missionSuccess\":true,\"difficultyType\":4," +
+                "\"objectives\":[{\"succeeded\":true}],\"players\":[{\"lootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":5}]}]}";
+            using (var ended = await Post("/Operation/Mission/end", firstEnd))
                 Check(ended.RootElement.GetProperty("experience").GetInt64() == MissionService.Rewards.Experience(4, true, 1), "Mission XP differs from the rules.");
+            // A retried end (its reply lost) pays nothing again; the checks below see one payout.
+            using (var replayed = await Post("/Operation/Mission/end", firstEnd))
+                Check(replayed.RootElement.GetProperty("experience").GetInt64() == 0 && replayed.RootElement.GetProperty("rewards").GetArrayLength() == 0 &&
+                    replayed.RootElement.GetProperty("lootedItemRewards").GetArrayLength() == 0, "A retried mission end paid again.");
             using (var response = await client.GetAsync("/Progression"))
             using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
                 Check(json.RootElement.GetProperty("experience").GetInt64() == experienceBefore + MissionService.Rewards.Experience(4, true, 1), "Mission XP not saved.");

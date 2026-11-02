@@ -16,7 +16,7 @@ namespace HellForge.LocalBackend;
 //                                               dispatcher has no reply case for it): acknowledged, nothing taken.
 // Rewards are local rules, not Arrowhead's: XP by difficulty, success and objectives; requisition; medals for a won
 // mission; looted samples are granted as reported by the client. Level 11 (a mod's, native/mod-loader/difficulty.c) pays
-// half as much XP and medals again as level 10.
+// half as much XP and medals again as level 10. Each mission id is paid once (ProfileStore.ApplyMissionRewards).
 public sealed class MissionService
 {
     public const uint RequisitionMixId = 0xD7150EEC;
@@ -84,16 +84,23 @@ public sealed class MissionService
             foreach (var (mix, amount) in source) grants[mix] = grants.GetValueOrDefault(mix) + amount;
         if (requisition > 0) grants[RequisitionMixId] = grants.GetValueOrDefault(RequisitionMixId) + requisition;
         if (medals > 0) grants[MedalsMixId] = grants.GetValueOrDefault(MedalsMixId) + medals;
-        profile.ApplyMissionRewards(experience, grants);
         static JsonArray Items(Dictionary<uint, long> items) =>
             new(items.Select(item => (JsonNode?)new JsonObject { ["mixId"] = item.Key, ["amount"] = item.Value }).ToArray());
         var rewards = new JsonArray();
         if (requisition > 0) rewards.Add((JsonNode)new JsonObject { ["mixId"] = RequisitionMixId, ["amount"] = requisition });
         if (medals > 0) rewards.Add((JsonNode)new JsonObject { ["mixId"] = MedalsMixId, ["amount"] = medals });
+        // A retried end (its reply was lost) is answered with nothing earned: the first one paid.
+        var missionId = FindString(body, "missionId");
+        if (!profile.ApplyMissionRewards(experience, grants, missionId))
+        {
+            experience = 0;
+            looted.Clear();
+            rewards.Clear();
+        }
         return new JsonObject
         {
             ["operationId"] = FindInt(body, "operationId") ?? 0, ["missionIndex"] = FindInt(body, "missionIndex") ?? 0,
-            ["missionId"] = FindString(body, "missionId") ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
+            ["missionId"] = missionId ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
             ["badges"] = new JsonArray(), ["campaignWon"] = false, ["impact"] = 0, ["othersImpactPlanet"] = 0,
             ["othersImpactCommunityTarget"] = 0, ["othersImpactPlanetEvent"] = 0, ["progressionPackageUpdates"] = new JsonArray(),
             // Heavy loot is granted above, but its reply list wants {id32, rewards: [...]} per heavy item (parser 0x105e6b0;

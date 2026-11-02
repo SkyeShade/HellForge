@@ -312,10 +312,22 @@ public sealed class ProfileStore : IDisposable
 
     // Mission end: adds experience and item amounts (samples, requisition, medals). Amounts are clamped to the catalogue
     // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
-    // whatever the mission report claims was found.
-    public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items) =>
+    // whatever the mission report claims was found. A mission id is paid once: it is saved with the rewards
+    // (progression.paidMissions, the last PaidMissionsKept), so a retried Mission/end, also after a restart, pays nothing
+    // and returns false. A report without an id is paid. The receipt is diemitze's idea (PR #27).
+    public const int PaidMissionsKept = 64;
+
+    public bool ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items, string? missionId = null) =>
         TryChange((progression, inventory) =>
         {
+            if (!string.IsNullOrEmpty(missionId))
+            {
+                var paid = progression["paidMissions"] as JsonArray ?? [];
+                if (paid.Any(p => p is JsonValue v && v.TryGetValue<string>(out var id) && id == missionId)) return false;
+                paid.Add((JsonNode)missionId);
+                while (paid.Count > PaidMissionsKept) paid.RemoveAt(0);
+                progression["paidMissions"] = paid;
+            }
             progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             foreach (var (mix, amount) in items) AddItem(inventory, mix, amount);
             return true;

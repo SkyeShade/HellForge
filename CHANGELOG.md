@@ -46,6 +46,8 @@ On `dev`, since 0.3.0-beta.
 
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile.
+- A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
+  medals and samples a second time. Thanks to diemitze, whose PR #27 found it.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
