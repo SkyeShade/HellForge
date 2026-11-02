@@ -256,6 +256,31 @@ static const uint8_t kCullStub[32] = {
     0x85, 0xC0,                                                       /* 19 test eax, eax */
     0x0F, 0x88, 0, 0, 0, 0,                                           /* 21 js 0x68FD65 (rel32 at 23) */
     0xE9, 0, 0, 0, 0};                                                /* 27 jmp 0x68FD0D (rel32 at 28) */
+/* SpeedTree's visible-cell tracking (exe 0x2144E0, strings CVisibleInstances / CCellHeapMgr) clears a cell's bit in a
+ * per-base bitmap ([r10+0x28], width [r10+0xA4]) when the cell leaves view, at index (y + w/2) * w + x, unchecked
+ * (0x215B6C and 0x215F70). On a 16 km map a cell far from where the camera is now gives a negative index, and the
+ * write lands gigabytes off (three landings ended there, 2026-11-02). With an extra large world a clear whose index is
+ * not below w * w is skipped: such a bit was never inside the bitmap. The jump replaces the 23 bytes from the index
+ * copy to the write; the stub redoes them behind the check. */
+#define DIF_TREE_CLEAR_A 0x215B59u    /* mov r8d, r9d ... and [rdx+r8*4], eax; then jmp 0x215B79 */
+#define DIF_TREE_CLEAR_A_BACK 0x215B79u
+#define DIF_TREE_CLEAR_B 0x215F5Du    /* the same, then add dword [r11+8], -1 at 0x215F74 */
+#define DIF_TREE_CLEAR_B_BACK 0x215F74u
+static const char kTreeClearPin[] = "45 8B C1 41 83 E1 1F 41 0F B6 C9 49 C1 E8 05 D3 E0 F7 D0 42 21 04 82";
+static const uint8_t kTreeClearStub[40] = {
+    0x44, 0x8B, 0xC1,                                                 /*  0 mov r8d, ecx (the width) */
+    0x44, 0x0F, 0xAF, 0xC1,                                           /*  3 imul r8d, ecx */
+    0x45, 0x3B, 0xC8,                                                 /*  7 cmp r9d, r8d */
+    0x73, 0x17,                                                       /* 10 jae 35 (outside: skip the write) */
+    0x45, 0x8B, 0xC1,                                                 /* 12 mov r8d, r9d */
+    0x41, 0x83, 0xE1, 0x1F,                                           /* 15 and r9d, 0x1f */
+    0x41, 0x0F, 0xB6, 0xC9,                                           /* 19 movzx ecx, r9b */
+    0x49, 0xC1, 0xE8, 0x05,                                           /* 23 shr r8, 5 */
+    0xD3, 0xE0,                                                       /* 27 shl eax, cl (eax 1 already) */
+    0xF7, 0xD0,                                                       /* 29 not eax */
+    0x42, 0x21, 0x04, 0x82,                                           /* 31 and [rdx+r8*4], eax */
+    0xE9, 0, 0, 0, 0};                                                /* 35 jmp back (rel32 at 36) */
+
 /* The world's destruction records ([game+0x346D528]+0xC5F48, 0x8000 slots inline; difficulty_maps.c guards the general
  * hash insert 0x172F790) have an inlined insert too (0x13E0340): a full table leaves r8 0 and writes the entry through it
  * (a 4096 m mission ended at 0x13E036A about a minute after landing). With an extra large world a full table writes slot
@@ -449,7 +474,17 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && !profile) InterlockedDecrement(&depth);
     if (profile) WorldProfileBegin(op);
     QueryPerformanceCounter(&start);
+    uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
+    uintptr_t vanillaBlock = 0;
+    int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
+        vanillaOp == 0x2B && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (vanilla2B) /* research: a vanilla map's stamp placement, to compare densities with */
+    {
+        uint32_t vanillaAfter = 0;
+        SafeRead(vanillaBlock + 0x11A7108, &vanillaAfter, 4);
+        Note("difficulty: extra large maps: op 0x2B (record %u) at %.0fx: locations %u -> %u", vanillaAt, (double)g_world.current, vanillaBefore, vanillaAfter);
+    }
     if (profile)
     {
         LARGE_INTEGER end, hz;
@@ -559,7 +594,7 @@ typedef uint64_t (*WorldJobFn)(uint64_t, uint64_t, uint64_t, uint64_t);
 static WorldJobFn g_placeJob;
 static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
 {
-    if (!(g_world.current > 1.0f) || job == 0) return g_placeJob(a, b, c, job);
+    if (job == 0) return g_placeJob(a, b, c, job); /* every level: a vanilla map gives the numbers to compare with */
     uint32_t range[2] = {0, 0}, items = 0;
     uint64_t context = 0, list = 0;
     SafeRead(job + 0x4C, range, 8);
@@ -586,9 +621,9 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
             lastWritten = i;
             if (resource == 0) empty++;
         }
-    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu: %.1f ms; slice %u records written (last %u), %u without a resource",
-        range[0], range[1], items, (unsigned long)GetCurrentThreadId(), (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart,
-        written, lastWritten, empty);
+    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu at %.0fx: %.1f ms; slice %u records written (last %u) of %u, %u without a resource",
+        range[0], range[1], items, (unsigned long)GetCurrentThreadId(), (double)g_world.current, (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart,
+        written, lastWritten, capacity, empty);
     return r;
 }
 
@@ -890,6 +925,29 @@ static const char* InstallWorld(DifficultyInstall* d)
     uint8_t cullJump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = (int32_t)((uintptr_t)cull - (exe + DIF_CULL_SITE + 5)); memcpy(cullJump + 1, &rel, 4);
     if (ApiWrite(exe + DIF_CULL_SITE, cullJump, 7)) return "the engine's occlusion test could not be guarded";
+    if (ApiCodeMatches(exe + DIF_TREE_CLEAR_A, kTreeClearPin) && ApiCodeMatches(exe + DIF_TREE_CLEAR_B, kTreeClearPin))
+    {
+        const uintptr_t sites[2] = {DIF_TREE_CLEAR_A, DIF_TREE_CLEAR_B}, backs[2] = {DIF_TREE_CLEAR_A_BACK, DIF_TREE_CLEAR_B_BACK};
+        DWORD old;
+        VirtualProtect(cull, 0x1000, PAGE_READWRITE, &old);
+        for (int i = 0; i < 2; i++)
+        {
+            uint8_t* stub = cull + 0x100 + 0x40 * i;
+            memcpy(stub, kTreeClearStub, sizeof kTreeClearStub);
+            rel = (int32_t)(exe + backs[i] - (uintptr_t)(stub + 40)); memcpy(stub + 36, &rel, 4);
+        }
+        VirtualProtect(cull, 0x1000, PAGE_EXECUTE_READ, &old);
+        FlushInstructionCache(GetCurrentProcess(), cull, 0x1000);
+        for (int i = 0; i < 2; i++)
+        {
+            uint8_t treeJump[23];
+            memset(treeJump, 0x90, sizeof treeJump);
+            treeJump[0] = 0xE9;
+            rel = (int32_t)((uintptr_t)(cull + 0x100 + 0x40 * i) - (exe + sites[i] + 5)); memcpy(treeJump + 1, &rel, 4);
+            if (ApiWrite(exe + sites[i], treeJump, sizeof treeJump)) return "SpeedTree's cell bitmap could not be guarded";
+        }
+    }
+    else Note("difficulty: extra large maps: SpeedTree's cell bitmap clear is not the reviewed one; it is not guarded");
     rel = DifficultyJumpRel(game + DIF_WORLD_SIZE_SITE, (uintptr_t)block); memcpy(jump + 1, &rel, 4);
     g_world.scale = scale;
     if (ApiWrite(game + DIF_WORLD_SIZE_SITE, jump, 9)) { g_world.scale = 1; return "the level's size could not be made larger"; }
