@@ -1,9 +1,12 @@
 // The memory-only initialization edit a session makes on the copied game (generated from scripts/EarlyConstructorExperiment.cs,
 // pinned 3C30CA3C..., by scripts/HostEarlyConstructor.Common.ps1 -SkipLaterStatusFailures -AnyHost, as a session did): kept
 // as that code was compiled, with the copied exe it checks for (TargetExe) given by the session runner instead of baked in.
-// One change since: the whole game is frozen (NtSuspendProcess) the moment the boundary is seen, before its threads are
-// listed one by one. Listing them asks Windows for every process on the PC; on one player's PC that took 293 ms, and by
-// then the game had started its C runtime every time ("crt_already_started") and went on to run GameGuard.
+// Changed since, for a player whose every session ended "crt_already_started" (the game had started its C runtime, and
+// went on to run GameGuard): once the constructor's bytes are decoded the boundary is polled every 0.25 ms rather than
+// every 1-2 ms, and the whole game is frozen in one call (NtSuspendProcess) the moment the boundary is seen. Before, the
+// game ran on until its threads were listed (a query of every process on the PC) and suspended one by one. The report
+// also keeps when the bytes and the boundary were seen, and the C runtime's state right after the freeze call
+// (CrtStateAtFreeze): 1 there means the game had started its C runtime before the boundary could be seen.
 #nullable disable
 #pragma warning disable
 // Host copy adaptation of the pinned VM experiment. Memory edits only; fixed host and copied image.
@@ -23,8 +26,8 @@ public sealed class HellForgeHostEarlyResult {
     public bool MainCheckWriteAttempted, MainCheckWritten;
     public bool LaterStatusWriteAttempted, LaterStatusWritten, LaterStatusRolledBack;
     public string LoopStatusBefore, LoopStatusAfter, FinalStatusBefore, FinalStatusAfter;
-    public int ProcessId, Samples, ReadFailures, CrtState;
-    public long ElapsedMilliseconds, PauseMilliseconds;
+    public int ProcessId, Samples, ReadFailures, CrtState, CrtStateAtFreeze;
+    public long ElapsedMilliseconds, PauseMilliseconds, BytesReadyMilliseconds, BoundaryMilliseconds;
     public bool ProcessFrozen, BytesReady, ConditionsMatched, WriteAttempted, Written, ReadbackMatched, RolledBack, Terminated;
     public List<HellForgeHostEarlyThread> Threads = new List<HellForgeHostEarlyThread>();
 }
@@ -73,7 +76,7 @@ public static class HellForgeHostEarlyConstructorExperiment {
         if(false||IntPtr.Size!=8||pid==Process.GetCurrentProcess().Id)throw new InvalidOperationException("External guest x64 target required.");
         if(mode!="SameBytes"&&mode!="SkipConstructor"&&mode!="SkipConstructorAndMainCheck")throw new ArgumentException("Unknown fixed mode.");
         if(fixture&&allocation<=0)throw new ArgumentException("A valid fixture allocation is required.");
-        var r=new HellForgeHostEarlyResult{ProcessId=pid,Mode=mode,Outcome="not_applied",CrtState=-1};
+        var r=new HellForgeHostEarlyResult{ProcessId=pid,Mode=mode,Outcome="not_applied",CrtState=-1,CrtStateAtFreeze=-1,BytesReadyMilliseconds=-1,BoundaryMilliseconds=-1};
         var clock=Stopwatch.StartNew();var paused=new Stopwatch();var threads=new Dictionary<int,IntPtr>();
         IntPtr target=IntPtr.Zero;Process process=null;bool timer=false,frozen=false;long imageBase=allocation;
         int ctor=fixture?0:0x24b30, state=fixture?64:0x19b1e40, slot=fixture?80:0x14002d0, obj=fixture?72:0x1982e90;
@@ -100,14 +103,18 @@ public static class HellForgeHostEarlyConstructorExperiment {
                 try {
                     if(!fixture&&imageBase==0){try{process.Refresh();var mainModule=process.MainModule;if(mainModule!=null)imageBase=mainModule.BaseAddress.ToInt64();}catch(NullReferenceException moduleError){r.ReadFailures++;r.Failure="Transient module query: "+moduleError.ToString();}}
                     if(imageBase!=0&&Hex(Read(target,imageBase+ctor,expected.Length))==Hex(expected)) {
-                        r.BytesReady=true;
+                        if(!r.BytesReady){r.BytesReady=true;r.BytesReadyMilliseconds=clock.ElapsedMilliseconds;}
                         if(BitConverter.ToInt64(Read(target,imageBase+slot,8),0)!=imageBase+ctor)r.Outcome="constructor_table_not_ready";
                         else if(!fixture&&Hex(Read(target,imageBase+0x973004,20))!="488b0d85fe00014885c9750333c0c3e9a890ffff")r.Outcome="main_wrapper_not_ready";
                         else if(editMain&&Hex(Read(target,imageBase+mainCheck,mainBefore.Length))!=Hex(mainBefore))r.Outcome="main_check_not_ready";
-                        else {boundaryReady=true;break;}
+                        else {boundaryReady=true;r.BoundaryMilliseconds=clock.ElapsedMilliseconds;break;}
                     }
                 }catch(System.ComponentModel.Win32Exception){r.ReadFailures++;}
-                Thread.Sleep(1);
+                // From the decoded bytes on, poll every 0.25 ms (a busy wait on this thread) rather than sleeping 1-2 ms,
+                // so the boundary is seen sooner. Not from the start: under Wine each read is a wineserver request, and
+                // the game's own requests queue behind them.
+                if(r.BytesReady){long until=Stopwatch.GetTimestamp()+Stopwatch.Frequency/4000;while(Stopwatch.GetTimestamp()<until)Thread.SpinWait(16);}
+                else Thread.Sleep(1);
             }
             r.ImageBase="0x"+imageBase.ToString("x");
             if(!boundaryReady){if(!r.BytesReady)r.Outcome="loaded_bytes_not_observed";return r;}
@@ -116,6 +123,7 @@ public static class HellForgeHostEarlyConstructorExperiment {
             paused.Start();
             int suspended=NtSuspendProcess(target);if(suspended<0)throw new InvalidOperationException("NtSuspendProcess failed: 0x"+suspended.ToString("x8"));
             frozen=true;r.ProcessFrozen=true;
+            r.CrtStateAtFreeze=BitConverter.ToInt32(Read(target,imageBase+state,4),0);
             bool stable=false;
             for(int pass=0;pass<8&&paused.ElapsedMilliseconds<1500;pass++) {
                 int added=0;process.Refresh();

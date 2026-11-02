@@ -42,9 +42,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
-- On some fast PCs every session stopped at Launching with "The game could not be prepared for the local backend",
-  while the normal game started fine. HellForge froze the game one thread at a time, and listing those threads took long
-  enough for the game to get past the point HellForge edits. It now freezes the whole game at once.
+- On some PCs every session stopped at Launching with "The game could not be prepared for the local backend", while
+  the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
+  now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
+  listing them.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
