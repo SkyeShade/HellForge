@@ -64,7 +64,7 @@
  * the continuation stub reads g_overlap.level, which OverlapBegin clears on a normal level, so a normal map pays one C
  * call per candidate (not per record) and keeps the original stepping.
  *
- * Research: when count <= OVERLAP_CHECK_LIMIT (4000) OverlapBegin also scans 0..r15d-1 with the exact double-precision box
+ * Research: one call in OVERLAP_CHECK_EVERY a thread, when count <= OVERLAP_CHECK_LIMIT (4000), OverlapBegin also scans 0..r15d-1 with the exact double-precision box
  * test above and notes any record that passes but is not in the list (the first four). Per level generation it notes the
  * number of calls, the average list length, the average r15d, the fallbacks and the misses.
  *
@@ -115,7 +115,9 @@ static const char kOverlapBoxBPin[] = "48 8B 83 B8 00 00 00 0F 28 E8 48 89 45 88
 #define OVERLAP_MAX_ALWAYS 1048576u          /* the always list's largest length */
 #define OVERLAP_MAX_MEMBERS (8ull << 20)     /* all cell memberships a buffer may hold */
 #define OVERLAP_MAX_SCRATCH (2u << 20)       /* one query's gathered indices */
-#define OVERLAP_BUFFERS 16u                  /* the job buffers (8 jobs, room for a second run) */
+#define OVERLAP_BUFFERS 64u                  /* the buffers (8 jobs' slices and 0xF314A0's, room for a second run) */
+#define OVERLAP_CHECK_EVERY 256u             /* check mode takes one call in this many, per thread */
+#define OVERLAP_STATS_BATCH 4096u            /* a thread adds its counters to the shared ones this often */
 
 typedef struct OverlapCell
 {
@@ -147,6 +149,11 @@ typedef struct OverlapThread
     uint32_t listCount, listCap;
     uint32_t pos;          /* the next index OverlapNext returns */
     int active;            /* this loop uses the list (0: fall back) */
+    LONG cacheGeneration;  /* the buffer this thread used last (no table lock while it stays the same) */
+    uintptr_t cacheBase;
+    struct OverlapBuffer* cacheEntry;
+    uint32_t sinceCheck;   /* calls since check mode last ran on this thread */
+    uint64_t calls, listSum, countSum, fallbacks[4]; /* not yet added to the shared counters */
 } OverlapThread;
 
 typedef struct OverlapGlobal
@@ -161,7 +168,10 @@ static OverlapBuffer g_overlapBuffers[OVERLAP_BUFFERS];
 static SRWLOCK g_overlapTableLock = SRWLOCK_INIT;
 static volatile LONG g_overlapTableGeneration;
 static volatile LONG64 g_overlapCalls, g_overlapListSum, g_overlapCountSum, g_overlapFallbacks, g_overlapMisses;
-static volatile LONG g_overlapStatsGeneration;
+/* Fallbacks by reason: the query or count out of range, no free buffer slot, the slot taken over between the claim and
+ * its lock, the grid or list could not be made. */
+static volatile LONG64 g_overlapFallbackWhy[4];
+static volatile LONG64 g_overlapChecks;
 static SRWLOCK g_overlapStatsLock = SRWLOCK_INIT;
 
 /* The original's box test (0xF31010..0xF310B6), in the same float operations and the same double comparison:
@@ -469,34 +479,26 @@ static OverlapThread* OverlapThreadGet(void)
     return t;
 }
 
-/* The per-level research counters (calls, list length, r15d, fallbacks, misses); a new generation notes the old one's
- * averages and starts again. */
-static void OverlapStats(LONG generation, uint32_t list, uint32_t count, int fallback)
+/* The research counters, kept per thread and added to the shared ones every OVERLAP_STATS_BATCH calls (eight jobs
+ * writing shared counters on every call would fight over their cache line); a note can miss a thread's last batch. */
+static void OverlapStatsAdd(OverlapThread* t)
 {
-    if (generation != g_overlapStatsGeneration)
-    {
-        AcquireSRWLockExclusive(&g_overlapStatsLock);
-        if (generation != g_overlapStatsGeneration)
-        {
-            LONG64 calls = g_overlapCalls;
-            if (calls > 0)
-                Note("difficulty: extra large maps: the stamp overlap grid for level generation %ld: %lld calls, average list %.1f, average count %.1f, %lld fallbacks, %lld check misses",
-                    (long)g_overlapStatsGeneration, (long long)calls,
-                    (double)g_overlapListSum / (double)calls, (double)g_overlapCountSum / (double)calls,
-                    (long long)g_overlapFallbacks, (long long)g_overlapMisses);
-            g_overlapCalls = 0;
-            g_overlapListSum = 0;
-            g_overlapCountSum = 0;
-            g_overlapFallbacks = 0;
-            g_overlapMisses = 0;
-            g_overlapStatsGeneration = generation;
-        }
-        ReleaseSRWLockExclusive(&g_overlapStatsLock);
-    }
-    InterlockedIncrement64(&g_overlapCalls);
-    InterlockedExchangeAdd64(&g_overlapListSum, (LONG64)list);
-    InterlockedExchangeAdd64(&g_overlapCountSum, (LONG64)count);
-    if (fallback) InterlockedIncrement64(&g_overlapFallbacks);
+    InterlockedExchangeAdd64(&g_overlapCalls, (LONG64)t->calls);
+    InterlockedExchangeAdd64(&g_overlapListSum, (LONG64)t->listSum);
+    InterlockedExchangeAdd64(&g_overlapCountSum, (LONG64)t->countSum);
+    LONG64 all = 0;
+    for (int i = 0; i < 4; i++) { InterlockedExchangeAdd64(&g_overlapFallbackWhy[i], (LONG64)t->fallbacks[i]); all += (LONG64)t->fallbacks[i]; }
+    InterlockedExchangeAdd64(&g_overlapFallbacks, all);
+    t->calls = t->listSum = t->countSum = 0;
+    memset(t->fallbacks, 0, sizeof t->fallbacks);
+}
+static void OverlapStats(OverlapThread* t, uint32_t list, uint32_t count, int why)
+{
+    t->calls++;
+    t->listSum += list;
+    t->countSum += count;
+    if (why >= 0) t->fallbacks[why]++;
+    if (t->calls >= OVERLAP_STATS_BATCH) OverlapStatsAdd(t);
 }
 
 /* After op 0x2B returns (difficulty_world.c's dispatcher): the run's counters, noted now rather than at the next run. */
@@ -505,15 +507,19 @@ static void OverlapFlush(void)
     AcquireSRWLockExclusive(&g_overlapStatsLock);
     LONG64 calls = g_overlapCalls;
     if (calls > 0)
-        Note("difficulty: extra large maps: the stamp overlap grid for pass run %ld: %lld calls, average list %.1f, average count %.1f, %lld fallbacks, %lld check misses",
-            (long)g_overlapStatsGeneration, (long long)calls, (double)g_overlapListSum / (double)calls,
-            (double)g_overlapCountSum / (double)calls, (long long)g_overlapFallbacks, (long long)g_overlapMisses);
+        Note("difficulty: extra large maps: the stamp overlap grid for pass run %ld: ~%lld calls, average list %.1f, average count %.1f, %lld fallbacks (range %lld, no slot %lld, slot lost %lld, grid %lld), %lld checks, %lld check misses",
+            (long)g_worldOpRun, (long long)calls, (double)g_overlapListSum / (double)calls,
+            (double)g_overlapCountSum / (double)calls, (long long)g_overlapFallbacks, (long long)g_overlapFallbackWhy[0],
+            (long long)g_overlapFallbackWhy[1], (long long)g_overlapFallbackWhy[2], (long long)g_overlapFallbackWhy[3],
+            (long long)g_overlapChecks, (long long)g_overlapMisses);
     else Note("difficulty: extra large maps: the stamp overlap grid saw no calls in this op 0x2B run");
     g_overlapCalls = 0;
     g_overlapListSum = 0;
     g_overlapCountSum = 0;
     g_overlapFallbacks = 0;
     g_overlapMisses = 0;
+    g_overlapChecks = 0;
+    for (int i = 0; i < 4; i++) g_overlapFallbackWhy[i] = 0;
     ReleaseSRWLockExclusive(&g_overlapStatsLock);
 }
 
@@ -573,28 +579,37 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     if (t == NULL) return -2;
     t->active = 0;
     if (g_overlap.installed == 0) return -2;
-    if (!(g_world.current > 1.0f)) { g_overlap.level = 0; return -2; }
-    g_overlap.level = 1;
+    if (!(g_world.current > 1.0f)) { if (g_overlap.level != 0) g_overlap.level = 0; return -2; }
+    if (g_overlap.level != 1) g_overlap.level = 1; /* written only on a change: eight jobs share its cache line */
     LONG generation = g_worldOpRun; /* one run of one pass record (difficulty_world.c) */
     if (base == 0 || count == 0 || count > OVERLAP_MAX_COUNT || q == NULL ||
         !isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3]) ||
         fabsf(q[0]) > OVERLAP_LIMIT || fabsf(q[1]) > OVERLAP_LIMIT || fabsf(q[2]) > OVERLAP_LIMIT || fabsf(q[3]) > OVERLAP_LIMIT)
     {
-        OverlapStats(generation, 0, count, 1);
+        OverlapStats(t, 0, count, 0);
         return -2;
     }
-    OverlapBuffer* e = OverlapBufferFor(base, generation);
-    if (e == NULL)
+    OverlapBuffer* e;
+    if (t->cacheEntry != NULL && t->cacheGeneration == generation && t->cacheBase == base) e = t->cacheEntry;
+    else
     {
-        OverlapStats(generation, 0, count, 1);
-        return -2;
+        e = OverlapBufferFor(base, generation);
+        if (e == NULL)
+        {
+            OverlapStats(t, 0, count, 1);
+            return -2;
+        }
+        t->cacheEntry = e;
+        t->cacheGeneration = generation;
+        t->cacheBase = base;
     }
     int failed = 0;
-    AcquireSRWLockExclusive(&e->lock);
+    AcquireSRWLockExclusive(&e->lock); /* uncontended: one job owns a slice */
     if (!e->used || e->base != base) /* a new generation freed the entry between the claim and the lock */
     {
         ReleaseSRWLockExclusive(&e->lock);
-        OverlapStats(generation, 0, count, 1);
+        t->cacheEntry = NULL;
+        OverlapStats(t, 0, count, 2);
         return -2;
     }
     if (e->generation != (uint32_t)generation || count < e->built) OverlapResetEntry(e, (uint32_t)generation);
@@ -609,9 +624,14 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     if (e->failed) failed = 1;
     else if (OverlapBuildList(e, count, q, t)) failed = 1;
     ReleaseSRWLockExclusive(&e->lock);
-    OverlapStats(generation, failed ? 0u : t->listCount, count, failed ? 1 : 0);
+    OverlapStats(t, failed ? 0u : t->listCount, count, failed ? 3 : -1);
     if (failed) return -2;
-    if (count <= OVERLAP_CHECK_LIMIT) OverlapCheck(base, count, q, t);
+    if (count <= OVERLAP_CHECK_LIMIT && ++t->sinceCheck >= OVERLAP_CHECK_EVERY)
+    {
+        t->sinceCheck = 0;
+        InterlockedIncrement64(&g_overlapChecks);
+        OverlapCheck(base, count, q, t);
+    }
     t->active = 1;
     t->pos = 0;
     if (t->listCount == 0) return -1;
@@ -698,6 +718,8 @@ static const char* InstallWorldOverlap(uintptr_t game)
 {
     if (g_overlap.installed != 0) return NULL;
     if (game == 0) return "game.dll is not loaded";
+    char off[8];
+    if (GetEnvironmentVariableA("HELLFORGE_XL_NO_OVERLAP", off, sizeof off) != 0) return "HELLFORGE_XL_NO_OVERLAP is set (research A/B runs)";
     if (!ApiCodeMatches(game + OVERLAP_FUNCTION, kOverlapFunctionPin) ||
         !ApiCodeMatches(game + OVERLAP_ENTER_SITE, kOverlapEnterPin) ||
         !ApiCodeMatches(game + OVERLAP_LOOP_SITE, kOverlapLoopPin) ||
@@ -762,7 +784,6 @@ static const char* InstallWorldOverlap(uintptr_t game)
     g_overlap.tls = tls;
     g_overlap.level = 0;
     g_overlapTableGeneration = 0;
-    g_overlapStatsGeneration = 0;
     g_overlap.installed = 1;
     Note("difficulty: extra large maps: the stamp overlap grid is installed (%.0f m cells, %.1f m margin; the box test is checked against the original up to %u records)",
         (double)OVERLAP_CELL, (double)OVERLAP_MARGIN, (unsigned)OVERLAP_CHECK_LIMIT);
