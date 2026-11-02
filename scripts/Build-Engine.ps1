@@ -219,6 +219,8 @@ if(-not $SkipSmoke){
     & (Join-Path $testOut 'privacy_test.exe')|Out-Null;if($LASTEXITCODE){throw 'Log privacy test failed: native logs name the PC.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-census.jsonl');if($LASTEXITCODE){throw 'Network gate test failed.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-dns.jsonl') 'dns';if($LASTEXITCODE){throw 'Network gate group filter test failed.'}
+    & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-default.jsonl') 'default';if($LASTEXITCODE){throw 'Network gate default groups test failed.'}
+    & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-sandbox.jsonl') 'sandbox-default';if($LASTEXITCODE){throw 'Network gate sandbox default test failed.'}
     # The WFP block tool with no arguments prints usage and exits 2: a check it built and starts (install/uninstall
     # need administrator rights, so the round trip is tested by hand, not here).
     & (Join-Path $out 'hellforge_wfp.exe')|Out-Null;if($LASTEXITCODE -ne 2){throw 'Network block tool did not start.'}

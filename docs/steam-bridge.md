@@ -263,7 +263,8 @@ lobby stays listed.
   adds a `denied` group: kernelbase's `OpenFileMappingW`, `CreateFileMappingW`, `OpenEventW`, `CreateEventW`,
   `CreateEventExW`, `OpenMutexW`, `CreateMutexW`, `CreateMutexExW`, `OpenSemaphoreW`, `CreateFileW` (files and pipes)
   and `WaitNamedPipeW`. A call that fails with `ERROR_ACCESS_DENIED` is written with the object's name and the module
-  that asked (`"scope":"denied"`), and the caller's last error is kept. Overlays reach their own program through such
+  that asked (`"scope":"denied"`), and the caller's last error is kept. A folder opened as a file and a read-only file
+  opened for writing are left out: Windows refuses those at any level. Overlays reach their own program through such
   objects, which other programs made at the player's level, so these lines say exactly what each one is refused:
   `result.json` has `networkCensus.denied` and `deniedTargets`, and `session.log` names each module, by the overlay it
   is when it is a known one (`SandboxRefusals`). The A variants and direct `Nt*` calls are not hooked.

@@ -93,6 +93,12 @@ static int RefusedCalls(const wchar_t *folder)
         INVALID_HANDLE_VALUE);
     kept |= REFUSED_FILE * Refused("CreateFileW (file)", CreateFileW(file, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL) ==
         INVALID_HANDLE_VALUE);
+    // refusals that are no sandbox's doing are not written: a folder opened as a file (Windows refuses it at any level)
+    wchar_t folderAsFile[MAX_PATH];
+    swprintf(folderAsFile, MAX_PATH, L"%ls\\hf-netgate-folder", folder);
+    CreateDirectoryW(folderAsFile, NULL);
+    HANDLE opened = CreateFileW(folderAsFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (opened != INVALID_HANDLE_VALUE) CloseHandle(opened);
     // a name that does not exist is not a refusal: nothing is written for it
     OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Local\\hf-netgate-no-such-event");
     HANDLE made_[] = {event, mapping, mutex, pipe, made};
@@ -107,12 +113,16 @@ int wmain(int argc, wchar_t **argv)
     // A 3rd argument chooses the hook groups; a subset like "dns" (anything but "all") runs the filtered checks: only
     // that group is placed, so a name lookup is logged and a connect is not. No 3rd argument means "all" (the harness
     // exercises every hook, unlike the session default, which leaves out the connect groups the game cannot abide).
+    // "default" and "sandbox-default" set no groups, as a session does, the second with HELLFORGE_BRIDGE_PIPE set as a
+    // sandboxed session has it: the default adds the denied group there only.
     const wchar_t *groups = argc > 3 ? argv[3] : L"all";
-    bool filtered = _wcsicmp(groups, L"all") != 0;
+    bool sandboxDefault = !_wcsicmp(groups, L"sandbox-default"), sessionDefault = sandboxDefault || !_wcsicmp(groups, L"default");
+    bool filtered = !sessionDefault && _wcsicmp(groups, L"all") != 0;
     DeleteFileW(argv[2]);
     SetEnvironmentVariableW(L"HELLFORGE_NETGATE", L"census");
     SetEnvironmentVariableW(L"HELLFORGE_NETGATE_LOG", argv[2]);
-    SetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", groups);
+    SetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", sessionDefault ? NULL : groups);
+    SetEnvironmentVariableW(L"HELLFORGE_BRIDGE_PIPE", sandboxDefault ? L"net-gate-test" : NULL);
     SetEnvironmentVariableW(L"HELLFORGE_MODLOADER", NULL);
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -166,6 +176,18 @@ int wmain(int argc, wchar_t **argv)
     char *log = ReadAll(argv[2]);
     Check(log != NULL, "the census log is written");
     Check(Has(log, "\"gate\":\"census\"", "\"hooked\":", NULL), "the census reports its hooks");
+    if (sessionDefault)
+    {
+        // The session's default: no connect groups; denied only when sandboxed, and then refusals are written.
+        Check(Has(log, sandboxDefault ? "\"groups\":\",send,dns,http,process,denied,\"" : "\"groups\":\",send,dns,http,process,\"", NULL, NULL),
+            "the session's default groups");
+        Check(!Has(log, "\"api\":\"connect\"", NULL, NULL), "the default leaves connect out");
+        Check(Has(log, "\"api\":\"getaddrinfo\"", "localhost:9", NULL), "the default hooks name lookups");
+        Check(!sandboxDefault == !Has(log, "\"api\":\"OpenEventW\"", "hf-netgate-denied-event", "\"scope\":\"denied\""),
+            sandboxDefault ? "a sandboxed session's default writes refusals" : "an unsandboxed session's default writes no refusals");
+        printf("%s\n", g_failed ? "network gate default: FAILED" : "PASS network gate default groups");
+        return g_failed ? 1 : 0;
+    }
     if (filtered)
     {
         // Only the dns group is on: name lookups are logged, connect and the rest are not (they are not even hooked).
@@ -200,6 +222,7 @@ int wmain(int argc, wchar_t **argv)
     Check(!(refused & REFUSED_PIPE) == !Has(log, "\"api\":\"CreateFileW\"", "hf-netgate-denied-pipe", "\"scope\":\"denied\""),
         "a pipe is written exactly when it was refused");
     Check(!Has(log, "hf-netgate-no-such-event", NULL, NULL), "a name that does not exist is not written");
+    Check(!Has(log, "hf-netgate-folder", NULL, NULL), "a folder opened as a file is not written: Windows refuses it at any level");
     printf("%s\n", g_failed ? "network gate census: FAILED" : "PASS network gate census: hooks, scopes, repeats, callers, late modules, programs");
     return g_failed ? 1 : 0;
 }

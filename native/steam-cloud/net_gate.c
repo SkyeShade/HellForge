@@ -24,7 +24,8 @@
 #include "net_gate.h"
 #include "../common/hf_privacy.h"
 
-#define KEYS 512
+#define KEYS 2048
+#define PROBES 64 /* slots tried for a key: past them the table is crowded there (Seen) */
 #define TARGET_TEXT 320
 
 static HANDLE g_log = INVALID_HANDLE_VALUE;
@@ -32,6 +33,7 @@ static CRITICAL_SECTION g_lock;
 static bool g_on;
 static DWORD g_depth = TLS_OUT_OF_INDEXES; /* this thread's hooked calls in progress: only the outermost is written */
 static struct { uint64_t key; uint32_t count; } g_seen[KEYS];
+static uint32_t g_crowded; /* the calls whose key found no slot, counted together (Seen) */
 
 static void Write(const char *line, int length)
 {
@@ -121,16 +123,24 @@ static uint64_t Hash(uint64_t h, const char *text)
     return h;
 }
 
-// How many times key has been seen, this time included (g_lock held). Once the table is full a new key counts 1 each time.
+// How many times key has been seen, this time included (g_lock held). A key that finds no slot in PROBES tries (a
+// table crowded there: a sandboxed game refused many files, say) is counted with the others that found none, so their
+// lines are written at that shared count's milestones and a crowded table can never write every call; the first one
+// says so in the log.
 static uint32_t Seen(uint64_t key)
 {
-    for (int i = 0; i < KEYS; i++)
+    for (int i = 0; i < PROBES; i++)
     {
         int slot = (int)((key + (uint64_t)i) % KEYS);
         if (g_seen[slot].key == key) return ++g_seen[slot].count;
         if (g_seen[slot].key == 0) { g_seen[slot].key = key; g_seen[slot].count = 1; return 1; }
     }
-    return 1;
+    if (g_crowded++ == 0)
+    {
+        static const char line[] = "{\"gate\":\"crowded\"}\n";
+        Write(line, (int)sizeof line - 1);
+    }
+    return g_crowded;
 }
 
 // Repeats are written at 1, 2, 3, 10, 100, 1000... times.
@@ -617,12 +627,26 @@ static HANDLE WINAPI HookCreateMutexW(LPSECURITY_ATTRIBUTES attributes, BOOL own
     return result;
 }
 
+// A refused open that is no sandbox's doing, which Windows refuses at any integrity: a folder opened as a file, or a
+// read-only file opened for writing. A pipe's name is never looked at (GetFileAttributes could take one of its instances).
+static bool RefusedAnywhere(LPCWSTR name, DWORD access)
+{
+    if (!name || !_wcsnicmp(name, L"\\\\.\\pipe\\", 9) || !_wcsnicmp(name, L"\\\\?\\pipe\\", 9)) return false;
+    DWORD error = GetLastError();
+    DWORD attributes = GetFileAttributesW(name);
+    SetLastError(error);
+    if (attributes == INVALID_FILE_ATTRIBUTES) return false;
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return true;
+    return (attributes & FILE_ATTRIBUTE_READONLY) && (access & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA | FILE_APPEND_DATA)) != 0;
+}
+
 // Pipes are opened as files; a refused file is a write the low label stopped (or a pipe made for the player's level).
 static HANDLE WINAPI HookCreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES attributes, DWORD disposition, DWORD flags, HANDLE templateFile)
 {
     bool outer = Enter();
     HANDLE result = g_createFileW(name, access, share, attributes, disposition, flags, templateFile);
-    if (outer && result == INVALID_HANDLE_VALUE) NoteDenied("CreateFileW", name, RETURN_ADDRESS);
+    if (outer && result == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED && !RefusedAnywhere(name, access))
+        NoteDenied("CreateFileW", name, RETURN_ADDRESS);
     Leave();
     return result;
 }

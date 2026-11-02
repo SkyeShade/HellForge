@@ -48,7 +48,8 @@ On `dev`, since 0.3.0-beta.
 
 - With the sandbox on, the game could stop at STEAM NOT DETECTED while HellForge said the session was running. The
   game reaches Steam through HellForge's Steam broker, which was started after the game and could be late, for example
-  while an antivirus checked it, or could fail to reach Steam. The game now starts only once the broker has Steam. If
+  while an antivirus checked it, or could fail to reach Steam. The game now starts only once the broker has Steam
+  (the launcher shows "Waiting for Steam..." meanwhile, and Stop ends the wait). If
   the broker can't reach Steam, PLAY stops and says why (Steam not running or signed in, or running as administrator),
   and the session log says if the broker stops during play.
 - The network census in every session wiped the game's error code after each call it watches (connections, name

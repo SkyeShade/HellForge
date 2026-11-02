@@ -180,6 +180,7 @@ was not built...). Closing `play` does not stop the session; `stop` does.
 | `preparing` | building mods that ship sources, then checking the copied game (progress in `<run>\mod-builds.json`) |
 | `awaiting_network_block_install` | Windows asks the player, once, to install the network block |
 | `awaiting_windows_firewall_consent` | Windows asks for this session's firewall rules |
+| `awaiting_steam_broker` | sandboxed: the game waits for HellForge's Steam broker to reach Steam (at most 60 s) |
 | `patching` | launching the game |
 | `observing` | the game is running |
 | `observed` | the session ended normally |

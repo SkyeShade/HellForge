@@ -33,6 +33,7 @@ static class NetworkCensus
                     summary["watchingLoads"] = row["watchingLoads"]?.DeepClone();
                 }
                 else if (gate == "module loaded") modules.Add((JsonNode?)JsonValue.Create((string?)row["module"]));
+                else if (gate == "crowded") summary["crowded"] = true; /* some counts are shared from here on (net_gate.c Seen) */
                 continue;
             }
             var key = ((string?)row["api"] ?? "?", (string?)row["to"] ?? "?", (string?)row["scope"] ?? "?", (string?)row["caller"] ?? "?");

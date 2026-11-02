@@ -2,7 +2,8 @@ namespace HellForge.Core;
 
 /// <summary>
 /// What a sandboxed game was refused (the network gate's "denied" group, native/steam-cloud/net_gate.c): named shared
-/// memory, events, mutexes, semaphores, pipes and files that Windows keeps from a low-integrity process. Overlays reach
+/// memory, events, mutexes, semaphores, pipes and files that Windows keeps from a low-integrity process (a folder opened
+/// as a file or a read-only file opened for writing, refused at any level, are left out there). Overlays reach
 /// their own program that way, so the session log names each module that was refused, by the overlay it is when it is
 /// a known one, with how often and the first objects it asked for.
 /// </summary>
@@ -43,6 +44,9 @@ public static class SandboxRefusals
         return plus > 0 ? caller[..plus] : caller;
     }
 
+    /// <summary>The modules known to be overlays (the in-game editor's list must be among them; SandboxSessionTests).</summary>
+    public static IEnumerable<string> OverlayModules => Overlays.Keys;
+
     /// <summary>The overlay a module is, or null when it is not a known one.</summary>
     public static string? OverlayOf(string module) => Overlays.GetValueOrDefault(module);
 
@@ -58,7 +62,7 @@ public static class SandboxRefusals
             .OrderBy(m => OverlayOf(m.Module) == null).ThenByDescending(m => m.Count).ThenBy(m => m.Module, StringComparer.OrdinalIgnoreCase)
             .Select(Part);
         var times = Math.Max(total ?? 0, refusals.Sum(r => r.Count));
-        return $"The sandbox refused the game {times} time(s), so what asked could not reach it: " + string.Join("; ", modules) +
+        return $"Windows refused the sandboxed game {times} time(s), so what asked could not reach it: " + string.Join("; ", modules) +
             ". networkCensus.deniedTargets in result.json lists each one.";
     }
 

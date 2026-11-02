@@ -40,6 +40,26 @@ static class SandboxSessionTests
             check(late.Contains("60 s") && late.Contains("hellforge_steam_broker.exe") && late.Contains("antivirus"), "Not ready in time: " + late);
         });
 
+        test("The broker lines the session runner waits for are the ones the broker writes, and every overlay the editor knows is named", () =>
+        {
+            // The runner reads the broker's log as text: a reworded fprintf would leave every sandboxed session waiting.
+            var broker = File.ReadAllText(Path.Combine("native", "steam-cloud", "hellforge_steam_broker.c"));
+            foreach (var written in new[] { "\"broker: waiting for the game (%lu)\\n\"", "\"broker: game connected\\n\"", "\"broker: SteamAPI_Init -> false\\n\"",
+                         "\"broker: SteamAPI_InitFlat -> %d (%s)\\n\"", "\"broker: cannot load Valve's steam_api64.dll (%lu)\\n\"",
+                         "\"broker: Valve's DLL lacks manual dispatch\\n\"", "\"broker: cannot create the channel (%lu)\\n\"", "\"broker: %s; %u callback(s) dropped" })
+                check(broker.Contains(written), "hellforge_steam_broker.c writes " + written);
+            check(broker.Contains("return \"shutdown\";") && broker.Contains("\"the game exited\""), "The broker's end reasons.");
+            check(SteamBrokerLog.IsReady("broker: waiting for the game (1)") && SteamBrokerLog.IsConnected("broker: game connected") &&
+                SteamBrokerLog.EndedWithGame(["broker: shutdown; 0 callback(s) dropped, 0 call(s) refused"]), "Read as the broker writes them.");
+            // The editor's overlay log and the session's refusal line name the same overlays.
+            var editor = File.ReadAllText(Path.Combine("native", "editor", "editor.cpp"));
+            var list = System.Text.RegularExpressions.Regex.Match(editor, @"known\[\] = \{(.*?)\};", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var names = System.Text.RegularExpressions.Regex.Matches(list.Groups[1].Value, "L\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
+            check(names.Count >= 10, "The editor's list was read: " + string.Join(", ", names));
+            var named = SandboxRefusals.OverlayModules.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            check(names.All(named.Contains), "Every overlay the editor knows is named: missing " + string.Join(", ", names.Where(n => !named.Contains(n))));
+        });
+
         test("What the sandbox refused the game is said by the overlay that asked, then the other modules", () =>
         {
             check(SandboxRefusals.Describe([]) == null, "Nothing refused: no line.");
@@ -56,7 +76,7 @@ static class SandboxSessionTests
                 new("Local\\nvsp-4", "nvspcap64.dll+0x1c", 1),
             ];
             var line = SandboxRefusals.Describe(refused, 120)!;
-            check(line.StartsWith("The sandbox refused the game 120 time(s)", StringComparison.Ordinal), "The census's own total: " + line);
+            check(line.StartsWith("Windows refused the sandboxed game 120 time(s)", StringComparison.Ordinal), "The census's own total: " + line);
             check(line.IndexOf("NVIDIA's overlay (nvspcap64.dll) 8x", StringComparison.Ordinal) < line.IndexOf("Steam's overlay (GameOverlayRenderer64.dll) 2x", StringComparison.Ordinal) &&
                 line.IndexOf("Steam's overlay", StringComparison.Ordinal) < line.IndexOf("nvwgf2umx.dll 30x", StringComparison.Ordinal),
                 "Overlays first, the most refused first, then other modules: " + line);

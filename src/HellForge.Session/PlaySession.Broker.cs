@@ -43,8 +43,8 @@ sealed partial class PlaySession
     void SetUpOverlayProbe()
     {
         if (Environment.GetEnvironmentVariable("HELLFORGE_SANDBOX_OVERLAY_PROBE") != "1") return;
-        var steam = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
-        var overlay = steam == null ? null : Path.GetFullPath(Path.Combine(steam, "GameOverlayRenderer64.dll"));
+        var steam = SteamLocator.SteamRoot();
+        var overlay = steam == null ? null : Path.Combine(steam, "GameOverlayRenderer64.dll");
         if (overlay == null || !File.Exists(overlay))
         {
             result["overlayProbe"] = "Steam's GameOverlayRenderer64.dll was not found";
@@ -68,20 +68,24 @@ sealed partial class PlaySession
     }
 
     // The game is still suspended: it runs only once the broker has Steam and waits for it, so the stand-in's own wait for
-    // the pipe never races the broker's start. A broker that ends first, or is not ready in time, is the session's failure.
+    // the pipe never races the broker's start. A broker that ends first, or is not ready in time, is the session's failure;
+    // the launcher shows the wait (awaiting_steam_broker), and Stop ends it.
     void WaitForBroker()
     {
         var waited = Stopwatch.StartNew();
         var said = false;
+        result["status"] = "awaiting_steam_broker";
+        Save();
         while (!brokerReady.Wait(250))
         {
             if (broker!.HasExited)
             {
-                broker.WaitForExit(); // the rest of its log
+                broker.WaitForExit(BrokerLogMilliseconds); // the rest of its log, unless something it started still holds the pipe
                 result["brokerExitCode"] = broker.ExitCode;
                 throw new SessionFailure(SteamBrokerLog.Failure(BrokerLines(), broker.ExitCode));
             }
             if (waited.Elapsed >= SteamBrokerLog.StartLimit) throw new SessionFailure(SteamBrokerLog.NotReady());
+            if (StopRequested()) throw new SessionFailure("Stopped before the game started.");
             if (!said && waited.ElapsedMilliseconds >= 3000)
             {
                 Say("Waiting for HellForge's Steam broker to reach Steam...");
@@ -91,16 +95,23 @@ sealed partial class PlaySession
         result["brokerReadyMilliseconds"] = waited.ElapsedMilliseconds;
     }
 
+    // How long the runner waits for the end of an exited broker's log: a program the broker started could hold its
+    // standard error open for good, and the runner must not wait on that.
+    const int BrokerLogMilliseconds = 2000;
+
     // Each Observe loop: a broker that ends while the game runs leaves the game without Steam; said once. The game's own
-    // SteamAPI_Shutdown ends it too, as the game quits: not said.
+    // SteamAPI_Shutdown ends it too, as the game quits, and a crashing game closes the pipe before its process ends (while
+    // Windows writes its crash report): neither is said, so the game must still run BrokerGoneMilliseconds later.
     void CheckBroker()
     {
         if (broker == null || brokerEndSaid || !broker.HasExited) return;
-        brokerEndSaid = true;
-        broker.WaitForExit();
+        brokerGone ??= Stopwatch.StartNew();
         job!.Process.Refresh();
+        if (job.Process.HasExited || brokerGone.ElapsedMilliseconds < BrokerGoneMilliseconds) return;
+        brokerEndSaid = true;
+        broker.WaitForExit(BrokerLogMilliseconds);
         var lines = BrokerLines();
-        if (job.Process.HasExited || SteamBrokerLog.EndedWithGame(lines)) return;
+        if (SteamBrokerLog.EndedWithGame(lines)) return;
         var last = lines.LastOrDefault(l => l.StartsWith("broker: ", StringComparison.Ordinal));
         result["brokerEndedDuringPlay"] = true;
         result["brokerExitCode"] = broker.ExitCode;
@@ -108,6 +119,9 @@ sealed partial class PlaySession
             "): the game has lost Steam until it is restarted.");
         Save();
     }
+
+    const int BrokerGoneMilliseconds = 15000;
+    Stopwatch? brokerGone;
 
     List<string> BrokerLines()
     {
