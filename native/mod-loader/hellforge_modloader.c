@@ -742,6 +742,7 @@ static void WatchLoaded(void)
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
+    InstallCrashEnd(); /* an exception nothing handled: noted, and the game ended if it is still stuck a minute later */
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
     StartRegistry();
     StartProjectiles();

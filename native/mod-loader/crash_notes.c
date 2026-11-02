@@ -323,6 +323,126 @@ static const char* AccessKind(ULONG_PTR kind, char* number, size_t size)
     return number;
 }
 
+/* An address as the notes name it: g+0x / x+0x in the game, module+0x elsewhere, else raw. */
+static int FrameName(uintptr_t at, const GameModules* g, char* out, size_t size)
+{
+    const char* m;
+    uintptr_t o;
+    if (InGame(at, g->game, g->gameSize, g->exe, g->exeSize, &m, &o)) return snprintf(out, size, "%s+0x%llx", m[0] == 'g' ? "g" : "x", (unsigned long long)o);
+    if (ModuleAt(at, out, size)) return (int)strlen(out);
+    return snprintf(out, size, "0x%llx", (unsigned long long)at);
+}
+
+/* The faulting thread's call chain, unwound from its context with the modules' unwind data (RtlVirtualUnwind): the
+ * crash note's stack scan lists every game address on the stack, stale ones too; this is the real chain. A frame
+ * without unwind data is taken as a leaf once (its return address at RSP). The walk stops at an unreadable stack, a
+ * frame that does not move, or 32 frames. */
+static void CrashCallStack(const CONTEXT* fault, const GameModules* g)
+{
+    CONTEXT walk = *fault;
+    char text[1600], name[160];
+    int n = 0, leaves = 0, depth = 0;
+    for (; depth < 32 && n < (int)sizeof text - 200; depth++)
+    {
+        FrameName((uintptr_t)walk.Rip, g, name, sizeof name);
+        n += snprintf(text + n, sizeof text - n, " %s", name);
+        uint64_t word = 0;
+        if (walk.Rsp < 0x10000 || (walk.Rsp & 7) != 0 || SafeRead((uintptr_t)walk.Rsp, &word, 8)) break;
+        DWORD64 rip = walk.Rip, rsp = walk.Rsp, imageBase = 0;
+        PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(walk.Rip, &imageBase, NULL);
+        if (function == NULL)
+        {
+            if (leaves++ > 0) break;
+            walk.Rip = word;
+            walk.Rsp += 8;
+        }
+        else
+        {
+            PVOID handlerData = NULL;
+            DWORD64 establisher = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, walk.Rip, function, &walk, &handlerData, &establisher, NULL);
+        }
+        if (walk.Rip < 0x10000 || (walk.Rip == rip && walk.Rsp == rsp) || walk.Rsp < rsp) { depth++; break; }
+    }
+    text[n] = 0;
+    Note("crash: call chain (%d frames, unwound):%s", depth, text);
+}
+
+/* The crash marker: crash.txt beside modloader.log, one line per crash note ("noted") and for the exception the game
+ * did not handle ("unhandled"), so a launcher or test tool sees a crash without reading the log. */
+static void CrashMarker(const char* stage, DWORD code, uintptr_t at, const GameModules* g)
+{
+    HANDLE file = OpenLog(L"crash.txt");
+    if (file == INVALID_HANDLE_VALUE) return;
+    SYSTEMTIME t;
+    GetSystemTime(&t);
+    char name[160], line[320];
+    FrameName(at, g, name, sizeof name);
+    int n = snprintf(line, sizeof line, "%02u:%02u:%02u.%03u %s %08lx thread %lu at %s\n", t.wHour, t.wMinute, t.wSecond,
+        t.wMilliseconds, stage, code, GetCurrentThreadId(), name);
+    DWORD written;
+    if (n > 0) WriteFile(file, line, (DWORD)n, &written, NULL);
+    CloseHandle(file);
+}
+
+/* After an exception nothing handled, the game's crash reporter writes its report and ends the game (about 15 s in
+ * the 2026-11-02 sessions). A game still running CRASH_END_MS after that is stuck in its own crash handling (a second
+ * fault inside it, a lock a dead thread held): it is ended with the exception's code, so the launcher and test tools
+ * see an exit instead of a hung window. Not with a debugger, not when the top-level filter chose to continue, and not
+ * with HELLFORGE_CRASH_KEEP set. The thread is made at install time and waits: making one inside the failing thread
+ * can block on the loader lock. */
+#define CRASH_END_MS 60000
+static LONG (WINAPI* g_unhandledFilter)(EXCEPTION_POINTERS*);
+static HANDLE g_crashEndEvent;
+static volatile LONG g_crashEndCode, g_crashEndCancelled;
+
+static DWORD WINAPI CrashEndThread(void* parameter)
+{
+    WaitForSingleObject(g_crashEndEvent, INFINITE);
+    Sleep(CRASH_END_MS);
+    if (g_crashEndCancelled) return 0;
+    Note("crash: the game is still running %d s after an exception it did not handle (%08lx); ending it", CRASH_END_MS / 1000, (DWORD)g_crashEndCode);
+    TerminateProcess(GetCurrentProcess(), (UINT)g_crashEndCode);
+    return 0;
+}
+
+static LONG WINAPI UnhandledDetour(EXCEPTION_POINTERS* info)
+{
+    static volatile LONG seen;
+    if (InterlockedIncrement(&seen) <= 4)
+    {
+        GameModules g = CurrentModules();
+        DWORD code = info->ExceptionRecord->ExceptionCode;
+        uintptr_t at = (uintptr_t)info->ExceptionRecord->ExceptionAddress;
+        char name[160];
+        FrameName(at, &g, name, sizeof name);
+        Note("crash: %08lx at %s on thread %lu was not handled; the game's crash reporter ends the game", code, name, GetCurrentThreadId());
+        CrashMarker("unhandled", code, at, &g);
+        if (g_crashEndEvent != NULL && !IsDebuggerPresent() && InterlockedCompareExchange(&g_crashEndCode, (LONG)code, 0) == 0)
+            SetEvent(g_crashEndEvent);
+    }
+    LONG result = g_unhandledFilter(info);
+    if (result == EXCEPTION_CONTINUE_EXECUTION)
+    {
+        g_crashEndCancelled = 1;
+        Note("crash: the top-level filter continued the thread; the game is not ended");
+    }
+    return result;
+}
+
+static void InstallCrashEnd(void)
+{
+    if (GetEnvironmentVariableW(L"HELLFORGE_CRASH_KEEP", NULL, 0) != 0) { Note("crash notes: HELLFORGE_CRASH_KEEP set: a game stuck after a crash is not ended"); return; }
+    HMODULE kernelbase = GetModuleHandleA("kernelbase.dll");
+    void* target = kernelbase != NULL ? (void*)GetProcAddress(kernelbase, "UnhandledExceptionFilter") : NULL;
+    if (target == NULL) target = (void*)GetProcAddress(GetModuleHandleA("kernel32.dll"), "UnhandledExceptionFilter");
+    g_crashEndEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    HANDLE thread = g_crashEndEvent != NULL ? CreateThread(NULL, 64 * 1024, CrashEndThread, NULL, 0, NULL) : NULL;
+    if (thread != NULL) CloseHandle(thread);
+    if (target == NULL || thread == NULL || LoaderHook("unhandled crash notes", (uintptr_t)target, (void*)UnhandledDetour, (void**)&g_unhandledFilter))
+        Note("crash notes: unhandled exceptions will not be noted, and a game stuck after one is not ended");
+}
+
 static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
 {
     static volatile LONG reported;
@@ -358,6 +478,8 @@ static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
         (unsigned long long)c->Dr0, (unsigned long long)c->Dr1, (unsigned long long)c->Dr2, (unsigned long long)c->Dr3,
         (unsigned long long)c->Dr6, (unsigned long long)c->Dr7, trail);
     CrashModules(at, c, &g, stack, sizeof stack);
+    CrashCallStack(c, &g);
+    CrashMarker("noted", code, at, &g);
     if (module[0] == 'g' && offset == 0xF8F670) CrashObjectiveList(c);
     if (module[0] == 'g' && offset == 0xC176B8) CrashLocationRecords(c, g.game);
     return EXCEPTION_CONTINUE_SEARCH;
