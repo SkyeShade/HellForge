@@ -737,10 +737,25 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     volatile uint32_t* diskP = (volatile uint32_t*)(lg + 0x2D7C);
     *diskP = disk ^ 1u;
     *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = (float)extent; *radiusP = (float)extent; *spacingP = 16.0f;
-    memset(g_tileBlock + 0x11A7108, 0, 4); memset(g_tileBlock + 0x11A715C, 0, 4); /* no locations in the tile (yet) */
-    /* No routes either (yet): the copy's route array (G+0x74AC20, count G+0x11A70E8; GenerateRouteSegments' input) and
-     * route segments (count G+0x11A71D4) are the level's, in its coordinates and on its route cells. */
-    memset(g_tileBlock + 0x11A70E8, 0, 4); memset(g_tileBlock + 0x11A71D4, 0, 4);
+    /* A new level's block starts zeroed, and several passes append to their lists from the current count
+     * (MergeSubRegionCells 0x13, BuildRouteCellAssociatedRoutes 0x02): every count field the pipeline's records name
+     * (records-<level>.txt) starts the tile at zero, as for a new level. That also leaves the tile without the level's
+     * locations, routes and segments (for now). */
+    static const uint32_t kTileCounts[] = {
+    0x11A7070u, 0x11A7074u, 0x11A7078u, 0x11A707Cu, 0x11A7080u, 0x11A7084u, 0x11A7088u, 0x11A708Cu, 0x11A7090u,
+    0x11A7094u, 0x11A7098u, 0x11A709Cu, 0x11A70A8u, 0x11A70ACu, 0x11A70B0u, 0x11A70B4u, 0x11A70B8u, 0x11A70BCu,
+    0x11A70C0u, 0x11A70C4u, 0x11A70CCu, 0x11A70D0u, 0x11A70D4u, 0x11A70D8u, 0x11A70E0u, 0x11A70E4u, 0x11A70E8u,
+    0x11A70F0u, 0x11A70F4u, 0x11A70F8u, 0x11A70FCu, 0x11A7100u, 0x11A7104u, 0x11A7108u, 0x11A710Cu, 0x11A7118u,
+    0x11A711Cu, 0x11A7124u, 0x11A712Cu, 0x11A7130u, 0x11A7134u, 0x11A7138u, 0x11A713Cu, 0x11A7140u, 0x11A7144u,
+    0x11A7148u, 0x11A7154u, 0x11A715Cu, 0x11A7160u, 0x11A7164u, 0x11A7168u, 0x11A716Cu, 0x11A7170u, 0x11A7174u,
+    0x11A7178u, 0x11A717Cu, 0x11A7180u, 0x11A7184u, 0x11A718Cu, 0x11A7190u, 0x11A7194u, 0x11A7198u, 0x11A719Cu,
+    0x11A71A0u, 0x11A71A4u, 0x11A71A8u, 0x11A71ACu, 0x11A71B0u, 0x11A71B4u, 0x11A71B8u, 0x11A71BCu, 0x11A71C0u,
+    0x11A71C4u, 0x11A71C8u, 0x11A71CCu, 0x11A71D0u, 0x11A71D4u, 0x11A71D8u, 0x11A71DCu, 0x11A71E0u, 0x11A71E4u,
+    0x11A71E8u, 0x11A71ECu, 0x11A71F0u, 0x11A71F4u, 0x11A71F8u, 0x11A71FCu, 0x11A7200u, 0x11A7204u, 0x11A7210u,
+    0x11A7218u, 0x11A721Cu, 0x11A7220u, 0x11A7224u, 0x11A7228u, 0x11A722Cu, 0x11A7234u, 0x11A7238u, 0x11A723Cu,
+    0x11A7240u, 0x11A7244u, 0x11A7248u, 0x11A724Cu, 0x11A7250u};
+    for (size_t k = 0; k < sizeof kTileCounts / sizeof kTileCounts[0]; k++) memset(g_tileBlock + kTileCounts[k], 0, 4);
+
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     LARGE_INTEGER t0, t1, hz;
     QueryPerformanceCounter(&t0);
