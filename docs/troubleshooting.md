@@ -5,7 +5,7 @@ to do. The launcher's messages are quoted as it shows them. If your problem is n
 and [ask](#where-to-ask).
 
 - [Steam](#steam)
-- [Setup](#setup): the folder, the supported build, the build patch, the network block
+- [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
 - [Playing with friends](#playing-with-friends)
@@ -108,6 +108,23 @@ game. When one is missing, the message names it and gives Microsoft's download l
 
 Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
 have.
+
+### Playing in a language other than English
+
+The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
+installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
+it.
+
+Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
+the only language HellForge has pinned so far; more follow.
+
+1. Run `HellForge.Cli.exe languages`. It lists the pinned languages and, for each, a `download_depot` command.
+2. Open Steam's console (`steam://open/console` in a browser or the Run dialog), paste that command and wait for
+   "Depot download complete".
+3. Close HellForge, then run `HellForge.Cli.exe language-add --name japanese`. It copies the language into the game copy,
+   checks every file, and deletes Steam's download.
+
+`languages` then shows `"inCopy": true` for it. Your live game is never touched.
 
 ### The network block
 

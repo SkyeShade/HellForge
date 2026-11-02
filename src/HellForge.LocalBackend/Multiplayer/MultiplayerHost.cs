@@ -130,7 +130,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
             }
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
         }
-        if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory);
+        if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
         host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder);
@@ -146,14 +146,17 @@ public sealed class MultiplayerHost : IAsyncDisposable
     }
 
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
-    void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory)
+    void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory, bool sandboxed)
     {
         ModSet? own = null;
         try { if (modSetFile != null) own = ModSet.Parse(File.ReadAllText(modSetFile), local: true); }
         catch (Exception error) when (error is InvalidDataException or IOException) { Log("Mod sync: this session's mod set could not be read, so joiners cannot download it: " + error.Message); }
         var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
+        // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
+        var verifiedSource = VerifiedMods.UseInstallation(install);
+        Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
         Sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
-            ModSyncSession.PathIn(install)), own, FriendName, Log);
+            ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
         Lobby.ModsRefused = Sync.OfferMods;
         Sync.Expected = Lobby.JoinedRecently;
         if (Stats?.Live is { } live)
@@ -435,4 +438,6 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public string? RejoinFile { get; init; }
     // A sandboxed game's editor saves (the run's game/sandbox-stats), which StatsShare shares over the mods folder's files.
     public string? SandboxStats { get; init; }
+    // Whether the session's game is sandboxed: mod sync then lets the player trust a stranger's code and raw mods.
+    public bool Sandboxed { get; init; }
 }

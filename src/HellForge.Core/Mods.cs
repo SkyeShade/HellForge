@@ -757,12 +757,13 @@ public static class ModSettings
     // HostStats: hosting, whether friends play with this player's editor changes (the in-game editor's Local Stats, mod
     // content values and arm swaps) instead of their own (off by default: everyone keeps their own; StatsShare).
     // Trusted: mods the player trusted on mod sync's prompt (TRUST), each by its exact content (id and content hash), with
-    // its name and version, the Steam friend who hosted it and when: they download as the verified list's do (ModSyncPlan).
+    // its name and version, the player who hosted it and when: they download as the verified list's do (ModSyncPlan). One
+    // trusted from a host who is not a Steam friend (Stranger) counts only in a sandboxed session.
     public sealed record State(HashSet<string> Disabled, List<string> Order, Dictionary<string, CosmeticPacks.Choice> Choices)
     {
         public HashSet<string> Blocked { get; } = new(StringComparer.Ordinal);
         public List<TrustedMod> Trusted { get; } = [];
-        public bool Trusts(string id, string hash) => Trusted.Any(t => t.Id == id && t.Hash == hash);
+        public bool Trusts(string id, string hash, bool sandboxed = false) => Trusted.Any(t => t.Id == id && t.Hash == hash && (sandboxed || !t.Stranger));
         public bool Share { get; set; } = true;
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
@@ -805,7 +806,7 @@ public static class ModSettings
     {
         if (root.TryGetProperty("trusted", out var trusted) && trusted.ValueKind == JsonValueKind.Array)
             foreach (var e in trusted.EnumerateArray())
-                if (TrustedMod.Read(e) is { } mod && !state.Trusts(mod.Id, mod.Hash)) state.Trusted.Add(mod);
+                if (TrustedMod.Read(e) is { } mod && !state.Trusted.Any(t => t.Id == mod.Id && t.Hash == mod.Hash)) state.Trusted.Add(mod);
     }
 
     // The switches: each changes from its default only when the file says the other value.
@@ -865,8 +866,8 @@ public static class ModSettings
         else state.Blocked.Remove(id);
     });
 
-    // Mod sync's trusted mods: one the player trusted (that exact content) downloads from a Steam friend as a verified one
-    // does; untrusted (the Mods page), it is the player's to install again.
+    // Mod sync's trusted mods: one the player trusted (that exact content) downloads as a verified one does (a stranger's
+    // only while sandboxed); untrusted (the Mods page), it is the player's to install again.
     public static void SetTrusted(string modsFolder, TrustedMod mod) => Change(modsFolder, state =>
     {
         state.Trusted.RemoveAll(t => t.Id == mod.Id && t.Hash == mod.Hash);
@@ -923,21 +924,25 @@ public static class ModSettings
 }
 
 // A mod the player trusted on mod sync's prompt: its id and content hash (ModSets.ContentHash: that exact content, no
-// other version or bytes), its name and version as the host listed them, the Steam friend who hosted it (their name, then
-// their SteamID64) and when (UTC, ISO 8601). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
-public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since)
+// other version or bytes), its name and version as the host listed them, the player who hosted it (their name, then their
+// SteamID64), when (UTC, ISO 8601), and whether that host was not a Steam friend (Stranger, "stranger": true: trusted in a
+// sandboxed session, and counted only in one). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
+public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since, bool Stranger = false)
 {
-    public JsonObject ToJson() => new()
+    public JsonObject ToJson()
     {
-        ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since
-    };
+        var json = new JsonObject { ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since };
+        if (Stranger) json["stranger"] = true;
+        return json;
+    }
 
     public static TrustedMod? Read(JsonElement e)
     {
         if (e.ValueKind != JsonValueKind.Object) return null;
         string Text(string name, int max) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Length <= max &&
             !v.GetString()!.Any(char.IsControl) ? v.GetString()! : "";
-        var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40));
+        var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40),
+            e.TryGetProperty("stranger", out var stranger) && stranger.ValueKind == JsonValueKind.True);
         return ModCatalog.IsModId(mod.Id) && ModSets.Hex(mod.Hash, 64) ? mod : null;
     }
 }

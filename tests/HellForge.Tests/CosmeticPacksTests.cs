@@ -197,7 +197,7 @@ static class CosmeticPacksTests
                 "Loaded from the zip: " + string.Join(" | ", loadProblems));
         });
 
-        test("A .7z (as a .rar) is unpacked by Windows' tar and added as a folder: a pack with its files at the root, a mod in a folder", () =>
+        test("A .7z (Windows' tar writes it) is unpacked and added as a folder: a pack with its files at the root, a mod in a folder", () =>
         {
             var install = new InstallLayout(Path.Combine(root, "pack-7z-install"));
             install.Create("25480438");

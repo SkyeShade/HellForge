@@ -54,9 +54,9 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | Call | SDK | Adds or changes | Returns | Room across all mods |
 |---|---|---|---|---|
 | `edit_entity`, `hf_set`, `hf_copy`, `hf_tag`, `hf_mount` | 6 | fields of an existing entity | 0 queued, 1 refused | |
-| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 64, shared with weapons |
-| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 64 |
-| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 64 |
+| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 192, shared with weapons |
+| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 192 |
+| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
 | `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 64 |
 | `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 64 |
 | `add_stratagem` | 4 | a stratagem | its type (150 and up), or 0 | 48 |
@@ -68,6 +68,14 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 When a call returns 0 (or 1 for the edit calls), your mod's log says why; `hf->last_log(mod)` gives you that line in
 code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call added after the version you require
 ([compatibility](concepts.md#compatibility)).
+
+Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
+the game's item catalogue (57 items for an AR-23 Liberator copy), and the game keeps only the first 4,096 catalogue
+items (vanilla has 2,925), the first 4,096 inventory entries and 256 progression packages (vanilla has 56; each new
+weapon takes one). That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new
+stratagems (2 items each), then each weapon whole, and leaves out what does not fit, with a line in the session's
+backend log for each. So past the limit it is the last weapons that are missing, never half of one, and not a mod's
+stratagems.
 
 ## Changing existing content
 
@@ -563,7 +571,7 @@ hell.patrol_frequency = 2.0f;      /* roaming patrols twice as often */
 hell.patrol_cap = 1.5f;            /* and up to 1.5 times as many living patrol enemies */
 hell.mission_stratagem = HF_STRATAGEM_M102_GUNNER_FRV; /* every mission grants the M-102 Gunner FRV (no loadout slot) */
 hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
-    HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+    HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM | HF_DIFFICULTY_HEAVY_ARTILLERY;
 return api->add_difficulty(mod, &hell) == 11 ? 0 : 1;
 ```
 
@@ -578,7 +586,8 @@ guards, and `spawner_cooldown` the time between the shared spawners' waves. An e
 - `optional_objectives` (0 to 32) and `major_objectives` (0 to 8) are together at most 18.
 - `outpost_scale` is 0 to 8, relative to level 10's outposts.
 - `mission_minutes` is 1 to 75.
-- `map_scale` is up to 2.
+- `map_scale` is up to 2. Above 1, the SEAF Artillery's shells fly farther at the level (their range times
+  `map_scale`), so the gun still reaches across the map.
 - `patrol_frequency` and `patrol_cap` are up to 4 each.
 - `mission_stratagem` is a stratagem every player gets in missions at the level.
 
@@ -588,7 +597,7 @@ guards, and `spawner_cooldown` the time between the shared spawners' waves. An e
 ### Flags
 
 `HF_DIFFICULTY_SECOND_PRIMARY` (every mission is two in one), `_NO_ERADICATE`, `_NO_RAPID_ACQUISITION`, `_NO_BLITZ`,
-`_RADAR`, `_CITY_STRONGHOLDS` and `_CITY_ICBM`. `hellforge_mod.h` says what each does.
+`_RADAR`, `_CITY_STRONGHOLDS`, `_CITY_ICBM` and `_HEAVY_ARTILLERY`. `hellforge_mod.h` says what each does.
 
 ### Icon
 

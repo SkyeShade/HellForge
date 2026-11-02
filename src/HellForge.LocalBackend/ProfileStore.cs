@@ -138,27 +138,29 @@ public sealed class ProfileStore : IDisposable
     // POST /Account/ReportPosition (builders 0x12bcf40, 0x12db270): where the Super Destroyer is, {"warId", "planetIndex",
     // "territoryIndex"?, "regionIndex"?}, sent as it moves. GET /Progression returns it as "location" (parser 0x1063320,
     // from 0x10624d0: warId and planetIndex required, the others optional), where the client places the ship at startup.
-    // The builder leaves territoryIndex out when it is negative but always writes regionIndex, -1 away from a region:
-    // a negative optional index is "none" and is not kept.
-    public bool TrySetLocation(JsonElement body)
+    public bool TrySetLocation(JsonElement body) => ParseLocation(body) is { } value && Update(progression => progression["location"] = value);
+
+    // A ship position as /Progression serves it, or null when it names no planet. The builder leaves territoryIndex out
+    // when it is negative but always writes regionIndex, -1 away from a region: a negative optional index is "none" and
+    // is not kept. The live server's /Progression gives a ship away from any planet a negative warId and planetIndex.
+    internal static JsonObject? ParseLocation(JsonElement reported)
     {
-        if (body.ValueKind != JsonValueKind.Object) return false;
-        JsonObject value;
+        if (reported.ValueKind != JsonValueKind.Object) return null;
         try
         {
-            var reported = JsonNode.Parse(body.GetRawText())!.AsObject();
-            value = new JsonObject();
+            var source = JsonNode.Parse(reported.GetRawText())!.AsObject();
+            var value = new JsonObject();
             foreach (var key in new[] { "warId", "planetIndex", "territoryIndex", "regionIndex" })
             {
-                if (!reported.ContainsKey(key)) { if (key is "warId" or "planetIndex") return false; continue; }
-                if (key is "territoryIndex" or "regionIndex" && reported[key] is JsonValue index &&
+                if (!source.ContainsKey(key)) { if (key is "warId" or "planetIndex") return null; continue; }
+                if (key is "territoryIndex" or "regionIndex" && source[key] is JsonValue index &&
                     index.GetValueKind() == JsonValueKind.Number && index.ToJsonString() == "-1") continue;
-                value[key] = Integer(reported, key, "location");
+                value[key] = Integer(source, key, "location");
             }
             ValidateLocation(value);
+            return value;
         }
-        catch (InvalidDataException) { return false; }
-        return Update(progression => progression["location"] = value);
+        catch (InvalidDataException) { return null; }
     }
 
     // PUT /Progression/OnboardingState (builders 0x12be3a0, 0x1355f00): state and flags as GET /Progression reports them.

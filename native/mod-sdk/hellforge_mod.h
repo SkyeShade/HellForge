@@ -314,7 +314,8 @@ typedef struct HfDifficulty
     /* Missions at this level (0 keeps level 10's). */
     float map_scale;             /* playable radius, relative to level 10's: up to 2. Above 1 the route cells are
                                     farther apart (the generator has room for level 10's number); the structured
-                                    maps (map type 2) keep level 10's size */
+                                    maps (map type 2) keep level 10's size. The SEAF Artillery's shells reach
+                                    across it (their range x map_scale) */
     uint32_t optional_objectives;/* optional objectives a mission draws from its list (level 10: 4) */
     uint32_t major_objectives;   /* secondary objectives (level 10: 1); optional + major at most 18 (the map
                                     generator places 30 objectives at this level, the missions' own among them) */
@@ -351,6 +352,9 @@ typedef struct HfDifficulty
  * codes to retrieve, power to restore and a refuelling station, beside the city's side objectives (three unused mission
  * rows of the game, one per faction, offered only at the level; city copies of the ICBM objectives' stamps). */
 #define HF_DIFFICULTY_CITY_ICBM 0x40u
+/* The SEAF Artillery side objective's shells at the level are Explosive, High-Yield Explosive and Mini Nuke only (by
+ * weight 10, 5 and 5: a quarter of them nukes) instead of the game's mix with Napalm, Smoke and Static Field. */
+#define HF_DIFFICULTY_HEAVY_ARTILLERY 0x80u
 
 /* ---- SDK 6: named fields, definition blocks and deferred edits (docs/modding/content.md) ------------------------- */
 
@@ -818,8 +822,12 @@ typedef struct HfSyncState
 #define HF_SYNC_MOD_BLOCKED 3u  /* on the player's blocklist */
 #define HF_SYNC_MOD_UPDATE 4u   /* part of HellForge, another version: both players need the same HellForge */
 #define HF_SYNC_MOD_OFF 5u      /* one of this machine's own, off for the synced session (the host does not run it) */
-#define HF_SYNC_MOD_TRUST 6u    /* code or unchecked data HellForge has not verified, from a Steam friend who shares:
-                                 * downloads once the player trusts it (HF_SYNC_TRUST), or the player installs it by hand */
+#define HF_SYNC_MOD_TRUST 6u    /* code or unchecked data HellForge has not verified, from a Steam friend who shares (or,
+                                 * in a sandboxed game, a stranger: HF_SYNC_FLAG_STRANGER): downloads once the player trusts
+                                 * it (HF_SYNC_TRUST), or the player installs it by hand */
+#define HF_SYNC_FLAG_STRANGER 1u /* flags: the host is not the player's Steam friend. Warn harder before HF_SYNC_TRUST:
+                                  * the sandbox stops the mod's writes and network, not its reads, and the host gets the
+                                  * game's traffic. Never set by a backend before it */
 #define HF_SYNC_CLASS_CONTENT 0u /* what HellForge checks: data specs, schema stats, network field types */
 #define HF_SYNC_CLASS_CODE 1u    /* a DLL, sources HellForge builds, or Lua */
 #define HF_SYNC_CLASS_BUNDLED 2u /* shipped with HellForge (the in-game editor) */
@@ -829,7 +837,7 @@ typedef struct HfSyncMod
     uint32_t size;      /* sizeof(HfSyncMod): set by the caller */
     uint32_t action;    /* HF_SYNC_MOD_... */
     uint32_t kind;      /* HF_SYNC_CLASS_... */
-    uint32_t reserved;
+    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER */
     uint64_t bytes;     /* its size */
     char id[65];
     char name[81];      /* UTF-8 */

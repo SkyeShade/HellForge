@@ -161,7 +161,8 @@ static bool SyncBlockable(const HfSyncMod& mod)
     return !g_sync.sent && (offered || (mod.action == HF_SYNC_MOD_TRUST && state == HF_SYNC_BLOCKED));
 }
 
-/* A row's TRUST: a Steam friend's mod HellForge has not verified (the backend offers no other for trust). */
+/* A row's TRUST: a mod HellForge has not verified, from a Steam friend or, sandboxed, a stranger (the backend offers no other
+ * for trust). */
 static bool SyncTrustable(const HfSyncMod& mod) { return !g_sync.sent && mod.action == HF_SYNC_MOD_TRUST && g_sync.state.state == HF_SYNC_BLOCKED; }
 
 /* A row's GET IT: a mod the player may install themselves, with an address to get it from (the loader keeps only https://
@@ -256,16 +257,30 @@ static float ClassChip(const HfSyncMod& mod, float x, float cy, int z)
 }
 
 /* The TRUST warning's lines: what trusting the mod means (*lead of them, drawn brighter), then what HellForge still
- * checks. */
+ * checks. A stranger's mod (HF_SYNC_FLAG_STRANGER: offered only to a sandboxed game) says what the sandbox does not stop. */
 static std::vector<std::string> TrustLines(const HfSyncMod& mod, const std::string& name, const std::string& friendName, float w, size_t* lead)
 {
     std::vector<std::string> lines;
-    std::string warning = mod.kind == HF_SYNC_CLASS_RAW
-        ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
-          "through a flaw in the game run code on your PC that can do anything your Windows account can."
-        : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
-          "files, or install other programs.";
-    warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+    std::string warning;
+    if (mod.flags & HF_SYNC_FLAG_STRANGER)
+    {
+        warning = mod.kind == HF_SYNC_CLASS_RAW
+            ? name + " carries game data HellForge cannot check, and " + friendName + " is not your Steam friend. Through a flaw in the "
+              "game, data like this can run code on your PC."
+            : name + " runs its own code on your PC, and " + friendName + " is not your Steam friend.";
+        warning += " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send "
+                   "what it reads to " + friendName + " through the game. Only trust it if you know where the mod comes from. It will run "
+                   "only while the sandbox is on.";
+    }
+    else
+    {
+        warning = mod.kind == HF_SYNC_CLASS_RAW
+            ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
+              "through a flaw in the game run code on your PC that can do anything your Windows account can."
+            : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
+              "files, or install other programs.";
+        warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+    }
     for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL)) lines.push_back(std::move(part));
     *lead = lines.size();
     for (std::string& part : Wrapped("HellForge still checks that every file you download is exactly the one " + friendName + " has. You can take "

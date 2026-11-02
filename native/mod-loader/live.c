@@ -16,7 +16,7 @@
  *             shots <seq> <peer hex>:<weapon resource hex>=<projectile type>,... or -   (each player's projectile
  *                     swaps, which their shots fire on this machine: shots.c)
  *             syncmod <seq> <version> <index> <have|download|manual|blocked|update|off|trust> <content|code|bundled|raw> <bytes>
- *                     <id> <name> <mod version> <https:// url or ->
+ *                     <id> <name> <mod version> <https:// url or -> [stranger]   (stranger: HF_SYNC_FLAG_STRANGER)
  *             syncstate <seq> <version> <none|offer|blocked|downloading|ready|failed> <host name> <bytes> <done> <mods>
  *                       <message>                                      (syncmod, syncstate: SDK 14, mod sync)
  *   loader:   <seq> ok <now|respawn|mission> [<value hex>]     or     <seq> refused <reason>
@@ -227,11 +227,12 @@ static int SyncUrl(const char* text)
 
 static void SyncModLine(char* line, char* reply, size_t size)
 {
-    char* f[11];
-    int n = SplitAll(line, f, 11);
+    char* f[12];
+    int n = SplitAll(line, f, 12);
     uint64_t version = 0, index = 0, bytes = 0;
-    int action = n == 11 ? SyncName(f[4], kSyncActions, 7) : -1, kind = n == 11 ? SyncName(f[5], kSyncClasses, 4) : -1;
-    if (n != 11 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || !SyncNumber(f[6], &bytes) ||
+    int whole = n == 11 || (n == 12 && !strcmp(f[11], "stranger"));
+    int action = whole ? SyncName(f[4], kSyncActions, 7) : -1, kind = whole ? SyncName(f[5], kSyncClasses, 4) : -1;
+    if (!whole || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || !SyncNumber(f[6], &bytes) ||
         action < 0 || kind < 0 || !f[7][0])
     { snprintf(reply, size, "%s\trefused\tmalformed syncmod", n >= 2 ? f[1] : "-"); return; }
     if (index >= SYNC_MAX_MODS) { snprintf(reply, size, "%s\trefused\tan offer lists at most %d mods", f[1], SYNC_MAX_MODS); return; }
@@ -246,6 +247,7 @@ static void SyncModLine(char* line, char* reply, size_t size)
     m->size = sizeof *m;
     m->action = (uint32_t)action;
     m->kind = (uint32_t)kind;
+    m->flags = n == 12 ? HF_SYNC_FLAG_STRANGER : 0;
     m->bytes = bytes;
     SyncCopy(m->id, sizeof m->id, f[7]);
     SyncCopy(m->name, sizeof m->name, f[8]);

@@ -49,9 +49,20 @@ public static class EditorCatalog
     };
     const string Sep = " · ";
 
-    public static JsonObject Build(StatsSchema? schema = null)
+    // The default catalogue depends only on data built into HellForge (StatsSchema.Current and the embedded tables), so
+    // it is built once per process; every caller gets its own copy. Building it takes seconds, and a session start (the
+    // bundled editor's staleness check) and the tests ask for it many times.
+    static readonly Lazy<string> DefaultText = new(() => Serialize(BuildFresh(StatsSchema.Current)));
+
+    public static JsonObject Build(StatsSchema? schema = null) =>
+        schema is null || ReferenceEquals(schema, StatsSchema.Current)
+            ? (JsonObject)JsonNode.Parse(DefaultText.Value)!
+            : BuildFresh(schema);
+
+    static string Serialize(JsonObject catalog) => catalog.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) + "\n";
+
+    static JsonObject BuildFresh(StatsSchema schema)
     {
-        schema ??= StatsSchema.Current;
         var categories = new JsonArray();
         var objects = new JsonArray();
         foreach (var (id, label, group, tone) in Categories)
@@ -266,7 +277,8 @@ public static class EditorCatalog
             middle[0].StartsWith("primary_", StringComparison.Ordinal);
     }
 
-    public static string Text(StatsSchema? schema = null) => Build(schema).ToJsonString(new JsonSerializerOptions { WriteIndented = false }) + "\n";
+    public static string Text(StatsSchema? schema = null) =>
+        schema is null || ReferenceEquals(schema, StatsSchema.Current) ? DefaultText.Value : Serialize(BuildFresh(schema));
 
     // A vehicle's mount slots (HD2R Editor's "Mounted Weapons", its arm swap): a choice row per slot, kept in the
     // editor's settings and applied live (MountComponentData slot k +24k, a u64: the mounted entity), offering the weapons
