@@ -239,7 +239,7 @@ static void ZoneDump(void)
     ZoneTypes(file, types, seenType);
     ZoneGroups(file, table, groups);
     CloseHandle(file);
-    Note("difficulty: zones-%d.tsv written (%u route cells, %d zone groups, playable %.0f m)", dumps, cells, groups, radius * 1024.0);
+    Note("difficulty: zones-%d.tsv written (%u route cells, %d zone groups, playable %.0f m)", dumps, cells, groups, radius * 1024.0 * WorldScaleFor(g_difficulty.mapScale));
 }
 
 /* The height zones' dump, once their pass is done: its table filled, its cell cursor still for 300 ms. */
@@ -337,9 +337,10 @@ static int NoteLevelFields(uintptr_t level, ULONGLONG age)
     if (SafeRead(level + 0xF9, &difficulty, 1) || difficulty != DIF_VANILLA + 1 || SafeRead(level + 0x2D70, f, sizeof f)) return 0;
     if (!SafeRead(level + 0x2DE0, &type, 8) && type != 0) SafeRead(type + 0x1D, &mapType, 1);
     SafeRead(level + 0xF950, &minimap, 1);
+    float half = 1024.0f * (float)WorldScaleFor(g_difficulty.mapScale); /* the radii are fractions of half the world */
     Note("difficulty: level 0x%llx at %.1f s: map type %u%s, playable %.0f m (factor %.2f), border %.0f m, fade %.0f m, disk %.0f m",
-        (unsigned long long)level, (double)age / 1000.0, mapType, minimap ? " (minimap)" : "", (double)(f[0] * 1024.0f),
-        (double)f[4], (double)(f[1] * 1024.0f), (double)(f[2] * 1024.0f), (double)(f[3] * 1024.0f));
+        (unsigned long long)level, (double)age / 1000.0, mapType, minimap ? " (minimap)" : "", (double)(f[0] * half),
+        (double)f[4], (double)(f[1] * half), (double)(f[2] * half), (double)(f[3] * half));
     return 1;
 }
 
@@ -367,7 +368,8 @@ static int WatchCapture(void)
     captures = captured;
     float playable = *(volatile float*)(g_restartWatch + 0x28), border = *(volatile float*)(g_restartWatch + 0x2C), factor = *(volatile float*)(g_restartWatch + 0x30);
     Note("difficulty: minimap captured (%u) at difficulty %u: playable %.0f m (factor %.2f), border %.0f m", captured,
-        *(volatile uint32_t*)(g_restartWatch + 0x38), (double)(playable * 1024.0f), (double)factor, (double)(border * 1024.0f));
+        *(volatile uint32_t*)(g_restartWatch + 0x38), (double)(playable * 1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)), (double)factor,
+        (double)(border * 1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)));
     return 1;
 }
 

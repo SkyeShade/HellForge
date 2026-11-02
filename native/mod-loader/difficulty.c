@@ -29,6 +29,7 @@ typedef struct DifficultyBound { uint32_t rva; uint8_t immAt, width; } Difficult
 
 #define DIF_ROW 0x330u
 #define DIF_VANILLA 10u
+static uint32_t WorldScaleFor(float mapScale); /* difficulty_world.c: an extra large map's world, in 2048 m */
 #define DIF_ROWS 15u          /* the unlocked mask reads 5 rows a step: up to row 15 once it reaches 11 */
 #define DIF_MAX_FN 0x11EBB40u
 #define DIF_BANDS 0x331B950u      /* u64 band sprite per level, read at 0x19A297C (mov rdx, [r14 + rax*8 + disp32]) */
@@ -672,11 +673,17 @@ static const char* MakeLevelRow(DifficultyInstall* d)
         count = (uint32_t)(count * g_difficulty.outpostScale + 0.5f);
         memcpy(row + 0x34 + 4 * k, &count, 4);
     }
+    /* The radii are fractions of half the world (the generator multiplies them by [settings+0x2C] / 2: e.g. the outer
+     * subregion ring of GenerateSubregionSpecial, 0xF66156, and some 70 more readers): on an extra large world, whose
+     * size the loader grows (difficulty_world.c), the same playable radius is a smaller fraction of it. Scaled by
+     * map_scale alone, a 16384 m world's radius came out 8 x too large (7.6 x 8192 m): no subregion lay outside its
+     * ring, so the map had none of its vegetated zone, and a Poisson pass covered a 124 km square. */
+    float radiusScale = g_difficulty.mapScale / (float)WorldScaleFor(g_difficulty.mapScale);
     for (int k = 0; g_difficulty.mapScale > 0.0f && k < 4; k++)
     {
         float radius;
         memcpy(&radius, row + 0xF0 + 4 * k, 4);
-        radius *= g_difficulty.mapScale;
+        radius *= radiusScale;
         memcpy(row + 0xF0 + 4 * k, &radius, 4);
     }
     /* +0x10 keeps Super Helldive's sprite: the game draws a level's icon in other places (the war table's mission
