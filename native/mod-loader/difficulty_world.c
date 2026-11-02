@@ -1159,9 +1159,10 @@ static void WorldScatterNote(void)
  * scatter brushes match: 0x41/0x43/0x44/0x46 on planet 157; +0x18 the route cell, its position at +0/+4), written out as
  * subregions-<level>.tsv and summarised, vanilla and larger. */
 /* Research (visual checks): a drop point in the vegetated zone (height group 1), on land: the group-1 cell at the 70th
- * percentile of the kept layer heightfield's heights among them (the low ones hold water), written as "x,y" in world
- * metres (the generator's coordinates less half the world, as SpawnStamps places units) to xl-drop.txt. The war table's
- * preview is generated before the drop is chosen, so the harness can read it there (HD2H_DROP=file:...). */
+ * percentile of their nearest Voronoi vertex's height (the low ones hold water), written as "x,y" in world metres (the
+ * generator's coordinates less half the world, as SpawnStamps places units) to xl-drop.txt when the level's first
+ * SetupTerrainMerge (op 0x38) begins. A larger level generates during the briefing; the harness waits for the file
+ * before choosing the drop (HD2H_DROP=file:...). */
 static int WorldDropCompare(const void* a, const void* b)
 {
     float x = ((const float*)a)[2], y = ((const float*)b)[2];
@@ -1170,10 +1171,16 @@ static int WorldDropCompare(const void* a, const void* b)
 
 static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
 {
-    if (g_world.current <= 1.0f || g_heightCopy == NULL) return;
-    float origin[2], extent[2]; uint32_t dims[2];
-    memcpy(origin, g_heightField + 8, 8); memcpy(extent, g_heightField + 0x14, 8); memcpy(dims, g_heightField + 0x1C, 8);
-    if (dims[0] == 0 || dims[1] == 0 || extent[0] <= 0.0f || extent[1] <= 0.0f) return;
+    static LONG suggested = -1;
+    if (g_world.current <= 1.0f || suggested == g_world.levels || count == 0 || count > 8192) return;
+    suggested = g_world.levels;
+    /* Heights: the main Voronoi's vertices (G+0x9F310, 0x48 each, x/y at +0; count G+0x11A7090) and their heights
+     * (G+0x1F8A30, floats; 0..~0.08 before the settings' x512), set before SetupTerrainMerge (op 0x38). */
+    uint32_t vertices = 0;
+    if (SafeRead(gen + 0x11A7090u, &vertices, 4) || vertices == 0 || vertices > 65536) return;
+    static float vxy[65536][2], vh[65536];
+    for (uint32_t v = 0; v < vertices; v++)
+        if (SafeRead(gen + 0x9F310u + 0x48u * (uintptr_t)v, vxy[v], 8) || SafeRead(gen + 0x1F8A30u + 4u * (uintptr_t)v, &vh[v], 4)) { vertices = v; break; }
     static float picks[8192][3];
     uint32_t n = 0;
     for (uint32_t i = 0; i < count && n < 8192; i++)
@@ -1184,13 +1191,16 @@ static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
         if (SafeRead(gen + 0x92F328u + 0x20u * (uintptr_t)i, entry, sizeof entry)) break;
         int32_t group; memcpy(&group, entry + 4, 4); memcpy(&cell, entry + 0x18, 8);
         if (group != 1 || cell == 0 || SafeRead(cell, pos, 8)) continue;
-        int col = (int)((pos[0] - origin[0]) / extent[0] * (float)dims[0]), row = (int)((pos[1] - origin[1]) / extent[1] * (float)dims[1]);
-        if (col < 0 || row < 0 || col >= (int)dims[0] || row >= (int)dims[1]) continue;
-        float h = g_heightCopy[(size_t)row * dims[0] + (size_t)col];
+        float best = 3.0e38f, h = 0.0f;
+        for (uint32_t v = 0; v < vertices; v++)
+        {
+            float dx = vxy[v][0] - pos[0], dy = vxy[v][1] - pos[1], d = dx * dx + dy * dy;
+            if (d < best) { best = d; h = vh[v]; }
+        }
         if (!(h > -1e30f && h < 1e30f)) continue;
         picks[n][0] = pos[0]; picks[n][1] = pos[1]; picks[n][2] = h; n++;
     }
-    if (n == 0) { Note("difficulty: drop suggestion: no vegetated cell on the heightfield"); return; }
+    if (n == 0) { Note("difficulty: drop suggestion: no vegetated cell"); return; }
     qsort(picks, n, sizeof picks[0], WorldDropCompare);
     uint32_t k = (uint32_t)((float)n * 0.7f); if (k >= n) k = n - 1;
     float half = 1024.0f * g_world.current, x = picks[k][0] - half, y = picks[k][1] - half;
@@ -1198,7 +1208,7 @@ static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
     int len = snprintf(line, sizeof line, "%.1f,%.1f\n", (double)x, (double)y);
     HANDLE file = OpenLog(L"xl-drop.txt");
     if (file != INVALID_HANDLE_VALUE) { DWORD wrote; WriteFile(file, line, (DWORD)len, &wrote, NULL); CloseHandle(file); }
-    Note("difficulty: drop suggestion: (%.0f, %.0f) in the vegetated zone, height %.1f (%u cells, heights %.1f..%.1f)",
+    Note("difficulty: drop suggestion: (%.0f, %.0f) in the vegetated zone, vertex height %.4f (%u cells, %.4f..%.4f)",
         (double)x, (double)y, (double)picks[k][2], n, (double)picks[0][2], (double)picks[n - 1][2]);
 }
 
@@ -1236,7 +1246,6 @@ static void WorldSubregionNote(void)
         }
     }
     if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
-    WorldSuggestDrop(gen, count);
     /* op 0x74's inputs: the kind byte per subregion ([pass+0x10][entry+8]), the region's settings ([[context+8]+0xB0]):
      * the four noise weights (+0xC..+0x18, binned from +0x18), the random share +0x20, kinds at +0x80 (0x1C each: the
      * kind byte at +0, flags at +0x18, flag 2 = group 1). */
@@ -1323,6 +1332,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
+        if (o == 0x38 && g_world.current > 1.0f && g_worldLevel != 0)
+        {
+            uintptr_t genAt = 0; uint32_t subs = 0;
+            if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0 && !SafeRead(genAt + 0x11A71C4u, &subs, 4)) WorldSuggestDrop(genAt, subs);
+        }
         if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) return 0;
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
