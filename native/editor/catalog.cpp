@@ -371,19 +371,39 @@ static void LoadHd2r(const Value& root, Catalog* out)
     out->hd2rRuntime = hd2r->GetString("runtime");
 }
 
-bool Load(const std::wstring& path, Catalog* out, std::string* error)
+/* A file of the catalogue, parsed: false with *error naming it when it cannot be read, is not JSON or is of another
+ * format, or (index given) is not of the index's catalogue (its build and schema). */
+static bool ReadPart(const std::wstring& folder, const std::string& name, const Value* index, Value* root, std::string* error)
 {
-    std::string text;
-    if (!hfjson::ReadFile(path, &text)) { *error = "editor-catalog.json is missing (rebuild the editor)"; return false; }
-    Value root;
-    if (!hfjson::Parse(text, &root, error)) return false;
-    if (root.GetNumber("format") != 1) { *error = "editor-catalog.json is of another format (rebuild the editor)"; return false; }
-    out->build = root.GetString("build");
-    LoadNavs(root, out);
-    LoadObjects(root, out);
-    LoadReferences(root, out);
-    LoadHd2r(root, out);
-    if (out->objects.empty()) { *error = "editor-catalog.json lists nothing"; return false; }
+    std::string text, why;
+    if (!hfjson::ReadFile(folder + L"\\" + hfjson::Wide(name), &text, &why))
+    {
+        *error = name + " " + why + (why == "is missing" ? " (rebuild the editor)" : "");
+        return false;
+    }
+    if (!hfjson::Parse(text, root, &why)) { *error = name + ": " + why; return false; }
+    bool other = index != nullptr && (root->GetString("build") != index->GetString("build") || root->GetString("schema") != index->GetString("schema"));
+    if (root->GetNumber("format") != FORMAT || other) { *error = name + " is of another catalogue (rebuild the editor)"; return false; }
+    return true;
+}
+
+bool Load(const std::wstring& folder, Catalog* out, std::string* error)
+{
+    Value index;
+    if (!ReadPart(folder, INDEX_FILE, nullptr, &index, error)) return false;
+    out->build = index.GetString("build");
+    LoadNavs(index, out);
+    /* every category's file, one at a time (each document goes once its objects are in) */
+    if (const Value* files = index.Find("files", Value::Array))
+        for (const Value& f : files->items)
+        {
+            Value part;
+            if (!ReadPart(folder, f.Str(), &index, &part, error)) return false;
+            LoadObjects(part, out);
+        }
+    LoadReferences(index, out);
+    LoadHd2r(index, out);
+    if (out->objects.empty()) { *error = std::string(INDEX_FILE) + " lists nothing"; return false; }
     return true;
 }
 } // namespace catalog

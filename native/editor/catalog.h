@@ -1,5 +1,6 @@
-/* The editor's catalogue (editor-catalog.json, written by HellForge's EditorCatalog.cs next to the DLL): its categories,
- * their objects (a weapon, a throwable) and each object's page of fields, laid out as the HD2R Editor lays out a page. */
+/* The editor's catalogue (editor-catalog.json and a file per category, written by HellForge's EditorCatalog.cs next to
+ * the DLL): its categories, their objects (a weapon, a throwable) and each object's page of fields, laid out as the HD2R
+ * Editor lays out a page. */
 #pragma once
 #include <stdint.h>
 #include <deque>
@@ -118,6 +119,11 @@ struct Catalog
     Row* Entry(const std::string& category, const std::string& target, const std::string& key) const;
 };
 
-/* Reads the catalogue; false with *error when it is missing or not one this editor reads. */
-bool Load(const std::wstring& path, Catalog* out, std::string* error);
+/* The catalogue's files in the editor's folder: the index, which names a file per category (EditorCatalog.cs Files). */
+constexpr const char* INDEX_FILE = "editor-catalog.json";
+constexpr int FORMAT = 2;
+/* Reads the catalogue from the editor's folder: the index, then every category file it names (all of them: rows on the
+ * same bytes on pages of different categories are linked); false with *error naming the file when one is missing, too
+ * large, or not one this editor reads. */
+bool Load(const std::wstring& folder, Catalog* out, std::string* error);
 } // namespace catalog

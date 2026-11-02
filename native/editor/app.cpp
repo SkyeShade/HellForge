@@ -397,7 +397,7 @@ void Init(const Host& host)
     sounds::SetEnabled(g_soundsOn);
     std::wstring folder = hfjson::Wide(host.modFolder);
     ULONGLONG loading = GetTickCount64();
-    g_catalogOk = catalog::Load(folder + L"\\editor-catalog.json", &g_catalog, &g_catalogError);
+    g_catalogOk = catalog::Load(folder, &g_catalog, &g_catalogError);
     loading = GetTickCount64() - loading;
     g_layout = (uint32_t)strtoul(g_catalog.build.c_str(), nullptr, 10);
     if (g_catalogOk && g_catalog.build != host.api->build_id())
