@@ -339,6 +339,11 @@ static WorldDispatchFn g_worldDispatch;
  * overlap grid (difficulty_world_overlap.c) keeps its per-buffer grids for one run of a pass only, so a later op 0x2B
  * whose arena buffer lands at the same address starts from an empty grid. */
 static volatile LONG g_worldOpRun;
+/* For the hang monitor (crash_notes.c): every dispatcher call on any level, the op of the record it runs and since when
+ * (GetTickCount64), so a game window that stops answering while the generator moves on reads as busy, not stuck. */
+static volatile LONG g_genCalls;
+static volatile LONG g_genOp = -1, g_genRecord = -1;
+static volatile LONG64 g_genOpSince;
 static uint32_t g_worldOpAt = 0xFFFFFFFFu;
 static void OverlapFlush(void); /* difficulty_world_overlap.c: notes the stamp overlap grid's counters for the run just ended */
 static float* g_heightCopy; /* the layer heightfield the loader keeps (below) */
@@ -456,6 +461,14 @@ static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    {
+        uint32_t i = 0, o = 0xFFFFFFFFu;
+        InterlockedIncrement(&g_genCalls);
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && (LONG)i != g_genRecord)
+        {
+            g_genRecord = (LONG)i; g_genOp = (LONG)o; g_genOpSince = (LONG64)GetTickCount64();
+        }
+    }
     if (g_heightCopy != NULL)
     {
         uint32_t i = 0, o = 0;

@@ -333,19 +333,20 @@ static int FrameName(uintptr_t at, const GameModules* g, char* out, size_t size)
     return snprintf(out, size, "0x%llx", (unsigned long long)at);
 }
 
-/* The faulting thread's call chain, unwound from its context with the modules' unwind data (RtlVirtualUnwind): the
- * crash note's stack scan lists every game address on the stack, stale ones too; this is the real chain. A frame
- * without unwind data is taken as a leaf once (its return address at RSP). The walk stops at an unreadable stack, a
- * frame that does not move, or 32 frames. */
-static void CrashCallStack(const CONTEXT* fault, const GameModules* g)
+/* A thread's call chain, unwound from a context with the modules' unwind data (RtlVirtualUnwind), into text (`size`
+ * bytes, " frame" each): its number of frames. The crash note's stack scan lists every game address on the stack, stale
+ * ones too; this is the real chain. A frame without unwind data is taken as a leaf once (its return address at RSP). The
+ * walk stops at an unreadable stack, a frame that does not move, or `most` frames. */
+static int CallChain(const CONTEXT* from, const GameModules* g, int most, char* text, int size)
 {
-    CONTEXT walk = *fault;
-    char text[1600], name[160];
+    CONTEXT walk = *from;
+    char name[160];
     int n = 0, leaves = 0, depth = 0;
-    for (; depth < 32 && n < (int)sizeof text - 200; depth++)
+    text[0] = 0;
+    for (; depth < most && n < size - 200; depth++)
     {
         FrameName((uintptr_t)walk.Rip, g, name, sizeof name);
-        n += snprintf(text + n, sizeof text - n, " %s", name);
+        n += snprintf(text + n, size - n, " %s", name);
         uint64_t word = 0;
         if (walk.Rsp < 0x10000 || (walk.Rsp & 7) != 0 || SafeRead((uintptr_t)walk.Rsp, &word, 8)) break;
         DWORD64 rip = walk.Rip, rsp = walk.Rsp, imageBase = 0;
@@ -364,7 +365,13 @@ static void CrashCallStack(const CONTEXT* fault, const GameModules* g)
         }
         if (walk.Rip < 0x10000 || (walk.Rip == rip && walk.Rsp == rsp) || walk.Rsp < rsp) { depth++; break; }
     }
-    text[n] = 0;
+    return depth;
+}
+
+static void CrashCallStack(const CONTEXT* fault, const GameModules* g)
+{
+    char text[1600];
+    int depth = CallChain(fault, g, 32, text, (int)sizeof text);
     Note("crash: call chain (%d frames, unwound):%s", depth, text);
 }
 
@@ -441,6 +448,194 @@ static void InstallCrashEnd(void)
     if (thread != NULL) CloseHandle(thread);
     if (target == NULL || thread == NULL || LoaderHook("unhandled crash notes", (uintptr_t)target, (void*)UnhandledDetour, (void**)&g_unhandledFilter))
         Note("crash notes: unhandled exceptions will not be noted, and a game stuck after one is not ended");
+}
+
+/* The hang monitor: its own thread asks the game's window to answer (WM_NULL, 3 s timeout) every second. A window that
+ * has not answered for 10 s is a hang until it answers again; at 10, 30, 60, 120, 300 s and every 5 minutes after, the
+ * log gets what the game is doing: the generator's op and how long it has run, how many dispatcher calls since the last
+ * note (difficulty_world.c), whether the game clock moved, and the unwound call chains of the window's thread and every
+ * thread in game code (identical chains counted once). Nothing moving between two notes 2 minutes in (no dispatcher
+ * call, the clock still, the window thread's chain unchanged, under 0.1 cores of CPU: one long op keeps the cores busy)
+ * is "stuck" (a deadlock), not busy. hang.txt beside
+ * modloader.log gets a line per note ("busy" / "stuck" / "answered"), so a launcher or test tool can act without reading
+ * the log. With HELLFORGE_HANG_END=<seconds> (60 or more) a stuck game is ended at that age, code 0xC0000194. Threads
+ * are suspended only to read their context; the chains are unwound after they resume, as the sampling profiler does. */
+static DWORD g_hangSelf;
+
+static void HangMarker(const char* text)
+{
+    HANDLE file = OpenLog(L"hang.txt");
+    if (file == INVALID_HANDLE_VALUE) return;
+    SYSTEMTIME t;
+    GetSystemTime(&t);
+    char line[256];
+    int n = snprintf(line, sizeof line, "%02u:%02u:%02u.%03u %s\n", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, text);
+    DWORD written;
+    if (n > 0) WriteFile(file, line, (DWORD)n, &written, NULL);
+    CloseHandle(file);
+}
+
+typedef struct HangFind { DWORD process; HWND window; } HangFind;
+static BOOL CALLBACK HangWindowOf(HWND window, LPARAM parameter)
+{
+    HangFind* find = (HangFind*)parameter;
+    DWORD process = 0;
+    GetWindowThreadProcessId(window, &process);
+    if (process != find->process || !IsWindowVisible(window) || GetWindow(window, GW_OWNER) != NULL) return TRUE;
+    find->window = window;
+    return FALSE;
+}
+
+static uint32_t HangHash(const char* text)
+{
+    uint32_t h = 2166136261u;
+    for (; *text; text++) h = (h ^ (uint8_t)*text) * 16777619u;
+    return h;
+}
+
+/* The chains of the window's thread and of every thread whose chain reaches game code, identical ones once (with a
+ * count): the hash of the window thread's chain. */
+static uint32_t HangThreads(const GameModules* g, DWORD windowThread)
+{
+    enum { MOST = 48 };
+    static uint32_t hashes[MOST];
+    static int counts[MOST];
+    static DWORD firsts[MOST];
+    static char chains[MOST][900];
+    int distinct = 0, others = 0;
+    uint32_t windowHash = 0;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    THREADENTRY32 entry = {sizeof entry};
+    DWORD process = GetCurrentProcessId();
+    for (BOOL more = Thread32First(snapshot, &entry); more; more = Thread32Next(snapshot, &entry))
+    {
+        DWORD id = entry.th32ThreadID;
+        if (entry.th32OwnerProcessID != process || id == GetCurrentThreadId() || id == g_hangSelf) continue;
+        HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, id);
+        if (thread == NULL) continue;
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+        int got = 0;
+        if (SuspendThread(thread) != (DWORD)-1) { got = GetThreadContext(thread, &context) != 0; ResumeThread(thread); }
+        CloseHandle(thread);
+        if (!got) continue;
+        char text[900];
+        CallChain(&context, g, 20, text, (int)sizeof text);
+        int isWindow = id == windowThread;
+        if (isWindow) windowHash = HangHash(text);
+        if (!isWindow && strstr(text, " g+") == NULL && strstr(text, " x+") == NULL) continue;
+        uint32_t h = HangHash(text) ^ (isWindow ? 0x80000000u : 0);
+        int k = 0;
+        while (k < distinct && hashes[k] != h) k++;
+        if (k < distinct) { counts[k]++; continue; }
+        if (distinct == MOST) { others++; continue; }
+        hashes[k] = h; counts[k] = 1; firsts[k] = id;
+        snprintf(chains[k], sizeof chains[k], "%s", text);
+        distinct++;
+    }
+    CloseHandle(snapshot);
+    for (int k = 0; k < distinct; k++)
+        Note("hang: thread %lu%s%s:%s", firsts[k], (hashes[k] & 0x80000000u) && firsts[k] == windowThread ? " (the window's)" : "",
+            counts[k] > 1 ? " and others with the same chain" : "", chains[k]);
+    if (others > 0) Note("hang: %d more threads in game code not listed", others);
+    return windowHash;
+}
+
+static uint64_t HangClock(const GameModules* g)
+{
+    uintptr_t clock = 0;
+    uint64_t value = 0;
+    if (g->game == 0 || SafeRead(g->game + BHV_CLOCK, &clock, 8) || clock == 0 || SafeRead(clock + 0x18, &value, 8)) return 0;
+    return value;
+}
+
+/* The process's CPU time, user and kernel, in 100 ns units. */
+static uint64_t HangCpu(void)
+{
+    FILETIME created, exited, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0;
+    return ((uint64_t)kernel.dwHighDateTime << 32 | kernel.dwLowDateTime) + ((uint64_t)user.dwHighDateTime << 32 | user.dwLowDateTime);
+}
+
+static DWORD WINAPI HangWatchThread(void* parameter)
+{
+    g_hangSelf = GetCurrentThreadId();
+    char text[32] = "";
+    int endAfter = GetEnvironmentVariableA("HELLFORGE_HANG_END", text, sizeof text) > 0 ? atoi(text) : 0;
+    if (endAfter != 0 && endAfter < 60) endAfter = 60;
+    HWND window = NULL;
+    ULONGLONG lastFind = 0, hungSince = 0, nextNote = 0;
+    LONG callsAt = 0;
+    uint64_t clockAt = 0;
+    uint32_t chainAt = 0;
+    uint64_t cpuAt = 0;
+    ULONGLONG noteAt = 0;
+    int stuck = 0;
+    for (;;)
+    {
+        Sleep(1000);
+        ULONGLONG now = GetTickCount64();
+        if ((window == NULL || !IsWindow(window)) && now - lastFind >= 5000)
+        {
+            HangFind find = {GetCurrentProcessId(), NULL};
+            EnumWindows(HangWindowOf, (LPARAM)&find);
+            window = find.window;
+            lastFind = now;
+        }
+        if (window == NULL) continue;
+        DWORD_PTR answer = 0;
+        if (SendMessageTimeoutW(window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 3000, &answer) != 0)
+        {
+            if (hungSince != 0)
+            {
+                Note("hang: the game window answers again after %llu s", (unsigned long long)((now - hungSince) / 1000));
+                snprintf(text, sizeof text, "answered after %llus", (unsigned long long)((now - hungSince) / 1000));
+                HangMarker(text);
+            }
+            hungSince = 0; stuck = 0;
+            continue;
+        }
+        now = GetTickCount64();
+        if (hungSince == 0) { hungSince = now - 3000; nextNote = hungSince + 10000; callsAt = g_genCalls; clockAt = 0; chainAt = 0; cpuAt = HangCpu(); noteAt = now; continue; }
+        if (now < nextNote) continue;
+        ULONGLONG age = (now - hungSince) / 1000;
+        nextNote = hungSince + (age < 30 ? 30000 : age < 60 ? 60000 : age < 120 ? 120000 : age < 300 ? 300000 : (age / 300 + 1) * 300000);
+        GameModules g = CurrentModules();
+        LONG calls = g_genCalls;
+        uint64_t clock = HangClock(&g);
+        long op = g_genOp;
+        ULONGLONG opAge = g_genOpSince != 0 ? (now - (ULONGLONG)g_genOpSince) / 1000 : 0;
+        uint64_t cpu = HangCpu();
+        double cores = now > noteAt ? (double)(cpu - cpuAt) / 10000.0 / (double)(now - noteAt) : 0.0; /* 100 ns units over ms */
+        Note("hang: the game window has not answered for %llu s; generator op 0x%lX for %llu s, %ld dispatcher calls since the last note; game clock %s; CPU %.2f cores",
+            age, op < 0 ? 0L : op, opAge, (long)(calls - callsAt), clock == 0 ? "not running" : clock != clockAt ? "moving" : "still", cores);
+        DWORD windowThread = GetWindowThreadProcessId(window, NULL);
+        uint32_t chain = HangThreads(&g, windowThread);
+        int moved = calls != callsAt || clock != clockAt || chain != chainAt || cores >= 0.10;
+        if (!moved && age >= 120 && !stuck)
+        {
+            stuck = 1;
+            Note("hang: nothing has moved since the last note (no dispatcher call, the clock still, the window thread where it was, under 0.1 cores busy): the game looks stuck");
+        }
+        snprintf(text, sizeof text, "%s %llus op 0x%lX", stuck ? "stuck" : "busy", age, op < 0 ? 0L : op);
+        HangMarker(text);
+        callsAt = calls; clockAt = clock; chainAt = chain; cpuAt = cpu; noteAt = now;
+        if (stuck && endAfter > 0 && age >= (ULONGLONG)endAfter)
+        {
+            Note("hang: stuck for %llu s (HELLFORGE_HANG_END %d); ending the game", age, endAfter);
+            HangMarker("ended");
+            TerminateProcess(GetCurrentProcess(), 0xC0000194u);
+        }
+    }
+    return 0;
+}
+
+static void InstallHangWatch(void)
+{
+    HANDLE thread = CreateThread(NULL, 256 * 1024, HangWatchThread, NULL, 0, NULL);
+    if (thread == NULL) { Note("crash notes: the hang monitor could not start (%lu)", GetLastError()); return; }
+    CloseHandle(thread);
 }
 
 static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)

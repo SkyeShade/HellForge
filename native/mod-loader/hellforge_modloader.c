@@ -743,6 +743,7 @@ static void WatchLoaded(void)
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallCrashEnd(); /* an exception nothing handled: noted, and the game ended if it is still stuck a minute later */
+    InstallHangWatch(); /* a game window that stops answering: busy or stuck, with every game thread's chain (hang.txt) */
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
     StartRegistry();
     StartProjectiles();
