@@ -525,7 +525,78 @@ static void WorldRecordMap(uint64_t records, uint32_t end)
     CloseHandle(file);
 }
 
-static void WorldTileProbe(uint64_t context)
+/* Step 2: after the tile's Voronoi, the passes that turn route cells into heights run on the copy, through the original
+ * dispatcher on a one-record array (index 0, end 1; an op that is not finished leaves the index at 0 and is called
+ * again). Only these ops run, in pipeline order from op 0x25 to the first CalculateCornerSlopes (0x2D) after
+ * GenerateSubregionHeights (0x04); location placement, packages, collision, stamps and the merge are left out, and the
+ * copy's location counts are zero, so the tile is the plan's nature terrain. The tile's Voronoi vertices (position and
+ * height) go to tile-vertices-<level>.f32 as x, y, h floats. */
+static const uint8_t kTileOps[] = {0x07, 0x12, 0x75, 0x79, 0x7B, 0x76, 0x74, 0x77, 0x78, 0x11, 0x7C, 0x28, 0xA4, 0x7A, 0x7E,
+    0x08, 0x29, 0x2A, 0xB6, 0x4E, 0x7D, 0x13, 0x92, 0x0E, 0x05, 0x02, 0x03, 0x93, 0x04, 0x2C, 0x2E, 0x2D};
+
+static int WorldTileRuns(uint32_t op)
+{
+    for (size_t k = 0; k < sizeof kTileOps; k++) if (kTileOps[k] == op) return 1;
+    return 0;
+}
+
+static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uintptr_t gen)
+{
+    static uint8_t one[0x19B0];
+    uint32_t start = 0xFFFFFFFFu, op = 0;
+    for (uint32_t i = 0; i < end; i++)
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x25) { start = i + 1; break; }
+    if (start == 0xFFFFFFFFu) { Note("difficulty: terrain tile: no GenerateVoronoi record"); return; }
+    int seen04 = 0, ran = 0;
+    char text[1024];
+    int n = 0;
+    LARGE_INTEGER hz;
+    QueryPerformanceFrequency(&hz);
+    for (uint32_t i = start; i < end; i++)
+    {
+        if (SafeRead(records + (uint64_t)i * 0x19B0u, one, sizeof one)) break;
+        memcpy(&op, one, 4);
+        if (!WorldTileRuns(op)) continue;
+        WorldTileRelocate(one, gen, (uintptr_t)g_tileBlock);
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        uint32_t index = 0;
+        int calls = 0;
+        while (index == 0 && calls < 64) { g_worldDispatch((uint64_t)one, context, (uint64_t)&index, 1, e, 0, g, h); calls++; }
+        QueryPerformanceCounter(&t1);
+        ran++;
+        if (n < (int)sizeof text - 32)
+            n += snprintf(text + n, sizeof text - n, " %02X:%.1f%s", op, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, calls > 1 ? "+" : "");
+        if (op == 0x04) seen04 = 1;
+        if (op == 0x2D && seen04) break;
+    }
+    uint8_t* T = g_tileBlock;
+    uint32_t vertices = 0, cells = 0, routeCells = 0, subCells = 0;
+    memcpy(&vertices, T + 0x11A7090, 4); memcpy(&cells, T + 0x11A70B8, 4);
+    memcpy(&routeCells, T + 0x11A71C0, 4); memcpy(&subCells, T + 0x11A71C4, 4);
+    Note("difficulty: terrain tile: %d passes (op:ms):%s", ran, text);
+    Note("difficulty: terrain tile: %u vertices, %u cells, route cells %u / %u", vertices, cells, routeCells, subCells);
+    if (vertices == 0 || vertices > 6000) return;
+    wchar_t name[64];
+    swprintf(name, 64, L"tile-vertices-%ld.f32", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    float lo = 1e30f, hi = -1e30f;
+    for (uint32_t v = 0; v < vertices; v++)
+    {
+        float xyh[3];
+        memcpy(xyh, T + 0x9F310 + (size_t)v * 0x48, 8);
+        memcpy(&xyh[2], T + 0x1F8A30 + (size_t)v * 4, 4);
+        if (xyh[2] < lo) lo = xyh[2];
+        if (xyh[2] > hi) hi = xyh[2];
+        DWORD wrote;
+        WriteFile(file, xyh, sizeof xyh, &wrote, NULL);
+    }
+    CloseHandle(file);
+    Note("difficulty: terrain tile: wrote %u vertices, heights %.1f..%.1f", vertices, (double)lo, (double)hi);
+}
+
+static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_tileDone == g_world.levels || g_worldLevel == 0 || g_rec25 == 0) return;
     g_tileDone = g_world.levels;
@@ -565,11 +636,13 @@ static void WorldTileProbe(uint64_t context)
     volatile uint32_t* diskP = (volatile uint32_t*)(lg + 0x2D7C);
     *diskP = disk ^ 1u;
     *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = (float)extent; *radiusP = (float)extent; *spacingP = 16.0f;
+    memset(g_tileBlock + 0x11A7108, 0, 4); memset(g_tileBlock + 0x11A715C, 0, 4); /* no locations in the tile (yet) */
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     LARGE_INTEGER t0, t1, hz;
     QueryPerformanceCounter(&t0);
     ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)record + 8, (uint64_t)record, context);
     QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+    WorldTilePasses(records, end, context, e, f, g, h, gen);
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
     uint32_t counts[3] = {0};
     for (int k = 0; k < 3; k++)
@@ -642,7 +715,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) { WorldRecordMap(records, (uint32_t)d); WorldTileProbe(b); } }
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) { WorldRecordMap(records, (uint32_t)d); WorldTileProbe(records, (uint32_t)d, b, e, f, g, h); } }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
