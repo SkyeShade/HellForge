@@ -16,7 +16,7 @@
     { "path": "/Progression/inventory", "requestId": "0x7b93f917", "parserRva": "0x10641b0", "body": {} },
     { "path": "/Progression/Items/Customize/v2", "requestId": "0xb34a5349", "parserRva": "0x1066420", "body": {} },
     { "path": "/Mission/RewardEntries", "requestId": "0x01e7941b", "parserRva": "0x1057ea0", "body": {} },
-    { "path": "/SeasonPass", "requestId": "0x81bab057", "parserRva": "0x10805a0", "arrayWrapper": true, "bodySource": "progression-data.json#seasonPass", "body": [] },
+    { "path": "/SeasonPass", "requestId": "0x81bab057", "parserRva": "0x10805a0", "arrayWrapper": true, "bodySource": "progression-data.json#seasonPass", "reverse": true, "body": [] },
     { "path": "/StoreFront", "requestId": "0x347d58a3", "parserRva": "0x1081260", "arrayWrapper": true, "bodySource": "progression-data.json#storeFront", "body": [] },
     { "path": "/WarSeason/NewsTicker", "requestId": "0x21984615", "parserRva": "0x1081d90", "body": { "messages": [] } },
     { "path": "/FriendsV2/Block", "requestId": "0x8e5e9401", "parserRva": "0x1051240", "body": { "totalEntries": 0, "currentLimit": 100, "currentOffset": 0, "entries": [] } },

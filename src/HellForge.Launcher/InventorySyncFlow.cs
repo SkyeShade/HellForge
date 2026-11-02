@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Avalonia.Controls;
 using Avalonia.Media;
 using HellForge.Core;
 
@@ -25,6 +26,8 @@ public partial class MainWindow
     {
         SyncCard.IsVisible = InventorySync.FindCaptureProxy(paths.InstallRoot) != null;
         SyncButton.Click += async (_, _) => await StartSync();
+        PlaySyncButton.Click += async (_, _) => await StartSync();
+        PlayReviewButton.Click += (_, _) => Nav.SelectedIndex = 1;
         InitializeAccountImport();
         UpdateSyncStatus();
     }
@@ -32,24 +35,60 @@ public partial class MainWindow
     void UpdateSyncStatus()
     {
         if (paths.InstallRoot == null || !SyncCard.IsVisible) return;
-        var info = InventorySync.ReadMetadata(InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name));
+        var snapshot = InventorySync.SnapshotDirectory(paths.InstallRoot, Selected.Name);
+        var info = InventorySync.ReadMetadata(snapshot);
         SyncDetailText.Text = info == null ? "No snapshot yet. Sync to copy your real inventory into this profile."
             : !info.Progression ? "Last sync failed " + (info.CapturedUtc?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "at an unknown time") +
                 $": {info.Items:N0} items, no progression. Sync again to get your level, unlocks and ship."
             : "Last synced " + (info.CapturedUtc?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "at an unknown time") +
               $": {info.Items:N0} items, " + (info.Experience is { } xp ? $"{xp:N0} XP." : "progression captured.");
         UpdateImportControls();
+        UpdatePlaySync(snapshot, info);
         // While this launcher's capture still keeps the game connected, its hosts line is its own, not an earlier sync's leftover.
         if (SyncBusy || syncProxy != null) return;
         var leftover = InventorySync.HasLeftoverRedirect();
         SyncButton.Content = leftover ? "Clean up" : "Sync Inventory";
-        if (leftover) SetSyncStatus("An earlier sync did not finish: the normal game cannot reach its servers until you clean up.", Orange);
+        if (!leftover) return;
+        PlaySyncButton.Content = "Clean up";
+        SetSyncStatus("An earlier sync did not finish: the normal game cannot reach its servers until you clean up.", Orange);
     }
 
-    void SetSyncStatus(string text, IBrush brush)
+    // The Play page's card: premium content stays locked in the game until the profile has a sync that holds for the Steam
+    // account signed in now (HellForge.LocalBackend AccountSnapshot), so the card says so beside PLAY and syncs from there.
+    void UpdatePlaySync(string snapshot, SnapshotInfo? info)
+    {
+        var synced = InventorySync.HasSnapshot(snapshot);
+        var seal = synced ? SnapshotSeal.Verify(snapshot, InventorySync.SealKeyFor(snapshot)) : null;
+        var when = (seal?.CapturedUtc ?? info?.CapturedUtc)?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        var last = when != null ? "The last sync (" + when + ")" : "The last sync";
+        var locked = !synced ? "Warbonds, Superstore items and DLC gear you own stay locked in the game until you sync this profile with " +
+                "your HELLDIVERS 2 account. Sync opens the normal game through Steam and asks for administrator access; log in and pass " +
+                "the title screen."
+            : seal == null ? last + " cannot be checked on this PC: it changed since, or was made on another PC. Your premium content " +
+                "stays locked in the game until you sync again."
+            : SteamAccount.Current() is { } account && account != seal.SteamAccount ? last + " is for another Steam account than the " +
+                "one signed in. Your premium content stays locked in the game until you sync with this one."
+            : null;
+        PlaySyncCard.IsVisible = true;
+        PlaySyncTitle.Text = locked != null ? "Your premium content is not in this profile" : "Profile synced";
+        PlaySyncTitle.Foreground = locked != null ? Orange : Text;
+        PlaySyncText.Text = locked ?? "Premium content you owned " + (when != null ? "on " + when : "at the last sync") +
+            " is unlocked. Bought or unlocked something since? Update the sync to bring it in.";
+        if (locked != null) PlaySyncCard.BorderBrush = Orange;
+        else PlaySyncCard.ClearValue(Border.BorderBrushProperty);
+        PlaySyncButton.Content = synced ? "Update profile sync" : "Sync profile";
+        PlaySyncButton.Classes.Set("primary", locked != null);
+        PlaySyncButton.Classes.Set("ghost", locked == null);
+    }
+
+    // playText: the Play page's wording, where the Profile page's points at something on that page.
+    void SetSyncStatus(string text, IBrush brush, string? playText = null)
     {
         SyncStatusText.Text = text;
         SyncStatusText.Foreground = brush;
+        PlaySyncStatus.Text = playText ?? text;
+        PlaySyncStatus.Foreground = brush;
+        PlaySyncStatus.IsVisible = text.Length > 0;
     }
 
     async Task StartSync()

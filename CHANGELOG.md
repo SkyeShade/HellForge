@@ -18,6 +18,16 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
+  because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
+  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
+- Premium warbonds you don't own look locked in Acquisitions: their art is darkened, with a padlock in the middle and
+  lines in from the corners, and their pages show nothing bought (an unlock-all profile showed every item there as
+  bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
+  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
+  (#206).
+- Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
+  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts.
 
 ### Changed
 
@@ -48,6 +58,8 @@ On `dev`, since 0.3.0-beta.
   up empty. Heavy loot is still added to your profile.
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
   medals and samples a second time. Thanks to diemitze, whose PR #27 found it.
+- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
+  Mobilize at the top (#206).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
