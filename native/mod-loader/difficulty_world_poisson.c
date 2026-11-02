@@ -310,6 +310,19 @@ static void* PoissonDetour(void* arena, float radius, const float* rect, uint64_
 {
     if (!(g_world.current > 1.0f) || rect == NULL || state == NULL || count == NULL)
         return g_poissonOriginal(arena, radius, rect, state, count);
+    /* The original sizes its grid as the rectangle over radius / sqrt(2) in 32-bit integers, unchecked: a rectangle that
+     * is not finite or a radius that is not positive and finite overflows it and writes far outside (a terrain tile's
+     * route cell, 2026-11-02: game.dll+0xF2D5B0). Such a call gets no points; the first few are noted. */
+    if (!(radius > 0.0f && radius < 1e6f) || !(rect[2] - rect[0] >= 0.0f && rect[2] - rect[0] < 1e7f) || !(rect[3] - rect[1] >= 0.0f && rect[3] - rect[1] < 1e7f) ||
+        (double)(rect[2] - rect[0]) / ((double)radius / 1.4142135623730951) > 1e6 || (double)(rect[3] - rect[1]) / ((double)radius / 1.4142135623730951) > 1e6)
+    {
+        static volatile LONG refused;
+        if (InterlockedIncrement(&refused) <= 8)
+            Note("difficulty: Poisson: refused a call with radius %g over (%g, %g)..(%g, %g) from game+0x%llX", (double)radius, (double)rect[0], (double)rect[1],
+                (double)rect[2], (double)rect[3], (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_world.game));
+        *count = 0;
+        return g_poissonAlloc(arena, 8u, 8u);
+    }
     LONG call = InterlockedIncrement(&g_poissonCalls);
     double cell = (double)radius / 1.4142135623730951;
     double cells = cell > 0.0 ? ((double)rect[2] - rect[0]) / cell * (((double)rect[3] - rect[1]) / cell) : 0.0;
