@@ -1094,6 +1094,38 @@ static void WorldCamInstall(void)
         (unsigned long long)g_vantageCaller);
 }
 
+/* Research (scatter): the generator's scatter table after FinalizeScatterInitialization (op 0x96), vanilla and larger:
+ * the globals at game+0x3328F60 (+0 a pointer, +8 a count, +0xC (world size x 0.5 x [settings+0x5C])^2, set by op 0xBB)
+ * and each type (0x2860 bytes from game+0x3328F90, [game+0x346BF90] of them; +0x2850 its grid: dim, two floats, data at
+ * +0x10, allocated dim^2 x 16 bytes by op 0xBB). */
+static void WorldScatterNote(void)
+{
+    static LONG notes;
+    if (InterlockedIncrement(&notes) > 4) return;
+    uintptr_t base = g_world.game + 0x3328F60u;
+    uint32_t head[12] = {0}, count = 0;
+    SafeRead(base, head, sizeof head);
+    SafeRead(g_world.game + 0x346BF90u, &count, 4);
+    float area = 0; memcpy(&area, &head[3], 4);
+    Note("difficulty: scatter (%.0fx): %u types, globals %08X%08X count %u area %.0f (sqrt %.0f), %08X %08X %08X %08X %08X %08X %08X %08X",
+        (double)g_world.current, count, head[1], head[0], head[2], (double)area, (double)sqrtf(area), head[4], head[5], head[6], head[7], head[8], head[9], head[10], head[11]);
+    for (uint32_t t = 0; t < count && t < 64; t++)
+    {
+        uintptr_t type = g_world.game + 0x3328F90u + (uintptr_t)t * 0x2860u;
+        float f[16] = {0};
+        uint64_t grid = 0;
+        uint32_t gd[6] = {0};
+        SafeRead(type, f, sizeof f);
+        SafeRead(type + 0x2850, &grid, 8);
+        if (grid != 0) SafeRead(grid, gd, sizeof gd);
+        uint32_t* u = (uint32_t*)f;
+        float g1 = 0, g2 = 0; memcpy(&g1, &gd[1], 4); memcpy(&g2, &gd[2], 4);
+        Note("difficulty: scatter type %u: %g %g %g %g %g %g %g %g | %08X %08X %08X %08X %08X %08X %08X %08X | grid dim %u, %g, %g, data %08X%08X",
+            t, (double)f[0], (double)f[1], (double)f[2], (double)f[3], (double)f[4], (double)f[5], (double)f[6], (double)f[7],
+            u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15], gd[0], (double)g1, (double)g2, gd[5], gd[4]);
+    }
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_world.current == 8.0f) WorldCamInstall();
@@ -1223,6 +1255,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         if (!SafeRead(index, &pat, 4) && !SafeRead(records + (uint64_t)pat * 0x19B0u, &pop, 4) &&
             (pop == 0x38 || pop == 0x3C || pop == 0x40 || pop == 0x3D || pop == 0x5E || pop == 0x6A) && InterlockedIncrement(&g_terrainProbes) <= 40)
             WorldTerrainProbe(records, pat, pop);
+    }
+    {
+        uint32_t pat = 0, pop = 0xFFFFFFFFu;
+        if (vanillaOp == 0x96 || op == 0x96)
+            if (!SafeRead(index, &pat, 4) && !SafeRead(records + (uint64_t)pat * 0x19B0u, &pop, 4) && pop != 0x96) WorldScatterNote();
     }
     if (!watch) return r;
     if (op == 0x2B)
