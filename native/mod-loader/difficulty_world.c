@@ -1109,7 +1109,34 @@ static void WorldScatterNote(void)
     float area = 0; memcpy(&area, &head[3], 4);
     Note("difficulty: scatter (%.0fx): %u types, globals %08X%08X count %u area %.0f (sqrt %.0f), %08X %08X %08X %08X %08X %08X %08X %08X",
         (double)g_world.current, count, head[1], head[0], head[2], (double)area, (double)sqrtf(area), head[4], head[5], head[6], head[7], head[8], head[9], head[10], head[11]);
-    for (uint32_t t = 0; t < count && t < 64; t++)
+    /* The brush callback (0x137A2A0) samples three images through +0x10/+0x18/+0x20 ({w, h, .., data at +0x10}, 4 bytes
+     * a texel, u = x / world + 0.5): written out once per level, with the id table at +0 ([+8] entries) and +0x28. */
+    uint32_t table[16] = {0}, tag = 0;
+    uint64_t tableAt = ((uint64_t)head[1] << 32) | head[0];
+    if (tableAt != 0 && head[2] <= 16) SafeRead(tableAt, table, head[2] * 4u);
+    SafeRead(base + 0x28, &tag, 4);
+    Note("difficulty: scatter (%.0fx): id table %08X %08X %08X %08X %08X %08X, tag %08X", (double)g_world.current, table[0], table[1], table[2], table[3], table[4], table[5], tag);
+    for (int k = 0; k < 3; k++)
+    {
+        uint64_t at = 0;
+        uint32_t desc[6] = {0};
+        if (SafeRead(base + 0x10 + 8u * (uintptr_t)k, &at, 8) || at == 0 || SafeRead(at, desc, sizeof desc)) continue;
+        uint64_t data = ((uint64_t)desc[5] << 32) | desc[4];
+        Note("difficulty: scatter image %d: %u x %u (%08X %08X) data 0x%llX", k, desc[0], desc[1], desc[2], desc[3], (unsigned long long)data);
+        if (data == 0 || desc[0] == 0 || desc[1] == 0 || desc[0] > 8192 || desc[1] > 8192) continue;
+        uint64_t bytes = (uint64_t)desc[0] * desc[1] * 4u;
+        uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (copy == NULL) continue;
+        if (!SafeRead(data, copy, bytes))
+        {
+            wchar_t name[64];
+            swprintf(name, 64, L"scatter-%d-%dx-%ld.bin", k, (int)g_world.current, (long)notes);
+            HANDLE file = OpenLog(name);
+            if (file != INVALID_HANDLE_VALUE) { DWORD wrote; WriteFile(file, copy, (DWORD)bytes, &wrote, NULL); CloseHandle(file); }
+        }
+        VirtualFree(copy, 0, MEM_RELEASE);
+    }
+    for (uint32_t t = 0; t < count && t < 64 && notes == 1; t++)
     {
         uintptr_t type = g_world.game + 0x3328F90u + (uintptr_t)t * 0x2860u;
         float f[16] = {0};
@@ -1144,7 +1171,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) WorldRecordMap(records, (uint32_t)d); }
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); WorldScatterNote(); if (g_world.current == 8.0f) WorldRecordMap(records, (uint32_t)d); }
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
