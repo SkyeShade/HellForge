@@ -5,7 +5,7 @@
 static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     DifficultyReadersFailed, KeepTenFailed, BandFailed, LevelReadersFailed, BoardFailed, SpreadFailed, HashInsertFailed,
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
-    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, StreetPinsFailed, /* a map_scale above 1 */
+    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, StreetPinsFailed, RecordMapFailed, /* a map_scale above 1 */
     LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
     ArtilleryPinsFailed};
@@ -30,7 +30,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     WidenMissionRanges, InstallBoard, InstallSpreadGuard, InstallHashInsertGuard, MixStep, InstallGrant, InstallRadar,
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
-    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallStreets, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
+    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallStreets, InstallRecordMap, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells};
 
