@@ -10,6 +10,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- With the sandbox on, the session log now names what the sandbox refused the game, by the overlay or module that
+  asked (Steam's, NVIDIA's, Discord's, RivaTuner's overlays and others), and `result.json` lists each object. This is
+  what tells which overlays can be given what they need.
+
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
@@ -47,6 +51,8 @@ On `dev`, since 0.3.0-beta.
   while an antivirus checked it, or could fail to reach Steam. The game now starts only once the broker has Steam. If
   the broker can't reach Steam, PLAY stops and says why (Steam not running or signed in, or running as administrator),
   and the session log says if the broker stops during play.
+- The network census in every session wiped the game's error code after each call it watches (connections, name
+  lookups, programs started): a failed connection read back as no error.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only

@@ -210,7 +210,7 @@ New-Item -ItemType Directory $testOut -Force|Out-Null
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $testOut 'stats_test.exe')
 if($LASTEXITCODE){throw 'Compiling the stats fixture failed.'}
 if(-not $SkipSmoke){& (Join-Path $testOut 'stats_test.exe');if($LASTEXITCODE){throw 'Stats fixture failed.'}}
-& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/net_gate_test.c') -lws2_32 `
+& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/net_gate_test.c') -lws2_32 -ladvapi32 `
     -o (Join-Path $testOut 'net_gate_test.exe')
 if($LASTEXITCODE){throw 'Compiling the network gate test failed.'}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/common/test/privacy_test.c') -o (Join-Path $testOut 'privacy_test.exe')

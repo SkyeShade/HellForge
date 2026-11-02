@@ -37,6 +37,24 @@ sealed partial class PlaySession
         result["brokerPid"] = broker.Id;
     }
 
+    // HELLFORGE_SANDBOX_OVERLAY_PROBE=1 (a diagnostic): the game's stand-in loads Steam's overlay into the sandboxed game,
+    // so the census records what it is refused there (steam_cloud.c OverlayProbe, SandboxRefusals). Steam's overlay
+    // otherwise loads only into the broker, which calls SteamAPI_Init.
+    void SetUpOverlayProbe()
+    {
+        if (Environment.GetEnvironmentVariable("HELLFORGE_SANDBOX_OVERLAY_PROBE") != "1") return;
+        var steam = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
+        var overlay = steam == null ? null : Path.GetFullPath(Path.Combine(steam, "GameOverlayRenderer64.dll"));
+        if (overlay == null || !File.Exists(overlay))
+        {
+            result["overlayProbe"] = "Steam's GameOverlayRenderer64.dll was not found";
+            return;
+        }
+        Environment.SetEnvironmentVariable("HELLFORGE_OVERLAY_PROBE", overlay);
+        result["overlayProbe"] = Privacy.Scrub(overlay);
+        Say("Overlay probe: Steam's overlay is loaded into the sandboxed game, to record what the sandbox refuses it.");
+    }
+
     void BrokerLine(StreamWriter brokerLog, string line)
     {
         lock (brokerLog) brokerLog.WriteLine(line);

@@ -259,6 +259,20 @@ lobby stays listed.
   that ends while the game runs, other than with the game (its `SteamAPI_Shutdown` or exit), is said in the session
   log once and recorded (`brokerEndedDuringPlay`); `brokerReadyMilliseconds` and `brokerGameConnected` are recorded
   for every sandboxed session.
+- **What the sandbox refuses the game** is recorded. In a sandboxed session the network gate's census (`net_gate.c`)
+  adds a `denied` group: kernelbase's `OpenFileMappingW`, `CreateFileMappingW`, `OpenEventW`, `CreateEventW`,
+  `CreateEventExW`, `OpenMutexW`, `CreateMutexW`, `CreateMutexExW`, `OpenSemaphoreW`, `CreateFileW` (files and pipes)
+  and `WaitNamedPipeW`. A call that fails with `ERROR_ACCESS_DENIED` is written with the object's name and the module
+  that asked (`"scope":"denied"`), and the caller's last error is kept. Overlays reach their own program through such
+  objects, which other programs made at the player's level, so these lines say exactly what each one is refused:
+  `result.json` has `networkCensus.denied` and `deniedTargets`, and `session.log` names each module, by the overlay it
+  is when it is a known one (`SandboxRefusals`). The A variants and direct `Nt*` calls are not hooked.
+  `HELLFORGE_NETGATE_HOOKS` without `denied` leaves it out. The census's hooks also keep the caller's last error
+  now: `TlsGetValue` in their bookkeeping reset it to 0, so a failed `connect` read back as no error.
+- **Steam's overlay** loads with `SteamAPI_Init`, so only into the broker. `HELLFORGE_SANDBOX_OVERLAY_PROBE=1` (a
+  diagnostic) has the stand-in load Steam's `GameOverlayRenderer64.dll` into the sandboxed game at `SteamAPI_Init`
+  (`OverlayProbe`; the runner passes its path, from Steam's `SteamPath`, as `HELLFORGE_OVERLAY_PROBE`), so the census
+  records what Steam's overlay is refused there; `result.json` has `overlayProbe`.
 - **Folders the game writes** are all inside the session's `game/` folder in its run folder, which the runner **makes
   new with a low label** (`LowIntegrityHelper.CreateLowFolder`); everything made in it later inherits the label.
   Labelling at creation, at or below one's own integrity, needs no admin. Relabelling an existing folder needs

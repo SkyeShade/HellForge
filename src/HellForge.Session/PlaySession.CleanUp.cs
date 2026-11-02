@@ -18,6 +18,7 @@ sealed partial class PlaySession
         FinishApplier();
         RecordBackendRequests();
         if (gameStarted != null) Try("networkCensusError", () => result["networkCensus"] = NetworkCensus.Summarize(Path.Combine(gameOut, CensusLog)));
+        if (gameStarted != null && options.Sandbox) Try("sandboxRefusalsError", SayRefusals);
         if (hint != null && File.Exists(hint)) Try("hintError", () => File.Delete(hint));
         ReleaseHolds();
         RestoreStandIns();
@@ -71,6 +72,16 @@ sealed partial class PlaySession
                 }
                 result["engineLogFiles"] = copied;
             });
+    }
+
+    // What Windows refused the sandboxed game, by the module that asked: an overlay that cannot reach its own program is
+    // named here (SandboxRefusals).
+    void SayRefusals()
+    {
+        if (result["networkCensus"]?["deniedTargets"] is not JsonArray denied) return;
+        var refusals = denied.OfType<JsonObject>().Select(row => new SandboxRefusals.Refusal((string?)row["to"] ?? "?", (string?)row["caller"] ?? "?",
+            (long?)row["count"] ?? 1)).ToList();
+        if (SandboxRefusals.Describe(refusals, (long?)result["networkCensus"]?["denied"]) is { } line) Say(line);
     }
 
     void StopBrokerAndBackend()

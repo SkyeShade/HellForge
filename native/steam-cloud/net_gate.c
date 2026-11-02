@@ -167,17 +167,23 @@ static void Note(const char *api, const char *target, const char *scope, void *r
     LeaveCriticalSection(&g_lock);
 }
 
+// Both keep the caller's last error: TlsGetValue sets it to ERROR_SUCCESS, and Leave runs after the real call, whose
+// error (WSAGetLastError is the same value) the game reads next.
 static bool Enter(void)
 {
+    DWORD error = GetLastError();
     uintptr_t depth = (uintptr_t)TlsGetValue(g_depth);
     TlsSetValue(g_depth, (void *)(depth + 1));
+    SetLastError(error);
     return depth == 0;
 }
 
 static void Leave(void)
 {
+    DWORD error = GetLastError();
     uintptr_t depth = (uintptr_t)TlsGetValue(g_depth);
     TlsSetValue(g_depth, (void *)(depth ? depth - 1 : 0));
+    SetLastError(error);
 }
 
 // A port in network byte order (Winsock's own helpers are not imported: the stand-in imports only system DLLs).
@@ -501,9 +507,138 @@ static BOOL WINAPI HookCreateProcessA(LPCSTR application, LPSTR command, LPSECUR
     return result;
 }
 
+/* ---- what the sandbox refuses (kernelbase: kernel32's named-object and file calls end there) ----
+ * A sandboxed game runs at low integrity (docs/steam-bridge.md): Windows refuses it the named shared memory, events,
+ * mutexes, semaphores and pipes that other programs made at the player's own level, and writes to the player's files.
+ * Overlays (Steam's, NVIDIA's, Discord's, RivaTuner's) reach their own program that way. Each refusal is written with
+ * the object's name and the module that asked, so a session says exactly what each overlay is denied. Only calls that
+ * failed with ERROR_ACCESS_DENIED are written, and the caller's last error is kept. */
+typedef HANDLE (WINAPI *OpenNamedFn)(DWORD, BOOL, LPCWSTR);
+typedef HANDLE (WINAPI *CreateFileMappingWFn)(HANDLE, LPSECURITY_ATTRIBUTES, DWORD, DWORD, DWORD, LPCWSTR);
+typedef HANDLE (WINAPI *CreateEventWFn)(LPSECURITY_ATTRIBUTES, BOOL, BOOL, LPCWSTR);
+typedef HANDLE (WINAPI *CreateNamedExWFn)(LPSECURITY_ATTRIBUTES, LPCWSTR, DWORD, DWORD);
+typedef HANDLE (WINAPI *CreateMutexWFn)(LPSECURITY_ATTRIBUTES, BOOL, LPCWSTR);
+typedef HANDLE (WINAPI *CreateFileWFn)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+typedef BOOL (WINAPI *WaitNamedPipeWFn)(LPCWSTR, DWORD);
+static OpenNamedFn g_openFileMappingW, g_openEventW, g_openMutexW, g_openSemaphoreW;
+static CreateFileMappingWFn g_createFileMappingW;
+static CreateEventWFn g_createEventW;
+static CreateNamedExWFn g_createEventExW, g_createMutexExW;
+static CreateMutexWFn g_createMutexW;
+static CreateFileWFn g_createFileW;
+static WaitNamedPipeWFn g_waitNamedPipeW;
+
+// A call that failed: written when Windows refused it access, with the caller's last error left as it was.
+static void NoteDenied(const char *api, const wchar_t *name, void *returnAddress)
+{
+    DWORD error = GetLastError();
+    if (error == ERROR_ACCESS_DENIED && name)
+    {
+        char text[TARGET_TEXT];
+        Narrow(name, text, sizeof text);
+        Note(api, text, "denied", returnAddress);
+    }
+    SetLastError(error);
+}
+
+static HANDLE OpenNamed(OpenNamedFn real, const char *api, DWORD access, BOOL inherit, LPCWSTR name, void *returnAddress)
+{
+    bool outer = Enter();
+    HANDLE result = real(access, inherit, name);
+    if (outer && !result) NoteDenied(api, name, returnAddress);
+    Leave();
+    return result;
+}
+
+static HANDLE WINAPI HookOpenFileMappingW(DWORD access, BOOL inherit, LPCWSTR name)
+{
+    return OpenNamed(g_openFileMappingW, "OpenFileMappingW", access, inherit, name, RETURN_ADDRESS);
+}
+
+static HANDLE WINAPI HookOpenEventW(DWORD access, BOOL inherit, LPCWSTR name)
+{
+    return OpenNamed(g_openEventW, "OpenEventW", access, inherit, name, RETURN_ADDRESS);
+}
+
+static HANDLE WINAPI HookOpenMutexW(DWORD access, BOOL inherit, LPCWSTR name)
+{
+    return OpenNamed(g_openMutexW, "OpenMutexW", access, inherit, name, RETURN_ADDRESS);
+}
+
+static HANDLE WINAPI HookOpenSemaphoreW(DWORD access, BOOL inherit, LPCWSTR name)
+{
+    return OpenNamed(g_openSemaphoreW, "OpenSemaphoreW", access, inherit, name, RETURN_ADDRESS);
+}
+
+// The Create calls open an object of that name when one exists, so they are refused the same way.
+static HANDLE WINAPI HookCreateFileMappingW(HANDLE file, LPSECURITY_ATTRIBUTES attributes, DWORD protect, DWORD high, DWORD low, LPCWSTR name)
+{
+    bool outer = Enter();
+    HANDLE result = g_createFileMappingW(file, attributes, protect, high, low, name);
+    if (outer && !result) NoteDenied("CreateFileMappingW", name, RETURN_ADDRESS);
+    Leave();
+    return result;
+}
+
+static HANDLE WINAPI HookCreateEventW(LPSECURITY_ATTRIBUTES attributes, BOOL manual, BOOL initial, LPCWSTR name)
+{
+    bool outer = Enter();
+    HANDLE result = g_createEventW(attributes, manual, initial, name);
+    if (outer && !result) NoteDenied("CreateEventW", name, RETURN_ADDRESS);
+    Leave();
+    return result;
+}
+
+static HANDLE CreateNamedEx(CreateNamedExWFn real, const char *api, LPSECURITY_ATTRIBUTES attributes, LPCWSTR name, DWORD flags, DWORD access, void *returnAddress)
+{
+    bool outer = Enter();
+    HANDLE result = real(attributes, name, flags, access);
+    if (outer && !result) NoteDenied(api, name, returnAddress);
+    Leave();
+    return result;
+}
+
+static HANDLE WINAPI HookCreateEventExW(LPSECURITY_ATTRIBUTES attributes, LPCWSTR name, DWORD flags, DWORD access)
+{
+    return CreateNamedEx(g_createEventExW, "CreateEventExW", attributes, name, flags, access, RETURN_ADDRESS);
+}
+
+static HANDLE WINAPI HookCreateMutexExW(LPSECURITY_ATTRIBUTES attributes, LPCWSTR name, DWORD flags, DWORD access)
+{
+    return CreateNamedEx(g_createMutexExW, "CreateMutexExW", attributes, name, flags, access, RETURN_ADDRESS);
+}
+
+static HANDLE WINAPI HookCreateMutexW(LPSECURITY_ATTRIBUTES attributes, BOOL owner, LPCWSTR name)
+{
+    bool outer = Enter();
+    HANDLE result = g_createMutexW(attributes, owner, name);
+    if (outer && !result) NoteDenied("CreateMutexW", name, RETURN_ADDRESS);
+    Leave();
+    return result;
+}
+
+// Pipes are opened as files; a refused file is a write the low label stopped (or a pipe made for the player's level).
+static HANDLE WINAPI HookCreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES attributes, DWORD disposition, DWORD flags, HANDLE templateFile)
+{
+    bool outer = Enter();
+    HANDLE result = g_createFileW(name, access, share, attributes, disposition, flags, templateFile);
+    if (outer && result == INVALID_HANDLE_VALUE) NoteDenied("CreateFileW", name, RETURN_ADDRESS);
+    Leave();
+    return result;
+}
+
+static BOOL WINAPI HookWaitNamedPipeW(LPCWSTR name, DWORD timeout)
+{
+    bool outer = Enter();
+    BOOL result = g_waitNamedPipeW(name, timeout);
+    if (outer && !result) NoteDenied("WaitNamedPipeW", name, RETURN_ADDRESS);
+    Leave();
+    return result;
+}
+
 /* ---- set-up ---- */
 // Each hook belongs to a group, so a session can turn groups on one at a time (HELLFORGE_NETGATE_HOOKS, a comma list:
-// connect, send, dns, http, process; empty or "all" is every group) to find which one a game build cannot abide.
+// connect, send, dns, http, process, denied; empty or "all" is every group) to find which one a game build cannot abide.
 typedef struct { const wchar_t *module; const char *name; const char *group; void *hook; void **original; bool hooked; } Site;
 static Site g_sites[] = {
     {L"ws2_32.dll", "connect", "connect", (void *)HookConnect, (void **)&g_connect},
@@ -525,6 +660,17 @@ static Site g_sites[] = {
     {L"wininet.dll", "InternetOpenUrlA", "http", (void *)HookInternetOpenUrlA, (void **)&g_internetOpenUrlA},
     {L"kernelbase.dll", "CreateProcessW", "process", (void *)HookCreateProcessW, (void **)&g_createProcessW},
     {L"kernelbase.dll", "CreateProcessA", "process", (void *)HookCreateProcessA, (void **)&g_createProcessA},
+    {L"kernelbase.dll", "OpenFileMappingW", "denied", (void *)HookOpenFileMappingW, (void **)&g_openFileMappingW},
+    {L"kernelbase.dll", "CreateFileMappingW", "denied", (void *)HookCreateFileMappingW, (void **)&g_createFileMappingW},
+    {L"kernelbase.dll", "OpenEventW", "denied", (void *)HookOpenEventW, (void **)&g_openEventW},
+    {L"kernelbase.dll", "CreateEventW", "denied", (void *)HookCreateEventW, (void **)&g_createEventW},
+    {L"kernelbase.dll", "CreateEventExW", "denied", (void *)HookCreateEventExW, (void **)&g_createEventExW},
+    {L"kernelbase.dll", "OpenMutexW", "denied", (void *)HookOpenMutexW, (void **)&g_openMutexW},
+    {L"kernelbase.dll", "CreateMutexW", "denied", (void *)HookCreateMutexW, (void **)&g_createMutexW},
+    {L"kernelbase.dll", "CreateMutexExW", "denied", (void *)HookCreateMutexExW, (void **)&g_createMutexExW},
+    {L"kernelbase.dll", "OpenSemaphoreW", "denied", (void *)HookOpenSemaphoreW, (void **)&g_openSemaphoreW},
+    {L"kernelbase.dll", "CreateFileW", "denied", (void *)HookCreateFileW, (void **)&g_createFileW},
+    {L"kernelbase.dll", "WaitNamedPipeW", "denied", (void *)HookWaitNamedPipeW, (void **)&g_waitNamedPipeW},
 };
 #define SITE_COUNT (sizeof g_sites / sizeof g_sites[0])
 
@@ -588,18 +734,20 @@ static VOID CALLBACK OnDllLoaded(ULONG reason, const DllLoaded *data, PVOID cont
         }
 }
 
-// HELLFORGE_NETGATE_HOOKS: a comma list of the groups to hook (connect, send, dns, http, process), "all" for every
-// group, or unset for the default. The default leaves out connect and connectex: this game build's protection
+// HELLFORGE_NETGATE_HOOKS: a comma list of the groups to hook (connect, send, dns, http, process, denied), "all" for
+// every group, or unset for the default. The default leaves out connect and connectex: this game build's protection
 // checksums its own connect and ConnectEx, so hooking either trips a fast-fail (connectex) or blocks sign-in
 // (connect) ~24 s in; the other groups are fine. Those two are kept only for a deliberate test (and a later re-test
-// on a new build); getting around the check is not in scope. Kept as ",a,b," so one group is matched whole; empty
-// g_groups means every group (used by "all").
+// on a new build); getting around the check is not in scope. The default adds denied only in a sandboxed session
+// (HELLFORGE_BRIDGE_PIPE set), where a low-integrity game is refused what overlays need. Kept as ",a,b," so one group
+// is matched whole; empty g_groups means every group (used by "all").
 static void ReadGroups(void)
 {
     wchar_t hooks[96];
     DWORD hooksLength = GetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", hooks, 96);
+    bool sandboxed = GetEnvironmentVariableW(L"HELLFORGE_BRIDGE_PIPE", NULL, 0) > 0;
     if (hooksLength == 0 || hooksLength >= 96)
-        snprintf(g_groups, sizeof g_groups, ",send,dns,http,process,");
+        snprintf(g_groups, sizeof g_groups, sandboxed ? ",send,dns,http,process,denied," : ",send,dns,http,process,");
     else if (_wcsicmp(hooks, L"all") != 0)
     {
         char narrow[96];

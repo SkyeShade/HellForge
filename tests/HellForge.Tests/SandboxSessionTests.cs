@@ -1,8 +1,8 @@
 using HellForge.Core;
 
-// The Steam broker's log as the session runner reads it before a sandboxed game runs (SteamBrokerLog): the lines are the
-// ones hellforge_steam_broker.c writes, the first two cases from players' sessions.
-static class SteamBrokerLogTests
+// A sandboxed session as the runner reads it: the Steam broker's log before the game runs (SteamBrokerLog), in the lines
+// hellforge_steam_broker.c writes, and what the sandbox refused the game (SandboxRefusals).
+static class SandboxSessionTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
@@ -38,6 +38,30 @@ static class SteamBrokerLogTests
             check(silent.StartsWith("HellForge's Steam broker stopped before the game started. ", StringComparison.Ordinal), "No log, no exit code: " + silent);
             var late = SteamBrokerLog.NotReady();
             check(late.Contains("60 s") && late.Contains("hellforge_steam_broker.exe") && late.Contains("antivirus"), "Not ready in time: " + late);
+        });
+
+        test("What the sandbox refused the game is said by the overlay that asked, then the other modules", () =>
+        {
+            check(SandboxRefusals.Describe([]) == null, "Nothing refused: no line.");
+            check(SandboxRefusals.ModuleOf("nvspcap64.dll+0x1a2b") == "nvspcap64.dll" && SandboxRefusals.ModuleOf("?+0x10") == "?", "The module of a caller.");
+            check(SandboxRefusals.OverlayOf("GameOverlayRenderer64.dll") == "Steam's overlay" && SandboxRefusals.OverlayOf("game.dll") == null,
+                "Known overlays by name, whatever the case.");
+            List<SandboxRefusals.Refusal> refused =
+            [
+                new("Local\\SteamOverlayShm_1", "GameOverlayRenderer64.dll+0x100", 2),
+                new("C:\\Users\\%USERPROFILE%\\AppData\\Local\\NVIDIA\\DXCache\\a.bin", "nvwgf2umx.dll+0x20", 30),
+                new("\\\\.\\pipe\\nvsp-1", "nvspcap64.dll+0x10", 5),
+                new("Local\\nvsp-2", "nvspcap64.dll+0x14", 1),
+                new("Local\\nvsp-3", "nvspcap64.dll+0x18", 1),
+                new("Local\\nvsp-4", "nvspcap64.dll+0x1c", 1),
+            ];
+            var line = SandboxRefusals.Describe(refused, 120)!;
+            check(line.StartsWith("The sandbox refused the game 120 time(s)", StringComparison.Ordinal), "The census's own total: " + line);
+            check(line.IndexOf("NVIDIA's overlay (nvspcap64.dll) 8x", StringComparison.Ordinal) < line.IndexOf("Steam's overlay (GameOverlayRenderer64.dll) 2x", StringComparison.Ordinal) &&
+                line.IndexOf("Steam's overlay", StringComparison.Ordinal) < line.IndexOf("nvwgf2umx.dll 30x", StringComparison.Ordinal),
+                "Overlays first, the most refused first, then other modules: " + line);
+            check(line.Contains("\\\\.\\pipe\\nvsp-1, Local\\nvsp-2, Local\\nvsp-3 and 1 more"), "Three names a module, then how many more: " + line);
+            check(SandboxRefusals.Describe(refused)!.Contains(" 40 time(s)"), "Without a total, the listed ones are added up.");
         });
     }
 }

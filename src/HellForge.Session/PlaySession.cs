@@ -857,6 +857,7 @@ sealed partial class PlaySession(PlayOptions options)
             Environment.SetEnvironmentVariable("HELLFORGE_SANDBOX_STATS", sandboxStats);
             lowToken = LowIntegrityHelper.CreateLowToken();
             result["sandbox"] = true;
+            SetUpOverlayProbe();
         }
         job = new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
             Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);

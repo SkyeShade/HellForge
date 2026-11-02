@@ -10,6 +10,7 @@
 #include <ws2tcpip.h>
 #include <mswsock.h>
 #include <windows.h>
+#include <sddl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -55,6 +56,49 @@ static volatile int g_sink;
 __attribute__((noinline)) static void ConnectOnce(const struct sockaddr_in *to)
 {
     g_sink += connect(INVALID_SOCKET, (const struct sockaddr *)to, sizeof *to);
+}
+
+// Whether a call failed with ERROR_ACCESS_DENIED as its last error; said when not.
+static int Refused(const char *what, int failed)
+{
+    DWORD error = GetLastError();
+    if (failed && error == ERROR_ACCESS_DENIED) return 1;
+    printf("note: %s was not refused with ERROR_ACCESS_DENIED (%s, last error %lu)\n", what, failed ? "failed" : "opened", error);
+    return 0;
+}
+
+// Named objects and a file nobody may open (a DACL that denies everyone), opened again: each is refused with
+// ERROR_ACCESS_DENIED, as a low-integrity game is refused what other programs made at the player's level. Returns how
+// the calls whose caller saw ERROR_ACCESS_DENIED, one bit each (REFUSED_*), or -1 when the fixture cannot be made.
+enum { REFUSED_EVENT = 1, REFUSED_MAPPING = 2, REFUSED_MUTEX = 4, REFUSED_PIPE = 8, REFUSED_FILE = 16 };
+static int RefusedCalls(const wchar_t *folder)
+{
+    PSECURITY_DESCRIPTOR sd = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:(D;;GA;;;WD)", SDDL_REVISION_1, &sd, NULL)) return -1;
+    SECURITY_ATTRIBUTES none = {sizeof none, sd, FALSE};
+    HANDLE event = CreateEventW(&none, TRUE, FALSE, L"Local\\hf-netgate-denied-event");
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, &none, PAGE_READWRITE, 0, 4096, L"Local\\hf-netgate-denied-mapping");
+    HANDLE mutex = CreateMutexW(&none, FALSE, L"Local\\hf-netgate-denied-mutex");
+    HANDLE pipe = CreateNamedPipeW(L"\\\\.\\pipe\\hf-netgate-denied-pipe", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 64, 64, 0, &none);
+    wchar_t file[MAX_PATH];
+    swprintf(file, MAX_PATH, L"%ls\\hf-netgate-denied.txt", folder);
+    DeleteFileW(file);
+    // kept open (and deleted when closed): a file nobody may open is not one this test can delete afterwards
+    HANDLE made = CreateFileW(file, GENERIC_WRITE | DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE, &none, CREATE_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+    int kept = 0;
+    kept |= REFUSED_EVENT * Refused("OpenEventW", !OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Local\\hf-netgate-denied-event"));
+    kept |= REFUSED_MAPPING * Refused("OpenFileMappingW", !OpenFileMappingW(FILE_MAP_READ, FALSE, L"Local\\hf-netgate-denied-mapping"));
+    kept |= REFUSED_MUTEX * Refused("OpenMutexW", !OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\hf-netgate-denied-mutex"));
+    kept |= REFUSED_PIPE * Refused("CreateFileW (pipe)", CreateFileW(L"\\\\.\\pipe\\hf-netgate-denied-pipe", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL) ==
+        INVALID_HANDLE_VALUE);
+    kept |= REFUSED_FILE * Refused("CreateFileW (file)", CreateFileW(file, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL) ==
+        INVALID_HANDLE_VALUE);
+    // a name that does not exist is not a refusal: nothing is written for it
+    OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Local\\hf-netgate-no-such-event");
+    HANDLE made_[] = {event, mapping, mutex, pipe, made};
+    for (size_t i = 0; i < sizeof made_ / sizeof made_[0]; i++) if (made_[i] && made_[i] != INVALID_HANDLE_VALUE) CloseHandle(made_[i]);
+    LocalFree(sd);
+    return kept;
 }
 
 int wmain(int argc, wchar_t **argv)
@@ -107,6 +151,13 @@ int wmain(int argc, wchar_t **argv)
     void *connection = session && connectTo ? connectTo(session, L"example.invalid", 443, 0) : NULL;
     if (connection) close(connection);
     if (session) close(session);
+    wchar_t folder[MAX_PATH];
+    wcsncpy(folder, argv[2], MAX_PATH - 1);
+    folder[MAX_PATH - 1] = 0;
+    wchar_t *slash = wcsrchr(folder, L'\\');
+    if (slash) *slash = 0;
+    else wcscpy(folder, L".");
+    int refused = RefusedCalls(folder);
     STARTUPINFOW startup = {sizeof startup};
     PROCESS_INFORMATION process;
     wchar_t command[] = L"C:\\HellForge\\does-not-exist\\crs-handler.exe";
@@ -123,6 +174,7 @@ int wmain(int argc, wchar_t **argv)
         Check(!Has(log, "\"api\":\"connect\"", NULL, NULL), "the connect group is not hooked");
         Check(!Has(log, "\"api\":\"WinHttpConnect\"", NULL, NULL), "the http group is not hooked");
         Check(!Has(log, "\"api\":\"CreateProcessW\"", NULL, NULL), "the process group is not hooked");
+        Check(!Has(log, "\"scope\":\"denied\"", NULL, NULL), "the denied group is not hooked");
         printf("%s\n", g_failed ? "network gate groups: FAILED" : "PASS network gate groups: only the chosen group is hooked");
         return g_failed ? 1 : 0;
     }
@@ -137,6 +189,17 @@ int wmain(int argc, wchar_t **argv)
     Check(Has(log, "\"gate\":\"module loaded\"", "winhttp.dll", NULL), "a network module loaded later is hooked");
     Check(Has(log, "\"api\":\"WinHttpConnect\"", "example.invalid:443", "\"scope\":\"name\""), "WinHttpConnect");
     Check(Has(log, "\"api\":\"CreateProcessW\"", "crs-handler.exe", "\"caller\":\"net_gate_test.exe+"), "a program started, named by its caller past kernel32");
+    // Windows refuses all five; Wine enforces no DACL on a mutex or a pipe, so those two are checked when refused.
+    Check(refused >= 0 && (refused & (REFUSED_EVENT | REFUSED_MAPPING | REFUSED_FILE)) == (REFUSED_EVENT | REFUSED_MAPPING | REFUSED_FILE),
+        "a refused call keeps ERROR_ACCESS_DENIED as its caller's last error");
+    Check(Has(log, "\"api\":\"OpenEventW\"", "hf-netgate-denied-event", "\"scope\":\"denied\""), "a refused event, by name");
+    Check(Has(log, "\"api\":\"OpenFileMappingW\"", "hf-netgate-denied-mapping", "\"caller\":\"net_gate_test.exe+"), "refused shared memory, by its caller");
+    Check(Has(log, "\"api\":\"CreateFileW\"", "hf-netgate-denied.txt", "\"scope\":\"denied\""), "a refused file");
+    Check(!(refused & REFUSED_MUTEX) == !Has(log, "\"api\":\"OpenMutexW\"", "hf-netgate-denied-mutex", "\"scope\":\"denied\""),
+        "a mutex is written exactly when it was refused");
+    Check(!(refused & REFUSED_PIPE) == !Has(log, "\"api\":\"CreateFileW\"", "hf-netgate-denied-pipe", "\"scope\":\"denied\""),
+        "a pipe is written exactly when it was refused");
+    Check(!Has(log, "hf-netgate-no-such-event", NULL, NULL), "a name that does not exist is not written");
     printf("%s\n", g_failed ? "network gate census: FAILED" : "PASS network gate census: hooks, scopes, repeats, callers, late modules, programs");
     return g_failed ? 1 : 0;
 }
