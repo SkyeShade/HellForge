@@ -79,6 +79,7 @@ sealed partial class PlaySession
             try
             {
                 if (!broker.HasExited) { broker.Kill(); broker.WaitForExit(5000); }
+                result["brokerGameConnected"] = brokerConnected;
                 result["brokerStopped"] = broker.HasExited;
                 if (broker.HasExited) result["brokerExitCode"] = broker.ExitCode;
             }

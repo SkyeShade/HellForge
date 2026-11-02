@@ -827,7 +827,7 @@ sealed partial class PlaySession(PlayOptions options)
     }
 
     // Starts the copied game in its job (low-integrity and brokered when sandboxed), then resumes it after the status is
-    // saved.
+    // saved; sandboxed, once the broker has Steam and waits for the game (WaitForBroker).
     void LaunchGame()
     {
         // The engine's own --log-to-file switch (its console log); whatever .log files it writes are copied at the end.
@@ -862,33 +862,14 @@ sealed partial class PlaySession(PlayOptions options)
             Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);
         result["gamePid"] = job.Process.Id;
         result["gameLaunched"] = true;
-        if (options.Sandbox) StartBroker(bridgeSuffix!);
+        if (options.Sandbox)
+        {
+            StartBroker(bridgeSuffix!);
+            WaitForBroker();
+        }
         result["status"] = "patching";
         Save();
         job.Resume();
-    }
-
-    void StartBroker(string bridgeSuffix)
-    {
-        var brokerExe = Path.Combine(Shims, "hellforge_steam_broker.exe");
-        // Pinned like the stand-ins: the broker runs at the player's integrity and loads Valve's DLL for the game.
-        var brokerPin = (string?)Tools.ReadJson(Path.Combine(Shims, "build.json"))?["steamBroker"];
-        if (!File.Exists(brokerExe) || brokerPin == null) throw new SessionFailure("The Steam broker is missing; reinstall HellForge.");
-        if (!Tools.Sha256(brokerExe).Equals(brokerPin, StringComparison.OrdinalIgnoreCase)) throw new SessionFailure("The Steam broker changed since it was built; reinstall HellForge.");
-        var brokerStart = new ProcessStartInfo(brokerExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
-        brokerStart.ArgumentList.Add(bridgeSuffix);
-        brokerStart.ArgumentList.Add(job!.Process.Id.ToString());
-        brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(copy, "bin", CloudReal)));
-        // Play with strangers, which the broker reads as the backend does: off, the game's Public Steam lobby is Friends only
-        brokerStart.ArgumentList.Add(Path.GetFullPath(install.Mods));
-        // the backend's co-op peers (MultiplayerHost.PeersFile), the only Steam users the game's P2P reaches: in the
-        // backend's folder, which the low-integrity game cannot write
-        brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
-        broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
-        var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
-        broker.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (brokerLog) brokerLog.WriteLine(e.Data); };
-        broker.BeginErrorReadLine();
-        result["brokerPid"] = broker.Id;
     }
 
     // The memory-only launch edits on the running game: the PlayFab redirect, the native mod applier, the early
@@ -1093,6 +1074,7 @@ sealed partial class PlaySession(PlayOptions options)
             job!.Process.Refresh();
             if (job.Process.HasExited) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
+            CheckBroker();
             RecordRedirect(playFab);
             // clearMatchmaking holds the game to the genuine sign-in; ClearPlatformMatchmaking runs each loop.
             var matchmaking = clearMatchmaking ? ClearMatchmaking() : null;

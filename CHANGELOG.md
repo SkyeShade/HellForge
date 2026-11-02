@@ -42,6 +42,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- With the sandbox on, the game could stop at STEAM NOT DETECTED while HellForge said the session was running. The
+  game reaches Steam through HellForge's Steam broker, which was started after the game and could be late, for example
+  while an antivirus checked it, or could fail to reach Steam. The game now starts only once the broker has Steam. If
+  the broker can't reach Steam, PLAY stops and says why (Steam not running or signed in, or running as administrator),
+  and the session log says if the broker stops during play.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
