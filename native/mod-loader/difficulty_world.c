@@ -559,12 +559,54 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             Note("difficulty: extra large maps: the terrain merge covers the central %d m (research; the world is %u m)", size, mergeSize);
         }
     }
+    /* Research (terrain detail): RenderZoneHeightmap (op 0x3D, 0xF4A280) blends each zone's height materials over the
+     * Voronoi triangles with texture coordinates position * (1.0 / world size), y flipped as 1.0 - v: the materials span
+     * the whole world once, so at 16 km each texel covers 8x the ground it does on a 2 km map. With
+     * HELLFORGE_XL_ZONE_REPEAT=1 an extra large level's op 0x3D loads 8.0 (game.dll's constant at 0x23C7524) in place of
+     * that 1.0 (the movss at 0xF4A39C), so the coordinates run 0..8 and repeat every 2048 m as on a vanilla map (the flip
+     * holds modulo 1); the load is put back after the op. */
+    static int zoneRepeat = -1;
+    int zoneSet = 0;
+    uintptr_t zoneLoad = g_world.game + 0xF4A39Cu + 5u;
+    if (watch && op == 0x3D && g_world.current == 8.0f)
+    {
+        if (zoneRepeat < 0)
+        {
+            char text[8] = "";
+            zoneRepeat = GetEnvironmentVariableA("HELLFORGE_XL_ZONE_REPEAT", text, sizeof text) > 0 && atoi(text) == 1;
+        }
+        int32_t rel = 0;
+        if (zoneRepeat && !SafeRead(zoneLoad, &rel, 4) && zoneLoad + 4 + (intptr_t)rel == g_world.game + 0x23C6D70u)
+        {
+            int32_t eight = (int32_t)((intptr_t)(g_world.game + 0x23C7524u) - (intptr_t)(zoneLoad + 4));
+            DWORD old = 0;
+            if (VirtualProtect((void*)zoneLoad, 4, PAGE_EXECUTE_READWRITE, &old))
+            {
+                *(volatile int32_t*)zoneLoad = eight;
+                VirtualProtect((void*)zoneLoad, 4, old, &old);
+                FlushInstructionCache(GetCurrentProcess(), (void*)zoneLoad, 4);
+                zoneSet = rel;
+                static LONG told;
+                if (InterlockedIncrement(&told) == 1) Note("difficulty: extra large maps: zone height materials repeat every 2048 m (research)");
+            }
+        }
+    }
     uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
     uintptr_t vanillaBlock = 0;
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
         vanillaOp == 0x2B && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
+    if (zoneSet)
+    {
+        DWORD old = 0;
+        if (VirtualProtect((void*)zoneLoad, 4, PAGE_EXECUTE_READWRITE, &old))
+        {
+            *(volatile int32_t*)zoneLoad = zoneSet;
+            VirtualProtect((void*)zoneLoad, 4, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), (void*)zoneLoad, 4);
+        }
+    }
     if (vanilla2B) /* research: a vanilla map's stamp placement, to compare densities with */
     {
         uint32_t vanillaAfter = 0;
