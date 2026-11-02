@@ -422,12 +422,8 @@ static void ProbeHex(HANDLE file, const char* title, uint64_t at, uint32_t bytes
  * the grid's size f32 at G + 0x28C800). Once per level, at op 0x6D: total seeds, cells used, the fullest cell, a count
  * histogram, distinct values and the mean spacing, so the grid can be sized for a larger world. */
 static LONG g_zoneNoted = -1;
-static void WorldZoneGridNote(void)
+static void WorldGridStats(uintptr_t gen, const char* label)
 {
-    if (g_zoneNoted == g_world.levels || g_worldLevel == 0) return;
-    g_zoneNoted = g_world.levels;
-    uintptr_t gen = 0;
-    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return;
     uintptr_t grid = gen + 0x231C18;
     static uint16_t counts[96 * 96];
     float size = 0.0f;
@@ -455,9 +451,99 @@ static void WorldZoneGridNote(void)
     char text[256];
     int n = 0;
     for (int k = 0; k <= 25 && n < (int)sizeof text - 16; k++) if (histogram[k]) n += snprintf(text + n, sizeof text - n, " %d:%u", k, histogram[k]);
-    Note("difficulty: zone grid at %.0fx: size %.0f m (cells of %.1f m), %u seeds in %u of 9216 cells, fullest %u, %u distinct values (%.0f m between seeds); seeds per cell:%s",
-        (double)g_world.current, (double)size, (double)(size / 96.0f), total, used, fullest, distinct,
+    Note("difficulty: zone grid (%s) at %.0fx: size %.0f m (cells of %.1f m), %u seeds in %u of 9216 cells, fullest %u, %u distinct values (%.0f m between seeds); seeds per cell:%s",
+        label, (double)g_world.current, (double)size, (double)(size / 96.0f), total, used, fullest, distinct,
         total ? (double)size / sqrt((double)total) : 0.0, text);
+}
+
+static void WorldZoneGridNote(void)
+{
+    if (g_zoneNoted == g_world.levels || g_worldLevel == 0) return;
+    g_zoneNoted = g_world.levels;
+    uintptr_t gen = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return;
+    WorldGridStats(gen, "level");
+}
+
+/* Terrain tiles, step 1 (research): one tile's Voronoi at vanilla density, built by the game's own GenerateVoronoi
+ * (op 0x25, 0xF3F8E0) on a copy of the generator block, so the level's plan is untouched. The tile runs as a small
+ * world in tile-local coordinates: for the call the world size ([settings+0x2C]) is the tile's extent, the lattice box
+ * (settings +0x64/+0x68, square) is [0, extent], the keep radius (+0x6C) covers the box, and the lattice spacing
+ * ([[[context+0x18]+0x2D0]+0x68]) is 16 m; everything is put back after. Pass records point into the block, so the
+ * record is copied and every pointer into the block moved onto the copy. Handlers are called as the dispatcher does:
+ * (record + 8, record, context). Runs once per level at CullUnitsOutsidePlayableArea (op 0x6D), after the level's own
+ * Voronoi geometry is destroyed (op 0x3B). HELLFORGE_XL_TILE=<extent in m> (256..2048) turns it on. */
+#define GEN_BLOCK_SIZE 0x11A7268u
+static uint64_t g_rec25, g_tileContext;
+static LONG g_tileDone = -1;
+static uint8_t* g_tileBlock;
+
+static void WorldTileRelocate(uint8_t* record, uintptr_t from, uintptr_t to)
+{
+    for (uint32_t o = 0; o + 8 <= 0x19B0u; o += 8)
+    {
+        uint64_t v;
+        memcpy(&v, record + o, 8);
+        if (v >= from && v < from + GEN_BLOCK_SIZE) { v = v - from + to; memcpy(record + o, &v, 8); }
+    }
+}
+
+static void WorldTileProbe(uint64_t context)
+{
+    if (g_tileDone == g_world.levels || g_worldLevel == 0 || g_rec25 == 0) return;
+    g_tileDone = g_world.levels;
+    static int extent = -1;
+    if (extent < 0)
+    {
+        char text[16] = "";
+        extent = GetEnvironmentVariableA("HELLFORGE_XL_TILE", text, sizeof text) > 0 ? atoi(text) : 0;
+        if (extent < 256 || extent > 2048) extent = 0;
+    }
+    if (extent == 0) return;
+    uintptr_t gen = 0, settings = 0, spacingAt = 0, p = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(context + 8, &settings, 8) || settings == 0 ||
+        SafeRead(context + 0x18, &p, 8) || p == 0 || SafeRead(p + 0x2D0, &p, 8) || p == 0 || SafeRead(p + 0x68, &spacingAt, 8) || spacingAt == 0)
+    { Note("difficulty: terrain tile: the generator's settings did not read"); return; }
+    if (g_tileBlock == NULL) g_tileBlock = (uint8_t*)VirtualAlloc(NULL, GEN_BLOCK_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    static uint8_t record[0x19B0];
+    if (g_tileBlock == NULL || SafeRead(gen, g_tileBlock, GEN_BLOCK_SIZE) || SafeRead(g_rec25, record, sizeof record))
+    { Note("difficulty: terrain tile: the generator block did not copy"); return; }
+    WorldTileRelocate(record, gen, (uintptr_t)g_tileBlock);
+    uint32_t size = 0; float lo = 0, hi = 0, radius = 0, spacing = 0;
+    SafeRead(settings + 0x2C, &size, 4); SafeRead(settings + 0x64, &lo, 4); SafeRead(settings + 0x68, &hi, 4);
+    SafeRead(settings + 0x6C, &radius, 4); SafeRead(spacingAt, &spacing, 4);
+    Note("difficulty: terrain tile: the level's Voronoi settings: world %u m, box %.1f..%.1f, keep radius %.1f, spacing %.2f m",
+        size, (double)lo, (double)hi, (double)radius, (double)spacing);
+    volatile uint32_t* sizeP = (volatile uint32_t*)settings + 0x2C / 4;
+    volatile float* loP = (volatile float*)(settings + 0x64);
+    volatile float* hiP = (volatile float*)(settings + 0x68);
+    volatile float* radiusP = (volatile float*)(settings + 0x6C);
+    volatile float* spacingP = (volatile float*)spacingAt;
+    /* difficulty_maps.c's grid stub (0xF3FB04) swaps in the stretched spacing while the level's disk ([lg+0x2D7C], lg =
+     * [context+0x18]) is the larger map's; the field is changed for the call so the 16 m setting is used. Nothing
+     * else in op 0x25 or jc_voronoi reads it. */
+    uintptr_t lg = 0;
+    uint32_t disk = 0;
+    if (SafeRead(context + 0x18, &lg, 8) || lg == 0 || SafeRead(lg + 0x2D7C, &disk, 4)) { Note("difficulty: terrain tile: the level did not read"); return; }
+    volatile uint32_t* diskP = (volatile uint32_t*)(lg + 0x2D7C);
+    *diskP = disk ^ 1u;
+    *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = (float)extent; *radiusP = (float)extent; *spacingP = 16.0f;
+    typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
+    LARGE_INTEGER t0, t1, hz;
+    QueryPerformanceCounter(&t0);
+    ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)record + 8, (uint64_t)record, context);
+    QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
+    uint32_t counts[3] = {0};
+    for (int k = 0; k < 3; k++)
+    {
+        uint64_t at = 0;
+        memcpy(&at, record + 8 + 0x20 + 0x10 * k, 8);
+        if (at) SafeRead(at, &counts[k], 4);
+    }
+    Note("difficulty: terrain tile: %d m tile Voronoi in %.1f ms: counts %u / %u / %u", extent,
+        (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, counts[0], counts[1], counts[2]);
+    WorldGridStats((uintptr_t)g_tileBlock, "tile");
 }
 
 static volatile LONG g_terrainProbes;
@@ -519,13 +605,14 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) WorldZoneGridNote();
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) WorldTileProbe(b); }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
     int watch = g_world.current > 1.0f && g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 &&
         !SafeRead(index, &at, 4) && !SafeRead(records + (uint64_t)at * 0x19B0u, &op, 4) && !SafeRead(block + 0x11A7108, &before, 4);
     if (watch && at != g_worldOpAt) { g_worldOpAt = at; InterlockedIncrement(&g_worldOpRun); }
+    if (watch && op == 0x25) { g_rec25 = records + (uint64_t)at * 0x19B0u; g_tileContext = b; }
     LARGE_INTEGER start, now, frequency;
     static LONG depth; /* the dispatcher on the generating thread only; a nested op is not profiled on its own */
     /* Off: under Wine, SuspendThread/ResumeThread are wineserver round trips, and suspending the generating thread
