@@ -401,6 +401,9 @@ static int EditTarget(HfMod* mod, const char* what, uint64_t entity, const SdkCo
     if (w == NULL) return 1;
     for (int i = 0; i < w->ownCount; i++) if (w->own[i] == component->index) return 0;
     if (component->index == REG_BEHAVIOUR && w->behaviour != 0) return 0;
+    /* own_all: a record of its own in every component of its base, found when the edit is written (one it still shares,
+     * its record size unknown, is refused there) */
+    if (w->ownAll) return 0;
     if (w->state != 0 || g_fired[HF_EVENT_ENTITIES_READY] || w->ownCount >= REG_MAX_OWN || SlotsOf(component->index) == 0)
     {
         ApiLog(mod, "%s: %s has no %s record of its own (edit it from hellforge_mod_init, or name the field in its definition)",

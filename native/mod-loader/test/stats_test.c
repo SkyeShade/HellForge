@@ -2500,6 +2500,18 @@ static void OwnAllFixture(void)
         records[(size_t)theirs * size] ^= 0xFF; /* the base changes; the copy does not */
         assert(records[(size_t)mine * size] != records[(size_t)theirs * size]);
     }
+    /* its records are edited as its own once the data has loaded too (set_live, the editor's pages), not only those it
+     * named; without own_all, one it did not name is refused */
+    {
+        const SdkComponent* fire = SdkComponentNamed("ProjectileWeaponComponentData");
+        int fired = g_fired[HF_EVENT_ENTITIES_READY];
+        g_fired[HF_EVENT_ENTITIES_READY] = 1;
+        assert(fire != NULL && EditTarget(&g_mods[0], "set_live", hmg, fire) == 0);
+        g_weapons[0].ownAll = 0;
+        assert(EditTarget(&g_mods[0], "set_live", hmg, fire) == -1);
+        g_weapons[0].ownAll = 1;
+        g_fired[HF_EVENT_ENTITIES_READY] = fired;
+    }
     /* content lists it with its base; a caller's older, smaller struct gets no more than it holds */
     {
         HfContent c = {sizeof c};

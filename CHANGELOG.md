@@ -48,6 +48,8 @@ On `dev`, since 0.3.0-beta.
 - A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
   fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
   now shows only what the mod owns. (#177)
+- A mod entity with `own_all = 1` (`HfEntity`) refused live edits (`set_live`, the in-game editor's saved values) of
+  any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
