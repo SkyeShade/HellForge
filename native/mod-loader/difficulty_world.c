@@ -594,6 +594,7 @@ static const char* WorldSitesFailed(uintptr_t game)
  * the stub. */
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
 static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
+static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
 static const char* InstallWorld(DifficultyInstall* d)
 {
     uint32_t scale = WorldScaleFor(g_difficulty.mapScale);
@@ -696,6 +697,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     InstallWorldPlan(game); /* it notes its own refusal; the vanilla pass still runs then */
     const char* overlap = InstallWorldOverlap(game);
     if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
+    const char* poisson = InstallWorldPoisson(game);
+    if (poisson != NULL) Note("difficulty: extra large maps: the tiled Poisson-disk sampler is not used: %s", poisson);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);
