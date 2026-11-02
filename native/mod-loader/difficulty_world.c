@@ -575,7 +575,16 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         QueryPerformanceCounter(&t0);
         uint32_t index = 0;
         int calls = 0;
-        while (index == 0 && calls < 64) { g_worldDispatch((uint64_t)one, context, (uint64_t)&index, 1, e, 0, g, h); calls++; }
+        /* Multi-phase ops keep their phase in the byte the dispatcher's 5th argument points to (0x93: setup 0xF3C870,
+         * then 0xF3CF40 until it reports done, 0xC15438): the tile's own byte, from 0, so the level's (its op 0x6D is
+         * two-phase too) is never touched; polled across real time, as the phases wait on worker jobs. */
+        uint8_t phase = 0;
+        while (index == 0 && calls < 10000)
+        {
+            g_worldDispatch((uint64_t)one, context, (uint64_t)&index, 1, (uint64_t)&phase, 0, g, h);
+            calls++;
+            if (index == 0) Sleep(1);
+        }
         QueryPerformanceCounter(&t1);
         ran++;
         { /* research: route cell 0's first edge pointer and the route cell counts after each op (a vertex written over it
