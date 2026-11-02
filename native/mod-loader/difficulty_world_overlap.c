@@ -55,6 +55,11 @@
  * whenever the record can pass. That, the ascending order and the < r15d filter together make the list a superset of the
  * records the original would test further (check mode below verifies the box test itself on small buffers).
  *
+ * The grids live for one run of one pass record (g_worldOpRun, difficulty_world.c: bumped at level init and whenever the
+ * dispatcher moves to another record), so a later op 0x2B whose arena buffer lands at the same address starts again; the
+ * job only appends records (the box is written before [rbp-0x7C] counts it, 0xF349E1 .. 0xF34ABB), so within a run the
+ * records below the count never change.
+ *
  * Only extra large levels take this path: g_world.current > 1 (difficulty_world.c) is checked on every OverlapBegin, and
  * the continuation stub reads g_overlap.level, which OverlapBegin clears on a normal level, so a normal map pays one C
  * call per candidate (not per record) and keeps the original stepping.
@@ -445,7 +450,7 @@ static void OverlapCheck(uintptr_t base, uint32_t count, const float* q, const O
         memcpy(box, (const void*)(uintptr_t)(base + 8u + (uint64_t)i * 0x130u + 0xB0u), sizeof box);
         if (!OverlapBoxPass(q[0], q[1], q[2], q[3], box)) continue;
         if (OverlapListHas(t->list, t->listCount, i)) continue;
-        LONG n = InterlockedIncrement(&g_overlapMisses);
+        LONG64 n = InterlockedIncrement64(&g_overlapMisses);
         if (n <= 4)
             Note("difficulty: extra large maps: the stamp overlap grid missed record %u of %u (query centre %.3f, %.3f half %.3f, %.3f; box %.3f, %.3f .. %.3f, %.3f)",
                 (unsigned)i, (unsigned)count, (double)q[0], (double)q[1], (double)q[2], (double)q[3],
@@ -552,7 +557,7 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     if (g_overlap.installed == 0) return -2;
     if (!(g_world.current > 1.0f)) { g_overlap.level = 0; return -2; }
     g_overlap.level = 1;
-    LONG generation = g_world.levels;
+    LONG generation = g_worldOpRun; /* one run of one pass record (difficulty_world.c) */
     if (base == 0 || count == 0 || count > OVERLAP_MAX_COUNT || q == NULL ||
         !isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3]) ||
         fabsf(q[0]) > OVERLAP_LIMIT || fabsf(q[1]) > OVERLAP_LIMIT || fabsf(q[2]) > OVERLAP_LIMIT || fabsf(q[3]) > OVERLAP_LIMIT)
@@ -568,6 +573,12 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     }
     int failed = 0;
     AcquireSRWLockExclusive(&e->lock);
+    if (!e->used || e->base != base) /* a new generation freed the entry between the claim and the lock */
+    {
+        ReleaseSRWLockExclusive(&e->lock);
+        OverlapStats(generation, 0, count, 1);
+        return -2;
+    }
     if (e->generation != (uint32_t)generation || count < e->built) OverlapResetEntry(e, (uint32_t)generation);
     if (!e->failed && e->built < count)
     {

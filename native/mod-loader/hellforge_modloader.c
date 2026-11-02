@@ -595,6 +595,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_profile.c" /* before difficulty_world.c: the generation ops' sampling profiler */
 #include "difficulty_world.c" /* after difficulty_cities.c: its extra large maps' world (the stub macros) */
 #include "difficulty_world_plan.c" /* after difficulty_world.c: the Hive Lord graph on a grid (g_world) */
+#include "difficulty_world_overlap.c" /* after difficulty_world.c: the stamp overlap test on a grid (g_world, g_worldOpRun) */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */

@@ -310,6 +310,11 @@ WORLD_PASS(Voronoi, 0xF3F8E0u, "GenerateVoronoi")
  * every op of an extra large level that adds locations or takes over 100 ms. */
 typedef uint64_t (*WorldDispatchFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
 static WorldDispatchFn g_worldDispatch;
+/* Bumped at every level init and whenever an extra large level's dispatcher moves to another pass record: the stamp
+ * overlap grid (difficulty_world_overlap.c) keeps its per-buffer grids for one run of a pass only, so a later op 0x2B
+ * whose arena buffer lands at the same address starts from an empty grid. */
+static volatile LONG g_worldOpRun;
+static uint32_t g_worldOpAt = 0xFFFFFFFFu;
 static float* g_heightCopy; /* the layer heightfield the loader keeps (below) */
 static uint64_t g_heightSource, g_heightBytes;
 static volatile LONG g_worldStampNotes;
@@ -319,6 +324,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uintptr_t block = 0;
     int watch = g_world.current > 1.0f && g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 &&
         !SafeRead(index, &at, 4) && !SafeRead(records + (uint64_t)at * 0x19B0u, &op, 4) && !SafeRead(block + 0x11A7108, &before, 4);
+    if (watch && at != g_worldOpAt) { g_worldOpAt = at; InterlockedIncrement(&g_worldOpRun); }
     LARGE_INTEGER start, now, frequency;
     static LONG depth; /* the dispatcher on the generating thread only; a nested op is not profiled on its own */
     /* Off: under Wine, SuspendThread/ResumeThread are wineserver round trips, and suspending the generating thread
@@ -500,6 +506,8 @@ static void WorldLevel(uintptr_t level)
     g_world.values->size = scale > 1.0f ? 2048.0f * scale : 0.0f;
     if (scale != g_world.current) WorldWrite(scale);
     g_worldLevel = level;
+    g_worldOpAt = 0xFFFFFFFFu;
+    InterlockedIncrement(&g_worldOpRun);
     WorldIndex(level, 2048.0f * scale);
     LONG full = g_worldIndexFull != NULL ? *g_worldIndexFull : 0;
     if (full != g_worldIndexFullSeen)
@@ -585,6 +593,7 @@ static const char* WorldSitesFailed(uintptr_t game)
 /* An extra large map's world: the block (stub +0, values +0x1000), the readers pointed at it, the size store through
  * the stub. */
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
+static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
 static const char* InstallWorld(DifficultyInstall* d)
 {
     uint32_t scale = WorldScaleFor(g_difficulty.mapScale);
@@ -685,6 +694,8 @@ static const char* InstallWorld(DifficultyInstall* d)
         if (ApiCodeMatches(exe + kSpawners[i].rva, kSpawners[i].pin))
             LoaderHook("extra large maps' spawn diagnostic", exe + kSpawners[i].rva, kSpawnDetours[i], (void**)&g_worldSpawn[i]);
     InstallWorldPlan(game); /* it notes its own refusal; the vanilla pass still runs then */
+    const char* overlap = InstallWorldOverlap(game);
+    if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);
