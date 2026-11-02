@@ -13,8 +13,8 @@ namespace HellForge.Core.GameData;
 // temp/forge-credits/ and staged as HellForge's own patch for the session (ModStaging), like WarbondLocks.
 public static class ForgeCredits
 {
-    // Part of the cache key: raise it whenever the same game build would build different bytes.
-    public const int Version = 1;
+    // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
+    public const int Version = 2;
     const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
