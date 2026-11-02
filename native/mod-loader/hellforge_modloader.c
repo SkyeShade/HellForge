@@ -592,6 +592,9 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_missions.c" /* its missions and objectives */
 #include "difficulty_countdown.c" /* its mission countdown */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
+#include "difficulty_world_profile.c" /* before difficulty_world.c: the generation ops' sampling profiler */
+#include "difficulty_world.c" /* after difficulty_cities.c: its extra large maps' world (the stub macros) */
+#include "difficulty_world_plan.c" /* after difficulty_world.c: the Hive Lord graph on a grid (g_world) */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
@@ -600,6 +603,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "behaviours.c"
 #include "behaviour_turret.c" /* right after behaviours.c: the turret behaviour (TurretUpdate) */
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
+#include "difficulty_world_watch.c" /* after crash_notes.c: the write-watchpoint research exports (FieldWatch keeps Dr0-Dr2) */
 #include "packages.c"
 #include "loadout_preview.c"
 #include "abilities.c"
@@ -613,6 +617,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "actions.c" /* after refs.c (packages) and events.c (the readers) */
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
+#include "difficulty_stream.c" /* after rounds.c: the players (event_polls.c, actions.c) and the extra large world */
 
 static void Deliver(HfEvent event)
 {

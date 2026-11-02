@@ -5,7 +5,7 @@
 static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     DifficultyReadersFailed, KeepTenFailed, BandFailed, LevelReadersFailed, BoardFailed, SpreadFailed, HashInsertFailed,
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
-    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed,       /* a map_scale above 1 */
+    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, WorldSitesFailed, /* a map_scale above 1 */
     LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed};
 
@@ -20,6 +20,7 @@ static const char* DifficultySitesFailed(uintptr_t game, int* waiting)
 
 /* The install, step by step: the table and the stubs' page, every stub prepared, the page made executable, level 11's
  * row; then the game's code and data pointed at them. A step returns why it failed (the level is then refused). */
+static const char* InstallWorldStreamStep(DifficultyInstall* d); /* difficulty_stream.c */
 static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     AllocateTable, PrepareExtraWidget, PrepareIconStubs, PrepareBarStubs, PrepareObjectiveStubs, PrepareLevelStubs,
     PrepareMarkerStubs, PrepareMapStubs, PrepareCellStubs, PrepareRestartStubs, PrepareZoneStubs, PrepareLaunchStub,
@@ -29,7 +30,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     WidenMissionRanges, InstallBoard, InstallSpreadGuard, InstallHashInsertGuard, MixStep, InstallGrant, InstallRadar,
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
-    InstallClusterGuards, InstallAppendGuards, InstallFootprintWatch, InstallNavGrid,             /* a map_scale above 1 */
+    InstallClusterGuards, InstallAppendGuards, InstallFootprintWatch, InstallNavGrid, InstallWorld, InstallWorldStreamStep, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
 
@@ -43,7 +44,7 @@ static const char* const kInstallStepNames[] = {
     "WidenMissionRanges", "InstallBoard", "InstallSpreadGuard", "InstallHashInsertGuard", "MixStep", "InstallGrant", "InstallRadar",
     "MoveBandsAndIcons",
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
-    "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid",
+    "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid", "InstallWorld", "InstallWorldStream",
     "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
     "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],

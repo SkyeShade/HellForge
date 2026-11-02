@@ -312,9 +312,10 @@ typedef struct HfDifficulty
     const char* icon;            /* optional: an icon resource the mod's data spec builds ("icon" entries, as for
                                     stratagems); shown in the difficulty bar. NULL keeps Super Helldive's */
     /* Missions at this level (0 keeps level 10's). */
-    float map_scale;             /* playable radius, relative to level 10's: up to 2. Above 1 the route cells are
+    float map_scale;             /* playable radius, relative to level 10's: up to 20. Above 1 the route cells are
                                     farther apart (the generator has room for level 10's number); the structured
-                                    maps (map type 2) keep level 10's size */
+                                    maps (map type 2) keep level 10's size. Above 2 the world grows past 2048 m
+                                    (2048 m x 2, 4 or 8: about 16 km across at 20), a prototype: extra large maps */
     uint32_t optional_objectives;/* optional objectives a mission draws from its list (level 10: 4) */
     uint32_t major_objectives;   /* secondary objectives (level 10: 1); optional + major at most 18 (the map
                                     generator places 30 objectives at this level, the missions' own among them) */

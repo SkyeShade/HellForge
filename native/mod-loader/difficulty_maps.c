@@ -112,6 +112,10 @@ static const uint8_t kNavTileSizeRead[8] = {0xF3, 0x0F, 0x10, 0x05, 0x4A, 0xF5, 
 static const uint8_t kNavTileSize256[4] = {0x5A, 0xFF, 0xE0, 0x00};
 static int g_navTiles256; /* the exe's terrain build and its 256.0 are as reviewed */
 static uintptr_t g_navExe;
+/* An extra large map (difficulty_world.c, a world of 2048 m x scale) keeps the 8 x 8 grid with 256 m x scale tiles over
+ * the whole world; their size is a float of the loader's within 2 GB of the exe (g_navWorldTile, 0 when none). */
+static float* g_navWorldTile;
+static uint32_t g_navWorldScale = 1;
 static volatile LONG g_navLarger, g_navVanilla;
 /* Before a navmesh grid is set up: 256 m tiles for a larger map (its generated disk, lg+0x2D8C, past vanilla's 681 m),
  * else 128 m. Only an 8 x 8 grid is touched. */
@@ -124,10 +128,20 @@ static void NavRetile(uint32_t id, uintptr_t level)
     if (exe == 0 || SafeRead(exe + DIF_NAV_COUNT, &count, 4) || id >= count || SafeRead(exe + DIF_NAV_WORLDS, &worlds, 8) || worlds == 0 ||
         SafeRead(worlds + 8 * (uintptr_t)id, &world, 8) ||
         world == 0 || SafeRead(world + 0x6710, grid, 4) || grid[0] != 8 || grid[1] != 8) return;
+    if (level == 0) WorldShip();
     int larger = g_navTiles256 && level != 0 && !SafeRead(level + 0x2D8C, &disk, 4) && disk > 682.0f;
-    if (g_navTiles256 && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, larger ? kNavTileSize256 : kNavTileSizeRead + 4, 4)) return;
-    float lo = larger ? -1023.75f : -511.75f, hi = larger ? 1024.25f : 512.25f;
-    float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {larger ? 256.0f : 128.0f, lo, lo, hi, hi};
+    float scale = larger && g_navWorldTile != NULL && disk > 1022.0f ? (float)g_navWorldScale : 1.0f;
+    uint8_t read[4];
+    memcpy(read, larger ? kNavTileSize256 : kNavTileSizeRead + 4, 4);
+    if (scale > 1.0f)
+    {
+        *g_navWorldTile = 256.0f * scale;
+        int32_t rel = (int32_t)((intptr_t)(uintptr_t)g_navWorldTile - (intptr_t)(exe + DIF_NAV_TILE_SIZE_READ + 8));
+        memcpy(read, &rel, 4);
+    }
+    if (g_navTiles256 && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, read, 4)) return;
+    float lo = larger ? -1023.75f * scale : -511.75f, hi = larger ? 1024.25f * scale : 512.25f;
+    float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {larger ? 256.0f * scale : 128.0f, lo, lo, hi, hi};
     if (ApiWrite(world + 0x08, min, sizeof min) || ApiWrite(world + 0x14, max, sizeof max) || ApiWrite(world + 0x6718, tiles, sizeof tiles)) return;
     InterlockedIncrement(larger ? &g_navLarger : &g_navVanilla);
 }
@@ -477,7 +491,10 @@ static void PrepareSpacingStubs(DifficultyInstall* d, float diskBits)
     rel = (int32_t)((uint8_t*)d->spacingValue - (d->spacingStub2 + 31)); memcpy(d->spacingStub2 + 27, &rel, 4);
     rel = (int32_t)(game + DIF_SPACING_SITE_2 + 5 - (uintptr_t)(d->spacingStub2 + 36)); memcpy(d->spacingStub2 + 32, &rel, 4);
     rel = (int32_t)(game + DIF_SPACING_SITE_2 + 5 - (uintptr_t)(d->spacingStub2 + 46)); memcpy(d->spacingStub2 + 42, &rel, 4);
-    *d->gridValue = ceilf(16.0f * (d->disk + 1.0f) / 681.0f * 1.015f * 4.0f) / 4.0f;
+    /* An extra large world (difficulty_world.c) gets half the sites: at its coordinates the grid's 4-way corners split
+     * into more vertices, and a 16384 m preview's GenerateVoronoi retried forever (0xF3FFFD, two cores, no end). */
+    float sparser = WorldScaleFor(g_difficulty.mapScale) > 1 ? 1.42f : 1.0f;
+    *d->gridValue = ceilf(16.0f * (d->disk + 1.0f) / 681.0f * 1.015f * sparser * 4.0f) / 4.0f;
     memcpy(d->gridStub, kGridStub, sizeof kGridStub);
     memcpy(d->gridStub + 19, &diskBits, 4);
     rel = (int32_t)((uint8_t*)d->gridValue - (d->gridStub + 33)); memcpy(d->gridStub + 29, &rel, 4);
@@ -502,13 +519,17 @@ static const char* PrepareMapStubs(DifficultyInstall* d)
     if (!LargerMaps()) return NULL;
     uint8_t* radiiStub = d->radiiStub;
     float border = 389.12f * g_difficulty.mapScale + 174.0f;
-    float disk = border + 117.0f < 1022.0f ? border + 117.0f : 1022.0f;
+    float half = 1024.0f * (float)WorldScaleFor(g_difficulty.mapScale); /* half the world (difficulty_world.c) */
+    float disk = border + 117.0f < half - 2.0f ? border + 117.0f : half - 2.0f;
     d->disk = disk;
     float fade = border + 57.0f < disk ? border + 57.0f : disk;
-    float radii[5] = {fade / 1024.0f, disk / 1024.0f, 1024.0f - disk - 1.0f, 1024.0f + disk + 1.0f, disk + 1.0f};
+    float radii[5] = {fade / half, disk / half, half - disk - 1.0f, half + disk + 1.0f, disk + 1.0f};
     /* In quarter metres: map type 1 lays the route sites as a grid (0xC126C0 cl=1), and a grid of inexact spacing
      * splits its 4-way corners (65.7 m: 1004 vertices for 752 sites, past the 975; 65.75 m: 815). */
-    *d->spacingValue = ceilf(160.0f * sqrtf((0.8f * border * border + 0.2f * (disk + 1.0f) * (disk + 1.0f)) /
+    /* An extra large world (difficulty_world.c) spaces them 1.2 x farther: at 16384 m the route edges ran past their 1621
+     * (the resource hash read beyond the block, 0xF26358). */
+    float sparser = WorldScaleFor(g_difficulty.mapScale) > 1 ? 1.2f : 1.0f;
+    *d->spacingValue = ceilf(160.0f * sparser * sqrtf((0.8f * border * border + 0.2f * (disk + 1.0f) * (disk + 1.0f)) /
         (0.8f * 563.12f * 563.12f + 0.2f * 681.0f * 681.0f))) / 4.0f;
     memcpy(radiiStub, kRadiiStub, sizeof kRadiiStub);
     for (int i = 0; i < 5; i++) memcpy(radiiStub + 37 + 11 * i, &radii[i], 4);
@@ -534,7 +555,7 @@ static const char* PrepareCellStubs(DifficultyInstall* d)
     if (!LargerMaps()) return NULL;
     cellFactor[0] = (d->disk + 1.0f) / 681.0f * 1.04f * 4.0f;
     cellFactor[1] = 0.25f;
-    float diskBits = d->disk / 1024.0f;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale));
     memcpy(cellStub, kCellSpacingStub, sizeof kCellSpacingStub);
     memcpy(cellStub + 15, &diskBits, 4);
     rel = (int32_t)((uint8_t*)&cellFactor[0] - (cellStub + 30)); memcpy(cellStub + 26, &rel, 4);
@@ -713,6 +734,13 @@ static const char* InstallNavGrid(DifficultyInstall* d)
         !SafeRead(exe + 0x16A9DB0, &sizes[0], 4) && !SafeRead(exe + 0x16AA7C0, &sizes[1], 4) && sizes[0] == 128.0f && sizes[1] == 256.0f;
     if (!g_navTiles256)
         ApiLog(g_difficulty.mod, "difficulty %s: the navmesh's terrain build is not the reviewed one; larger maps keep a navmesh of +-512 m (mission stratagems will not stick beyond it)", g_difficulty.name);
+    g_navWorldScale = WorldScaleFor(g_difficulty.mapScale);
+    if (g_navTiles256 && g_navWorldScale > 1)
+    {
+        g_navWorldTile = (float*)FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE);
+        if (g_navWorldTile == NULL)
+            ApiLog(g_difficulty.mod, "difficulty %s: no memory within 2 GB of the exe for the navmesh's tile size; the extra large map keeps a navmesh of +-1024 m", g_difficulty.name);
+    }
     PrepareNavStubs(game, nav);
     uint8_t navJump[15];
     memset(navJump, 0x90, sizeof navJump);

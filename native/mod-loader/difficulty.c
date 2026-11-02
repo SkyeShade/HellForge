@@ -63,7 +63,8 @@ static const uint32_t kWeightReaders[6][2] = {{0x94C1E9u, 5}, {0x94C26Fu, 6}, {0
     {0xABD6ACu, 4}};
 #define DIF_TECH_CLAMP 0x94CA13u      /* mov eax, 0xa */
 #define DIF_COMPOSITIONS_UP_TO_TEN 319u
-#define DIF_MAP_SCALE_MAX 2.0f /* the largest map_scale (difficulty_maps.c: what a larger map changes) */
+#define DIF_MAP_SCALE_MAX 20.0f /* the largest map_scale (difficulty_maps.c: what a larger map changes; past 2,
+                                 * difficulty_world.c: the world grows, to 16384 m at 20) */
 
 #define DIF_OBJECTIVES_MAX 30u        /* the moved objective list */
 #define DIF_OBJECTIVES_OTHER 12u      /* a mission's own objectives beside optional and major ones (up to 5 mandatory,
@@ -228,7 +229,7 @@ static int DifficultyMap(HfMod* mod, const char* name, const HfDifficulty* def, 
     if (!(def->map_scale >= 0.0f && def->map_scale <= DIF_MAP_SCALE_MAX) || !(def->outpost_scale >= 0.0f && def->outpost_scale <= 8.0f) ||
         def->optional_objectives > 32 || def->major_objectives > 8)
     {
-        ApiLog(mod, "add_difficulty(%s): map_scale is 0 to 2, outpost_scale 0 to 8, optional_objectives 0 to 32, "
+        ApiLog(mod, "add_difficulty(%s): map_scale is 0 to 20, outpost_scale 0 to 8, optional_objectives 0 to 32, "
             "major_objectives 0 to 8 (0 keeps level 10's)", name);
         return 1;
     }
