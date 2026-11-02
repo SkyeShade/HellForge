@@ -502,10 +502,15 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         }
         uint64_t record = records + (uint64_t)at * 0x19B0u;
         float size = 0.0f;
+        uint64_t settings = 0;
+        uint32_t samples = 0;
+        int haveSettings = !SafeRead(b + 8, &settings, 8) && settings != 0 && !SafeRead(settings + 0x2C, &samples, 4);
         if (resolution > 0 && !SafeRead(record + 0xB4, &size, 4) && size == 4096.0f)
         {
             *(volatile float*)(uintptr_t)(record + 0xB4) = (float)resolution;
-            Note("difficulty: extra large maps: terrain resolution %d (research)", resolution);
+            /* the merge's other size: [[context+8]+0x2C] (an integer, read as float by 0xF487B0 / 0xF48990) */
+            if (haveSettings && samples == 4096u) *(volatile uint32_t*)(uintptr_t)(settings + 0x2C) = (uint32_t)resolution;
+            Note("difficulty: extra large maps: terrain resolution %d (research; the context's size held %u)", resolution, haveSettings ? samples : 0u);
         }
     }
     uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
