@@ -8,13 +8,15 @@ namespace HellForge.Core.GameData;
 // the map wears the Forge Credit art (data/forge-credits/pickup-color.png, HellForge's own, painted flat and wrapped onto
 // the game's card atlas: research/super-credits/export/forge_template) on the game's own mesh, and the currency icon
 // (data/forge-credits/currency-icon.png) replaces the Super Credits sprite in the UI's atlas. The pickup's normal map and
-// masks are the game's with the old logo, barcode and text smoothed out. Everything but HellForge's two pictures comes
+// masks are the game's with the old logo, barcode and text smoothed out. The game's "Super Credits" names say Forge
+// Credits (Names, in every language; the English texts that mention them too). Everything but HellForge's two pictures comes
 // from the installation's game copy and stays on the player's machine; it is built once per game build under
 // temp/forge-credits/ and staged as HellForge's own patch for the session (ModStaging), like WarbondLocks.
 public static class ForgeCredits
 {
     // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
-    public const int Version = 2;
+    // 3: the names.
+    public const int Version = 3;
     const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
@@ -26,6 +28,20 @@ public static class ForgeCredits
     // The currency icon: a 120 x 120 sprite of a BC3 page of the UI's atlas (0x5060BF2573C2531C, page 0x610644579AE05635).
     const ulong CurrencyIcon = 0x9414AB4F02745820;
     const int Bc1 = 71, Bc3 = 77, Bc5 = 83;
+
+    // The currency's names (strings ids, the same in every language: 0x5B043A3F is the pickup card's, game.dll 0x198BAE6),
+    // in every language, since Forge Credits is a name.
+    static readonly Dictionary<uint, string> Names = new()
+    {
+        [0x4F6FCA2E] = "FORGE CREDITS", [0x5B043A3F] = "FORGE CREDITS", [0x9C524C54] = "FORGE CREDITS", [0xA9A92F7C] = "Forge Credits",
+        [0x2EA7DFD5] = "BONUS FORGE CREDITS", [0xE99CA12E] = "INSUFFICIENT FORGE CREDITS",
+    };
+    // The English languages (US, UK): their other texts that name Super Credits name Forge Credits, but for voiced lines'
+    // subtitles ("{start->end}...", which the voice still says) and the store's.
+    static readonly HashSet<uint> English = [0x03F97B57, 0x6F4515CB];
+    // English texts HellForge says differently: Forge Credits are found, not bought.
+    static readonly Dictionary<uint, string> EnglishTexts = new() { [0xC8C088ED] = "Forge Credits are found in supply caches on missions" };
+    static readonly HashSet<uint> StoreTexts = [0xECF5FCD6, 0x246CCF47, 0xA1490676, 0x2CE16182, 0x2EFEB825, 0x365A11B5, 0x56D3BD14];
 
     // Where the Super Credits art sits in the pickup's normal map and masks (256 x 256 texels, inclusive): the barcode, the
     // logo, and the "SUPER CREDIT" text above and below it. Each is filled with what surrounds it.
@@ -86,6 +102,16 @@ public static class ForgeCredits
         Add(PickupNormal, "the pickup's normal map", parts => Pickup(parts, Bc5) is { } page ? WithChain(parts, IconImage.Bc5Mips(PickupSize, PickupSize, WithoutOldArt(page))) : null);
         Add(PickupMasks, "the pickup's masks", parts => Pickup(parts, Bc3) is { } page ? WithChain(parts, IconImage.Bc3Mips(PickupSize, PickupSize, WithoutOldArt(page), data: true)) : null);
         if (sprite.Page != 0) Add(sprite.Page, "the currency icon", parts => Icon(parts, sprite));
+        var stringsType = ResourceTypes.Hash("strings");
+        var renamed = 0;
+        foreach (var (name, at) in game.All(stringsType))
+            if (Renamed(game.Read(at)) is { } parts)
+            {
+                if (!byArchive.TryGetValue(at.Archive, out var resources)) byArchive[at.Archive] = resources = [];
+                resources[new(stringsType, name)] = parts;
+                renamed++;
+            }
+        if (renamed == 0) skipped.Add("the names");
         var files = new List<string>();
         foreach (var (archive, resources) in byArchive)
         {
@@ -100,6 +126,42 @@ public static class ForgeCredits
         }
         return (files, skipped);
     }
+
+    // A strings resource (u32 magic, version, count, language; u32 ids[count]; u32 offsets[count] into the resource of
+    // NUL-terminated UTF-8, shared between ids with the same text) with the Super Credits names changed: the new texts are
+    // added at its end and only their ids' offsets move, so every other byte stays the game's. Null when nothing changes.
+    static ResourceParts? Renamed(ResourceParts parts)
+    {
+        var d = parts.Main;
+        if (d.Length < 16) return null;
+        var count = BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(8));
+        var language = BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(12));
+        if (count == 0 || 16 + 8L * count > d.Length) return null;
+        var main = (byte[])d.Clone();
+        using var added = new MemoryStream();
+        for (var i = 0; i < (int)count; i++)
+        {
+            var id = BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(16 + 4 * i));
+            var at = 16 + 4 * (int)count + 4 * i;
+            var offset = (int)BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(at));
+            if (offset < 16 + 8 * (int)count || offset >= d.Length) continue;
+            var end = Array.IndexOf(d, (byte)0, offset);
+            var text = Encoding.UTF8.GetString(d, offset, (end < 0 ? d.Length : end) - offset);
+            string? changed = Names.TryGetValue(id, out var name) ? name
+                : English.Contains(language) && EnglishTexts.TryGetValue(id, out var own) ? own
+                : English.Contains(language) && !StoreTexts.Contains(id) && !text.StartsWith('{') ? Rename(text) : null;
+            if (changed == null || changed == text) continue;
+            BinaryPrimitives.WriteUInt32LittleEndian(main.AsSpan(at), (uint)(d.Length + added.Position));
+            added.Write(Encoding.UTF8.GetBytes(changed));
+            added.WriteByte(0);
+        }
+        return added.Length == 0 ? null : parts with { Main = [.. main, .. added.ToArray()] };
+    }
+
+    static string? Rename(string text) => text.Contains("Super Credit", StringComparison.OrdinalIgnoreCase)
+        ? text.Replace("SUPER CREDITS", "FORGE CREDITS").Replace("Super Credits", "Forge Credits").Replace("super credits", "Forge Credits")
+            .Replace("SUPER CREDIT", "FORGE CREDIT").Replace("Super Credit", "Forge Credit")
+        : null;
 
     // A pickup texture of the expected form (256 x 256, 9 mips, the format given, the GPU part the end of the streamed
     // chain), as its top level; null otherwise.

@@ -44,6 +44,12 @@ static class ForgeCreditsTests
             {
                 [new(ResourceTypes.Texture, Page)] = new(IconImage.TextureMain(PageSize, PageSize, PageMips, 77), pageBytes, []),
                 [new(ResourceTypes.Hash("texture_atlas"), Atlas)] = new(record, [], []),
+                // The names: US English (the card's name shares its text with another id, a voiced line's subtitle and an
+                // unrelated text) and German.
+                [new(ResourceTypes.Hash("strings"), 0xE1)] = new(Strings(0x03F97B57, [(0x5B043A3F, "SUPER CREDITS"), (0x9C524C54, "SUPER CREDITS"),
+                    (0xC8C088ED, "Super Credits may be purchased from the Super Credits tab"), (0x22222222, "{0.0->1.0}Spend your Super Credits"),
+                    (0x11111111, "Medals")]), [], []),
+                [new(ResourceTypes.Hash("strings"), 0xDE)] = new(Strings(0xBA39C3EC, [(0x5B043A3F, "ÜBER-CREDITS"), (0x33333333, "Super Credits")]), [], []),
             });
             DataBuilderTests.WriteBundles(gameData, new Dictionary<string, byte[]>
             {
@@ -62,6 +68,13 @@ static class ForgeCreditsTests
                 byte[] Part(string suffix) => File.Exists(Path.Combine(output, archive + ".patch_0" + suffix)) ? File.ReadAllBytes(Path.Combine(output, archive + ".patch_0" + suffix)) : [];
                 return ResourceArchive.Read(Part(""), Part(".gpu_resources"), Part(".stream"));
             }
+            var names = Patch(Gui);
+            var english = Texts(names[new(ResourceTypes.Hash("strings"), 0xE1)].Main);
+            check(english[0x5B043A3F] == "FORGE CREDITS" && english[0x9C524C54] == "FORGE CREDITS" && english[0x11111111] == "Medals" &&
+                english[0x22222222] == "{0.0->1.0}Spend your Super Credits" && english[0xC8C088ED] == "Forge Credits are found in supply caches on missions",
+                "English names: " + string.Join(" | ", english.Values));
+            var german = Texts(names[new(ResourceTypes.Hash("strings"), 0xDE)].Main);
+            check(german[0x5B043A3F] == "FORGE CREDITS" && german[0x33333333] == "Super Credits", "German names: " + string.Join(" | ", german.Values));
             var pickup = Patch(Pickups);
             foreach (var (name, gpu) in new[] { (Color, 2744), (Normal, 1392), (Masks, 1392) })
             {
@@ -114,6 +127,39 @@ static class ForgeCreditsTests
             ModSettings.SetForgeCreditChance(mods, null);
             check(ModSettings.ForgeCreditChance(mods) is null && Line() is null, "Off still changes the odds.");
         });
+    }
+
+    // A strings resource as the game's: magic, version, count, language, ids, offsets, then the texts, the same text once.
+    static byte[] Strings(uint language, (uint Id, string Text)[] entries)
+    {
+        var head = 16 + 8 * entries.Length;
+        var data = new List<byte>();
+        var at = new Dictionary<string, int>();
+        var bytes = new byte[head];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x3E85F3AE);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)entries.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), language);
+        for (var i = 0; i < entries.Length; i++)
+        {
+            if (!at.TryGetValue(entries[i].Text, out var offset)) { at[entries[i].Text] = offset = head + data.Count; data.AddRange(System.Text.Encoding.UTF8.GetBytes(entries[i].Text)); data.Add(0); }
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16 + 4 * i), entries[i].Id);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16 + 4 * entries.Length + 4 * i), (uint)offset);
+        }
+        return [.. bytes, .. data];
+    }
+
+    static Dictionary<uint, string> Texts(byte[] strings)
+    {
+        var count = (int)BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(8));
+        var texts = new Dictionary<uint, string>();
+        for (var i = 0; i < count; i++)
+        {
+            var offset = (int)BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(16 + 4 * count + 4 * i));
+            texts[BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(16 + 4 * i))] =
+                System.Text.Encoding.UTF8.GetString(strings, offset, Array.IndexOf(strings, (byte)0, offset) - offset);
+        }
+        return texts;
     }
 
     static byte[] Solid(int w, int h, byte r, byte g, byte b, byte a)
