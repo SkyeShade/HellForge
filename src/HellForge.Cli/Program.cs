@@ -315,7 +315,18 @@ try
             {
                 modProblems.Add("Locked warbond art: not shown this session (" + error.Message + ").");
             }
-            var staged = ModStaging.Stage(modInstall, active, warbondLocks != null ? [warbondLocks] : null);
+            // Super Credits are dressed as Forge Credits (ForgeCredits): the pickup's textures and the currency icon. Art that
+            // cannot be built stays as it is; the session goes on.
+            string? forgeCredits = null;
+            try
+            {
+                forgeCredits = ForgeCredits.Prepare(modInstall, Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))

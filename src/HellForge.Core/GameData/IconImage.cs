@@ -233,19 +233,51 @@ public static class IconImage
         return crc ^ 0xFFFFFFFF;
     }
 
-    // The full BC3 mip chain (largest level first) of straight-alpha RGBA pixels.
-    public static byte[] Bc3Mips(int width, int height, byte[] rgba)
+    // The full BC3 mip chain (largest level first) of straight-alpha RGBA pixels. data: the four channels are separate
+    // values (a material's masks), not colour over alpha: filtered alike, and a transparent pixel keeps its colour.
+    public static byte[] Bc3Mips(int width, int height, byte[] rgba, bool data = false)
     {
         using var output = new MemoryStream();
-        foreach (var (w, h, level) in RgbaLevels(width, height, rgba))
+        foreach (var (w, h, level) in RgbaLevels(width, height, rgba, data))
             for (var by = 0; by < Math.Max(h, 4); by += 4)
                 for (var bx = 0; bx < Math.Max(w, 4); bx += 4)
-                    WriteBc3Block(output, level, w, h, bx, by);
+                    WriteBc3Block(output, level, w, h, bx, by, data);
         return output.ToArray();
     }
 
+    // One BC3 level (no mips) of straight-alpha RGBA pixels, rows of blocks top to bottom: a patch of blocks for a page.
+    public static byte[] Bc3Level(int width, int height, byte[] rgba)
+    {
+        using var output = new MemoryStream();
+        for (var by = 0; by < Math.Max(height, 4); by += 4)
+            for (var bx = 0; bx < Math.Max(width, 4); bx += 4)
+                WriteBc3Block(output, rgba, width, height, bx, by);
+        return output.ToArray();
+    }
+
+    // The full BC5 mip chain (largest level first) of a normal map's R and G, as RGBA pixels (B and A unused).
+    public static byte[] Bc5Mips(int width, int height, byte[] rgba)
+    {
+        var opaque = (byte[])rgba.Clone();
+        for (var i = 3; i < opaque.Length; i += 4) opaque[i] = 255; /* every pixel weighs the same in the mips */
+        using var output = new MemoryStream();
+        foreach (var (w, h, level) in RgbaLevels(width, height, opaque))
+            for (var by = 0; by < Math.Max(h, 4); by += 4)
+                for (var bx = 0; bx < Math.Max(w, 4); bx += 4)
+                    for (var channel = 0; channel < 2; channel++)
+                    {
+                        var values = new int[16];
+                        for (var k = 0; k < 16; k++) values[k] = level[4 * (Math.Min(by + k / 4, h - 1) * w + Math.Min(bx + k % 4, w - 1)) + channel];
+                        output.Write(AlphaBlock(values));
+                    }
+        return output.ToArray();
+    }
+
+    // Every mip level (largest first) of straight-alpha RGBA pixels, as the BC3 chain filters them.
+    public static IReadOnlyList<(int Width, int Height, byte[] Rgba)> MipLevels(int width, int height, byte[] rgba) => [.. RgbaLevels(width, height, rgba)];
+
     // The BC3 block at (bx, by) of a w x h level; edge blocks repeat the last row and column.
-    static void WriteBc3Block(MemoryStream output, byte[] level, int w, int h, int bx, int by)
+    static void WriteBc3Block(MemoryStream output, byte[] level, int w, int h, int bx, int by, bool data = false)
     {
         var alpha = new int[16];
         var colours = new (int R, int G, int B)[16];
@@ -257,7 +289,7 @@ public static class IconImage
         }
         // Fully transparent pixels take a visible pixel's colour, so they do not pull the colour endpoints.
         var visible = Array.FindIndex(alpha, a => a > 0);
-        for (var k = 0; k < 16; k++) if (alpha[k] == 0) colours[k] = visible >= 0 ? colours[visible] : (0, 0, 0);
+        for (var k = 0; k < 16 && !data; k++) if (alpha[k] == 0) colours[k] = visible >= 0 ? colours[visible] : (0, 0, 0);
         output.Write(AlphaBlock(alpha));
         output.Write(Block(colours));
     }
@@ -286,7 +318,7 @@ public static class IconImage
 
     // Every mip level (largest first) of straight-alpha RGBA pixels, box-filtered with alpha weighting so transparent pixels
     // do not darken the edges.
-    static IEnumerable<(int Width, int Height, byte[] Rgba)> RgbaLevels(int width, int height, byte[] rgba)
+    static IEnumerable<(int Width, int Height, byte[] Rgba)> RgbaLevels(int width, int height, byte[] rgba, bool data = false)
     {
         var level = (byte[])rgba.Clone();
         while (true)
@@ -294,28 +326,28 @@ public static class IconImage
             yield return (width, height, level);
             if (width == 1 && height == 1) yield break;
             int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
-            (level, width, height) = (HalfRgba(level, width, height, w, h), w, h);
+            (level, width, height) = (HalfRgba(level, width, height, w, h, data), w, h);
         }
     }
 
     // The next level (w x h) of a width x height level: each pixel the alpha-weighted mean of the 2 x 2 it covers.
-    static byte[] HalfRgba(byte[] level, int width, int height, int w, int h)
+    static byte[] HalfRgba(byte[] level, int width, int height, int w, int h, bool data = false)
     {
         var next = new byte[w * h * 4];
         for (var y = 0; y < h; y++)
             for (var x = 0; x < w; x++)
             {
-                int r = 0, g = 0, b = 0, a = 0;
+                int r = 0, g = 0, b = 0, a = 0, alpha = 0;
                 for (var dy = 0; dy < 2; dy++)
                     for (var dx = 0; dx < 2; dx++)
                     {
                         var o = 4 * (Math.Min(2 * y + dy, height - 1) * width + Math.Min(2 * x + dx, width - 1));
-                        int pa = level[o + 3];
-                        (r, g, b, a) = (r + level[o] * pa, g + level[o + 1] * pa, b + level[o + 2] * pa, a + pa);
+                        int pa = data ? 255 : level[o + 3];
+                        (r, g, b, a, alpha) = (r + level[o] * pa, g + level[o + 1] * pa, b + level[o + 2] * pa, a + pa, alpha + level[o + 3]);
                     }
                 var t = 4 * (y * w + x);
                 if (a > 0) (next[t], next[t + 1], next[t + 2]) = ((byte)((r + a / 2) / a), (byte)((g + a / 2) / a), (byte)((b + a / 2) / a));
-                next[t + 3] = (byte)((a + 2) / 4);
+                next[t + 3] = (byte)((alpha + 2) / 4);
             }
         return next;
     }
