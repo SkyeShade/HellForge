@@ -18,6 +18,9 @@
  * 90 radii) does not survive the callers' use: they thin the points by a chance each, test them against the map and keep
  * a few.
  *
+ * A rectangle within one tile's size gets plain Bridson over it instead (the same code without the wrap): the cost
+ * follows the call, and a torus that small would lose points along its seams.
+ *
  * Order. Bridson's output grows from one random seed outward. Two callers (0xF42D0A, 0xF9632E) walk every point with a
  * chance each or shuffle them first; SpreadLocations and the job keep the order, so the tiles are emitted ring by ring
  * around a random seed tile (each tile's points in its own Bridson order) and the set still grows from one place.
@@ -75,13 +78,16 @@ static inline uint32_t PoissonCellOf(float v, float cell, uint32_t cells)
     return c < cells ? c : cells - 1u;
 }
 
-/* Bridson on a torus of g x g cells of `cell` (<= radius / sqrt(2): one point a cell). Returns the point count; the
- * points (x, y in [0, g x cell)) in *out, malloc'ed; 0 and *out NULL when memory is short. */
-static uint32_t PoissonTileBuild(float radius, float cell, uint32_t g, uint64_t* state, float** out)
+/* Bridson over cols x rows cells of `cell` (<= radius / sqrt(2): one point a cell). Periodic: a torus of exactly
+ * cols x cell by rows x cell (distances and the grid wrap at its edges). Not periodic: the rectangle [0, w] x [0, h]
+ * (cols x cell >= w), candidates strictly inside it, as the game's (0xF2D6AC..0xF2D6E2). Returns the point count; the
+ * points in *out, malloc'ed; 0 and *out NULL when memory is short. */
+static uint32_t PoissonBuild(float radius, float cell, uint32_t cols, uint32_t rows, float w, float h, int periodic,
+    uint64_t* state, float** out)
 {
     *out = NULL;
-    size_t cells = (size_t)g * g;
-    float size = cell * (float)g, half = size * 0.5f;
+    size_t cells = (size_t)cols * rows;
+    float halfW = w * 0.5f, halfH = h * 0.5f;
     float r2 = radius * radius, outer = 4.0f * r2;
     int32_t* grid = (int32_t*)malloc(cells * sizeof *grid);
     float* xy = (float*)malloc(cells * 2u * sizeof *xy);
@@ -90,8 +96,9 @@ static uint32_t PoissonTileBuild(float radius, float cell, uint32_t g, uint64_t*
     memset(grid, 0xFF, cells * sizeof *grid);
     uint32_t count = 0, live = 0;
     {
-        float x = PoissonWrap(PoissonUnit(state) * size, size), y = PoissonWrap(PoissonUnit(state) * size, size);
-        grid[(size_t)PoissonCellOf(y, cell, g) * g + PoissonCellOf(x, cell, g)] = 0;
+        float x = PoissonUnit(state) * w, y = PoissonUnit(state) * h;
+        if (periodic) { x = PoissonWrap(x, w); y = PoissonWrap(y, h); }
+        grid[(size_t)PoissonCellOf(y, cell, rows) * cols + PoissonCellOf(x, cell, cols)] = 0;
         xy[0] = x; xy[1] = y;
         active[live++] = count++;
     }
@@ -113,26 +120,35 @@ static uint32_t PoissonTileBuild(float radius, float cell, uint32_t g, uint64_t*
                 inside = d2 >= r2 && d2 <= outer;
             }
             if (!inside) continue;
-            float cx = PoissonWrap(px + dx, size), cy = PoissonWrap(py + dy, size);
-            uint32_t gx = PoissonCellOf(cx, cell, g), gy = PoissonCellOf(cy, cell, g);
-            if (grid[(size_t)gy * g + gx] >= 0) continue;
+            float cx = px + dx, cy = py + dy;
+            if (periodic) { cx = PoissonWrap(cx, w); cy = PoissonWrap(cy, h); }
+            else if (!(cx > 0.0f && cy > 0.0f && cx < w && cy < h)) continue;
+            uint32_t gx = PoissonCellOf(cx, cell, cols), gy = PoissonCellOf(cy, cell, rows);
+            if (grid[(size_t)gy * cols + gx] >= 0) continue;
             int close = 0;
             for (int oy = -2; oy <= 2 && !close; oy++)
             {
-                uint32_t ny = (gy + g + (uint32_t)(oy + 2) - 2u) % g;
+                int64_t ny = (int64_t)gy + oy;
+                if (periodic) ny = (ny + rows) % rows;
+                else if (ny < 0 || ny >= rows) continue;
                 for (int ox = -2; ox <= 2 && !close; ox++)
                 {
-                    uint32_t nx = (gx + g + (uint32_t)(ox + 2) - 2u) % g;
-                    int32_t q = grid[(size_t)ny * g + nx];
+                    int64_t nx = (int64_t)gx + ox;
+                    if (periodic) nx = (nx + cols) % cols;
+                    else if (nx < 0 || nx >= cols) continue;
+                    int32_t q = grid[(size_t)ny * cols + (size_t)nx];
                     if (q < 0) continue;
                     float ex = cx - xy[2u * (uint32_t)q], ey = cy - xy[2u * (uint32_t)q + 1u];
-                    if (ex > half) ex -= size; else if (ex < -half) ex += size;
-                    if (ey > half) ey -= size; else if (ey < -half) ey += size;
+                    if (periodic)
+                    {
+                        if (ex > halfW) ex -= w; else if (ex < -halfW) ex += w;
+                        if (ey > halfH) ey -= h; else if (ey < -halfH) ey += h;
+                    }
                     close = ex * ex + ey * ey < r2;
                 }
             }
             if (close) continue;
-            grid[(size_t)gy * g + gx] = (int32_t)count;
+            grid[(size_t)gy * cols + gx] = (int32_t)count;
             xy[2u * count] = cx; xy[2u * count + 1u] = cy;
             active[live++] = count++;
             placed = 1;
@@ -200,10 +216,34 @@ static void* PoissonTiled(void* arena, float radius, const float* rect, uint64_t
     if (!(cell > 0.0f) || !(w > 0.0f) || !(h > 0.0f) || !(w / cell < 2.0e9f) || !(h / cell < 2.0e9f)) return NULL;
     uint64_t local = *state;
     float* tile = NULL;
-    uint32_t tileCount = PoissonTileBuild(radius, cell, POISSON_TILE, &local, &tile);
+    float longer = w > h ? w : h;
+    if (longer / cell + 1.0f < (float)POISSON_TILE)
+    {
+        /* A rectangle within one tile: plain Bridson over it (a torus that small would lose points at its seams). */
+        uint32_t cols = (uint32_t)(w / cell) + 1u, rows = (uint32_t)(h / cell) + 1u;
+        uint32_t made0 = PoissonBuild(radius, cell, cols, rows, w, h, 0, &local, &tile);
+        if (tile == NULL) return NULL;
+        float* points = (float*)g_poissonAlloc(arena, (made0 != 0 ? made0 : 1u) * 8u, 8u);
+        if (points == NULL) { free(tile); return NULL; }
+        uint32_t n = 0;
+        for (uint32_t p = 0; p < made0; p++)
+        {
+            float x = rect[0] + tile[2u * p], y = rect[1] + tile[2u * p + 1u];
+            if (!(x > rect[0] && y > rect[1] && rect[2] > x && rect[3] > y)) continue;
+            points[2u * n] = x; points[2u * n + 1u] = y;
+            n++;
+        }
+        free(tile);
+        *state = local;
+        *count = n;
+        *made = n;
+        return points;
+    }
+    float size = cell * (float)POISSON_TILE;
+    uint32_t tileCount = PoissonBuild(radius, cell, POISSON_TILE, POISSON_TILE, size, size, 1, &local, &tile);
     if (tile == NULL) return NULL;
     PoissonLayout l;
-    l.size = (double)(cell * (float)POISSON_TILE);
+    l.size = (double)size;
     l.ox = (double)rect[0] - (double)PoissonUnit(&local) * l.size;
     l.oy = (double)rect[1] - (double)PoissonUnit(&local) * l.size;
     l.i0 = PoissonFloor(((double)rect[0] - l.ox) / l.size); l.i1 = PoissonFloor(((double)rect[2] - l.ox) / l.size);
