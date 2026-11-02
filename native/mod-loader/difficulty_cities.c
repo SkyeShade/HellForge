@@ -382,7 +382,7 @@ static const char* PrepareStructuredStubs(DifficultyInstall* d)
     uint8_t* structured = AllocateNearGame(game, 0x200);
     d->structured = structured;
     if (structured == NULL) return "no memory within 2 GB of game.dll for the structured maps";
-    float diskBits = d->disk / 1024.0f;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)); /* as the radii stub writes lg+0x2D7C */
     for (int i = 0; i < 3; i++)
     {
         uint8_t* stub = structured + 0x40 * i;
@@ -401,7 +401,7 @@ static const char* InstallVista(DifficultyInstall* d)
 {
     if (!LargerMaps()) return NULL;
     uintptr_t game = d->game;
-    float diskBits = d->disk / 1024.0f;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)); /* as the radii stub writes lg+0x2D7C */
     uint8_t* vista = AllocateNearGame(game, 0x80);
     if (vista == NULL) return "no memory within 2 GB of game.dll for the vista level";
     float fade = 389.12f * g_difficulty.mapScale + 174.0f + 57.0f; /* the radii stub's fade */
@@ -424,7 +424,7 @@ static const char* InstallCull(DifficultyInstall* d)
 {
     if (!LargerMaps()) return NULL;
     uintptr_t game = d->game;
-    float diskBits = d->disk / 1024.0f;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)); /* as the radii stub writes lg+0x2D7C */
     int32_t rel;
     uint8_t* cull = AllocateNearGame(game, 0x40);
     if (cull == NULL) return "no memory within 2 GB of game.dll for the playable area's cull";

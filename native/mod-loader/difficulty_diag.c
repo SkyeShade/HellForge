@@ -103,7 +103,7 @@ static const char* PrepareUnreachableStub(DifficultyInstall* d)
     d->unreachableStub = NULL;
     if (!LargerMaps()) return NULL;
     uintptr_t game = d->game;
-    float diskBits = d->disk / 1024.0f;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale)); /* as the radii stub writes lg+0x2D7C */
     uint8_t* unreachableStub = d->code + 0x660;
     d->unreachableStub = unreachableStub;
     memcpy(unreachableStub, kUnreachableStub, sizeof kUnreachableStub);
