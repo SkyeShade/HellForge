@@ -79,6 +79,9 @@ On `dev`, since 0.3.0-beta.
   are now dressed that far too (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius). Streets are also 1.5x longer
   there but kept level 10's number of props per street; they now get 1.5x as many (`HELLFORGE_D11_STREET_PROPS=0`
   keeps level 10's).
+- Mega cities on difficulty 11 needed more destructible records than the world's map of them holds (about 33,300 of
+  32,768), and the ones registered last were left without one. On larger maps the map now has 65,536; the session log
+  shows how many a mission used.
 - The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
   about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
   faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
