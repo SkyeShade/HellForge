@@ -586,6 +586,10 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
         !isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3]) ||
         fabsf(q[0]) > OVERLAP_LIMIT || fabsf(q[1]) > OVERLAP_LIMIT || fabsf(q[2]) > OVERLAP_LIMIT || fabsf(q[3]) > OVERLAP_LIMIT)
     {
+        static volatile LONG notes;
+        if (InterlockedIncrement(&notes) <= 6)
+            Note("difficulty: extra large maps: the stamp overlap grid passed a query to the original loop: base 0x%llX count %u, centre %g, %g half %g, %g",
+                (unsigned long long)base, (unsigned)count, q ? (double)q[0] : 0.0, q ? (double)q[1] : 0.0, q ? (double)q[2] : 0.0, q ? (double)q[3] : 0.0);
         OverlapStats(t, 0, count, 0);
         return -2;
     }

@@ -350,6 +350,8 @@ static const char* InstallWorldPoisson(uintptr_t game)
 {
     if (g_poissonInstalled) return NULL;
     if (game == 0) return "game.dll is not loaded";
+    char off[8];
+    if (GetEnvironmentVariableA("HELLFORGE_XL_NO_POISSON", off, sizeof off) != 0) return "HELLFORGE_XL_NO_POISSON is set (research A/B runs)";
     if (!ApiCodeMatches(game + POISSON_SAMPLE, "48 8B C4 4C 89 48 20 55 56 57 41 54 41 55 41 56 48 81 EC 98 00 00 00 F3 0F 10 15") ||
         !ApiCodeMatches(game + DIF_ARENA_ALLOCATE, "40 56 41 56 48 83 EC 38"))
         return "the Poisson-disk sampler is not the reviewed one (an extra large map needs it)";
