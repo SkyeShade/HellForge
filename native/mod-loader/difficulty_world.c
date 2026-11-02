@@ -713,6 +713,8 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
     }
 }
 
+static int g_tileExtent;
+static LONG g_tileCpuLevel = -1;
 static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_tileDone == g_world.levels || g_worldLevel == 0 || g_rec25 == 0) return;
@@ -786,6 +788,8 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
         Note("difficulty: terrain tile: before the passes: route cell 0 +8 = 0x%llX (copy at 0x%llX)", (unsigned long long)edge0, (unsigned long long)(uintptr_t)g_tileBlock);
     }
     WorldTilePasses(records, end, context, e, f, g, h, gen);
+    g_tileExtent = extent;
+    g_tileCpuLevel = g_world.levels;
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
     uint32_t counts[3] = {0};
     for (int k = 0; k < 3; k++)
@@ -839,6 +843,125 @@ static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
         if (q >= 0x10000 && !SafeRead(q, &p, 8)) { snprintf(title, sizeof title, "[[pass+8+0x%X]]", k); ProbeHex(file, title, q, 0x300); }
     }
     CloseHandle(file);
+}
+
+/* Step 3: the tile's heightmap through the game's own terrain merge, as the level's first merge runs it (records from its
+ * SetupTerrainMerge on): 0x38 setup (the orthographic camera over the world size, here the tile's; record +0xB4 the
+ * samples per side: 2 per metre as vanilla), 0x39 clear, 0x3A, 0x3C the Voronoi cells, 0x40 smoothing, 0x5B, 0x5C the
+ * capture (8 GPU readbacks; their descriptors, 0x18 each, at G+0x119FF68). The minimap's 0x53/0x5A/0x54 are left out.
+ * GPU passes need frames between their phases, so the level waits at its first SetupTerrainMerge: while the tile is
+ * under way the dispatcher hook runs one tile step per call and returns without the level's record (its generator
+ * then yields the frame: an index that did not move is "in progress", 0xF261BD). Each step applies the tile's settings
+ * for its call only. Up to 900 frames; then the level goes on. */
+static const uint8_t kTileGpuOps[] = {0x38, 0x39, 0x3A, 0x3C, 0x40, 0x5B, 0x5C};
+static LONG g_tileGpuLevel = -1;
+static int g_tileGpuStep, g_tileGpuDone;
+static uint32_t g_tileGpuFrames, g_tileGpuCalls, g_tileGpuRecord[sizeof kTileGpuOps];
+static uint8_t g_tileGpuPhase, g_tileGpuOne[0x19B0];
+
+static int WorldTileGpuPrepare(uint64_t records, uintptr_t gen)
+{
+    if (SafeRead(records + (uint64_t)g_tileGpuRecord[g_tileGpuStep] * 0x19B0u, g_tileGpuOne, sizeof g_tileGpuOne)) return 0;
+    WorldTileRelocate(g_tileGpuOne, gen, (uintptr_t)g_tileBlock);
+    if (kTileGpuOps[g_tileGpuStep] == 0x38)
+    {
+        float samples = (float)(2 * g_tileExtent);
+        memcpy(g_tileGpuOne + 0xB4, &samples, 4);
+    }
+    g_tileGpuPhase = 0;
+    g_tileGpuCalls = 0;
+    return 1;
+}
+
+static void WorldTileGpuCaptures(void)
+{
+    for (int k = 0; k < 8; k++)
+    {
+        uint64_t q[3];
+        memcpy(q, g_tileBlock + 0x119FF68 + k * 0x18, 24);
+        Note("difficulty: terrain tile: capture %d: 0x%016llX 0x%016llX 0x%016llX", k, (unsigned long long)q[0], (unsigned long long)q[1], (unsigned long long)q[2]);
+        uint32_t w = (uint32_t)q[1], hgt = (uint32_t)(q[1] >> 32);
+        if (q[0] == 0 || w < 16 || w > 8192 || hgt < 16 || hgt > 8192) continue;
+        uint64_t bytes = (uint64_t)w * hgt * 4u;
+        uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (copy == NULL) continue;
+        if (!SafeRead(q[0], copy, bytes))
+        {
+            wchar_t name[64];
+            swprintf(name, 64, L"tile-capture-%ld-%d.bin", (long)g_world.levels, k);
+            HANDLE file = OpenLog(name);
+            if (file != INVALID_HANDLE_VALUE)
+            {
+                DWORD wrote;
+                WriteFile(file, copy, (DWORD)bytes, &wrote, NULL);
+                CloseHandle(file);
+                Note("difficulty: terrain tile: wrote capture %d (%u x %u x 4 bytes)", k, w, hgt);
+            }
+        }
+        VirtualFree(copy, 0, MEM_RELEASE);
+    }
+}
+
+static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
+{
+    if (g_tileGpuLevel != g_world.levels)
+    {
+        g_tileGpuLevel = g_world.levels;
+        g_tileGpuDone = 1;
+        WorldTileProbe(records, end, context, e, f, g, h);
+        if (g_tileCpuLevel != g_world.levels || g_tileBlock == NULL) return 0;
+        uint32_t i = at;
+        for (size_t k = 0; k < sizeof kTileGpuOps; k++)
+        {
+            uint32_t op = 0;
+            for (; i < end; i++) if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == kTileGpuOps[k]) break;
+            if (i >= end) { Note("difficulty: terrain tile: no merge record for op 0x%02X", kTileGpuOps[k]); return 0; }
+            g_tileGpuRecord[k] = i++;
+        }
+        uintptr_t gen = 0;
+        if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return 0;
+        g_tileGpuStep = 0;
+        g_tileGpuFrames = 0;
+        if (!WorldTileGpuPrepare(records, gen)) return 0;
+        g_tileGpuDone = 0;
+        Note("difficulty: terrain tile: the merge starts (records %u..%u), the level waits", g_tileGpuRecord[0], g_tileGpuRecord[sizeof kTileGpuOps - 1]);
+        return 1;
+    }
+    if (g_tileGpuDone) return 0;
+    uintptr_t gen = 0, settings = 0, lg = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(context + 8, &settings, 8) || settings == 0 ||
+        SafeRead(context + 0x18, &lg, 8) || lg == 0) { g_tileGpuDone = 1; return 0; }
+    volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
+    volatile float* loP = (volatile float*)(settings + 0x64);
+    volatile float* hiP = (volatile float*)(settings + 0x68);
+    volatile float* radiusP = (volatile float*)(settings + 0x6C);
+    volatile uint32_t* diskP = (volatile uint32_t*)(lg + 0x2D7C);
+    uint32_t size = *sizeP, disk = *diskP;
+    float lo = *loP, hi = *hiP, radius = *radiusP;
+    *diskP = disk ^ 1u; *sizeP = (uint32_t)g_tileExtent; *loP = 0.0f; *hiP = (float)g_tileExtent; *radiusP = (float)g_tileExtent;
+    uint32_t index = 0;
+    g_worldDispatch((uint64_t)g_tileGpuOne, context, (uint64_t)&index, 1, (uint64_t)&g_tileGpuPhase, 0, g, h);
+    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *diskP = disk;
+    g_tileGpuCalls++;
+    g_tileGpuFrames++;
+    if (index != 0)
+    {
+        Note("difficulty: terrain tile: merge op 0x%02X done (%u calls, frame %u)", kTileGpuOps[g_tileGpuStep], g_tileGpuCalls, g_tileGpuFrames);
+        if (++g_tileGpuStep == (int)sizeof kTileGpuOps)
+        {
+            WorldTileGpuCaptures();
+            g_tileGpuDone = 1;
+            return 0;
+        }
+        if (!WorldTileGpuPrepare(records, gen)) { g_tileGpuDone = 1; return 0; }
+    }
+    if (g_tileGpuFrames >= 900)
+    {
+        Note("difficulty: terrain tile: the merge stopped at op 0x%02X after %u frames; the level goes on", kTileGpuOps[g_tileGpuStep], g_tileGpuFrames);
+        g_tileGpuDone = 1;
+        return 0;
+    }
+    return 1;
 }
 
 /* Research (XL visuals): the engine's camera interface, [[game+0x3326308]+0x20] (as SetupTerrainMerge's camera setup
@@ -993,7 +1116,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
-        if (o == 0x38 && g_world.current == 8.0f) WorldTileProbe(records, (uint32_t)d, b, e, f, g, h);
+        if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) return 0;
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
