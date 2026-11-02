@@ -1098,8 +1098,10 @@ static void WorldCamInstall(void)
  * the globals at game+0x3328F60 (+0 a pointer, +8 a count, +0xC (world size x 0.5 x [settings+0x5C])^2, set by op 0xBB)
  * and each type (0x2860 bytes from game+0x3328F90, [game+0x346BF90] of them; +0x2850 its grid: dim, two floats, data at
  * +0x10, allocated dim^2 x 16 bytes by op 0xBB). */
+static int g_scatterDump; /* HELLFORGE_XL_SCATTER_DUMP=1: the images too */
 static void WorldScatterNote(void)
 {
+    { static int read; if (!read) { char t[4] = ""; read = 1; g_scatterDump = GetEnvironmentVariableA("HELLFORGE_XL_SCATTER_DUMP", t, sizeof t) > 0 && t[0] == '1'; } }
     static LONG notes;
     if (InterlockedIncrement(&notes) > 4) return;
     uintptr_t base = g_world.game + 0x3328F60u;
@@ -1123,7 +1125,7 @@ static void WorldScatterNote(void)
         if (SafeRead(base + 0x10 + 8u * (uintptr_t)k, &at, 8) || at == 0 || SafeRead(at, desc, sizeof desc)) continue;
         uint64_t data = ((uint64_t)desc[5] << 32) | desc[4];
         Note("difficulty: scatter image %d: %u x %u (%08X %08X) data 0x%llX", k, desc[0], desc[1], desc[2], desc[3], (unsigned long long)data);
-        if (data == 0 || desc[0] == 0 || desc[1] == 0 || desc[0] > 8192 || desc[1] > 8192) continue;
+        if (data == 0 || desc[0] == 0 || desc[1] == 0 || desc[0] > 8192 || desc[1] > 8192 || k == 0 || !g_scatterDump) continue;
         uint64_t bytes = (uint64_t)desc[0] * desc[1] * 4u;
         uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (copy == NULL) continue;
@@ -1153,6 +1155,45 @@ static void WorldScatterNote(void)
     }
 }
 
+/* Research (ground types): the subregion cells (G+0x92F328, 0x20 each, count G+0x11A71C4; +0xC the type, the zone id the
+ * scatter brushes match: 0x41/0x43/0x44/0x46 on planet 157; +0x18 the route cell, its position at +0/+4), written out as
+ * subregions-<level>.tsv and summarised, vanilla and larger. */
+static void WorldSubregionNote(void)
+{
+    static LONG noted = -1;
+    if (noted == g_world.levels || g_worldLevel == 0) return;
+    noted = g_world.levels;
+    uintptr_t gen = 0;
+    uint32_t count = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen + 0x11A71C4u, &count, 4) || count == 0 || count > 8192) return;
+    wchar_t name[48];
+    swprintf(name, 48, L"subregions-%ld.tsv", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    uint32_t types[256] = {0};
+    char line[160];
+    DWORD wrote;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint8_t entry[0x20];
+        uint64_t cell = 0;
+        float pos[2] = {0};
+        if (SafeRead(gen + 0x92F328u + 0x20u * (uintptr_t)i, entry, sizeof entry)) break;
+        int32_t type; memcpy(&type, entry + 0xC, 4); memcpy(&cell, entry + 0x18, 8);
+        if (cell) SafeRead(cell, pos, 8);
+        if (type >= 0 && type < 256) types[type]++;
+        if (file != INVALID_HANDLE_VALUE)
+        {
+            int n = snprintf(line, sizeof line, "%u\t%d\t%.1f\t%.1f\n", i, type, (double)pos[0], (double)pos[1]);
+            WriteFile(file, line, (DWORD)n, &wrote, NULL);
+        }
+    }
+    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+    char summary[400]; int at = 0;
+    for (int t = 0; t < 256 && at < 360; t++) if (types[t]) at += snprintf(summary + at, sizeof summary - at, " 0x%X:%u", t, types[t]);
+    summary[at] = 0;
+    Note("difficulty: subregions (%.0fx): %u cells, types%s", (double)g_world.current, count, summary);
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_world.current == 8.0f) WorldCamInstall();
@@ -1171,7 +1212,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); WorldScatterNote(); if (g_world.current == 8.0f) WorldRecordMap(records, (uint32_t)d); }
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); WorldScatterNote(); WorldSubregionNote(); if (g_world.current == 8.0f) WorldRecordMap(records, (uint32_t)d); }
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
