@@ -416,6 +416,29 @@ WORLD_SPAWNER(2)
 WORLD_SPAWNER(3)
 static void* const kSpawnDetours[4] = {(void*)WorldSpawn0, (void*)WorldSpawn1, (void*)WorldSpawn2, (void*)WorldSpawn3};
 
+/* Research: op 0x2B's eight jobs (0xF322F0, r9 the job: +0x10 the pass context, whose [+0x170] holds the item count;
+ * +0x4C/+0x50 its range of the shuffled items, +0x58 its done flag; 0xF34EE0..0xF34F6A) timed one by one, to see how
+ * evenly the work divides. */
+static const char kPlaceJobPin[] = "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 70 F3 FF FF";
+typedef uint64_t (*WorldJobFn)(uint64_t, uint64_t, uint64_t, uint64_t);
+static WorldJobFn g_placeJob;
+static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
+{
+    if (!(g_world.current > 1.0f) || job == 0) return g_placeJob(a, b, c, job);
+    uint32_t range[2] = {0, 0}, items = 0;
+    uint64_t context = 0, list = 0;
+    SafeRead(job + 0x4C, range, 8);
+    if (!SafeRead(job + 0x10, &context, 8) && context != 0 && !SafeRead(context + 0x170, &list, 8) && list != 0) SafeRead(list, &items, 4);
+    LARGE_INTEGER start, end, hz;
+    QueryPerformanceCounter(&start);
+    uint64_t r = g_placeJob(a, b, c, job);
+    QueryPerformanceCounter(&end);
+    QueryPerformanceFrequency(&hz);
+    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu: %.1f ms", range[0], range[1], items,
+        (unsigned long)GetCurrentThreadId(), (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart);
+    return r;
+}
+
 /* Streaming research: the heightfield level layers snap to (exe 0xDFA60, r9: data at +0, origin +8/+0xC, extent
  * +0x14/+0x18, columns +0x1C, rows +0x20; a stack copy of the generator's, whose data is freed after generation). The
  * loader keeps a copy of the data from generation and lends it when a layer is spawned after the drop. */
@@ -696,6 +719,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     for (int i = 0; i < 4; i++)
         if (ApiCodeMatches(exe + kSpawners[i].rva, kSpawners[i].pin))
             LoaderHook("extra large maps' spawn diagnostic", exe + kSpawners[i].rva, kSpawnDetours[i], (void**)&g_worldSpawn[i]);
+    if (ApiCodeMatches(game + 0xF322F0u, kPlaceJobPin))
+        LoaderHook("extra large maps' stamp job timing", game + 0xF322F0u, (void*)WorldPlaceJob, (void**)&g_placeJob);
     InstallWorldPlan(game); /* it notes its own refusal; the vanilla pass still runs then */
     const char* overlap = InstallWorldOverlap(game);
     if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
