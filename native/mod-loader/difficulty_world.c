@@ -977,6 +977,25 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
     uint64_t context = 0, list = 0;
     SafeRead(job + 0x4C, range, 8);
     if (!SafeRead(job + 0x10, &context, 8) && context != 0 && !SafeRead(context + 0x170, &list, 8) && list != 0) SafeRead(list, &items, 4);
+    /* Each job writes its instances at slice + count x 0x130 with no bound (the capacity at +0x38 only sizes the clear
+     * at the job's start), and the slices lie end to end in one buffer: a job that placed more than its 24576 ran over
+     * the next job's slice, which then read records without a resource (0xF31027) or left locations without one
+     * (GenerateResourceHash, 0xC176B8). On a larger map each job gets its own region instead (job+0x20; the merge at
+     * 0xF35030 reads every job's records through it, count +0x54): 128 MB, about 440k records, committed by the system
+     * only where written, followed by a reserved page so a job past even that faults in place. Jobs split the items in 8
+     * equal ranges, so the region is picked by the range's start. */
+    if (g_world.current > 1.0f && items != 0)
+    {
+        static uint8_t* regions[8];
+        uint32_t slot = (uint32_t)((uint64_t)range[0] * 8u / items);
+        if (slot > 7) slot = 7;
+        if (regions[slot] == NULL)
+        {
+            uint8_t* region = (uint8_t*)VirtualAlloc(NULL, (128u << 20) + 0x10000u, MEM_RESERVE, PAGE_NOACCESS);
+            if (region != NULL && VirtualAlloc(region, 128u << 20, MEM_COMMIT, PAGE_READWRITE) != NULL) regions[slot] = region;
+        }
+        if (regions[slot] != NULL) *(volatile uint64_t*)(uintptr_t)(job + 0x20) = (uint64_t)(uintptr_t)regions[slot];
+    }
     LARGE_INTEGER start, end, hz;
     QueryPerformanceCounter(&start);
     uint64_t r = g_placeJob(a, b, c, job);
@@ -985,9 +1004,10 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
     /* The job's slice (+0x20, capacity +0x38 records of 0x130, cleared at the job's start, 0xF3253B): records written
      * (a box or a resource) and those of them without a resource (+0x90), which become locations without one. */
     uint64_t slice = 0;
-    uint32_t capacity = 0, written = 0, empty = 0, lastWritten = 0;
+    uint32_t capacity = 0, written = 0, empty = 0, lastWritten = 0, count = 0;
+    SafeRead(job + 0x54, &count, 4);
     if (!SafeRead(job + 0x20, &slice, 8) && !SafeRead(job + 0x38, &capacity, 4) && slice != 0 && capacity <= 0x100000)
-        for (uint32_t i = 0; i < capacity; i++)
+        for (uint32_t i = 0; i < (count > capacity ? count : capacity) && i < 0x6B000u; i++)
         {
             uint8_t box[16];
             uint64_t resource = 0;
@@ -999,9 +1019,9 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
             lastWritten = i;
             if (resource == 0) empty++;
         }
-    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu at %.0fx: %.1f ms; slice %u records written (last %u) of %u, %u without a resource",
+    Note("difficulty: extra large maps: op 0x2B job items %u..%u of %u on thread %lu at %.0fx: %.1f ms; %u records (count %u, last %u; the original slice held %u), %u without a resource",
         range[0], range[1], items, (unsigned long)GetCurrentThreadId(), (double)g_world.current, (double)(end.QuadPart - start.QuadPart) * 1000.0 / (double)hz.QuadPart,
-        written, lastWritten, capacity, empty);
+        written, count, lastWritten, capacity, empty);
     return r;
 }
 
