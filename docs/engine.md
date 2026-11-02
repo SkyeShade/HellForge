@@ -42,7 +42,8 @@ Some parts are not in the engine package. The in-game editor (`native/editor`) i
 
 The session runner's `src/HellForge.Session/EarlyConstructor.cs` is generated from `scripts/EarlyConstructorExperiment.cs`
 (pinned by its SHA-256) by `scripts/HostEarlyConstructor.Common.ps1`, with `HostLaterStatusExperiment.ps1` alongside.
-[multiplayer.md](multiplayer.md) says what it does.
+It was changed by hand since, as its header says (how the boundary is polled and how the game is frozen there), so
+generating it again would undo those changes. [multiplayer.md](multiplayer.md) says what it does.
 
 ## The package and its version
 
