@@ -90,7 +90,12 @@
 
 /* The reviewed windows. The 0xF31130 pin includes the jae's distance to 0xF311F8 and the 0xF30Fxx pins include the
  * displacements our stubs rely on; a build whose code differs does not take this path. */
-static const char kOverlapFunctionPin[] = "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57";
+static const char kOverlapFunctionPin[] = "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 90 DF FF FF";
+/* The frame: five pushes, then lea rbp, [rsp-0x2070], so the return address is at [rbp+0x2098] (the 5th argument, the
+ * base, at [rbp+0x20C0] as 0xF30C22 reads it). The callers whose records are the job's own slice (append only): */
+#define OVERLAP_FRAME_RETURN 0x2098u
+#define OVERLAP_CALLER_A 0xF33FA6u /* after the call at 0xF33FA1 */
+#define OVERLAP_CALLER_B 0xF34642u /* after the call at 0xF3463D */
 static const char kOverlapEnterPin[] = "0F 1F 40 00 0F 1F 84 00 00 00 00 00";
 static const char kOverlapLoopPin[] = "8B C7 49 8D 5E 08 48 69 C8 30 01 00 00";
 static const char kOverlapNextPin[] = "FF C7 41 3B FF 0F 83 BD 00 00 00";
@@ -139,6 +144,8 @@ typedef struct OverlapBuffer
     uint64_t members;      /* the sum of the cells' list counts */
     uint32_t* always;      /* records a query always includes */
     uint32_t alwaysCount, alwaysCap;
+    float* boxes;          /* each indexed record's box as it was indexed (check mode compares) */
+    uint32_t boxCap;
 } OverlapBuffer;
 
 typedef struct OverlapThread
@@ -149,6 +156,7 @@ typedef struct OverlapThread
     uint32_t listCount, listCap;
     uint32_t pos;          /* the next index OverlapNext returns */
     int active;            /* this loop uses the list (0: fall back) */
+    uintptr_t frame;       /* the rbp of the 0xF30B60 call the list belongs to */
     LONG cacheGeneration;  /* the buffer this thread used last (no table lock while it stays the same) */
     uintptr_t cacheBase;
     struct OverlapBuffer* cacheEntry;
@@ -161,9 +169,10 @@ typedef struct OverlapGlobal
     volatile LONG installed;
     volatile LONG level;   /* 1 while an extra large level (the continuation stub reads it) */
     DWORD tls;             /* the per-thread OverlapThread */
+    uintptr_t game;
 } OverlapGlobal;
 
-static OverlapGlobal g_overlap = {0, 0, TLS_OUT_OF_INDEXES};
+static OverlapGlobal g_overlap = {0, 0, TLS_OUT_OF_INDEXES, 0};
 static OverlapBuffer g_overlapBuffers[OVERLAP_BUFFERS];
 static SRWLOCK g_overlapTableLock = SRWLOCK_INIT;
 static volatile LONG g_overlapTableGeneration;
@@ -274,6 +283,9 @@ static void OverlapFreeEntry(OverlapBuffer* e)
         free(e->cells);
     }
     free(e->always);
+    free(e->boxes);
+    e->boxes = NULL;
+    e->boxCap = 0;
     e->cells = NULL;
     e->cellCap = 0;
     e->cellUsed = 0;
@@ -310,6 +322,16 @@ static int OverlapAddRecord(OverlapBuffer* e, uintptr_t base, uint32_t index)
 {
     float box[4];
     memcpy(box, (const void*)(uintptr_t)(base + 8u + (uint64_t)index * 0x130u + 0xB0u), sizeof box);
+    if (index >= e->boxCap)
+    {
+        uint32_t cap = e->boxCap != 0 ? e->boxCap * 2u : 1024u;
+        while (cap <= index) cap *= 2u;
+        float* grown = (float*)realloc(e->boxes, (size_t)cap * 4u * sizeof *grown);
+        if (grown == NULL) return 1;
+        e->boxes = grown;
+        e->boxCap = cap;
+    }
+    memcpy(e->boxes + (size_t)index * 4u, box, sizeof box);
     float x0 = box[0], y0 = box[1], x1 = box[2], y1 = box[3];
     if (!isfinite(x0) || !isfinite(y0) || !isfinite(x1) || !isfinite(y1) ||
         fabsf(x0) > OVERLAP_LIMIT || fabsf(y0) > OVERLAP_LIMIT || fabsf(x1) > OVERLAP_LIMIT || fabsf(y1) > OVERLAP_LIMIT)
@@ -452,12 +474,21 @@ static int OverlapListHas(const uint32_t* list, uint32_t count, uint32_t value)
 
 /* Check mode: every record the original's box test passes must be in the list. It reads the same record boxes the loop
  * body reads, so it also exercises the record layout this file assumes. */
-static void OverlapCheck(uintptr_t base, uint32_t count, const float* q, const OverlapThread* t)
+static void OverlapCheck(OverlapBuffer* e, uintptr_t base, uint32_t count, const float* q, const OverlapThread* t)
 {
     for (uint32_t i = 0; i < count; i++)
     {
         float box[4];
         memcpy(box, (const void*)(uintptr_t)(base + 8u + (uint64_t)i * 0x130u + 0xB0u), sizeof box);
+        if (i < e->built && memcmp(box, e->boxes + (size_t)i * 4u, sizeof box) != 0)
+        {
+            /* A record below the count changed after it was indexed: this buffer is not append-only; stop using it. */
+            e->failed = 1;
+            LONG64 n = InterlockedIncrement64(&g_overlapMisses);
+            if (n <= 4)
+                Note("difficulty: extra large maps: the stamp overlap grid found record %u of %u rewritten after it was indexed; that buffer goes back to the original loop",
+                    (unsigned)i, (unsigned)count);
+        }
         if (!OverlapBoxPass(q[0], q[1], q[2], q[3], box)) continue;
         if (OverlapListHas(t->list, t->listCount, i)) continue;
         LONG64 n = InterlockedIncrement64(&g_overlapMisses);
@@ -571,14 +602,18 @@ static OverlapBuffer* OverlapBufferFor(uintptr_t base, LONG generation)
     return found;
 }
 
-/* The stub at 0xF31004: rcx = r14 (base), edx = r15d (count), r8 = the query (centre x, centre y, half x, half y).
- * Returns the first candidate index, -1 for none, or -2 for the original loop. */
-static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
+/* The stub at 0xF31004: rcx = r14 (base), edx = r15d (count), r8 = the query (centre x, centre y, half x, half y), r9 =
+ * rbp (the call's frame). Returns the first candidate index, -1 for none, or -2 for the original loop. Only the job's own
+ * slice (callers 0xF33FA1, 0xF3463D) takes the grid: its records are appended and never rewritten below the count.
+ * 0xF314A0's batches (0xF3175F) start again at the same addresses when one is discarded, so they keep the original loop. */
+static int OverlapBegin(uintptr_t base, uint32_t count, const float* q, uintptr_t frame)
 {
     OverlapThread* t = OverlapThreadGet();
     if (t == NULL) return -2;
     t->active = 0;
     if (g_overlap.installed == 0) return -2;
+    uintptr_t caller = *(const uintptr_t*)(frame + OVERLAP_FRAME_RETURN);
+    if (caller != g_overlap.game + OVERLAP_CALLER_A && caller != g_overlap.game + OVERLAP_CALLER_B) return -2;
     if (!(g_world.current > 1.0f)) { if (g_overlap.level != 0) g_overlap.level = 0; return -2; }
     if (g_overlap.level != 1) g_overlap.level = 1; /* written only on a change: eight jobs share its cache line */
     LONG generation = g_worldOpRun; /* one run of one pass record (difficulty_world.c) */
@@ -634,8 +669,13 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     {
         t->sinceCheck = 0;
         InterlockedIncrement64(&g_overlapChecks);
-        OverlapCheck(base, count, q, t);
+        AcquireSRWLockExclusive(&e->lock);
+        OverlapCheck(e, base, count, q, t);
+        int rewritten = e->failed;
+        ReleaseSRWLockExclusive(&e->lock);
+        if (rewritten) return -2;
     }
+    t->frame = frame;
     t->active = 1;
     t->pos = 0;
     if (t->listCount == 0) return -1;
@@ -643,12 +683,13 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q)
     return (int)t->list[0];
 }
 
-/* The stub at 0xF31130: the next candidate, -1 at the end, -2 for the original stepping. */
-static int OverlapNext(void)
+/* The stub at 0xF31130 (rcx = rbp): the next candidate, -1 at the end, -2 for the original stepping (also when the list
+ * is another call's: stepping on from the current index visits a superset of the list). */
+static int OverlapNext(uintptr_t frame)
 {
     if (g_overlap.installed == 0) return -2;
     OverlapThread* t = OverlapThreadGet();
-    if (t == NULL || !t->active) return -2;
+    if (t == NULL || !t->active || t->frame != frame) return -2;
     if (t->pos >= t->listCount) { t->active = 0; return -1; }
     return (int)t->list[t->pos++];
 }
@@ -660,54 +701,57 @@ static const uint8_t kOverlapEnterStub[] = {
     STUB_PUSH_VOLATILE,                                               /*   0 push rax rcx rdx r8 r9 r10 r11 */
     0x48, 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00,                         /*  11 sub rsp, 0xa8 */
     STUB_SAVE_XMM,                                                    /*  18 movdqu [rsp+0x20..0x70], xmm0..xmm5 */
-    0xF3, 0x0F, 0x11, 0x74, 0x24, 0x80,                               /*  54 movss [rsp+0x80], xmm6 (query centre x) */
-    0xF3, 0x44, 0x0F, 0x11, 0x44, 0x24, 0x84,                         /*  60 movss [rsp+0x84], xmm8 (query centre y) */
-    0xF3, 0x44, 0x0F, 0x11, 0x7C, 0x24, 0x88,                         /*  67 movss [rsp+0x88], xmm15 (query half x) */
-    0xF3, 0x44, 0x0F, 0x11, 0x6C, 0x24, 0x8C,                         /*  74 movss [rsp+0x8c], xmm13 (query half y) */
-    0x4C, 0x89, 0xF1,                                                 /*  81 mov rcx, r14 (the slice's base) */
-    0x44, 0x89, 0xFA,                                                 /*  84 mov edx, r15d (the record count) */
-    0x4C, 0x8D, 0x44, 0x24, 0x80,                                     /*  87 lea r8, [rsp+0x80] (the query) */
-    STUB_CALL_IMM64,                                                  /*  92 mov rax, OverlapBegin (imm64 at 94); call rax */
-    STUB_LOAD_XMM,                                                    /* 104 movdqu xmm0..xmm5, [rsp+0x20..0x70] */
-    0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00,                         /* 140 add rsp, 0xa8 */
-    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59,       /* 147 pop r11 r10 r9 r8 rdx rcx (rax stays) */
-    0x48, 0x83, 0xC4, 0x08,                                           /* 157 add rsp, 8 (discard the saved rax) */
-    0x85, 0xC0,                                                       /* 161 test eax, eax */
-    0x78, 0x07,                                                       /* 163 js 172 (a negative answer) */
-    0x89, 0xC7,                                                       /* 165 mov edi, eax (the first index) */
-    0xE9, 0, 0, 0, 0,                                                 /* 167 jmp 0xf31010 (rel32 at 168) */
-    0x83, 0xF8, 0xFF,                                                 /* 172 cmp eax, -1 */
-    0x0F, 0x84, 0, 0, 0, 0,                                           /* 175 je 0xf311f8 (rel32 at 177) */
-    0x33, 0xFF,                                                       /* 181 xor edi, edi */
-    0xE9, 0, 0, 0, 0};                                                /* 183 jmp 0xf31010 (rel32 at 184) */
-_Static_assert(sizeof kOverlapEnterStub == 188, "the loop entry stub's offsets");
+    0xF3, 0x0F, 0x11, 0xB4, 0x24, 0x80, 0x00, 0x00, 0x00,             /*  54 movss [rsp+0x80], xmm6 (query centre x) */
+    0xF3, 0x44, 0x0F, 0x11, 0x84, 0x24, 0x84, 0x00, 0x00, 0x00,       /*  63 movss [rsp+0x84], xmm8 (query centre y) */
+    0xF3, 0x44, 0x0F, 0x11, 0xBC, 0x24, 0x88, 0x00, 0x00, 0x00,       /*  73 movss [rsp+0x88], xmm15 (query half x) */
+    0xF3, 0x44, 0x0F, 0x11, 0xAC, 0x24, 0x8C, 0x00, 0x00, 0x00,       /*  83 movss [rsp+0x8c], xmm13 (query half y) */
+    0x4C, 0x89, 0xF1,                                                 /*  93 mov rcx, r14 (the slice's base) */
+    0x44, 0x89, 0xFA,                                                 /*  96 mov edx, r15d (the record count) */
+    0x4C, 0x8D, 0x84, 0x24, 0x80, 0x00, 0x00, 0x00,                   /*  99 lea r8, [rsp+0x80] (the query) */
+    0x49, 0x89, 0xE9,                                                 /* 107 mov r9, rbp (the call's frame) */
+    STUB_CALL_IMM64,                                                  /* 110 mov rax, OverlapBegin (imm64 at 112); call rax */
+    STUB_LOAD_XMM,                                                    /* 122 movdqu xmm0..xmm5, [rsp+0x20..0x70] */
+    0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00,                         /* 158 add rsp, 0xa8 */
+    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59,       /* 165 pop r11 r10 r9 r8 rdx rcx (rax stays) */
+    0x48, 0x83, 0xC4, 0x08,                                           /* 175 add rsp, 8 (discard the saved rax) */
+    0x85, 0xC0,                                                       /* 179 test eax, eax */
+    0x78, 0x07,                                                       /* 181 js 190 (a negative answer) */
+    0x89, 0xC7,                                                       /* 183 mov edi, eax (the first index) */
+    0xE9, 0, 0, 0, 0,                                                 /* 185 jmp 0xf31010 (rel32 at 186) */
+    0x83, 0xF8, 0xFF,                                                 /* 190 cmp eax, -1 */
+    0x0F, 0x84, 0, 0, 0, 0,                                           /* 193 je 0xf311f8 (rel32 at 195) */
+    0x33, 0xFF,                                                       /* 199 xor edi, edi */
+    0xE9, 0, 0, 0, 0};                                                /* 201 jmp 0xf31010 (rel32 at 202) */
+_Static_assert(sizeof kOverlapEnterStub == 206, "the loop entry stub's offsets");
 
 /* The index step's stub. The first check is the level flag (a normal level never enters the C path); the rest is the same
- * call/preserve sequence as the entry stub. rax is not restored: it is dead at 0xF3113B/0xF31010 and holds OverlapNext's
- * answer. edi is left untouched by the C call (non-volatile), which is what the fallback stepping increments. */
+ * call/preserve sequence as the entry stub, with rbp (the call's frame) in rcx. rax is not restored: it is dead at
+ * 0xF3113B/0xF31010 and holds OverlapNext's answer. edi is left untouched by the C call (non-volatile), which is what the
+ * fallback stepping increments. */
 static const uint8_t kOverlapNextStub[] = {
     0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /*   0 mov rax, &g_overlap.level (imm64 at 2) */
     0x83, 0x38, 0x00,                                                 /*  10 cmp dword [rax], 0 */
-    0x0F, 0x84, 0, 0, 0, 0,                                           /*  13 je 162 (the original stepping; rel32 at 15) */
+    0x0F, 0x84, 0, 0, 0, 0,                                           /*  13 je 165 (the original stepping; rel32 at 15) */
     STUB_PUSH_VOLATILE,                                               /*  19 push rax rcx rdx r8 r9 r10 r11 */
     0x48, 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00,                         /*  30 sub rsp, 0xa8 */
     STUB_SAVE_XMM,                                                    /*  37 movdqu [rsp+0x20..0x70], xmm0..xmm5 */
-    STUB_CALL_IMM64,                                                  /*  73 mov rax, OverlapNext (imm64 at 75); call rax */
-    STUB_LOAD_XMM,                                                    /*  85 movdqu xmm0..xmm5, [rsp+0x20..0x70] */
-    0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00,                         /* 121 add rsp, 0xa8 */
-    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59,       /* 128 pop r11 r10 r9 r8 rdx rcx (rax stays) */
-    0x48, 0x83, 0xC4, 0x08,                                           /* 138 add rsp, 8 (discard the saved rax) */
-    0x85, 0xC0,                                                       /* 142 test eax, eax */
-    0x78, 0x07,                                                       /* 144 js 153 (a negative answer) */
-    0x89, 0xC7,                                                       /* 146 mov edi, eax (the next index) */
-    0xE9, 0, 0, 0, 0,                                                 /* 148 jmp 0xf3113b (rel32 at 149) */
-    0x83, 0xF8, 0xFF,                                                 /* 153 cmp eax, -1 */
-    0x0F, 0x84, 0, 0, 0, 0,                                           /* 156 je 0xf311f8 (rel32 at 158) */
-    0xFF, 0xC7,                                                       /* 162 inc edi (the original stepping) */
-    0x41, 0x3B, 0xFF,                                                 /* 164 cmp edi, r15d */
-    0x0F, 0x83, 0, 0, 0, 0,                                           /* 167 jae 0xf311f8 (rel32 at 169) */
-    0xE9, 0, 0, 0, 0};                                                /* 173 jmp 0xf3113b (rel32 at 174) */
-_Static_assert(sizeof kOverlapNextStub == 178, "the index step stub's offsets");
+    0x48, 0x89, 0xE9,                                                 /*  73 mov rcx, rbp (the call's frame) */
+    STUB_CALL_IMM64,                                                  /*  76 mov rax, OverlapNext (imm64 at 78); call rax */
+    STUB_LOAD_XMM,                                                    /*  88 movdqu xmm0..xmm5, [rsp+0x20..0x70] */
+    0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00,                         /* 124 add rsp, 0xa8 */
+    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59,       /* 131 pop r11 r10 r9 r8 rdx rcx (rax stays) */
+    0x48, 0x83, 0xC4, 0x08,                                           /* 141 add rsp, 8 (discard the saved rax) */
+    0x85, 0xC0,                                                       /* 145 test eax, eax */
+    0x78, 0x07,                                                       /* 147 js 156 (a negative answer) */
+    0x89, 0xC7,                                                       /* 149 mov edi, eax (the next index) */
+    0xE9, 0, 0, 0, 0,                                                 /* 151 jmp 0xf3113b (rel32 at 152) */
+    0x83, 0xF8, 0xFF,                                                 /* 156 cmp eax, -1 */
+    0x0F, 0x84, 0, 0, 0, 0,                                           /* 159 je 0xf311f8 (rel32 at 161) */
+    0xFF, 0xC7,                                                       /* 165 inc edi (the original stepping) */
+    0x41, 0x3B, 0xFF,                                                 /* 167 cmp edi, r15d */
+    0x0F, 0x83, 0, 0, 0, 0,                                           /* 170 jae 0xf311f8 (rel32 at 172) */
+    0xE9, 0, 0, 0, 0};                                                /* 176 jmp 0xf3113b (rel32 at 177) */
+_Static_assert(sizeof kOverlapNextStub == 181, "the index step stub's offsets");
 
 static int32_t OverlapRel(uintptr_t next, uintptr_t target, int* ok)
 {
@@ -748,19 +792,19 @@ static const char* InstallWorldOverlap(uintptr_t game)
     uint64_t begin = (uint64_t)(uintptr_t)&OverlapBegin;
     uint64_t step = (uint64_t)(uintptr_t)&OverlapNext;
     uint64_t level = (uint64_t)(uintptr_t)&g_overlap.level;
-    memcpy(enter + 94, &begin, 8);
+    memcpy(enter + 112, &begin, 8);
     memcpy(next + 2, &level, 8);
-    memcpy(next + 75, &step, 8);
+    memcpy(next + 78, &step, 8);
     int ok = 1;
     int32_t rel;
-    rel = OverlapRel((uintptr_t)(enter + 172), game + OVERLAP_LOOP_SITE, &ok); memcpy(enter + 168, &rel, 4);
-    rel = OverlapRel((uintptr_t)(enter + 181), game + OVERLAP_END_SITE, &ok); memcpy(enter + 177, &rel, 4);
-    rel = OverlapRel((uintptr_t)(enter + 188), game + OVERLAP_LOOP_SITE, &ok); memcpy(enter + 184, &rel, 4);
-    rel = OverlapRel((uintptr_t)(next + 19), (uintptr_t)(next + 162), &ok); memcpy(next + 15, &rel, 4);
-    rel = OverlapRel((uintptr_t)(next + 153), game + OVERLAP_BACK_SITE, &ok); memcpy(next + 149, &rel, 4);
-    rel = OverlapRel((uintptr_t)(next + 162), game + OVERLAP_END_SITE, &ok); memcpy(next + 158, &rel, 4);
-    rel = OverlapRel((uintptr_t)(next + 173), game + OVERLAP_END_SITE, &ok); memcpy(next + 169, &rel, 4);
-    rel = OverlapRel((uintptr_t)(next + 178), game + OVERLAP_BACK_SITE, &ok); memcpy(next + 174, &rel, 4);
+    rel = OverlapRel((uintptr_t)(enter + 190), game + OVERLAP_LOOP_SITE, &ok); memcpy(enter + 186, &rel, 4);
+    rel = OverlapRel((uintptr_t)(enter + 199), game + OVERLAP_END_SITE, &ok); memcpy(enter + 195, &rel, 4);
+    rel = OverlapRel((uintptr_t)(enter + 206), game + OVERLAP_LOOP_SITE, &ok); memcpy(enter + 202, &rel, 4);
+    rel = OverlapRel((uintptr_t)(next + 19), (uintptr_t)(next + 165), &ok); memcpy(next + 15, &rel, 4);
+    rel = OverlapRel((uintptr_t)(next + 156), game + OVERLAP_BACK_SITE, &ok); memcpy(next + 152, &rel, 4);
+    rel = OverlapRel((uintptr_t)(next + 165), game + OVERLAP_END_SITE, &ok); memcpy(next + 161, &rel, 4);
+    rel = OverlapRel((uintptr_t)(next + 176), game + OVERLAP_END_SITE, &ok); memcpy(next + 172, &rel, 4);
+    rel = OverlapRel((uintptr_t)(next + 181), game + OVERLAP_BACK_SITE, &ok); memcpy(next + 177, &rel, 4);
     if (!ok) { TlsFree(tls); VirtualFree(block, 0, MEM_RELEASE); return "the stamp overlap grid's stubs are out of reach of game.dll"; }
     DWORD previous;
     if (!VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &previous))
@@ -786,6 +830,7 @@ static const char* InstallWorldOverlap(uintptr_t game)
     if (ApiWrite(game + OVERLAP_NEXT_SITE, nextJump, sizeof nextJump))
         return "the stamp overlap grid's index step could not be installed";
     g_overlap.tls = tls;
+    g_overlap.game = game;
     g_overlap.level = 0;
     g_overlapTableGeneration = 0;
     g_overlap.installed = 1;
