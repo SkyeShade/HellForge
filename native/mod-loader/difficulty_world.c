@@ -488,6 +488,43 @@ static void WorldTileRelocate(uint8_t* record, uintptr_t from, uintptr_t to)
     }
 }
 
+/* Research (terrain tiles): which parts of the generator block each pass reads and writes. Once per level at op 0x6D,
+ * records-<level>.txt lists every pass record up to the pipeline's end with its op and each field pointing into the
+ * block (record offset -> block offset), so a tile run knows which coarse arrays it inherits. */
+static LONG g_recordsMapped = -1;
+static void WorldRecordMap(uint64_t records, uint32_t end)
+{
+    if (g_recordsMapped == g_world.levels || g_worldLevel == 0 || end == 0 || end > 1024) return;
+    g_recordsMapped = g_world.levels;
+    uintptr_t gen = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return;
+    wchar_t name[64];
+    swprintf(name, 64, L"records-%ld.txt", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    static uint8_t record[0x19B0];
+    char line[4096];
+    DWORD wrote;
+    int n = snprintf(line, sizeof line, "generator block 0x%llX (0x%X bytes), %u records\n", (unsigned long long)gen, GEN_BLOCK_SIZE, end);
+    WriteFile(file, line, (DWORD)n, &wrote, NULL);
+    for (uint32_t i = 0; i < end; i++)
+    {
+        if (SafeRead(records + (uint64_t)i * 0x19B0u, record, sizeof record)) break;
+        uint32_t op;
+        memcpy(&op, record, 4);
+        n = snprintf(line, sizeof line, "%u op 0x%02X:", i, op);
+        for (uint32_t o = 8; o + 8 <= 0x19B0u && n < (int)sizeof line - 40; o += 8)
+        {
+            uint64_t v;
+            memcpy(&v, record + o, 8);
+            if (v >= gen && v < gen + GEN_BLOCK_SIZE) n += snprintf(line + n, sizeof line - n, " +%X=G+%llX", o, (unsigned long long)(v - gen));
+        }
+        n += snprintf(line + n, sizeof line - n, "\n");
+        WriteFile(file, line, (DWORD)n, &wrote, NULL);
+    }
+    CloseHandle(file);
+}
+
 static void WorldTileProbe(uint64_t context)
 {
     if (g_tileDone == g_world.levels || g_worldLevel == 0 || g_rec25 == 0) return;
@@ -605,7 +642,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     {
         uint32_t i = 0, o = 0;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) WorldTileProbe(b); }
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) { WorldZoneGridNote(); if (g_world.current == 8.0f) { WorldRecordMap(records, (uint32_t)d); WorldTileProbe(b); } }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
