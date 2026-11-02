@@ -487,9 +487,10 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && !profile) InterlockedDecrement(&depth);
     if (profile) WorldProfileBegin(op);
     QueryPerformanceCounter(&start);
-    /* Research (terrain resolution): SetupTerrainMerge's record holds three parameters {destination, value} at +0x80, +0x90
-     * and +0xA0, all 4096 on every map (the heightmap's samples per side: 0.5 m at 2048 m, 4 m at 16384 m). With
-     * HELLFORGE_XL_TERRAIN_RES=N (1024..16384) an extra large level gets N in both the record and the destinations. */
+    /* Research (terrain resolution): SetupTerrainMerge (0xF48DA0) copies its record's +0xB0 (a count) and +0xB4 (a
+     * float, 4096 on every map: the heightmap's samples per side, 0.5 m at 2048 m and 4 m at 16384 m) into the merge
+     * object (+0x124/+0x120); the three {destination, 4096} slots at +0x80..+0xA8 are what the pass writes back. With
+     * HELLFORGE_XL_TERRAIN_RES=N (1024..16384) an extra large level gets N there. */
     if (watch && op == 0x38)
     {
         static int resolution = -1;
@@ -500,15 +501,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             if (resolution < 1024 || resolution > 16384) resolution = 0;
         }
         uint64_t record = records + (uint64_t)at * 0x19B0u;
-        for (int k = 0; k < 3 && resolution > 0; k++)
+        float size = 0.0f;
+        if (resolution > 0 && !SafeRead(record + 0xB4, &size, 4) && size == 4096.0f)
         {
-            uint64_t destination = 0;
-            uint32_t value = 0;
-            if (SafeRead(record + 0x80 + 0x10 * k, &destination, 8) || SafeRead(record + 0x88 + 0x10 * k, &value, 4) || value != 4096u) continue;
-            *(volatile uint32_t*)(uintptr_t)(record + 0x88 + 0x10 * k) = (uint32_t)resolution;
-            uint32_t current = 0;
-            if (destination >= 0x10000 && !SafeRead(destination, &current, 4)) *(volatile uint32_t*)(uintptr_t)destination = (uint32_t)resolution;
-            if (k == 0) Note("difficulty: extra large maps: terrain resolution %d (research; destination held %u)", resolution, current);
+            *(volatile float*)(uintptr_t)(record + 0xB4) = (float)resolution;
+            Note("difficulty: extra large maps: terrain resolution %d (research)", resolution);
         }
     }
     uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
