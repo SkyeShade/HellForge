@@ -687,6 +687,9 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     *diskP = disk ^ 1u;
     *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = (float)extent; *radiusP = (float)extent; *spacingP = 16.0f;
     memset(g_tileBlock + 0x11A7108, 0, 4); memset(g_tileBlock + 0x11A715C, 0, 4); /* no locations in the tile (yet) */
+    /* No routes either (yet): the copy's route array (G+0x74AC20, count G+0x11A70E8; GenerateRouteSegments' input) and
+     * route segments (count G+0x11A71D4) are the level's, in its coordinates and on its route cells. */
+    memset(g_tileBlock + 0x11A70E8, 0, 4); memset(g_tileBlock + 0x11A71D4, 0, 4);
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     LARGE_INTEGER t0, t1, hz;
     QueryPerformanceCounter(&t0);
