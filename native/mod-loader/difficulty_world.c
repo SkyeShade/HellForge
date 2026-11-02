@@ -417,6 +417,49 @@ static void ProbeHex(HANDLE file, const char* title, uint64_t at, uint32_t bytes
     }
 }
 
+/* Research (the zone grid, KB patrol-destination-behaviour): G = gen + 0x231C18 holds 96 x 96 cells of up to 24 zone
+ * seeds (u32 values at G + 4i, positions f32x2 at G + 0xD8000 + 8i, i = cell x 24 + k; u16 counts at G + 0x288000;
+ * the grid's size f32 at G + 0x28C800). Once per level, at op 0x6D: total seeds, cells used, the fullest cell, a count
+ * histogram, distinct values and the mean spacing, so the grid can be sized for a larger world. */
+static LONG g_zoneNoted = -1;
+static void WorldZoneGridNote(void)
+{
+    if (g_zoneNoted == g_world.levels || g_worldLevel == 0) return;
+    g_zoneNoted = g_world.levels;
+    uintptr_t gen = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return;
+    uintptr_t grid = gen + 0x231C18;
+    static uint16_t counts[96 * 96];
+    float size = 0.0f;
+    if (SafeRead(grid + 0x288000, counts, sizeof counts) || SafeRead(grid + 0x28C800, &size, 4)) return;
+    uint32_t total = 0, used = 0, fullest = 0, histogram[26] = {0};
+    for (int c = 0; c < 96 * 96; c++)
+    {
+        uint32_t n = counts[c];
+        total += n; if (n) used++; if (n > fullest) fullest = n;
+        histogram[n > 25 ? 25 : n]++;
+    }
+    static uint32_t values[96 * 96 * 24];
+    uint32_t distinct = 0;
+    if (!SafeRead(grid, values, sizeof values))
+    {
+        static uint8_t seen[65536];
+        memset(seen, 0, sizeof seen);
+        for (int c = 0; c < 96 * 96; c++)
+            for (uint32_t k = 0; k < counts[c] && k < 24; k++)
+            {
+                uint32_t v = values[c * 24 + k] & 0xFFFF;
+                if (!seen[v]) { seen[v] = 1; distinct++; }
+            }
+    }
+    char text[256];
+    int n = 0;
+    for (int k = 0; k <= 25 && n < (int)sizeof text - 16; k++) if (histogram[k]) n += snprintf(text + n, sizeof text - n, " %d:%u", k, histogram[k]);
+    Note("difficulty: zone grid at %.0fx: size %.0f m (cells of %.1f m), %u seeds in %u of 9216 cells, fullest %u, %u distinct values (%.0f m between seeds); seeds per cell:%s",
+        (double)g_world.current, (double)size, (double)(size / 96.0f), total, used, fullest, distinct,
+        total ? (double)size / sqrt((double)total) : 0.0, text);
+}
+
 static volatile LONG g_terrainProbes;
 static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
 {
@@ -473,6 +516,10 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     {
         uint32_t i = 0, o = 0;
         if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) WorldDumpHeight();
+    }
+    {
+        uint32_t i = 0, o = 0;
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6D) WorldZoneGridNote();
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
