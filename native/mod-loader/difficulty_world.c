@@ -565,6 +565,16 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         while (index == 0 && calls < 64) { g_worldDispatch((uint64_t)one, context, (uint64_t)&index, 1, e, 0, g, h); calls++; }
         QueryPerformanceCounter(&t1);
         ran++;
+        { /* research: route cell 0's first edge pointer and the route cell counts after each op (a vertex written over it
+           * crashed CellularAutomata at 0xF6D9A0) */
+            uint64_t edge0 = 0;
+            uint32_t rc[4] = {0};
+            memcpy(&edge0, g_tileBlock + 0x8EB328 + 8, 8);
+            memcpy(rc, g_tileBlock + 0x11A71BC, 16);
+            Note("difficulty: terrain tile: op 0x%02X (%d calls): route cell 0 +8 = 0x%llX%s; counts +1BC..+1C8 %u %u %u %u", op, calls,
+                (unsigned long long)edge0, edge0 >= (uint64_t)(uintptr_t)g_tileBlock && edge0 < (uint64_t)(uintptr_t)g_tileBlock + GEN_BLOCK_SIZE ? " (in the copy)" : "",
+                rc[0], rc[1], rc[2], rc[3]);
+        }
         if (n < (int)sizeof text - 32)
             n += snprintf(text + n, sizeof text - n, " %02X:%.1f%s", op, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, calls > 1 ? "+" : "");
         if (op == 0x04) seen04 = 1;
@@ -642,6 +652,11 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     QueryPerformanceCounter(&t0);
     ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)record + 8, (uint64_t)record, context);
     QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+    {
+        uint64_t edge0 = 0;
+        memcpy(&edge0, g_tileBlock + 0x8EB328 + 8, 8);
+        Note("difficulty: terrain tile: before the passes: route cell 0 +8 = 0x%llX (copy at 0x%llX)", (unsigned long long)edge0, (unsigned long long)(uintptr_t)g_tileBlock);
+    }
     WorldTilePasses(records, end, context, e, f, g, h, gen);
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
     uint32_t counts[3] = {0};
