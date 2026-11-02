@@ -1158,7 +1158,7 @@ static void WorldScatterNote(void)
 /* Research (ground types): the subregion cells (G+0x92F328, 0x20 each, count G+0x11A71C4; +0xC the type, the zone id the
  * scatter brushes match: 0x41/0x43/0x44/0x46 on planet 157; +0x18 the route cell, its position at +0/+4), written out as
  * subregions-<level>.tsv and summarised, vanilla and larger. */
-static uint64_t g_pass74, g_ctx74;
+static uint64_t g_pass74, g_ctx74, g_pass76;
 static void WorldSubregionNote(void)
 {
     static LONG noted = -1;
@@ -1223,6 +1223,25 @@ static void WorldSubregionNote(void)
         }
         ks[ka] = 0;
         Note("difficulty: subregions (%.0fx): kind table%s", (double)g_world.current, ks);
+        /* op 0x76's gate: its entries ([pass+0x10], 0xE0 each, [[pass+0x50]] of them; up to 24 route cells inline from
+         * +0x10, their count at +0xD0): with none holding a cell no kind is painted (0xF6609F); the ring's radius is
+         * world / 2 x [settings+0x50] x the kind's fraction (+0x10). */
+        uint64_t base76 = 0, countAt = 0, dirAt = 0; uint32_t n76 = 0; float s50 = 0, dir[2] = {0}, frac = 0;
+        SafeRead(contextSettings + 0x50, &s50, 4); SafeRead(region + 0x80 + 0x10, &frac, 4);
+        if (g_pass76 && !SafeRead(g_pass76 + 0x10, &base76, 8) && !SafeRead(g_pass76 + 0x50, &countAt, 8) && countAt && !SafeRead(countAt, &n76, 4))
+        {
+            if (!SafeRead(g_pass76 + 0x28, &dirAt, 8) && dirAt) SafeRead(dirAt, dir, 8);
+            uint32_t withCells = 0, cellsTotal = 0;
+            for (uint32_t k = 0; k < n76 && k < 4096; k++)
+            {
+                uint32_t c = 0;
+                if (SafeRead(base76 + 0xE0u * (uintptr_t)k + 0xD0, &c, 4)) break;
+                if (c) withCells++;
+                cellsTotal += c;
+            }
+            Note("difficulty: subregions (%.0fx): op 0x76: %u entries, %u with route cells (%u cells); settings+0x50 %.3f, kind 1 fraction %.3f, direction %.3f %.3f",
+                (double)g_world.current, n76, withCells, cellsTotal, (double)s50, (double)frac, (double)dir[0], (double)dir[1]);
+        }
     }
     char summary[400]; int at = 0;
     for (int t = 0; t < 256 && at < 360; t++) if (types[t]) at += snprintf(summary + at, sizeof summary - at, " 0x%X:%u", t, types[t]);
@@ -1336,7 +1355,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uintptr_t vanillaBlock = 0;
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
-    { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } }
+    { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } if (oa == 0x76) g_pass76 = records + (uint64_t)ia * 0x19B0u + 8; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (zoneSet)
