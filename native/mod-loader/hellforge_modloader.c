@@ -597,6 +597,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_plan.c" /* after difficulty_world.c: the Hive Lord graph on a grid (g_world) */
 #include "difficulty_world_overlap.c" /* after difficulty_world.c: the stamp overlap test on a grid (g_world, g_worldOpRun) */
 #include "difficulty_world_poisson.c" /* after difficulty_world.c: Poisson-disk sets from a periodic tile (g_world) */
+#include "difficulty_world_diag.c" /* after difficulty_world.c: terrain diagnostics (its dispatcher hooks, the layer heightfield copy) */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */

@@ -1337,8 +1337,14 @@ static void WorldSubregionNote(void)
     }
 }
 
+/* difficulty_world_diag.c: terrain diagnostics around every dispatcher step (HELLFORGE_TERRAIN_DIAG) */
+static void TerrainDiagBefore(uint64_t records, uint64_t index, uint32_t end, uint32_t* at, uint32_t* op);
+static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    uint32_t diagAt, diagOp;
+    TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
     if (g_world.current == 8.0f) WorldCamInstall();
     {
         uint32_t i = 0, o = 0xFFFFFFFFu;
@@ -1364,7 +1370,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             uintptr_t genAt = 0; uint32_t subs = 0;
             if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0 && !SafeRead(genAt + 0x11A71C4u, &subs, 4)) WorldSuggestDrop(genAt, subs);
         }
-        if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) return 0;
+        if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
@@ -1443,6 +1449,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } if (oa == 0x76) g_pass76 = records + (uint64_t)ia * 0x19B0u + 8; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    TerrainDiagAfter(records, index, diagAt, diagOp);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (zoneSet)
     {

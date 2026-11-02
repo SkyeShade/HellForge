@@ -463,6 +463,66 @@ maps (map type 2, another generator) keep level 10's size.
 
 The mission distance factors (10 levels x 3, read unclamped at 7 sites) move to a table with level 11's.
 
+### Terrain diagnostics
+
+`HELLFORGE_TERRAIN_DIAG` (research, `difficulty_world_diag.c`) measures what each level's generation does to the terrain,
+so a map that comes out smooth, flat, stretched or bare can be traced to the pass that made it so. It runs on every
+level, vanilla ones included, so a level-10 map gives the numbers an extra large one is held to.
+
+- `1`: measurements and a report per level, `terrain-diag-<level>.json` in the session's logs, with a line per image and
+  any flags in `modloader.log`.
+- `2`: also reads back the merge's named render targets after the passes that draw into them, and writes every image it
+  measured (`terrain-<level>-<nn>-<label>.bin`, raw, with a `.txt` descriptor). `HELLFORGE_TERRAIN_DIAG_READBACK=off`
+  keeps the files but skips the readbacks. Each readback stays allocated by the engine (up to ~350 MB per level, 14 per
+  level and 48 per session at most), and measuring a 16 km map's images adds a few seconds to its loading.
+
+Around every dispatcher step (`WorldDispatch`), the report records:
+
+| Section | When | What |
+|---|---|---|
+| `settings` | SetupTerrainMerge (0x38) | world size, radii (lg+0x2D70..: fade, disk, rect), merge tiles and samples, map type, the XL switches |
+| `plan` | as 0x38 begins | the main Voronoi's vertices, spacing (nearest neighbour) and heights; subregion cells by height group and type; locations; route vertices, cells, edges |
+| `ops` | every record | op, pass name, steps, wall time, frames from first to last step, locations it added, whether it finished |
+| `images` | see below | measurements of each image |
+| `flags` | at the end | health checks on the final terrain |
+
+The images it measures:
+- the merge's 8 intermediate captures (G+0x119FF68) after each CaptureIntermediateHeightmapFinalize (0x5C);
+- at level 2, while the merge's targets exist (from SetupTerrainMerge to CleanupTerrainMerge), readbacks of the heights
+  target (0x2A9E3232) after 0x3C/0x3D/0x3E/0x3F/0x40/0x0D/0x63/0x64, the material mix (0x95E7E3AC) after 0x41/0x64, and
+  the zone lookup (0x1524FE5A) after RenderZoneLookup (0x4C) draws it. The calls are the ones op 0x66 makes
+  (0xF544F4..0xF544B5);
+- the scatter images (G+0x8758A8 +0xD8 heights, +0xF0 material mix after 0x66, +0x108 ground ids after 0x47);
+- the layer heightfield the loader keeps, at 0x6D.
+
+Only samples inside the level's disk count. The measurements for each kind of image:
+- **Heights:** spread and percentiles; a slope histogram, flat (< 1 degree) and steep (>= 35 degrees) shares; curvature;
+  detail at 8/32/128/512/2048 m (the height's sd less its local mean at that scale); relief (max - min) in 32/128/512 m
+  blocks; and the correlation length along x and y after removing the 512 m (and 2 km) trend. Stretching makes that
+  length longer; uneven stretching makes x and y differ. `">N"` means the length is longer than the search.
+- **Material mix:** the painted share, the weights, and coverage per slot.
+- **Ground ids:** density, and coverage per id through the scatter id table.
+- **Anything else:** distinct values.
+
+The flags are:
+- `resolution`: more than 1 m per sample.
+- `flat`: over 60% of the disk is under 1 degree.
+- `smooth`: detail at 32 m is under 0.3 m.
+- `anisotropy` or `long-features`: features are stretched along one axis, or long along both.
+- `stretched-lattice`: Voronoi spacing over 24 m.
+- `unpainted`: under 2% of the disk is painted.
+- `sparse-scatter`: low ground density.
+- `scatter-cutoff`: the scatter radius stops inside the disk.
+- `zone-materials-stretched`: the world is over 2 km without the zone repeat.
+- `readbacks-lost`.
+
+`scripts/TerrainDiag.py` reads the reports:
+- `summary REPORT` lists one level.
+- `compare BASELINE TEST [--json]` compares every shared image metric by metric against the vanilla baseline and says what
+  looks wrong.
+- `render LOGS [--level N]` renders the level-2 dumps: heights as a hillshade beside a slope map, the material mix by
+  slot and weight, the ground ids by id and density, and anything else in false colour. It needs numpy and Pillow.
+
 ### Missions
 
 The war table offers a level only the operations whose difficulty range includes it (operation settings, 25 rows, and
