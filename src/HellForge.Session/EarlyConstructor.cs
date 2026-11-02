@@ -1,6 +1,9 @@
 // The memory-only initialization edit a session makes on the copied game (generated from scripts/EarlyConstructorExperiment.cs,
 // pinned 3C30CA3C..., by scripts/HostEarlyConstructor.Common.ps1 -SkipLaterStatusFailures -AnyHost, as a session did): kept
 // as that code was compiled, with the copied exe it checks for (TargetExe) given by the session runner instead of baked in.
+// One change since: the whole game is frozen (NtSuspendProcess) the moment the boundary is seen, before its threads are
+// listed one by one. Listing them asks Windows for every process on the PC; on one player's PC that took 293 ms, and by
+// then the game had started its C runtime every time ("crt_already_started") and went on to run GameGuard.
 #nullable disable
 #pragma warning disable
 // Host copy adaptation of the pinned VM experiment. Memory edits only; fixed host and copied image.
@@ -22,7 +25,7 @@ public sealed class HellForgeHostEarlyResult {
     public string LoopStatusBefore, LoopStatusAfter, FinalStatusBefore, FinalStatusAfter;
     public int ProcessId, Samples, ReadFailures, CrtState;
     public long ElapsedMilliseconds, PauseMilliseconds;
-    public bool BytesReady, ConditionsMatched, WriteAttempted, Written, ReadbackMatched, RolledBack, Terminated;
+    public bool ProcessFrozen, BytesReady, ConditionsMatched, WriteAttempted, Written, ReadbackMatched, RolledBack, Terminated;
     public List<HellForgeHostEarlyThread> Threads = new List<HellForgeHostEarlyThread>();
 }
 public static class HellForgeHostEarlyConstructorExperiment {
@@ -33,6 +36,8 @@ public static class HellForgeHostEarlyConstructorExperiment {
     [DllImport("kernel32.dll")] static extern uint GetProcessIdOfThread(IntPtr h);
     [DllImport("kernel32.dll",SetLastError=true)] static extern uint SuspendThread(IntPtr h);
     [DllImport("kernel32.dll",SetLastError=true)] static extern uint ResumeThread(IntPtr h);
+    [DllImport("ntdll.dll")] static extern int NtSuspendProcess(IntPtr p);
+    [DllImport("ntdll.dll")] static extern int NtResumeProcess(IntPtr p);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetThreadContext(IntPtr h,IntPtr context);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool ReadProcessMemory(IntPtr p,IntPtr a,byte[] b,UIntPtr n,out UIntPtr read);
     [DllImport("kernel32.dll",SetLastError=true)] static extern bool WriteProcessMemory(IntPtr p,IntPtr a,byte[] b,UIntPtr n,out UIntPtr written);
@@ -70,7 +75,7 @@ public static class HellForgeHostEarlyConstructorExperiment {
         if(fixture&&allocation<=0)throw new ArgumentException("A valid fixture allocation is required.");
         var r=new HellForgeHostEarlyResult{ProcessId=pid,Mode=mode,Outcome="not_applied",CrtState=-1};
         var clock=Stopwatch.StartNew();var paused=new Stopwatch();var threads=new Dictionary<int,IntPtr>();
-        IntPtr target=IntPtr.Zero;Process process=null;bool timer=false;long imageBase=allocation;
+        IntPtr target=IntPtr.Zero;Process process=null;bool timer=false,frozen=false;long imageBase=allocation;
         int ctor=fixture?0:0x24b30, state=fixture?64:0x19b1e40, slot=fixture?80:0x14002d0, obj=fixture?72:0x1982e90;
         bool editMain=mode=="SkipConstructorAndMainCheck";
         int mainCheck=fixture?138:0x5a53e;
@@ -81,7 +86,7 @@ public static class HellForgeHostEarlyConstructorExperiment {
         byte[] mainBefore=Hex(fixture?"0f8506000000":"0f85ea000000"),mainAfter=Hex("909090909090");
         byte[] expected=Hex(fixture?"c6051900000001c3":"4883ec28488d0d7dbb6201e894e89400488d0d89c23c014883c428e988ef2301");
         try {
-            target=OpenProcess(0x1039,false,pid);if(target==IntPtr.Zero)throw Error("OpenProcess");
+            target=OpenProcess(0x1839,false,pid);if(target==IntPtr.Zero)throw Error("OpenProcess");
             var path=new StringBuilder(1024);int length=path.Capacity;
             if(!QueryFullProcessImageName(target,0,path,ref length))throw Error("Process identity");
             if(fixture)throw new InvalidOperationException("Host fixture entry disabled."); string wanted=TargetExe??throw new InvalidOperationException("No target executable.");
@@ -106,8 +111,12 @@ public static class HellForgeHostEarlyConstructorExperiment {
             }
             r.ImageBase="0x"+imageBase.ToString("x");
             if(!boundaryReady){if(!r.BytesReady)r.Outcome="loaded_bytes_not_observed";return r;}
-            // Freeze a stable thread set, then recheck all assumptions atomically with respect to those threads.
-            paused.Start();bool stable=false;
+            // Freeze the whole game at once (every thread, in one call), so the slow thread listing below cannot let it
+            // run on; then freeze a stable thread set, and recheck all assumptions atomically with respect to those threads.
+            paused.Start();
+            int suspended=NtSuspendProcess(target);if(suspended<0)throw new InvalidOperationException("NtSuspendProcess failed: 0x"+suspended.ToString("x8"));
+            frozen=true;r.ProcessFrozen=true;
+            bool stable=false;
             for(int pass=0;pass<8&&paused.ElapsedMilliseconds<1500;pass++) {
                 int added=0;process.Refresh();
                 foreach(ProcessThread t in process.Threads) {
@@ -172,6 +181,7 @@ public static class HellForgeHostEarlyConstructorExperiment {
             if(r.WriteAttempted)try{if(r.LaterStatusWriteAttempted){WriteBytes(target,imageBase+0x89b5f,Hex("0f84b4000000"));WriteBytes(target,imageBase+0x5a60b,Hex("7570"));r.LaterStatusRolledBack=true;}if(r.MainCheckWriteAttempted)WriteBytes(target,imageBase+mainCheck,mainBefore);Write(target,imageBase+ctor,expected[0]);r.RolledBack=true;}catch{r.Terminated=TerminateProcess(target,0xb7510001);}
         }finally {
             foreach(IntPtr h in threads.Values){if(ResumeThread(h)==uint.MaxValue){r.Failure+="; resume failed";r.Outcome="experiment_failed";r.Terminated=TerminateProcess(target,0xb7510002);}CloseHandle(h);}
+            if(frozen&&NtResumeProcess(target)<0){r.Failure+="; process resume failed";r.Outcome="experiment_failed";r.Terminated=TerminateProcess(target,0xb7510003);}
             paused.Stop();r.PauseMilliseconds=paused.ElapsedMilliseconds;
             if(timer)timeEndPeriod(1);if(process!=null)process.Dispose();if(target!=IntPtr.Zero)CloseHandle(target);
             r.ElapsedMilliseconds=clock.ElapsedMilliseconds;
