@@ -487,30 +487,29 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && !profile) InterlockedDecrement(&depth);
     if (profile) WorldProfileBegin(op);
     QueryPerformanceCounter(&start);
-    /* Research (terrain resolution): SetupTerrainMerge (0xF48DA0) copies its record's +0xB0 (a count) and +0xB4 (a
-     * float, 4096 on every map: the heightmap's samples per side, 0.5 m at 2048 m and 4 m at 16384 m) into the merge
-     * object (+0x124/+0x120); the three {destination, 4096} slots at +0x80..+0xA8 are what the pass writes back. With
-     * HELLFORGE_XL_TERRAIN_RES=N (1024..16384) an extra large level gets N there. */
+    /* Research (terrain tiles): SetupTerrainMerge (0xF48DA0) aims the merge's camera with 0xF487B0 / 0xF48990: an
+     * orthographic view straight down from (0, 0, 501) over +-size/2, the size being the world's ([[context+8]+0x2C], an
+     * integer: 16384 at 8x). With HELLFORGE_XL_MERGE_SIZE=N (256..16384) an extra large level's merge covers the central
+     * N m instead (the size is set for the op and put back after it): at 2048 the heightmap holds the middle 2 km at
+     * vanilla's 0.5 m per sample, though the terrain still believes it covers the whole world. */
+    uint64_t mergeSettings = 0;
+    uint32_t mergeSize = 0;
+    int mergeSet = 0;
     if (watch && op == 0x38)
     {
-        static int resolution = -1;
-        if (resolution < 0)
+        static int size = -1;
+        if (size < 0)
         {
             char text[16] = "";
-            resolution = GetEnvironmentVariableA("HELLFORGE_XL_TERRAIN_RES", text, sizeof text) > 0 ? atoi(text) : 0;
-            if (resolution < 1024 || resolution > 16384) resolution = 0;
+            size = GetEnvironmentVariableA("HELLFORGE_XL_MERGE_SIZE", text, sizeof text) > 0 ? atoi(text) : 0;
+            if (size < 256 || size > 16384) size = 0;
         }
-        uint64_t record = records + (uint64_t)at * 0x19B0u;
-        float size = 0.0f;
-        uint64_t settings = 0;
-        uint32_t samples = 0;
-        int haveSettings = !SafeRead(b + 8, &settings, 8) && settings != 0 && !SafeRead(settings + 0x2C, &samples, 4);
-        if (resolution > 0 && !SafeRead(record + 0xB4, &size, 4) && size == 4096.0f)
+        if (size > 0 && !SafeRead(b + 8, &mergeSettings, 8) && mergeSettings != 0 && !SafeRead(mergeSettings + 0x2C, &mergeSize, 4) &&
+            mergeSize == (uint32_t)(2048.0f * g_world.current))
         {
-            *(volatile float*)(uintptr_t)(record + 0xB4) = (float)resolution;
-            /* the merge's other size: [[context+8]+0x2C] (an integer, read as float by 0xF487B0 / 0xF48990) */
-            if (haveSettings && samples == 4096u) *(volatile uint32_t*)(uintptr_t)(settings + 0x2C) = (uint32_t)resolution;
-            Note("difficulty: extra large maps: terrain resolution %d (research; the context's size held %u)", resolution, haveSettings ? samples : 0u);
+            *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = (uint32_t)size;
+            mergeSet = 1;
+            Note("difficulty: extra large maps: the terrain merge covers the central %d m (research; the world is %u m)", size, mergeSize);
         }
     }
     uint32_t vanillaBefore = 0, vanillaOp = 0xFFFFFFFFu, vanillaAt = 0;
@@ -518,6 +517,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
         vanillaOp == 0x2B && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (vanilla2B) /* research: a vanilla map's stamp placement, to compare densities with */
     {
         uint32_t vanillaAfter = 0;
