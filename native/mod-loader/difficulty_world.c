@@ -545,12 +545,41 @@ static void WorldRecordMap(uint64_t records, uint32_t end)
  * copy's location counts are zero, so the tile is the plan's nature terrain. The tile's Voronoi vertices (position and
  * height) go to tile-vertices-<level>.f32 as x, y, h floats. */
 static const uint8_t kTileOps[] = {0x07, 0x12, 0x75, 0x79, 0x7B, 0x76, 0x74, 0x77, 0x78, 0x11, 0x7C, 0x28, 0xA4, 0x7A, 0x7E,
-    0x08, 0x29, 0x2A, 0xB6, 0x4E, 0x7D, 0x13, 0x92, 0x0E, 0x05, 0x02, 0x03, 0x93, 0x04, 0x2C, 0x2E, 0x2D};
+    0x08, 0x29, 0x2A, 0xB6, 0x4E, 0x7D, 0x13, 0x92, 0x0E, 0x05, 0x02, 0x03, 0x04, 0x2C, 0x2E, 0x2D};
+/* GenerateBottomFlatLookup (0x93) is left out: it renders on the GPU and waits for the readback, which needs frames to
+ * pass; a tile without stamps has nothing for it. GPU passes need the tile run spread over frames. */
 
 static int WorldTileRuns(uint32_t op)
 {
     for (size_t k = 0; k < sizeof kTileOps; k++) if (kTileOps[k] == op) return 1;
     return 0;
+}
+
+/* Research: route cells' associated-list ranges (+0xA8..+0xAC into the list at G+0x10CB8C0, count G+0x11A71EC; built by
+ * BuildRouteCellAssociatedRoutes 0x02, read by GenerateSubregionHeights 0x04) and whether the entries point into the
+ * block. Run on the tile's copy before 0x04 and on the level's block as a control. */
+static void WorldTileListCheck(const uint8_t* block, uintptr_t base, uint32_t size, const char* label)
+{
+    uint32_t cells = 0, listCount = 0, badRange = 0, badEntry = 0, firstCell = 0, widest = 0;
+    uint32_t firstRange[2] = {0, 0};
+    uint64_t firstEntry = 0;
+    memcpy(&cells, block + 0x11A71C0, 4); memcpy(&listCount, block + 0x11A71EC, 4);
+    if (cells > 1024) cells = 1024;
+    for (uint32_t c = 0; c < cells; c++)
+    {
+        uint32_t r[2];
+        memcpy(r, block + 0x8EB328 + (size_t)c * 0x110 + 0xA8, 8);
+        if (r[1] < r[0] || r[1] > listCount) { if (badRange++ == 0) { firstCell = c; firstRange[0] = r[0]; firstRange[1] = r[1]; } continue; }
+        if (r[1] - r[0] > widest) widest = r[1] - r[0];
+        for (uint32_t k = r[0]; k < r[1] && k < 0x10000; k++)
+        {
+            uint64_t v;
+            memcpy(&v, block + 0x10CB8C0 + (size_t)k * 8, 8);
+            if (!(v >= base && v < base + size) && badEntry++ == 0) firstEntry = v;
+        }
+    }
+    Note("difficulty: terrain tile: list check (%s): %u route cells, list %u; %u bad ranges (first: cell %u: %u..%u), %u entries outside the block (first 0x%llX), widest %u",
+        label, cells, listCount, badRange, firstCell, firstRange[0], firstRange[1], badEntry, (unsigned long long)firstEntry, widest);
 }
 
 static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uintptr_t gen)
@@ -570,6 +599,13 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         if (SafeRead(records + (uint64_t)i * 0x19B0u, one, sizeof one)) break;
         memcpy(&op, one, 4);
         if (!WorldTileRuns(op)) continue;
+        if (op == 0x04)
+        {
+            WorldTileListCheck(g_tileBlock, (uintptr_t)g_tileBlock, GEN_BLOCK_SIZE, "tile");
+            static uint8_t* level;
+            if (level == NULL) level = (uint8_t*)VirtualAlloc(NULL, GEN_BLOCK_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (level != NULL && !SafeRead(gen, level, GEN_BLOCK_SIZE)) WorldTileListCheck(level, gen, GEN_BLOCK_SIZE, "level");
+        }
         WorldTileRelocate(one, gen, (uintptr_t)g_tileBlock);
         LARGE_INTEGER t0, t1;
         QueryPerformanceCounter(&t0);
