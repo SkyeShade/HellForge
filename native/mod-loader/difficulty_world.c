@@ -315,6 +315,7 @@ static WorldDispatchFn g_worldDispatch;
  * whose arena buffer lands at the same address starts from an empty grid. */
 static volatile LONG g_worldOpRun;
 static uint32_t g_worldOpAt = 0xFFFFFFFFu;
+static void OverlapFlush(void); /* difficulty_world_overlap.c: notes the stamp overlap grid's counters for the run just ended */
 static float* g_heightCopy; /* the layer heightfield the loader keeps (below) */
 static uint64_t g_heightSource, g_heightBytes;
 static volatile LONG g_worldStampNotes;
@@ -342,6 +343,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         InterlockedDecrement(&depth);
     }
     if (!watch) return r;
+    if (op == 0x2B) OverlapFlush();
     if (op == 0x6C && g_heightCopy != NULL && g_heightSource != 0) /* streaming research: keep the heights the layers saw last */
     {
         MEMORY_BASIC_INFORMATION mbi;

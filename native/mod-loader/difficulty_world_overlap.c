@@ -499,6 +499,24 @@ static void OverlapStats(LONG generation, uint32_t list, uint32_t count, int fal
     if (fallback) InterlockedIncrement64(&g_overlapFallbacks);
 }
 
+/* After op 0x2B returns (difficulty_world.c's dispatcher): the run's counters, noted now rather than at the next run. */
+static void OverlapFlush(void)
+{
+    AcquireSRWLockExclusive(&g_overlapStatsLock);
+    LONG64 calls = g_overlapCalls;
+    if (calls > 0)
+        Note("difficulty: extra large maps: the stamp overlap grid for pass run %ld: %lld calls, average list %.1f, average count %.1f, %lld fallbacks, %lld check misses",
+            (long)g_overlapStatsGeneration, (long long)calls, (double)g_overlapListSum / (double)calls,
+            (double)g_overlapCountSum / (double)calls, (long long)g_overlapFallbacks, (long long)g_overlapMisses);
+    else Note("difficulty: extra large maps: the stamp overlap grid saw no calls in this op 0x2B run");
+    g_overlapCalls = 0;
+    g_overlapListSum = 0;
+    g_overlapCountSum = 0;
+    g_overlapFallbacks = 0;
+    g_overlapMisses = 0;
+    ReleaseSRWLockExclusive(&g_overlapStatsLock);
+}
+
 /* All the buffers' grids belong to one level generation; a new generation frees them (the old jobs have finished). */
 static void OverlapTableForGeneration(LONG generation)
 {
