@@ -97,6 +97,25 @@ static class ForgeCreditsTests
         });
     }
 
+    public static void RegisterChance(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
+    {
+        test("Forge Credits chance: saved in the mods settings, 0 to 100 or off, and only then in the loader plan", () =>
+        {
+            var mods = Path.Combine(root, "forge-credits-chance");
+            Directory.CreateDirectory(mods);
+            check(ModSettings.ForgeCreditChance(mods) is null, "A new installation changes the game's odds.");
+            string? Line() => ModLoaderPlan.Text([], root, EntityProfile.Current, "25480438", ModSettings.ForgeCreditChance(mods))
+                .Split('\n').FirstOrDefault(l => l.StartsWith("forge_credits_chance", StringComparison.Ordinal));
+            check(Line() is null, "The plan names a chance nobody set.");
+            ModSettings.SetForgeCreditChance(mods, 100);
+            ModSettings.SetPlayWithStrangers(mods, true); /* another setting's save keeps it */
+            check(ModSettings.ForgeCreditChance(mods) == 100 && Line() == "forge_credits_chance\t100", "Plan line: " + Line());
+            reject(() => ModSettings.SetForgeCreditChance(mods, 101));
+            ModSettings.SetForgeCreditChance(mods, null);
+            check(ModSettings.ForgeCreditChance(mods) is null && Line() is null, "Off still changes the odds.");
+        });
+    }
+
     static byte[] Solid(int w, int h, byte r, byte g, byte b, byte a)
     {
         var rgba = new byte[w * h * 4];

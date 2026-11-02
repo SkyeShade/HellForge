@@ -763,6 +763,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
@@ -947,6 +948,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
+    if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
         snprintf(g_pinModule, sizeof g_pinModule, "%s", f[1]);

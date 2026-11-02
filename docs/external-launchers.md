@@ -135,13 +135,18 @@ and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false,
+ "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false, "forgeCreditChance": null,
  "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
 `launcher-settings.json`, and `play` has no option for it. A running session's backend picks it up within a few seconds.
+
+`settings --forge-credits <0-100>|off` sets the share of the random loot caches at points of interest that hold Forge
+Credits, for testing (off, the default, keeps the game's 20 %). It is saved in `mods\hellforge-mods.json` as
+`forgeCreditChance` and applies from the next session. Everyone in a co-op mission should use the same value: each player
+rolls the loot from the mission's seed.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
