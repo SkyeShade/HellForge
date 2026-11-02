@@ -592,8 +592,23 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
                     if (v != 0 && !(v >= (uint64_t)(uintptr_t)g_tileBlock && v < (uint64_t)(uintptr_t)g_tileBlock + GEN_BLOCK_SIZE))
                     { if (bad++ == 0) { firstCell = c; firstSlot = k; firstValue = v; } }
                 }
-            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u route cell edge slots outside the copy (first: cell %u slot %u = 0x%llX); counts +1BC..+1C8 %u %u %u %u",
-                op, calls, bad, firstCell, firstSlot, (unsigned long long)firstValue, rc[0], rc[1], rc[2], rc[3]);
+            uint32_t badBox = 0, boxCell = 0, most = 0, mostCell = 0;
+            float box[4] = {0};
+            for (uint32_t c = 0; c < cellsN; c++)
+            {
+                uint8_t* cell = g_tileBlock + 0x8EB328 + (size_t)c * 0x110;
+                float b[4];
+                memcpy(b, cell + 0x88, 16);
+                int ok = 1;
+                for (int k = 0; k < 4; k++) if (!(b[k] > -2.0f && b[k] < 1200.0f)) ok = 0;
+                if (!ok && badBox++ == 0) { boxCell = c; memcpy(box, b, 16); }
+                uint32_t edges = 0;
+                for (uint32_t k = 0; k < 16; k++) { uint64_t v; memcpy(&v, cell + 8 + k * 8, 8); if (v) edges++; }
+                if (edges > most) { most = edges; mostCell = c; }
+            }
+            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); counts +1BC..+1C8 %u %u %u %u",
+                op, calls, bad, firstCell, firstSlot, (unsigned long long)firstValue, badBox, boxCell, (double)box[0], (double)box[1], (double)box[2], (double)box[3],
+                most, mostCell, rc[0], rc[1], rc[2], rc[3]);
         }
         if (n < (int)sizeof text - 32)
             n += snprintf(text + n, sizeof text - n, " %02X:%.1f%s", op, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, calls > 1 ? "+" : "");
