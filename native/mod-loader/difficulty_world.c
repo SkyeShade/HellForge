@@ -691,7 +691,26 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         WriteFile(file, xyh, sizeof xyh, &wrote, NULL);
     }
     CloseHandle(file);
-    Note("difficulty: terrain tile: wrote %u vertices, heights %.1f..%.1f", vertices, (double)lo, (double)hi);
+    Note("difficulty: terrain tile: wrote %u vertices, heights %.4f..%.4f", vertices, (double)lo, (double)hi);
+    { /* the level's own vertex heights at this point, and the settings' height scale (RenderHeightmapVoronoi multiplies
+       * vertex heights by [settings+0x30]) */
+        uint32_t levelVertices = 0;
+        float scale = 0, llo = 1e30f, lhi = -1e30f;
+        double sum = 0;
+        uint64_t settings = 0;
+        SafeRead(gen + 0x11A7090, &levelVertices, 4);
+        if (!SafeRead(context + 8, &settings, 8) && settings) SafeRead(settings + 0x30, &scale, 4);
+        for (uint32_t v = 0; v < levelVertices && v < 6000; v++)
+        {
+            float hv;
+            if (SafeRead(gen + 0x1F8A30 + (uint64_t)v * 4, &hv, 4)) break;
+            if (hv < llo) llo = hv;
+            if (hv > lhi) lhi = hv;
+            sum += hv;
+        }
+        Note("difficulty: terrain tile: the level's %u vertex heights %.4f..%.4f (mean %.4f); height scale [settings+0x30] %.2f", levelVertices, (double)llo, (double)lhi,
+            levelVertices ? sum / levelVertices : 0.0, (double)scale);
+    }
 }
 
 static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
