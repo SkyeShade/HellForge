@@ -606,9 +606,11 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
                 for (uint32_t k = 0; k < 16; k++) { uint64_t v; memcpy(&v, cell + 8 + k * 8, 8); if (v) edges++; }
                 if (edges > most) { most = edges; mostCell = c; }
             }
-            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); counts +1BC..+1C8 %u %u %u %u",
+            uint32_t routeEdges = 0, routeVertices = 0;
+            memcpy(&routeEdges, g_tileBlock + 0x11A71B4, 4); memcpy(&routeVertices, g_tileBlock + 0x11A71CC, 4);
+            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); route cells %u, edges %u (room for ~978), vertices %u (room for ~1621); counts +1BC/+1C4/+1C8 %u %u %u",
                 op, calls, bad, firstCell, firstSlot, (unsigned long long)firstValue, badBox, boxCell, (double)box[0], (double)box[1], (double)box[2], (double)box[3],
-                most, mostCell, rc[0], rc[1], rc[2], rc[3]);
+                most, mostCell, rc[1], routeEdges, routeVertices, rc[0], rc[2], rc[3]);
         }
         if (n < (int)sizeof text - 32)
             n += snprintf(text + n, sizeof text - n, " %02X:%.1f%s", op, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, calls > 1 ? "+" : "");
