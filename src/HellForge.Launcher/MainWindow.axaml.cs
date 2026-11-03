@@ -485,6 +485,10 @@ public partial class MainWindow : Window
                 if (!stopRequested) SetStatus("Approve the Windows prompt to place a network block for this session.", Phase.Attention,
                     "It keeps the copied game off the internet until the session ends.");
                 break;
+            case "awaiting_steam_broker":
+                RenderSteps(LaunchStep, false);
+                if (!stopRequested) SetStatus("Waiting for Steam...", Phase.Busy, "The sandboxed game reaches Steam through HellForge's Steam broker, which is starting.");
+                break;
             case "patching":
                 RenderSteps(LaunchStep, false);
                 if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");

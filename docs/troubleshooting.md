@@ -289,6 +289,9 @@ game took to its first request.
 | "The network block still lets the game reach every program on this PC: placing it again ..." | An installation from before 0.3.0: the session narrows the block to HellForge's backend, after one Windows prompt. Accept it. |
 | "The network block could not be narrowed ..." | The prompt was declined or the install failed (the reason is in brackets). Run Settings > Installation once: setup narrows the block. |
 | "A sandboxed session needs the network block narrowed ..." or "... needs the WFP network block ..." | A sandboxed game must not reach other programs on this PC. Run Settings > Installation once, or turn off Settings > Sandbox. |
+| "Steam did not answer HellForge's Steam broker ..." | With the sandbox on, the game reaches Steam through HellForge's Steam broker, and Steam refused it. Make sure Steam is running and signed in. If Steam runs as administrator, close it and start it normally, then press PLAY again. |
+| "HellForge's Steam broker was not ready after 60 s ..." | Something held up `app\sdk-shims\hellforge_steam_broker.exe`, usually an antivirus checking it ([above](#antivirus)). Allow it, then press PLAY again. |
+| "HellForge's Steam broker could not load the game's steam_api64.dll ..." | Run Settings > Installation > Check and repair, then press PLAY again. |
 | "Cleanup failed." | Check the session logs before playing again. |
 
 ### The game could not be prepared or connected
