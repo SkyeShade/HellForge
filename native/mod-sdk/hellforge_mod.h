@@ -39,12 +39,13 @@ typedef enum HfEvent
     /* SDK 3: the game's projectile and damage lists are loaded, with every projectile and damage type mods added
      * (add_projectile, add_damage): projectile_row and damage_row return their rows from now on. */
     HF_EVENT_PROJECTILES_READY = 4,
+    /* 5 is not an event yet: on() refuses it. */
     /* SDK 16: the session is ending, the last moment to save or flush. Either the launcher is stopping it (the session
      * runner waits up to 2 s for the mods, on the loader's watch thread), or the game is quitting normally (from Windows'
      * process exit, under its loader lock, the game's other threads gone). Keep it short: load no DLL, wait for no thread,
      * call nothing of the game's. Once per session; not after a crash, and not when the game crashes as it quits (on build
      * 25480438 it does: docs/modding/debugging.md). An older loader's `on` refuses it: check hf->version >= 16. */
-    HF_EVENT_SESSION_END = 5,
+    HF_EVENT_SESSION_END = 6,
 } HfEvent;
 
 typedef void (*HfEventCallback)(HfMod* mod, HfEvent event, void* user);

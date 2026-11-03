@@ -626,7 +626,8 @@ static uint64_t ApiResourceHash(const char* name) { return name != NULL ? Murmur
 
 static int ApiOn(HfMod* mod, HfEvent event, HfEventCallback callback, void* user)
 {
-    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_SESSION_END || g_callbackCount >= MAX_CALLBACKS) return 1;
+    /* 5 is not an event (hellforge_mod.h): refused rather than heard never */
+    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_SESSION_END || event == 5 || g_callbackCount >= MAX_CALLBACKS) return 1;
     g_callbacks[g_callbackCount++] = (Callback){mod, event, callback, user};
     if (g_fired[event]) callback(mod, event, user);
     return 0;
