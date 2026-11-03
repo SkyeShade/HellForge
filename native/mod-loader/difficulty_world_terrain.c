@@ -875,6 +875,12 @@ static void NearReplayEnd(int ok)
  * than vanilla's; off with HELLFORGE_XL_MATERIAL_SPACE=0. */
 static const uint32_t kMatLoads[3] = {0xF4FACFu, 0xF4FADBu, 0xF4FB26u}; /* movaps xmmN, [rip+disp]: the displacement at +3 */
 static const uint32_t kMatRows[3] = {0x263CC50u, 0x263CC60u, 0x263CC80u};
+/* noise_scale (murmur64("noise_scale") >> 32), set per painter from the zone data by 0xF48C50: x s keeps the noise in
+ * metres. The slope painter (5a503dfb17d3b948) also takes its slope from samples one 1/2048 uv step either side
+ * (normal = normalize(dh_x, dh_y, 2): vanilla's 1 m texels), so in vanilla space at s < 1 it reads tan(theta) / s;
+ * its band (angle_end, angle_gradient_scale) and terrain_properties_mip are not ones the zone data sets (run v18: the
+ * data set angle_end = 0.21 for some painter, units not established; the other two never came through), so they
+ * stay as the materials have them. */
 #define MAT_NOISE_SCALE 0x53D111F6u
 typedef uint64_t (*MatVarFn)(uint64_t object, uint64_t name, float value, uint64_t d);
 static MatVarFn g_matVarOriginal;
@@ -1307,7 +1313,7 @@ static int NearCalStep(uint64_t records, uint32_t end, uint64_t context, uint64_
 #define NEAR_BATCH 16384
 #define NEAR_SHIFT_RADIUS 128 /* the shift's box passes: 257 texels (~129 m), three of them */
 #define NEAR_GRID 1025 /* grid lines: texel -0.5, 4, 8, ..., 4092, 4095.5 */
-static struct { int phase; uint32_t id, polls, next, waits; uint16_t* coarse; float* low; float* delta; double ms; int seq[2], seqN, seqI; } g_conform;
+static struct { int phase; uint32_t id, polls, next, waits; uint16_t* coarse; float* low; float* delta; double ms; int seq[4], seqN, seqI; } g_conform;
 
 static int NearConformOn(void)
 {
@@ -1551,14 +1557,20 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
         g_conform.waits = 0;
         if (g_conform.next >= (uint32_t)(NEAR_GRID - 1) * (NEAR_GRID - 1))
         {
-            int s64 = -1, s41 = -1;
-            for (int s = 0; s < g_near.steps; s++) { if (g_near.stepOp[s] == 0x64) s64 = s; if (g_near.stepOp[s] == 0x41) s41 = s; }
+            int s64 = -1, s41 = -1, s42 = -1;
+            for (int s = 0; s < g_near.steps; s++)
+            { if (g_near.stepOp[s] == 0x64) s64 = s; if (g_near.stepOp[s] == 0x41) s41 = s; if (g_near.stepOp[s] == 0x42) s42 = s; }
             if (s64 < 0) return 0;
             /* the materials again (0x41) from the conformed heights before finalize (run v8: the tile's material map against the
-             * level's at the edge, mean |d| per channel 37/31/28/4.6 -> 24/24/12/1.5); off with HELLFORGE_XL_NEAR_REMAT=0 */
+             * level's at the edge, mean |d| per channel 37/31/28/4.6 -> 24/24/12/1.5); off with HELLFORGE_XL_NEAR_REMAT=0.
+             * The heightmap properties first (0x42: terrain_generator_properties reads generated_heightmap_f, which the
+             * conform's triangles wrote; slopes, valleys and peaks): the materials follow the final heights, so the edge
+             * band, blended to the coarse terrain, gets the coarse terrain's materials too (run v16: with the replay's
+             * properties the tile was rocky to its edge, a straight line against the coarse terrain's sand). */
             char t[4] = "";
             int remat = !(GetEnvironmentVariableA("HELLFORGE_XL_NEAR_REMAT", t, sizeof t) > 0 && t[0] == '0') && s41 >= 0;
             g_conform.seqN = 0;
+            if (remat && s42 >= 0) g_conform.seq[g_conform.seqN++] = s42;
             if (remat) g_conform.seq[g_conform.seqN++] = s41;
             g_conform.seq[g_conform.seqN++] = s64;
             g_conform.seqI = 0;
