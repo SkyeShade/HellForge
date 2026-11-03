@@ -463,6 +463,13 @@ maps (map type 2, another generator) keep level 10's size.
 
 The mission distance factors (10 levels x 3, read unclamped at 7 sites) move to a table with level 11's.
 
+The terrain merge renders in T x T tiles, T from its SetupTerrainMerge pass (+0xA8). T also sizes the material camera
+(0xF48990: +-world / 2T) and is the shader global `level_generation_subdevisions`. Vanilla's merge has T = 1; an extra
+large level's records give 2, and with T = 2 RenderVoronoiMaterials (0x41) kept only the 1024 m of each tile nearest the
+world's outer corner, so at 16 km the ground material mix was empty and every scatter record (grass, plants, rocks,
+trees) failed its material test. Above 1 x the merge runs with T = 1 (`HELLFORGE_XL_MATERIAL_TILES=keep` for an A/B):
+55% of a 16 km disk painted (vanilla 64%). The material setup's base quad (0xF50042, -1024) follows the world too.
+
 ### Terrain diagnostics
 
 `HELLFORGE_TERRAIN_DIAG` (research, `difficulty_world_diag.c`) measures what each level's generation does to the terrain,
@@ -491,8 +498,10 @@ The images it measures:
 - at level 2, while the merge's targets exist (from SetupTerrainMerge to CleanupTerrainMerge), readbacks of the heights
   target (0x2A9E3232) after 0x3C/0x3D/0x3E/0x3F/0x40/0x0D/0x63/0x64, the material mix (0x95E7E3AC) after 0x41/0x64, and
   the zone lookup (0x1524FE5A) after RenderZoneLookup (0x4C) draws it. The calls are the ones op 0x66 makes
-  (0xF544F4..0xF544B5);
-- the scatter images (G+0x8758A8 +0xD8 heights, +0xF0 material mix after 0x66, +0x108 ground ids after 0x47);
+  (0xF544F4..0xF544B5). A readback copies the target when the GPU reaches it, often a few passes later, so the images
+  labelled "after" a pass show the target at some point after it;
+- the scatter images (G+0x8758A8 +0xD8 heights, +0xF0 material mix after 0x66, +0x108 ground ids after 0xBB fills the
+  id table they index);
 - the layer heightfield the loader keeps, at 0x6D.
 
 Only samples inside the level's disk count. The measurements for each kind of image:

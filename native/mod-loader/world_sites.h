@@ -7,8 +7,9 @@ typedef struct WorldSite { uint32_t rva; uint8_t length, which; } WorldSite;
 #define WORLD_HALF 0u
 #define WORLD_FULL 1u
 #define WORLD_INV 2u
-static const uint32_t kWorldConstants[3] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u};
-/* 208 instructions */
+#define WORLD_NEG_HALF 3u /* -1024.0 (0x23C83C0): added by hand, see below */
+static const uint32_t kWorldConstants[4] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u};
+/* 209 instructions */
 static const WorldSite kWorldSites[] = {
     {0x1CFC47u, 8, WORLD_HALF},
     {0x1CFC4Fu, 8, WORLD_INV},
@@ -88,6 +89,10 @@ static const WorldSite kWorldSites[] = {
     {0xF4B059u, 8, WORLD_INV},
     {0xF4B061u, 8, WORLD_INV},
     {0xF4FE3Eu, 9, WORLD_HALF},
+    /* By hand (not from the script, which looked for the three constants above): RenderVoronoiMaterials' setup
+     * (0xF4F9E0) builds its fallback quad from -1024.0 (0xF50042, the generator's only reader of 0x23C83C0) to the half
+     * world (0xF4FE3E above): unredirected, an extra large map's quad ran from -1024 to +half. */
+    {0xF50042u, 8, WORLD_NEG_HALF},
     {0xF551A6u, 9, WORLD_HALF},
     {0xF56716u, 9, WORLD_HALF},
     {0xF5729Du, 9, WORLD_HALF},

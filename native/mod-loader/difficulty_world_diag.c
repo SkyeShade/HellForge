@@ -25,7 +25,7 @@
  *                 op 0x66 makes them at 0xF544F4..0xF544B5): heights 0x2A9E3232 after the passes that draw heights,
  *                 materials 0x95E7E3AC after 0x41 / 0x64, the zone lookup 0x1524FE5A after op 0x4C draws it
  *               - the scatter images (lg = G+0x8758A8: +0xD8 heights u16, +0xF0 material mix, +0x108 ground ids) after
- *                 op 0x66 (heights, materials) and op 0x47 (ground ids)
+ *                 op 0x66 (heights, materials) and op 0xBB (ground ids, made by op 0x47: 0xBB fills the id table)
  *               - the layer heightfield the loader keeps (difficulty_world.c, the terrain the layers snap to) at op 0x6D
  *             Heights: in-disk spread and percentiles; slopes (histogram, mean, flat and steep shares); curvature; detail
  *             at 8 / 32 / 128 / 512 / 2048 m (sd of the height less its local mean); local relief (max - min) in 32 /
@@ -34,6 +34,9 @@
  *             density, coverage per id (through the scatter id table). Anything else: value spread and distinct values.
  *   flags     health checks on the final terrain: resolution, flatness, missing detail, stretched lattice, anisotropy,
  *             an unpainted material map, sparse scatter, a scatter cutoff inside the disk, stretched zone materials
+ *
+ * A readback copies the target when the GPU reaches the request, which can be several passes later: a readback "after"
+ * a pass shows the target at some point after it, not exactly then (the final images are the reliable ones).
  *
  * The images are measured inside the level's disk (lg+0x2D7C x half the world, around the centre), the playable land.
  * The readbacks are asynchronous: requested as a pass's last step returns, collected on later dispatcher calls or game
@@ -197,7 +200,7 @@ static void TdSettings(uint64_t record)
     uint8_t difficulty = 0;
     SafeRead(lg + 0x1E0, &world, 4); SafeRead(lg + 0x2D4C, &worldInt, 4); SafeRead(lg + 0x2D70, radii, sizeof radii);
     SafeRead(lg + 0xF9, &difficulty, 1); SafeRead(lg + 0x2DE0, &mapType, 4);
-    if (gen != 0) { uint32_t ts = 0; if (!SafeRead(gen + TD_IMAGE_BLOCK + 0x120, &ts, 4)) tileSamples = (float)ts; SafeRead(gen + TD_IMAGE_BLOCK + 0x124, &tiles, 4); }
+    if (gen != 0) { SafeRead(gen + TD_IMAGE_BLOCK + 0x120, &tileSamples, 4); SafeRead(gen + TD_IMAGE_BLOCK + 0x124, &tiles, 4); } /* +0x120 is a float */
     if (record != 0) SafeRead(record + 0xB4, &samples, 4);
     if (radii[3] > 0.0f && radii[3] <= 1.0f) g_td.disk = radii[3] * (world > 0 ? world : g_td.world) * 0.5;
     if (world >= 256.0f) g_td.world = world;
@@ -208,7 +211,7 @@ static void TdSettings(uint64_t record)
     char a[32], b[32], c[32], d[32], e[32], f[32], g[32], h[32];
     g_td.settingsLen = 0;
     TdAppend(g_td.settings, &g_td.settingsLen, sizeof g_td.settings,
-        "{\"world_m\": %s, \"world_int\": %u, \"world_scale\": %g, \"difficulty\": %u, \"map_type\": %u, "
+        "{\"world_m\": %s, \"world_int\": %u, \"world_scale\": %g, \"difficulty\": %u, \"map_type_raw\": \"0x%08X\", "
         "\"radius_50\": %s, \"radius_54\": %s, \"fade_58\": %s, \"disk_5c\": %s, \"radius_60\": %s, \"rect_low_m\": %s, "
         "\"rect_high_m\": %s, \"disk_m\": %g, \"fade_m\": %g, \"vista_fade_m\": %g, \"merge_tiles\": %u, \"tile_samples\": %g, "
         "\"merge_samples_per_side\": %g, \"metres_per_sample\": %g, \"zone_repeat\": %s, \"radius_old\": %s}",
@@ -800,7 +803,7 @@ static void TdScheduleReadbacks(uint32_t op, uint32_t record)
 static void TdPassDone(uint32_t op, uint32_t record, uint64_t recordAt)
 {
     uintptr_t gen = TdGen();
-    if (op == 0x38) { g_td.merging = 1; if (!g_td.settingsLen) TdSettings(recordAt); }
+    if (op == 0x38) { g_td.merging = 1; TdSettings(recordAt); } /* again: the merge's tiles are set during 0x38 */
     if (op == 0x66) g_td.merging = 0;
     if (op == 0x5C && gen != 0)
     {
@@ -816,9 +819,10 @@ static void TdPassDone(uint32_t op, uint32_t record, uint64_t recordAt)
         TdDescriptor("scatter-heights", "scatter image (lg+0xD8)", op, record, TD_HEIGHTS_U16, gen + TD_IMAGE_BLOCK + 0xD8, 0, 1, &g_td.imageHeights);
         TdDescriptor("scatter-materials", "scatter image (lg+0xF0)", op, record, TD_MATERIALS, gen + TD_IMAGE_BLOCK + 0xF0, 0, 1, NULL);
     }
-    if (op == 0x47 && gen != 0) TdDescriptor("scatter-ground", "scatter image (lg+0x108)", op, record, TD_GROUND, gen + TD_IMAGE_BLOCK + 0x108, 0, 1, NULL);
     if (op == 0xBB)
     {
+        /* the ground ids (made by op 0x47) once this pass has filled the scatter's id table they index */
+        if (gen != 0) TdDescriptor("scatter-ground", "scatter image (lg+0x108)", op, record, TD_GROUND, gen + TD_IMAGE_BLOCK + 0x108, 0, 1, NULL);
         float area = 0;
         if (!SafeRead(g_world.game + 0x3328F6Cu, &area, 4) && area > 0) g_td.scatterRadius = sqrt(area);
     }

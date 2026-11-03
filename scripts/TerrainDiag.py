@@ -102,7 +102,7 @@ def summary(args):
     if s:
         print(f"settings: fade {fmt(s.get('fade_m'))} m, disk {fmt(s.get('disk_m'))} m, vista fade {fmt(s.get('vista_fade_m'))} m, "
               f"tiles {s.get('merge_tiles')} x {fmt(s.get('tile_samples'))} samples, {fmt(s.get('metres_per_sample'))} m per sample, "
-              f"difficulty {s.get('difficulty')}, map type {s.get('map_type')}, zone repeat {s.get('zone_repeat')}")
+              f"difficulty {s.get('difficulty')}, map type {s.get('map_type_raw')}, zone repeat {s.get('zone_repeat')}")
     p = r.get("plan")
     if p:
         print(f"plan: {p.get('vertices')} vertices ({fmt(p.get('vertices_per_km2'))}/km2), spacing median {fmt(p.get('spacing_median_m'))} m, "

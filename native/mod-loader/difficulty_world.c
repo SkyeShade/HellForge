@@ -33,7 +33,7 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
     {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u}};
 /* What the instructions read (the block's second page, writable): half, full, 1 / full, the gate's +-2000 x scale, and
  * the size the stub stores (0: the table's). */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -78,6 +78,7 @@ static void WorldWrite(float scale)
 {
     WorldValues* v = g_world.values;
     v->half = 1024.0f * scale;
+    v->negHalf = -1024.0f * scale;
     v->full = 2048.0f * scale;
     v->inverse = 1.0f / (2048.0f * scale);
     v->gateHigh = 2000.0f * scale;
@@ -1411,6 +1412,30 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             Note("difficulty: extra large maps: the terrain merge covers the central %d m (research; the world is %u m)", size, mergeSize);
         }
     }
+    /* The terrain merge renders in T x T tiles, T = its SetupTerrainMerge pass's +0xA8 (record + 8 + 0xA8; 0xF48E2A copies it to
+     * [lg+0x124], lg = G+0x8758A8, on every step). T also sizes the material camera (0xF48990: +-world / 2T) and is the
+     * shader global level_generation_subdevisions (0xF4917A). Vanilla's merge has T = 1; an extra large level's records
+     * give T = 2, and RenderVoronoiMaterials (op 0x41, per frame 0xF52CC0) then kept only the 1024 m of each tile nearest
+     * the world's outer corner (HELLFORGE_TERRAIN_DIAG at 4 km: 5% of the disk painted, all in the corners; at 16 km the
+     * corners are outside the disk: 0%). With T forced to 1 for op 0x41 alone, the camera made with T = 2 clipped the
+     * map to +-world / 4. With no material mix every scatter record (grass, plants, rocks, trees) fails its material
+     * test. So the merge runs with T = 1, as vanilla's does: the record's value is set for each 0x38 step and put back
+     * after. HELLFORGE_XL_MATERIAL_TILES=keep leaves it alone (A/B). */
+    uintptr_t mergeTiles = 0;
+    uint32_t mergeT = 0;
+    if (watch && op == 0x38)
+    {
+        static int keep = -1;
+        if (keep < 0) { char t[8] = ""; keep = GetEnvironmentVariableA("HELLFORGE_XL_MATERIAL_TILES", t, sizeof t) > 0 && !_stricmp(t, "keep"); }
+        uintptr_t field = (uintptr_t)(records + (uint64_t)at * 0x19B0u + 8u + 0xA8u); /* the op gets record + 8 */
+        if (!keep && !SafeRead(field, &mergeT, 4) && mergeT > 1 && mergeT <= 16)
+        {
+            mergeTiles = field;
+            *(volatile uint32_t*)mergeTiles = 1;
+            static LONG noted = -1;
+            if (noted != g_world.levels) { noted = g_world.levels; Note("difficulty: extra large maps: the terrain merge runs with 1 tile (the level's record gives %u) at %.0fx", mergeT, (double)g_world.current); }
+        }
+    }
     /* Research (terrain detail): RenderZoneHeightmap (op 0x3D, 0xF4A280) blends each zone's height materials over the
      * Voronoi triangles with texture coordinates position * (1.0 / world size), y flipped as 1.0 - v: the materials span
      * the whole world once, so at 16 km each texel covers 8x the ground it does on a 2 km map. With
@@ -1451,6 +1476,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     TerrainDiagAfter(records, index, diagAt, diagOp);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
+    if (mergeTiles != 0) *(volatile uint32_t*)mergeTiles = mergeT;
     if (zoneSet)
     {
         DWORD old = 0;
@@ -1824,7 +1850,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -1861,7 +1887,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
-    const float* fields[3] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse};
+    const float* fields[4] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
         const WorldSite* s = &kWorldSites[i];
