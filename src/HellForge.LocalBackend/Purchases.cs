@@ -23,7 +23,7 @@ namespace HellForge.LocalBackend;
 // the reply takes the price from the wallet the client shows (a negative amount on 0xCF875032 would change nothing).
 public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> catalogue)
 {
-    public static bool Handles(string path) => path is "/SeasonPass/item/buy" or "/Progression/buy/v2"
+    public static bool Handles(string path) => path is "/SeasonPass/item/buy" or "/Progression/buy/v2" or "/StoreFront/buy"
         or "/Progression/ProgressionPackage/AcquireLevel" or "/Progression/ProgressionPackage/AcquireUnlockableItem";
 
     static readonly Lazy<JsonDocument> Progression = new(() => LocalBackend.LoadResource("progression-data.json"));
@@ -38,6 +38,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         {
             "/SeasonPass/item/buy" => WarbondItem(body),
             "/Progression/buy/v2" => StoreItem(body),
+            "/StoreFront/buy" => StoreFrontItem(body),
             "/Progression/ProgressionPackage/AcquireLevel" => PackageLevel(body),
             _ => UnlockableItem(body)
         };
@@ -83,8 +84,24 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     JsonNode? StoreItem(JsonElement body)
     {
         if (!Whole(body, "mixId", out var id) || id is <= 0 or > uint.MaxValue) return null;
+        return StoreItem((uint)id, Whole(body, "amount", out var n) ? n : 1);
+    }
+
+    // A store front's item (the requisition terminal's stratagems: /StoreFront/buy): named by its mixId, or by the
+    // salesId its store front lists it under; then sold as StoreItem sells it.
+    JsonNode? StoreFrontItem(JsonElement body)
+    {
         var count = Whole(body, "amount", out var n) ? n : 1;
-        var mixId = (uint)id;
+        if (Whole(body, "mixId", out var id) && id is > 0 and <= uint.MaxValue) return StoreItem((uint)id, count);
+        if (!body.TryGetProperty("salesId", out var sales) || sales.ValueKind != JsonValueKind.String) return null;
+        var listed = Progression.Value.RootElement.GetProperty("storeFront").EnumerateArray()
+            .SelectMany(front => front.GetProperty("sections").EnumerateArray()).SelectMany(section => section.GetProperty("items").EnumerateArray())
+            .FirstOrDefault(item => item.GetProperty("salesId").GetString() == sales.GetString());
+        return listed.ValueKind == JsonValueKind.Object ? StoreItem(listed.GetProperty("mixId").GetUInt32(), count) : null;
+    }
+
+    JsonNode? StoreItem(uint mixId, long count)
+    {
         if (Paid.WarbondTokens.Contains(mixId)) return WarbondToken(mixId);
         if (count is < 1 or > 100 || Paid.IsPaid(mixId) || catalogue(mixId) is not { } item) return null;
         if (!item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || price.GetArrayLength() == 0) return null;
