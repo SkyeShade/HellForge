@@ -118,6 +118,32 @@ public static partial class CrashReport
         return null;
     }
 
+    // Crashes whose cause is known and lies outside HellForge and the mods, for the supported build only (the offsets
+    // are that build's). Each names what the player can do.
+    //
+    // helldivers2.exe+0x6738c7 (build 25480438): as the game's window opens, its Text Services Framework setup
+    // (0x1406737d0, called from the constructor at 0x140673260) asks ITfThreadMgr::GetFunctionProvider for
+    // GUID_SYSTEM_FUNCTIONPROVIDER, does not check the result and calls through the provider. A Wine whose msctf has no
+    // system function provider returns E_NOTIMPL with a null provider, and the game reads address 0. Proton Experimental
+    // 11.0 implements it (msctf's func_provider_GetFunction); a tester's Wine 10.0 Proton crashed here on every start
+    // and Proton 11 did not (#112, 2026-11-01).
+    public static string? KnownCause(Fault? fault, string buildId)
+    {
+        if (fault == null) return null;
+        if (buildId == "25480438" && fault.Code == "c0000005" && fault.Where.Equals("helldivers2.exe+0x6738c7", StringComparison.OrdinalIgnoreCase))
+            return "this Proton's Wine gave HELLDIVERS 2 no text-input function provider (msctf), which the game needs as its " +
+                "window opens. It is not caused by HellForge or your mods. Choose a Proton based on Wine 11, such as Proton 11 " +
+                "or Proton Experimental, in Settings > Installation > Check and repair, then play again.";
+        return null;
+    }
+
+    // The known cause of a run's crash, from its loader log, or null.
+    public static string? KnownCause(string run)
+    {
+        try { return LoaderLog(run) is { } log ? KnownCause(FindFault(Tail(log, int.MaxValue)), SupportedBuild.Current.BuildId) : null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException) { return null; }
+    }
+
     // The note's "by module" line, which follows it: the module of code outside the game.
     static string? ByModule(IReadOnlyList<string> lines, int crash)
     {
@@ -201,6 +227,7 @@ public static partial class CrashReport
             text.AppendLine("Failure: " + scrub.Apply(failure));
         text.AppendLine(fault == null ? "Crash: the mod loader noted none"
             : scrub.Apply($"Crash: {fault.Code} at {fault.Where} on thread {fault.Thread}" + (fault.ByModule != null ? $" (by module: {fault.ByModule})" : "")));
+        if (KnownCause(fault, SupportedBuild.Current.BuildId) is { } cause) text.AppendLine("Known cause: " + cause);
     }
 
     static void DumpLine(StringBuilder text, string run, bool included)

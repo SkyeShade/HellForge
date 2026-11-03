@@ -41,7 +41,10 @@ public partial class MainWindow
     {
         SetLinuxSandboxRow(null, "Running the Linux sandbox self-test...", running: true);
         var cli = Path.Combine(install.App, "cli-linux", "HellForge.Cli");
-        var report = Path.Combine(install.Logs, "sandbox-self-test.txt");
+        // The readiness command's own output. The wrapper's self-test output, with its runtime mode line, is the CLI's
+        // logs/sandbox-self-test.txt; writing this there too replaced it with one line and lost the evidence (#112).
+        var report = Path.Combine(install.Logs, "sandbox-readiness.txt");
+        var selfTestReport = Path.Combine(install.Logs, "sandbox-self-test.txt");
         if (!File.Exists(cli))
         {
             InvalidateLinuxSandboxTest(install);
@@ -107,7 +110,7 @@ public partial class MainWindow
                 ?? SessionRunner.LinuxContainerRefusal(install.Root)
                 ?? LinuxSandboxReadiness.SelfTestReason(errorText + "\n" + outputText, process.ExitCode);
             SetLinuxSandboxRow(passed, (passed ? "The Linux sandbox self-test passed. " : "The sandbox stays off: ") +
-                Privacy.Scrub(result) + " Report: " + Privacy.Scrub(report));
+                Privacy.Scrub(result) + " Reports: " + Privacy.Scrub(report) + " and " + Privacy.Scrub(selfTestReport));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {

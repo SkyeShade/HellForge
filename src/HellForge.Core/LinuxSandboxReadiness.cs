@@ -156,10 +156,13 @@ public static class LinuxSandboxReadiness
         var metadata = ReadMode(install);
         // a self-test that failed before it wrote the mode file keeps its own reason (it may not have started at all)
         if (metadata == null) return (expected, false, exitCode != 0 && !string.IsNullOrWhiteSpace(reason) ? reason : "the self-test did not report its runtime mode");
-        if (metadata.Mode != expected.Mode || metadata.RuntimeIdentity != expected.RuntimeIdentity)
+        if (metadata.Mode != expected.Mode)
             return (metadata, false, expected.Mode == "container"
                 ? "the self-test ran in host mode, but this session uses the Steam Linux Runtime container"
                 : "the self-test ran in container mode, but this session uses host mode");
+        // Same mode, another runtime (folder or VERSIONS.txt): say so, not "host mode", and name both.
+        if (metadata.RuntimeIdentity != expected.RuntimeIdentity)
+            return (metadata, false, $"the self-test ran in another Steam Linux Runtime ({metadata.RuntimeIdentity}) than this session uses ({expected.RuntimeIdentity})");
         if (metadata.Mode == "container" && RuntimeUnidentified(metadata.RuntimeIdentity))
             return (metadata, false, "the Steam Linux Runtime self-test could not identify the runtime (VERSIONS.txt is missing or unreadable)");
         if (exitCode != 0) return (metadata, false, reason);
