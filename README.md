@@ -40,9 +40,13 @@ check (binary data patches, raw stats) download only when HellForge has verified
 running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
 unless you show them on the Mods page.
 
-Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
-follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
-HellForge's frozen war, or open every planet to liberation (Settings > Galactic war).
+Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
+template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
+account's inventory and progression from the normal game. Premium items (premium warbonds, Superstore items, Steam DLC
+gear) are there only once a sync has found them on the Steam account signed in now, and Super Credits never are. The
+galactic war can follow the live war read-only from the community mirror
+[api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
+(Settings > Galactic war).
 
 ## Requirements
 
