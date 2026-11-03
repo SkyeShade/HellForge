@@ -15,8 +15,8 @@ namespace HellForge.Core.GameData;
 public static class ForgeCredits
 {
     // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
-    // 3: the names. 4: the XAML pages' colours.
-    public const int Version = 4;
+    // 3: the names. 4: the XAML pages' colours. 5: every copy of each resource, the premium token's colours.
+    public const int Version = 5;
     const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
@@ -46,11 +46,14 @@ public static class ForgeCredits
     // The XAML pages' Super Credits colours, HellForge red instead (research/forge-credits-tint, "UI colours, round 2"):
     // svg_ui_elements.xaml's Icons_Sec (the pause menu's wallet, acquisitions, price widgets: only Super Credits use it)
     // and currency_icons.xaml's CurrencySupercredits fill #FF90D5F6; color_styles.xaml's SecondaryCTA (#FF71F5FF, only the
-    // premium warbond purchase popups use it). Each colour is the same length, so it is written in place.
+    // premium warbond purchase popups use it); currency_icons.xaml's CurrencyWarbondtokenPremium (light blue #FF82DFFB on
+    // dark teal #FF003145: warbonds are bought with Forge Credits). Each colour is the same length, so it is written in place.
     static readonly (ulong Resource, string From, string To)[] XamlColours =
     [
         (0x04A4245928EA3906, """Fill="#FF90D5F6""", """Fill="#FFE5392B"""),
         (0x7DB31550D264126F, """Fill="#FF90D5F6""", """Fill="#FFE5392B"""),
+        (0x7DB31550D264126F, """Fill="#FF82DFFB""", """Fill="#FFE5392B"""),
+        (0x7DB31550D264126F, """V40.8574Z" Fill="#FF003145""", """V40.8574Z" Fill="#FF410A08"""),
         (0x633F3353EB3F56F9, """x:Key="SecondaryCTA">#FF71F5FF<""", """x:Key="SecondaryCTA">#FFE5392B<"""),
     ];
 
@@ -95,14 +98,21 @@ public static class ForgeCredits
         var wanted = new List<ResourceKey> { new(ResourceTypes.Texture, PickupColor), new(ResourceTypes.Texture, PickupNormal), new(ResourceTypes.Texture, PickupMasks) };
         if (sprite.Page != 0) wanted.Add(new(ResourceTypes.Texture, sprite.Page));
         else skipped.Add("the currency icon");
-        var found = game.Find(wanted);
+        // Every copy of each resource: packages carry their own, and the game may load any of them.
+        var found = game.FindEvery(wanted);
         var byArchive = new Dictionary<string, Dictionary<ResourceKey, ResourceParts>>(StringComparer.Ordinal);
+        void Put(string archive, ResourceKey key, ResourceParts parts)
+        {
+            if (!byArchive.TryGetValue(archive, out var resources)) byArchive[archive] = resources = [];
+            resources[key] = parts;
+        }
         void Add(ulong name, string what, Func<ResourceParts, ResourceParts?> change)
         {
             var key = new ResourceKey(ResourceTypes.Texture, name);
-            if (!found.TryGetValue(key, out var at) || change(game.Read(at)) is not { } parts) { skipped.Add(what); return; }
-            if (!byArchive.TryGetValue(at.Archive, out var resources)) byArchive[at.Archive] = resources = [];
-            resources[key] = parts;
+            var changed = 0;
+            foreach (var at in found.GetValueOrDefault(key) ?? [])
+                if (change(game.Read(at)) is { } parts) { Put(at.Archive, key, parts); changed++; }
+            if (changed == 0) skipped.Add(what);
         }
         Add(PickupColor, "the pickup's colour", parts =>
         {
@@ -115,26 +125,29 @@ public static class ForgeCredits
         if (sprite.Page != 0) Add(sprite.Page, "the currency icon", parts => Icon(parts, sprite));
         var stringsType = ResourceTypes.Hash("strings");
         var renamed = 0;
-        foreach (var (name, at) in game.All(stringsType))
-            if (Renamed(game.Read(at)) is { } parts)
-            {
-                if (!byArchive.TryGetValue(at.Archive, out var resources)) byArchive[at.Archive] = resources = [];
-                resources[new(stringsType, name)] = parts;
-                renamed++;
-            }
+        foreach (var (name, copies) in game.Every(stringsType))
+            foreach (var at in copies)
+                if (Renamed(game.Read(at)) is { } parts) { Put(at.Archive, new(stringsType, name), parts); renamed++; }
         if (renamed == 0) skipped.Add("the names");
         var xaml = ResourceTypes.Hash("xaml");
-        var pages = game.Find(XamlColours.Select(c => new ResourceKey(xaml, c.Resource)).Distinct());
+        var pages = game.FindEvery(XamlColours.Select(c => new ResourceKey(xaml, c.Resource)).Distinct());
+        var texts = new Dictionary<(string Archive, ResourceKey Key), (ResourceParts Parts, string Text)>();
         foreach (var (resource, from, to) in XamlColours)
         {
             var key = new ResourceKey(xaml, resource);
-            if (!pages.TryGetValue(key, out var at) || game.Read(at) is not { } page || !Encoding.UTF8.GetString(page.Main).Contains(from, StringComparison.Ordinal))
+            var changed = 0;
+            foreach (var at in pages.GetValueOrDefault(key) ?? [])
             {
-                skipped.Add($"the colours of XAML page {resource:X16}");
-                continue;
+                // A page with several colours takes each on top of the ones before.
+                var (parts, text) = texts.TryGetValue((at.Archive, key), out var done) ? done : (game.Read(at), "");
+                if (text.Length == 0) text = Encoding.UTF8.GetString(parts.Main);
+                if (!text.Contains(from, StringComparison.Ordinal)) continue;
+                text = text.Replace(from, to, StringComparison.Ordinal);
+                texts[(at.Archive, key)] = (parts, text);
+                Put(at.Archive, key, parts with { Main = Encoding.UTF8.GetBytes(text) });
+                changed++;
             }
-            if (!byArchive.TryGetValue(at.Archive, out var resources)) byArchive[at.Archive] = resources = [];
-            resources[key] = page with { Main = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(page.Main).Replace(from, to, StringComparison.Ordinal)) };
+            if (changed == 0) skipped.Add($"a colour of XAML page {resource:X16}");
         }
         var files = new List<string>();
         foreach (var (archive, resources) in byArchive)

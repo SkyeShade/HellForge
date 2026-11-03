@@ -2,7 +2,9 @@
  * HellForge red (research/forge-credits-tint, "UI colours"):
  * - the code UI's currency colour table (0x21CAE60, one 16-byte colour per currency type: 2 the Super Credits price,
  *   3 the Premium wallet, 0x21CAE80 and 0x21CAE90; only types 2 to 6 reach them) is written red in place; its readers
- *   include the price widgets (0x1797A60, 0x19C1DF0) and the icon getter (0x12682A0);
+ *   include the price widgets (0x1797A60, 0x19C1DF0) and the icon getter (0x12682A0); so is its premium warbond token
+ *   entry (0x21CAEF0, light blue), which the Acquisition Center's wallet draws the currency in: warbonds are bought with
+ *   Forge Credits;
  * - two direct loads of 0x21CAE90 (the mission loot counters' switch 0x198BACE, beside the sprite 0x9414AB4F02745820,
  *   and the in-mission counter row 0x1977612) and the premium (warbond) button's colours, set up in 0x1968AC0 and
  *   refreshed in 0x1969F30 only for its premium variant: border, highlight, its two dark-teal fills, and its star's red
@@ -24,6 +26,7 @@ typedef struct { uint32_t rva; uint8_t pin[32]; uint8_t length, at; int8_t slot;
 #define FC_CYAN 0x00,0x00,0x80,0x3f, 0xe3,0xe2,0xe2,0x3e, 0xf6,0xf5,0x75,0x3f, 0x00,0x00,0x80,0x3f
 static const ForgeCreditsPatch kForgeCreditsPatches[] = {
     {0x21CAE80u, {FC_CYAN, FC_CYAN}, 32, 0, -1, 32, {FC_ARGB_RED, FC_ARGB_RED}},            /* currency types 2 and 3 */
+    {0x21CAEF0u, {0x00,0x00,0x80,0x3f, 0x84,0x83,0x03,0x3f, 0xe0,0xdf,0x5f,0x3f, 0xfb,0xfa,0x7a,0x3f}, 16, 0, -1, 16, {FC_ARGB_RED}}, /* the premium warbond token's (131, 223, 251), the Acquisitions wallet */
     {0x198BACEu, {0x0f,0x28,0x05,0xbb,0xf3,0x83,0x00}, 7, 3, FC_RED, 0, {0}},               /* loot counter's switch */
     {0x1977612u, {0x0f,0x28,0x35,0x77,0x38,0x85,0x00}, 7, 3, FC_RED, 0, {0}},               /* in-mission counter row */
     {0x19690F3u, {0x0f,0x28,0x05,0x86,0x13,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},               /* premium button: border */
