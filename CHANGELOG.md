@@ -51,6 +51,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- HD2R Editor (HD2Runtime's own in-game editor) doesn't work on HellForge, but HellForge loaded it anyway, on the same
+  F8 key as its own editor, with nothing to say why. The Mods page now marks it UNSUPPORTED and keeps it switched off,
+  so it can't take F8 or slow the game down, and says to use HellForge's own editor (F8 in game) instead. HD2Runtime
+  and the Lua mods made for it still run.
 - Big frame drops with a Difficulty 11 mod on: HellForge left a developer's diagnostic for the war table's map
   previews running, which interrupted the game each time it read the map's size. It is off now, so Difficulty 11
   mods don't need to be switched off any more.

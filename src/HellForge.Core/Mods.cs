@@ -63,6 +63,9 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Arrowhead's premium content the mod builds on (the manifest's "premium", PremiumContent entries): a player who does
     // not own all of it gets none of the mod's weapons and stratagems, and a cosmetic mod is not loaded for them.
     public IReadOnlyList<string> Premium { get; init; } = [];
+    // Why HellForge never loads it (LuaRuntimes.EditorUnsupported: HD2R Editor), or null. Such a mod stays listed but off,
+    // whatever the Mods page's switch says.
+    public string? Unsupported { get; init; }
 }
 
 public static partial class ModCatalog
@@ -152,6 +155,7 @@ public static partial class ModCatalog
         var ordered = Ordered(mods, settings.Order);
         StatsConflicts(ordered, problems);
         problems.AddRange(LuaRuntimes.Problems(ordered.Where(m => m.Enabled)));
+        problems.AddRange(ordered.Where(m => m.Unsupported != null).Select(m => $"{m.Name}: {m.Unsupported}"));
         return (ordered, problems);
     }
 
@@ -167,6 +171,7 @@ public static partial class ModCatalog
         }
         else mod = Parse(folder, profile);
         mod = mod with { Archive = archive };
+        if (LuaRuntimes.IsEditor(folder)) return mod with { Enabled = false, Unsupported = LuaRuntimes.EditorUnsupported };
         // Local Stats (the in-game editor's saved changes) is always on: the Mods page does not list it
         return settings.Disabled.Contains(mod.Id) && mod.Id != LocalStatsId ? mod with { Enabled = false } : mod;
     }
