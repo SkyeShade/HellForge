@@ -239,6 +239,7 @@ static void WorldStreamSort(uint32_t count)
 /* Every player's Helldiver's world position: EvpPlayers' avatars, their health records' units, the units' scene graph
  * roots. Players without a Helldiver or a readable position are skipped. The research observer, when on, is one more
  * position and is counted like a player. */
+static void NearReportPlayer(const float* at);
 static void WorldStreamPlayersLocked(void)
 {
     g_stream.playerCount = 0;
@@ -254,6 +255,7 @@ static void WorldStreamPlayersLocked(void)
             if (!ActHealthOf(g_stream.game, players[i].avatar, &h) || h.unit == 0 || !EvpUnitPosition(h.unit, at)) continue;
             g_streamPlayerAt[g_stream.playerCount][0] = at[0];
             g_streamPlayerAt[g_stream.playerCount][1] = at[1];
+            if (g_stream.playerCount == 0) NearReportPlayer(at);
             g_stream.playerCount++;
         }
     }

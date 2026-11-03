@@ -362,6 +362,300 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
     }
 }
 
+/* ---- Near-player terrain (first step: one 2 km terrain at the drop point) ----------------------------------------------
+ * The capture (CaptureHeightmapFinalize 0xF53BA0) leaves the 4096^2 u16 heightmap readback in the terrain description
+ * T ([[0x5E pass+0x30]] = [0x69 pass+0]): T+0xC0 columns/rows (u32 each), +0xC8 1, +0xD0 the samples. The engine copies
+ * the heights into the terrain's own buffer (the heightfield exe+0x2F2CB0 builds from is not the readback). So a
+ * second terrain spawned while T points at other samples should carry them. InitSpawnTerrain (0xF44DC0) spawns the
+ * unit through [api+8]+0x198 with an identity pose at (0, 0, -500) and a size of the world's - 0.5 on both axes (heights
+ * -500 + v / 65535 x 1000): the wrapper below moves and sizes it. Then the 0x69 wait ([api+8]+0x1A0), SpawnTerrainWork
+ * ([api+8]+0x1A8) and SpawnTerrainFinalize (0xF451E0) as the level runs them. */
+#define NEAR_SIDE 2048.0f
+#define NEAR_SAMPLES 4096
+typedef uint64_t (*NearSpawnFn)(void* world, float* pose, uint32_t a, uint32_t type, uint32_t name, uint64_t resource, uint32_t hash,
+    float* size, float* range, uint8_t flag);
+static NearSpawnFn g_nearSpawnOriginal;
+static struct {
+    LONG level; int state; uint32_t at6B, polls;
+    uint8_t one69[0x19B0], one6B[0x19B0];
+    uint64_t T, handle, handleCell, oldSamples;
+    float* global; uint16_t* tile; uint32_t columns, rows;
+    float centre[2];
+    int ready; /* the drop point is chosen: the terrain goes in on the next dispatch */
+} g_near = {.level = -1};
+
+static uint64_t NearSpawn(void* world, float* pose, uint32_t a, uint32_t type, uint32_t name, uint64_t resource, uint32_t hash, float* size,
+    float* range, uint8_t flag)
+{
+    if (type == 0x2A9E3232u && name == 0x95E7E3ACu && g_terrainThread == GetCurrentThreadId())
+    {
+        pose[12] += g_near.centre[0]; pose[13] += g_near.centre[1];
+        size[0] = NEAR_SIDE - 0.5f; size[1] = NEAR_SIDE - 0.5f;
+    }
+    return g_nearSpawnOriginal(world, pose, a, type, name, resource, hash, size, range, flag);
+}
+
+/* The tile's samples: the level's heightmap under it (bilinear, 8 samples per level sample), lifted 2 m, with 24 m
+ * ridges 1.5 m high: a test pattern that shows whether the second terrain carries its own heights. */
+static void NearFill(int orientation)
+{
+    float scale = 1000.0f / 65535.0f;
+    float step = NEAR_SIDE / NEAR_SAMPLES, gstep = 16384.0f / (float)g_near.columns;
+    for (int r = 0; r < NEAR_SAMPLES; r++)
+        for (int c = 0; c < NEAR_SAMPLES; c++)
+        {
+            float wx = g_near.centre[0] - NEAR_SIDE / 2 + (c + 0.5f) * step, wy = g_near.centre[1] - NEAR_SIDE / 2 + (r + 0.5f) * step;
+            float gx = (wx + 8192.0f) / gstep - 0.5f, gy = (wy + 8192.0f) / gstep - 0.5f;
+            if (orientation & 1) gx = (float)g_near.columns - 1 - gx;
+            if (orientation & 2) gy = (float)g_near.rows - 1 - gy;
+            int x0 = (int)floorf(gx), y0 = (int)floorf(gy);
+            float fx = gx - x0, fy = gy - y0;
+            if (x0 < 0) { x0 = 0; fx = 0; } if (y0 < 0) { y0 = 0; fy = 0; }
+            if (x0 > (int)g_near.columns - 2) { x0 = g_near.columns - 2; fx = 1; } if (y0 > (int)g_near.rows - 2) { y0 = g_near.rows - 2; fy = 1; }
+            const float* g = g_near.global + (size_t)y0 * g_near.columns + x0;
+            float h = (g[0] * (1 - fx) + g[1] * fx) * (1 - fy) + (g[g_near.columns] * (1 - fx) + g[g_near.columns + 1] * fx) * fy;
+            float m = h + 2.0f + 0.75f * (sinf(wx * 0.2618f) + sinf(wy * 0.2618f));
+            float v = (m + 500.0f) / scale;
+            if (v < 0) v = 0; if (v > 65535) v = 65535;
+            /* the tile's array in the readback's orientation */
+            int tc = (orientation & 1) ? NEAR_SAMPLES - 1 - c : c, tr = (orientation & 2) ? NEAR_SAMPLES - 1 - r : r;
+            g_near.tile[(size_t)tr * NEAR_SAMPLES + tc] = (uint16_t)(v + 0.5f);
+        }
+}
+
+/* Research: a terrain's engine entry (the table world+0x230550, looked up as SpawnTerrainWork does with exe+0x1B86C0, a
+ * find-or-insert: only for handles that were spawned): origin/extent, sample grid, the render object's origin/extent and
+ * its heights. */
+static void NearNoteEntry(const char* what, uint64_t world, uint64_t handle)
+{
+    typedef uint8_t* (*FindFn)(uint64_t table, uint64_t* key);
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    uint64_t key = handle;
+    uint8_t* e = ((FindFn)(exe + 0x1B86C0u))(world + 0x230550u, &key);
+    if (e == NULL) { Note("difficulty: near terrain: %s: no entry", what); return; }
+    float oe[4] = {0}, ro[4] = {0};
+    uint64_t obj = 0, dimsAt = 0, heights = 0;
+    uint32_t dims[2] = {0};
+    uint16_t mid[2] = {0};
+    SafeRead((uintptr_t)e + 0x24, oe, 16); SafeRead((uintptr_t)e + 0x10, &obj, 8); SafeRead((uintptr_t)e + 0x38, &dimsAt, 8);
+    if (dimsAt) SafeRead(dimsAt + 0x14, dims, 8);
+    if (obj) { SafeRead(obj + 0x168, ro, 16); SafeRead(obj + 0x40, &heights, 8); }
+    if (heights && dims[0] && dims[1]) SafeRead(heights + ((uint64_t)dims[1] / 2 * dims[0] + dims[0] / 2) * 2, mid, 4);
+    Note("difficulty: near terrain: %s: handle 0x%llX entry origin (%.1f, %.1f) extent (%.1f, %.1f), grid %u x %u, object origin (%.1f, %.1f) "
+        "extent (%.1f, %.1f), heights 0x%llX, middle %u %u", what, (unsigned long long)handle, (double)oe[0], (double)oe[1], (double)oe[2], (double)oe[3],
+        dims[0], dims[1], (double)ro[0], (double)ro[1], (double)ro[2], (double)ro[3], (unsigned long long)heights, mid[0], mid[1]);
+}
+
+static int NearOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char text[8] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_NEAR", text, sizeof text) > 0 && text[0] == '0'); }
+    return on;
+}
+
+/* The level's heightmap at a world point, under one of the four axis flips (metres). */
+static float NearGlobalAt(float wx, float wy, int orientation)
+{
+    float gstep = 16384.0f / (float)g_near.columns, shift = 8192.0f;
+    if (orientation & 4) { float t = wx; wx = wy; wy = t; } /* axes swapped */
+    int c = (int)((wx + shift) / gstep), r = (int)((wy + shift) / gstep);
+    if (orientation & 1) c = (int)g_near.columns - 1 - c;
+    if (orientation & 2) r = (int)g_near.rows - 1 - r;
+    if (c < 0 || r < 0 || c >= (int)g_near.columns || r >= (int)g_near.rows) return -9999.0f;
+    return g_near.global[(size_t)r * g_near.columns + c];
+}
+
+/* The first player's position against the level's heightmap under each flip (which flip the terrain uses), every 5 s
+ * for a minute once the near terrain's level is in. */
+static void NearReportPlayer(const float* at)
+{
+    static ULONGLONG last; static int reports; static LONG level = -1;
+    if (g_near.global == NULL || g_near.level != g_world.levels || g_world.current != 8.0f) return;
+    if (level != g_near.level) { level = g_near.level; reports = 0; last = 0; }
+    ULONGLONG now = GetTickCount64();
+    if (reports >= 40 || now - last < 1500) return;
+    last = now; reports++;
+    Note("difficulty: near terrain: player at (%.1f, %.1f, %.2f); the level's heightmap there by flip: %.2f %.2f %.2f %.2f; axes swapped: %.2f %.2f %.2f %.2f",
+        (double)at[0], (double)at[1], (double)at[2], (double)NearGlobalAt(at[0], at[1], 0), (double)NearGlobalAt(at[0], at[1], 1),
+        (double)NearGlobalAt(at[0], at[1], 2), (double)NearGlobalAt(at[0], at[1], 3), (double)NearGlobalAt(at[0], at[1], 4),
+        (double)NearGlobalAt(at[0], at[1], 5), (double)NearGlobalAt(at[0], at[1], 6), (double)NearGlobalAt(at[0], at[1], 7));
+}
+
+/* ---- The drop point (research runs; the harness reads xl-drop.txt) ----------------------------------------------------
+ * Water: GenerateWaterStart (op 0x0A, 0xF6C610) walks [[pass+0x58]] ids (u32, [pass+0x18]) into the area table
+ * ([pass+0x10], pointers) and spawns a water body for each area whose level [area+0xE4] is above -500. The drop goes on
+ * dry, gentle ground of the final heightmap (CaptureHeightmapFinalize's float32 readback, row 0 at +y): 3 m above the
+ * highest water, slope under 12 deg over +-16 m, under 20 m of relief within +-64 m, inside 1200 m of the centre. */
+static struct { LONG level; int count; float high; } g_nearWater = {.level = -1};
+static LONG g_nearDropLevel = -1;
+static void TerrainNearDrop(void);
+
+static void TerrainNearWater(uint64_t record)
+{
+    if (g_nearWater.level == g_world.levels) return;
+    uint64_t pass = record + 8, ids = 0, table = 0, countAt = 0;
+    uint32_t count = 0;
+    if (SafeRead(pass + 0x58, &countAt, 8) || countAt == 0 || SafeRead(countAt, &count, 4) || SafeRead(pass + 0x18, &ids, 8) ||
+        SafeRead(pass + 0x10, &table, 8) || ids == 0 || table == 0 || count > 65536) return;
+    g_nearWater.level = g_world.levels; g_nearWater.count = 0; g_nearWater.high = -500.0f;
+    for (uint32_t k = 0; k < count; k++)
+    {
+        uint32_t id = 0; uint64_t area = 0; float h = -1000.0f;
+        if (SafeRead(ids + 4ull * k, &id, 4) || SafeRead(table + 8ull * id, &area, 8) || area == 0 || SafeRead(area + 0xE4, &h, 4)) continue;
+        if (h > -500.0f) { g_nearWater.count++; if (h > g_nearWater.high) g_nearWater.high = h; }
+    }
+    Note("difficulty: near terrain: %d water bodies (of %u areas), the highest at %.2f m", g_nearWater.count, count, (double)g_nearWater.high);
+    TerrainNearDrop();
+}
+
+static float NearHeight(int r, int c) { return g_near.global[(size_t)r * g_near.columns + c]; }
+
+static void TerrainNearDrop(void)
+{
+    if (g_nearDropLevel == g_world.levels || g_near.global == NULL || g_nearWater.level != g_world.levels) return;
+    g_nearDropLevel = g_world.levels;
+    const float step = 16384.0f / (float)g_near.columns; /* 4 m */
+    float bestX = 0, bestY = 0, bestSlope = 1e9f;
+    int candidates = 0;
+    for (float wy = -1200.0f; wy <= 1200.0f; wy += 64.0f)
+        for (float wx = -1200.0f; wx <= 1200.0f; wx += 64.0f)
+        {
+            if (wx * wx + wy * wy > 1200.0f * 1200.0f) continue;
+            int c = (int)((wx + 8192.0f) / step), r = (int)g_near.rows - 1 - (int)((wy + 8192.0f) / step);
+            if (r < 16 || c < 16 || r >= (int)g_near.rows - 16 || c >= (int)g_near.columns - 16) continue;
+            float h = NearHeight(r, c);
+            if (h < g_nearWater.high + 3.0f) continue;
+            float lo = h, hi = h;
+            for (int dr = -16; dr <= 16; dr += 4) for (int dc = -16; dc <= 16; dc += 4)
+            { float v = NearHeight(r + dr, c + dc); if (v < lo) lo = v; if (v > hi) hi = v; }
+            if (hi - lo > 20.0f || lo < g_nearWater.high + 1.0f) continue;
+            float gx = (NearHeight(r, c + 4) - NearHeight(r, c - 4)) / 32.0f, gy = (NearHeight(r - 4, c) - NearHeight(r + 4, c)) / 32.0f;
+            float slope = atanf(sqrtf(gx * gx + gy * gy)) * 57.29578f;
+            if (slope > 12.0f) continue;
+            candidates++;
+            float score = slope + 0.002f * sqrtf(wx * wx + wy * wy);
+            if (score < bestSlope) { bestSlope = score; bestX = wx; bestY = wy; }
+        }
+    if (candidates == 0) { Note("difficulty: near terrain: no dry, gentle drop point within 1200 m; no drop file"); return; }
+    char line[64];
+    int len = snprintf(line, sizeof line, "%.1f,%.1f\n", (double)bestX, (double)bestY);
+    HANDLE file = OpenLog(L"xl-drop.txt");
+    if (file != INVALID_HANDLE_VALUE) { DWORD wrote; WriteFile(file, line, (DWORD)len, &wrote, NULL); CloseHandle(file); }
+    g_worldDrop[0] = bestX; g_worldDrop[1] = bestY; g_worldDropLevel = g_world.levels;
+    if (g_near.level == g_world.levels && g_near.state == 1) { g_near.centre[0] = bestX; g_near.centre[1] = bestY; g_near.ready = 1; }
+    Note("difficulty: near terrain: drop point (%.0f, %.0f), ground %.2f m (water up to %.2f m), %d dry gentle candidates", (double)bestX, (double)bestY,
+        (double)NearHeight((int)g_near.rows - 1 - (int)((bestY + 8192.0f) / step), (int)((bestX + 8192.0f) / step)), (double)g_nearWater.high, candidates);
+}
+
+static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context)
+{
+    if (!TerrainOn() || g_world.current != 8.0f) return 0;
+    if (op == 0x69 && g_near.level != g_world.levels)
+    {
+        g_near.level = g_world.levels; g_near.state = 0;
+        uint64_t record = records + (uint64_t)at * 0x19B0u, T = 0;
+        uint32_t dims[2] = {0}; uint64_t samples = 0;
+        if (SafeRead(record, g_near.one69, sizeof g_near.one69)) { Note("difficulty: near terrain: the spawn record did not read"); return 0; }
+        memcpy(&T, g_near.one69 + 8, 8);
+        if (T == 0 || SafeRead(T + 0xC0, dims, 8) || SafeRead(T + 0xD0, &samples, 8) || samples == 0 || dims[0] != 4096 || dims[1] != 4096)
+        { Note("difficulty: near terrain: the description is not the reviewed one (T 0x%llX, %u x %u)", (unsigned long long)T, dims[0], dims[1]); return 0; }
+        size_t bytes = (size_t)dims[0] * dims[1] * 4; /* float32 metres */
+        if (g_near.global == NULL) g_near.global = (float*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (g_near.tile == NULL) g_near.tile = (uint16_t*)VirtualAlloc(NULL, (size_t)NEAR_SAMPLES * NEAR_SAMPLES * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (g_near.global == NULL || g_near.tile == NULL || SafeRead(samples, g_near.global, bytes)) { Note("difficulty: near terrain: the level's heightmap at 0x%llX did not copy", (unsigned long long)samples); return 0; }
+        g_near.T = T; g_near.columns = dims[0]; g_near.rows = dims[1];
+        uint32_t o = 0; g_near.at6B = 0;
+        for (uint32_t i = at + 1; i < end && i < at + 16; i++) if (!SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0x6B) { g_near.at6B = i; break; }
+        if (g_near.at6B == 0 || SafeRead(records + (uint64_t)g_near.at6B * 0x19B0u, g_near.one6B, sizeof g_near.one6B)) { Note("difficulty: near terrain: no SpawnTerrainFinalize after record %u", at); return 0; }
+        Note("difficulty: near terrain: level heightmap copied; the terrain goes in after record %u", g_near.at6B);
+        g_near.state = 1; g_near.ready = 0;
+        TerrainNearDrop();
+        return 0;
+    }
+    if (g_near.level != g_world.levels || at <= g_near.at6B) return 0;
+    if (g_near.state == 1 && g_near.ready)
+    {
+        g_near.state = 0;
+        if (!NearOn()) { Note("difficulty: near terrain: off (HELLFORGE_XL_NEAR=0)"); return 0; }
+        uintptr_t gen = 0;
+        if (g_worldLevel == 0 || SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) { Note("difficulty: near terrain: no generator block"); return 0; }
+        (void)gen;
+        int orientation = 2; /* measured (i14): centred, rows from +y down */
+        NearFill(orientation);
+        uintptr_t api = 0, table = 0;
+        if (SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 8, &table, 8) || table == 0) { Note("difficulty: near terrain: no engine table"); return 0; }
+        volatile uint64_t* slot = (volatile uint64_t*)(table + 0x198);
+        DWORD old = 0;
+        if (!VirtualProtect((void*)slot, 8, PAGE_READWRITE, &old)) { Note("difficulty: near terrain: the spawn slot is not writable"); return 0; }
+        g_nearSpawnOriginal = (NearSpawnFn)(uintptr_t)*slot;
+        if (SafeRead(g_near.T + 0xD0, &g_near.oldSamples, 8)) return 0;
+        *(volatile uint64_t*)(uintptr_t)(g_near.T + 0xD0) = (uint64_t)(uintptr_t)g_near.tile;
+        *slot = (uint64_t)(uintptr_t)NearSpawn;
+        g_terrainThread = GetCurrentThreadId();
+        memset(g_near.one69 + 8 + 0x60, 0, 8);
+        typedef void (*InitFn)(uint64_t pass, uint64_t unused, uint64_t context);
+        ((InitFn)(g_world.game + 0xF44DC0u))((uint64_t)(uintptr_t)g_near.one69 + 8, 0, context);
+        g_terrainThread = 0;
+        *slot = (uint64_t)(uintptr_t)g_nearSpawnOriginal;
+        VirtualProtect((void*)slot, 8, old, &old);
+        memcpy(&g_near.handle, g_near.one69 + 8 + 0x60, 8);
+        Note("difficulty: near terrain: spawned a %.0f m terrain at (%.0f, %.0f) (orientation %d), handle 0x%llX; waiting for it",
+            (double)NEAR_SIDE, (double)g_near.centre[0], (double)g_near.centre[1], orientation, (unsigned long long)g_near.handle);
+        if (g_near.handle == 0) { *(volatile uint64_t*)(uintptr_t)(g_near.T + 0xD0) = g_near.oldSamples; return 0; }
+        g_near.state = 2; g_near.polls = 0;
+        return 1;
+    }
+    if (g_near.state == 2)
+    {
+        uintptr_t api = 0, table = 0, world = 0;
+        SafeRead(g_world.game + 0x3326308u, &api, 8); SafeRead(api + 8, &table, 8); SafeRead(context + 0x40, &world, 8);
+        typedef char (*ReadyFn)(uint64_t world, uint64_t handle);
+        typedef void (*WorkFn)(uint64_t world, uint64_t handle);
+        ReadyFn ready = NULL; WorkFn work = NULL;
+        SafeRead(table + 0x1A0, &ready, 8); SafeRead(table + 0x1A8, &work, 8);
+        if (ready == NULL || work == NULL || world == 0) { g_near.state = 0; *(volatile uint64_t*)(uintptr_t)(g_near.T + 0xD0) = g_near.oldSamples; return 0; }
+        if (!ready(world, g_near.handle))
+        {
+            if (++g_near.polls < 3000) return 1;
+            Note("difficulty: near terrain: the terrain unit was not ready after %u polls; left as it is", g_near.polls);
+            g_near.state = 0; *(volatile uint64_t*)(uintptr_t)(g_near.T + 0xD0) = g_near.oldSamples; return 0;
+        }
+        {   /* the terrain's own samples (it copied the level's whole map): the tile's go in before the work builds its
+             * collision from them */
+            typedef uint8_t* (*FindFn)(uint64_t table, uint64_t* key);
+            uint64_t key = g_near.handle, obj = 0, dimsAt = 0, heights = 0;
+            uint32_t dims[2] = {0};
+            uint8_t* e = ((FindFn)((uintptr_t)GetModuleHandleW(NULL) + 0x1B86C0u))(world + 0x230550u, &key);
+            if (e != NULL) { SafeRead((uintptr_t)e + 0x10, &obj, 8); SafeRead((uintptr_t)e + 0x38, &dimsAt, 8); }
+            if (obj) SafeRead(obj + 0x40, &heights, 8);
+            if (dimsAt) SafeRead(dimsAt + 0x14, dims, 8);
+            if (heights == 0 || dims[0] != NEAR_SAMPLES || dims[1] != NEAR_SAMPLES)
+                Note("difficulty: near terrain: the terrain's samples are not the expected %d^2 (%u x %u at 0x%llX); left as copied", NEAR_SAMPLES, dims[0], dims[1],
+                    (unsigned long long)heights);
+            else memcpy((void*)(uintptr_t)heights, g_near.tile, (size_t)NEAR_SAMPLES * NEAR_SAMPLES * 2);
+        }
+        work(world, g_near.handle);
+        g_near.handleCell = g_near.handle;
+        uint64_t cell = (uint64_t)(uintptr_t)&g_near.handleCell;
+        memcpy(g_near.one6B + 8, &cell, 8);
+        typedef char (*FinalizeFn)(uint64_t pass, uint64_t unused, uint64_t context);
+        ((FinalizeFn)(g_world.game + 0xF451E0u))((uint64_t)(uintptr_t)g_near.one6B + 8, 0, context);
+        *(volatile uint64_t*)(uintptr_t)(g_near.T + 0xD0) = g_near.oldSamples;
+        Note("difficulty: near terrain: the %.0f m terrain is in (%u polls)", (double)NEAR_SIDE, g_near.polls);
+        {
+            uint64_t levelHandle = 0;
+            SafeRead(g_near.T - 8, &levelHandle, 8);
+            if (levelHandle) NearNoteEntry("the level's terrain", world, levelHandle);
+            NearNoteEntry("the near terrain", world, g_near.handle);
+            uint16_t t[2] = {g_near.tile[(size_t)2048 * NEAR_SAMPLES + 2048], g_near.tile[(size_t)2048 * NEAR_SAMPLES + 2049]};
+            Note("difficulty: near terrain: its samples at 0x%llX, middle %u %u", (unsigned long long)(uintptr_t)g_near.tile, t[0], t[1]);
+        }
+        g_near.state = 3;
+        return 0;
+    }
+    return 0;
+}
+
 /* The samplers' wrappers, on any larger map (they only act while a tile builds). */
 static void TerrainInstall(uintptr_t game)
 {

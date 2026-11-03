@@ -24,6 +24,12 @@
 static const uint8_t kWorldSizePin[9] = {0xF3, 0x41, 0x0F, 0x11, 0x85, 0xE0, 0x01, 0x00, 0x00};
 /* The director's spawn gate: movss xmm0, [+2000.0] and movss xmm1, [-2000.0], each compared with x, y and z. */
 static const struct { uint32_t rva, constant; } kWorldGate[2] = {{0x953642u, 0x23C7DD0u}, {0x953653u, 0x23C83CCu}};
+/* Drop bounds: two box clamps of a world position to vanilla's +-999 m (1024 less 25; movss xmm, [-999.0 0x23C83B8] /
+ * [999.0 0x23C7D38], then comiss/minss on x and y), each after the same ground query (0x13CAA80, hash 0xF3B52DB1): the
+ * Helldiver's pod target in the spawn sequence 0xA866F0 (0xA87BB2 / 0xA87BBD), and the helper at 0x827500 (0x8275EE /
+ * 0x8275FF). Unredirected, a drop at (4257, 4823) on a 16 km map homed onto (999, 999) mid-fall (run i14). */
+static const struct { uint32_t rva, constant; uint8_t high; } kWorldDropBounds[4] = {
+    {0xA87BB2u, 0x23C83B8u, 0}, {0xA87BBDu, 0x23C7D38u, 1}, {0x8275EEu, 0x23C83B8u, 0}, {0x8275FFu, 0x23C7D38u, 1}};
 /* The immediates: {rva, offset of the 32-bit value, vanilla value}: 2048.0 (map space clamps 0xF38EDA/0xF38EFE, the
  * engine's world size 0xF5DEF9.. and 0xF5F3C1.., the stamp index's world 0xF6E9D0) and 1024.0 (the centre that
  * SpreadLocations and the outposts' spreading measure from, 0xF7DFEF.. and 0xF7EDDC..). */
@@ -33,7 +39,7 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
     {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u}};
 /* What the instructions read (the block's second page, writable): half, full, 1 / full, the gate's +-2000 x scale, and
  * the size the stub stores (0: the table's). */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -84,6 +90,8 @@ static void WorldWrite(float scale)
     v->gateHigh = 2000.0f * scale;
     v->gateLow = -2000.0f * scale;
     v->clearing = 2.3283064365386963e-10f * scale * scale;
+    v->dropHigh = 1024.0f * scale - 25.0f;
+    v->dropLow = -(1024.0f * scale - 25.0f);
     for (int i = 0; i < 11; i++)
     {
         float value;
@@ -1298,6 +1306,8 @@ static int WorldDropCompare(const void* a, const void* b)
     return x < y ? -1 : x > y;
 }
 
+static float g_worldDrop[2];
+static LONG g_worldDropLevel = -1;
 static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
 {
     static LONG suggested = -1;
@@ -1360,10 +1370,10 @@ static void WorldSuggestDrop(uintptr_t gen, uint32_t count)
     qsort(picks, n, sizeof picks[0], WorldDropCompare);
     uint32_t k = (uint32_t)((float)n * 0.7f); if (k >= n) k = n - 1;
     float half = 1024.0f * g_world.current, x = picks[k][0] - half, y = picks[k][1] - half;
+    g_worldDrop[0] = x; g_worldDrop[1] = y; g_worldDropLevel = g_world.levels;
     char line[64];
     int len = snprintf(line, sizeof line, "%.1f,%.1f\n", (double)x, (double)y);
-    HANDLE file = OpenLog(L"xl-drop.txt");
-    if (file != INVALID_HANDLE_VALUE) { DWORD wrote; WriteFile(file, line, (DWORD)len, &wrote, NULL); CloseHandle(file); }
+    (void)line; (void)len; /* the drop file is written once the final heightmap and the water are known (TerrainNearDrop) */
     Note("difficulty: drop suggestion: (%.0f, %.0f) in the vegetated zone, vertex height %.4f (%u cells, %.4f..%.4f)",
         (double)x, (double)y, (double)picks[k][2], n, (double)picks[0][2], (double)picks[n - 1][2]);
 }
@@ -1472,6 +1482,8 @@ static void TerrainDiagInstall(uintptr_t game);
 /* difficulty_world_terrain.c: the map at vanilla density, as tiles drawn into the level's merge */
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
+static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context);
+static void TerrainNearWater(uint64_t record);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -1506,6 +1518,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
         /* the map's terrain at vanilla density: the level waits at its SmoothHeightmap while the tiles are drawn */
         if (o == 0x40 && TerrainStep(records, (uint32_t)d, i, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
+        if (o == 0x0A && g_world.current == 8.0f) TerrainNearWater(records + (uint64_t)i * 0x19B0u);
+        if (g_world.current == 8.0f && TerrainNearStep(records, (uint32_t)d, i, o, b)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
@@ -1961,6 +1975,14 @@ static const char* WorldSitesFailed(uintptr_t game)
         if (SafeRead(game + kWorldGate[i].rva + 4, &disp, 4) || game + kWorldGate[i].rva + 8 + (intptr_t)disp != game + kWorldGate[i].constant)
             return "the director's spawn bounds are not the reviewed ones (an extra large map needs them)";
     }
+    for (int i = 0; i < 4; i++)
+    {
+        int32_t disp;
+        uint8_t op[4];
+        if (SafeRead(game + kWorldDropBounds[i].rva, op, 4) || op[0] != 0xF3 || op[1] != 0x0F || op[2] != 0x10 ||
+            SafeRead(game + kWorldDropBounds[i].rva + 4, &disp, 4) || game + kWorldDropBounds[i].rva + 8 + (intptr_t)disp != game + kWorldDropBounds[i].constant)
+            return "the drop bounds are not the reviewed ones (an extra large map needs them)";
+    }
     for (int i = 0; i < 11; i++)
     {
         uint32_t value;
@@ -1984,7 +2006,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -2036,6 +2058,12 @@ static const char* InstallWorld(DifficultyInstall* d)
     {
         rel = (int32_t)((intptr_t)(uintptr_t)gate[i] - (intptr_t)(game + kWorldGate[i].rva + 8));
         if (ApiWrite(game + kWorldGate[i].rva + 4, &rel, 4)) return "the director's spawn bounds could not follow the larger world";
+    }
+    for (int i = 0; i < 4; i++)
+    {
+        const float* bound = kWorldDropBounds[i].high ? &g_world.values->dropHigh : &g_world.values->dropLow;
+        rel = (int32_t)((intptr_t)(uintptr_t)bound - (intptr_t)(game + kWorldDropBounds[i].rva + 8));
+        if (ApiWrite(game + kWorldDropBounds[i].rva + 4, &rel, 4)) return "the drop bounds could not follow the larger world";
     }
     uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_INDEX_FULL, (uintptr_t)full); memcpy(jump + 1, &rel, 4);
