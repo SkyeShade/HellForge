@@ -46,8 +46,8 @@ client's IPC objects are at the player's normal integrity, so a low-integrity pr
   `HELLFORGE_BRIDGE_PIPE`).
   - Its own functions never load Valve's DLL in that mode. Its `SteamAPI_Init` and `SteamAPI_InitSafe` (the pinned
     build's init exports) connect to the broker on first use, never in `DllMain` (no wait under the loader lock).
-    It waits up to 10 s for the broker's pipe. Without a broker it **fails closed**: init returns false,
-    `IsSteamRunning` 0, and nothing falls back to Valve's DLL.
+    It waits up to 10 s for the broker's pipe, which the session runner has already made sure of (below). Without a
+    broker it **fails closed**: init returns false, `IsSteamRunning` 0, and nothing falls back to Valve's DLL.
   - It answers the flat API itself: init, shutdown, `RunCallbacks`, `IsSteamRunning` (asked of the broker), callback
     registration, the user and pipe handles, and `SteamInternal_ContextInit` (the inline accessors' cache).
   - The **bridge build** of the stand-in (`steam_api64_bridge.dll`, phase 3) has no forwarders to Valve's DLL: an export
@@ -252,6 +252,31 @@ lobby stays listed.
 - **The game process:** the session runner starts it with a lowered copy of its own token (`CreateProcessAsUser`; no
   admin needed). Its job adds an active-process limit of 1, so no child processes. That loses the crash handler, and
   NVIDIA's DLSS updater that Steam's overlay starts.
+- **The broker's start:** the game is created suspended, and the runner resumes it only once the broker's log says
+  `broker: waiting for the game`: Steam started in the broker, the snapshot filled and the pipe open
+  (`PlaySession.WaitForBroker`, `SteamBrokerLog`). Before that the broker started after the game and the game resumed at
+  once, so a broker held up more than about 10 s (an antivirus checking a new program, say) or one whose
+  `SteamAPI_Init` failed left the game at STEAM NOT DETECTED while the session said it was running. Now a broker that
+  ends first is the session's failure, with its reason (Steam not running or signed in, or run as administrator;
+  Valve's DLL; the channel), and one not ready in 60 s is too. The session log says it is waiting after 3 s. A broker
+  that ends while the game runs, other than with the game (its `SteamAPI_Shutdown` or exit), is said in the session
+  log once and recorded (`brokerEndedDuringPlay`); `brokerReadyMilliseconds` and `brokerGameConnected` are recorded
+  for every sandboxed session.
+- **What the sandbox refuses the game** is recorded. In a sandboxed session the network gate's census (`net_gate.c`)
+  adds a `denied` group: kernelbase's `OpenFileMappingW`, `CreateFileMappingW`, `OpenEventW`, `CreateEventW`,
+  `CreateEventExW`, `OpenMutexW`, `CreateMutexW`, `CreateMutexExW`, `OpenSemaphoreW`, `CreateFileW` (files and pipes)
+  and `WaitNamedPipeW`. A call that fails with `ERROR_ACCESS_DENIED` is written with the object's name and the module
+  that asked (`"scope":"denied"`), and the caller's last error is kept. A folder opened as a file and a read-only file
+  opened for writing are left out: Windows refuses those at any level. Overlays reach their own program through such
+  objects, which other programs made at the player's level, so these lines say exactly what each one is refused:
+  `result.json` has `networkCensus.denied` and `deniedTargets`, and `session.log` names each module, by the overlay it
+  is when it is a known one (`SandboxRefusals`). The A variants and direct `Nt*` calls are not hooked.
+  `HELLFORGE_NETGATE_HOOKS` without `denied` leaves it out. The census's hooks also keep the caller's last error
+  now: `TlsGetValue` in their bookkeeping reset it to 0, so a failed `connect` read back as no error.
+- **Steam's overlay** loads with `SteamAPI_Init`, so only into the broker. `HELLFORGE_SANDBOX_OVERLAY_PROBE=1` (a
+  diagnostic) has the stand-in load Steam's `GameOverlayRenderer64.dll` into the sandboxed game at `SteamAPI_Init`
+  (`OverlayProbe`; the runner passes its path, from Steam's `SteamPath`, as `HELLFORGE_OVERLAY_PROBE`), so the census
+  records what Steam's overlay is refused there; `result.json` has `overlayProbe`.
 - **Folders the game writes** are all inside the session's `game/` folder in its run folder, which the runner **makes
   new with a low label** (`LowIntegrityHelper.CreateLowFolder`); everything made in it later inherits the label.
   Labelling at creation, at or below one's own integrity, needs no admin. Relabelling an existing folder needs

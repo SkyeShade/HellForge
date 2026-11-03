@@ -10,6 +10,7 @@
 #include <ws2tcpip.h>
 #include <mswsock.h>
 #include <windows.h>
+#include <sddl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -57,18 +58,71 @@ __attribute__((noinline)) static void ConnectOnce(const struct sockaddr_in *to)
     g_sink += connect(INVALID_SOCKET, (const struct sockaddr *)to, sizeof *to);
 }
 
+// Whether a call failed with ERROR_ACCESS_DENIED as its last error; said when not.
+static int Refused(const char *what, int failed)
+{
+    DWORD error = GetLastError();
+    if (failed && error == ERROR_ACCESS_DENIED) return 1;
+    printf("note: %s was not refused with ERROR_ACCESS_DENIED (%s, last error %lu)\n", what, failed ? "failed" : "opened", error);
+    return 0;
+}
+
+// Named objects and a file nobody may open (a DACL that denies everyone), opened again: each is refused with
+// ERROR_ACCESS_DENIED, as a low-integrity game is refused what other programs made at the player's level. Returns how
+// the calls whose caller saw ERROR_ACCESS_DENIED, one bit each (REFUSED_*), or -1 when the fixture cannot be made.
+enum { REFUSED_EVENT = 1, REFUSED_MAPPING = 2, REFUSED_MUTEX = 4, REFUSED_PIPE = 8, REFUSED_FILE = 16 };
+static int RefusedCalls(const wchar_t *folder)
+{
+    PSECURITY_DESCRIPTOR sd = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:(D;;GA;;;WD)", SDDL_REVISION_1, &sd, NULL)) return -1;
+    SECURITY_ATTRIBUTES none = {sizeof none, sd, FALSE};
+    HANDLE event = CreateEventW(&none, TRUE, FALSE, L"Local\\hf-netgate-denied-event");
+    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, &none, PAGE_READWRITE, 0, 4096, L"Local\\hf-netgate-denied-mapping");
+    HANDLE mutex = CreateMutexW(&none, FALSE, L"Local\\hf-netgate-denied-mutex");
+    HANDLE pipe = CreateNamedPipeW(L"\\\\.\\pipe\\hf-netgate-denied-pipe", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 64, 64, 0, &none);
+    wchar_t file[MAX_PATH];
+    swprintf(file, MAX_PATH, L"%ls\\hf-netgate-denied.txt", folder);
+    DeleteFileW(file);
+    // kept open (and deleted when closed): a file nobody may open is not one this test can delete afterwards
+    HANDLE made = CreateFileW(file, GENERIC_WRITE | DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE, &none, CREATE_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+    int kept = 0;
+    kept |= REFUSED_EVENT * Refused("OpenEventW", !OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Local\\hf-netgate-denied-event"));
+    kept |= REFUSED_MAPPING * Refused("OpenFileMappingW", !OpenFileMappingW(FILE_MAP_READ, FALSE, L"Local\\hf-netgate-denied-mapping"));
+    kept |= REFUSED_MUTEX * Refused("OpenMutexW", !OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\hf-netgate-denied-mutex"));
+    kept |= REFUSED_PIPE * Refused("CreateFileW (pipe)", CreateFileW(L"\\\\.\\pipe\\hf-netgate-denied-pipe", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL) ==
+        INVALID_HANDLE_VALUE);
+    kept |= REFUSED_FILE * Refused("CreateFileW (file)", CreateFileW(file, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL) ==
+        INVALID_HANDLE_VALUE);
+    // refusals that are no sandbox's doing are not written: a folder opened as a file (Windows refuses it at any level)
+    wchar_t folderAsFile[MAX_PATH];
+    swprintf(folderAsFile, MAX_PATH, L"%ls\\hf-netgate-folder", folder);
+    CreateDirectoryW(folderAsFile, NULL);
+    HANDLE opened = CreateFileW(folderAsFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (opened != INVALID_HANDLE_VALUE) CloseHandle(opened);
+    // a name that does not exist is not a refusal: nothing is written for it
+    OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Local\\hf-netgate-no-such-event");
+    HANDLE made_[] = {event, mapping, mutex, pipe, made};
+    for (size_t i = 0; i < sizeof made_ / sizeof made_[0]; i++) if (made_[i] && made_[i] != INVALID_HANDLE_VALUE) CloseHandle(made_[i]);
+    LocalFree(sd);
+    return kept;
+}
+
 int wmain(int argc, wchar_t **argv)
 {
     if (argc < 3) { fprintf(stderr, "usage: net_gate_test <steam_api64.dll> <log> [hook groups]\n"); return 2; }
     // A 3rd argument chooses the hook groups; a subset like "dns" (anything but "all") runs the filtered checks: only
     // that group is placed, so a name lookup is logged and a connect is not. No 3rd argument means "all" (the harness
     // exercises every hook, unlike the session default, which leaves out the connect groups the game cannot abide).
+    // "default" and "sandbox-default" set no groups, as a session does, the second with HELLFORGE_BRIDGE_PIPE set as a
+    // sandboxed session has it: the default adds the denied group there only.
     const wchar_t *groups = argc > 3 ? argv[3] : L"all";
-    bool filtered = _wcsicmp(groups, L"all") != 0;
+    bool sandboxDefault = !_wcsicmp(groups, L"sandbox-default"), sessionDefault = sandboxDefault || !_wcsicmp(groups, L"default");
+    bool filtered = !sessionDefault && _wcsicmp(groups, L"all") != 0;
     DeleteFileW(argv[2]);
     SetEnvironmentVariableW(L"HELLFORGE_NETGATE", L"census");
     SetEnvironmentVariableW(L"HELLFORGE_NETGATE_LOG", argv[2]);
-    SetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", groups);
+    SetEnvironmentVariableW(L"HELLFORGE_NETGATE_HOOKS", sessionDefault ? NULL : groups);
+    SetEnvironmentVariableW(L"HELLFORGE_BRIDGE_PIPE", sandboxDefault ? L"net-gate-test" : NULL);
     SetEnvironmentVariableW(L"HELLFORGE_MODLOADER", NULL);
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -107,6 +161,13 @@ int wmain(int argc, wchar_t **argv)
     void *connection = session && connectTo ? connectTo(session, L"example.invalid", 443, 0) : NULL;
     if (connection) close(connection);
     if (session) close(session);
+    wchar_t folder[MAX_PATH];
+    wcsncpy(folder, argv[2], MAX_PATH - 1);
+    folder[MAX_PATH - 1] = 0;
+    wchar_t *slash = wcsrchr(folder, L'\\');
+    if (slash) *slash = 0;
+    else wcscpy(folder, L".");
+    int refused = RefusedCalls(folder);
     STARTUPINFOW startup = {sizeof startup};
     PROCESS_INFORMATION process;
     wchar_t command[] = L"C:\\HellForge\\does-not-exist\\crs-handler.exe";
@@ -115,6 +176,18 @@ int wmain(int argc, wchar_t **argv)
     char *log = ReadAll(argv[2]);
     Check(log != NULL, "the census log is written");
     Check(Has(log, "\"gate\":\"census\"", "\"hooked\":", NULL), "the census reports its hooks");
+    if (sessionDefault)
+    {
+        // The session's default: no connect groups; denied only when sandboxed, and then refusals are written.
+        Check(Has(log, sandboxDefault ? "\"groups\":\",send,dns,http,process,denied,\"" : "\"groups\":\",send,dns,http,process,\"", NULL, NULL),
+            "the session's default groups");
+        Check(!Has(log, "\"api\":\"connect\"", NULL, NULL), "the default leaves connect out");
+        Check(Has(log, "\"api\":\"getaddrinfo\"", "localhost:9", NULL), "the default hooks name lookups");
+        Check(!sandboxDefault == !Has(log, "\"api\":\"OpenEventW\"", "hf-netgate-denied-event", "\"scope\":\"denied\""),
+            sandboxDefault ? "a sandboxed session's default writes refusals" : "an unsandboxed session's default writes no refusals");
+        printf("%s\n", g_failed ? "network gate default: FAILED" : "PASS network gate default groups");
+        return g_failed ? 1 : 0;
+    }
     if (filtered)
     {
         // Only the dns group is on: name lookups are logged, connect and the rest are not (they are not even hooked).
@@ -123,6 +196,7 @@ int wmain(int argc, wchar_t **argv)
         Check(!Has(log, "\"api\":\"connect\"", NULL, NULL), "the connect group is not hooked");
         Check(!Has(log, "\"api\":\"WinHttpConnect\"", NULL, NULL), "the http group is not hooked");
         Check(!Has(log, "\"api\":\"CreateProcessW\"", NULL, NULL), "the process group is not hooked");
+        Check(!Has(log, "\"scope\":\"denied\"", NULL, NULL), "the denied group is not hooked");
         printf("%s\n", g_failed ? "network gate groups: FAILED" : "PASS network gate groups: only the chosen group is hooked");
         return g_failed ? 1 : 0;
     }
@@ -137,6 +211,18 @@ int wmain(int argc, wchar_t **argv)
     Check(Has(log, "\"gate\":\"module loaded\"", "winhttp.dll", NULL), "a network module loaded later is hooked");
     Check(Has(log, "\"api\":\"WinHttpConnect\"", "example.invalid:443", "\"scope\":\"name\""), "WinHttpConnect");
     Check(Has(log, "\"api\":\"CreateProcessW\"", "crs-handler.exe", "\"caller\":\"net_gate_test.exe+"), "a program started, named by its caller past kernel32");
+    // Windows refuses all five; Wine enforces no DACL on a mutex or a pipe, so those two are checked when refused.
+    Check(refused >= 0 && (refused & (REFUSED_EVENT | REFUSED_MAPPING | REFUSED_FILE)) == (REFUSED_EVENT | REFUSED_MAPPING | REFUSED_FILE),
+        "a refused call keeps ERROR_ACCESS_DENIED as its caller's last error");
+    Check(Has(log, "\"api\":\"OpenEventW\"", "hf-netgate-denied-event", "\"scope\":\"denied\""), "a refused event, by name");
+    Check(Has(log, "\"api\":\"OpenFileMappingW\"", "hf-netgate-denied-mapping", "\"caller\":\"net_gate_test.exe+"), "refused shared memory, by its caller");
+    Check(Has(log, "\"api\":\"CreateFileW\"", "hf-netgate-denied.txt", "\"scope\":\"denied\""), "a refused file");
+    Check(!(refused & REFUSED_MUTEX) == !Has(log, "\"api\":\"OpenMutexW\"", "hf-netgate-denied-mutex", "\"scope\":\"denied\""),
+        "a mutex is written exactly when it was refused");
+    Check(!(refused & REFUSED_PIPE) == !Has(log, "\"api\":\"CreateFileW\"", "hf-netgate-denied-pipe", "\"scope\":\"denied\""),
+        "a pipe is written exactly when it was refused");
+    Check(!Has(log, "hf-netgate-no-such-event", NULL, NULL), "a name that does not exist is not written");
+    Check(!Has(log, "hf-netgate-folder", NULL, NULL), "a folder opened as a file is not written: Windows refuses it at any level");
     printf("%s\n", g_failed ? "network gate census: FAILED" : "PASS network gate census: hooks, scopes, repeats, callers, late modules, programs");
     return g_failed ? 1 : 0;
 }

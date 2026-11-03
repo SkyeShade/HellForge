@@ -46,6 +46,9 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
   while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
   page. Editing a mod weapon's page never changes the weapon it copies. (#177)
+- With the sandbox on, the session log now names what the sandbox refused the game, by the overlay or module that
+  asked (Steam's, NVIDIA's, Discord's, RivaTuner's overlays and others), and `result.json` lists each object. This is
+  what tells which overlays can be given what they need.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
@@ -190,6 +193,14 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- With the sandbox on, the game could stop at STEAM NOT DETECTED while HellForge said the session was running. The
+  game reaches Steam through HellForge's Steam broker, which was started after the game and could be late, for example
+  while an antivirus checked it, or could fail to reach Steam. The game now starts only once the broker has Steam
+  (the launcher shows "Waiting for Steam..." meanwhile, and Stop ends the wait). If
+  the broker can't reach Steam, PLAY stops and says why (Steam not running or signed in, or running as administrator),
+  and the session log says if the broker stops during play.
+- The network census in every session wiped the game's error code after each call it watches (connections, name
+  lookups, programs started): a failed connection read back as no error.
 - A game that crashed while starting showed "The game could not be connected to the local backend.", as if HellForge's
   backend were the problem (#203, #212). It now says the game closed while starting, with its exit code and, when
   Windows recorded the crash, the file the game crashed in. When that file belongs to another program that puts itself
