@@ -73,11 +73,7 @@ static class Launch
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
         var runner = new SessionRunner();
         var startedUtc = DateTime.UtcNow;
-        try { runner.Start(paths, profile, session); }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
-        {
-            throw new InvalidDataException("Could not start the session runner: " + error.Message);
-        }
+        StartRunner(runner, paths, profile, session);
         string? run;
         while ((run = SessionRunner.RunSince(paths, startedUtc)) == null)
         {
@@ -86,6 +82,20 @@ static class Launch
         }
         Emit(new { @event = "started", runId = Path.GetFileName(run), run, pid = runner.ProcessId, profile = profile.Name, war, arguments });
         return Yes(options, "--wait", false) ? Follow(run, () => runner.IsRunning) : 0;
+    }
+
+    // Starts the session runner; a start Windows refuses is said as the launcher says it, Smart App Control's blocks named
+    static void StartRunner(SessionRunner runner, ISessionPaths paths, LocalProfile profile, SessionOptions session)
+    {
+        try { runner.Start(paths, profile, session); }
+        catch (System.ComponentModel.Win32Exception error) when (HellForge.Core.SmartAppControl.IsBlock(error.NativeErrorCode))
+        {
+            throw new InvalidDataException(HellForge.Core.SmartAppControl.BlockedMessage(paths.Session, HellForge.Core.SmartAppControl.Current));
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        {
+            throw new InvalidDataException("Could not start the session runner: " + error.Message);
+        }
     }
 
     // Why the session runner stopped before it made its run folder: its last line in logs/session-runner.log, if new.

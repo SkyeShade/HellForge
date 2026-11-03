@@ -144,6 +144,11 @@ sealed partial class PlaySession(PlayOptions options)
             foreach (var line in facts.Lines()) Say(line);
         }
         catch (Exception error) { Say("Session facts not recorded: " + error.Message); }
+        // Smart App Control blocks unsigned programs and DLLs, HellForge's among them (SmartAppControl): a report says
+        // whether it was on.
+        var appControl = SmartAppControl.Current;
+        result["smartAppControl"] = SmartAppControl.Describe(appControl);
+        if (appControl != SmartAppControlState.NotPresent) Say("Smart App Control: " + SmartAppControl.Describe(appControl));
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
@@ -890,8 +895,8 @@ sealed partial class PlaySession(PlayOptions options)
             lowToken = LowIntegrityHelper.CreateLowToken();
             result["sandbox"] = true;
         }
-        job = new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
-            Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);
+        job = Tools.Starting(exe, () => new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
+            Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken));
         result["gamePid"] = job.Process.Id;
         result["gameLaunched"] = true;
         if (options.Sandbox) StartBroker(bridgeSuffix!);
@@ -916,7 +921,7 @@ sealed partial class PlaySession(PlayOptions options)
         // the backend's co-op peers (MultiplayerHost.PeersFile), the only Steam users the game's P2P reaches: in the
         // backend's folder, which the low-integrity game cannot write
         brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
-        broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
+        broker = Tools.Starting(brokerStart.FileName, () => Process.Start(brokerStart)) ?? throw new SessionFailure("The Steam broker did not start.");
         helpers.Add(broker);
         if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
@@ -1000,7 +1005,9 @@ sealed partial class PlaySession(PlayOptions options)
         var code = job.Process.ExitCode;
         result["gameExitCode"] = $"0x{code:X8}";
         var crash = RecordWindowsCrash(code);
-        return LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        var closed = LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
+        return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? closed + " " + warning : closed;
     }
 
     // Windows' record of the game's crash (WindowsCrash), looked up once for an exit code that may be one: kept in the
@@ -1055,7 +1062,7 @@ sealed partial class PlaySession(PlayOptions options)
         // The block permits only this port, so the backend has no other: say so when another program holds it.
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
             throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
-        server = Process.Start(start) ?? throw new SessionFailure("The local backend did not start.");
+        server = Tools.Starting(backend, () => Process.Start(start)) ?? throw new SessionFailure("The local backend did not start.");
         helpers.Add(server);
         if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };

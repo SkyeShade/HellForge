@@ -49,6 +49,8 @@ Reference and related pages:
   editing.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
   each profile.
+- [Code signing and Smart App Control](code-signing.md): for maintainers; which files Smart App Control blocks, what
+  signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
 - [The published verified list](verified-list.md): for maintainers; how HellForge takes its verified list from
