@@ -82,7 +82,8 @@ public sealed class ProfileStore : IDisposable
             if (File.Exists(path))
             {
                 var existing = Load(path);
-                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardStratagems(existing) | GrantTemplateBoosters(existing)) Save(path, existing);
+                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardStratagems(existing) | GrantTemplateBoosters(existing) |
+                    CompletePackageProgress(existing)) Save(path, existing);
                 return new ProfileStore(existing, path, lease, false);
             }
             var profile = CreateDefault(template);
@@ -476,6 +477,28 @@ public sealed class ProfileStore : IDisposable
     // holds every permanent booster (progression category 5, not consumable) is an unlock-all one, and gets the
     // template's boosters it lacks; one still earning its boosters is left alone. Nothing is removed.
     const int BoosterCategory = 5;
+
+    // A progress entry of progression.packageProgress needs progress, sortOrder and claimedLevels as well as id32 and level:
+    // without them the client's /Progression parser fails ("Something unexpected went wrong while trying to communicate
+    // with our server", status -2) and the game stops before the ship. Purchases made entries without the last two until
+    // 2026-11-03; they are filled in when such a profile is opened.
+    public static bool CompletePackageEntry(JsonObject entry)
+    {
+        var changed = false;
+        if (!entry.ContainsKey("progress")) { entry["progress"] = 0; changed = true; }
+        if (!entry.ContainsKey("sortOrder")) { entry["sortOrder"] = 0; changed = true; }
+        if (!entry.ContainsKey("claimedLevels")) { entry["claimedLevels"] = new JsonArray(); changed = true; }
+        return changed;
+    }
+
+    static bool CompletePackageProgress(JsonObject profile)
+    {
+        if (profile["progression"]?["packageProgress"] is not JsonArray list) return false;
+        var changed = false;
+        foreach (var entry in list.OfType<JsonObject>()) changed |= CompletePackageEntry(entry);
+        return changed;
+    }
+
     static bool GrantTemplateBoosters(JsonObject profile)
     {
         List<(long Mix, bool Consumable)> boosters;
