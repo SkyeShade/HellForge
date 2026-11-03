@@ -291,7 +291,7 @@ static void LiveRegistryStep(LivePlan* plan)
     {
         L.table = g_loadoutTable - 32;
         L.index = g_loadoutTable;
-        L.records = g_loadoutTable + (size_t)REG_LOADOUT_SLOTS * 16;
+        L.records = g_loadoutTable + (size_t)SlotsOf(REG_LOADOUT) * 16; /* past the index as copied: grown, when table 29 was */
         L.recordCount = g_loadoutRecords;
         L.newList = g_regList;
         L.listCount = g_regListCount;

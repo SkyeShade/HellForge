@@ -39,8 +39,8 @@ Some things to know:
 
 ## The Mods page
 
-Every mod is a row with a switch, in two groups: gameplay mods first, then cosmetic ones. Cosmetic mods are cosmetic
-packs, Lua mods and mods that say they are cosmetic; friends need not have the same ones.
+Every mod is a row with a switch, in two groups: GAMEPLAY mods first, then CLIENT ONLY ones. Client-only mods are
+cosmetic packs, Lua mods and mods that say they are not gameplay mods; friends need not have the same ones.
 
 - Click a row's name for what the mod changes. Its ⋮ menu (or a right click) has Details, Move up and Move down, Build
   now for a mod with sources, Zip to share for your own folder mods, Open folder, and Remove... for your own mods

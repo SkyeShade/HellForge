@@ -406,6 +406,9 @@ static int EditTarget(HfMod* mod, const char* what, uint64_t entity, const SdkCo
     if (w == NULL) return 1;
     for (int i = 0; i < w->ownCount; i++) if (w->own[i] == component->index) return 0;
     if (component->index == REG_BEHAVIOUR && w->behaviour != 0) return 0;
+    /* own_all: a record of its own in every component of its base, found when the edit is written (one it still shares,
+     * its record size unknown, is refused there) */
+    if (w->ownAll) return 0;
     if (w->state != 0 || g_fired[HF_EVENT_ENTITIES_READY] || w->ownCount >= REG_MAX_OWN || SlotsOf(component->index) == 0)
     {
         ApiLog(mod, "%s: %s has no %s record of its own (edit it from hellforge_mod_init, or name the field in its definition)",
@@ -1069,8 +1072,19 @@ static uint32_t ContentAt(int kind, uint32_t count, uint32_t* index)
     return count;
 }
 
-/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles and damage, in the order added (what
- * a mod taken out added is left out). A stratagem without editor entities of its own lists each payload entity a mod
+/* An arsenal weapon a mod added, registered: its loadout ids, entities and text of its own. */
+static HfContent WeaponContent(const Weapon* w, uint32_t size)
+{
+    HfContent c = {size, HF_KIND_ITEM, w->id, w->base, 0, w->mod->id, w->mod->folder, w->name, ModTextOf(w->text[0]), NULL, 0, NULL,
+        ModTextOf(w->text[3]), 0};
+    c.entity = w->entity;
+    c.base_entity = w->copies;
+    return c;
+}
+
+/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage and (HellForge 2026-10-31,
+ * last so the others keep their indexes) registered arsenal weapons, in the order added (what a mod taken out added is
+ * left out). A stratagem without editor entities of its own lists each payload entity a mod
  * added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
 {
@@ -1104,6 +1118,13 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
         c = (HfContent){size, HF_KIND_DAMAGE, d->id, d->base, 0, d->mod->id, d->mod->folder, d->name, NULL, NULL, 0, NULL};
         return GIVE();
     }
+    /* ContentAt has taken each kind's entries off index already */
+    for (int i = 0; i < g_weaponCount; i++)
+        if (!g_weapons[i].plain && g_weapons[i].state == 1 && !LiveTomb(LC_WEAPON, (uint32_t)i) && index-- == 0)
+        {
+            c = WeaponContent(&g_weapons[i], size);
+            return GIVE();
+        }
     return 0;
     #undef GIVE
 }

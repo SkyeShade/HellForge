@@ -53,7 +53,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--strangers yes | no] [--game-options <options>]
+                     [--strangers yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -125,7 +125,7 @@ try
         "mod-switch" => ["--install", "--id", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--game-options"],
+        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--forge-credits", "--game-options"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
@@ -303,11 +303,37 @@ try
                 progress: Progress);
             active = built;
             modProblems.AddRange(buildProblems);
-            var staged = ModStaging.Stage(modInstall, active);
+            // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
+            // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
+            string? warbondLocks = null;
+            try
+            {
+                var progressionData = Path.Combine(modInstall.App, "progression-data.json");
+                if (File.Exists(progressionData))
+                    warbondLocks = WarbondLocks.Prepare(modInstall,
+                        PremiumContent.ForSnapshot(progressionData, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current()), Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Locked warbond art: not shown this session (" + error.Message + ").");
+            }
+            // Super Credits are dressed as Forge Credits (ForgeCredits): the pickup's textures and the currency icon. Art that
+            // cannot be built stays as it is; the session goes on.
+            string? forgeCredits = null;
+            try
+            {
+                forgeCredits = ForgeCredits.Prepare(modInstall, Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
-                File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId));
+                File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);
@@ -490,7 +516,7 @@ try
             // The in-game editor's catalogue, and its icons and fonts from the game data of --install (its game copy) or --game.
             var outFolder = Path.GetFullPath(Required("--out"));
             Directory.CreateDirectory(outFolder);
-            File.WriteAllText(Path.Combine(outFolder, EditorCatalog.FileName), EditorCatalog.Text());
+            EditorCatalog.Write(outFolder);
             var gameData = options.TryGetValue("--game", out var game) ? Path.GetFullPath(game)
                 : options.TryGetValue("--install", out var editorInstall) ? Path.Combine(new InstallLayout(Path.GetFullPath(editorInstall)).Game, "data") : null;
             object icons = "skipped (no --install or --game)";
@@ -499,7 +525,7 @@ try
                 var (count, missing) = HellForge.Core.GameData.EditorIcons.Write(gameData, Path.Combine(outFolder, HellForge.Core.GameData.EditorIcons.FileName));
                 icons = new { count, missing, fonts = HellForge.Core.GameData.EditorFonts.Write(gameData, outFolder) };
             }
-            result = new { folder = outFolder, catalog = EditorCatalog.FileName, icons };
+            result = new { folder = outFolder, catalog = EditorCatalog.FileName, files = EditorCatalog.Files().Select(f => f.Name).ToArray(), icons };
             break;
         }
         case "sdk-headers":

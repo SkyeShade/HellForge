@@ -18,6 +18,7 @@ public static partial class LocalBackend
         public required bool StartupFixtures { get; init; }
         public required ProfileStore? Profile { get; init; }
         public required MissionService? Missions { get; init; }
+        public required Purchases? Purchases { get; init; }
         public required FriendPresence Presence { get; init; }
         public required PlayFabService PlayFab { get; init; }
         public required string? CaptureBodies { get; init; }
@@ -108,7 +109,13 @@ public static partial class LocalBackend
         {
             var request = context.Request;
             if (PlayFabService.Handles(request.Path.Value ?? "")) return await PlayFabAsync(context);
-            if (Missions != null && MissionService.Handles(request.Path.Value ?? "")) return await MissionAsync(context, Missions);
+            if (Missions != null && MissionService.Handles(request.Path.Value ?? ""))
+                return await PostAsync(context, (path, body) =>
+                {
+                    var (reply, outcome) = Missions.Handle(path, body);
+                    return (StatusCodes.Status200OK, reply, outcome);
+                });
+            if (Purchases != null && Purchases.Handles(request.Path.Value ?? "")) return await PostAsync(context, Purchases.Handle);
             if (StartupFixtures && request.Path == "/WarSeason/801/timeSinceStart")
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ??
                     new Reply(StatusCodes.Status200OK, "local_war_clock", new JsonObject { ["secondsSinceStart"] = WarClock.Seconds });
@@ -118,9 +125,13 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems).
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ??
-                    new Reply(StatusCodes.Status200OK, source, RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody);
+            {
+                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
+                // premium warbonds the account does not own have no price in it (OwnershipFilter).
+                var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
+                if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, served);
+            }
             return Unsupported();
         }
 
@@ -289,17 +300,18 @@ public static partial class LocalBackend
             return new(status, outcome, reply);
         }
 
-        async Task<Reply> MissionAsync(HttpContext context, MissionService missions)
+        // Missions and purchases: a POST whose JSON body the contract answers (status, reply, outcome).
+        async Task<Reply> PostAsync(HttpContext context, Func<string, JsonElement, (int Status, JsonNode Reply, string Outcome)> handle)
         {
             var request = context.Request;
             if (OtherMethod(context, HttpMethods.IsPost, "POST") is { } rejected) return rejected;
             using var body = await JsonDocument.ParseAsync(request.Body, cancellationToken: context.RequestAborted);
             if (CaptureBodies != null)
-                // Development capture of mission reports for decoding; kept under the evidence folder only.
+                // Development capture of mission reports and purchases for decoding; kept under the evidence folder only.
                 await File.WriteAllTextAsync(Path.Combine(CaptureBodies, DateTime.UtcNow.ToString("HHmmssfff") + "-" +
                     request.Path.Value!.Trim('/').Replace('/', '_') + ".json"), body.RootElement.GetRawText(), context.RequestAborted);
-            var (response, outcome) = missions.Handle(request.Path.Value!, body.RootElement);
-            return new(StatusCodes.Status200OK, outcome, response);
+            var (status, response, outcome) = handle(request.Path.Value!, body.RootElement);
+            return new(status, outcome, response);
         }
 
         static async Task<Reply> CustomizeAsync(HttpContext context, ProfileStore profile)

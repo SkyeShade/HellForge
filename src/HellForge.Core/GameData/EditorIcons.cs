@@ -76,7 +76,7 @@ public static class EditorIcons
     }
 
     // Every texture_atlas resource's sprite records, by sprite name (the first atlas that has one).
-    static Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)> SpriteRecords(GameDataReader data)
+    internal static Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)> SpriteRecords(GameDataReader data)
     {
         var records = new Dictionary<ulong, (ulong Page, int W, int H, float U, float V, float Du, float Dv)>();
         foreach (var at in data.All(TextureAtlas).Values)
@@ -237,7 +237,7 @@ public static class EditorIcons
         return page.Format switch
         {
             28 or 29 or 87 or 91 => DecodeRgba(page, x, y, w, h, output), /* R8G8B8A8, B8G8R8A8 */
-            71 or 72 or 77 or 78 or 80 => DecodeBlocks(page, x, y, w, h, output),
+            71 or 72 or 77 or 78 or 80 or 83 => DecodeBlocks(page, x, y, w, h, output),
             _ => null,
         };
     }
@@ -257,11 +257,11 @@ public static class EditorIcons
         return output;
     }
 
-    // BC1 (71, 72), BC3 (77, 78) and BC4 (80, grey): each 4 x 4 block the rectangle touches, decoded, its texels inside it
+    // BC1 (71, 72), BC3 (77, 78), BC4 (80, grey) and BC5 (83, R and G): each 4 x 4 block the rectangle touches, decoded, its texels inside it
     // copied.
     static byte[]? DecodeBlocks(Page page, int x, int y, int w, int h, byte[] output)
     {
-        var size = page.Format is 77 or 78 ? 16 : 8;
+        var size = page.Format is 77 or 78 or 83 ? 16 : 8;
         var blocksWide = (page.Width + 3) / 4;
         var texels = new byte[64];
         var alpha = new byte[16];
@@ -284,7 +284,8 @@ public static class EditorIcons
         return output;
     }
 
-    // A block's 16 texels as RGBA: BC1's colours, BC3's colours with its alpha, or BC4's one channel as opaque grey.
+    // A block's 16 texels as RGBA: BC1's colours, BC3's colours with its alpha, BC4's one channel as opaque grey, or BC5's two
+    // channels as R and G.
     static void BlockTexels(ReadOnlySpan<byte> block, int format, byte[] texels, byte[] alpha)
     {
         if (format is 71 or 72) ColourBlock(block, false, texels);
@@ -293,6 +294,13 @@ public static class EditorIcons
             ColourBlock(block[8..], true, texels);
             AlphaBlock(block, alpha);
             for (var i = 0; i < 16; i++) texels[i * 4 + 3] = alpha[i];
+        }
+        else if (format == 83)
+        {
+            AlphaBlock(block, alpha);
+            for (var i = 0; i < 16; i++) { texels[i * 4] = alpha[i]; texels[i * 4 + 2] = 0; texels[i * 4 + 3] = 255; }
+            AlphaBlock(block[8..], alpha);
+            for (var i = 0; i < 16; i++) texels[i * 4 + 1] = alpha[i];
         }
         else
         {

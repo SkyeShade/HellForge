@@ -8,14 +8,14 @@
  *   sources    event_sources.c; each is installed only once its code or data reads as reviewed for build 25480438,
  *              and only when a mod listens to its kind (nothing is hooked for kinds no mod uses). */
 
-#define EVT_MAX_LISTENERS 128
+#define EVT_COPY 64 /* listeners Dispatch copies on its stack; more are copied to the heap */
 #define EVT_QUEUE 256
 #define EVT_KINDS 32
 #define EVT_DATA 128 /* the largest event's size */
 
 typedef struct Listener { HfMod* mod; uint32_t kind; HfListener listener; void* user; int32_t priority; uint32_t order; } Listener;
-static Listener g_listeners[EVT_MAX_LISTENERS];
-static int g_listenerCount;
+static Listener* g_listeners;                 /* grows with the mods' subscriptions, no limit */
+static int g_listenerCount, g_listenerCapacity;
 static uint32_t g_listenerOrder;
 static uint64_t g_updates;                    /* game updates since the loader started (HfEventInfo.update) */
 static DWORD g_gameThread;                    /* the game thread's id, once its update has run */
@@ -37,12 +37,16 @@ static const char* EventName(uint32_t kind)
 static void Dispatch(HfEventInfo* event)
 {
     event->update = g_updates;
-    Listener copy[EVT_MAX_LISTENERS];
+    Listener stack[EVT_COPY], *copy = stack;
     int n = 0;
     AcquireSRWLockShared(&g_eventsLock);
-    for (int i = 0; i < g_listenerCount; i++) if (g_listeners[i].kind == event->kind && g_listeners[i].mod->loaded) copy[n++] = g_listeners[i];
+    if (g_listenerCount > EVT_COPY) copy = malloc(sizeof *copy * g_listenerCount);
+    if (copy != NULL)
+        for (int i = 0; i < g_listenerCount; i++) if (g_listeners[i].kind == event->kind && g_listeners[i].mod->loaded) copy[n++] = g_listeners[i];
     ReleaseSRWLockShared(&g_eventsLock);
+    if (copy == NULL) { Note("events: out of memory, an event of kind %u not delivered", event->kind); return; }
     for (int i = 0; i < n; i++) copy[i].listener(copy[i].mod, event, copy[i].user);
+    if (copy != stack) free(copy);
 }
 
 /* Raises an event: delivered now on the game thread, else queued for its next update. */
@@ -90,7 +94,13 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
     if (kind == 0 || kind >= EVT_KINDS || EventName(kind)[0] == '?') { ApiLog(mod, "subscribe: no event kind %u", kind); return 0; }
     if (g_tickState < 0) { ApiLog(mod, "subscribe(%s): the game thread's update is not hooked (modloader.log says why)", EventName(kind)); return 0; }
     AcquireSRWLockExclusive(&g_eventsLock);
-    int ok = g_listenerCount < EVT_MAX_LISTENERS;
+    int ok = g_listenerCount < g_listenerCapacity;
+    if (!ok)
+    {
+        int capacity = g_listenerCapacity ? g_listenerCapacity * 2 : 64;
+        Listener* grown = realloc(g_listeners, sizeof *grown * capacity);
+        if (grown) { g_listeners = grown; g_listenerCapacity = capacity; ok = 1; }
+    }
     if (ok)
     {
         int at = g_listenerCount;
@@ -100,7 +110,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
         InterlockedOr(&g_listening, 1L << kind);
     }
     ReleaseSRWLockExclusive(&g_eventsLock);
-    if (!ok) ApiLog(mod, "subscribe(%s): mods hold %d listeners already", EventName(kind), EVT_MAX_LISTENERS);
+    if (!ok) ApiLog(mod, "subscribe(%s): out of memory", EventName(kind));
     else Note("events: %s listens to %s (priority %d)", mod->id, EventName(kind), priority);
     return ok;
 }

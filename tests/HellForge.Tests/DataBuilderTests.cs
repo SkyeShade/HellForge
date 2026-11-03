@@ -413,7 +413,7 @@ static class DataBuilderTests
 
     // Archives and their companions as the game ships them: one bundle of 48-byte chunks (every other LZ4-coded), each
     // item in two index entries.
-    static void WriteBundles(string folder, Dictionary<string, byte[]> items)
+    internal static void WriteBundles(string folder, Dictionary<string, byte[]> items)
     {
         Directory.CreateDirectory(folder);
         const int chunkSize = 48;

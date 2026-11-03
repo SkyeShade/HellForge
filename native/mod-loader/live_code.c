@@ -263,10 +263,12 @@ static int (*g_liveOnGameThread)(void (*fn)(void*), void* arg) = LiveOnGameThrea
 static void ForgetOnGameThread(void* arg)
 {
     const HfMod* mod = (const HfMod*)arg;
+    /* in place: TickDetour, which reads the table without the lock, runs on this thread and not now */
     AcquireSRWLockExclusive(&g_lock);
-    LONG kept = 0;
-    for (LONG i = 0; i < g_tickCount; i++) if (g_ticks[i].mod != mod) g_ticks[kept++] = g_ticks[i];
-    InterlockedExchange(&g_tickCount, kept);
+    TickTable* ticks = g_ticks;
+    LONG kept = 0, count = ticks != NULL ? ticks->count : 0;
+    for (LONG i = 0; i < count; i++) if (ticks->entries[i].mod != mod) ticks->entries[kept++] = ticks->entries[i];
+    if (ticks != NULL) InterlockedExchange(&ticks->count, kept);
     ReleaseSRWLockExclusive(&g_lock);
     AcquireSRWLockExclusive(&g_eventsLock);
     int listeners = 0;
