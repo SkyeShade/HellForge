@@ -8,7 +8,7 @@
  *
  * A tile runs in tile-local coordinates ([0, extent], the only way GenerateVoronoi's square box allows), but what
  * makes terrain differ from place to place samples world positions: the fBm noise behind the height groups
- * (0xF3A2E0, plateau outlines) and the height texture GenerateSubregionHeights adds (0xF64B80). While a tile builds,
+ * (0xF3A2E0, plateau outlines) and the height texture GenerateSubregionHeights adds (sampled at 0xF64D89). While a tile builds,
  * both get the tile's world offset on the building thread; the texture is sampled at vanilla's scale (it covers a
  * vanilla world, 2048 m, once), repeating every 2048 m. The random draws (each record's LCG at +0x1990) are mixed with
  * the tile's own seed, so tiles differ in their lattice and routes. Then the tile's vertices and route-cell area points
@@ -28,9 +28,9 @@
 #define TERRAIN_DRAW_CALLS 4096      /* per tile, across frames: RenderHeightmapVoronoi yields on its clock */
 
 typedef float (*TerrainNoiseFn)(void* noise, float x, float y);
-typedef float (*TerrainTextureFn)(void* texture, uint64_t position);
+typedef uint64_t (*TerrainSampleFn)(void* texture, float* uv, void* out, uint64_t d);
 static TerrainNoiseFn g_terrainNoise;
-static TerrainTextureFn g_terrainTexture;
+static TerrainSampleFn g_terrainSample;
 static volatile DWORD g_terrainThread;   /* the thread building a tile (the samplers' offset applies there only) */
 static float g_terrainOffset[2];
 static volatile LONG g_nearActive; /* (below) the near tile's replay is running */
@@ -59,9 +59,6 @@ static float TerrainNoise(void* noise, float x, float y)
     return g_terrainNoise(noise, x, y);
 }
 
-/* The height texture GenerateSubregionHeights adds (position x the world's inverse size, which an extra large world
- * redirects to 1 / its size): for a tile, the world position wrapped to a vanilla world and scaled so the redirected
- * constant samples it as vanilla does. */
 /* The height texture's CPU image, as the sampler ([api+0x10]+0x1F0 = exe 0x31C8B0) reads it: {w u32, h u32, format i32,
  * ?, data at +0x10}, texel bits from the exe's table at 0x1658990. It is copied the first time a tile samples it in a
  * level, and tiles sample the copy: the near-player tile builds tiles again at the level's CleanupTerrains (0x65), and
@@ -96,30 +93,50 @@ static void* TerrainImage(void* texture)
     return g_terrainImages[k].desc;
 }
 
-static float TerrainTexture(void* texture, uint64_t position)
+/* The height texture GenerateSubregionHeights adds: 0xF64C20 (called at 0xF6558C / 0xF656DC) samples it inline through
+ * [api+0x10]+0x1F0 (exe 0x31C8B0) at 0xF64D89 with uv = position x the world's inverse size (0xF64D43 / 0xF64D5D; an
+ * extra large world redirects the constant to 1 / its size). (0xF64B80, the wrapper this hooked before, has no callers:
+ * tiles never got the offset.) For a tile, on its building thread: uv for the world position wrapped to a vanilla world
+ * (the texture covers 2048 m once, as on a vanilla map), and the image copy. The render API slot is wrapped; other
+ * callers pass through. */
+static uint64_t TerrainSample(void* texture, float* uv, void* out, uint64_t d)
 {
-    if (g_terrainThread != 0 && g_terrainThread == GetCurrentThreadId() && g_world.values != NULL)
+    if (g_terrainThread != 0 && g_terrainThread == GetCurrentThreadId() && g_world.values != NULL &&
+        (uintptr_t)__builtin_return_address(0) == g_world.game + 0xF64D90u && uv != NULL)
     {
-        texture = TerrainImage(texture);
         float p[2];
-        memcpy(p, &position, 8);
-        float scale = g_world.values->full / 2048.0f;
         for (int k = 0; k < 2; k++)
         {
-            float w = fmodf(p[k] + g_terrainOffset[k], 2048.0f);
+            float w = fmodf(uv[k] * g_world.values->full + g_terrainOffset[k], 2048.0f);
             if (w < 0) w += 2048.0f;
-            p[k] = w * scale;
+            p[k] = w / 2048.0f;
         }
-        memcpy(&position, p, 8);
+        return g_terrainSample(TerrainImage(texture), p, out, d);
     }
-    return g_terrainTexture(texture, position);
+    return g_terrainSample(texture, uv, out, d);
+}
+
+static int TerrainSampleInstall(void)
+{
+    if (g_terrainSample != NULL) return 1;
+    uintptr_t api = 0, table = 0;
+    if (SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0x10, &table, 8) || table == 0) return 0;
+    if (!ApiCodeMatches(g_world.game + 0xF64D7Eu, "48 8B 05 83 15 3C 02 4C 8B 48 10 41 FF 91 F0 01 00 00"))
+    { Note("difficulty: terrain: the height texture's sampler call is not the reviewed one; tiles sample it unshifted"); return 0; }
+    void** slot = (void**)(uintptr_t)(table + 0x1F0);
+    DWORD old = 0;
+    if (!VirtualProtect(slot, 8, PAGE_READWRITE, &old)) return 0;
+    g_terrainSample = (TerrainSampleFn)*slot;
+    InterlockedExchangePointer(slot, (void*)TerrainSample);
+    VirtualProtect(slot, 8, old, &old);
+    return 1;
 }
 
 static int TerrainOn(void)
 {
     static int on = -1;
     if (on < 0) { char t[8] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_TERRAIN", t, sizeof t) > 0 && t[0] == '0'); }
-    return on && g_terrainNoise != NULL && g_terrainTexture != NULL;
+    return on && g_terrainNoise != NULL;
 }
 
 static uint64_t TerrainSeed(int tile)
@@ -141,6 +158,14 @@ static int TerrainTemplate(uintptr_t gen)
     WorldTileRelocateIn(g_terrain.tmpl, size, gen, (uintptr_t)g_terrain.block);
     for (size_t k = 0; k < sizeof kTileCounts / sizeof kTileCounts[0]; k++) memset(g_terrain.tmpl + kTileCounts[k], 0, 4);
     memset(g_terrain.tmpl + 0xEE10C8u, 0, 0x10B1F48u - 0xEE10C8u);
+    /* the level's subregions (G+0x92F328, 1024 x 0x20, up to G+0x937328): 0x75 resets only +8 and +0x18, and
+     * SelectSubRegionCellsFromHeightGroup (0x78) keeps a non-zero type at +0 (0xF37A80 -> 0xF37CEE), so every tile took
+     * the level's types by index (route cells, and so subregions, run row by row in y: the 704 m band along y) */
+    memset(g_terrain.tmpl + 0x92F328u, 0, 0x8000u);
+    /* the level's vertex flags (u16, G+0x10BB7C, 5849 up to G+0x10E92E): only FinalizeLocationPlacements (0x8D, not run
+     * on tiles) sets bit 2, and RenderHeightmapVoronoi's phase 0 flattens cells on it (0xF49C27, 0xF49D80) */
+    memset(g_terrain.tmpl + 0x10BB7Cu, 0, 0x10E92Eu - 0x10BB7Cu);
+    if (!TerrainSampleInstall()) Note("difficulty: terrain: the height texture's sampler is not wrapped; tiles sample it unshifted");
     return 1;
 }
 
@@ -2085,13 +2110,11 @@ static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t
 static void TerrainInstall(uintptr_t game)
 {
     if (g_terrainNoise != NULL) return;
-    if (!ApiCodeMatches(game + 0xF3A2E0u, "48 8B C4 48 89 58 18 48 89 70 20 F3 0F 11 48 10 57 48 81 EC") ||
-        !ApiCodeMatches(game + 0xF64B80u, "48 89 54 24 10 48 83 EC 28 F3 0F 10 44 24 38 4C 8D 44 24 38"))
+    if (!ApiCodeMatches(game + 0xF3A2E0u, "48 8B C4 48 89 58 18 48 89 70 20 F3 0F 11 48 10 57 48 81 EC"))
     {
         Note("difficulty: terrain: the generator's samplers are not the reviewed ones; extra large maps keep the level's own terrain");
         return;
     }
-    if (LoaderHook("extra large maps' terrain noise", game + 0xF3A2E0u, (void*)TerrainNoise, (void**)&g_terrainNoise) ||
-        LoaderHook("extra large maps' terrain texture", game + 0xF64B80u, (void*)TerrainTexture, (void**)&g_terrainTexture))
+    if (LoaderHook("extra large maps' terrain noise", game + 0xF3A2E0u, (void*)TerrainNoise, (void**)&g_terrainNoise))
         Note("difficulty: terrain: a sampler could not be hooked; extra large maps keep the level's own terrain");
 }
