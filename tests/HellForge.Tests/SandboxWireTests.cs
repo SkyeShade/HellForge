@@ -132,6 +132,10 @@ static class SandboxWireTests
                 var missingMode = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
                 check(!missingMode.Passed && missingMode.Reason.Contains("did not report", StringComparison.Ordinal),
                     "A self-test that exited 0 without a mode file was recorded as a pass.");
+                // one that failed before it wrote the mode file (bash never started, issue 112) keeps its own reason
+                var notStarted = LinuxSandboxReadiness.EvaluateSelfTest(install, 1, "the Linux sandbox self-test could not run: no such folder");
+                check(!notStarted.Passed && notStarted.Reason == "the Linux sandbox self-test could not run: no such folder",
+                    "A self-test that failed without a mode file lost its reason: " + notStarted.Reason);
 
                 Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_MODE", "container");
                 Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", "/runtime|ABC");
@@ -146,6 +150,13 @@ static class SandboxWireTests
                 var unnamed = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
                 check(!unnamed.Passed && unnamed.Reason.Contains("could not identify", StringComparison.Ordinal),
                     "A container self-test without a readable VERSIONS.txt was recorded as a pass.");
+                Environment.SetEnvironmentVariable("HELLFORGE_STEAM_RUNTIME_IDENTITY", "/runtime|ABC");
+                File.WriteAllText(LinuxSandboxReadiness.ModeFileFor(install),
+                    JsonSerializer.Serialize(unknownMetadata with { RuntimeIdentity = "/other|DEF" }, SandboxJson.Default.LinuxSandboxSelfTestMode));
+                var otherRuntime = LinuxSandboxReadiness.EvaluateSelfTest(install, 0, "");
+                check(!otherRuntime.Passed && otherRuntime.Reason.Contains("another Steam Linux Runtime (/other|DEF)", StringComparison.Ordinal) &&
+                      otherRuntime.Reason.Contains("(/runtime|ABC)", StringComparison.Ordinal) && !otherRuntime.Reason.Contains("host mode", StringComparison.Ordinal),
+                    "A container self-test in another runtime was reported as host mode or without both runtimes: " + otherRuntime.Reason);
 
                 File.WriteAllText(LinuxSandboxReadiness.FileFor(install),
                     $"{{\"schemaVersion\":1,\"appBuild\":\"{LinuxSandboxReadiness.AppBuild()}\",\"kernelRelease\":\"{LinuxSandboxReadiness.KernelRelease()}\",\"passed\":true,\"reason\":\"\",\"checkedUtc\":\"{DateTime.UtcNow:O}\"}}");
