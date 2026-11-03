@@ -7,7 +7,8 @@ static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
     MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, /* a map_scale above 1 */
     LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
-    RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed};
+    RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
+    ArtilleryPinsFailed};
 
 /* NULL when every copy, instruction, bound and kept caller is the reviewed one; 1 in *waiting while the tables are
  * not filled yet. */
@@ -31,7 +32,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
     InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
-    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
+    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells};
 
 /* Polled after GAME_LOADED until it returns 1: moves the table and adds level 11. pinsReady: the grace period for code
  * still being decoded is over. */
