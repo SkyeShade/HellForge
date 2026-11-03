@@ -515,6 +515,7 @@ NetworkBlockTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);
 VerifiedListTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
+CaptureGameEndTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
 WindowsSupportTests.Register(Test, Check, Reject, root);
