@@ -12,6 +12,9 @@ public sealed class QuitWatch(int graceMilliseconds = QuitWatch.GraceMillisecond
     public enum Verdict { Running, HungNote, StuckQuitting }
 
     bool sawWindow, hungNoted;
+
+    // The windows the game has shown (GameWindows.Visible keeps them), so a ghosted one still counts.
+    public HashSet<nint> ShownWindows { get; } = [];
     long? goneSince, hungSince;
 
     // Whether the game has shown a window this session.

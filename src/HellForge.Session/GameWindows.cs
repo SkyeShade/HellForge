@@ -15,14 +15,23 @@ static class GameWindows
     [DllImport("user32.dll")] static extern bool IsWindowVisible(nint window);
     [DllImport("user32.dll")] static extern bool IsHungAppWindow(nint window);
 
-    // The game's visible top-level windows (a minimised one counts), and whether any of them is hung.
-    public static (int Visible, bool Hung) Visible(int processId)
+    // The game's visible top-level windows (a minimised one counts), and whether any of them is hung. shown: every window
+    // the game has had visible this session (added to here). One of them that still exists but is hidden and hung counts
+    // as visible and hung: Windows hides a window that stopped responding behind a ghost window it draws in its place (once
+    // the player clicks it), so a game that is only loading would otherwise look windowless and be ended.
+    public static (int Visible, bool Hung) Visible(int processId, HashSet<nint> shown)
     {
         int visible = 0;
         var hung = false;
         EnumWindows((window, _) =>
         {
-            if (GetWindowThreadProcessId(window, out var pid) == 0 || pid != (uint)processId || !IsWindowVisible(window)) return true;
+            if (GetWindowThreadProcessId(window, out var pid) == 0 || pid != (uint)processId) return true;
+            if (!IsWindowVisible(window))
+            {
+                if (shown.Contains(window) && IsHungAppWindow(window)) { visible++; hung = true; }
+                return true;
+            }
+            shown.Add(window);
             visible++;
             hung |= IsHungAppWindow(window);
             return true;

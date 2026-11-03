@@ -1129,7 +1129,7 @@ sealed partial class PlaySession(PlayOptions options)
     // is noted once per hang. Either way, what the game's threads were doing goes into the result.
     bool WatchQuit(QuitWatch quit, Stopwatch clock, ref bool hung)
     {
-        var (visible, isHung) = GameWindows.Visible(job!.Process.Id);
+        var (visible, isHung) = GameWindows.Visible(job!.Process.Id, quit.ShownWindows);
         hung = isHung;
         switch (quit.Update(clock.ElapsedMilliseconds, visible, isHung))
         {
