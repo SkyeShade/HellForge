@@ -55,6 +55,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
+  the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
+  already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
+  them (#234).
 - A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
   or you do.
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
@@ -93,6 +97,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
+  it again, as if they were gone. They were kept, and they now show as saved (#234).
 - The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
   places, a squad 4. A full squad's listing now has no free slot.
 - Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
