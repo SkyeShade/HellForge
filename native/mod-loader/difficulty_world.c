@@ -1113,6 +1113,8 @@ typedef void (*CamPoseFn)(uint64_t camera, uint32_t node, const float* v);
 typedef void (*CamRangeFn)(uint64_t camera, float v);
 static CamPoseFn g_camSetPosition, g_camSetRotation;
 static CamRangeFn g_camSetFar;
+/* the near-player tile's replay moves the merge cameras' per-job positions (difficulty_world_terrain.c) */
+static int TerrainNearCamShift(uint64_t camera, uintptr_t at, const float* v, float* out);
 typedef struct { uintptr_t at; uint64_t camera; volatile LONG calls; float position[3]; } CamCaller;
 static CamCaller g_camCallers[48];
 static volatile LONG g_camCallerCount;
@@ -1169,6 +1171,8 @@ static void WorldCamSetPosition(uint64_t camera, uint32_t node, const float* v)
         if (g_camSetFar) g_camSetFar(camera, 30000.0f);
         return;
     }
+    float shifted[3];
+    if (v != NULL && TerrainNearCamShift(camera, at, v, shifted)) v = shifted;
     g_camSetPosition(camera, node, v);
 }
 
@@ -1482,7 +1486,7 @@ static void TerrainDiagInstall(uintptr_t game);
 /* difficulty_world_terrain.c: the map at vanilla density, as tiles drawn into the level's merge */
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
-static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context);
+static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context, uint64_t g, uint64_t h);
 static void TerrainNearWater(uint64_t record);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
@@ -1519,7 +1523,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* the map's terrain at vanilla density: the level waits at its SmoothHeightmap while the tiles are drawn */
         if (o == 0x40 && TerrainStep(records, (uint32_t)d, i, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
         if (o == 0x0A && g_world.current == 8.0f) TerrainNearWater(records + (uint64_t)i * 0x19B0u);
-        if (g_world.current == 8.0f && TerrainNearStep(records, (uint32_t)d, i, o, b)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
+        if (g_world.current == 8.0f && TerrainNearStep(records, (uint32_t)d, i, o, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
