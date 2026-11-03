@@ -12,13 +12,13 @@
  *   own values instead.
  * The XAML pages (the pause menu's wallet, popups) are data: ForgeCredits.cs. Included after damage.c (AllocateNearGame)
  * and packages.c (PinMatches). */
-enum { FC_RED = 0x00, FC_FILL = 0x10, FC_FILL_DARK = 0x20, FC_RED_R = 0x30, FC_RED_G = 0x34 };
+enum { FC_RED = 0x00, FC_FILL = 0x10, FC_FILL_DARK = 0x20, FC_RED_R = 0x30, FC_RED_G = 0x34, FC_RED_B = 0x38 };
 /* HellForge red (229, 57, 43) and the button's fills in red instead of teal (0, 44, 65 and 18, 27, 33) */
 static const float kForgeCreditsColours[] = {
     1.0f, 229.0f / 255.0f, 57.0f / 255.0f, 43.0f / 255.0f,
     1.0f, 65.0f / 255.0f, 10.0f / 255.0f, 8.0f / 255.0f,
     1.0f, 33.0f / 255.0f, 10.0f / 255.0f, 9.0f / 255.0f,
-    229.0f / 255.0f, 57.0f / 255.0f};
+    229.0f / 255.0f, 57.0f / 255.0f, 43.0f / 255.0f};
 /* A load whose disp32 (at `at` in the instruction) is pointed at one of the colours above (slot), or, with slot < 0, bytes
  * written at `at` (size bytes of with). */
 typedef struct { uint32_t rva; uint8_t pin[32]; uint8_t length, at; int8_t slot; uint8_t size; uint8_t with[32]; } ForgeCreditsPatch;
@@ -41,7 +41,14 @@ static const ForgeCreditsPatch kForgeCreditsPatches[] = {
     {0x196A174u, {0x0f,0x28,0x05,0x05,0x03,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},
     {0x196A197u, {0x0f,0x28,0x05,0x52,0xf7,0xa5,0x00}, 7, 3, FC_FILL, 0, {0}},              /* fills */
     {0x196A19Eu, {0x0f,0x28,0x0d,0xdb,0xf4,0xa5,0x00}, 7, 3, FC_FILL_DARK, 0, {0}},
-    {0x196A1B6u, {0x0f,0x28,0x05,0xc3,0x02,0xa6,0x00}, 7, 3, FC_RED, 0, {0}}};              /* highlight */
+    {0x196A1B6u, {0x0f,0x28,0x05,0xc3,0x02,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},               /* highlight */
+    /* the currency icon switch 0x1948933: its Super Credits case (sprite 0x9414AB4F02745820, the Acquisition Center's
+     * wallet) and the case after it (sprite 0x83F2040E9718C895) build light blue (131, 223, 250) from scalars */
+    {0x1948A6Du, {0xf3,0x0f,0x10,0x05,0xbb,0xe2,0xa7,0x00}, 8, 4, FC_RED_B, 0, {0}},
+    {0x1948A75u, {0xf3,0x0f,0x10,0x15,0x5b,0xe0,0xa7,0x00}, 8, 4, FC_RED_R, 0, {0}},
+    {0x1948BADu, {0xf3,0x0f,0x10,0x15,0x23,0xdf,0xa7,0x00}, 8, 4, FC_RED_R, 0, {0}},
+    {0x1948BBAu, {0xf3,0x0f,0x10,0x15,0x6e,0xe1,0xa7,0x00}, 8, 4, FC_RED_B, 0, {0}},
+    {0x1948BC7u, {0xf3,0x0f,0x10,0x0d,0xd5,0xe0,0xa7,0x00}, 8, 4, FC_RED_G, 0, {0}}};       /* their shared green */
 static int g_forgeCreditsState;
 
 static void InstallForgeCreditsColour(void)
