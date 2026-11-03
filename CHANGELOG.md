@@ -80,6 +80,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
@@ -114,8 +118,28 @@ On `dev`, since 0.3.0-beta.
   running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
   settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
   Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
+- Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
+  game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
+  to close and waits up to 30 seconds for it before ending it (#194).
+- The first start of a new installation built the shader cache from nothing even when the normal game already had
+  one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
 - During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
   closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
   inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
@@ -193,6 +217,11 @@ On `dev`, since 0.3.0-beta.
   the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
   `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
   `<run>/processes-now.txt`.
+- A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
+  `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
+  to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
+  `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
+  itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
 - `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
   `--sandbox yes`.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
