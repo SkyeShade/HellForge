@@ -21,7 +21,7 @@ typedef struct WeaponLoad
  * vanilla one, in the entities' order (WeaponOrder), the same on every machine. 0 (noted) out of memory. */
 static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8_t* list)
 {
-    size_t indexBytes = (size_t)REG_LOADOUT_SLOTS * 16;
+    size_t indexBytes = (size_t)SlotsOf(REG_LOADOUT) * 16;
     size_t copyBytes = 32 + indexBytes + (size_t)REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE;
     size_t newBytes = copyBytes + (size_t)REG_MAX_WEAPONS * REG_LOADOUT_STRIDE;
     uint8_t* table = (uint8_t*)VirtualAlloc(NULL, newBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -76,8 +76,9 @@ static int ComponentsUnderstood(uint8_t* state, const Weapon* w, uint64_t baseEn
             ApiLog(w->mod, "%s: component %u of the base is not understood (slots %u); not registered", w->name, c, slots);
             return 0;
         }
-        /* The game compiles each table's slot count into its lookups, so a full table cannot grow: refused here, before
-         * anything is written, rather than left without that component (ShareComponentRows' write would go nowhere). */
+        /* The game compiles each table's slot count into its lookups: a full table that GrowForPending could not grow
+         * (table_growth.c) is refused here, before anything is written, rather than left without that component
+         * (ShareComponentRows' write would go nowhere). */
         if (FreeRow(t, slots, 16, w->entity) == NULL)
         {
             ApiLog(w->mod, "%s: component %u's table is full (%u slots); not registered", w->name, c, slots);
@@ -112,8 +113,8 @@ static void ShareComponentRows(uint8_t* state, const Weapon* w, uint64_t baseEnt
  * remote copy never reached the player's hands (2026-10-18). */
 static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEntity)
 {
-    uint8_t* baseLoadout = FindRow(L->index, REG_LOADOUT_SLOTS, 16, baseEntity);
-    uint8_t* own = baseLoadout != NULL ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    uint8_t* baseLoadout = FindRow(L->index, SlotsOf(REG_LOADOUT), 16, baseEntity);
+    uint8_t* own = baseLoadout != NULL ? FreeRow(L->index, SlotsOf(REG_LOADOUT), 16, w->entity) : NULL;
     int taken = 0;
     for (uint32_t r = 0; r < L->recordCount && own != NULL; r++)
     {
@@ -395,7 +396,7 @@ static void RegisterWeapon(WeaponLoad* L, Weapon* w)
     w->copies = baseEntity;
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
-    uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, REG_LOADOUT_SLOTS, 16, w->entity) : NULL;
+    uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, SlotsOf(REG_LOADOUT), 16, w->entity) : NULL;
     if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
     {
         ApiLog(w->mod, "%s: no free row; not registered", w->name);
@@ -414,6 +415,71 @@ static void RegisterWeapon(WeaponLoad* L, Weapon* w)
             w->name, (unsigned long long)w->entity, record, w->id, shortId, (unsigned long long)componentCount - 1);
 }
 
+/* The entity a pending weapon copies, without logging (RegisterWeapon says why when it has none): through the loadout
+ * record of its base's id, or its base entity; a base that is itself a pending weapon of another mod, followed to the
+ * game's. 0 when there is none. */
+static const Weapon* PendingBaseWeapon(const Weapon* w)
+{
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        const Weapon* o = &g_weapons[i];
+        if (o != w && o->state == 0 && (w->plain ? o->entity == w->baseEntity : !o->plain && o->id == w->base)) return o;
+    }
+    return NULL;
+}
+
+static uint64_t PendingBase(uint8_t* loadout, uint32_t records, const Weapon* w)
+{
+    for (int depth = 0; depth < 8 && PendingBaseWeapon(w) != NULL; depth++) w = PendingBaseWeapon(w);
+    if (w->plain) return w->baseEntity;
+    uint8_t* recordsAt = loadout + (size_t)SlotsOf(REG_LOADOUT) * 16;
+    for (uint32_t r = 0; r < records; r++)
+    {
+        uint32_t id;
+        memcpy(&id, recordsAt + (size_t)r * REG_LOADOUT_STRIDE, 4);
+        if (id == w->base) return LoadoutOwner(loadout, r);
+    }
+    return 0;
+}
+
+#define GROW_COMPONENTS 1024u
+
+/* The rows the pending weapons will take in each component table: one per component of its base (the loadout table's
+ * only for a weapon with a loadout record of its own). */
+static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32_t* rows)
+{
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        const Weapon* w = &g_weapons[i];
+        uint64_t base = w->state == 0 ? PendingBase(loadout, records, w) : 0;
+        uint8_t* baseRow = base != 0 ? FindRow(map, REG_MAP_SLOTS, 32, base) : NULL;
+        if (baseRow == NULL) continue;
+        uint16_t* components;
+        uint64_t count;
+        memcpy(&components, baseRow + 8, 8);
+        memcpy(&count, baseRow + 16, 8);
+        for (uint64_t k = 0; k < count; k++)
+            if (components[k] < GROW_COMPONENTS && (components[k] != REG_LOADOUT || !w->plain)) rows[components[k]]++;
+    }
+}
+
+/* Before the pending weapons are added: each table they would fill past three quarters grown (table_growth.c), when it
+ * is one HellForge can grow; a table that cannot stays as it is and refuses what does not fit, as before. */
+static void GrowForPending(uint8_t* state, uint8_t* map, uint8_t* loadout, uint32_t records)
+{
+    static uint32_t rows[GROW_COMPONENTS];
+    memset(rows, 0, sizeof rows);
+    PendingRows(map, loadout, records, rows);
+    for (size_t i = 0; i < sizeof kGrowthTables / sizeof kGrowthTables[0]; i++)
+    {
+        uint32_t c = kGrowthTables[i].component, slots = SlotsOf(c);
+        uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
+        if (table == NULL || rows[c] == 0) continue;
+        uint32_t used = UsedRows(table, slots);
+        if (GrowthWanted(used, rows[c], slots)) GrowTable(state, c, used + rows[c]);
+    }
+}
+
 /* Adds every pending weapon to the loaded entity data. Runs on the game's thread right after the entity loader. */
 static void RegisterWeapons(void)
 {
@@ -427,6 +493,8 @@ static void RegisterWeapons(void)
     int pending = 0;
     for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].state == 0) pending++;
     if (pending == 0) return;
+    GrowForPending(state, map, loadout, vanillaRecords);
+    loadout = LoadoutTable(state, &vanillaRecords); /* table 29 grown: the new one */
     WeaponLoad L = {state, map};
     if (!CopyLoadoutAndList(&L, loadout, list)) return;
     int order[REG_MAX_WEAPONS];
@@ -708,7 +776,7 @@ static void BuildArmory(void)
     if (g_armory == NULL) g_armory = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_armory == NULL || table == NULL) return;
     memset(g_armory, 0, bytes);
-    uint8_t* records = table + (size_t)REG_LOADOUT_SLOTS * 16;
+    uint8_t* records = table + (size_t)SlotsOf(REG_LOADOUT) * 16;
     uint32_t counts[REG_ARMORY_TYPES] = {0}, starts[REG_ARMORY_TYPES], placed[REG_ARMORY_TYPES] = {0};
     for (uint32_t r = 0; r < count; r++)
     {
@@ -765,6 +833,7 @@ static void EntityLoaderDetour(void* state)
     HookText();
     StatsBeginComponents();
     g_entityLoader(state);
+    RegrowLoaded(EntityState());
     RegisterWeapons();
     StatsFinishComponents(EntityState());
     RegisterNetworkTypes();
@@ -974,6 +1043,7 @@ static void StartRegistry(void)
     else if (armoryFailed) Note("registry: the armory builder could not be hooked; added weapons load without their armory entries");
     Note(hooked ? "registry: hooked the entity loader and the armory builder for %d weapon(s)" : "registry: could not hook (%d weapon(s))", g_weaponCount);
     g_registryActive = hooked;
+    g_armoryReplaced = hooked; /* the armory hook failing alone leaves hooked 0; the fallback patches both jumps */
     if (hooked) HookText();
     /* Entity data that loaded before the hook still gets the weapons. */
     if (hooked && StatePointer(EntityState(), REG_MAP) != NULL)
