@@ -190,7 +190,7 @@ static class ModTests
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != first && first.Length == 32, "A gameplay change kept the digest.");
         });
 
-        test("The modlist code leaves out documentation and pictures for a mod without code, and a synced mod still rehashes", () =>
+        test("The modlist code counts every file of a mod, documentation and pictures too, as HellForge 0.3 does, and a synced mod rehashes", () =>
         {
             var mods = Path.Combine(root, "mods-unloaded");
             var manifest = """
@@ -205,7 +205,6 @@ static class ModTests
                 if (!extras) return;
                 File.WriteAllText(Path.Combine(mods, folder, "README.md"), "read me");
                 File.WriteAllText(Path.Combine(mods, folder, "LICENSE"), "licence");
-                File.WriteAllText(Path.Combine(mods, folder, "CHANGELOG.txt"), "changes");
                 Directory.CreateDirectory(Path.Combine(mods, folder, "docs"));
                 File.WriteAllText(Path.Combine(mods, folder, "docs", "notes.txt"), "notes");
                 File.WriteAllBytes(Path.Combine(mods, folder, "icon.png"), [1, 2, 3]);
@@ -214,38 +213,17 @@ static class ModTests
             Write("without", extras: false);
             var with = ModCatalog.Parse(Path.Combine(mods, "with"), EntityProfile.Current);
             var without = ModCatalog.Parse(Path.Combine(mods, "without"), EntityProfile.Current);
-            check(ModCatalog.Digest([with]) == ModCatalog.Digest([without]), "A README, licence or picture changed the modlist code.");
-            File.WriteAllText(Path.Combine(mods, "with", "data", "0123456789abcdef.patch_0"), "another unit patch");
-            check(ModCatalog.Digest([ModCatalog.Parse(Path.Combine(mods, "with"), EntityProfile.Current)]) != ModCatalog.Digest([without]),
-                "A change under data/ kept the modlist code.");
-            File.WriteAllText(Path.Combine(mods, "with", "data", "0123456789abcdef.patch_0"), "a unit patch");
-            // A data spec's PNG is an input ModDataBuilder reads: it stays in the code even though it is a picture.
-            var spec = Path.Combine(mods, "spec");
-            Directory.CreateDirectory(spec);
-            File.WriteAllText(Path.Combine(spec, ModCatalog.ManifestName), """{"format":1,"id":"test.spec","name":"Spec","version":"1"}""");
-            File.WriteAllText(Path.Combine(spec, DataSpecs.FileName), """
-                {"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"icon":"icon.png","name":"test/mod/icon"}]}]}
-                """);
-            File.WriteAllBytes(Path.Combine(spec, "icon.png"), [1, 2, 3]);
-            var specDigest = ModCatalog.Digest([ModCatalog.Parse(spec, EntityProfile.Current)]);
-            File.WriteAllBytes(Path.Combine(spec, "icon.png"), [4, 5, 6]);
-            check(ModCatalog.Digest([ModCatalog.Parse(spec, EntityProfile.Current)]) != specDigest, "A data spec's own PNG input left the modlist code.");
-            // Code can read any file of its folder: its README counts.
-            var code = Path.Combine(mods, "code");
-            Directory.CreateDirectory(code);
-            File.WriteAllText(Path.Combine(code, ModCatalog.ManifestName), """{"format":1,"id":"test.code-docs","name":"Code","version":"1","code":{"dll":"mod.dll","sdk":1}}""");
-            File.WriteAllText(Path.Combine(code, "mod.dll"), "synthetic dll");
-            File.WriteAllText(Path.Combine(code, "README.md"), "one");
-            var codeDigest = ModCatalog.Digest([ModCatalog.Parse(code, EntityProfile.Current)]);
-            File.WriteAllText(Path.Combine(code, "README.md"), "two");
-            check(ModCatalog.Digest([ModCatalog.Parse(code, EntityProfile.Current)]) != codeDigest, "A code mod's README left the modlist code.");
-            // What a host shares is the counted files only; the joiner's copy rehashes to the host's content hash.
+            // HellForge 0.3 (hellforge-mp-8) takes these files too: leaving them out would split 0.3 players and orphan synced
+            // copies and trusted entries kept by the old hash
+            check(ModCatalog.Digest([with]) != ModCatalog.Digest([without]), "A README, licence or picture left the modlist code.");
+            var withEntry = ModSet.Of(ModCatalog.LoadOrder([with])).Mods.Single();
+            check(withEntry.Files.Any(f => f.Path == "README.md") && withEntry.Files.Any(f => f.Path == "icon.png") &&
+                withEntry.Files.Any(f => f.Path == "docs/notes.txt"), "The shared file list leaves out a mod's documentation or pictures.");
+            // What a host shares is the counted files; the joiner's copy rehashes to the host's content hash.
             Directory.Delete(Path.Combine(mods, "without"), recursive: true);
             var (loaded, problems) = ModCatalog.Load(mods);
             check(problems.Count == 0, "The mods load: " + string.Join(" | ", problems));
             var entry = ModSet.Of(ModCatalog.LoadOrder(loaded.Where(m => m.Id == "test.docs"))).Mods.Single();
-            check(!entry.Files.Any(f => f.Path is "README.md" or "icon.png" or "LICENSE" || f.Path.EndsWith(".txt", StringComparison.Ordinal)) &&
-                entry.Files.Any(f => f.Path == "data/0123456789abcdef.patch_0"), "The shared file list counts the wrong files.");
             var guestMods = Path.Combine(root, "mods-unloaded-guest");
             Directory.CreateDirectory(guestMods);
             var partial = SyncedStore.Partial(guestMods, entry.Id, entry.Hash);

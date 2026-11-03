@@ -173,9 +173,9 @@ unknown).
 | `HF_LOBBY_FIX_NONE` | none | nothing |
 | `HF_LOBBY_FIX_STRANGERS` | Play with strangers is off | offer to turn it on with `HF_BROWSE_ALLOW_STRANGERS`, **only after showing the warning below and getting a clear yes** |
 | `HF_LOBBY_FIX_EDITED_STATS` | lobbies whose host shares edited stats are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
-| `HF_LOBBY_FIX_SANDBOX` | a stranger's unchecked mods, which only a sandboxed session may download | no ask can change it. Tell the player to turn on Settings > Sandbox in HellForge's launcher and start a new session |
 
-A lobby with a `fix` still has its `verdict` and `reason`. The fix is a way in, offered next to them.
+A lobby with a `fix` still has its `verdict` and `reason`. The fix is a way in, offered next to them. A stranger's lobby
+running code or raw-data mods HellForge hasn't verified has no fix: a host sends those to Steam friends only.
 
 ## Actions
 
@@ -187,8 +187,8 @@ malformed ask). On 0, tell the player ("The session's backend is not connected")
 | `HF_BROWSE_REFRESH` | NULL | a new search. The backend searches at most once every 2 s, whoever asks; an earlier ask gets the last list again. `SEARCHING` comes first when a list is already showing |
 | `HF_BROWSE_JOIN` | the lobby's `lobby_id` | the game gets that lobby's invitation. The lobby must be from a list of the last 2 minutes; if not, the answer is `FAILED`, and you should search again |
 | `HF_BROWSE_QUICK` | NULL | Quick Play: a fresh search, then a join of the best joinable lobby. A friend's goes first, then the fewest changes (same mods, then the smallest download, then a friend's unknown, then trust), then the fullest. `INVITED` with the host's name, or `FAILED` when nothing can be joined |
-| `HF_BROWSE_ALLOW_STRANGERS` | NULL | turns Play with strangers on and saves it, then searches again (about 2 s later, when the setting has taken) |
-| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies whose host shares edited stats, and searches again |
+| `HF_BROWSE_ALLOW_STRANGERS` | NULL | turns Play with strangers on for this session only, then searches again. Nothing is saved: the launcher's switch stays the player's. While a mod holds the browser, only that mod can ask |
+| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies whose host shares edited stats for this session only, and searches again. Same rules as above |
 | `HF_BROWSE_SHOWN` | NULL | your browser shows: the terminal's camera stays on the screen. This machine only |
 | `HF_BROWSE_HIDDEN` | NULL | your browser went: the camera glides back. This machine only |
 | `HF_BROWSE_CLAIM` | NULL | your mod draws the browser (see [Setting up](#setting-up)) |
@@ -202,6 +202,9 @@ Don't promise they're in.
 **Refreshing.** The placeholder asks for a new list when it opens, on REFRESH (R), and every 10 s while it shows. It
 skips the 10 s refresh while a search runs or a join is pending, and shows a searching indicator for at least 0.8 s
 after an ask, because a list from the last 2 s comes back at once and a REFRESH that changes nothing looks broken.
+Every ask ends in a state other than `SEARCHING`: a search that fails or times out comes back `FAILED` with the old
+list. Still, give up on a search or a join that has no answer after 60 s, as the placeholder does, so a lost answer
+never leaves your browser searching.
 
 ## Rules your browser must keep
 
@@ -211,8 +214,8 @@ These are part of the contract. HellForge's safety model depends on them.
    for an explicit yes. Esc and any other key must cancel, and the warning must hold other keys meanwhile:
 
    > Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in the
-   > game's network code could let it run code on your PC. Turn this on only if you accept that risk. You can turn it
-   > off again in the launcher's Settings > MULTIPLAYER.
+   > game's network code could let it run code on your PC. Turn this on only if you accept that risk. It stays on for
+   > this session only: the launcher's Settings > MULTIPLAYER keeps your choice.
 
    The backend logs that the player turned it on after the warning.
 2. **Show why.** Show `reason` for a lobby that can't be joined, and `mod_list` for one that downloads or needs trust.

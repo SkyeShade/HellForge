@@ -66,9 +66,13 @@
 #define REG_LOADOUT_STRIDE 32u
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
-/* Weapons and entities mods add, together. Each needs a network type, and the game sends a type in 11 bits: build
- * 25480438 has 1855 (NET_VANILLA_TYPES), so 193 more at most. */
-#define REG_MAX_WEAPONS 192
+/* Weapons and entities mods add, together. Each needs a network type: build 25480438 has 1855 (NET_VANILLA_TYPES), and
+ * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
+ * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
+ * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
+ * (2,187 more rows), and for weapons the game's 4,096 catalogue items (RegisteredItems.cs). 512: the research's target
+ * (research\entity-limit\README.md). */
+#define REG_MAX_WEAPONS 512
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
 #define REG_MAX_OWNED 325 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one each, every
@@ -146,7 +150,7 @@ typedef struct Weapon
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
-    int ownAll;          /* add_entity: a record of its own in every component of its base (HfEntity.own_all) */
+    int ownAll;          /* a record of its own in every component of its base (HfEntity.own_all, HfWeapon.own_all) */
     uint64_t copies;     /* the entity it was registered as a copy of (its map row's components are that entity's) */
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
@@ -199,12 +203,16 @@ static EntityLoaderFn g_entityLoader;
 static ArmoryBuilderFn g_armoryBuilder;
 static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
+static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
+static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
 
 static uint32_t SlotsOf(uint32_t component)
 {
+    uint32_t grown = GrownSlots(component);
+    if (grown != 0) return grown;
     for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
         if (kSlots[i].component == component) return kSlots[i].slots;
     for (int i = 0; i < g_componentCount; i++)
@@ -286,7 +294,7 @@ static int PlainCopy(uint64_t entity)
 static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
 {
     uint64_t owner = 0;
-    for (uint32_t i = 0; i < REG_LOADOUT_SLOTS; i++)
+    for (uint32_t i = 0, slots = SlotsOf(REG_LOADOUT); i < slots; i++)
     {
         uint64_t entity;
         uint32_t r;
@@ -460,6 +468,17 @@ static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
     w->text[3] = AddText(def->designation, key, 0x04);
 }
 
+/* The mod's log line for a weapon add_weapon accepted: its text, entity and ids, and the records it owns. */
+static void LogWeaponAdded(HfMod* mod, const HfWeapon* def, const Weapon* w)
+{
+    char own[48];
+    if (w->ownAll) snprintf(own, sizeof own, "records of its own in every component");
+    else snprintf(own, sizeof own, "%d record(s) of its own", w->ownCount);
+    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %s",
+        w->name, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
+        (unsigned long long)w->entity, w->id, def->base, own);
+}
+
 static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfWeapon, own_components) + sizeof def->own_components)
@@ -486,11 +505,10 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     snprintf(w.name, sizeof w.name, "%s", unit);
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
+    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);
     g_weapons[g_weaponCount++] = w;
-    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %d record(s) of its own",
-        unit, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
-        (unsigned long long)entity, id, def->base, w.ownCount);
+    LogWeaponAdded(mod, def, &w);
     WriteRegisteredItems();
     return id;
 }
@@ -814,6 +832,13 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
 /* The engine's text function; any further register arguments are passed on untouched. */
 typedef const char* (*EngineTextFn)(uint32_t id, void* a, void* b, void* c);
 static EngineTextFn g_engineText;
+
+/* A mod text's text (AddText's id), or NULL for none. */
+static const char* ModTextOf(uint32_t id)
+{
+    for (int i = 0; id != 0 && i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
+    return NULL;
+}
 
 /* The engine's text function with the mods' text first. */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)

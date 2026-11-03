@@ -238,7 +238,7 @@ static void LiveBrowseFixture(void)
     assert(!strcmp(reply, "1\tok\tnow"));
     SyncLine("browselobby\t2\t3\t1\tunjoinable\t-\t1\t4\t-\t-\t3\t0\tsteam-2\tStranger\tits host is not a Steam friend\t\t\tstrangers", reply, sizeof reply);
     assert(!strcmp(reply, "2\tok\tnow"));
-    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\tsandbox", reply, sizeof reply);
+    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\teditedstats", reply, sizeof reply);
     assert(!strcmp(reply, "3\tok\tnow"));
     assert(!ApiBrowseLobby(NULL, 0, &lobby)); /* not published yet */
     SyncLine("browsestate\t4\t3\tready\t3\t", reply, sizeof reply);
@@ -251,7 +251,7 @@ static void LiveBrowseFixture(void)
     assert(ApiBrowseLobby(NULL, 1, &lobby) && lobby.verdict == HF_LOBBY_UNJOINABLE && lobby.flags == 0 && lobby.difficulty == -1 && lobby.planet == -1 &&
         lobby.mods == 3 && !strcmp(lobby.reason, "its host is not a Steam friend") && lobby.fix == HF_LOBBY_FIX_STRANGERS);
     assert(ApiBrowseLobby(NULL, 2, &lobby) && lobby.verdict == HF_LOBBY_DOWNLOAD && (lobby.flags & HF_LOBBY_FLAG_MISSION) && lobby.download_bytes == 1048576 &&
-        lobby.host[0] == 0 && lobby.fix == HF_LOBBY_FIX_SANDBOX);
+        lobby.host[0] == 0 && lobby.fix == HF_LOBBY_FIX_EDITED_STATS);
     assert(!ApiBrowseLobby(NULL, 3, &lobby));
 
     /* a search under way, then a join's outcome: the same version keeps its lobbies; another count is refused */
@@ -317,6 +317,13 @@ static void LiveBrowseFixture(void)
     assert(!strcmp(state.owner, "echelon.browser"));
     assert(!ApiBrowseAsk(&second, HF_BROWSE_SHOWN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_HIDDEN, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
     assert(ApiBrowseAsk(&first, HF_BROWSE_SHOWN, NULL) && ApiBrowseAsk(&first, HF_BROWSE_HIDDEN, NULL));
+    /* and only it turns a setting on for the session */
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 1; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
+    assert(!ApiBrowseAsk(&second, HF_BROWSE_ALLOW_STRANGERS, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, NULL) && g_liveOutUsed == 0);
+    assert(ApiBrowseAsk(&first, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(&second, HF_BROWSE_REFRESH, NULL));
+    g_liveOut[g_liveOutUsed] = 0;
+    assert(!strcmp(g_liveOut, "browseask\tallow\tstrangers\nbrowseask\trefresh\t-\n"));
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
     BrowseClear();
     ApiBrowseState(NULL, &state);
     assert(!strcmp(state.owner, "echelon.browser"));

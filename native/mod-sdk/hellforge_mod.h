@@ -84,6 +84,13 @@ typedef struct HfWeapon
      * base's: its own ProjectileWeapon record takes that weapon's sound events. Their sound banks must load with it: the
      * mod's data puts them in the weapon's archive patch (examples/mods/talon-liberator). */
     uint32_t sound_from;
+    /* HellForge 2026-10-31 (older ones ignore it): 1 gives it a record of its own in every component of its base (a copy
+     * of the base's), as HfEntity.own_all does for an entity: it shares nothing with its base, so an edit of the base
+     * never changes it and its own edits never change the base. The in-game editor then gives it a page with every field
+     * of its base's page; without it, the page has only the records it owns (own_components, and its ProjectileWeapon
+     * record when it has a projectile of its own). Its log names any component HellForge could not copy (record size
+     * unknown), which it still shares. */
+    uint32_t own_all;
 } HfWeapon;
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
@@ -313,8 +320,9 @@ typedef struct HfDifficulty
                                     stratagems); shown in the difficulty bar. NULL keeps Super Helldive's */
     /* Missions at this level (0 keeps level 10's). */
     float map_scale;             /* playable radius, relative to level 10's: up to 2. Above 1 the route cells are
-                                    farther apart (the generator has room for level 10's number); the structured
-                                    maps (map type 2) keep level 10's size */
+                                    farther apart (the generator has room for level 10's number), the mega
+                                    cities' blocks (map type 2) too. The SEAF Artillery's shells reach across
+                                    it (their range x map_scale) */
     uint32_t optional_objectives;/* optional objectives a mission draws from its list (level 10: 4) */
     uint32_t major_objectives;   /* secondary objectives (level 10: 1); optional + major at most 18 (the map
                                     generator places 30 objectives at this level, the missions' own among them) */
@@ -351,6 +359,9 @@ typedef struct HfDifficulty
  * codes to retrieve, power to restore and a refuelling station, beside the city's side objectives (three unused mission
  * rows of the game, one per faction, offered only at the level; city copies of the ICBM objectives' stamps). */
 #define HF_DIFFICULTY_CITY_ICBM 0x40u
+/* The SEAF Artillery side objective's shells at the level are Explosive, High-Yield Explosive and Mini Nuke only (by
+ * weight 10, 5 and 5: a quarter of them nukes) instead of the game's mix with Napalm, Smoke and Static Field. */
+#define HF_DIFFICULTY_HEAVY_ARTILLERY 0x80u
 
 /* ---- SDK 6: named fields, definition blocks and deferred edits (docs/modding/content.md) ------------------------- */
 
@@ -556,24 +567,29 @@ typedef struct HfAbility
     uint32_t flags;         /* HF_ABILITY_... flags (HellForge 2026-10-18; older mods leave it out) */
 } HfAbility;
 
-/* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem a page. Strings live as long
- * as the session. */
+/* Content mods added (SDK 7, content), for tools: the in-game editor gives each stratagem and arsenal weapon a page.
+ * Strings live as long as the session. */
 typedef struct HfContent
 {
     uint32_t size;          /* sizeof(HfContent): set by the caller */
-    uint32_t kind;          /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE or HF_KIND_DAMAGE */
-    uint64_t id;            /* its stratagem type, entity resource, projectile type or damage id */
+    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, or (HellForge 2026-10-31) HF_KIND_ITEM:
+     * an arsenal weapon of add_weapon, once it is registered */
+    uint32_t kind;
+    uint64_t id;            /* its stratagem type, entity resource, projectile type, damage id or loadout id */
     uint64_t base;          /* the vanilla one of its kind it copies */
     uint64_t link;          /* a projectile: the damage it deals (0: its base's) */
     const char* mod;        /* the id of the mod that added it, and that mod's folder (UTF-8) */
     const char* folder;
     const char* name;       /* its identity */
-    const char* title;      /* a stratagem's or entity's name for players, or NULL for its base's */
+    const char* title;      /* a stratagem's, entity's or weapon's name for players, or NULL for its base's */
     const char* icon;       /* a stratagem's icon resource name, or NULL for its base's */
     uint64_t editor_like;   /* a stratagem: the stratagem whose editor page it takes */
     const HfEditorEntity* editor_entities; /* a stratagem: the entities its page shows, ending in {0} */
-    const char* designation; /* an entity's designation (HfEntity.designation), or NULL for its base's */
+    const char* designation; /* an entity's or weapon's designation, or NULL for its base's */
     uint32_t category;       /* a stratagem's HF_CATEGORY_... (HfStratagem.category), or 0 for its base's */
+    /* HellForge 2026-10-31, a weapon (HF_KIND_ITEM; older ones leave these 0): its entity resource and its base's */
+    uint64_t entity;
+    uint64_t base_entity;
 } HfContent;
 
 typedef struct HfEventInfo
@@ -915,8 +931,6 @@ typedef struct HfBrowseLobby
 #define HF_LOBBY_FIX_NONE 0u
 #define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
 #define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
-#define HF_LOBBY_FIX_SANDBOX 3u      /* a stranger's unchecked mods, which only a sandboxed session may download: the
-                                     * launcher's Settings > Sandbox, for the next session (no ask changes it) */
 
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
@@ -925,9 +939,11 @@ typedef struct HfBrowseLobby
 #define HF_BROWSE_HIDDEN 4u  /* it went: the terminal's camera glides back to the player; this machine only */
 #define HF_BROWSE_QUICK 5u   /* Quick Play: join the best joinable lobby of a fresh list (a friend's first, then the fewest
                               * downloads); browse_state says INVITED with the host's name, or FAILED when there is none */
-#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on (HF_LOBBY_FIX_STRANGERS): ask only after showing the
-                                        * player the warning HellForge's launcher shows; a new list follows */
-#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) */
+#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on for this session (HF_LOBBY_FIX_STRANGERS), never saved:
+                                        * ask only after showing the player the warning HellForge's launcher shows; a new
+                                        * list follows */
+#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) for this
+                                        * session, never saved */
 #define HF_BROWSE_CLAIM 8u   /* this mod draws the lobby browser: HellForge's editor's own steps aside (browse_state's owner).
                               * 1 when this mod holds it, 0 when another mod claimed it first; this machine only */
 #define HF_BROWSE_RELEASE 9u /* gives the browser back to HellForge's editor; 1 when this mod held it */
@@ -1181,8 +1197,9 @@ typedef struct HfApi
     int (*subscribe)(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
     /* The game's state now (HF_STATE_...), or HF_STATE_NONE before the game has one. */
     uint32_t (*game_state)(HfMod* mod);
-    /* The index-th piece of content mods added (stratagems, entities, projectiles, damage; see HfContent): 1 with *out
-     * filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED). */
+    /* The index-th piece of content mods added (stratagems, entities, projectiles, damage, then arsenal weapons once
+     * registered; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has
+     * run (from HF_EVENT_GAME_LOADED); the weapons from HF_EVENT_ENTITIES_READY. */
     int (*content)(HfMod* mod, uint32_t index, HfContent* out);
     /* Adds a new ability (see HfAbility). Call it from hellforge_mod_init. Returns its id (2868 and up), or 0 (the mod's
      * log says why). An entity naming it never sets it off if HellForge could not install it (modloader.log). */
@@ -1290,11 +1307,10 @@ typedef struct HfApi
     int (*browse_lobby)(HfMod* mod, uint32_t index, HfBrowseLobby* out);
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
      * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
-     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id
-     * NULL). HfBrowseLobby.fix HF_LOBBY_FIX_SANDBOX has no ask: the sandbox is the launcher's setting, for the next
-     * session; say so. HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no
-     * backend; while a mod holds the browser (HF_BROWSE_CLAIM), only that mod's count. A guide to building a browser of
-     * one's own: docs/lobby-browser.md. */
+     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this
+     * session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
+     * terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and
+     * setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;
 

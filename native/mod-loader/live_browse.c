@@ -13,7 +13,7 @@
 #define BROWSE_MAX_LOBBIES 128
 static const char* const kBrowseStates[] = {"none", "searching", "ready", "unavailable", "invited", "failed"};
 static const char* const kBrowseVerdicts[] = {"ready", "download", "trust", "unjoinable", "blocked", "full", "locked", "unknown"};
-static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats", "sandbox"};
+static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats"};
 static SRWLOCK g_browseLock = SRWLOCK_INIT;
 static HfBrowseState g_browse;
 static HfBrowseLobby g_browseLobbies[BROWSE_MAX_LOBBIES];
@@ -65,7 +65,7 @@ static void BrowseLobbyLine(char* line, char* reply, size_t size)
     uint64_t version = 0, index = 0, members = 0, max = 0, mods = 0, bytes = 0;
     int32_t difficulty = -1, planet = -1;
     int verdict = n == 18 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 18 ? BrowseFlags(f[5]) : -1;
-    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 4) : -1;
+    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 3) : -1;
     if (n != 18 || fix < 0 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
         !SyncNumber(f[6], &members) || members > 64 || !SyncNumber(f[7], &max) || max > 64 || !BrowseOptional(f[8], 100, &difficulty) ||
         !BrowseOptional(f[9], 100000, &planet) || !SyncNumber(f[10], &mods) || mods > 4096 || !SyncNumber(f[11], &bytes) || !BrowseLobbyId(f[12]))
@@ -157,13 +157,20 @@ static int BrowseClaim(HfMod* mod, int claim)
     return claim ? was == NULL || was == mod : was == mod;
 }
 
-/* HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN: the terminal's camera, moved by any mod while none holds the browser, else only
- * by its owner. */
-static int BrowseCamera(HfMod* mod, int shown)
+/* Whether a mod may move the terminal's camera or turn a setting on for the session: any mod while none holds the
+ * browser, else only its owner. */
+static int BrowseMay(HfMod* mod)
 {
     AcquireSRWLockShared(&g_browseLock);
     int may = g_browseOwner == NULL || g_browseOwner == mod;
     ReleaseSRWLockShared(&g_browseLock);
+    return may;
+}
+
+/* HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN: the terminal's camera (BrowseMay). */
+static int BrowseCamera(HfMod* mod, int shown)
+{
+    int may = BrowseMay(mod);
     if (may) TcamBrowser(shown);
     return may;
 }
@@ -218,6 +225,8 @@ static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
         ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS ? "allow" : NULL;
     if (verb == NULL) return 0;
     if (ask == HF_BROWSE_JOIN && (lobbyId == NULL || !BrowseLobbyId(lobbyId))) return 0;
+    /* a setting for the session (the backend never saves it): while a mod holds the browser, only that mod asks */
+    if ((ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS) && !BrowseMay(mod)) return 0;
     const char* what = ask == HF_BROWSE_JOIN ? lobbyId : ask == HF_BROWSE_ALLOW_STRANGERS ? "strangers" : ask == HF_BROWSE_SHOW_EDITED_STATS ? "editedstats" : "-";
     char line[128];
     int length = snprintf(line, sizeof line, "browseask\t%s\t%s\n", verb, what);

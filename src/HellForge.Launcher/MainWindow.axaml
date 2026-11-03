@@ -129,10 +129,22 @@
           </StackPanel>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
-            <StackPanel VerticalAlignment="Bottom" Spacing="4" Margin="0,0,24,4">
+            <StackPanel VerticalAlignment="Bottom" Spacing="12" Margin="0,0,24,4">
+              <!-- Account sync beside PLAY (InventorySyncFlow): premium content stays locked in the game until the profile is synced -->
+              <Border x:Name="PlaySyncCard" Classes="card" Padding="20,16" MaxWidth="560" HorizontalAlignment="Left" IsVisible="False">
+                <StackPanel Spacing="8">
+                  <TextBlock x:Name="PlaySyncTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <TextBlock x:Name="PlaySyncText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
+                    <Button x:Name="PlaySyncButton" Classes="primary" IsEnabled="{Binding #SyncButton.IsEnabled}" />
+                    <Button x:Name="PlayReviewButton" Classes="ghost" Content="Review import" IsVisible="{Binding #ImportPanel.IsVisible}" />
+                  </StackPanel>
+                  <TextBlock x:Name="PlaySyncStatus" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+              </Border>
               <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" IsVisible="False" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Width="340" Spacing="10">
+            <StackPanel Grid.Column="1" Width="340" Spacing="10" VerticalAlignment="Bottom">
               <TextBlock Text="PROFILE" Classes="h2" Margin="0" />
               <Grid ColumnDefinitions="*,8,Auto">
                 <ComboBox x:Name="ProfileCombo" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
@@ -432,6 +444,7 @@
                 <TextBlock Text="LAUNCH OPTIONS" Classes="h2" />
                 <TextBox x:Name="LaunchOptionsBox" Watermark="e.g. --use-d3d11" MaxLength="1024" VerticalContentAlignment="Center" />
                 <TextBlock x:Name="LaunchOptionsProblem" Classes="muted" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
+                <TextBlock x:Name="LaunchOptionsWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Options for the game's command line, as in Steam's Launch Options: --use-d3d11 starts it with DirectX 11, for one. Steam's &quot;%command% --use-d3d11&quot; works too. HellForge's own options come first. Applies to the next session." />
               </StackPanel>

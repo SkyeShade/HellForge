@@ -10,12 +10,19 @@ namespace HellForge.LocalBackend;
 //   they are store fronts.
 // - warbond items: bought with medals on a warbond's pages. A premium warbond's items need one of its tokens; Helldivers
 //   Mobilize is free, and an item it also offers needs none.
-// - Super Credits: a premium currency. The price item and the three wallets that make up its balance are never stored,
-//   served, granted or imported (KB hellforge-vanilla-progression).
+// - Super Credits: a premium currency. The price item and the three wallets that make up its balance are never imported
+//   (KB hellforge-vanilla-progression). HellForge's own currency, Forge Credits, is earned in missions and kept in one of
+//   those wallets (ForgeCreditsWallet, the one the client shows), so the game shows it where it showed Super Credits; the
+//   others are never stored, served or granted.
 // - currencies: medals, requisition and samples, which the import treats as numbers.
+// - parents: a catalogue item's parent (item-catalog.json parentId). A stratagem is a catalogue item with one child whose
+//   itemId is the stable id the loadout checks; a weapon's attachments are its children. Neither is on a warbond page or
+//   priced, so a child follows its parent (OwnershipFilter).
 public sealed class PaidContentSet
 {
-    const uint SuperCreditPrice = 0xCF875032;
+    public const uint SuperCreditPrice = 0xCF875032;
+    // The Premium wallet: the client shows its quantity as the Super Credits balance (game.dll 0x1372BD0, the wallet view).
+    public const uint ForgeCreditsWallet = 0x6C3C83C1;
     static readonly HashSet<uint> SuperCreditIds = [SuperCreditPrice, 0x6C3C83C1, 0xCBFFC645, 0x865AF2FD];
     // Requisition, common, rare and super samples, and the generic medal reward
     static readonly uint[] FixedCurrencies = [0xD7150EEC, 0xEDF6EAF5, 0xB1ED1C41, 0xDAC0E9DB, 0x3584C850];
@@ -31,6 +38,9 @@ public sealed class PaidContentSet
     readonly Dictionary<uint, uint[]> warbondItemTokens;
 
     public IReadOnlyList<Warbond> Warbonds { get; private init; } = [];
+
+    // Each catalogue item that has a parent, and that parent.
+    IReadOnlyDictionary<uint, uint> Parents { get; init; } = new Dictionary<uint, uint>();
 
     // Premium warbond tokens, items sold for Super Credits and Steam DLC gear.
     public HashSet<uint> MixIds { get; }
@@ -83,7 +93,18 @@ public sealed class PaidContentSet
         paid.UnionWith(SoldForSuperCredits().Where(Bought));
         paid.UnionWith(dlc);
         var gated = tokensByItem.Where(entry => !freeItems.Contains(entry.Key)).ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
-        return new PaidContentSet(warbondTokens, dlc, paid, gated, warbondItems, currencies) { Warbonds = ReadWarbonds(data.RootElement) };
+        return new PaidContentSet(warbondTokens, dlc, paid, gated, warbondItems, currencies)
+            { Warbonds = ReadWarbonds(data.RootElement), Parents = CatalogueParents() };
+    }
+
+    static Dictionary<uint, uint> CatalogueParents()
+    {
+        using var catalog = LocalBackend.LoadResource("item-catalog.json");
+        var parents = new Dictionary<uint, uint>();
+        foreach (var item in catalog.RootElement.GetProperty("items").EnumerateArray())
+            if (item.TryGetProperty("parentId", out var parent) && parent.TryGetUInt32(out var parentId) && parentId != 0)
+                parents[item.GetProperty("mixId").GetUInt32()] = parentId;
+        return parents;
     }
 
     static List<Warbond> ReadWarbonds(JsonElement data) =>
@@ -140,7 +161,13 @@ public sealed class PaidContentSet
 
     public static bool IsSuperCredits(uint mixId) => SuperCreditIds.Contains(mixId);
 
+    // A Super Credits id the profile may hold, serve and spend: the Forge Credits wallet. Imports still drop it.
+    public static bool IsForgeCredits(uint mixId) => mixId == ForgeCreditsWallet;
+
     // A premium warbond's item: the tokens of the warbonds that offer it, one of which the player must own.
     public bool TryGetWarbondTokens(uint mixId, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out uint[] tokens) =>
         warbondItemTokens.TryGetValue(mixId, out tokens);
+
+    // A child item's parent: a stratagem's for its loadout entry, a weapon's for its attachments.
+    public bool TryGetParent(uint mixId, out uint parent) => Parents.TryGetValue(mixId, out parent);
 }
