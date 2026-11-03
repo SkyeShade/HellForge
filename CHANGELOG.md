@@ -48,6 +48,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
+  the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
+  already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
+  them (#PR).
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
@@ -76,6 +80,8 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
+  it again, as if they were gone. They were kept, and they now show as saved (#PR).
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
