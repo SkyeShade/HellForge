@@ -53,6 +53,11 @@ On `dev`, since 0.3.0-beta.
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
   (`HF_DIFFICULTY_HEAVY_ARTILLERY`, on in the Hell Forge difficulty).
 
+- **Nightly builds** for testers: each night that the `dev` branch changed, an untested build of it is published on
+  GitHub as the Nightly pre-release (`HellForge-Nightly-Setup.exe`). Its version, as the launcher shows it, reads
+  `-nightly.<date>` (`0.4.0-nightly.20261102`), so it is never taken for a release. Releases stay the builds to play
+  on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)) (#211).
+
 ### Changed
 
 - The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
