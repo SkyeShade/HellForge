@@ -145,6 +145,10 @@ try
 
     // Profile-backed startup endpoints: defaults, persistence, exclusivity, validation and session audit.
     var fixtures = LocalBackend.LoadStartupFixtures();
+    // The warbond list goes out newest first, as the live game lists it: Helldivers Mobilize last.
+    var warbondList = fixtures["/SeasonPass"].EnumerateArray().Select(w => w.GetProperty("id32").GetUInt32()).ToList();
+    Check(warbondList.Count > 1 && warbondList[^1] == HellForge.Core.PremiumContent.FreeWarbond && warbondList[0] != HellForge.Core.PremiumContent.FreeWarbond,
+        "The warbond list is not served newest first.");
     var profilePaths = new[] { "/Progression", "/Progression/inventory", "/Progression/Items/Customize/v2" };
     var profileDirectory = Path.Combine(root, "profile");
     var profileFile = Path.Combine(profileDirectory, ProfileStore.FileName);
@@ -242,10 +246,13 @@ try
         Check(templated.TryGetResponse("/Progression/inventory", out var inventory), "Template inventory missing.");
         var granted = inventory.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("mixId").GetUInt32()).ToArray();
         Check(granted.Length > 0 && granted.All(catalogue.Contains), "Template grants an item outside the catalogue: " + template);
-        // Three weapons, the onboarding chain's required item and its nine unlock rewards, and the two stratagems every
-        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9).
-        Check(template != "starter" || granted.Length == 3 + 10 + 2, "Starter kit is not three weapons, the onboarding unlocks and the two standard stratagems.");
+        // Three weapons, the onboarding chain's required item and its nine unlock rewards, the two stratagems every
+        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9), level 1's unlock item and the six ship
+        // module tracks' required items.
+        Check(template != "starter" || granted.Length == 3 + 10 + 9, "Starter kit is not three weapons, the onboarding unlocks, the two standard stratagems, level 1 and the ship module tracks.");
         Check(granted.Contains(1497469599u) && granted.Contains(3787370254u), "A new profile lacks Orbital Precision Strike or the MG-43: " + template);
+        Check(granted.Contains(0xF96CE664u), "A new profile has level 1 locked (no 0xF96CE664): " + template);
+        Check(granted.Contains(0xCD183602u) && granted.Contains(0xE0623D4Cu), "A new profile has no ship module tracks: " + template);
         Check(templated.TryGetResponse("/Progression", out var templatedProgression) &&
             templatedProgression.GetProperty("packageProgress").EnumerateArray().Any(entry => entry.GetProperty("level").GetInt32() == 9),
             "Template lacks the completed tutorial chain: " + template);
@@ -265,15 +272,28 @@ try
     using (var again = ProfileStore.Open(unnamedDirectory)) { }
     Check(JsonNode.Parse(File.ReadAllText(unnamedFile))!["progression"]!["shipName"]!.ToJsonString() == repairedShip,
         "An unnamed profile was not given a lasting ship name.");
-    // A profile saved before every profile got the two standard stratagems gets them when opened, once.
+    // A profile saved before every profile got the two standard stratagems and level 1 gets them when opened, once.
     var savedProfile = JsonNode.Parse(File.ReadAllText(unnamedFile))!.AsObject();
     var savedItems = savedProfile["inventory"]!["items"]!.AsArray();
-    foreach (var standard in savedItems.Where(item => (uint)item!["mixId"]! is 1497469599u or 3787370254u).ToList()) savedItems.Remove(standard);
+    foreach (var standard in savedItems.Where(item => (uint)item!["mixId"]! is 1497469599u or 3787370254u or 0xF96CE664u).ToList()) savedItems.Remove(standard);
     File.WriteAllText(unnamedFile, savedProfile.ToJsonString());
     using (var reopened = ProfileStore.Open(unnamedDirectory)) { }
     var reopenedItems = JsonNode.Parse(File.ReadAllText(unnamedFile))!["inventory"]!["items"]!.AsArray().Select(item => (uint)item!["mixId"]!).ToList();
-    Check(reopenedItems.Count(id => id == 1497469599u) == 1 && reopenedItems.Count(id => id == 3787370254u) == 1,
-        "A saved profile was not given the two standard stratagems exactly once.");
+    Check(reopenedItems.Count(id => id == 1497469599u) == 1 && reopenedItems.Count(id => id == 3787370254u) == 1 &&
+        reopenedItems.Count(id => id == 0xF96CE664u) == 1, "A saved profile was not given the two standard stratagems and level 1 exactly once.");
+    // A package progress entry saved without sortOrder and claimedLevels (a ship module bought before 2026-11-03), which the
+    // client's /Progression parser refuses, is completed when the profile is opened; what it has stays.
+    var partial = JsonNode.Parse(File.ReadAllText(unnamedFile))!.AsObject();
+    partial["progression"]!["packageProgress"]!.AsArray().Add((JsonNode)new JsonObject { ["id32"] = 131213678, ["level"] = 2, ["progress"] = 0 });
+    File.WriteAllText(unnamedFile, partial.ToJsonString());
+    using (var completed = ProfileStore.Open(unnamedDirectory))
+    {
+        Check(completed.TryGetResponse("/Progression", out var served) && served.GetProperty("packageProgress").EnumerateArray().All(entry =>
+            entry.TryGetProperty("sortOrder", out _) && entry.TryGetProperty("claimedLevels", out var claimed) && claimed.ValueKind == JsonValueKind.Array &&
+            entry.TryGetProperty("progress", out _)) && served.GetProperty("packageProgress").EnumerateArray()
+            .Any(entry => entry.GetProperty("id32").GetUInt32() == 131213678 && entry.GetProperty("level").GetInt32() == 2),
+            "A package progress entry without sortOrder or claimedLevels was served as it was.");
+    }
     var unknownTemplate = false;
     try { using var _ = ProfileStore.Open(null, "hellforge-test-unknown"); }
     catch (ArgumentException) { unknownTemplate = true; }
@@ -450,12 +470,21 @@ try
                 experienceBefore = json.RootElement.GetProperty("experience").GetInt64();
             using (var created = await Post("/Operation/Create", "{\"operations\":[{\"id\":7,\"difficulty\":4,\"missions\":[]}]}"))
                 Check(created.RootElement.GetProperty("operations")[0].GetProperty("id").GetInt64() == 7, "Operation id not echoed.");
+            string missionId;
             using (var started = await Post("/Operation/Mission/Start", "{\"operationId\":7,\"missionIndex\":0}"))
-                Check(Guid.TryParse(started.RootElement.GetProperty("missionId").GetString(), out _), "Mission id is not a GUID.");
+            {
+                missionId = started.RootElement.GetProperty("missionId").GetString()!;
+                Check(Guid.TryParse(missionId, out _), "Mission id is not a GUID.");
+            }
             const uint commonSamples = 0xEDF6EAF5;
-            using (var ended = await Post("/Operation/Mission/end", "{\"operationId\":7,\"missionIndex\":0,\"missionSuccess\":true,\"difficultyType\":4," +
-                "\"objectives\":[{\"succeeded\":true}],\"players\":[{\"lootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":5}]}]}"))
+            var firstEnd = "{\"operationId\":7,\"missionIndex\":0,\"missionId\":\"" + missionId + "\",\"missionSuccess\":true,\"difficultyType\":4," +
+                "\"objectives\":[{\"succeeded\":true}],\"players\":[{\"lootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":5}]}]}";
+            using (var ended = await Post("/Operation/Mission/end", firstEnd))
                 Check(ended.RootElement.GetProperty("experience").GetInt64() == MissionService.Rewards.Experience(4, true, 1), "Mission XP differs from the rules.");
+            // A retried end (its reply lost) pays nothing again; the checks below see one payout.
+            using (var replayed = await Post("/Operation/Mission/end", firstEnd))
+                Check(replayed.RootElement.GetProperty("experience").GetInt64() == 0 && replayed.RootElement.GetProperty("rewards").GetArrayLength() == 0 &&
+                    replayed.RootElement.GetProperty("lootedItemRewards").GetArrayLength() == 0, "A retried mission end paid again.");
             using (var response = await client.GetAsync("/Progression"))
             using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
                 Check(json.RootElement.GetProperty("experience").GetInt64() == experienceBefore + MissionService.Rewards.Experience(4, true, 1), "Mission XP not saved.");
@@ -465,7 +494,89 @@ try
                 var held = json.RootElement.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("mixId").GetUInt32(), i => i.GetProperty("amount").GetInt64());
                 Check(held.GetValueOrDefault(commonSamples) == 5 && held.GetValueOrDefault(MissionService.RequisitionMixId) == MissionService.Rewards.Requisition(4),
                     "Looted samples or requisition not saved.");
+                Check(held.GetValueOrDefault(MissionService.MedalsMixId) == MissionService.Rewards.Medals(4), "A won mission's medals not saved.");
             }
+            // Level 11 pays half as much XP and medals again as level 10; the operation's card shows its medals; heavy loot
+            // is granted but its reply list stays empty (the client refuses {mixId, amount} there).
+            Check(MissionService.Rewards.Experience(11, true, 0) * 2 == MissionService.Rewards.Experience(10, true, 0) * 3 &&
+                MissionService.Rewards.Medals(11) * 2 == MissionService.Rewards.Medals(10) * 3, "Level 11 does not pay 50% more XP and medals than level 10.");
+            using (var created = await Post("/Operation/Create", "{\"operations\":[{\"id\":8,\"difficulty\":11,\"missions\":[{\"index\":0},{\"index\":1},{\"index\":2}]}]}"))
+            {
+                var card = created.RootElement.GetProperty("operations")[0].GetProperty("rewards")[0];
+                Check(card.GetProperty("id32").GetUInt32() == MissionService.MedalRewardMixId && card.GetProperty("amount").GetInt64() == 3 * MissionService.Rewards.Medals(11) &&
+                    card.GetProperty("isFullReward").GetBoolean(), "The operation's medal card is wrong.");
+            }
+            for (var mission = 0; mission < 2; mission++)
+                using (var ended = await Post("/Operation/Mission/end", "{\"operationId\":8,\"missionIndex\":" + mission + ",\"missionSuccess\":true,\"difficultyType\":11," +
+                    "\"objectives\":[],\"heavyLootedItems\":[{\"mixId\":" + commonSamples + ",\"amount\":2}]}"))
+                {
+                    var reply = ended.RootElement;
+                    Check(reply.GetProperty("lootedHeavyItemRewards").GetArrayLength() == 0 &&
+                        reply.GetProperty("rewards").EnumerateArray().Any(r => r.GetProperty("mixId").GetUInt32() == MissionService.MedalsMixId &&
+                            r.GetProperty("amount").GetInt64() == MissionService.Rewards.Medals(11)), "A level 11 mission's reply is wrong.");
+                }
+            Dictionary<uint, long> Inventory()
+            {
+                using var response = client.GetAsync("/Progression/inventory").Result;
+                using var json = JsonDocument.Parse(response.Content.ReadAsStringAsync().Result);
+                return json.RootElement.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("mixId").GetUInt32(), i => i.GetProperty("amount").GetInt64());
+            }
+            var afterMissions = Inventory();
+            Check(afterMissions[MissionService.MedalsMixId] == MissionService.Rewards.Medals(4) + 2 * MissionService.Rewards.Medals(11) &&
+                afterMissions[commonSamples] == 5 + 4, "Rewards of a second and third mission were not saved (each mission pays, not only the first).");
+            // Purchases: a warbond item for medals (Helldivers Mobilize item 1, page 0, 1 medal), once only; a stratagem for
+            // requisition; a ship module level for samples; refused when the balance is short or the item is paid.
+            async Task<(HttpStatusCode Status, string Body)> Buy(string path, string body)
+            {
+                using var response = await client.PostAsync(path, new StringContent(body, Encoding.UTF8, "application/json"));
+                return (response.StatusCode, await response.Content.ReadAsStringAsync());
+            }
+            var warbondBuy = await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":1,\"warId\":801}");
+            Check(warbondBuy.Status == HttpStatusCode.OK && warbondBuy.Body.Contains("1861407750") && warbondBuy.Body.Contains("659494344"), "Warbond item purchase failed: " + warbondBuy.Body);
+            var afterWarbond = Inventory();
+            Check(afterWarbond[MissionService.MedalsMixId] == afterMissions[MissionService.MedalsMixId] - 1 && afterWarbond.GetValueOrDefault(659494344u) == afterMissions.GetValueOrDefault(659494344u) + 1 &&
+                afterWarbond.ContainsKey(1861407750), "Warbond purchase not saved (medals, medals spent, item).");
+            Check((await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":1,\"warId\":801}")).Status == HttpStatusCode.BadRequest,
+                "A warbond item was sold twice.");
+            // A page's Super Credits (Helldivers Mobilize item 6: 100 into the wallet 0xCBFFC645) pay Forge Credits.
+            var creditsBuy = await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":6,\"warId\":801}");
+            var afterCredits = Inventory();
+            Check(creditsBuy.Status == HttpStatusCode.OK && creditsBuy.Body.Contains(PaidContentSet.ForgeCreditsWallet.ToString()) && !creditsBuy.Body.Contains("3422537285") &&
+                afterCredits.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) == afterWarbond.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) + 100 &&
+                !afterCredits.ContainsKey(0xCBFFC645), "A warbond page's 100 Super Credits did not pay 100 Forge Credits: " + creditsBuy.Body);
+            afterWarbond = afterCredits;
+            const uint stratagem = 2273387135;
+            var requisition = afterWarbond[MissionService.RequisitionMixId];
+            var storeBuy = await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":3608481516,\"amount\":4000}]}");
+            Check(storeBuy.Status == (requisition >= 4000 ? HttpStatusCode.OK : HttpStatusCode.BadRequest), "Store purchase answered wrongly: " + storeBuy.Body);
+            if (storeBuy.Status == HttpStatusCode.OK)
+            {
+                using var reply = JsonDocument.Parse(storeBuy.Body);
+                Check(reply.RootElement.ValueKind == JsonValueKind.Array && reply.RootElement[0].GetProperty("mixId").GetUInt32() == stratagem &&
+                    reply.RootElement[1].GetProperty("amount").GetInt64() == -4000 && Inventory()[MissionService.RequisitionMixId] == requisition - 4000,
+                    "Store purchase reply or balance wrong.");
+            }
+            Check((await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest ||
+                Inventory()[MissionService.RequisitionMixId] >= 4000, "A store purchase went through without the requisition.");
+            // The requisition terminal buys through /StoreFront/buy: an item named by its store front's salesId (store front
+            // 124284010's 3499930023, 5000 requisition), sold as /Progression/buy/v2 sells it; an unknown salesId is refused.
+            var beforeFront = Inventory().GetValueOrDefault(MissionService.RequisitionMixId);
+            var frontBuy = await Buy("/StoreFront/buy", "{\"salesId\":\"0af99da7-00bc-407c-b624-ca68865611c9\",\"amount\":1}");
+            Check(frontBuy.Status == (beforeFront >= 5000 ? HttpStatusCode.OK : HttpStatusCode.BadRequest) &&
+                (beforeFront < 5000 || Inventory()[MissionService.RequisitionMixId] == beforeFront - 5000 && Inventory().ContainsKey(3499930023)),
+                "A store front purchase by salesId answered wrongly: " + frontBuy.Body);
+            // Its reply is the warbond item's shape, {items:[...]}, the price in it (negative): the client adds them all.
+            var frontReply = Purchases.StoreFrontReply(new JsonArray(new JsonObject { ["mixId"] = 3499930023u, ["amount"] = 1L },
+                new JsonObject { ["mixId"] = MissionService.RequisitionMixId, ["amount"] = -5000L }));
+            Check(frontReply["items"] is JsonArray frontItems && frontItems.Count == 2 && (uint)frontItems[0]!["mixId"]! == 3499930023u &&
+                (long)frontItems[0]!["amount"]! == 1 && (uint)frontItems[1]!["mixId"]! == MissionService.RequisitionMixId && (long)frontItems[1]!["amount"]! == -5000,
+                "A store front purchase's reply is not {items:[the item, the price]}: " + frontReply.ToJsonString());
+            Check((await Buy("/StoreFront/buy", "{\"salesId\":\"00000000-0000-0000-0000-000000000000\",\"amount\":1}")).Status == HttpStatusCode.BadRequest,
+                "A store front purchase of an unknown salesId went through.");
+            var shipModule = await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":1,\"expectedCost\":[{\"mixId\":3992382197,\"amount\":60}]}");
+            Check(shipModule.Status == HttpStatusCode.BadRequest, "A ship module was sold without its 60 samples.");
+            Check((await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":2,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest,
+                "A ship module level was skipped.");
             using (var response = await client.GetAsync("/WarSeason/801/timeSinceStart"))
             using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
                 Check(response.StatusCode == HttpStatusCode.OK && json.RootElement.GetProperty("secondsSinceStart").GetInt64() >= 0,
@@ -588,6 +699,9 @@ try
     await AssetShareTests.Run(root, Check);
     results.Add(new { mode = "asset-share", outcome = "passed" });
     Console.WriteLine("PASS asset share: every game loads the lobby's packages less its own, a joiner's new package reaches the others, malformed lists dropped, each player's projectile swaps reach every game");
+    PickupShareTests.Run(root, Check);
+    results.Add(new { mode = "pickup-share", outcome = "passed" });
+    Console.WriteLine("PASS pickup share: a pickup pays every backend in the lobby once (a joiner's through the host), not players left out, not from outside the lobby; receipts survive a restart");
     RecordGuardTests.Run(root, Check);
     await DirectoryTests.Run(root, Check);
     results.Add(new { mode = "directory", outcome = "passed" });
