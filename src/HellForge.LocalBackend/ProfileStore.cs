@@ -118,6 +118,8 @@ public sealed class ProfileStore : IDisposable
                 body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
                 if (section == "inventory")
                     body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
+                else if (section == "progression" && Ownership != null)
+                    body = Ownership.FilterProgressionResponse(body);
             }
             return true;
         }

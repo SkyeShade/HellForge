@@ -82,6 +82,9 @@ public static partial class LocalBackend
     // A "bodySource" names an embedded data file and optional "#key" (default "items") whose value is the
     // body: the item catalogue and progression data rebuilt from the user's own snapshot by
     // scripts/BuildItemCatalog.py, and the game client's feature switches read from it (game-client-config.json).
+    // "reverse" serves an array source back to front: the warbond list (/SeasonPass) was read from the client's memory,
+    // which holds it oldest first, and served so the game listed it oldest first, Helldivers Mobilize at the top, where
+    // the live game lists the newest first.
     public static Dictionary<string, JsonElement> LoadStartupFixtures()
     {
         using var document = LoadResource("startup-fixtures.json");
@@ -95,6 +98,9 @@ public static partial class LocalBackend
                 using var data = LoadResource(parts[0]);
                 body = data.RootElement.GetProperty(parts.Length > 1 ? parts[1] : "items").Clone();
             }
+            if (endpoint.TryGetProperty("reverse", out var reverse) && reverse.GetBoolean())
+                body = JsonSerializer.SerializeToElement(new JsonArray([.. body.EnumerateArray().Reverse()
+                    .Select(entry => JsonNode.Parse(entry.GetRawText()))]), BackendJson.Default.JsonNode);
             fixtures.Add(endpoint.GetProperty("path").GetString()!, body);
         }
         return fixtures;

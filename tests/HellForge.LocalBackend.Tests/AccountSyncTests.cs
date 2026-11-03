@@ -151,6 +151,20 @@ static class AccountSyncTests
         check(!served.Contains(ids.OwnedWarbondItem) && !served.Contains(ids.OtherWarbondItem), "A premium warbond's item was served without its token.");
         check(served.Contains(MobilizeToken) && served.Contains(ids.MobilizeItem) && served.Count > 1000, "The free warbond or ordinary items were withheld.");
         check(!served.Overlaps(DlcGear), "Steam DLC gear was served without a snapshot.");
+
+        // Its pages show nothing bought on a premium warbond it does not own; the free warbond's and an owned one's stay,
+        // and the profile keeps them all.
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var mobilize = paid.Warbonds.Single(w => w.Tokens.Length == 0);
+        HashSet<long> Bought(ProfileStore store) =>
+            store.TryGetResponse("/Progression", out var body) ? [.. body.GetProperty("purchasedSeasonPassItems").EnumerateArray().Select(i => i.GetInt64())] : [];
+        var stored = ((JsonArray)unlockAll.Current()["progression"]!["purchasedSeasonPassItems"]!).Count;
+        var shown = Bought(unlockAll);
+        check(shown.Count > 0 && !shown.Overlaps(steeled.Items.Select(i => i.ItemId)) && mobilize.Items.All(i => shown.Contains(i.ItemId)),
+            "A premium warbond not owned shows its items bought, or the free warbond's purchases were dropped.");
+        unlockAll.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(steeled.Items.All(i => Bought(unlockAll).Contains(i.ItemId)), "An owned premium warbond lost its purchases.");
+        check(((JsonArray)unlockAll.Current()["progression"]!["purchasedSeasonPassItems"]!).Count == stored, "Serving changed the profile's purchases.");
     }
 
     static void SuperCredits(string root, Action<bool, string> check)

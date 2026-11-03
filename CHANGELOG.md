@@ -22,6 +22,14 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
+  because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
+  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
+- Premium warbonds you don't own look locked in Acquisitions: their art is darkened, with a padlock in the middle and
+  lines in from the corners, and their pages show nothing bought (an unlock-all profile showed every item there as
+  bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
+  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
+  (#206).
 
 - Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
@@ -81,6 +89,8 @@ On `dev`, since 0.3.0-beta.
   bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
 - New profiles (Starter) had an empty Ship Module page ("under construction"). Every profile now has the six ship
   module tracks (#233).
+- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
+  Mobilize at the top (#206).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only

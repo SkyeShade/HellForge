@@ -301,7 +301,21 @@ try
                 progress: Progress);
             active = built;
             modProblems.AddRange(buildProblems);
-            var staged = ModStaging.Stage(modInstall, active);
+            // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
+            // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
+            string? warbondLocks = null;
+            try
+            {
+                var progressionData = Path.Combine(modInstall.App, "progression-data.json");
+                if (File.Exists(progressionData))
+                    warbondLocks = WarbondLocks.Prepare(modInstall,
+                        PremiumContent.ForSnapshot(progressionData, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current()), Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Locked warbond art: not shown this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, warbondLocks != null ? [warbondLocks] : null);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))

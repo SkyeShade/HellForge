@@ -323,12 +323,7 @@ public static class IconImage
     // The full BC1 mip chain (box-filtered, largest level first) of RGBA pixels drawn over black.
     public static byte[] Bc1Mips(int width, int height, byte[] rgba)
     {
-        var pixels = new (int R, int G, int B)[width * height];
-        for (var i = 0; i < pixels.Length; i++)
-        {
-            int a = rgba[4 * i + 3];
-            pixels[i] = ((rgba[4 * i] * a + 127) / 255, (rgba[4 * i + 1] * a + 127) / 255, (rgba[4 * i + 2] * a + 127) / 255);
-        }
+        var pixels = OverBlack(rgba, width * height);
         using var output = new MemoryStream();
         while (true)
         {
@@ -337,6 +332,25 @@ public static class IconImage
             int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
             (pixels, width, height) = (HalfPixels(pixels, width, height, w, h), w, h);
         }
+    }
+
+    // One BC1 level of RGBA pixels drawn over black: a texture without mips.
+    public static byte[] Bc1Level(int width, int height, byte[] rgba)
+    {
+        using var output = new MemoryStream();
+        WriteBc1Level(output, OverBlack(rgba, width * height), width, height);
+        return output.ToArray();
+    }
+
+    static (int R, int G, int B)[] OverBlack(byte[] rgba, int count)
+    {
+        var pixels = new (int R, int G, int B)[count];
+        for (var i = 0; i < count; i++)
+        {
+            int a = rgba[4 * i + 3];
+            pixels[i] = ((rgba[4 * i] * a + 127) / 255, (rgba[4 * i + 1] * a + 127) / 255, (rgba[4 * i + 2] * a + 127) / 255);
+        }
+        return pixels;
     }
 
     // A level's BC1 blocks, rows of blocks top to bottom; edge blocks repeat the last row and column.

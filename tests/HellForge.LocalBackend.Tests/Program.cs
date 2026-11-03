@@ -145,6 +145,10 @@ try
 
     // Profile-backed startup endpoints: defaults, persistence, exclusivity, validation and session audit.
     var fixtures = LocalBackend.LoadStartupFixtures();
+    // The warbond list goes out newest first, as the live game lists it: Helldivers Mobilize last.
+    var warbondList = fixtures["/SeasonPass"].EnumerateArray().Select(w => w.GetProperty("id32").GetUInt32()).ToList();
+    Check(warbondList.Count > 1 && warbondList[^1] == HellForge.Core.PremiumContent.FreeWarbond && warbondList[0] != HellForge.Core.PremiumContent.FreeWarbond,
+        "The warbond list is not served newest first.");
     var profilePaths = new[] { "/Progression", "/Progression/inventory", "/Progression/Items/Customize/v2" };
     var profileDirectory = Path.Combine(root, "profile");
     var profileFile = Path.Combine(profileDirectory, ProfileStore.FileName);

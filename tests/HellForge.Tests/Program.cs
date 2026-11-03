@@ -493,6 +493,7 @@ Test("Launch options are read as Steam takes them, and never set what a session 
 ModTests.Register(Test, Check, Reject, root);
 StatsTests.Register(Test, Check, Reject, root);
 DataBuilderTests.Register(Test, Check, Reject, root);
+WarbondLocksTests.Register(Test, Check, Reject, root);
 SdkTests.Register(Test, Check, Reject, root);
 LiveEditTests.Register(Test, Check, Reject, root);
 ModKitTests.Register(Test, Check, Reject, root);

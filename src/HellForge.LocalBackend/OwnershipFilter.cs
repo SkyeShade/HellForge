@@ -9,6 +9,8 @@ namespace HellForge.LocalBackend;
 //   holds are served even when the profile lacks them, so premium ownership always follows the latest sync, whatever
 //   the player chose to import.
 // - a premium warbond's items only when one of its tokens is owned.
+// /Progression drops the purchases on a premium warbond's pages without an owned token, so its pages show nothing bought
+// (an unlock-all profile has bought every page). The profile keeps them for when the warbond is owned.
 // Everything else passes through. Without a verified snapshot no paid item is served.
 public sealed class OwnershipFilter
 {
@@ -56,6 +58,21 @@ public sealed class OwnershipFilter
         foreach (var (id, item) in owned)
             if (!present.Contains(id)) served.Add(item.DeepClone());
         node["items"] = served;
+        return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
+    }
+
+    // The progression section as served: purchasedSeasonPassItems without the items of a premium warbond not owned.
+    public JsonElement FilterProgressionResponse(JsonElement progressionSection)
+    {
+        var locked = Paid.Warbonds.Where(warbond => warbond.Tokens.Length > 0 && !warbond.Tokens.Any(owned.ContainsKey))
+            .SelectMany(warbond => warbond.Items.Select(item => item.ItemId)).ToHashSet();
+        if (locked.Count == 0 || !progressionSection.TryGetProperty("purchasedSeasonPassItems", out var bought) || bought.ValueKind != JsonValueKind.Array)
+            return progressionSection;
+        var node = JsonNode.Parse(progressionSection.GetRawText())!.AsObject();
+        var served = new JsonArray();
+        foreach (var item in bought.EnumerateArray())
+            if (!(item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var id) && locked.Contains(id))) served.Add(JsonNode.Parse(item.GetRawText()));
+        node["purchasedSeasonPassItems"] = served;
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
 
