@@ -544,6 +544,15 @@ try
             }
             Check((await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest ||
                 Inventory()[MissionService.RequisitionMixId] >= 4000, "A store purchase went through without the requisition.");
+            // The requisition terminal buys through /StoreFront/buy: an item named by its store front's salesId (store front
+            // 124284010's 3499930023, 5000 requisition), sold as /Progression/buy/v2 sells it; an unknown salesId is refused.
+            var beforeFront = Inventory().GetValueOrDefault(MissionService.RequisitionMixId);
+            var frontBuy = await Buy("/StoreFront/buy", "{\"salesId\":\"0af99da7-00bc-407c-b624-ca68865611c9\",\"amount\":1}");
+            Check(frontBuy.Status == (beforeFront >= 5000 ? HttpStatusCode.OK : HttpStatusCode.BadRequest) &&
+                (beforeFront < 5000 || Inventory()[MissionService.RequisitionMixId] == beforeFront - 5000 && Inventory().ContainsKey(3499930023)),
+                "A store front purchase by salesId answered wrongly: " + frontBuy.Body);
+            Check((await Buy("/StoreFront/buy", "{\"salesId\":\"00000000-0000-0000-0000-000000000000\",\"amount\":1}")).Status == HttpStatusCode.BadRequest,
+                "A store front purchase of an unknown salesId went through.");
             var shipModule = await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":1,\"expectedCost\":[{\"mixId\":3992382197,\"amount\":60}]}");
             Check(shipModule.Status == HttpStatusCode.BadRequest, "A ship module was sold without its 60 samples.");
             Check((await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":2,\"expectedCost\":[]}")).Status == HttpStatusCode.BadRequest,
