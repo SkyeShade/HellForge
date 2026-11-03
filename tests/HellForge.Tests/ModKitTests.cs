@@ -7,6 +7,31 @@ static class ModKitTests
 
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A pinned tool is found where its archive unpacks: HDiffPatch's one linux64 folder becomes the tool's own (issue 112)", () =>
+        {
+            // an archive laid out as hdiffpatch_v5.1.3_bin_linux64.zip is: one top-level linux64/ holding the programs
+            var folder = Directory.CreateDirectory(Path.Combine(root, "tool-unpack")).FullName;
+            var zip = Path.Combine(folder, "hdiffpatch_v5.1.3_bin_linux64.zip");
+            using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+                foreach (var name in new[] { "linux64/hdiffz", "linux64/hpatchz" })
+                    using (var entry = new StreamWriter(archive.CreateEntry(name).Open())) entry.Write("#!/bin/sh\n");
+            var bytes = File.ReadAllBytes(zip);
+            var pinned = ModKit.Tools(ModSdk.Find(Directory.GetCurrentDirectory())!).Single(t => t.Name == "hpatchz-linux") with
+            {
+                Url = "https://example.invalid/hdiffpatch_v5.1.3_bin_linux64.zip", Bytes = bytes.Length,
+                Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))
+            };
+            var sdk = new ModSdk(folder, Path.Combine(folder, "tools"), folder, folder);
+            using var http = new HttpClient(new OneFile(bytes));
+            ModKit.InstallToolAsync(http, sdk, pinned, _ => { }, CancellationToken.None).GetAwaiter().GetResult();
+            check(File.Exists(ModKit.ToolPath(sdk, pinned)) && ModKit.ToolPath(sdk, pinned).EndsWith(Path.Combine("hpatchz-linux", "hpatchz"), StringComparison.Ordinal),
+                "The Linux hpatchz pin does not name where its archive unpacks: " + ModKit.ToolPath(sdk, pinned));
+            var failed = false;
+            try { ModKit.InstallToolAsync(http, sdk, pinned with { Exe = "linux64/hpatchz" }, _ => { }, CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (InvalidDataException) { failed = true; }
+            check(failed, "A pin naming the archive's top folder, which the unpack removes, was installed.");
+        });
+
         test("The mod SDK is found in the repository and in an installation, with its template and tool pins", () =>
         {
             var repository = ModSdk.Find(Directory.GetCurrentDirectory());
@@ -18,7 +43,7 @@ static class ModKitTests
                 tools.Single(t => t.Name == "zig-linux") is { Ide: false, Version: "0.17.0", Platform: "linux-x64", Exe: "zig", Bytes: 57332648L,
                     Sha256: "1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026",
                     Url: "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz" } &&
-                tools.Single(t => t.Name == "hpatchz-linux") is { Ide: false, Version: "5.1.3", Platform: "linux-x64", Exe: "linux64/hpatchz" } &&
+                tools.Single(t => t.Name == "hpatchz-linux") is { Ide: false, Version: "5.1.3", Platform: "linux-x64", Exe: "hpatchz" } &&
                 tools.All(t => t.Sha256.Length == 64), "Tool pins, including the native Linux Zig and hpatchz.");
             var placeholder = new ModTool("native-patch", "5.1.3", "https://example.invalid/tool.tar.gz", new string('0', 64),
                 "hpatchz", false, "linux-x64");
@@ -371,5 +396,12 @@ static class ModKitTests
             check(session >= 0 && build > session && marker > build && space > marker,
                 "The wrapper must build source mods before the namespace and tell the session they were built natively.");
         });
+    }
+
+    // An HTTP client's handler that answers every request with these bytes.
+    sealed class OneFile(byte[] bytes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) });
     }
 }
