@@ -122,6 +122,12 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Sync Inventory's "The capture could not start: see proxy.log" now says why and what to do: a security program
+  blocking or stopping the capture (named, with the exact file to add to its exclusions), another program on port 443
+  (named), the certificate refused, no internet, or the administrator prompt declined; a hosts file problem (below)
+  also names the security program to allow. A capture slow to start is reported after a minute. An
+  earlier sync's capture still running is stopped by the next sync, so restarting the PC is no longer needed for it
+  (#160).
 - In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
   it again, as if they were gone. They were kept, and they now show as saved (#234).
 - The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
@@ -168,6 +174,11 @@ On `dev`, since 0.3.0-beta.
   and the session log says if the broker stops during play.
 - The network census in every session wiped the game's error code after each call it watches (connections, name
   lookups, programs started): a failed connection read back as no error.
+- A game that crashed while starting showed "The game could not be connected to the local backend.", as if HellForge's
+  backend were the problem (#203, #212). It now says the game closed while starting, with its exit code and, when
+  Windows recorded the crash, the file the game crashed in. When that file belongs to another program that puts itself
+  into games (an overlay, a recorder, RGB or security software), the message names it as the one to close. The crash
+  report carries Windows' record too, also for crashes later in a session.
 - When Windows 11's Smart App Control blocked HellForge, the launcher showed only Windows' "An Application Control
   policy has blocked this file". It now says which file Windows blocked, that it is because HellForge's files aren't
   signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
@@ -310,6 +321,9 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A session's `result.json` has `prepare` and `connect`, how the two launch edits ended (`outcome`, the wait, and when
+  `game.dll` appeared), and `windowsCrash`: Windows' record of a game crash (`module`, `offset`, `code`, `modulePath`,
+  `owner`), or `none` (#203, #212).
 - A sandboxed session's `result.json` has `steamInput` once the Steam broker has asked Steam: `controllers` (names),
   `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null). `HellForge.Cli play` writes a
   `steam-input` event with the note when it changes; `SteamInputNote.Of` reads it.
