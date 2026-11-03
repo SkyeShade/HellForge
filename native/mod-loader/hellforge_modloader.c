@@ -1079,10 +1079,15 @@ typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
 static void NoteLoadFailure(const HfMod* mod, DWORD loadError)
 {
     int blocked = loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582);
+    if (blocked)
+    {
+        Note("%s: not loaded (the DLL could not be loaded: Windows error %lu, an Application Control policy such as Smart App "
+            "Control blocked it)", mod->id, (unsigned long)loadError);
+        return;
+    }
     char error[288]; /* "error 126: The specified module could not be found." (mod_identity.c) */
     LoadError(loadError, error, sizeof error);
-    Note("%s: not loaded (the DLL could not be loaded: Windows %s%s)", mod->id, error,
-        blocked ? ", an Application Control policy such as Smart App Control blocked it" : "");
+    Note("%s: not loaded (the DLL could not be loaded: Windows %s)", mod->id, error);
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

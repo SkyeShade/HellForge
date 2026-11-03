@@ -140,7 +140,7 @@ public static unsafe class ModLoaderSmoke
         Expect(Log("modloader.log").Contains($"test.hook: version 9.9.9-smoke, hook_test_mod.dll, SHA-256 {hookHash}"),
             "modloader.log gives a code mod's version and its DLL's SHA-256");
         Expect(Log("modloader.log").Contains("test.hook2: version not given, hook_test_mod.dll, SHA-256 " + hookHash), "A mod without a version line says so");
-        Expect(Log("modloader.log").Contains("test.missing: not loaded (the DLL could not be loaded: error 126: "), "A DLL that does not load gives its error");
+        Expect(Log("modloader.log").Contains("test.missing: not loaded (the DLL could not be loaded: Windows error 126: "), "A DLL that does not load gives its error");
         Expect(CloudSmoke.OpensDated(Path.Combine(root, "modloader.log")), "modloader.log opens with its dated line");
         Expect(CloudSmoke.OpensDated(Path.Combine(root, "mod-test.hook.log")), "A mod's log opens with its dated line");
         Expect(target(5) == 2016, "Both detours run, each calling the next, then the original");
