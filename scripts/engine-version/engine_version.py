@@ -52,6 +52,7 @@ ENGINE_SOURCES = (
     'data/profile-templates.json',
     'data/progression-data.json',
     'data/verified-mods.json',
+    'data/forge-credits/',
     # the build and its pins, and the scripts the package ships
     'scripts/Build-Engine.ps1',
     'scripts/Get-BuildTools.ps1',
