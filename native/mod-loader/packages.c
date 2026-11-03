@@ -24,7 +24,6 @@
 #include "reference_data.h"
 
 #define TICK_UPDATE 0x13270B0u
-#define TICK_MAX 16
 #define PKG_MAX_HELD 64
 #define PKG_OWN_RESERVE 16
 #define PKG_TIMEOUT_MS 90000u
@@ -38,8 +37,10 @@ typedef struct TickCallback { HfMod* mod; HfTickCallback callback; void* user; }
 static TickFn g_tickOriginal;
 static int g_tickState;                 /* 0 not hooked yet, 1 hooked, -1 refused */
 static ULONGLONG g_tickFirstTry;
-static TickCallback g_ticks[TICK_MAX];
-static volatile LONG g_tickCount;
+/* The callbacks, with no limit. TickDetour reads them with no lock (a callback may register another), so a full table is
+ * never changed: a copy twice its size replaces it, and the old one stays allocated for an update still reading it. */
+typedef struct TickTable { volatile LONG count; LONG capacity; TickCallback entries[]; } TickTable;
+static TickTable* volatile g_ticks;
 static volatile LONG64 g_tickLast;      /* when the game thread last ran it (GetTickCount64) */
 
 enum { PKG_WAITING, PKG_RESIDENT, PKG_FAILED };
@@ -292,8 +293,9 @@ static void TickDetour(void* manager, float dt)
     InterlockedExchange64(&g_tickLast, (LONG64)GetTickCount64());
     EventsTick();
     PackagesRequest();
-    LONG count = g_tickCount;
-    for (LONG i = 0; i < count; i++) g_ticks[i].callback(g_ticks[i].mod, dt, g_ticks[i].user);
+    TickTable* ticks = g_ticks;
+    LONG count = ticks ? ticks->count : 0;
+    for (LONG i = 0; i < count; i++) ticks->entries[i].callback(ticks->entries[i].mod, dt, ticks->entries[i].user);
     g_tickOriginal(manager, dt);
 }
 
@@ -322,11 +324,22 @@ static int ApiOnGameThread(HfMod* mod, HfTickCallback callback, void* user)
     if (mod == NULL || callback == NULL) return 0;
     if (g_tickState < 0) { ApiLog(mod, "on_game_thread: the game thread's update is not hooked (modloader.log says why)"); return 0; }
     AcquireSRWLockExclusive(&g_lock);
-    int ok = g_tickCount < TICK_MAX;
-    if (ok) { g_ticks[g_tickCount] = (TickCallback){mod, callback, user}; InterlockedIncrement(&g_tickCount); }
+    TickTable* ticks = g_ticks;
+    if (ticks == NULL || ticks->count == ticks->capacity)
+    {
+        LONG capacity = ticks ? ticks->capacity * 2 : 16;
+        TickTable* grown = malloc(sizeof *grown + sizeof grown->entries[0] * capacity);
+        if (grown == NULL) { ReleaseSRWLockExclusive(&g_lock); ApiLog(mod, "on_game_thread: out of memory"); return 0; }
+        grown->capacity = capacity;
+        grown->count = ticks ? ticks->count : 0;
+        if (ticks) memcpy(grown->entries, ticks->entries, sizeof grown->entries[0] * ticks->count);
+        InterlockedExchangePointer((PVOID volatile*)&g_ticks, grown);
+        ticks = grown;
+    }
+    ticks->entries[ticks->count] = (TickCallback){mod, callback, user};
+    InterlockedIncrement(&ticks->count);
     ReleaseSRWLockExclusive(&g_lock);
-    if (!ok) ApiLog(mod, "on_game_thread: mods registered %d callbacks already", TICK_MAX);
-    return ok;
+    return 1;
 }
 
 /* SDK 6: a catalogue package loaded and held for the session. */
