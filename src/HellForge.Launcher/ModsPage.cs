@@ -10,7 +10,7 @@ using HellForge.Core;
 namespace HellForge.Launcher;
 
 // The Mods page: every mod in <installation>/mods as a row, in two groups: gameplay mods (friends need the same ones;
-// the order is up to them) and cosmetic ones (packs of game patches; only on this PC). Within a group a row is dragged anywhere
+// the order is up to them) and client-only ones (cosmetic packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
 // on it into order: the bottom mod loads first, so the top one wins where two change the same thing (ModCatalog.
 // LoadOrder). Switches, the order and each pack's options are saved in hellforge-mods.json (ModSettings). A session
 // loads the enabled mods when it starts, so the page is locked while one runs (docs/mods.md). The page follows the
@@ -164,8 +164,8 @@ public partial class MainWindow
             var number = 0;
             AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "GAMEPLAY", "Friends need the same ones; keeping the same order avoids surprises.",
                 "No gameplay mods.", ref number);
-            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "COSMETIC", "Only on your PC: friends need not have the same ones.",
-                "No cosmetic mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) with Add mods...", ref number);
+            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "CLIENT ONLY", "Only on your PC: friends need not have the same ones.",
+                "No client-only mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) or a Lua mod with Add mods...", ref number);
         }
         AddModSyncCard(paths.ModsFolder);
         SetModsLocked(modsLocked);
