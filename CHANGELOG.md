@@ -112,6 +112,13 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- On difficulty 11's larger maps the ICBM silo's lower platform, where you raise the manual locks, could sit under the
+  map's water, and other sunken objectives could too. The game shapes each patch of ground by its distance from the
+  nearest road, reaching its lowest point 64 m out. Larger maps keep level 10's number of patches spread wider, so
+  far more ground reached the bottom, including under objectives. That 64 m now grows with the patches
+  (`HELLFORGE_D11_TERRAIN_RAMP=0` keeps 64 m, for comparing), which also takes away the flat terraces between roads.
+  The ground within an objective's footprint also never goes below 0 m, above every planet's water
+  (`HELLFORGE_D11_DRY_OBJECTIVES=0` turns that off); the session log counts the heights raised.
 - A difficulty 11 mission could crash while loading when its map had more than 512 mines: the game copies every mine
   into a list of 512 without checking, and the 513th overwrote the list's count. Mines past the 512th are now left out
   (no mine there), and the session log counts them, as it already did for the enemy director's 128 spawners.

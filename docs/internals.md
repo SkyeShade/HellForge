@@ -440,6 +440,14 @@ spacing grows with the disk too (0xF3FB04), rounded up to a quarter metre so the
 inexact spacing makes near-degenerate circles and extra vertices, overruns the vertex array, and the pass retries
 forever (the war table's "Receiving Geodetic Data"). At 2 x the spacing is 24.5 m.
 
+GenerateSubregionHeights (op 4, 0xF64E30) gives each area its cell type's curve at `t = clamp(d / 64 m)`, `d` the
+distance to the nearest route point (the 1/64 at 0xF651FA). With the cells farther apart, far more ground lies at
+`t = 1`: flat terraces, and lake curves (4-13 m below 0) at their deepest under objectives. An objective in a low cell
+takes a corner height of exactly 0 (0xF3B957), so its pad followed the area layer under the region's water (-0.25 to
+-4.5 m), and an ICBM silo's lower platform flooded. Above 1, the ramp is 64 m x spacing / 40 (difficulty_terrain.c), and
+the two stores of the area height (0xF655A9, 0xF656F9) keep it at or above 0 within an objective's stamp radius + 16 m
+(the important locations, G+0x8996B0, 0x108 each, count G+0x11A715C; the radius is the location item's +0xD8).
+
 The SEAF Artillery fires the projectile of the shell at the head of its queue. Its six shells' rows (71, 339, 99, 145,
 10, 92) fly alike: 300 m/s, gravity x 10, drag 0.5. That reaches about 710 m, and a 2 x map is up to 1550 m across. The
 aim (0x617E50, solver 0x13B1BD0) and the landing prediction (0x13B18B0) read speed and gravity from the row the shell
