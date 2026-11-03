@@ -443,8 +443,12 @@ public sealed class ProfileStore : IDisposable
     // - level 1's unlock item (0xF96CE664, progression category 16): the onboarding chain's nine rewards unlock levels 2
     //   to 10 (its last, 0xA0AE653A, is level 10's), so without it level 1 was locked: no level-1 missions on the war
     //   table, and its difficulty bar went to the highest level when a planet's view closed.
+    // - the six ship module tracks' required items (progression package type 1, requiredItems): without them the Ship
+    //   Module page was empty ("under construction"). The seventh type-1 package (1555987791, 0x0FB3AAB1) is not on a
+    //   live account and is left out.
     // Missing ones are added to every profile, new or saved before this.
-    static readonly uint[] StandardItems = [1497469599, 3787370254, 0xF96CE664];
+    static readonly uint[] StandardItems = [1497469599, 3787370254, 0xF96CE664,
+        0xCD183602, 0xCBEB8825, 0x7B685872, 0x53939628, 0xE3D5F786, 0xE0623D4C];
 
     static bool GrantStandardItems(JsonObject profile)
     {
