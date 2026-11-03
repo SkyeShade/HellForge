@@ -166,14 +166,7 @@ public partial class MainWindow
         if (syncProxy == null || syncProfile == null || syncDir == null || syncSnapshotDir == null) return;
         if (!syncProxy.HasExited)
         {
-            if (!syncGameOpened && InventorySync.IsListening(syncDir)) OpenGameForSync();
-            else if (!syncGameOpened && !syncSlowNoted && DateTime.UtcNow - syncStartedUtc > SyncReadyWarning && paths.InstallRoot != null)
-            {
-                syncSlowNoted = true;
-                _ = ReportStartFailure(syncDir, new CaptureFailure(CaptureProblem.NotReady, null), ExpectedProxy(paths.InstallRoot));
-            }
-            else if (!syncTaken && InventorySync.IsSealed(syncDir)) TakeCapture(syncProfile, syncDir, syncSnapshotDir);
-            else if (syncTaken) WarnIfGameStillOpen(syncDir);
+            WatchCapture(syncProfile, syncDir, syncSnapshotDir);
             return;
         }
         var exitCode = syncProxy.ExitCode;
@@ -195,6 +188,20 @@ public partial class MainWindow
         (syncProfile, syncDir, syncSnapshotDir) = (null, null, null);
         (syncTaken, syncGameWarned) = (false, false);
         UpdateSyncStatus();
+    }
+
+    // While the capture runs: the game opened once it listens, a slow start reported once, the capture taken once
+    // sealed, and after that a game it could not close.
+    void WatchCapture(LocalProfile profile, string folder, string snapshot)
+    {
+        if (!syncGameOpened && InventorySync.IsListening(folder)) OpenGameForSync();
+        else if (!syncGameOpened && !syncSlowNoted && DateTime.UtcNow - syncStartedUtc > SyncReadyWarning && paths.InstallRoot != null)
+        {
+            syncSlowNoted = true;
+            _ = ReportStartFailure(folder, new CaptureFailure(CaptureProblem.NotReady, null), ExpectedProxy(paths.InstallRoot));
+        }
+        else if (!syncTaken && InventorySync.IsSealed(folder)) TakeCapture(profile, folder, snapshot);
+        else if (syncTaken) WarnIfGameStillOpen(folder);
     }
 
     // The capture closes the sync's game itself; one still open well after the capture was taken is one it could not end.
