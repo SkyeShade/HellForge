@@ -1115,6 +1115,10 @@ static CamPoseFn g_camSetPosition, g_camSetRotation;
 static CamRangeFn g_camSetFar;
 /* the near-player tile's replay moves the merge cameras' per-job positions (difficulty_world_terrain.c) */
 static int TerrainNearCamShift(uint64_t camera, uintptr_t at, const float* v, float* out);
+/* and its test eye (HELLFORGE_XL_EYE) takes the gameplay camera's pose */
+static int TerrainNearEyePosition(uint64_t camera, uintptr_t at, const float* v, float* out);
+static int TerrainNearEyeRotation(uintptr_t at, float* out);
+static int TerrainNearEyeFar(uint64_t camera);
 typedef struct { uintptr_t at; uint64_t camera; volatile LONG calls; float position[3]; } CamCaller;
 static CamCaller g_camCallers[48];
 static volatile LONG g_camCallerCount;
@@ -1173,11 +1177,14 @@ static void WorldCamSetPosition(uint64_t camera, uint32_t node, const float* v)
     }
     float shifted[3];
     if (v != NULL && TerrainNearCamShift(camera, at, v, shifted)) v = shifted;
+    else if (TerrainNearEyePosition(camera, at, v, shifted)) { g_camSetPosition(camera, node, shifted); if (g_camSetFar) g_camSetFar(camera, 20000.0f); return; }
     g_camSetPosition(camera, node, v);
 }
 
 static void WorldCamSetRotation(uint64_t camera, uint32_t node, const float* v)
 {
+    float eye[4];
+    if (TerrainNearEyeRotation((uintptr_t)__builtin_return_address(0), eye)) { g_camSetRotation(camera, node, eye); return; }
     /* the rotation is set right after the position by the same code: its caller is the position's caller + a few bytes,
      * so the camera is matched instead (the last camera the vantage caller positioned) */
     uintptr_t at = g_vantageCaller;
@@ -1189,6 +1196,7 @@ static void WorldCamSetRotation(uint64_t camera, uint32_t node, const float* v)
 
 static void WorldCamSetFar(uint64_t camera, float v)
 {
+    if (TerrainNearEyeFar(camera)) { g_camSetFar(camera, 20000.0f); return; }
     LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48;
     for (LONG i = 0; g_vantageOn && i < n; i++)
         if (g_camCallers[i].at == g_vantageCaller && g_camCallers[i].camera == camera) { g_camSetFar(camera, 30000.0f); return; }
