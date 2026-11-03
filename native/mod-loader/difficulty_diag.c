@@ -421,7 +421,7 @@ static int WatchSpawners(void)
 static int WatchMines(void)
 {
     static LONG dropped;
-    LONG left = g_minesLeftOut;
+    LONG left = g_minesLeftOut != NULL ? *g_minesLeftOut : 0;
     if (left == dropped) return 0;
     dropped = left;
     Note("difficulty: the enemy director's 512 mines are full: %ld more left out so far (no mine there)", left);

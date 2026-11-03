@@ -46,9 +46,9 @@ static const uint8_t kMineStub[30] = {
     0x3D, 0x00, 0x02, 0x00, 0x00,                                     /*  6 cmp eax, 512 */
     0x73, 0x05,                                                       /* 11 jae 18 */
     0xE9, 0, 0, 0, 0,                                                 /* 13 jmp 0xAD36A9 (the add; rel32 at 14) */
-    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 18 lock inc dword [rip+g_minesLeftOut] (rel32 at 21) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 18 lock inc dword [rip+the count left out] (rel32 at 21) */
     0xE9, 0, 0, 0, 0};                                                /* 25 jmp 0xAD3DBD (after the add; rel32 at 26) */
-static volatile LONG g_minesLeftOut;
+static volatile LONG* g_minesLeftOut; /* on the stub's second page, read-write: within the stub's rel32 reach */
 /* The mission-end telemetry (0x1347A10: [0x347CE18]+0x31820) keeps 16 objective instances (count +0x319A0) and its reader
  * (0x13462C0) two 16-place stack arrays: the count and the loop stop at 16. */
 #define DIF_TELEMETRY_COUNT_SITE 0x1347D77u
@@ -949,14 +949,16 @@ static const char* JumpToTelemetry(DifficultyInstall* d)
     return NULL;
 }
 
-/* The mine list's limit: its stub on a page of its own, then the count's load sent to it. */
+/* The mine list's limit: its stub on a page of its own and the count it leaves out on the next one (both within 2 GB of
+ * game.dll, which the stub's rel32 needs), then the count's load sent to it. */
 static const char* InstallMineLimit(DifficultyInstall* d)
 {
-    uint8_t* stub = AllocateNearGame(d->game, 0x1000);
+    uint8_t* stub = AllocateNearGame(d->game, 0x2000);
     if (stub == NULL) return "no memory within 2 GB of game.dll for the director's mine list";
     memcpy(stub, kMineStub, sizeof kMineStub);
     int32_t rel = (int32_t)(int64_t)(d->game + DIF_MINE_ADD - (uintptr_t)(stub + 18)); memcpy(stub + 14, &rel, 4);
-    rel = (int32_t)(int64_t)((uintptr_t)&g_minesLeftOut - (uintptr_t)(stub + 25)); memcpy(stub + 21, &rel, 4);
+    g_minesLeftOut = (volatile LONG*)(stub + 0x1000);
+    rel = (int32_t)(int64_t)((uintptr_t)g_minesLeftOut - (uintptr_t)(stub + 25)); memcpy(stub + 21, &rel, 4);
     rel = (int32_t)(int64_t)(d->game + DIF_MINE_DONE - (uintptr_t)(stub + 30)); memcpy(stub + 26, &rel, 4);
     DWORD protect;
     if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the director's mine list stub could not be made executable";
