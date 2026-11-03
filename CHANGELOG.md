@@ -27,6 +27,7 @@ On `dev`, since 0.3.0-beta.
   once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
   (#206).
 - Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
+<<<<<<< HEAD
   the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts.
 - Forge Credits are earned: a pile picked up on a mission pays everyone in the squad the same amount, as Super Credits
   do in the live game, and your balance shows where Super Credits did. On every profile but unlock-all, a premium
@@ -34,6 +35,9 @@ On `dev`, since 0.3.0-beta.
   you don't own still can't be bought. Unlock-all profiles open your owned warbonds as before.
 - Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
   in the squad. Premium warbonds your profile's sync shows you don't own no longer offer a buy button.
+=======
+  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
+>>>>>>> forge-credits
 
 ### Changed
 
