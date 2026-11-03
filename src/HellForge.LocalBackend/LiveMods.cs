@@ -187,6 +187,7 @@ public sealed class LiveMods
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             log($"Live mods {change.Txn}: the session's mods could not be recorded: {error.Message}");
+            Changed?.Invoke(change.Set); // the game plays them all the same, and joins wait until this says so
             return new(true, false, change.Described, ["The session's mods could not be recorded."], "Restart the session to be sure of its mods.", "");
         }
         finally { one.Release(); }

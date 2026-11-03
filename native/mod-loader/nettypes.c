@@ -4,7 +4,7 @@
  * a mod that asks (live_mods.c, SDK 16). Included by hellforge_modloader.c after the field type table's readers.
  *
  * Each type is as wide as the widest of the loaded mods' asks whose expectation (kind, width, minimum) is the game's own
- * type, else the game's own width; an ask that expects something else leaves the type alone (logged). Only integer
+ * type or a width another ask gave it, else the game's own width; any other ask leaves the type alone (logged). Only integer
  * types widen, to at most 31 bits. The width is the network's wire format, so friends must agree on it: the plan's asks
  * apply before any friend can join, a live change only with no friend in the game (its gate). The engine reads a row's
  * width on every encode, decode and clamp; nothing caches it, so a change applies from the next value sent (build
@@ -37,17 +37,21 @@ static NetType* NetTypeNamed(const char* name)
     return t;
 }
 
-/* The width a type takes from the loaded mods' asks: the widest that expects the game's own type, else that. g_netLock
- * held. */
+/* The width a type takes from the loaded mods' asks: the widest that expects the game's own type or a width another ask
+ * gave it (A 16 -> 20, then B 20 -> 24, in either order), else the game's own. g_netLock held. */
 static uint8_t NetWidth(const NetType* t)
 {
     uint8_t width = t->bits;
-    for (int i = 0; i < g_netAskCount; i++)
+    for (int grew = 1; grew;)
     {
-        const NetAsk* a = &g_netAsks[i];
-        if (strcmp(a->name, t->name) || !a->mod->loaded || a->mod->removing) continue;
-        if (a->kind != t->kind || a->expectBits != t->bits || a->min != t->min) continue;
-        if (a->bits > width) width = a->bits;
+        grew = 0;
+        for (int i = 0; i < g_netAskCount; i++)
+        {
+            const NetAsk* a = &g_netAsks[i];
+            if (strcmp(a->name, t->name) || !a->mod->loaded || a->mod->removing) continue;
+            if (a->kind != t->kind || a->min != t->min || (a->expectBits != t->bits && a->expectBits != width)) continue;
+            if (a->bits > width) { width = a->bits; grew = 1; }
+        }
     }
     return width;
 }

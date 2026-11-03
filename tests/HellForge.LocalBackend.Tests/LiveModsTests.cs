@@ -144,6 +144,17 @@ static class LiveModsTests
             ModSet.Parse(File.ReadAllText(modSetFile), local: true).Digest == changed.Digest, "The game's late result did not settle the session.");
         hold = false;
 
+        // a change the game made that cannot be recorded: joins check the new digest, they do not wait for the rest of the session
+        File.WriteAllText(Path.Combine(mods, "s1", StatsData.FileName), Rpm.Replace("900", "1050"));
+        File.Delete(modSetFile);
+        Directory.CreateDirectory(modSetFile);
+        changed = null;
+        var unrecorded = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        check(unrecorded.Live && !unrecorded.Applied && unrecorded.Blocking.SequenceEqual(["The session's mods could not be recorded."]) && changed != null,
+            "A change that could not be recorded left joins waiting: " + unrecorded.Detail);
+        Directory.Delete(modSetFile);
+        changed!.Write(modSetFile);
+
         // made with something of a mod taken out left: the session plays it (a restart makes sure), joins check the new digest
         File.WriteAllText(Path.Combine(mods, "s1", StatsData.FileName), Rpm.Replace("900", "1100"));
         outcome = "failed\tsomething of a mod taken out may be left; restart the session to be sure";

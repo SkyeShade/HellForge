@@ -612,6 +612,11 @@ static void NetTypesFixture(void)
     TxnSend("modadd\t21\tn4\tnet.bad\tnet\t0123456789abcdef\tC:\\mods\\bad\t-", reply, sizeof reply);
     TxnSend("modnet\t22\tn4\tnet.bad\tdeposit_value\t1\t10\t0\t40", reply, sizeof reply); /* past 31 bits */
     assert(TxnRefused(reply, "malformed") && rows[13] == 14);
+    /* a chain: an ask that expects the width another mod's ask gave (the API's "or already widened") */
+    char l3[] = "nettype	b	deposit_value	1	14	0	18";
+    assert(!NetParse(f, Split(l3, f, 8)));
+    NetApply("deposit_value");
+    assert(rows[13] == 18);
     printf("  network field types: the plan's ask at network ready, the widest wins, live wider, replaced and taken out, 3 refusals (one in a mission)\n");
 
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
