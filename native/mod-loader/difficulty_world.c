@@ -66,6 +66,8 @@ static struct
     uint32_t scale;                   /* the world at level 11: 2048 m x scale (1: not extra large) */
     float current;                    /* the scale the constants and immediates hold now */
     WorldValues* values;
+    volatile uint32_t* below;         /* the thinning's thresholds the stubs read: [0] the jobs', [1] the placement's */
+    uint32_t makeBelow, placeBelow;   /* an extra large level's (a vanilla level's are 0xFFFFFFFF: every stamp kept) */
     uintptr_t game;
     volatile LONG levels, switches;
 } g_world = {1, 1.0f};
@@ -92,6 +94,11 @@ static void WorldWrite(float scale)
     v->clearing = 2.3283064365386963e-10f * scale * scale;
     v->dropHigh = 1024.0f * scale - 25.0f;
     v->dropLow = -(1024.0f * scale - 25.0f);
+    if (g_world.below != NULL)
+    {
+        g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
+        g_world.below[1] = scale > 1.0f ? g_world.placeBelow : 0xFFFFFFFFu;
+    }
     for (int i = 0; i < 11; i++)
     {
         float value;
@@ -189,7 +196,7 @@ static const uint8_t kHiveSearch[49] = {
 #define DIF_INSTANCE_MADE 0xF348EEu
 #define DIF_INSTANCE_REJECT 0xF34899u
 static const uint8_t kInstanceMakePin[10] = {0x8B, 0x45, 0x84, 0x48, 0x8B, 0xB5, 0xB8, 0x00, 0x00, 0x00};
-static const uint8_t kInstanceSkipStub[66] = {
+static const uint8_t kInstanceSkipStub[67] = {
     0x8B, 0x45, 0x48,                                                 /*  0 mov eax, [rbp+0x48] */
     0x69, 0xC0, 0xB1, 0x79, 0x37, 0x9E,                               /*  3 imul eax, eax, 0x9E3779B1 */
     0x03, 0x45, 0x68,                                                 /*  9 add eax, [rbp+0x68] */
@@ -198,12 +205,12 @@ static const uint8_t kInstanceSkipStub[66] = {
     0x69, 0xC0, 0x35, 0xAE, 0xB2, 0xC2,                               /* 24 imul eax, eax, 0xC2B2AE35 */
     0x03, 0x45, 0x84,                                                 /* 30 add eax, [rbp-0x7c] */
     0x69, 0xC0, 0xB1, 0x79, 0x37, 0x9E,                               /* 33 imul eax, eax, 0x9E3779B1 */
-    0x3D, 0, 0, 0, 0,                                                 /* 39 cmp eax, keep x 2^32 (at 40) */
-    0x76, 0x05,                                                       /* 44 jbe 51 */
-    0xE9, 0, 0, 0, 0,                                                 /* 46 jmp 0xF34899 (rel32 at 47) */
-    0x8B, 0x45, 0x84,                                                 /* 51 mov eax, [rbp-0x7c] */
-    0x48, 0x8B, 0xB5, 0xB8, 0x00, 0x00, 0x00,                         /* 54 mov rsi, [rbp+0xb8] */
-    0xE9, 0, 0, 0, 0};                                                /* 61 jmp 0xF348EE (rel32 at 62) */
+    0x3B, 0x05, 0, 0, 0, 0,                                           /* 39 cmp eax, [rip+makeBelow] (rel32 at 41) */
+    0x76, 0x05,                                                       /* 45 jbe 52 */
+    0xE9, 0, 0, 0, 0,                                                 /* 47 jmp 0xF34899 (rel32 at 48) */
+    0x8B, 0x45, 0x84,                                                 /* 52 mov eax, [rbp-0x7c] */
+    0x48, 0x8B, 0xB5, 0xB8, 0x00, 0x00, 0x00,                         /* 55 mov rsi, [rbp+0xb8] */
+    0xE9, 0, 0, 0, 0};                                                /* 62 jmp 0xF348EE (rel32 at 63) */
 /* A global hash table ([game+0x33267D0]: entries at +0, 8 bytes each, slots +0x8, 0x4000 on a 16384 m preview) has an
  * inlined insert (0x861C20) whose full case writes the entry through null (0x861CB0, reached only when no slot is free;
  * a 16384 m preview ended there after its Hive Lord graph). With an extra large world a full table skips the entry. */
@@ -233,21 +240,21 @@ static const uint8_t kTableFullSkip[7] = {0xEB, 0x05, 0x90, 0x90, 0x90, 0x90, 0x
 #define DIF_PLACE_LOOP_BACK 0xF35037u
 #define DIF_PLACE_LOOP_END 0xF3517Cu
 static const uint8_t kPlaceLoopPin[10] = {0x48, 0x8B, 0x4F, 0x20, 0x45, 0x8B, 0xD5, 0x41, 0xFF, 0xC5};
-static const uint8_t kPlaceSkipStub[50] = {
+static const uint8_t kPlaceSkipStub[51] = {
     0x8B, 0x47, 0x54,                                                 /*  0 mov eax, [rdi+0x54] (the count) */
     0x69, 0xC0, 0x6B, 0xCA, 0xEB, 0x85,                               /*  3 imul eax, eax, 0x85EBCA6B */
     0x01, 0xF0,                                                       /*  9 add eax, esi (the instance) */
     0x69, 0xC0, 0xB1, 0x79, 0x37, 0x9E,                               /* 11 imul eax, eax, 0x9E3779B1 */
-    0x3D, 0, 0, 0, 0,                                                 /* 17 cmp eax, keep x 2^32 (at 18) */
-    0x76, 0x0E,                                                       /* 22 jbe 38 (kept) */
-    0xFF, 0xC6,                                                       /* 24 inc esi (skipped) */
-    0x8B, 0x47, 0x54,                                                 /* 26 mov eax, [rdi+0x54] */
-    0x3B, 0xF0,                                                       /* 29 cmp esi, eax */
-    0x72, 0xDF,                                                       /* 31 jb 0 */
-    0xE9, 0, 0, 0, 0,                                                 /* 33 jmp 0xF3517C (the loop's end; rel32 at 34) */
-    0x48, 0x8B, 0x4F, 0x20,                                           /* 38 mov rcx, [rdi+0x20] */
-    0x45, 0x8B, 0xD5,                                                 /* 42 mov r10d, r13d */
-    0xE9, 0, 0, 0, 0};                                                /* 45 jmp 0xF35037 (rel32 at 46) */
+    0x3B, 0x05, 0, 0, 0, 0,                                           /* 17 cmp eax, [rip+placeBelow] (rel32 at 19) */
+    0x76, 0x0E,                                                       /* 23 jbe 39 (kept) */
+    0xFF, 0xC6,                                                       /* 25 inc esi (skipped) */
+    0x8B, 0x47, 0x54,                                                 /* 27 mov eax, [rdi+0x54] */
+    0x3B, 0xF0,                                                       /* 30 cmp esi, eax */
+    0x72, 0xDE,                                                       /* 32 jb 0 */
+    0xE9, 0, 0, 0, 0,                                                 /* 34 jmp 0xF3517C (the loop's end; rel32 at 35) */
+    0x48, 0x8B, 0x4F, 0x20,                                           /* 39 mov rcx, [rdi+0x20] */
+    0x45, 0x8B, 0xD5,                                                 /* 43 mov r10d, r13d */
+    0xE9, 0, 0, 0, 0};                                                /* 46 jmp 0xF35037 (rel32 at 47) */
 /* The engine's occlusion test (exe 0x68FAxx) projects a bounding box onto its depth buffer ([rdi+0xB8], width [rdi],
  * height [rdi+4]) and clamps the cell range with minps/maxps, which let a NaN through: cvtps2dq made it 0x80000000, the row
  * loop started at -2^28 and read far before the buffer (a 4096 m mission ended at exe 0x68FD47 while loading; which object
@@ -2048,15 +2055,21 @@ static const char* InstallWorld(DifficultyInstall* d)
     uint32_t keepBelow = keep >= 1.0f ? 0xFFFFFFFFu : (uint32_t)(keep * 4294967295.0f);
     float half = keep >= 1.0f ? 1.0f : sqrtf(keep);
     uint32_t halfBelow = half >= 1.0f ? 0xFFFFFFFFu : (uint32_t)(half * 4294967295.0f);
+    /* The thresholds live in the values page and follow the level (WorldWrite): a vanilla level keeps every stamp. The
+     * immediates these stubs once held thinned every level of the session, vanilla ones too. */
+    g_world.below = (volatile uint32_t*)(block + 0x1180);
+    g_world.makeBelow = halfBelow;
+    g_world.placeBelow = keepBelow;
+    g_world.below[0] = g_world.below[1] = 0xFFFFFFFFu;
     memcpy(skip, kPlaceSkipStub, sizeof kPlaceSkipStub);
-    memcpy(skip + 18, &keepBelow, 4);
+    rel = (int32_t)((uint8_t*)&g_world.below[1] - (skip + 23)); memcpy(skip + 19, &rel, 4);
     uint8_t* make = block + 0x300;
     memcpy(make, kInstanceSkipStub, sizeof kInstanceSkipStub);
-    memcpy(make + 40, &halfBelow, 4);
-    rel = (int32_t)(game + DIF_INSTANCE_REJECT - (uintptr_t)(make + 51)); memcpy(make + 47, &rel, 4);
-    rel = (int32_t)(game + DIF_INSTANCE_MADE - (uintptr_t)(make + 66)); memcpy(make + 62, &rel, 4);
-    rel = (int32_t)(game + DIF_PLACE_LOOP_END - (uintptr_t)(skip + 38)); memcpy(skip + 34, &rel, 4);
-    rel = (int32_t)(game + DIF_PLACE_LOOP_BACK - (uintptr_t)(skip + 50)); memcpy(skip + 46, &rel, 4);
+    rel = (int32_t)((uint8_t*)&g_world.below[0] - (make + 45)); memcpy(make + 41, &rel, 4);
+    rel = (int32_t)(game + DIF_INSTANCE_REJECT - (uintptr_t)(make + 52)); memcpy(make + 48, &rel, 4);
+    rel = (int32_t)(game + DIF_INSTANCE_MADE - (uintptr_t)(make + 67)); memcpy(make + 63, &rel, 4);
+    rel = (int32_t)(game + DIF_PLACE_LOOP_END - (uintptr_t)(skip + 39)); memcpy(skip + 35, &rel, 4);
+    rel = (int32_t)(game + DIF_PLACE_LOOP_BACK - (uintptr_t)(skip + 51)); memcpy(skip + 47, &rel, 4);
     uint8_t* walkStub = block + 0x380;
     memcpy(walkStub, kObjectWalkStub, sizeof kObjectWalkStub);
     rel = (int32_t)(game + DIF_OBJECT_WALK_NEXT - (uintptr_t)(walkStub + 10)); memcpy(walkStub + 6, &rel, 4);
@@ -2109,7 +2122,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     uint8_t skipJump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_PLACE_LOOP, (uintptr_t)skip); memcpy(skipJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_PLACE_LOOP, skipJump, 7)) return "the stamp placement could not be thinned";
-    Note("difficulty %s: extra large maps: %.1f%% of the weight rules' stamps placed", g_difficulty.name, (double)(keep >= 1.0f ? 100.0f : keep * 100.0f));
+    Note("difficulty %s: extra large maps: %.1f%% of the weight rules' stamps placed (on its levels only)", g_difficulty.name, (double)(keep >= 1.0f ? 100.0f : keep * 100.0f));
     for (size_t i = 0; i < sizeof kWorldPasses / sizeof kWorldPasses[0]; i++)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
