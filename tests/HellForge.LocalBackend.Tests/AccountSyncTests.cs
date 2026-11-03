@@ -165,6 +165,24 @@ static class AccountSyncTests
         unlockAll.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(steeled.Items.All(i => Bought(unlockAll).Contains(i.ItemId)), "An owned premium warbond lost its purchases.");
         check(((JsonArray)unlockAll.Current()["progression"]!["purchasedSeasonPassItems"]!).Count == stored, "Serving changed the profile's purchases.");
+        // A premium stratagem's loadout entry (its catalogue child, which the loadout checks) goes with the stratagem:
+        // served alone, it gave unlock-all profiles every premium stratagem without a snapshot.
+        var entries = PremiumStratagemEntries(paid);
+        check(entries.Count > 20 && !served.Overlaps(entries.Keys), "A premium stratagem's loadout entry was served without its token.");
+        var (entry, stratagem) = entries.First();
+        paid.TryGetWarbondTokens(stratagem, out var tokens);
+        var owner = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = tokens![0], ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(owner.IsAllowed(stratagem) && owner.IsAllowed(entry), "A premium stratagem's loadout entry was withheld from its owner.");
+    }
+
+    // Each premium warbond stratagem's loadout entry (catalogue category 10) and the stratagem it belongs to.
+    static Dictionary<uint, uint> PremiumStratagemEntries(PaidContentSet paid)
+    {
+        using var catalog = LocalBackend.LoadResource("item-catalog.json");
+        return catalog.RootElement.GetProperty("items").EnumerateArray()
+            .Where(item => item.GetProperty("progressionCategory").GetInt32() == 10 && item.TryGetProperty("parentId", out var parent) &&
+                paid.TryGetWarbondTokens(parent.GetUInt32(), out _))
+            .ToDictionary(item => item.GetProperty("mixId").GetUInt32(), item => item.GetProperty("parentId").GetUInt32());
     }
 
     static void SuperCredits(string root, Action<bool, string> check)
