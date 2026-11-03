@@ -56,6 +56,7 @@ public partial class MainWindow : Window
     DateTime? seasonPassUtc;
     bool reachedShip;
     bool modProblemsShown; // this session's mod problems (result.json mods.problems) went to the console
+    string? steamInputShown; // the Steam Input note (result.json steamInput, SteamInputNote) the console shows last
     bool stopRequested, closeConfirmed, scrollQueued;
     (int Index, bool Failed) shownStep = (-2, false);
     double? stepProgress; /* the current step's progress (0 .. 1), or null while it cannot be told */
@@ -271,6 +272,7 @@ public partial class MainWindow : Window
         launchedUtc = DateTime.UtcNow;
         lines.Clear();
         modProblemsShown = false;
+        steamInputShown = null;
         Append("Starting play session.", LauncherLine);
         Append($"Profile: {profile.Name} (template {profile.Template}) in {profile.Folder}", LauncherLine);
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
@@ -437,10 +439,20 @@ public partial class MainWindow : Window
             if (problem.ValueKind == JsonValueKind.String) Append("Mod left out of this session: " + problem.GetString(), Orange);
     }
 
+    // A sandboxed game's controllers that Steam Input handles cannot reach it (SteamInputNote): in the console each time
+    // the note changes, and under the status while the game runs (ShowObserving).
+    void ShowSteamInput(JsonElement state)
+    {
+        if (SteamInputNote.Of(state) is not { } note || note == steamInputShown) return;
+        steamInputShown = note;
+        Append(note, Orange);
+    }
+
     void ShowState(JsonElement state)
     {
         var stopped = !runner.IsRunning;
         ShowModProblems(state);
+        ShowSteamInput(state);
         switch (SessionFiles.Text(state, "status"))
         {
             case "preparing": ShowPreparing(); break;
@@ -486,6 +498,8 @@ public partial class MainWindow : Window
         else if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
             SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
                 "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
+        else if (SteamInputNote.Of(state) is { } controllers)
+            SetStatus("Running. Steam Input can't reach the sandboxed game.", Phase.Attention, controllers);
         else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
     }
 

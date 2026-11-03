@@ -142,6 +142,11 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- With the sandbox on (Settings > Sandbox), a Steam Controller and other controllers that work only through Steam
+  Input did nothing in the game, and nothing said why (#94, #204): Steam Input can't reach a sandboxed game yet. While
+  the game runs, the launcher now names the controller Steam Input is handling and says it won't work, and that Steam
+  may send its desktop keys instead (A presses Enter, which opens the chat). Xbox controllers work. Settings > Sandbox
+  says so too.
 - The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
   running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
   settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
@@ -270,6 +275,9 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A sandboxed session's `result.json` has `steamInput` once the Steam broker has asked Steam: `controllers` (names),
+  `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null). `HellForge.Cli play` writes a
+  `steam-input` event with the note when it changes; `SteamInputNote.Of` reads it.
 
 ## 0.3.0-beta (2026-10-26)
 

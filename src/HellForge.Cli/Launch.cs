@@ -108,12 +108,14 @@ static class Launch
         var result = Path.Combine(run, "result.json");
         var last = "";
         var problemsShown = false;
+        string? steamInput = null;
         while (true)
         {
             var alive = running();
             if (SessionFiles.ReadJson(result) is { } state)
             {
                 problemsShown = problemsShown || EmitProblems(state);
+                steamInput = EmitSteamInput(state, steamInput);
                 last = EmitStatus(state, last);
             }
             if (!alive) break;
@@ -132,6 +134,15 @@ static class Launch
         var list = problems.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.String).Select(p => p.GetString()).ToList();
         if (list.Count > 0) Emit(new { @event = "mod-problems", problems = list });
         return true;
+    }
+
+    // Sandboxed: the controllers Steam Input handles cannot reach the game (SteamInputNote). The note when it changes;
+    // returns the note reported last.
+    static string? EmitSteamInput(JsonElement state, string? last)
+    {
+        if (SteamInputNote.Of(state) is not { } note || note == last) return last;
+        Emit(new { @event = "steam-input", note });
+        return note;
     }
 
     // The run's status when it changed since the last one reported; returns the status reported last.

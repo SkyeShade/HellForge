@@ -305,6 +305,15 @@ the modlist code and the notices. With the in-game editor switched off, only the
 Settings > Multiplayer has two switches, Local PlayFab and Lobby and session through Steam friends. Co-op needs both;
 they are on unless you switch them off.
 
+## Controllers
+
+With Settings > Sandbox on (the default), Steam Input can't reach the game yet: a Steam Controller, the Steam Deck's
+controls and other controllers that work only through Steam Input do nothing in the game, and Steam may send its
+desktop keys to it instead (A presses Enter, which opens the chat). While the game runs, the launcher says "Steam Input
+can't reach the sandboxed game" and names the controller. Xbox controllers work. With the sandbox off Steam Input works,
+but the game runs without the sandbox's protection. [The Steam bridge](steam-bridge.md#controllers-and-steam-input)
+explains why.
+
 ## Collecting logs
 
 Every session keeps its logs in `logs\sessions\<session>\` in the installation; the newest ten sessions are kept.
