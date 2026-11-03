@@ -224,12 +224,13 @@ On `dev`, since 0.3.0-beta.
 
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
-- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge lobby
-  with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
-  opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
-  keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
-  setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved;
-  show the player the launcher's warning before turning strangers on).
+- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge
+  lobby with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information
+  terminal opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and
+  `HF_BROWSE_HIDDEN` keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and
+  `HfBrowseLobby.fix` names the setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`,
+  `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved; show the player the launcher's warning
+  before turning strangers on).
 
 ### For launcher developers
 
