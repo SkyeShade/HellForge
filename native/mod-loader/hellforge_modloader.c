@@ -553,7 +553,8 @@ static int InstallReaper(int pinsReady);
 /* SDK 7 events (events.c, after abilities.c: the silo countdowns listen for a mission's end). */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
 #include "registry.c"
-#include "registry_load.c" /* right after registry.c: the registry at work when the entity data loads */
+#include "table_growth.c" /* the component tables the registry grows */
+#include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "projectiles.c"
 #include "stratagems.c"
@@ -576,6 +577,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
+#include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
 #include "abilities.c"
 #include "events.c"

@@ -104,20 +104,5 @@ static class SessionLaunchTests
             File.WriteAllText(paths.SessionFile, $$"""{"runId": "now", "run": {{System.Text.Json.JsonSerializer.Serialize(run)}}, "startedUtc": "{{DateTime.UtcNow:o}}"}""");
             check(SessionRunner.RunSince(paths, started) == run, "This session's run.");
         });
-
-        test("A PC without the Visual C++ 2012 or 2015-2022 x64 runtime is told which to install before the game starts", () =>
-        {
-            var system = Directory.CreateDirectory(Path.Combine(root, "vc-runtimes")).FullName;
-            var none = VisualCppRuntimes.Problem(system, "press Play again.");
-            check(none != null && none.Contains("2012") && none.Contains("2015-2022") && none.EndsWith("press Play again."), "Both missing: " + none);
-            File.WriteAllText(Path.Combine(system, "msvcr110.dll"), "synthetic");
-            File.WriteAllText(Path.Combine(system, "vcruntime140.dll"), "synthetic");
-            var partial = VisualCppRuntimes.Problem(system, "start setup again.");
-            check(partial != null && !partial.Contains("2012") && partial.Contains("2015-2022") && partial.Contains("a Microsoft runtime"),
-                "msvcp140.dll missing: " + partial);
-            File.WriteAllText(Path.Combine(system, "msvcp140.dll"), "synthetic");
-            check(VisualCppRuntimes.Problem(system, "start setup again.") == null, "Every runtime is there.");
-            check(File.Exists(Path.Combine(VisualCppRuntimes.SystemFolder, "kernel32.dll")), "Not the 64-bit system folder: " + VisualCppRuntimes.SystemFolder);
-        });
     }
 }

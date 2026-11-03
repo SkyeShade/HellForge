@@ -8,6 +8,7 @@ and [ask](#where-to-ask).
 - [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
+- [In the game](#in-the-game): blank Armory icons
 - [Playing with friends](#playing-with-friends)
 - [Collecting logs](#collecting-logs) · [Where to ask](#where-to-ask)
 
@@ -107,16 +108,25 @@ continues where it stopped the next time you run setup.
 
 ### Microsoft Visual C++ runtimes
 
-The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64) and the
-Visual C++ 2015-2022 Redistributable (x64). Steam's own install of the game no longer adds the 2012 one, so a fresh PC
-often lacks it. Setup checks for both before it copies the game, and every session checks again before it starts the
-game. When one is missing, the message names it and gives Microsoft's download link:
+The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64), for the
+game's `lua51.dll` (MSVCR110.dll), and the Visual C++ 2015-2022 (v14) Redistributable (x64), for PartyWin, PlayFab,
+libcurl, XeSS, EOS and the upscalers (VCRUNTIME140.dll, VCRUNTIME140_1.dll, MSVCP140.dll). Steam's own install of the
+game no longer adds the 2012 one, so a fresh PC often lacks it.
+
+Setup, and PLAY in an installation that lacks one (one set up with 0.2, or a runtime removed since), download
+Microsoft's installer, check it against the SHA-256 HellForge pins, and run it silently after Windows asks for
+permission. PLAY shows INSTALLING meanwhile. A runtime counts as missing when its DLL is not in System32 as a 64-bit
+DLL, so one Windows lists as installed whose DLL is gone is repaired, and a 32-bit copy put there by hand does not
+count. The installer's log is in the installation's `temp` folder.
+
+Only when that fails (the permission prompt declined, no connection to Microsoft, another installation running) does
+the message say why and give Microsoft's download link:
 
 - 2012: <https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe>
-- 2015-2022: <https://aka.ms/vc14/vc_redist.x64.exe>
+- 2015-2022 (v14): <https://aka.ms/vc14/vc_redist.x64.exe>
 
 Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
-have.
+have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or installed.
 
 ### Playing in a language other than English
 
@@ -174,6 +184,28 @@ Console page and in Settings) shows the session's folder; `session.log` there li
 
 The first launch of a new installation can stop in the cryo pod. The launcher notices and says "The game seems stuck in
 the cryo pod." Press STOP, then PLAY again: the next launch goes through.
+
+### The game does not close
+
+If the game closes its window but keeps running, HellForge ends it 30 seconds later and finishes the session as STOP
+does; the Play page says so when the session ends. If the window stays open but stops responding, press STOP in the
+launcher: it ends the game and everything the session started. Either way, the session's `result.json` records what the
+game was still doing (`stuckQuitting`, `gameHung` or `gameAtStop`), and Save logs to Desktop adds
+`processes-now.txt`, the session's programs that were still running when you saved the logs. When you report it, send
+that zip; if you can, save it while the game is still stuck.
+
+### A black screen for minutes when the game starts
+
+Without a shader cache the game builds one before it shows anything, which can take several minutes with the window
+black. The launcher says "Building the shader cache (first start only, this can take a few minutes)..." meanwhile. A new
+installation starts from the normal game's shader cache when there is one, and a sandboxed session takes a copy of the
+installation's and brings it back at the end, so this should happen once.
+
+The game saves its shader cache only when it closes by itself. STOP and closing the launcher ask it to close and wait
+up to 30 seconds; a game that crashes, or that does not close in time, keeps the cache it started with. If every start
+is slow, play one session and quit from the game's own menu, then send Save logs to Desktop from the next one: its
+`result.json` says how big the shader cache was at the start and the end, whether the game wrote it, and how long the
+game took to its first request.
 
 ### Messages before the game starts
 
@@ -251,6 +283,17 @@ the way to the game copy is a link: a junction or symbolic link (a Documents fol
 one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
 it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example
 `C:\HellForge`), or undo the link or compression at the path the message names, then run Settings > Installation.
+
+## In the game
+
+### Armory icons are blank
+
+The game draws every Armory icon itself (weapons, helmets, armour, capes), a page at a time, and scrolling hands it the
+next page. An icon stays blank until the game has drawn its page, and the game waits for the item's textures to load
+first. `--toaster_mode` in Settings > Launch options turns texture loading off, so the icons never appear: remove it
+(the launcher warns about it under the box). If icons stay blank without it, wait ten seconds on the Armory, then
+Save logs to Desktop and send the zip: `modloader.log` then has an "armory thumbnails: no progress" line naming the
+items the game is waiting on.
 
 ## Playing with friends
 

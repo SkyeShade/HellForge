@@ -40,7 +40,8 @@ session runner's environment. Without the switch nothing below changes what a se
    | `HELLFORGE_TEST_STRANGERS` | `1`, for the Galactic Map ([multiplayer.md](multiplayer.md)) |
 
    Both installations need Play with strangers on for the map. `--toaster_mode` in the game options lowers the
-   memory each game needs: with it, a game used 3 to 4.5 GB of RAM, and two games 12 GB of graphics memory.
+   memory each game needs: with it, a game used 3 to 4.5 GB of RAM, and two games 12 GB of graphics memory. It also
+   turns texture streaming off, so Armory icons stay blank.
 4. Join from the second game with `+connect_lobby <the first game's Steam lobby id>` in its options (the lobby file's
    name, in decimal), or from the Galactic Map.
 
