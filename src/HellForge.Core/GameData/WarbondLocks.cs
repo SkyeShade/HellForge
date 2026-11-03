@@ -1,6 +1,4 @@
 using System.Buffers.Binary;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace HellForge.Core.GameData;
@@ -17,7 +15,6 @@ public static class WarbondLocks
     // Part of the cache key: raise it whenever the same warbonds would build different bytes.
     // 2: the untitled art too, which is what Acquisitions shows; 3: the five newest warbonds' art.
     public const int Version = 3;
-    const string DoneFile = "done";
     const int Bc1 = 71;
 
     // Dimmed to this share of its brightness, and greyed by this much.
@@ -41,15 +38,12 @@ public static class WarbondLocks
     {
         var locked = Mapping().Where(w => !ownership.Owns("warbond:" + w.Id)).ToList();
         if (locked.Count == 0) return null;
-        var root = Path.Combine(install.Temp, "warbond-locks");
         var key = $"{Version}:{SupportedBuild.Current.BuildId}:" + string.Join(",", locked.Select(w => w.Id).Order());
-        var folder = Path.Combine(root, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant());
-        if (File.Exists(Path.Combine(folder, DoneFile))) return folder;
-        if (Directory.Exists(root))
-            foreach (var old in Directory.GetDirectories(root)) Directory.Delete(old, recursive: true);
-        using (var game = new GameDataReader(Path.Combine(install.Game, "data")))
+        var folder = OwnPatches.Cached(install, "warbond-locks", key, folder =>
+        {
+            using var game = new GameDataReader(Path.Combine(install.Game, "data"));
             Build(game, locked.SelectMany(w => w.Textures), folder);
-        File.WriteAllText(Path.Combine(folder, DoneFile), key + "\n");
+        });
         log?.Invoke($"Warbond art: {locked.Count} premium warbond(s) your synced account does not own are shown locked.");
         return folder;
     }
@@ -77,19 +71,7 @@ public static class WarbondLocks
             if (!byArchive.TryGetValue(read[i].Archive, out var resources)) byArchive[read[i].Archive] = resources = [];
             resources[read[i].Key] = parts;
         }
-        var files = new List<string>();
-        foreach (var (archive, resources) in byArchive)
-        {
-            var (main, gpu, stream) = ResourceArchive.Write(resources);
-            var name = archive + ".patch_0";
-            File.WriteAllBytes(Path.Combine(output, name), main);
-            File.WriteAllBytes(Path.Combine(output, name + ".gpu_resources"), gpu);
-            files.AddRange([name, name + ".gpu_resources"]);
-            if (stream.Length == 0) continue;
-            File.WriteAllBytes(Path.Combine(output, name + ".stream"), stream);
-            files.Add(name + ".stream");
-        }
-        return files;
+        return OwnPatches.Write(byArchive, output);
     }
 
     // A texture of the warbond art's form: its DDS header after the texture header, BC1, one mip, its pixels all in the
