@@ -121,8 +121,8 @@ shows the same prompt instead, with the same buttons (BLOCK is the in-game promp
 |---|---|
 | you have it | an installed mod (on or off) or one downloaded before has the same id and content |
 | downloads | it comes from the host's backend over the Steam peer link |
-| needs your trust | it runs code or carries data that HellForge cannot check, HellForge has not verified it, and the host is your Steam friend or your game is sandboxed: **TRUST** downloads it (below), or you install it yourself |
-| install it yourself | the host does not share their mods, or it runs code or carries data that HellForge cannot check and has not verified, the host is not your Steam friend, and your game is not sandboxed |
+| needs your trust | it runs code or carries data that HellForge cannot check, HellForge has not verified it, and the host is your Steam friend: **TRUST** downloads it (below), or you install it yourself |
+| install it yourself | the host does not share their mods, or it runs code or carries data that HellForge cannot check and has not verified, and the host is not your Steam friend |
 | blocked | it is on your blocklist, so the lobby cannot be joined |
 | needs another HellForge | a mod HellForge ships differs: both players need the same HellForge |
 | off for this session | one of your own gameplay mods that the host does not run |
