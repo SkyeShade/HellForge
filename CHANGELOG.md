@@ -157,6 +157,11 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- When Windows 11's Smart App Control blocked HellForge, the launcher showed only Windows' "An Application Control
+  policy has blocked this file". It now says which file Windows blocked, that it is because HellForge's files aren't
+  signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
+  off. Setup and the launcher warn before you install or play while Smart App Control is on, a mod whose DLL Windows
+  blocked says so in its log, and the session log says whether Smart App Control was on.
 - With the sandbox on (Settings > Sandbox), a Steam Controller and other controllers that work only through Steam
   Input did nothing in the game, and nothing said why (#94, #204): Steam Input can't reach a sandboxed game yet. While
   the game runs, the launcher now names the controller Steam Input is handling and says it won't work, and that Steam
