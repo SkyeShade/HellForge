@@ -18,6 +18,35 @@ static class SteamAccountTests
 
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A Linux probe that hands over no account says why; only a signed-out report asks the player to sign in", () =>
+        {
+            const string log = "/home/p/HellForge/logs/linux-session-wrapper.log";
+            check(SteamAccount.ProbeFailure("""{"status":"ownership_unverified","loggedOn":false,"subscribed":false}""", null, 2, log) == null,
+                "A signed-out report was not left to the sign-in message.");
+            var failed = SteamAccount.ProbeFailure("""{"status":"ownership_unverified","failure":"SteamAPI_Init failed; ownership remains unverified."}""",
+                "ignored", 1, log);
+            check(failed == "the Steam check failed: SteamAPI_Init failed; ownership remains unverified.", "Probe failure: " + failed);
+            var lost = SteamAccount.ProbeFailure("""{"status":"local_steam_client_subscription_confirmed","loggedOn":true}""", null, 0, log);
+            check(lost != null && lost.Contains("could not hand it", StringComparison.Ordinal), "Signed in without a handoff: " + lost);
+            var broken = SteamAccount.ProbeFailure("{not json", null, 1, log);
+            check(broken != null && broken.Contains(log, StringComparison.Ordinal), "Broken report: " + broken);
+            var stopped = SteamAccount.ProbeFailure(null, "Steam's local ports could not be bridged", 1, log);
+            check(stopped == "the Steam check stopped: Steam's local ports could not be bridged", "Wrapper problem: " + stopped);
+            var silent = SteamAccount.ProbeFailure(null, null, 127, log);
+            check(silent != null && silent.Contains("exit code 127", StringComparison.Ordinal) && silent.Contains(log, StringComparison.Ordinal),
+                "No report and no wrapper problem: " + silent);
+        });
+
+        test("A refused Account Sync leaves its reason in logs/sync-refused.txt", () =>
+        {
+            var install = Directory.CreateDirectory(Path.Combine(root, "sync-refused-install")).FullName;
+            InventorySync.NoteRefusal(install, "first reason");
+            InventorySync.NoteRefusal(install, "Sign in to Steam first: the sync is sealed for your Steam account.");
+            var text = File.ReadAllText(Path.Combine(install, "logs", InventorySync.RefusedFile));
+            check(text.Contains("HellForge " + AppVersion.Text, StringComparison.Ordinal) && text.Contains("Sign in to Steam first", StringComparison.Ordinal) &&
+                  !text.Contains("first reason", StringComparison.Ordinal), "Refusal record: " + text);
+        });
+
         test("The probe's private account handoff names only the 32-bit account and its check time", () =>
         {
             var folder = Directory.CreateDirectory(Path.Combine(root, "steam-account-private")).FullName;

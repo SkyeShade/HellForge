@@ -9,9 +9,9 @@
  *              and only when a mod listens to its kind (nothing is hooked for kinds no mod uses). */
 
 #define EVT_MAX_LISTENERS 128
-#define EVT_QUEUE 256
+#define EVT_QUEUE 1024 /* a mod channel sharereset drops 512 rows at once: room for its removals and the snapshot's */
 #define EVT_KINDS 32
-#define EVT_DATA 128 /* the largest event's size */
+#define EVT_DATA sizeof(HfMessageEvent) /* the largest event's size (its data[HF_MESSAGE_MAX]) */
 
 typedef struct Listener { HfMod* mod; uint32_t kind; HfListener listener; void* user; int32_t priority; uint32_t order; } Listener;
 static Listener g_listeners[EVT_MAX_LISTENERS];
@@ -20,7 +20,7 @@ static uint32_t g_listenerOrder;
 static uint64_t g_updates;                    /* game updates since the loader started (HfEventInfo.update) */
 static DWORD g_gameThread;                    /* the game thread's id, once its update has run */
 static SRWLOCK g_eventsLock = SRWLOCK_INIT;
-typedef struct QueuedEvent { uint8_t data[EVT_DATA]; } QueuedEvent;
+typedef struct QueuedEvent { HfMod* only; uint8_t data[EVT_DATA]; } QueuedEvent;
 static QueuedEvent g_queue[EVT_QUEUE];
 static int g_queued;
 static uint32_t g_queueDropped;
@@ -29,32 +29,36 @@ static volatile LONG g_listening;            /* bit k: a mod listens to kind k (
 static const char* EventName(uint32_t kind)
 {
     static const char* names[] = {"?", "state", "mission start", "mission end", "player spawn", "player down", "damage", "stratagem",
-        "kill", "spawn", "heal", "stat", "weapon", "explosion", "bug hole", "damage (before)"};
+        "kill", "spawn", "heal", "stat", "weapon", "explosion", "bug hole", "damage (before)", "message", "share"};
     return kind < sizeof names / sizeof names[0] ? names[kind] : "?";
 }
 
-/* Every listener of the event's kind, in order; on the game thread. */
-static void Dispatch(HfEventInfo* event)
+/* Every listener of the event's kind, in order (only == NULL), or one mod's listeners (the mod channel's messages and
+ * rows are its own); on the game thread. */
+static void DispatchTo(HfEventInfo* event, HfMod* only)
 {
     event->update = g_updates;
     Listener copy[EVT_MAX_LISTENERS];
     int n = 0;
     AcquireSRWLockShared(&g_eventsLock);
-    for (int i = 0; i < g_listenerCount; i++) if (g_listeners[i].kind == event->kind && g_listeners[i].mod->loaded) copy[n++] = g_listeners[i];
+    for (int i = 0; i < g_listenerCount; i++)
+        if (g_listeners[i].kind == event->kind && g_listeners[i].mod->loaded && (only == NULL || g_listeners[i].mod == only)) copy[n++] = g_listeners[i];
     ReleaseSRWLockShared(&g_eventsLock);
     for (int i = 0; i < n; i++) copy[i].listener(copy[i].mod, event, copy[i].user);
 }
+static void Dispatch(HfEventInfo* event) { DispatchTo(event, NULL); }
 
-/* Raises an event: delivered now on the game thread, else queued for its next update. */
-static void Raise(HfEventInfo* event)
+/* Raises an event: delivered now on the game thread, else queued for its next update. `only` limits it to one mod. */
+static void RaiseTo(HfEventInfo* event, HfMod* only)
 {
     if (event->size > EVT_DATA) return;
-    if (g_gameThread != 0 && GetCurrentThreadId() == g_gameThread) { Dispatch(event); return; }
+    if (g_gameThread != 0 && GetCurrentThreadId() == g_gameThread) { DispatchTo(event, only); return; }
     AcquireSRWLockExclusive(&g_eventsLock);
-    if (g_queued < EVT_QUEUE) memcpy(g_queue[g_queued++].data, event, event->size);
+    if (g_queued < EVT_QUEUE) { g_queue[g_queued].only = only; memcpy(g_queue[g_queued++].data, event, event->size); }
     else g_queueDropped++;
     ReleaseSRWLockExclusive(&g_eventsLock);
 }
+static void Raise(HfEventInfo* event) { RaiseTo(event, NULL); }
 
 static int AnyListener(uint32_t kind) { return (g_listening >> kind) & 1; }
 
@@ -77,7 +81,7 @@ static void EventsTick(void)
         g_queueDropped = 0;
         ReleaseSRWLockExclusive(&g_eventsLock);
         if (dropped) Note("events: %u event(s) dropped (the queue was full)", dropped);
-        for (int i = 0; i < n; i++) Dispatch((HfEventInfo*)pending[i].data);
+        for (int i = 0; i < n; i++) DispatchTo((HfEventInfo*)pending[i].data, pending[i].only);
     }
     EventSourcesTick();
     ActionsTick();

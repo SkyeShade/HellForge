@@ -216,6 +216,41 @@ static class SteamRuntimeTests
             check(lines[^1] == $"HellForge: Steam Linux Runtime: container \"{expected.Name}\" {expected.Version} at {runtime}; Proton runs inside it.",
                 "The bash mode line differs: " + lines[^1]);
         });
+
+        test("A session's sandbox self-test takes the chain its wrapper exported, not a second resolution", () =>
+        {
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: bash Steam runtime export)"); return; }
+            var (steam, proton, _) = MainTree(Path.Combine(root, "steam-runtime-export"));
+            var helper = Path.Combine(RepositoryRoot(), "linux", "hf-steam.sh");
+            // Resolve and export as the session wrapper does, then read it back in a fresh shell as the self-test does,
+            // with the Steam files gone so a second resolution could not give the same answer.
+            const string command = """
+                source "$1"
+                hf_runtime_resolve "$2" "$3"
+                hf_runtime_export
+                expected="$HF_RUNTIME_MODE|$HF_RUNTIME_IDENTITY|$HF_RUNTIME_NAME|$HF_RUNTIME_VERSION"
+                hf_runtime_entrypoint_arguments run /bin/true
+                expected_argv="${HF_RUNTIME_ARGV[*]}"
+                rm -rf -- "$3"
+                env -u HF_RUNTIME_MODE bash -c '
+                  source "$1"
+                  hf_runtime_from_environment || { echo "not adopted"; exit 3; }
+                  echo "$HF_RUNTIME_MODE|$HF_RUNTIME_IDENTITY|$HF_RUNTIME_NAME|$HF_RUNTIME_VERSION"
+                  hf_runtime_entrypoint_arguments run /bin/true
+                  echo "${HF_RUNTIME_ARGV[*]}"' _ "$1" > "$4"
+                printf '%s\n%s\n' "$expected" "$expected_argv" > "$4.expected"
+                env -i bash -c 'source "$1"; hf_runtime_from_environment && echo adopted || echo "none"' _ "$1"
+                env -i HELLFORGE_STEAM_RUNTIME_MODE=container HELLFORGE_STEAM_RUNTIME_IDENTITY=x bash -c \
+                  'source "$1"; hf_runtime_from_environment && echo adopted || echo "incomplete"' _ "$1"
+                """;
+            var output = Path.Combine(root, "steam-runtime-export.txt");
+            var bash = RunBash(command, helper, proton, steam, output);
+            check(bash.ExitCode == 0, "The export round trip failed: " + bash.Error + bash.Output);
+            check(File.ReadAllText(output) == File.ReadAllText(output + ".expected") && File.ReadAllText(output).StartsWith("container|", StringComparison.Ordinal),
+                "The self-test did not take the exported chain:\n" + File.ReadAllText(output) + "\nexpected:\n" + File.ReadAllText(output + ".expected"));
+            check(bash.Output.Replace("\r", "") == "none\nincomplete\n",
+                "Without an exported chain, or with an incomplete container one, the self-test must resolve on its own: " + bash.Output);
+        });
     }
 
     static void CheckTree(Action<bool, string> check, SteamRuntime resolved, string proton, string runtime)

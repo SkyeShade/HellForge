@@ -330,6 +330,22 @@ public static class InventorySync
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Trace.WriteLine("sync note lost: " + error.Message); }
     }
 
+    // A sync refused before its sync-<utc> folder exists still leaves its reason: logs/sync-refused.txt holds the last
+    // refusal (time, HellForge build, reason), so a player who finds no sync folder in logs can still send what happened.
+    public const string RefusedFile = "sync-refused.txt";
+
+    public static void NoteRefusal(string installRoot, string reason)
+    {
+        try
+        {
+            var logs = new InstallLayout(installRoot).Logs;
+            Directory.CreateDirectory(logs);
+            File.WriteAllText(Path.Combine(logs, RefusedFile), DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
+                " HellForge " + AppVersion.Text + Environment.NewLine + reason + Environment.NewLine);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Trace.WriteLine("sync refusal not recorded: " + error.Message); }
+    }
+
     // The normal game's %APPDATA%. Windows uses this process's profile. Native Linux must use the game's Proton prefix:
     // the launcher's own ApplicationData is ~/.config, not drive_c/users/steamuser/AppData/Roaming.
     static string GameAppData()

@@ -103,7 +103,7 @@ public partial class MainWindow
         }
         if (SyncRefusal() is { } refusal)
         {
-            SetSyncStatus(refusal, Orange);
+            RefuseSync(refusal);
             return;
         }
         var install = new InstallLayout(paths.InstallRoot);
@@ -118,14 +118,18 @@ public partial class MainWindow
         {
             syncStarting = false;
             SyncButton.IsEnabled = true;
-            SetSyncStatus("The signed-in Steam account could not be read: " + error.Message, Orange);
+            RefuseSync("The signed-in Steam account could not be read: " + error.Message);
             return;
         }
         if (signedIn is not { } account)
         {
             syncStarting = false;
             SyncButton.IsEnabled = true;
-            SetSyncStatus("Sign in to Steam first: the sync is sealed for your Steam account.", Orange);
+            // The Windows launcher under Wine has no source for the account (only a session's runner is given one), so on
+            // Linux it can never sync: say where the sync works instead of asking for a sign-in that is already there.
+            RefuseSync(LinuxNetworkBlock.UnderWine
+                ? "Account Sync needs HellForge's Linux launcher: close this window and start HellForge from its desktop shortcut."
+                : "Sign in to Steam first: the sync is sealed for your Steam account.");
             return;
         }
         var profile = Selected;
@@ -241,7 +245,18 @@ public partial class MainWindow
     {
         if (runner.IsRunning) return "Stop the HellForge session first.";
         if (InventorySync.IsGameRunning()) return "Close HELLDIVERS 2 first: the sync reads its next login.";
+        // A session this launcher did not start (an earlier launcher's, or one left behind) still holds the installation's
+        // Steam bridge and prefix. ShowLeftoverProcesses also shows the card that ends them.
+        if (ShowLeftoverProcesses()) return "A HellForge session is still running: end it on the play page, then sync again.";
         return null;
+    }
+
+    // A sync that cannot start says why on the sync card and in logs/sync-refused.txt: the refusal comes before the sync's
+    // own folder exists, so without this the player finds no log at all.
+    void RefuseSync(string reason)
+    {
+        SetSyncStatus(reason, Orange);
+        if (paths.InstallRoot != null) InventorySync.NoteRefusal(paths.InstallRoot, reason);
     }
 
     void RefreshSync()
