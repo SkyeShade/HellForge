@@ -196,6 +196,22 @@ static class CrashReportTests
             }
         });
 
+        test("The summary gives Windows' record of the crash, scrubbed, or says Windows had none; older sessions have no such line (#203)", () =>
+        {
+            var recorded = Session(new string('e', 32), """
+                {"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005",
+                 "failure": "The game closed while starting, before HellForge could connect it to the local backend (exit code 0xC0000005).",
+                 "windowsCrash": {"module": "hook64.dll", "offset": "0x2f3c1", "code": "0xC0000005", "modulePath": "C:\\Users\\Alex\\AppData\\Local\\Overlay\\hook64.dll", "owner": "other"}}
+                """);
+            var summary = CrashReport.Summary(recorded, new ReportPrivacy(Pc, []), DateTime.UtcNow, false);
+            check(summary.Contains("Windows' crash record: 0xC0000005 in hook64.dll+0x2f3c1 (other: %USERPROFILE%\\AppData\\Local\\Overlay\\hook64.dll)") &&
+                  summary.Contains("Failure: The game closed while starting") && !summary.Contains("Alex"), summary);
+            var none = Session(new string('f', 32), """{"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005", "windowsCrash": "none"}""");
+            check(CrashReport.Summary(none, new ReportPrivacy(Pc, []), DateTime.UtcNow, false).Contains("Windows' crash record: none"), "Windows had none.");
+            var older = Session(new string('0', 32), """{"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005"}""");
+            check(!CrashReport.Summary(older, new ReportPrivacy(Pc, []), DateTime.UtcNow, false).Contains("Windows' crash record"), "A session that did not look.");
+        });
+
         test("A session from before the facts were kept still gets a summary, with this PC's system", () =>
         {
             var old = Session(new string('d', 32), """{"status": "observed", "gameLaunched": true, "gameExitCode": "0xC0000409"}""");

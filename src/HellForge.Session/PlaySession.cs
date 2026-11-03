@@ -51,6 +51,7 @@ sealed partial class PlaySession(PlayOptions options)
     nint lowToken;
     Thread? applier;
     DateTime? gameStarted;
+    WindowsCrash.Record? windowsCrash;
     TextWriter? log;
     // Whether this session asked Steam itself (Ownership): its second check then does too.
     bool fullOwnershipCheckRan;
@@ -970,44 +971,62 @@ sealed partial class PlaySession(PlayOptions options)
         HellForgeHostEarlyResult experiment;
         try { experiment = HellForgeHostEarlyConstructorExperiment.ApplySteamGame(job!.Process.Id, job.Process.StartTime.Ticks, "SkipConstructorAndMainCheck"); }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
-        { throw new SessionFailure("The game could not be prepared for the local backend." + (Debug ? " " + error.Message : "")); }
+        { throw new SessionFailure(GameClosed(LaunchFailure.Prepare) ?? "The game could not be prepared for the local backend." + (Debug ? " " + error.Message : "")); }
         if (Debug) File.WriteAllText(Path.Combine(run, "launch-step-1.json"), JsonSerializer.Serialize(experiment, SessionJson.Default.HellForgeHostEarlyResult));
+        result["prepare"] = new JsonObject { ["outcome"] = experiment.Outcome, ["waitedMilliseconds"] = experiment.ElapsedMilliseconds };
         var startupReady = experiment.Written && experiment.MainCheckWritten && experiment.LaterStatusWritten && experiment.ReadbackMatched;
         if (experiment.Outcome != "applied_at_candidate_boundary" || !startupReady)
-            throw new SessionFailure("The game could not be prepared for the local backend" + ExitNote() + ".");
+            throw new SessionFailure(GameClosed(LaunchFailure.Prepare) ?? "The game could not be prepared for the local backend.");
     }
 
     // The memory-only routing edit: the game's backend selection points at the loopback backend (HellForgeLocalRoutingPatch).
+    // How it ended is kept: the outcome, how long it waited, and when game.dll appeared (-1: never).
     void ApplyRouting()
     {
         HellForgeLocalRoutingResult routing;
         try { routing = HellForgeLocalRoutingPatch.Apply(job!.Process.Id, job.Process.StartTime.Ticks, exe, gameDll, (string)result["backendOrigin"]!, 45000, false); }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
-        { throw new SessionFailure("The game could not be connected to the local backend." + (Debug ? " " + error.Message : "")); }
+        { throw new SessionFailure(GameClosed(LaunchFailure.Connect) ?? "The game could not be connected to the local backend." + (Debug ? " " + error.Message : "")); }
         if (Debug) File.WriteAllText(Path.Combine(run, "launch-step-2.json"), JsonSerializer.Serialize(routing, SessionJson.Default.HellForgeLocalRoutingResult));
+        result["connect"] = new JsonObject
+        {
+            ["outcome"] = routing.Outcome, ["waitedMilliseconds"] = routing.ElapsedMilliseconds, ["gameDllSeenMilliseconds"] = routing.ModuleSeenMilliseconds
+        };
         var backendReady = routing.Outcome == "applied" && routing.ReadbackMatched;
-        if (!backendReady) throw new SessionFailure("The game could not be connected to the local backend." + (Debug ? " (" + routing.Outcome + ")" : ""));
+        if (!backendReady) throw new SessionFailure(GameClosed(LaunchFailure.Connect) ?? LaunchFailure.NotConnected(routing.Outcome));
     }
 
-    // The game sometimes quits before the launch is prepared; its exit code names why, for the player (" (...)", or "").
-    string ExitNote()
+    // The game sometimes closes before the launch is prepared: then why `step` was not made, for the player
+    // (LaunchFailure.Closed), with its exit code and Windows' record of a crash kept in the result. Null while it runs.
+    string? GameClosed(string step)
     {
         try
         {
             job!.Process.Refresh();
-            if (job.Process.HasExited)
-            {
-                var code = job.Process.ExitCode;
-                result["gameExitCode"] = $"0x{code:X8}";
-                var meaning = Tools.ExitMeaning(code);
-                var note = $" (the game exited with 0x{code:X8}{(meaning.Length > 0 ? ": " + meaning : "")})";
-                // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
-                return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? note + ". " + warning : note;
-            }
+            if (!job.Process.HasExited) return null;
         }
-        catch (InvalidOperationException) { }
-        return "";
+        catch (InvalidOperationException) { return null; }
+        var code = job.Process.ExitCode;
+        result["gameExitCode"] = $"0x{code:X8}";
+        var crash = RecordWindowsCrash(code);
+        var closed = LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
+        return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? closed + " " + warning : closed;
     }
+
+    // Windows' record of the game's crash (WindowsCrash), looked up once for an exit code that may be one: kept in the
+    // result (windowsCrash, "none" when Windows has none) and said in the log.
+    WindowsCrash.Record? RecordWindowsCrash(int code)
+    {
+        if (result["windowsCrash"] != null || !WindowsCrash.IsCrash(code) || gameStarted is not { } started) return windowsCrash;
+        windowsCrash = WindowsCrash.Find(job!.Process.Id, started.AddSeconds(-5), TimeSpan.FromSeconds(2));
+        result["windowsCrash"] = windowsCrash == null ? "none" : WindowsCrash.ToJson(windowsCrash, CrashOwner(windowsCrash));
+        if (windowsCrash != null) Say($"Windows recorded the game's crash: {windowsCrash.Code} in {windowsCrash.Module}+{windowsCrash.Offset} ({windowsCrash.ModulePath}).");
+        return windowsCrash;
+    }
+
+    WindowsCrash.Owner CrashOwner(WindowsCrash.Record crash) =>
+        WindowsCrash.OwnerOf(crash, install.Root, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
 
     // The verified original is held open read-only: released, saved, the stand-in put in its place and held the same way.
     // The Steam stand-in keeps the original next to it (real), where it forwards Steam's API.

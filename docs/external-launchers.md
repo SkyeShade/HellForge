@@ -291,7 +291,7 @@ a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `sessionEndHeard` whether the mods answered the session's end before a stop ended the game |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game |
 | `modloader.log` | the mod loader: which mods loaded, with each code mod's version and its DLL's SHA-256, and why one did not |
 | `mod-status.tsv` | each code mod's status for the player (SDK 16 `set_status`), a line `<id>\t<text>` per mod; the launcher shows it on the Mods page |
 | `modlist.txt` | the mods the session ran, in load order |
@@ -318,12 +318,12 @@ yet.
 the one `--run` names: one zip for a player to attach to a GitHub issue. Nothing is uploaded; offer
 `https://github.com/SkyeShade/HellForge/issues/new` (`issuePage`, no parameters) for them to attach it. It holds
 `summary.txt` (the versions, system and settings, the game's exit code, the mod loader's crash note: its code, module and
-offset and thread, the mods, the loader's events before the crash and the last 200 lines of its log), `logs\` (the
-export, without crash dumps) and, only with `--dump yes`, `dump\crash-<pid>.dmp`. Its text is scrubbed further than the
-export, for a public issue: Steam ids, IP addresses other than loopback and the other players HellForge's logs name are
-replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's memory and cannot be scrubbed: ask the
-player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and
-`issuePage`.
+offset and thread, Windows' record of the crash when the session looked for one, the mods, the loader's events before
+the crash and the last 200 lines of its log), `logs\` (the export, without crash dumps) and, only with `--dump yes`,
+`dump\crash-<pid>.dmp`. Its text is scrubbed further than the export, for a public issue: Steam ids, IP addresses
+other than loopback and the other players HellForge's logs name are replaced with `steam-id-1`, `ip-1`, `player-1` and
+so on. A dump is the game's memory and cannot be scrubbed: ask the player before passing `--dump yes`. The JSON says
+`files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and `issuePage`.
 
 ## Linux
 
