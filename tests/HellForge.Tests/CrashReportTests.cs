@@ -166,6 +166,25 @@ static class CrashReportTests
             check(CrashReport.FindFault(["10:00:00.000 nothing here"]) == null, "A fault in a log without one.");
         });
 
+        test("A crash in the game's text-input setup under a Wine without msctf's function provider names its cause (#112)", () =>
+        {
+            // The note as the loader wrote it in the tester's report (Wine 10.0, GetFunctionProvider returned E_NOTIMPL).
+            string[] log =
+            [
+                "14:30:47.920 hooks: local.native-atmosphere-control hooked helldivers2.exe+0x4fc590 (priority 0; 1 of 1 in its chain)",
+                "14:30:48.006 crash: c0000005 on thread 856 at helldivers2.exe+0x6738c7 (0x1406738c7), reading 0x0; rax 80004001 rbx a40168 rcx 0",
+                "14:30:48.006 crash: by module: at helldivers2.exe+0x6738c7; rdx helldivers2.exe+0x1690a98; stack outside the game: msctf.dll+0xec82"
+            ];
+            var fault = CrashReport.FindFault(log);
+            var cause = CrashReport.KnownCause(fault, "25480438");
+            check(cause != null && cause.Contains("msctf", StringComparison.Ordinal) && cause.Contains("Proton 11", StringComparison.Ordinal) &&
+                  cause.Contains("not caused by HellForge", StringComparison.Ordinal), "Cause: " + cause);
+            check(CrashReport.KnownCause(fault, "25480439") == null, "The offset was matched for another game build.");
+            check(CrashReport.KnownCause(fault! with { Where = "helldivers2.exe+0x6738ca" }, "25480438") == null, "Another address was matched.");
+            check(CrashReport.KnownCause(fault! with { Code = "c0000096" }, "25480438") == null, "Another exception was matched.");
+            check(CrashReport.KnownCause(null, "25480438") == null, "A run without a crash got a cause.");
+        });
+
         test("The friends the backend counted are left out, also when their profile never arrived", () =>
         {
             var names = ReportPrivacy.NamesIn(crashed);

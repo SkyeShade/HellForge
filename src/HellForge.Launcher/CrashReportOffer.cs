@@ -20,6 +20,7 @@ public partial class MainWindow
         CrashIssueButton.IsVisible = false;
         Append("The game crashed. Save crash report (on the Play page) puts this session's logs, scrubbed for a public bug report, " +
             "in one zip on your Desktop to attach to a GitHub issue.", Orange);
+        if (CrashReport.KnownCause(run) is { } cause) Append("Known cause: " + cause, Orange);
     }
 
     async void SaveCrashReport()

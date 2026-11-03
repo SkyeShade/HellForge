@@ -40,7 +40,9 @@ public static class SteamAccount
     }
 
     // Native Linux: a fresh probe result, else run the ownership probe through the installation's wrapper and use the
-    // account it reports. Windows and Wine keep their own rules; install is ignored there.
+    // account it reports. Windows and Wine keep their own rules; install is ignored there. Null only when the probe's
+    // report says no account is signed in; a probe that failed or reported nothing throws InvalidOperationException with
+    // its reason, so a broken check is never shown to the player as "sign in to Steam".
     public static ulong? Current(InstallLayout install)
     {
         if (Current() is { } cached) return cached;
@@ -120,12 +122,62 @@ public static class SteamAccount
         var request = new SteamOwnershipCheck.LinuxProbeRequest(wrapper, proton, install.Root,
             WinePath.PrefixFromInstallRoot(install.Root), steamRoot, probe, steamApi, Path.Combine(install.Temp, "ownership"),
             evidence, SteamOwnershipCheck.LinuxProbeTimeout, account);
-        try { SteamOwnershipCheck.RunProbeThroughLinuxWrapper(request); }
-        catch (InvalidDataException error) { throw new InvalidOperationException(error.Message, error); }
+        var started = DateTime.UtcNow;
+        try
+        {
+            int exit;
+            try { exit = SteamOwnershipCheck.RunProbeThroughLinuxWrapper(request); }
+            catch (InvalidDataException error) { throw new InvalidOperationException(error.Message, error); }
+            if (Current() != null) return;
+            var wrapperLog = Path.Combine(install.Logs, "linux-session-wrapper.log");
+            if (ProbeFailure(ReadText(evidence), SteamOwnershipCheck.ReadLinuxWrapperProblem(wrapperLog, started), exit, wrapperLog) is { } failure)
+                throw new InvalidOperationException(failure);
+        }
         finally
         {
             try { File.Delete(evidence); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    // Why a probe that handed over no account failed, or null when its report says Steam has no account signed in (the
+    // one case where "sign in to Steam" is the answer). report is the probe's report text (null when it wrote none);
+    // wrapperProblem is the wrapper log's failure line from this run. Pure, so tests/HellForge.Tests covers each case.
+    public static string? ProbeFailure(string? report, string? wrapperProblem, int exitCode, string wrapperLog)
+    {
+        if (report != null) return ReportFailure(report, wrapperLog);
+        return wrapperProblem is { Length: > 0 }
+            ? "the Steam check stopped: " + wrapperProblem
+            : $"the Steam check ended without a report (exit code {exitCode.ToString(CultureInfo.InvariantCulture)}). See {wrapperLog}.";
+    }
+
+    // ProbeFailure for a probe that wrote a report: its own failure, null when it says no account is signed in.
+    static string? ReportFailure(string report, string wrapperLog)
+    {
+        const string Unreadable = "the Steam check's report could not be read. See ";
+        JsonElement root;
+        try
+        {
+            using var document = JsonDocument.Parse(report);
+            root = document.RootElement.Clone();
+        }
+        catch (JsonException) { return Unreadable + wrapperLog + "."; }
+        if (root.ValueKind != JsonValueKind.Object) return Unreadable + wrapperLog + ".";
+        if (root.TryGetProperty("failure", out var failure) && failure.ValueKind == JsonValueKind.String &&
+            failure.GetString() is { Length: > 0 } reason)
+            return "the Steam check failed: " + reason;
+        root.TryGetProperty("loggedOn", out var loggedOn);
+        return loggedOn.ValueKind switch
+        {
+            JsonValueKind.False => null,
+            JsonValueKind.True => "Steam reports a signed-in account, but the check could not hand it to HellForge. Try again.",
+            _ => Unreadable + wrapperLog + "."
+        };
+    }
+
+    static string? ReadText(string path)
+    {
+        try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }
 }

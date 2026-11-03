@@ -447,6 +447,35 @@ hf_runtime_export() {
   export HELLFORGE_STEAM_RUNTIME_IDENTITY="${HF_RUNTIME_IDENTITY:-host}"
 }
 
+# The chain a session's wrapper already resolved and exported (hf_runtime_export), read back as hf-inner.sh does. The
+# self-test that a session's readiness check starts takes it from here, so it tests the exact layering that session runs
+# instead of resolving Steam's files a second time. Returns 1 (and leaves nothing set) when no mode was exported, or a
+# container mode lacks its commandline or identity.
+hf_runtime_from_environment() {
+  hf_runtime_reset
+  case "${HELLFORGE_STEAM_RUNTIME_MODE:-}" in
+    host|container) ;;
+    *) return 1 ;;
+  esac
+  HF_RUNTIME_MODE=$HELLFORGE_STEAM_RUNTIME_MODE
+  HF_RUNTIME_REASON=${HELLFORGE_STEAM_RUNTIME_REASON:-}
+  HF_RUNTIME_APPID=${HELLFORGE_STEAM_RUNTIME_APPID:-}
+  HF_RUNTIME_FOLDER=${HELLFORGE_STEAM_RUNTIME_FOLDER:-}
+  HF_RUNTIME_ENTRYPOINT=${HELLFORGE_STEAM_RUNTIME_ENTRYPOINT:-}
+  HF_RUNTIME_COMMANDLINE=${HELLFORGE_STEAM_RUNTIME_COMMANDLINE:-}
+  HF_RUNTIME_PROTON_COMMANDLINE=${HELLFORGE_STEAM_RUNTIME_PROTON_COMMANDLINE:-}
+  HF_RUNTIME_PROTON=${HELLFORGE_STEAM_RUNTIME_PROTON:-${PROTON:-}}
+  HF_RUNTIME_NAME=${HELLFORGE_STEAM_RUNTIME_NAME:-}
+  HF_RUNTIME_VERSION=${HELLFORGE_STEAM_RUNTIME_VERSION:-}
+  HF_RUNTIME_IDENTITY=${HELLFORGE_STEAM_RUNTIME_IDENTITY:-}
+  if [ "$HF_RUNTIME_MODE" = container ] &&
+     { [ -z "$HF_RUNTIME_ENTRYPOINT" ] || [ -z "$HF_RUNTIME_COMMANDLINE" ] || [ -z "$HF_RUNTIME_IDENTITY" ]; }; then
+    hf_runtime_reset
+    return 1
+  fi
+  return 0
+}
+
 hf_runtime_json_escape() {
   local value=${1-}
   value=${value//\\/\\\\}

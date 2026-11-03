@@ -612,6 +612,10 @@ layout (the installation inside the prefix). It checks every boundary listed abo
 installation root and `profiles/` are refused and that an allowed `mods/` input is readable but not writable, then removes
 the tree. Every check prints `PASS` or `FAIL`; the exit code is 0 only when all of them pass. The launcher and the
 native readiness command store the result with the app build and kernel and show the first reason on failure.
+The self-test's own output, with its Steam Linux Runtime mode line, is kept in `logs/sandbox-self-test.txt`; the
+launcher keeps the readiness command's output in `logs/sandbox-readiness.txt`. When a session's readiness check runs the
+self-test, it takes the runtime choice that session's wrapper made (`HELLFORGE_STEAM_RUNTIME_*`) instead of resolving it
+again, so the test runs the layering the session will run.
 
 ## Account sync
 
@@ -621,6 +625,14 @@ native program and the two system changes are made by one root-owned helper. **R
 restore run in `app/backend-linux/HellForge.LocalBackend`, the local backend's profile commands built for Linux. It
 finds the signed-in Steam account with its own probe through the wrapper, because a native Linux program trusts only a
 probe it ran itself (`HELLFORGE_STEAM_ACCOUNT` is read only by the Windows backend under Wine).
+
+Before a sync starts, the launcher asks the same probe for the signed-in account. "Sign in to Steam first" means the
+probe's report says no account is signed in. A probe that failed says why: its own `failure`, the wrapper's reason
+from `logs/linux-session-wrapper.log`, or that it ended without a report. A sync is also refused while a HellForge
+session runs that this launcher did not start (an earlier launcher's, or one left behind); the play page's End button
+ends it. Every refusal comes before the sync's own `logs/sync-<utc>/` folder exists, so the last one is kept in
+`logs/sync-refused.txt` with the time and the HellForge build. The Windows launcher under Wine cannot sync on Linux,
+because nothing gives it the account, and it says to start HellForge from its desktop shortcut.
 
 The capture usually ends while the game is still open. The prefix is not changed while the game runs, so the launcher
 waits for HELLDIVERS 2 to close and then removes the one-day CA from its prefix. If the launcher is closed first, its

@@ -112,25 +112,31 @@ if [ "${1:-}" = "--sandbox-self-test" ]; then
   [ -x "$sandbox" ] || chmod +x "$sandbox" 2>/dev/null || true
   [ -x "$sandbox" ] || { echo "The Linux sandbox is not executable: $sandbox" >&2; exit 1; }
   mkdir -p "$INSTALL/temp"
-  # The self-test must use the same layering as a session. Resolve the runtime when the Proton/Steam choices are known;
-  # without them this is host mode and the direct hf-sandbox run remains valid.
-  self_proton="${PROTON:-}"
-  [ -n "$self_proton" ] || self_proton="$(hf_saved_proton "$INSTALL" 2>/dev/null || true)"
-  self_steam="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}"
-  [ -n "$self_steam" ] || self_steam="$(hf_saved_steam_root "$INSTALL" 2>/dev/null || true)"
-  [ -n "$self_steam" ] || self_steam="$(hf_steam_root "$HOME" 2>/dev/null || true)"
-  if [ -z "$self_proton" ] && [ -n "$self_steam" ]; then
-    self_proton="$(hf_default_proton "$self_steam" 2>/dev/null || true)"
-  fi
-  if [ -n "$self_proton" ] && [ -n "$self_steam" ]; then
-    hf_runtime_resolve "$self_proton" "$self_steam"
+  # The self-test must use the same layering as a session. A session's readiness check runs this with the chain its
+  # wrapper exported: use that chain as it is, as hf-inner.sh does, so the test and the session cannot disagree. Run on
+  # its own (setup, Check and repair), resolve the runtime when the Proton/Steam choices are known; without them this
+  # is host mode and the direct hf-sandbox run remains valid.
+  if hf_runtime_from_environment; then
+    echo "HellForge: the self-test uses the Steam Linux Runtime choice this session's wrapper made." >&2
   else
-    hf_runtime_reset
-    HF_RUNTIME_MODE=host
-    HF_RUNTIME_REASON="Proton or Steam was not found for the self-test"
+    self_proton="${PROTON:-}"
+    [ -n "$self_proton" ] || self_proton="$(hf_saved_proton "$INSTALL" 2>/dev/null || true)"
+    self_steam="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}"
+    [ -n "$self_steam" ] || self_steam="$(hf_saved_steam_root "$INSTALL" 2>/dev/null || true)"
+    [ -n "$self_steam" ] || self_steam="$(hf_steam_root "$HOME" 2>/dev/null || true)"
+    if [ -z "$self_proton" ] && [ -n "$self_steam" ]; then
+      self_proton="$(hf_default_proton "$self_steam" 2>/dev/null || true)"
+    fi
+    if [ -n "$self_proton" ] && [ -n "$self_steam" ]; then
+      hf_runtime_resolve "$self_proton" "$self_steam"
+    else
+      hf_runtime_reset
+      HF_RUNTIME_MODE=host
+      HF_RUNTIME_REASON="Proton or Steam was not found for the self-test"
+    fi
+    if [ -n "$self_proton" ]; then export PROTON="$self_proton"; fi
+    if [ -n "$self_steam" ]; then export STEAM_COMPAT_CLIENT_INSTALL_PATH="$self_steam"; fi
   fi
-  if [ -n "$self_proton" ]; then export PROTON="$self_proton"; fi
-  if [ -n "$self_steam" ]; then export STEAM_COMPAT_CLIENT_INSTALL_PATH="$self_steam"; fi
   hf_runtime_export
   hf_runtime_mode_line >&2
   hf_runtime_entrypoint_arguments run "$sandbox" --self-test --self-test-dir "$INSTALL/temp"
