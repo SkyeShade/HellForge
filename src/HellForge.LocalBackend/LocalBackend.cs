@@ -27,6 +27,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
+    public PickupRelay? Pickups { get; init; }
 }
 
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
@@ -114,7 +116,7 @@ public static partial class LocalBackend
         var liveWar = settings.OpenWar ? null : settings.LiveWar;
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile) : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups) : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
