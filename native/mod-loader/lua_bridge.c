@@ -16,7 +16,8 @@
 #include "hellforge_lua.h"
 #define LUA_BRIDGE_VERSION HF_LUA_BRIDGE_VERSION
 #define LUA_EVENT_QUEUE 512
-_Static_assert(HF_LUA_EVENT_SIZE == EVT_DATA, "a Lua event holds the largest event");
+/* A Lua event holds the game events a Lua mod can listen to (128 bytes). The mod channel's HfMessageEvent is larger
+ * (1024 bytes of data); LuaListener drops it and hellforge_lua_listen refuses that kind, so it cannot overflow a queue. */
 
 static SRWLOCK g_luaLock = SRWLOCK_INIT;
 static HfLuaEvent g_luaQueue[LUA_EVENT_QUEUE];
@@ -209,16 +210,16 @@ HF_LUA_API uint64_t hellforge_lua_owner(const char* component, uint32_t record, 
 static void LuaListener(HfMod* mod, const HfEventInfo* event, void* user)
 {
     AcquireSRWLockExclusive(&g_luaLock);
-    if (g_luaQueued < LUA_EVENT_QUEUE && event->size <= EVT_DATA) memcpy(g_luaQueue[g_luaQueued++].data, event, event->size);
+    if (g_luaQueued < LUA_EVENT_QUEUE && event->size <= HF_LUA_EVENT_SIZE) memcpy(g_luaQueue[g_luaQueued++].data, event, event->size);
     else g_luaDropped++;
     ReleaseSRWLockExclusive(&g_luaLock);
 }
 
 /* Listens to a kind of game event (HF_ON_...) for the Lua runtime: once per kind, whichever Lua mod asks. 1, or 0 (the
- * mod's log says why: an unknown kind, or the game thread not hooked). */
+ * mod's log says why: an unknown kind, one too large for a Lua event, or the game thread not hooked). */
 HF_LUA_API int hellforge_lua_listen(HfMod* mod, uint32_t kind)
 {
-    if (!LuaMod(mod) || kind >= 32) return 0;
+    if (!LuaMod(mod) || kind >= 32 || kind == HF_ON_MESSAGE) return 0;
     if ((g_luaListening >> kind) & 1) return 1;
     if (!ApiSubscribe(mod, kind, LuaListener, NULL, 0)) return 0;
     InterlockedOr(&g_luaListening, 1L << kind);

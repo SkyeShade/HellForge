@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 15
+#define HF_MOD_SDK_VERSION 16
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -515,6 +515,9 @@ typedef struct HfNotice
 #define HF_ON_EXPLOSION 13     /* HfExplosionEvent: an explosion was requested in this machine's world (its own simulation) */
 #define HF_ON_BUGHOLE 14       /* HfBugholeEvent: a bug hole (any bug spawner) was closed, on every machine */
 #define HF_ON_DAMAGE_PRE 15    /* HfDamagePreEvent: damage about to apply, as HF_ON_DAMAGE's; a listener may change it */
+/* SDK 16 events (subscribe): HfMessageEvent and HfShareEvent. */
+#define HF_ON_MESSAGE 16       /* HfMessageEvent: a message from the same mod on another machine of the lobby (send) */
+#define HF_ON_SHARE 17         /* HfShareEvent: one row of this mod's shared table arrived, changed or went */
 
 /* The game's states (HfStateEvent, game_state). */
 #define HF_STATE_NONE 0u
@@ -703,6 +706,34 @@ typedef struct HfDamagePreEvent
     HfDamageEvent damage; /* damage.info.kind is HF_ON_DAMAGE_PRE */
     uint32_t cancel;
 } HfDamagePreEvent;
+
+/* SDK 16: the mod channel's caps and targets (send, share_set). A message holds at most HF_MESSAGE_MAX bytes; a shared
+ * row's value at most HF_SHARE_VALUE_MAX bytes; a mod's table at most HF_SHARE_ROWS rows. */
+#define HF_MESSAGE_MAX 1024u
+#define HF_SHARE_VALUE_MAX 64u
+#define HF_SHARE_ROWS 512u
+/* send's to: every other machine of the lobby, or its host. A peer id from HfMessageEvent.from names one machine. */
+#define HF_TO_ALL 0xFFFFFFFFFFFFFFFFull
+#define HF_TO_HOST 0xFFFFFFFFFFFFFFFEull
+
+/* SDK 16: a message from the same mod on another machine of the lobby (send, HF_ON_MESSAGE). `from` is the sender's peer
+ * id (the host's when it came from the host); data holds `bytes` bytes, at most HF_MESSAGE_MAX. Valid during the call. */
+typedef struct HfMessageEvent
+{
+    HfEventInfo info;
+    uint64_t from;
+    uint32_t bytes;
+    uint8_t data[HF_MESSAGE_MAX];
+} HfMessageEvent;
+/* SDK 16: one row of this mod's shared table (share_set, share_get, share_row; HF_ON_SHARE), raised on the game thread
+ * when a row arrives, changes or goes (bytes 0: removed). Valid during the call. */
+typedef struct HfShareEvent
+{
+    HfEventInfo info;
+    uint64_t key;
+    uint32_t bytes;
+    uint8_t value[HF_SHARE_VALUE_MAX];
+} HfShareEvent;
 
 /* SDK 11 actions: what a mod makes the game do, through the game's own functions (HD2Runtime 0.40.1's research), on the
  * game thread (an event listener's or on_game_thread's call; from another thread an action waits for the next game
@@ -1199,6 +1230,29 @@ typedef struct HfApi
     /* ---- SDK 15 --------------------------------------------------------------------------------------------------- */
     /* Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size. */
     uint32_t (*stats_source)(HfMod* mod);
+
+    /* ---- SDK 16: the mod channel (co-op; docs/modding/concepts.md "Co-op") ---------------------------------------- */
+    /* 1 when this machine simulates the entity (its record's authority bit, as HfSpawnEvent.authority says at spawn), 0
+     * not, -1 no such entity. Check hf->size. */
+    int (*is_authority)(HfMod* mod, uint32_t entity);
+    /* The entity a network id names on this machine now, or 0xFFFFFFFF (game.dll 0xFD9BA0, as abilities.c calls it).
+     * Check hf->size. */
+    uint32_t (*entity_of_network)(HfMod* mod, uint32_t network);
+    /* Messages: the same mod on other machines of the lobby gets them (HF_ON_MESSAGE), in order per sender, reliably while
+     * both stay in the lobby; none in solo. to: HF_TO_ALL (every other machine), HF_TO_HOST, or a peer id from an
+     * HF_ON_MESSAGE. At most HF_MESSAGE_MAX (1024) bytes; at most 64 messages a second per mod (more: 1 refused, the log
+     * says why). 0 sent (queued), 1 refused. Check hf->size. */
+    int (*send)(HfMod* mod, uint64_t to, const void* data, uint32_t bytes);
+    /* The shared table: rows the HOST sets, which every machine of the lobby holds (a late joiner gets them all when it
+     * joins). Per mod: keys are the mod's own (u64), values up to HF_SHARE_VALUE_MAX (64) bytes, at most HF_SHARE_ROWS (512)
+     * rows. share_set on the host: bytes 0 removes the row; 0 done, 1 refused (not the host, too big, too many rows: the log
+     * says why). Joined machines' share_set is refused. Rows last until the host removes them or the lobby ends.
+     * Check hf->size. */
+    int (*share_set)(HfMod* mod, uint64_t key, const void* value, uint32_t bytes);
+    /* The row now on this machine: its size (0 none), up to capacity bytes copied. Check hf->size. */
+    uint32_t (*share_get)(HfMod* mod, uint64_t key, void* value, uint32_t capacity);
+    /* The index-th row this machine holds (any order): 1 with *key and the value filled, 0 past the last. Check hf->size. */
+    int (*share_row)(HfMod* mod, uint32_t index, uint64_t* key, void* value, uint32_t capacity, uint32_t* bytes);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

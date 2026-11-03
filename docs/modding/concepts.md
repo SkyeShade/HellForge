@@ -31,7 +31,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "icon": "images/icon.png",
   "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 16 }
 }
 ```
 
@@ -144,6 +144,37 @@ game: use `hf_set` or `edit_entity` instead.
 - What travels between machines. New content travels as ids (stratagem types, projectile types), so a mod's content
   must exist on every machine, which the modlist code makes sure of. A network field type a mod widens is widened on
   every machine for the same reason.
+- The mod channel (SDK 16). The same code mod on every machine can send messages (`send`; `HF_ON_MESSAGE`) and share
+  a table the host owns (`share_set`, `share_get`, `share_row`; `HF_ON_SHARE`). Messages are at most
+  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo. Rows are per
+  mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most `HF_SHARE_ROWS` (512) rows.
+  Only the host sets rows; every machine reads them, and a late joiner gets the whole table when it joins.
+  `is_authority(entity)` says whether this machine simulates an entity, and `entity_of_network(network)` gives the
+  entity a network id names on this machine now.
+- Example: champions. The host's mod crowns some enemies and shares each crown by network id; every machine listens
+  and dresses the entity it holds under that id. What the clients need travels in the value, never a decision they
+  would compute differently:
+
+  ```c
+  typedef struct { uint64_t resource; uint8_t look, kind; uint16_t serial; } Champion;
+
+  /* host: crown an enemy (its network id is the row's key) */
+  Champion crown = {resource, look, kind, serial};
+  hf->share_set(mod, network, &crown, sizeof crown);
+  /* ... and when it dies or retires */
+  hf->share_set(mod, network, NULL, 0);
+
+  /* every machine: a row arrives, changes or goes */
+  static void Shared(HfMod* mod, const HfEventInfo* event, void* user)
+  {
+      const HfShareEvent* row = (const HfShareEvent*)event;
+      if (row->bytes == 0) return; /* gone: undress the entity bound to it */
+      uint32_t entity = HF_API(mod)->entity_of_network(mod, (uint32_t)row->key);
+      /* bind when the entity's resource matches; HF_ON_SPAWN says when it appears */
+  }
+
+  hf->subscribe(mod, HF_ON_SHARE, Shared, NULL, 0);
+  ```
 
 ## Premium content
 
@@ -180,7 +211,7 @@ HellForge does most of this for you.
     "name": "Knight Carbine",
     "version": "1.0.0",
     "premium": ["dlc:super-citizen-edition"],
-    "code": { "dll": "knight_carbine.dll", "sdk": 15 }
+    "code": { "dll": "knight_carbine.dll", "sdk": 16 }
   }
   ```
 
@@ -215,7 +246,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 17; this HellForge provides SDK 16"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c

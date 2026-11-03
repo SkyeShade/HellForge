@@ -142,7 +142,9 @@ values in `stats.set`. A backend with another protocol is refused.
 | Lobby | `lobby.create`, `lobby.join`, `lobby.update`, `lobby.leave`, `lobby.kick`, `lobby.invite`, `lobby.find`, `lobby.result`, `lobby.memberAdded`, `lobby.memberRemoved`, `lobby.updated`, `lobby.disconnected`, `lobby.found`, `lobby.inviteReceived`, `lobby.refused` |
 | Party | `party.host`, `party.connect`, `party.endpoint`, `party.endpointGone`, `party.leave`, `party.message`, `party.kick`, `party.connected`, `party.endpointCreated`, `party.endpointDestroyed`, `party.deviceJoined`, `party.deviceLeft`, `party.networkGone` |
 | Between backends only | `peer.ping`, `account.key`, `presence`, `presence.hello`, `stats.set`, `war.clock`, `lobby.invited`, `lobby.rejoin`, `lobby.rejoined` |
+| Mod channel (between backends) | `mods.msg`, `mods.share`, `mods.sharesnap` |
 | Live-edit pipe (backend to game) | `session`, `notice`, `set`, `reset`, `base`, `get` |
+| Live-edit pipe, SDK 16 (both ways) | `message`, `share`, `sharereset` (backend to game); `send`, `share` (game to backend) |
 
 ### Joining and the modlist gate
 
@@ -696,6 +698,26 @@ others' guns. Research: `HD2Mods\research\coop-weapon-stats` (part B).
 - Not covered: a shotgun's pellet count (read by type in the fire function), explosion values, damage statuses and
   demolition (read by damage id per hit; the damage list is not moved for this), and shots spawned anywhere else
   (sentries, vehicles, stratagems). Which machine decides damage is unchanged: the shooter's.
+
+### The mod channel in co-op
+
+A code mod can talk to the same mod on the other players' machines, and keep a small table its host owns (SDK 16;
+[modding/concepts.md](modding/concepts.md#co-op)). `ModChannel`
+(`src/HellForge.LocalBackend/Multiplayer/ModChannel.cs`) carries it, shaped like `AssetShare`.
+
+- The game's live pipe carries its mods' lines: `send <mod id> <all|host|peer hex> <data hex>` for a message and
+  `share <mod id> <key hex> <value hex or ->` for a row the host set. A joiner's backend sends its game's messages to
+  the host as `mods.msg` [mod id, from hex, target, data]; the host delivers those that name it to its own game and
+  relays the rest to the machines they name (or to every other member for `all`). Every receiving backend sends
+  `message <seq> <mod id> <from hex> <data hex>` to its game, which raises `HF_ON_MESSAGE` for that mod alone.
+- The host's rows are its table: `mods.share` [version, mod id, key hex, value] is one change (no value: removed),
+  and `mods.sharesnap` [version, count, (mod id, key hex, value) * count] is the whole table to a member whose version
+  is behind, which is how a late joiner gets it. A joining or reconnecting game is sent `sharereset` then a `share`
+  line per row it holds; the same lines carry the host's changes. The game raises `HF_ON_SHARE` for its own mod.
+- The host enforces the caps: a message at most 1024 bytes and 64 a second from each machine, a value at most 64
+  bytes, 512 rows a mod. A joiner's share frame is refused, so only the host's rows can grow the table.
+- Rows go when the host removes them or the lobby ends or this machine leaves it; the game is sent `sharereset` then.
+  A game whose live protocol is 1 gets none of these lines; an older backend ignores the frames.
 
 ### When the host leaves
 
