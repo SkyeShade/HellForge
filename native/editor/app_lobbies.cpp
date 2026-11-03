@@ -25,7 +25,14 @@ static bool LobbiesArmed() { return Now() - g_lobbies.shownAt >= LOBBY_ARM; }
 /* A search shows as one for at least this long: the backend answers a list it searched in the last 2 s at once, and a
  * REFRESH that changed nothing on screen looked like it did nothing. */
 const double LOBBY_SEARCH_SHOWN = 0.8;
-static bool Searching() { return g_lobbies.state.state == HF_BROWSE_SEARCHING || Now() - g_lobbies.askedAt < LOBBY_SEARCH_SHOWN; }
+/* The backend gives a search 30 s (SteamLobbyDirectory) and answers every ask with a final state; a search or a join it
+ * never answers (a lost line, a backend that hung) is given up after this long, so the browser never stays on SEARCHING
+ * or a join. */
+const double LOBBY_GIVE_UP = 60;
+static bool Searching()
+{
+    return (g_lobbies.state.state == HF_BROWSE_SEARCHING && !g_lobbies.searchStuck) || Now() - g_lobbies.askedAt < LOBBY_SEARCH_SHOWN;
+}
 
 /* What Quick Play asks for while the backend picks (g_lobbies.joining): JoinAnswered then hears its outcome. */
 const char* const QUICK_JOIN = "quick play";
@@ -85,10 +92,17 @@ static void CloseLobbies()
     ShowLobbiesAlone(false);
 }
 
-/* The lobbies the filters leave; the selection kept on the same lobby where it can be. */
-static void Filter()
+/* The selected lobby, or null: shown and lobbies are checked against each other, as a list read since may be shorter. */
+static const HfBrowseLobby* Selected()
 {
-    std::string selected = g_lobbies.index < (int)g_lobbies.shown.size() ? g_lobbies.lobbies[g_lobbies.shown[g_lobbies.index]].lobby_id : "";
+    if (g_lobbies.index < 0 || g_lobbies.index >= (int)g_lobbies.shown.size()) return nullptr;
+    int at = g_lobbies.shown[g_lobbies.index];
+    return at >= 0 && at < (int)g_lobbies.lobbies.size() ? &g_lobbies.lobbies[at] : nullptr;
+}
+
+/* The lobbies the filters leave; the selection kept on the lobby whose id is selected where it can be. */
+static void Filter(const std::string& selected)
+{
     g_lobbies.shown.clear();
     for (int i = 0; i < (int)g_lobbies.lobbies.size(); i++)
     {
@@ -102,8 +116,16 @@ static void Filter()
     g_lobbies.index = std::clamp(g_lobbies.index, 0, std::max(0, (int)g_lobbies.shown.size() - 1));
 }
 
+static void Filter()
+{
+    const HfBrowseLobby* l = Selected();
+    Filter(l != nullptr ? std::string(l->lobby_id) : std::string());
+}
+
 static void ReadLobbyList(uint32_t count)
 {
+    const HfBrowseLobby* was = Selected();
+    std::string selected = was != nullptr ? was->lobby_id : ""; /* before the list it points into goes */
     g_lobbies.lobbies.clear();
     for (uint32_t i = 0; i < count; i++)
     {
@@ -112,7 +134,7 @@ static void ReadLobbyList(uint32_t count)
         if (!g_host.api->browse_lobby(g_host.mod, i, &lobby)) break;
         g_lobbies.lobbies.push_back(lobby);
     }
-    Filter();
+    Filter(selected);
 }
 
 /* The backend's answer to a join: invited, the browser goes so the player can accept the invitation in game. */
@@ -131,6 +153,22 @@ static void JoinAnswered(const HfBrowseState& now)
         g_lobbies.joining.clear();
         Toast(now.message[0] ? now.message : "That lobby cannot be joined", ERROR_);
         Sound(sounds::BACK);
+    }
+}
+
+/* A search or a join the backend never answered (LOBBY_GIVE_UP): the browser leaves SEARCHING, the join's wait ends. */
+static void GiveUpUnanswered(const HfBrowseState& now)
+{
+    if (now.state == HF_BROWSE_SEARCHING && !g_lobbies.searchStuck && Now() - g_lobbies.searchSince >= LOBBY_GIVE_UP)
+    {
+        g_lobbies.searchStuck = true;
+        g_host.api->log(g_host.mod, "editor: lobby browser: the search had no answer in %.0f s; given up", LOBBY_GIVE_UP);
+    }
+    if (!g_lobbies.joining.empty() && Now() - g_lobbies.joinedAt >= LOBBY_GIVE_UP)
+    {
+        g_host.api->log(g_host.mod, "editor: lobby browser: the join (%s) had no answer in %.0f s; given up", g_lobbies.joining.c_str(), LOBBY_GIVE_UP);
+        g_lobbies.joining.clear();
+        if (g_lobbies.on) Toast("The join had no answer from the session's backend. Try again.", ERROR_);
     }
 }
 
@@ -163,15 +201,12 @@ void ReadLobbies()
     {
         if (now.version != was.version || now.lobbies != g_lobbies.lobbies.size()) ReadLobbyList(now.lobbies);
         if (now.version != was.version && now.state == HF_BROWSE_READY) g_lobbies.listedAt = Now();
+        if (turned) { g_lobbies.searchStuck = false; if (now.state == HF_BROWSE_SEARCHING) g_lobbies.searchSince = Now(); }
         g_lobbies.state = now;
         if (turned) JoinAnswered(now);
     }
-    if (g_lobbies.on && g_lobbies.joining.empty() && now.state != HF_BROWSE_SEARCHING && Now() - g_lobbies.askedAt >= LOBBY_REFRESH) AskList();
-}
-
-static const HfBrowseLobby* Selected()
-{
-    return g_lobbies.index < (int)g_lobbies.shown.size() ? &g_lobbies.lobbies[g_lobbies.shown[g_lobbies.index]] : nullptr;
+    GiveUpUnanswered(now);
+    if (g_lobbies.on && g_lobbies.joining.empty() && !Searching() && Now() - g_lobbies.askedAt >= LOBBY_REFRESH) AskList();
 }
 
 static bool Joinable(const HfBrowseLobby* l) { return l != nullptr && (l->flags & HF_LOBBY_FLAG_JOINABLE) && g_lobbies.joining.empty(); }
@@ -181,6 +216,7 @@ static void Join(const HfBrowseLobby* l)
     if (!Joinable(l) || !LobbiesArmed()) return;
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_JOIN, l->lobby_id)) { Toast("The session's backend is not connected", ERROR_); return; }
     g_lobbies.joining = l->lobby_id;
+    g_lobbies.joinedAt = Now();
     Sound(sounds::CLICK);
 }
 
@@ -190,14 +226,15 @@ static void Quick()
     if (!g_lobbies.joining.empty() || !LobbiesArmed()) return;
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_QUICK, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
     g_lobbies.joining = QUICK_JOIN;
+    g_lobbies.joinedAt = Now();
     Sound(sounds::CLICK);
 }
 
 /* The setting that keeps a lobby out, turned on from the browser: Play with strangers only after its warning
  * (confirmStrangers, then TurnOnStrangers), edited stats at once. */
 const char* const STRANGER_WARNING = "Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in "
-    "the game's network code could let it run code on your PC. Turn this on only if you accept that risk. You can turn it off again in the "
-    "launcher's Settings > MULTIPLAYER.";
+    "the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It stays on for this session only: "
+    "the launcher's Settings > MULTIPLAYER keeps your choice.";
 
 static void Fix(const HfBrowseLobby* l)
 {
@@ -206,7 +243,7 @@ static void Fix(const HfBrowseLobby* l)
     else if (l->fix == HF_LOBBY_FIX_EDITED_STATS)
     {
         if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_SHOW_EDITED_STATS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
-        Toast("Lobbies whose host shares edited stats now show. Joining one, you play with the host's stats.", OK);
+        Toast("Lobbies whose host shares edited stats show for this session. Joining one, you play with the host's stats.", OK);
         g_lobbies.askedAt = Now();
         Sound(sounds::CLICK);
     }
@@ -216,8 +253,8 @@ static void TurnOnStrangers()
 {
     g_lobbies.confirmStrangers = false;
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_ALLOW_STRANGERS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
-    g_host.api->log(g_host.mod, "editor: lobby browser: the player turned Play with strangers on, after its warning");
-    Toast("Play with strangers is on: strangers' lobbies can be joined.", OK);
+    g_host.api->log(g_host.mod, "editor: lobby browser: the player turned Play with strangers on for this session, after its warning");
+    Toast("Play with strangers is on for this session: strangers' lobbies can be joined.", OK);
     g_lobbies.askedAt = Now();
     Sound(sounds::APPLY);
 }
@@ -343,9 +380,11 @@ static void DrawTermHeader(float x, float y, float w, float alpha, double t)
     const HfBrowseState& s = g_lobbies.state;
     size_t strangers = std::count_if(g_lobbies.lobbies.begin(), g_lobbies.lobbies.end(), [](const HfBrowseLobby& l) { return l.fix == HF_LOBBY_FIX_STRANGERS; });
     std::string what = s.state == HF_BROWSE_NONE ? "Connecting to the ship's network..." : s.state == HF_BROWSE_UNAVAILABLE ? s.message :
+        g_lobbies.searchStuck ? "The search had no answer. REFRESH to try again." :
         s.message[0] ? s.message : strangers > 0 ? std::to_string(strangers) + " of these lobbies are strangers': Play with strangers is off (select one, then A)." :
         "Every HellForge lobby on any planet, and what joining it takes.";
-    g_cv.Text(what, x, y + 42, T(SZ_SMALL, Alpha(s.state == HF_BROWSE_UNAVAILABLE || s.state == HF_BROWSE_FAILED ? TERM_BAD : TERM_DIM, alpha), ui::BODY,
+    bool bad = s.state == HF_BROWSE_UNAVAILABLE || s.state == HF_BROWSE_FAILED || g_lobbies.searchStuck;
+    g_cv.Text(what, x, y + 42, T(SZ_SMALL, Alpha(bad ? TERM_BAD : TERM_DIM, alpha), ui::BODY,
         ui::LEFT, w * 0.6f, 12));
     std::string status = std::to_string(g_lobbies.shown.size()) + " of " + std::to_string(g_lobbies.lobbies.size()) + " lobbies";
     if (g_lobbies.listedAt > 0)

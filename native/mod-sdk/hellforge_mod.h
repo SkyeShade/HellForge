@@ -937,9 +937,11 @@ typedef struct HfBrowseLobby
 #define HF_BROWSE_HIDDEN 4u  /* it went: the terminal's camera glides back to the player; this machine only */
 #define HF_BROWSE_QUICK 5u   /* Quick Play: join the best joinable lobby of a fresh list (a friend's first, then the fewest
                               * downloads); browse_state says INVITED with the host's name, or FAILED when there is none */
-#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on (HF_LOBBY_FIX_STRANGERS): ask only after showing the
-                                        * player the warning HellForge's launcher shows; a new list follows */
-#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) */
+#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on for this session (HF_LOBBY_FIX_STRANGERS), never saved:
+                                        * ask only after showing the player the warning HellForge's launcher shows; a new
+                                        * list follows */
+#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) for this
+                                        * session, never saved */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1300,8 +1302,8 @@ typedef struct HfApi
     int (*browse_lobby)(HfMod* mod, uint32_t index, HfBrowseLobby* out);
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
      * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
-     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS change the player's setting (lobby_id
-     * NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no
+     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this
+     * session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no
      * backend. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
 } HfApi;

@@ -572,8 +572,12 @@ when nothing can be joined. The browse API lists what a map search leaves out: a
 strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
 and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
 `HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the
-launcher's warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then saves it (the stranger
-setting reads it again within 2 s) and lists again. Only the game's pipe can ask that, not the HTTP API. A stranger's
+launcher's warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then turns it on for this
+session only (`MultiplayerHost.AllowForSession`: the stranger setting's `AllowForSession`, `ModSync.ShowEditedStatsThisSession`)
+and lists again. Nothing is saved: any mod in the game can send the ask, so the launcher's switch and the Mods page stay the
+player's, and the next session uses them again. Only the game's pipe can ask that, not the HTTP API. Every ask ends in a
+state that is not `searching`: a search that fails or times out, or a list the game refuses, is answered `failed` with
+the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's
 lobby running unverified code or raw mods has no fix: a host sends those to Steam friends alone. A squad is at most 4 although the game's lobby has 8 PlayFab places: a
 listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full (`DirectoryService.SquadSize`, also for
 older HellForge versions' listings, which count to 8). Each browse

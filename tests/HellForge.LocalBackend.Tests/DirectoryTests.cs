@@ -347,7 +347,16 @@ static class DirectoryTests
         await using var live = new LiveEditServer(runId);
         var logged = new ConcurrentQueue<string>();
         var modsFolder = Directory.CreateTempSubdirectory("hf-browse-").FullName;
-        var browser = new LiveBrowse(browse, live, logged.Enqueue, modsFolder);
+        // the session's "allow" as MultiplayerHost wires it: this session's stranger setting and edited-stats switch
+        var strangers = new StrangerSetting(modsFolder, sandboxed: false);
+        var editedStats = false;
+        bool Allow(string what)
+        {
+            if (what == "strangers") strangers.AllowForSession();
+            else editedStats = true;
+            return true;
+        }
+        var browser = new LiveBrowse(browse, live, logged.Enqueue, Allow);
         live.Start();
         using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", LiveEditServer.PipeName(runId), System.IO.Pipes.PipeDirection.InOut,
             System.IO.Pipes.PipeOptions.Asynchronous);
@@ -358,7 +367,8 @@ static class DirectoryTests
         var waited = System.Diagnostics.Stopwatch.StartNew();
         while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
         // the game's side: each line without its sequence number, answered as the loader answers (live.c), up to a browsestate
-        // (or one in a state of until's)
+        // (or one in a state of until's); refuseLobbies: browselobby lines are refused, as the loader refuses a malformed one
+        var refuseLobbies = false;
         async Task<List<string>> Game(string ask, params string[] until)
         {
             await writer.WriteLineAsync(ask);
@@ -367,7 +377,7 @@ static class DirectoryTests
             {
                 var parts = line.Split('\t');
                 lines.Add(string.Join('\t', parts.Where((_, i) => i != 1)));
-                await writer.WriteLineAsync(parts[1] + "\tok\tnow");
+                await writer.WriteLineAsync(parts[1] + (refuseLobbies && parts[0] == "browselobby" ? "\trefused\tmalformed" : "\tok\tnow"));
                 if (parts[0] == "browsestate" && parts[3] != "searching" && (until.Length == 0 || until.Contains(parts[3]))) return lines;
             }
             return lines;
@@ -393,11 +403,19 @@ static class DirectoryTests
         check(quick.Last() == "browsestate\t3\tinvited\t2\tQuick Play: joining Host Diver's lobby. Accept the invitation in game." && quickInvite.Text(0) == lobbyId &&
             logged.Any(l => l == $"Lobby browser: Quick Play: browse_quick_invited {lobbyId}."), "Quick Play from the game lists, then joins the best lobby: " + string.Join(" | ", quick));
         var shown = await Game("browseask\tallow\teditedstats");
-        check(ModSettings.Read(modsFolder).ShowEditedStats && shown.Last().StartsWith("browsestate\t4\tready\t", StringComparison.Ordinal),
-            "Showing edited-stats lobbies from the game saves the setting and lists again: " + string.Join(" | ", shown));
+        check(editedStats && !ModSettings.Read(modsFolder).ShowEditedStats && shown.Last().StartsWith("browsestate\t4\tready\t", StringComparison.Ordinal),
+            "Showing edited-stats lobbies from the game holds for this session, is not saved, and lists again: " + string.Join(" | ", shown));
         var allowed = await Game("browseask\tallow\tstrangers");
-        check(ModSettings.PlayWithStrangers(modsFolder) == true && ModSettings.Read(modsFolder).StrangersWarned && allowed.Last().StartsWith("browsestate\t5\tready\t", StringComparison.Ordinal) &&
-            logged.Any(l => l.Contains("turned Play with strangers on")), "Play with strangers turned on from the game, after its warning, is saved: " + string.Join(" | ", allowed));
+        check(strangers.Allowed && ModSettings.PlayWithStrangers(modsFolder) == null && !ModSettings.Read(modsFolder).StrangersWarned &&
+            allowed.Last().StartsWith("browsestate\t5\tready\t", StringComparison.Ordinal) && logged.Any(l => l.Contains("Play with strangers is on for this session")),
+            "Play with strangers turned on from the game (any mod can ask) holds for this session only: nothing is saved: " + string.Join(" | ", allowed));
+        check(!new StrangerSetting(modsFolder, sandboxed: false).Allowed, "The next session's setting is the player's own: off without a choice, unsandboxed.");
+        // A list the game refuses ends in "failed", not SEARCHING: the old list stays.
+        refuseLobbies = true;
+        var failed = await Game("browseask\trefresh\t-");
+        refuseLobbies = false;
+        check(failed.Last() == "browsestate\t5\tfailed\t2\tThe list could not be shown. REFRESH to try again." && logged.Any(l => l.Contains("the game refused a lobby")),
+            "A list the game refuses ends in a failed state: " + string.Join(" | ", failed));
         check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixEditedStats }) is { Fix: "editedstats" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "sandbox" }) is { Fix: "" } &&

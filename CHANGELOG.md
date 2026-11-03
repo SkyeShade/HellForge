@@ -28,7 +28,7 @@ On `dev`, since 0.3.0-beta.
   lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
   in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
   hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
-  that lets them in, which you can turn on from the browser.
+  that lets them in, which you can turn on from the browser for that session.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
   gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
@@ -227,8 +227,8 @@ On `dev`, since 0.3.0-beta.
   with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information terminal
   opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN`
   keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and `HfBrowseLobby.fix` names the
-  setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`; show the player the
-  launcher's warning before turning strangers on).
+  setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`, `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved;
+  show the player the launcher's warning before turning strangers on).
 
 ### For launcher developers
 

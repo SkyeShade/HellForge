@@ -198,6 +198,10 @@ public sealed class ModSync : IAsyncDisposable
 
     // This session's mod set as a lobby listing carries it (the wire form), its digest, and whether this player shares it.
     public string? OwnSetWire => ownWire;
+    // Lobbies whose host shares edited stats show for this session (the lobby browser's ask), whatever the Mods page says;
+    // never saved.
+    public bool ShowEditedStatsThisSession { get => Volatile.Read(ref showEditedStats); set => Volatile.Write(ref showEditedStats, value); }
+    bool showEditedStats;
     public string OwnDigest => own?.Digest ?? "none";
     public bool Sharing => Shares();
 
@@ -221,7 +225,7 @@ public sealed class ModSync : IAsyncDisposable
     public JoinCheck Check(DirectoryListing listing)
     {
         var settings = ModSettings.Read(modsFolder);
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats)
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats && !ShowEditedStatsThisSession)
             return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
         if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
         if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return new(true, "", null, []);

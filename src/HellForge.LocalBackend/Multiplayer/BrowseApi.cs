@@ -217,8 +217,9 @@ public sealed class BrowseApi
 // session's live-edit pipe ("browseask refresh|join <lobby id>|quick|allow strangers|editedstats",
 // native/mod-loader/live_browse.c), answered with the API's own list (BrowseApi.ListAsync) as one "browselobby" line a
 // lobby and then "browsestate", which publishes them, and a join through the API's (BrowseApi.Join, QuickJoinAsync).
-// "allow" changes the player's setting a listed lobby's fix names, once the editor showed what it means: only the game's
-// own pipe can ask it, not the loopback HTTP API. Asks are answered one at a time, in order.
+// "allow" turns on, for this session only, the setting a listed lobby's fix names, once the editor showed what it means:
+// only the game's own pipe can ask it, not the loopback HTTP API, and nothing is saved (any mod in the game can ask, and
+// the launcher's switches stay the player's). Asks are answered one at a time, in order.
 public sealed class LiveBrowse
 {
     // The loader's limit (live_browse.c BROWSE_MAX_LOBBIES): past it the message says how many more there are.
@@ -227,21 +228,23 @@ public sealed class LiveBrowse
     readonly BrowseApi api;
     readonly LiveEditServer live;
     readonly Action<string> log;
-    readonly string? modsFolder;
+    readonly Func<string, bool>? allow;
     readonly SemaphoreSlim order = new(1, 1);
     int attempts;
     // the list the game shows: its version and how many lobbies (0, 0: none yet)
     (int Version, int Lobbies) shown;
 
-    // modsFolder: the session's, where the player's settings live (null: "allow" is refused).
-    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log, string? modsFolder = null)
+    // allow: turns "strangers" or "editedstats" on for this session, false when it cannot (null: "allow" is refused).
+    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log, Func<string, bool>? allow = null)
     {
-        (this.api, this.live, this.log, this.modsFolder) = (api, live, log, modsFolder);
+        (this.api, this.live, this.log, this.allow) = (api, live, log, allow);
         live.Received += parts => { if (parts[0] == "browseask") _ = AskAsync(parts); };
         live.StateChanged += () => { if (!live.Connected) shown = (0, 0); }; // the loader forgets the list with the pipe
     }
 
-    // "browseask" refresh - | join <lobby id> | quick - | allow strangers|editedstats.
+    // "browseask" refresh - | join <lobby id> | quick - | allow strangers|editedstats. Every ask ends in a state that is not
+    // "searching": an ask that throws (a search that failed or timed out) is answered "failed", so neither the browser's
+    // SEARCHING nor a join's wait outlives it.
     public async Task AskAsync(IReadOnlyList<string> parts)
     {
         if (parts.Count != 3 || parts[0] != "browseask") return;
@@ -253,8 +256,23 @@ public sealed class LiveBrowse
             else if (parts[1] == "quick") await QuickAsync();
             else if (parts[1] == "allow" && parts[2] is "strangers" or "editedstats") await AllowAsync(parts[2]);
         }
-        catch (Exception error) { log("Lobby browser: the game's ask failed: " + error.Message); }
+        catch (Exception error)
+        {
+            log("Lobby browser: the game's ask failed: " + error.Message);
+            await FailedAsync(parts[1] == "refresh" || parts[1] == "allow" ? "The search failed. REFRESH to try again." : "The join failed: " + error.Message);
+        }
         finally { order.Release(); }
+    }
+
+    // A final "failed" state: the list shown stays (its version and count), or none when there is none yet.
+    async Task FailedAsync(string message)
+    {
+        try
+        {
+            if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "failed", shown.Lobbies, message);
+            else if ((await live.BrowseStateAsync(++attempts, "failed", 0, message)).Ok) shown = (attempts, 0);
+        }
+        catch (Exception error) { log("Lobby browser: could not tell the game: " + error.Message); }
     }
 
     async Task RefreshAsync()
@@ -270,7 +288,12 @@ public sealed class LiveBrowse
         var all = (list["lobbies"] as JsonArray)?.OfType<JsonObject>().Select(Line).OfType<LiveLobby>().ToList() ?? [];
         var lobbies = all.Take(MaxLobbies).ToList();
         for (var i = 0; i < lobbies.Count; i++)
-            if (await live.BrowseLobbyAsync(version, i, lobbies[i]) is { Ok: false } refused) { log("Lobby browser: the game refused a lobby: " + refused.Detail); return; }
+            if (await live.BrowseLobbyAsync(version, i, lobbies[i]) is { Ok: false } refused)
+            {
+                log("Lobby browser: the game refused a lobby: " + refused.Detail);
+                await FailedAsync("The list could not be shown. REFRESH to try again.");
+                return;
+            }
         var message = all.Count > MaxLobbies ? $"({all.Count - MaxLobbies} more lobbies are not listed.)" : "";
         if ((await live.BrowseStateAsync(version, "ready", lobbies.Count, message)).Ok) shown = (version, lobbies.Count);
     }
@@ -291,29 +314,19 @@ public sealed class LiveBrowse
         await live.BrowseStateAsync(shown.Version, status == 202 ? "invited" : "failed", shown.Lobbies, message);
     }
 
-    // The player turned a setting on from the browser, after its warning: Play with strangers (the stranger setting
-    // reads it again within StrangerSetting.Recheck), or showing lobbies whose host shares edited stats. A new list follows.
+    // The player turned a setting on from the browser, after its warning: Play with strangers, or showing lobbies whose
+    // host shares edited stats, for this session only (MultiplayerHost.AllowForSession). A new list follows.
     async Task AllowAsync(string what)
     {
-        if (modsFolder == null) { log("Lobby browser: the game asked to change a setting, but this session has no mods folder."); return; }
-        try
+        if (allow?.Invoke(what) != true)
         {
-            if (what == "strangers")
-            {
-                ModSettings.SetPlayWithStrangers(modsFolder, true);
-                ModSettings.SetStrangersWarned(modsFolder);
-            }
-            else ModSettings.SetShowEditedStats(modsFolder, true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            log("Lobby browser: could not save the setting: " + error.Message);
-            await live.BrowseStateAsync(shown.Version, "failed", shown.Lobbies, "Could not save the setting: " + error.Message);
+            log("Lobby browser: the game asked to turn on " + what + ", but this session has no such setting.");
+            await live.BrowseStateAsync(shown.Version, "failed", shown.Lobbies, "This session cannot change that setting.");
             return;
         }
-        log(what == "strangers" ? "Lobby browser: the player turned Play with strangers on, after its warning." : "Lobby browser: the player shows lobbies whose host shares edited stats.");
+        log(what == "strangers" ? "Lobby browser: Play with strangers is on for this session (asked from the game, after its warning; not saved)."
+            : "Lobby browser: lobbies whose host shares edited stats show for this session (asked from the game; not saved).");
         if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "searching", shown.Lobbies, "");
-        if (what == "strangers") await Task.Delay(StrangerSetting.Recheck + TimeSpan.FromMilliseconds(200));
         api.Forget();
         await RefreshAsync();
     }
