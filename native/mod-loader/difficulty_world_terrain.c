@@ -640,6 +640,27 @@ static int NearZoneRepeat(int on)
     return 1;
 }
 
+/* The level's coarse caps in the near tile. RenderHeightmapVoronoi (0x3C, 0xF499B0) phase 1 draws each subregion's
+ * route-cell area twice: its point heights (material 0x13DD2DCAD2968560, layer terrain_height, additive) and, when
+ * the subregion type's descriptor has +0xD8 set (test r13, r13 / je at 0xF4A07B), again at the constant height
+ * desc+0xE0 - desc+0xEC (material 0x369E29988294A16F, layer terrain_cap_height, MAX blend): a plateau with a hard edge.
+ * Only 0x40's blur, fixed in texels, softens it. The tile replays the level's own 0x3C record (its ~300 m route-cell
+ * polygons), so at the tile's 0.5 m texels each cap became a 19 m step over 16-20 m along straight edges hundreds of
+ * metres long (run v18: straight bright lines in elevated views; the level's version is 110-280 m wide). For the
+ * replayed level record only the je becomes a jmp: the tile's own cells still draw their caps, and the conform
+ * (lowpass of coarse - tile) brings the level's plateau back as the level has it. 1 when patched. */
+static int NearCapSkip(int on)
+{
+    uintptr_t at = g_world.game + 0xF4A07Bu;
+    if (!ApiCodeMatches(at, on ? "4D 85 ED 74 6B" : "4D 85 ED EB 6B")) return 0;
+    DWORD old = 0;
+    if (!VirtualProtect((void*)(at + 3), 1, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    *(volatile uint8_t*)(at + 3) = on ? 0xEB : 0x74;
+    VirtualProtect((void*)(at + 3), 1, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)(at + 3), 1);
+    return 1;
+}
+
 static uint32_t NearTexelBytes(uint32_t format)
 {
     uint32_t bits = 0;
@@ -1096,9 +1117,11 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     int swapCaps = g_near.stepOp[s] == 0x3E;
     if (swapCaps) { memcpy(live, (void*)(uintptr_t)g_near.lg, sizeof live); memcpy((void*)(uintptr_t)g_near.lg, g_near.caps, sizeof live); }
     int zone = g_near.stepOp[s] == 0x3D && NearZoneRepeat(1);
+    int caps = g_near.stepOp[s] == 0x3C && NearCapSkip(1);
     if (mat) TerrainMatPatch(1);
     fault = WorldTileGuarded(g_near.one, context, &index, &g_near.phase, g, h, 1, &calls);
     if (mat) TerrainMatPatch(0);
+    if (caps) NearCapSkip(0);
     if (zone) NearZoneRepeat(0);
     if (swapCaps) memcpy((void*)(uintptr_t)g_near.lg, live, sizeof live);
     if (fault)
