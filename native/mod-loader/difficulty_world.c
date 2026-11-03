@@ -716,6 +716,9 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
 
 static int g_tileExtent;
 static LONG g_tileCpuLevel = -1;
+static void TerrainDiagTile(const char* label, const void* data, uint32_t w, uint32_t h, uint32_t bpp, double metres);
+static void TerrainDiagTilePlan(uintptr_t block, double extent);
+
 static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     if (g_tileDone == g_world.levels || g_worldLevel == 0 || g_rec25 == 0) return;
@@ -802,6 +805,7 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     Note("difficulty: terrain tile: %d m tile Voronoi in %.1f ms: counts %u / %u / %u", extent,
         (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, counts[0], counts[1], counts[2]);
     WorldGridStats((uintptr_t)g_tileBlock, "tile");
+    TerrainDiagTilePlan((uintptr_t)g_tileBlock, extent);
 }
 
 static volatile LONG g_terrainProbes;
@@ -848,8 +852,8 @@ static void WorldTerrainProbe(uint64_t records, uint32_t at, uint32_t op)
 
 /* Step 3: the tile's heightmap through the game's own terrain merge, as the level's first merge runs it (records from its
  * SetupTerrainMerge on): 0x38 setup (the orthographic camera over the world size, here the tile's; record +0xB4 the
- * samples per side: 2 per metre as vanilla), 0x39 clear, 0x3A, 0x3C the Voronoi cells, 0x40 smoothing, 0x5B, 0x5C the
- * capture (8 GPU readbacks; their descriptors, 0x18 each, at G+0x119FF68). The minimap's 0x53/0x5A/0x54 are left out.
+ * samples per side: the level's, see WorldTileGpuPrepare), 0x39 clear, 0x3A, 0x3C the Voronoi cells, 0x40 smoothing, 0x5B, 0x5C the
+ * capture (8 GPU readbacks; their descriptors, 0x18 each, at lg + 0x18 k). The minimap's 0x53/0x5A/0x54 are left out.
  * GPU passes need frames between their phases, so the level waits at its first SetupTerrainMerge: while the tile is
  * under way the dispatcher hook runs one tile step per call and returns without the level's record (its generator
  * then yields the frame: an index that did not move is "in progress", 0xF261BD). Each step applies the tile's settings
@@ -866,7 +870,12 @@ static int WorldTileGpuPrepare(uint64_t records, uintptr_t gen)
     WorldTileRelocate(g_tileGpuOne, gen, (uintptr_t)g_tileBlock);
     if (kTileGpuOps[g_tileGpuStep] == 0x38)
     {
-        float samples = (float)(2 * g_tileExtent);
+        /* the merge's targets keep the level's size (its record's +0xB4, 4096): a tile asking for 2 per metre (1536 for
+         * 768 m) drew into a 1536^2 corner of them and the captures, which downsample the whole target, held it in 0.375
+         * of their width. The tile takes the level's samples and fills the target (768 m: 0.19 m per sample). */
+        float samples = 0;
+        memcpy(&samples, g_tileGpuOne + 0xB4, 4);
+        if (!(samples >= 256.0f && samples <= 16384.0f)) samples = 4096.0f;
         memcpy(g_tileGpuOne + 0xB4, &samples, 4);
         uint32_t one = 1; /* one merge tile, as vanilla's (see the merge's T in WorldDispatch) */
         memcpy(g_tileGpuOne + 0xB0, &one, 4);
@@ -892,6 +901,7 @@ static void WorldTileGpuCaptures(void)
         if (copy == NULL) continue;
         if (!SafeRead(q[2], copy, bytes))
         {
+            if (k == 0 && g_tileExtent > 0) TerrainDiagTile("tile-heights", copy, w, hgt, format == 0x16 ? 2u : 4u, (double)g_tileExtent / w);
             wchar_t name[64];
             swprintf(name, 64, L"tile-capture-%ld-%d.bin", (long)g_world.levels, k);
             HANDLE file = OpenLog(name);

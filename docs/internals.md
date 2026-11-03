@@ -478,9 +478,10 @@ level, vanilla ones included, so a level-10 map gives the numbers an extra large
 
 - `1`: measurements and a report per level, `terrain-diag-<level>.json` in the session's logs, with a line per image and
   any flags in `modloader.log`.
-- `2`: also reads back the merge's named render targets after the passes that draw into them, and writes every image it
-  measured (`terrain-<level>-<nn>-<label>.bin`, raw, with a `.txt` descriptor). `HELLFORGE_TERRAIN_DIAG_READBACK=off`
-  keeps the files but skips the readbacks. Each readback stays allocated by the engine (up to ~350 MB per level, 14 per
+- `2`: also reads back the merge's named render targets after the passes that draw into them, and writes the final
+  images raw (`terrain-<level>-<nn>-<label>.bin`, with a `.txt` descriptor): the scatter images, the layer heightfield, a
+  terrain tile's heights and the first capture of each set. `HELLFORGE_TERRAIN_DIAG_DUMP=all` writes every image it
+  measured (up to 64 MB each). `HELLFORGE_TERRAIN_DIAG_READBACK=off` keeps the files but skips the readbacks. Each readback stays allocated by the engine (up to ~350 MB per level, 14 per
   level and 48 per session at most), and measuring a 16 km map's images adds a few seconds to its loading.
 
 Around every dispatcher step (`WorldDispatch`), the report records:
@@ -493,8 +494,12 @@ Around every dispatcher step (`WorldDispatch`), the report records:
 | `images` | see below | measurements of each image |
 | `flags` | at the end | health checks on the final terrain |
 
+`completed` is false when generation never reached its last pass: FixUnreachableAreas failed and the level restarted
+(each restart is a new level number), or the game quit. Its figures are partial and its only flag is `incomplete`.
+
 The images it measures:
-- the merge's 8 intermediate captures (G+0x119FF68) after each CaptureIntermediateHeightmapFinalize (0x5C);
+- the merge's 8 intermediate captures after each CaptureIntermediateHeightmapFinalize (0x5C), from the descriptors it
+  copies to lg + 0x18 k (G+0x119FF68 holds the readback ids);
 - at level 2, while the merge's targets exist (from SetupTerrainMerge to CleanupTerrainMerge), readbacks of the heights
   target (0x2A9E3232) after 0x3C/0x3D/0x3E/0x3F/0x40/0x0D/0x63/0x64, the material mix (0x95E7E3AC) after 0x41/0x64, and
   the zone lookup (0x1524FE5A) after RenderZoneLookup (0x4C) draws it. The calls are the ones op 0x66 makes
@@ -502,14 +507,25 @@ The images it measures:
   labelled "after" a pass show the target at some point after it;
 - the scatter images (G+0x8758A8 +0xD8 heights, +0xF0 material mix after 0x66, +0x108 ground ids after 0xBB fills the
   id table they index);
-- the layer heightfield the loader keeps, at 0x6D.
+- the layer heightfield the loader keeps, at 0x6D;
+- a terrain tile's heights (`tile-heights`, the tile merge's first capture, whole image, `HELLFORGE_XL_TILE`), and its
+  Voronoi as `tile_plan` (the plan's measures over the tile's copy of the generation block).
+
+An image the same as one already measured that level (same size and the same 64 x 64 sample; readbacks lag, so several
+"after" a pass are one target) is listed with `same_as` and not measured or written again. One the same as an image of
+the previous level is listed as `stale`: the target was not drawn yet and still held that level's content. A terrain
+tile's merge draws into its own targets, which the readbacks (found by name) do not reach; its capture is its image.
 
 Only samples inside the level's disk count. The measurements for each kind of image:
 - **Heights:** spread and percentiles; a slope histogram, flat (< 1 degree) and steep (>= 35 degrees) shares; curvature;
   detail at 8/32/128/512/2048 m (the height's sd less its local mean at that scale); relief (max - min) in 32/128/512 m
-  blocks; and the correlation length along x and y after removing the 512 m (and 2 km) trend. Stretching makes that
-  length longer; uneven stretching makes x and y differ. `">N"` means the length is longer than the search.
-- **Material mix:** the painted share, the weights, and coverage per slot.
+  blocks; and the correlation length along x and y after removing the 512 m (and 2 km) trend, over the ground steeper
+  than 1 degree (`correlation_ground_share`; skipped under 5%) so flat plains do not read as one endless feature.
+  Stretching makes that length longer; uneven stretching makes x and y differ. `">N"` means the length is longer than
+  the search.
+- **Material mix:** the painted share, the most common value and its share (the clear value where nothing drew), the
+  clamp-bar share (samples in a run of one value at least 1/16 of the image long one way and under 1/128 the other: a
+  shader sampling a lookup past its edge stretches the edge into such bars), the weights, and coverage per slot.
 - **Ground ids:** density, and coverage per id through the scatter id table.
 - **Anything else:** distinct values.
 
@@ -520,15 +536,18 @@ The flags are:
 - `anisotropy` or `long-features`: features are stretched along one axis, or long along both.
 - `stretched-lattice`: Voronoi spacing over 24 m.
 - `unpainted`: under 2% of the disk is painted.
+- `clamped-lookup`: over 2% of the material mix is clamp bars.
+- `tile-steep`: a terrain tile's mean slope is over 25 degrees.
 - `sparse-scatter`: low ground density.
 - `scatter-cutoff`: the scatter radius stops inside the disk.
 - `zone-materials-stretched`: the world is over 2 km without the zone repeat.
 - `readbacks-lost`.
+- `incomplete` (alone): the level never finished.
 
 `scripts/TerrainDiag.py` reads the reports:
 - `summary REPORT` lists one level.
-- `compare BASELINE TEST [--json]` compares every shared image metric by metric against the vanilla baseline and says what
-  looks wrong.
+- `compare BASELINE TEST [--json] [--map BASE=TEST]` compares every shared image metric by metric against the vanilla
+  baseline and says what looks wrong; `--map layer-heightfield=tile-heights` holds a tile to vanilla's heights.
 - `render LOGS [--level N]` renders the level-2 dumps: heights as a hillshade beside a slope map, the material mix by
   slot and weight, the ground ids by id and density, and anything else in false colour. It needs numpy and Pillow.
 

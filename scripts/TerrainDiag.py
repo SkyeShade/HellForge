@@ -4,9 +4,10 @@
   TerrainDiag.py summary terrain-diag-3.json
       the level's settings, plan, slowest passes, every measured image and the flags
 
-  TerrainDiag.py compare BASELINE.json TEST.json [--json]
-      a vanilla level's report against an extra large one: each image the two share (by label), metric by metric, with
-      what looks wrong (less detail, less relief, flatter, longer features, unpainted, sparse), and the passes' times
+  TerrainDiag.py compare BASELINE.json TEST.json [--json] [--map layer-heightfield=tile-heights]
+      a vanilla level's report against an extra large one: each image the two share (by label; --map pairs differently
+      named ones, such as a terrain tile against vanilla's heights), metric by metric, with what looks wrong (less
+      detail, less relief, flatter, longer features, unpainted, clamp bars, sparse), and the passes' times
 
   TerrainDiag.py render LOGS_DIR [--level N] [--out DIR] [--max 2048]
       PNGs of the images level 2 dumped (terrain-<level>-<nn>-<label>.bin + .txt): heights as a hillshade with a slope
@@ -47,6 +48,8 @@ HEIGHT_METRICS = [
 ]
 PACKED_METRICS = [
     (("painted_share",), "painted share", "low", 0.5),
+    (("mode_share",), "most common value's share", "high", 1.5),
+    (("clamp_bar_share",), "clamp bars (straight runs of one value)", "high", 2.0),
     (("weight_a_mean",), "weight a mean", "low", 0.5),
     (("weight_b_mean",), "weight b mean", "low", 0.5),
     (("density_mean",), "ground density", "low", 0.6),
@@ -99,6 +102,8 @@ def summary(args):
     s = r.get("settings") or {}
     print(f"level {r.get('level')}  world {fmt(r.get('world_m'))} m ({fmt(r.get('world_scale'))}x)  disk {fmt(r.get('disk_m'))} m  "
           f"scatter radius {fmt(r.get('scatter_radius_m'))} m  {r.get('records')} passes  {r.get('frames')} frames")
+    if r.get("completed") is False:
+        print("INCOMPLETE: generation never reached its last pass (a FixUnreachableAreas restart or a quit); the figures are partial")
     if s:
         print(f"settings: fade {fmt(s.get('fade_m'))} m, disk {fmt(s.get('disk_m'))} m, vista fade {fmt(s.get('vista_fade_m'))} m, "
               f"tiles {s.get('merge_tiles')} x {fmt(s.get('tile_samples'))} samples, {fmt(s.get('metres_per_sample'))} m per sample, "
@@ -119,13 +124,20 @@ def summary(args):
         print(f"passes that never finished: {', '.join(o['op'] + ' ' + o['pass'] for o in unfinished[:10])}")
     print("images:")
     for im in r.get("images", []):
+        if im.get("stale"):
+            print(f"  {im['label']:<26} after {im['after_op']} {im['after_pass']}: STALE, the previous level's image (not measured)")
+            continue
+        if "same_as" in im:
+            print(f"  {im['label']:<26} after {im['after_op']} {im['after_pass']}: the same image as {im['same_as']}")
+            continue
         line = f"  {im['label']:<26} {im['kind']:<12} {im['columns']}x{im['rows']} after {im['after_op']} {im['after_pass']}"
         if "heights" in im and im["heights"]:
             line += (f": sd {fmt(get(im, ('heights', 'sd')))} m, slope {fmt(get(im, ('slope', 'mean_deg')))} deg, flat {fmt(get(im, ('slope', 'flat_lt1')))}, "
                      f"detail@32 {fmt(get(im, ('detail_sd_m', '32')))} m, relief@128 {fmt(get(im, ('relief_m', '128')))} m, "
                      f"length x/y {fmt(get(im, ('correlation_m', 'x_512')))}/{fmt(get(im, ('correlation_m', 'y_512')))} m")
         elif "painted_share" in im:
-            line += f": painted {fmt(im['painted_share'])}, slots {im.get('slot_cover')}"
+            line += (f": painted {fmt(im['painted_share'])}, most common {im.get('mode_value')} {fmt(im.get('mode_share'))}, "
+                     f"clamp bars {fmt(im.get('clamp_bar_share'))}, slots {im.get('slot_cover')}")
         elif "density_mean" in im:
             line += f": density {fmt(im['density_mean'])}, ids {im.get('id_cover')}"
         elif "distinct" in im:
@@ -168,11 +180,23 @@ def compare(args):
                 findings.append(f"{title}: {name} {fmt(vb)} -> {fmt(vt)} ({fmt(q)}x)")
 
     section("plan", PLAN_METRICS, a.get("plan") or {}, b.get("plan") or {})
-    ia = {image_key(i): i for i in a.get("images", [])}
-    ib = {image_key(i): i for i in b.get("images", [])}
-    for label in [k for k in ia if k in ib]:
-        metrics = HEIGHT_METRICS if "heights" in ia[label] else PACKED_METRICS
-        section(f"image {label} ({ia[label]['kind']})", metrics, ia[label], ib[label])
+    for name, r in (("baseline", a), ("test", b)):
+        if r.get("completed") is False:
+            findings.append(f"the {name} report is INCOMPLETE (generation never reached its last pass): its figures are partial")
+    ia = {image_key(i): i for i in a.get("images", []) if "same_as" not in i and not i.get("stale")}
+    ib = {image_key(i): i for i in b.get("images", []) if "same_as" not in i and not i.get("stale")}
+    pairs = [(k, k) for k in ia if k in ib]
+    for m in args.map or []:  # e.g. layer-heightfield=tile-heights: a baseline image against a differently named test image
+        x, _, y = m.partition("=")
+        if x in ia and y in ib:
+            pairs.append((x, y))
+        else:
+            findings.append(f"--map {m}: {'no ' + x + ' in the baseline' if x not in ia else 'no ' + y + ' in the test'}")
+    for la, lb in pairs:
+        label = la if la == lb else f"{la} vs {lb}"
+        metrics = HEIGHT_METRICS if "heights" in ia[la] else PACKED_METRICS
+        section(f"image {label} ({ia[la]['kind']})", metrics, ia[la], ib[lb])
+        label = lb
         if "heights" in ib[label]:
             x, y = get(ib[label], ("correlation_m", "x_512")), get(ib[label], ("correlation_m", "y_512"))
             if x and y and (x / y > 1.33 or y / x > 1.33):
@@ -325,6 +349,7 @@ def main():
     p.add_argument("baseline")
     p.add_argument("test")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--map", action="append", metavar="BASE=TEST", help="also compare a baseline image with a differently named test image")
     p.set_defaults(run=compare)
     p = sub.add_parser("render")
     p.add_argument("logs")
