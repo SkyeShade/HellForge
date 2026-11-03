@@ -715,7 +715,9 @@ public static class ModLoaderPlan
     // [[helldivers2.exe+0x1A10268]] is the engine's loaded network configuration (HD2Runtime deposit-limit research).
     const string NetworkConfig = "helldivers2.exe\t1a10268";
 
-    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId)
+    // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
+    // null to leave the game's loot roll alone.
+    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null)
     {
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A path in the mod loader plan contains a tab or line break.") : value;
@@ -725,6 +727,7 @@ public static class ModLoaderPlan
             lines.Add($"component\t{name}\t{c.Offset}\t{c.Header.ToLowerInvariant()}\t{c.Index}\t{c.Indices}\t{c.Records}\t{c.RecordOffset}\t{c.Stride}");
         lines.Add("stats_schema\t" + StatsSchema.Fingerprint);
         foreach (var key in StatsSchema.Observed) lines.Add("observe\t" + key);
+        if (forgeCreditChance is { } chance) lines.Add(FormattableString.Invariant($"forge_credits_chance\t{Math.Clamp(chance, 0, 100)}"));
         // in the order given, a session's load order (ModCatalog.LoadOrder): code loads and stats apply in it, the last winning
         var mods = codeMods.Where(m => m.Enabled && m.NeedsLoader).ToList();
         if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits)
@@ -777,7 +780,15 @@ public static class ModSettings
         // always accepted. Off, this machine's lobby is not listed in the lobby directory, a search shows friends'
         // listings only, and a join to a stranger's lobby is refused with the reason (docs/multiplayer.md).
         public bool PlayWithStrangers { get; set; }
+        // Forge Credits (the game's Super Credits pickup) in this share, 0 to 100, of the random loot caches at points of
+        // interest; null is HellForge's (DefaultForgeCreditChance). The loader applies it to every mission's loot roll
+        // (forge_credits.c).
+        public int? ForgeCreditChance { get; set; }
     }
+
+    // HellForge's share of loot caches that hold Forge Credits: the game's 20 % for Super Credits, raised for a nicer
+    // progression (they open warbonds).
+    public const int DefaultForgeCreditChance = 30;
 
     public static State Read(string modsFolder)
     {
@@ -822,6 +833,8 @@ public static class ModSettings
         if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
         if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
         if (root.TryGetProperty("playWithStrangers", out var strangers) && strangers.ValueKind == JsonValueKind.True) state.PlayWithStrangers = true;
+        if (root.TryGetProperty("forgeCreditChance", out var chance) && chance.ValueKind == JsonValueKind.Number && chance.TryGetInt32(out var percent) &&
+            percent is >= 0 and <= 100) state.ForgeCreditChance = percent;
     }
 
     static void ReadOrder(JsonElement root, State state)
@@ -896,6 +909,11 @@ public static class ModSettings
     // Hosting: whether friends play with this player's editor changes instead of their own.
     public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
 
+    // null: the game's own odds.
+    public static void SetForgeCreditChance(string modsFolder, int? percent) => Change(modsFolder, state =>
+        state.ForgeCreditChance = percent is null or (>= 0 and <= 100) ? percent : throw new InvalidDataException("A Forge Credits chance is 0 to 100."));
+    public static int? ForgeCreditChance(string modsFolder) => Read(modsFolder).ForgeCreditChance;
+
     static void Change(string modsFolder, Action<State> change)
     {
         var state = Read(modsFolder);
@@ -920,6 +938,7 @@ public static class ModSettings
             ["hostStats"] = state.HostStats,
             ["playWithStrangers"] = state.PlayWithStrangers
         };
+        if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         File.WriteAllText(path + ".tmp", text);
         LastWritten = text;

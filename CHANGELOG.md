@@ -30,6 +30,8 @@ On `dev`, since 0.3.0-beta.
   bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
   once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
   (#206).
+- Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
+  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
 
 - Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
