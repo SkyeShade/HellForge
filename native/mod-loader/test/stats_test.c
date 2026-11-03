@@ -354,6 +354,11 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
     memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
     for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    for (int i = 0; i < 4; i++) memcpy(game + kStreetBorderSites[i].site, kStreetBorderSites[i].pin, kStreetBorderSites[i].length);
+    memcpy(game + DIF_STREET_PROPS_SITE, kStreetPropsPin, sizeof kStreetPropsPin);
+    memcpy(game + DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    memcpy(game + DIF_TERRAIN_RAMP_SITE, kTerrainRampPin, 9);
+    for (int i = 0; i < 2; i++) memcpy(game + kTerrainStores[i].site, kTerrainStores[i].pin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -362,6 +367,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CAPTURE_SITE, kCapturePin, sizeof kCapturePin);
     memcpy(game + DIF_TELEMETRY_SITE, kTelemetryPin, sizeof kTelemetryPin);
     memcpy(game + DIF_SPAWNER_SITE, kSpawnerPin, sizeof kSpawnerPin);
+    memcpy(game + DIF_MINE_SITE, kMinePin, sizeof kMinePin);
+    memcpy(game + DIF_MINE_DONE_JUMP, kMineDonePin, sizeof kMineDonePin);
     memcpy(game + DIF_MARKER_LOOP_SITE, kMarkerLoopPin, sizeof kMarkerLoopPin);
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
@@ -1520,6 +1527,95 @@ static void TownsFixture(void)
 {
     TownsFixtureOnce(1);
     TownsFixtureOnce(0);
+}
+
+/* The destruction-record map's setup (InstallRecordMap), run as machine code: the setup's own bytes at 0x13DF870, a
+ * harness entering them with rbx the owner and rsp 16-aligned, its exit at 0x13DF889. Unpatched it keeps the 0x8000
+ * inline slots; patched an owner gets 0x10000 slots of its own (again for the same owner), the qword clearing the empty
+ * key, and a ninth owner takes the buffer set up longest ago. */
+typedef void (*RecordSetupFn)(uint8_t* owner);
+static void RecordMapFixture(void)
+{
+    uintptr_t game = TownGame();
+    assert(VirtualAlloc((void*)(game + 0x13DF000u), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    TownPut(game, DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    static const uint8_t in[] = {0x53, 0x48, 0x89, 0xCB, 0x48, 0x83, 0xEC, 0x20}; /* push rbx; mov rbx, rcx; sub rsp, 0x20 */
+    static const uint8_t out[] = {0x48, 0x83, 0xC4, 0x20, 0x5B, 0xC3};             /* add rsp, 0x20; pop rbx; ret */
+    TownHarness(game, 0x13F0C00u, in, sizeof in, DIF_RECORD_SETUP);
+    TownPut(game, DIF_RECORD_SETUP_BACK, out, sizeof out);
+    RecordSetupFn setup = (RecordSetupFn)(void*)(game + 0x13F0C00u);
+    uint8_t* owners[DIF_RECORD_MAPS + 1];
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++)
+        assert((owners[i] = (uint8_t*)VirtualAlloc(NULL, 0xC6000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) != NULL);
+    uint32_t empty = 0xFFFFFFFFu;
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    assert(*(uint8_t**)(owners[0] + 0xC5F48) == owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == 0x8000u);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    assert(RecordMapFailed(game) == NULL && InstallRecordMap(&d) == NULL && *(uint8_t*)(game + DIF_RECORD_SETUP) == 0xE9);
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    uint64_t* first = *(uint64_t**)(owners[0] + 0xC5F48);
+    assert(first != NULL && (uint8_t*)first != owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == DIF_RECORD_SLOTS);
+    first[DIF_RECORD_SLOTS - 1] = 7; /* the whole buffer is writable */
+    setup(owners[0]);
+    assert(*(uint64_t**)(owners[0] + 0xC5F48) == first);
+    for (int i = 1; i < DIF_RECORD_MAPS; i++)
+    {
+        setup(owners[i]);
+        uint64_t* own = *(uint64_t**)(owners[i] + 0xC5F48);
+        assert(own != NULL && own != first && *(uint64_t*)(owners[i] + 0xC5F50) == DIF_RECORD_SLOTS);
+    }
+    setup(owners[DIF_RECORD_MAPS]);
+    assert(*(uint64_t**)(owners[DIF_RECORD_MAPS] + 0xC5F48) == first && g_recordKept == 0);
+    g_difficulty.mapScale = savedScale;
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++) VirtualFree(owners[i], 0, MEM_RELEASE);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* Terrain on larger maps: an area within an objective's stamp radius + 16 m is found, through a location-group item and
+ * through a direct one; outside it, or for a location with no item, it is not. */
+static void TerrainFixture(void)
+{
+    uint8_t* level = calloc(1, 0x3000);
+    uint8_t* block = calloc(1, DIF_OBJECTIVE_COUNT + 4);
+    uint8_t* items = calloc(2, 0x1C8);
+    uint8_t groups[2][0x18] = {{0}}, set[0x38] = {0};
+    assert(level != NULL && block != NULL && items != NULL);
+    uint64_t pointer = (uint64_t)(uintptr_t)block;
+    memcpy(level + 0x2C8, &pointer, 8);
+    float radius[2] = {50.0f, 20.0f};
+    memcpy(items + 0xD8, &radius[0], 4);                 /* group 1, item 0: 50 m */
+    memcpy(items + 0x1C8 + 0xD8, &radius[1], 4);         /* the direct item: 20 m */
+    pointer = (uint64_t)(uintptr_t)items; memcpy(groups[1] + 8, &pointer, 8);
+    uint32_t one = 1, two = 2; memcpy(groups[1] + 0x10, &one, 4);
+    pointer = (uint64_t)(uintptr_t)groups; memcpy(set + 0x28, &pointer, 8); memcpy(set + 0x30, &two, 4);
+    uint64_t direct = (uint64_t)(uintptr_t)(items + 0x1C8);
+    uint8_t* locations = block + DIF_OBJECTIVE_LOCATIONS;
+    const float at[3][2] = {{100.0f, 100.0f}, {500.0f, 500.0f}, {900.0f, 900.0f}};
+    for (int i = 0; i < 3; i++) memcpy(locations + 0x108 * i + 0xA4, at[i], 8);
+    pointer = (uint64_t)(uintptr_t)set; memcpy(locations, &pointer, 8);
+    uint32_t kind = DIF_LOCATION_GROUP_SET; memcpy(locations + 8, &kind, 4);
+    locations[0xA1] = 1; locations[0xA2] = 0;
+    pointer = (uint64_t)(uintptr_t)&direct; memcpy(locations + 0x108, &pointer, 8);
+    locations[0x108 + 0xA2] = 0;
+    memcpy(locations + 0x210, &pointer, 8);
+    locations[0x210 + 0xA2] = 0xFF;                      /* no item: skipped */
+    uint32_t count = 3; memcpy(block + DIF_OBJECTIVE_COUNT, &count, 4);
+    uint8_t area[0x90] = {0};
+    const struct { float x, y; int inside; } cases[6] = {{140, 100, 1}, {165, 100, 1}, {167, 100, 0}, {510, 530, 1}, {537, 500, 0}, {900, 900, 0}};
+    LONG before = g_terrainRaised;
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(area + 0x80, &cases[i].x, 4); memcpy(area + 0x84, &cases[i].y, 4);
+        assert(TerrainNearObjective((uintptr_t)level, area) == cases[i].inside);
+    }
+    assert(g_terrainRaised - before == 3);
+    assert(TerrainNearObjective(0, area) == 0);
+    free(items); free(block); free(level);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -3848,6 +3944,8 @@ int main(int argc, char** argv)
     DifficultyFixture();
     ClusterRingsFixture();
     TownsFixture();
+    RecordMapFixture();
+    TerrainFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     NetworkWidthFixture();

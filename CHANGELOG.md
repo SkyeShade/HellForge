@@ -100,6 +100,8 @@ On `dev`, since 0.3.0-beta.
   any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
 - New profiles (Starter) had difficulty 1 locked: no level-1 missions showed on the war table, and the difficulty
   bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
+- New profiles (Starter) had an empty Ship Module page ("under construction"). Every profile now has the six ship
+  module tracks (#233).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -131,6 +133,25 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- Mega cities on difficulty 11's larger maps had streets with bare road and lone junction pieces, especially toward the
+  edge. The game dresses a street (the pieces that finish its ends, and its props) only up to 30 m past the playable
+  radius, where level 10 stops building; on difficulty 11 buildings stand all the way to the border, so their streets
+  are now dressed that far too (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius). Streets are also 1.5x longer
+  there but kept level 10's number of props per street; they now get 1.5x as many (`HELLFORGE_D11_STREET_PROPS=0`
+  keeps level 10's).
+- Mega cities on difficulty 11 needed more destructible records than the world's map of them holds (about 33,300 of
+  32,768), and the ones registered last were left without one. On larger maps the map now has 65,536; the session log
+  shows how many a mission used.
+- On difficulty 11's larger maps the ICBM silo's lower platform, where you raise the manual locks, could sit under the
+  map's water, and other sunken objectives could too. The game shapes each patch of ground by its distance from the
+  nearest road, reaching its lowest point 64 m out. Larger maps keep level 10's number of patches spread wider, so
+  far more ground reached the bottom, including under objectives. That 64 m now grows with the patches
+  (`HELLFORGE_D11_TERRAIN_RAMP=0` keeps 64 m, for comparing), which also takes away the flat terraces between roads.
+  The ground within an objective's footprint also never goes below 0 m, above every planet's water
+  (`HELLFORGE_D11_DRY_OBJECTIVES=0` turns that off); the session log counts the heights raised.
+- A difficulty 11 mission could crash while loading when its map had more than 512 mines: the game copies every mine
+  into a list of 512 without checking, and the 513th overwrote the list's count. Mines past the 512th are now left out
+  (no mine there), and the session log counts them, as it already did for the enemy director's 128 spawners.
 - The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
   about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
   faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as

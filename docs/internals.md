@@ -440,6 +440,14 @@ spacing grows with the disk too (0xF3FB04), rounded up to a quarter metre so the
 inexact spacing makes near-degenerate circles and extra vertices, overruns the vertex array, and the pass retries
 forever (the war table's "Receiving Geodetic Data"). At 2 x the spacing is 24.5 m.
 
+GenerateSubregionHeights (op 4, 0xF64E30) gives each area its cell type's curve at `t = clamp(d / 64 m)`, `d` the
+distance to the nearest route point (the 1/64 at 0xF651FA). With the cells farther apart, far more ground lies at
+`t = 1`: flat terraces, and lake curves (4-13 m below 0) at their deepest under objectives. An objective in a low cell
+takes a corner height of exactly 0 (0xF3B957), so its pad followed the area layer under the region's water (-0.25 to
+-4.5 m), and an ICBM silo's lower platform flooded. Above 1, the ramp is 64 m x spacing / 40 (difficulty_terrain.c), and
+the two stores of the area height (0xF655A9, 0xF656F9) keep it at or above 0 within an objective's stamp radius + 16 m
+(the important locations, G+0x8996B0, 0x108 each, count G+0x11A715C; the radius is the location item's +0xD8).
+
 The SEAF Artillery fires the projectile of the shell at the head of its queue. Its six shells' rows (71, 339, 99, 145,
 10, 92) fly alike: 300 m/s, gravity x 10, drag 0.5. That reaches about 710 m, and a 2 x map is up to 1550 m across. The
 aim (0x617E50, solver 0x13B1BD0) and the landing prediction (0x13B18B0) read speed and gravity from the row the shell
@@ -474,7 +482,15 @@ proxy units G+0x118BEFC and G+0x118FEFC, 4096 and 16384 x 4) follow with 4 x the
 ran over the scatter into the terrain merge slots (G+0x8758A8). The block is then 0x15A9280 bytes.
 
 Blocks are made with a world, after the loader installs this; if one exists already, the move is skipped. Structured
-maps (map type 2, another generator) keep level 10's size.
+maps (map type 2, the mega cities, another generator) grow too: their revoronoi, grid and vertex buckets are scaled the
+same way (difficulty_cities.c).
+
+City streets: FlattenCityRoads (0xFAF130) gives a street its end pieces (+0x240/+0x250) and spaced props (+0x270) only
+up to their reach (30 m on most city types) past the playable radius, and the road-prop placer (0xFB1DB0) tests each
+position the same way. On a larger map those four tests measure from the border, as the town placers do
+(difficulty_streets.c, `HELLFORGE_D11_TOWN_BORDER=0` keeps the radius), so streets are dressed wherever buildings stand.
+The road props per edge (`rand % type+0x230 + 1`, 0xFB2925) are a fixed count; on a larger map's 1.5 x longer edges the
+count is x 3/2 (`HELLFORGE_D11_STREET_PROPS=0` keeps it).
 
 The mission distance factors (10 levels x 3, read unclamped at 7 sites) move to a table with level 11's.
 

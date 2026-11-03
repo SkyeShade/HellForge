@@ -320,9 +320,9 @@ typedef struct HfDifficulty
                                     stratagems); shown in the difficulty bar. NULL keeps Super Helldive's */
     /* Missions at this level (0 keeps level 10's). */
     float map_scale;             /* playable radius, relative to level 10's: up to 2. Above 1 the route cells are
-                                    farther apart (the generator has room for level 10's number); the structured
-                                    maps (map type 2) keep level 10's size. The SEAF Artillery's shells reach
-                                    across it (their range x map_scale) */
+                                    farther apart (the generator has room for level 10's number), the mega
+                                    cities' blocks (map type 2) too. The SEAF Artillery's shells reach across
+                                    it (their range x map_scale) */
     uint32_t optional_objectives;/* optional objectives a mission draws from its list (level 10: 4) */
     uint32_t major_objectives;   /* secondary objectives (level 10: 1); optional + major at most 18 (the map
                                     generator places 30 objectives at this level, the missions' own among them) */

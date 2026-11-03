@@ -564,6 +564,8 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
+#include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
+#include "difficulty_terrain.c" /* terrain heights on larger maps */
 #include "difficulty_artillery.c" /* the SEAF Artillery's reach on larger maps */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
