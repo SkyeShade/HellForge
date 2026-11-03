@@ -38,7 +38,7 @@ try
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
-            stop [--install <folder>] [--run <session folder>] [--wait yes]
+            stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
             fetch-war [--install <folder>]
@@ -115,7 +115,7 @@ try
         "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
-        "stop" => ["--install", "--run", "--wait"],
+        "stop" => ["--install", "--run", "--wait", "--now"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
