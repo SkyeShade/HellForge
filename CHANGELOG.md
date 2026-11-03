@@ -39,6 +39,15 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- On Linux, Sync Inventory said "Sign in to Steam first" whenever its Steam check failed for any reason, and left no
+  log. It now gives the check's own reason, keeps the last refusal in `logs/sync-refused.txt`, and won't start while a
+  HellForge session that the launcher didn't start itself is still running (#112).
+- On Linux, a session's sandbox check could test a different Steam Linux Runtime layering from the one the session
+  runs, and then said "the self-test ran in host mode" even when only the runtime differed. The check now tests the
+  session's own choice, names both runtimes when they differ, and keeps the self-test's full output in
+  `logs/sandbox-self-test.txt` (the launcher's own output goes to `logs/sandbox-readiness.txt`) (#112).
+- On Linux, a game that crashes as its window opens because Proton's Wine lacks a text-input function the game needs
+  (seen with a Wine 10 Proton) now says so after the crash, and that Proton 11 or Proton Experimental fixes it (#112).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
