@@ -264,7 +264,7 @@ static void WatchHashFull(void)
     {
         reported = full;
         fullLogged = GetTickCount64();
-        Note("difficulty: a full hash table skipped %ld entries so far (a map's destructibles past the 32768 the world's destruction-record map holds; the game used to end there)", full);
+        Note("difficulty: a full hash table skipped %ld entries so far (e.g. a map's destructibles past the destruction-record map's slots, which then miss in the world; the game used to end there)", full);
     }
 }
 
@@ -393,6 +393,19 @@ static void NoteMissionMap(void)
     uint32_t objects[2] = {0};
     if (!SafeRead(world + 0x10E8, &render, 8) && render && !SafeRead(render + 0x2301F8, &store, 8) && store && !SafeRead(store + 0x38, objects, 8))
         Note("difficulty: the mission's render objects: %u in use of %u", objects[0], objects[1]);
+    uint64_t records = 0, slotsAt = 0;
+    uint32_t slotCount = 0, emptyKey = 0, statics = 0;
+    if (!SafeRead(g_difficultyGame + 0x346D528, &records, 8) && records && !SafeRead(records + 0xC5F48, &slotsAt, 8) && slotsAt &&
+        !SafeRead(records + 0xC5F50, &slotCount, 4) && !SafeRead(records + 0xC5F54, &emptyKey, 4) &&
+        !SafeRead(records + 0x1EAF78, &statics, 4) && slotCount > 0 && slotCount <= DIF_RECORD_SLOTS)
+    {
+        static uint32_t keys[DIF_RECORD_SLOTS * 2];
+        uint32_t used = 0;
+        if (!SafeRead(slotsAt, keys, (size_t)slotCount * 8))
+            for (uint32_t i = 0; i < slotCount; i++) used += keys[2 * i] != emptyKey;
+        Note("difficulty: the mission's destruction-record map: %u of %u slots used (%u static records), %ld setup(s) kept level 10's slots",
+            used, slotCount, statics, g_recordKept);
+    }
     Note("difficulty: the mission's map (type %u): important locations %u of 256 (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
         type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
 }

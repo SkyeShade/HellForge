@@ -354,6 +354,9 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
     memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
     for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    for (int i = 0; i < 4; i++) memcpy(game + kStreetBorderSites[i].site, kStreetBorderSites[i].pin, kStreetBorderSites[i].length);
+    memcpy(game + DIF_STREET_PROPS_SITE, kStreetPropsPin, sizeof kStreetPropsPin);
+    memcpy(game + DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
     memcpy(game + DIF_TERRAIN_RAMP_SITE, kTerrainRampPin, 9);
     for (int i = 0; i < 2; i++) memcpy(game + kTerrainStores[i].site, kTerrainStores[i].pin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
@@ -1524,6 +1527,53 @@ static void TownsFixture(void)
 {
     TownsFixtureOnce(1);
     TownsFixtureOnce(0);
+}
+
+/* The destruction-record map's setup (InstallRecordMap), run as machine code: the setup's own bytes at 0x13DF870, a
+ * harness entering them with rbx the owner and rsp 16-aligned, its exit at 0x13DF889. Unpatched it keeps the 0x8000
+ * inline slots; patched an owner gets 0x10000 slots of its own (again for the same owner), the qword clearing the empty
+ * key, and a ninth owner takes the buffer set up longest ago. */
+typedef void (*RecordSetupFn)(uint8_t* owner);
+static void RecordMapFixture(void)
+{
+    uintptr_t game = TownGame();
+    assert(VirtualAlloc((void*)(game + 0x13DF000u), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    TownPut(game, DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    static const uint8_t in[] = {0x53, 0x48, 0x89, 0xCB, 0x48, 0x83, 0xEC, 0x20}; /* push rbx; mov rbx, rcx; sub rsp, 0x20 */
+    static const uint8_t out[] = {0x48, 0x83, 0xC4, 0x20, 0x5B, 0xC3};             /* add rsp, 0x20; pop rbx; ret */
+    TownHarness(game, 0x13F0C00u, in, sizeof in, DIF_RECORD_SETUP);
+    TownPut(game, DIF_RECORD_SETUP_BACK, out, sizeof out);
+    RecordSetupFn setup = (RecordSetupFn)(void*)(game + 0x13F0C00u);
+    uint8_t* owners[DIF_RECORD_MAPS + 1];
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++)
+        assert((owners[i] = (uint8_t*)VirtualAlloc(NULL, 0xC6000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) != NULL);
+    uint32_t empty = 0xFFFFFFFFu;
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    assert(*(uint8_t**)(owners[0] + 0xC5F48) == owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == 0x8000u);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    assert(RecordMapFailed(game) == NULL && InstallRecordMap(&d) == NULL && *(uint8_t*)(game + DIF_RECORD_SETUP) == 0xE9);
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    uint64_t* first = *(uint64_t**)(owners[0] + 0xC5F48);
+    assert(first != NULL && (uint8_t*)first != owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == DIF_RECORD_SLOTS);
+    first[DIF_RECORD_SLOTS - 1] = 7; /* the whole buffer is writable */
+    setup(owners[0]);
+    assert(*(uint64_t**)(owners[0] + 0xC5F48) == first);
+    for (int i = 1; i < DIF_RECORD_MAPS; i++)
+    {
+        setup(owners[i]);
+        uint64_t* own = *(uint64_t**)(owners[i] + 0xC5F48);
+        assert(own != NULL && own != first && *(uint64_t*)(owners[i] + 0xC5F50) == DIF_RECORD_SLOTS);
+    }
+    setup(owners[DIF_RECORD_MAPS]);
+    assert(*(uint64_t**)(owners[DIF_RECORD_MAPS] + 0xC5F48) == first && g_recordKept == 0);
+    g_difficulty.mapScale = savedScale;
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++) VirtualFree(owners[i], 0, MEM_RELEASE);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
 }
 
 /* Terrain on larger maps: an area within an objective's stamp radius + 16 m is found, through a location-group item and
@@ -3894,6 +3944,7 @@ int main(int argc, char** argv)
     DifficultyFixture();
     ClusterRingsFixture();
     TownsFixture();
+    RecordMapFixture();
     TerrainFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
