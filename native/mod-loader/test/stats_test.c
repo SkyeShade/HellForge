@@ -362,6 +362,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CAPTURE_SITE, kCapturePin, sizeof kCapturePin);
     memcpy(game + DIF_TELEMETRY_SITE, kTelemetryPin, sizeof kTelemetryPin);
     memcpy(game + DIF_SPAWNER_SITE, kSpawnerPin, sizeof kSpawnerPin);
+    memcpy(game + DIF_MINE_SITE, kMinePin, sizeof kMinePin);
+    memcpy(game + DIF_MINE_DONE_JUMP, kMineDonePin, sizeof kMineDonePin);
     memcpy(game + DIF_MARKER_LOOP_SITE, kMarkerLoopPin, sizeof kMarkerLoopPin);
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);

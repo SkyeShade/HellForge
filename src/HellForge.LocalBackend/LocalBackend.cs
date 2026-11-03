@@ -134,6 +134,16 @@ public static partial class LocalBackend
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
         if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        // Purchases price items by the catalogue the game was served, mods' registered items included.
+        JsonElement? Catalogue(uint mixId)
+        {
+            if (!startup.TryGet("/Progression/items", out var items, out _)) return null;
+            items = settings.RegisteredItems?.Apply("/Progression/items", items) ?? items;
+            foreach (var item in items.EnumerateArray())
+                if (item.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var found) && found == mixId) return item;
+            return null;
+        }
+        var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -151,7 +161,7 @@ public static partial class LocalBackend
         var app = builder.Build();
         var requests = new Requests
         {
-            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Presence = presence,
+            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
             AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath
         };

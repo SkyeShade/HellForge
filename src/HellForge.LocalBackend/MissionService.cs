@@ -12,12 +12,21 @@ namespace HellForge.LocalBackend;
 //                                               lootedItems, heavyLootedItems, ...), reply parsed by 0x105e3e0/0x105e6b0
 //   POST /Operation/Mission/Activity 0x385dc715 reply {rewards: []} (parser 0x105e010)
 //   POST /Operation/Mission/SetMaxRewards, POST /Operation/Abandon: no reply fields are read.
-// Rewards are local rules, not Arrowhead's: XP by difficulty, success and objectives; requisition; looted samples
-// are granted as reported by the client.
+//   POST /Progression/inventory/consume  0xeea479dc  body {consumedItems:[{mixId, amount}]} sent as a mission ends (the
+//                                               dispatcher has no reply case for it): acknowledged, nothing taken.
+// Rewards are local rules, not Arrowhead's: XP by difficulty, success and objectives; requisition; medals for a won
+// mission; looted samples are granted as reported by the client. Level 11 (a mod's, native/mod-loader/difficulty.c) pays
+// half as much XP and medals again as level 10. Each mission id is paid once (ProfileStore.ApplyMissionRewards).
 public sealed class MissionService
 {
     public const uint RequisitionMixId = 0xD7150EEC;
-    static readonly int[] DifficultyExperience = [100, 150, 200, 300, 400, 500, 650, 800, 1000, 1200, 1500, 1800];
+    // The medals a player holds and spends on warbond pages (every warbond's medalsConsumableMixId; catalogue maxCap 250).
+    public const uint MedalsMixId = 1276729503;
+    // The "medals" reward item the live server names in its rewards (major orders, medal packages); the client turns it
+    // into MedalsMixId when it adds it (game.dll 0x136efa8). Shown on the operation's reward card.
+    public const uint MedalRewardMixId = 0x3584C850;
+    static readonly int[] DifficultyExperience = [100, 150, 200, 300, 400, 500, 650, 800, 1000, 1200, 1500, 2250];
+    static readonly int[] DifficultyMedals = [0, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
 
     readonly ProfileStore profile;
     readonly ConcurrentDictionary<long, int> operationDifficulty = new();
@@ -25,7 +34,7 @@ public sealed class MissionService
     public MissionService(ProfileStore profile) => this.profile = profile;
 
     public static bool Handles(string path) => path is "/Operation/Create" or "/Operation/Abandon" or "/Operation/Mission/Start"
-        or "/Operation/Mission/end" or "/Operation/Mission/Activity" or "/Operation/Mission/SetMaxRewards";
+        or "/Operation/Mission/end" or "/Operation/Mission/Activity" or "/Operation/Mission/SetMaxRewards" or "/Progression/inventory/consume";
 
     public (JsonNode Reply, string Outcome) Handle(string path, JsonElement body) => path switch
     {
@@ -33,6 +42,7 @@ public sealed class MissionService
         "/Operation/Mission/Start" => (new JsonObject { ["missionId"] = Guid.NewGuid().ToString() }, "mission_started"),
         "/Operation/Mission/end" => (End(body), "mission_ended"),
         "/Operation/Mission/Activity" => (new JsonObject { ["rewards"] = new JsonArray() }, "mission_activity"),
+        "/Progression/inventory/consume" => (new JsonObject(), "items_consumed"),
         _ => (new JsonObject(), "acknowledged")
     };
 
@@ -43,8 +53,17 @@ public sealed class MissionService
             foreach (var operation in list.EnumerateArray())
             {
                 if (!TryInt(operation, "id", out var id)) continue;
-                operationDifficulty[id] = TryInt(operation, "difficulty", out var difficulty) ? (int)difficulty : 1;
-                operations.Add((JsonNode)new JsonObject { ["id"] = id, ["rewards"] = new JsonArray(), ["backupRewards"] = new JsonArray() });
+                var level = TryInt(operation, "difficulty", out var difficulty) ? (int)difficulty : 1;
+                operationDifficulty[id] = level;
+                // The planet card's reward: the medals the operation's missions pay when all are won (parser 0x10558f0).
+                var missions = operation.TryGetProperty("missions", out var listed) && listed.ValueKind == JsonValueKind.Array ? listed.GetArrayLength() : 0;
+                var medals = Rewards.Medals(level) * Math.Max(1, missions);
+                operations.Add((JsonNode)new JsonObject
+                {
+                    ["id"] = id,
+                    ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["type"] = 1, ["id32"] = MedalRewardMixId, ["amount"] = medals, ["isFullReward"] = true }),
+                    ["backupRewards"] = new JsonArray()
+                });
             }
         return new JsonObject { ["operations"] = operations };
     }
@@ -59,21 +78,35 @@ public sealed class MissionService
         var looted = SumItems(body, "lootedItems");
         var heavy = SumItems(body, "heavyLootedItems");
         var requisition = success ? Rewards.Requisition(difficulty) : 0;
+        var medals = success ? Rewards.Medals(difficulty) : 0;
         var grants = new Dictionary<uint, long>();
         foreach (var source in new[] { looted, heavy })
             foreach (var (mix, amount) in source) grants[mix] = grants.GetValueOrDefault(mix) + amount;
         if (requisition > 0) grants[RequisitionMixId] = grants.GetValueOrDefault(RequisitionMixId) + requisition;
-        profile.ApplyMissionRewards(experience, grants);
+        if (medals > 0) grants[MedalsMixId] = grants.GetValueOrDefault(MedalsMixId) + medals;
         static JsonArray Items(Dictionary<uint, long> items) =>
             new(items.Select(item => (JsonNode?)new JsonObject { ["mixId"] = item.Key, ["amount"] = item.Value }).ToArray());
+        var rewards = new JsonArray();
+        if (requisition > 0) rewards.Add((JsonNode)new JsonObject { ["mixId"] = RequisitionMixId, ["amount"] = requisition });
+        if (medals > 0) rewards.Add((JsonNode)new JsonObject { ["mixId"] = MedalsMixId, ["amount"] = medals });
+        // A retried end (its reply was lost) is answered with nothing earned: the first one paid.
+        var missionId = FindString(body, "missionId");
+        if (!profile.ApplyMissionRewards(experience, grants, missionId))
+        {
+            experience = 0;
+            looted.Clear();
+            rewards.Clear();
+        }
         return new JsonObject
         {
             ["operationId"] = FindInt(body, "operationId") ?? 0, ["missionIndex"] = FindInt(body, "missionIndex") ?? 0,
-            ["missionId"] = FindString(body, "missionId") ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
+            ["missionId"] = missionId ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
             ["badges"] = new JsonArray(), ["campaignWon"] = false, ["impact"] = 0, ["othersImpactPlanet"] = 0,
             ["othersImpactCommunityTarget"] = 0, ["othersImpactPlanetEvent"] = 0, ["progressionPackageUpdates"] = new JsonArray(),
-            ["lootedItemRewards"] = Items(looted), ["lootedHeavyItemRewards"] = Items(heavy),
-            ["rewards"] = requisition > 0 ? new JsonArray((JsonNode)new JsonObject { ["mixId"] = RequisitionMixId, ["amount"] = requisition }) : new JsonArray(),
+            // Heavy loot is granted above, but its reply list wants {id32, rewards: [...]} per heavy item (parser 0x105e6b0;
+            // {mixId, amount} there made the client refuse the whole reply), and which id32 is not known yet.
+            ["lootedItemRewards"] = Items(looted), ["lootedHeavyItemRewards"] = new JsonArray(),
+            ["rewards"] = rewards,
             ["repeatingPlayer"] = false
         };
     }
@@ -88,6 +121,9 @@ public sealed class MissionService
 
         // Level 11 is a mod's (native/mod-loader/difficulty.c, HfDifficulty).
         public static long Requisition(int difficulty) => 200L * Math.Clamp(difficulty, 1, 11);
+
+        // A won mission's medals.
+        public static long Medals(int difficulty) => DifficultyMedals[Math.Clamp(difficulty, 1, DifficultyMedals.Length - 1)];
     }
 
     static int CountSucceededObjectives(JsonElement body)

@@ -10,6 +10,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- **Medals and spending what you earn.** A won mission now pays medals (2 at Trivial up to 10 at Super Helldive), and
+  the operation's card on the war table shows what its missions pay. Medals unlock warbond pages and items, requisition
+  buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
+  purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
+  from the map. Premium warbonds still need to be owned in the normal game (#232).
 - Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
   (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
   while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
@@ -32,6 +37,7 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
@@ -59,6 +65,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
+  up empty. Heavy loot is still added to your profile (#232).
+- A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
+  medals and samples a second time. Thanks to diemitze, whose PR #27 found it (#232).
 - On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
   Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
   Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
@@ -77,6 +87,8 @@ On `dev`, since 0.3.0-beta.
   any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
 - New profiles (Starter) had difficulty 1 locked: no level-1 missions showed on the war table, and the difficulty
   bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
+- New profiles (Starter) had an empty Ship Module page ("under construction"). Every profile now has the six ship
+  module tracks (#233).
 - Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
   Mobilize at the top (#206).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
@@ -110,6 +122,9 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- A difficulty 11 mission could crash while loading when its map had more than 512 mines: the game copies every mine
+  into a list of 512 without checking, and the 513th overwrote the list's count. Mines past the 512th are now left out
+  (no mine there), and the session log counts them, as it already did for the enemy director's 128 spawners.
 - The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
   about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
   faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
