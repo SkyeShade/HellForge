@@ -2578,6 +2578,36 @@ static uint64_t FakeConsume(void* system, uint8_t* event, uint64_t r8, uint64_t 
     return r9 + 1;
 }
 
+static int g_manyTicks, g_manyHeard;
+static void ManyTick(HfMod* mod, float dt, void* user) { g_manyTicks++; }
+static void ManyHeard(HfMod* mod, const HfEventInfo* event, void* user) { g_manyHeard++; }
+
+/* Many mods: on_game_thread and subscribe have no limit; the tables grow, and every callback and listener still runs. */
+static void ManyModsFixture(void)
+{
+    TickTable* ticks = g_ticks;
+    int listeners = g_listenerCount, tick = g_tickState;
+    LONG listening = g_listening;
+    g_tickState = 1; g_manyTicks = 0; g_manyHeard = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        HfMod* mod = &g_mods[i % MAX_MODS];
+        assert(ApiOnGameThread(mod, ManyTick, NULL));
+        assert(ApiSubscribe(mod, HF_ON_KILL, ManyHeard, NULL, INT32_MIN));
+    }
+    LONG before = ticks ? ticks->count : 0;
+    assert(g_ticks->count == before + 500 && g_ticks->capacity >= g_ticks->count && g_listenerCount == listeners + 500);
+    for (LONG i = before; i < g_ticks->count; i++) g_ticks->entries[i].callback(g_ticks->entries[i].mod, 0.016f, g_ticks->entries[i].user);
+    assert(g_manyTicks == 500);
+    int loaded[MAX_MODS];
+    for (int i = 0; i < MAX_MODS; i++) { loaded[i] = g_mods[i].loaded; g_mods[i].loaded = 1; }
+    HfEventInfo kill = {sizeof kill, HF_ON_KILL, 0};
+    Dispatch(&kill);
+    assert(g_manyHeard == 500);
+    for (int i = 0; i < MAX_MODS; i++) g_mods[i].loaded = loaded[i];
+    g_ticks = ticks; g_listenerCount = listeners; g_listening = listening; g_tickState = tick;
+}
+
 static void EventsFixture(void)
 {
     HfMod* mod = &g_mods[0];
@@ -3616,6 +3646,7 @@ int main(int argc, char** argv)
     FarHookFixture();
     HookChainFixture();
     EventsFixture();
+    ManyModsFixture();
     AbilitiesFixture();
     LooseGuardFixture();
     ReaperFixture();
