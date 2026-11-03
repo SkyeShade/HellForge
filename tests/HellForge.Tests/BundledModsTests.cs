@@ -29,8 +29,14 @@ static class BundledModsTests
             check(lines.Count == 0 && File.GetLastWriteTimeUtc(catalog) == stamp, "Unchanged: nothing copied or rewritten.");
             // a catalogue from another HellForge (a fix to it alone, the editor unchanged) is written again
             File.WriteAllText(catalog, "{\"objects\": []}");
+            var primary = Path.Combine(target, EditorCatalog.CategoryFile("primary"));
+            File.WriteAllText(primary, "{}");
+            var gone = Path.Combine(target, EditorCatalog.CategoryFile("removed"));
+            File.WriteAllText(gone, "{}");
             BundledMods.Sync(install, lines.Add);
-            check(File.ReadAllText(catalog) == EditorCatalog.Text() && lines.Count == 0, "A stale catalogue is replaced though the editor did not change.");
+            check(EditorCatalog.Files().All(f => File.ReadAllText(Path.Combine(target, f.Name)) == f.Text) && lines.Count == 0,
+                "A stale catalogue (its index and a category's file) is replaced though the editor did not change.");
+            check(!File.Exists(gone), "A category file the index no longer names is deleted.");
 
             File.WriteAllText(Path.Combine(shipped, "hellforge_editor.dll"), "version 2");
             BundledMods.Sync(install, lines.Add);
@@ -136,6 +142,29 @@ static class BundledModsTests
             var empty = new InstallLayout(Path.Combine(root, "bundled-none"));
             empty.Create(SupportedBuild.Current.BuildId);
             check(BundledMods.Sync(empty).Count == 0 && !Directory.Exists(Path.Combine(empty.Mods, BundledMods.EditorFolder)), "An app without bundled mods adds none.");
+        });
+
+        test("Bundled mods count by their coopLevel, and a change of level splits players", () =>
+        {
+            string Player(string name, string dll, int level)
+            {
+                var install = new InstallLayout(Path.Combine(root, name));
+                install.Create(SupportedBuild.Current.BuildId);
+                var app = Directory.CreateDirectory(Path.Combine(BundledMods.Folder(install), "test.bundled")).FullName;
+                File.WriteAllText(Path.Combine(app, ModCatalog.ManifestName), $$$"""
+                    {"format":1,"id":"test.bundled","name":"Bundled","version":"1","gameplay":true,"coopLevel":{{{level}}},
+                     "code":{"dll":"mod.dll","sdk":1}}
+                    """);
+                File.WriteAllText(Path.Combine(app, "mod.dll"), dll);
+                var problems = BundledMods.Sync(install);
+                var (mods, loadProblems) = ModCatalog.Load(install.Mods);
+                check(problems.Count == 0 && loadProblems.Count == 0 && mods.Count == 1 && mods[0].CoopLevel == level,
+                    $"{name}: the bundled mod loads: " + string.Join(" | ", problems.Concat(loadProblems)));
+                return ModCatalog.Digest(mods);
+            }
+            var one = Player("bundled-level-a", "build one", 1);
+            check(one == Player("bundled-level-b", "build two", 1), "Two bundled mods with the same coopLevel split friends by their files.");
+            check(one != Player("bundled-level-c", "build one", 2), "A changed coopLevel kept the same modlist code.");
         });
     }
 }

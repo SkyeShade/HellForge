@@ -1,4 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <!-- steam-download: setup's download of the supported build from Steam -->
+  <ItemGroup><ProjectReference Include="../HellForge.SteamDownload/HellForge.SteamDownload.csproj" /></ItemGroup>
 </Project>

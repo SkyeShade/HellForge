@@ -10,8 +10,8 @@ Nothing here has a date, and stability comes first. What each release changed is
 |---|---|---|
 | Local game copy | Done | Shipped in 0.2.0 |
 | Co-op with friends | Done | Shipped in 0.2.0 |
-| [Mod SDK](sdk-roadmap.md) | Done | SDK 15; some events and registries left |
-| Build patches for newer Steam builds | Done | Each new Steam build needs a new patch |
+| [Mod SDK](sdk-roadmap.md) | Done | SDK 16; some events and registries left |
+| The supported build from Steam's servers | Testing | Replaces the build patches; nothing to publish per Steam build |
 | Open source | Done | GPL-3 |
 | In-game editor | Mostly done | Player's kit mostly ported; enemies and structures built; missions left |
 | Difficulty 11 (Hell Forge) | Mostly done | Needs its own enemy mix |
@@ -27,6 +27,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
+| Launcher updates | Later | Planned after 0.4: update from GitHub releases |
 | Custom models | Later | Mesh importer works; physics, AI and textures left |
 | 1.0 release | Later | No date yet |
 
@@ -42,7 +43,7 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
 (session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 15.
+Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 16.
 
 ## Done in 0.2.0-beta
 
@@ -58,7 +59,8 @@ Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 15.
 - Mod groups, modlist codes, cosmetic packs, and a CLI for mod managers.
 - Difficulty 11, "Hell Forge", as a mod: bigger maps, more objectives and outposts, a 72-minute timer, more patrols,
   two missions in one, and fortresses and mega nests in the mega cities.
-- Build patches: setup turns a newer Steam build into the build HellForge runs ([downpatch.md](downpatch.md)).
+- Build patches: setup turned a newer Steam build into the build HellForge runs (since replaced by
+  [the Steam download](steam-download.md)).
 - Linux under Proton, experimental, from the community's work in issue 1 ([linux.md](linux.md)).
 - The source code, released under GPL-3.
 
@@ -71,7 +73,7 @@ and only HellForge players can see them (CowboyBingus, PR #17). If you'd rather 
 launcher keeps your Public lobbies off the map.
 
 When you join someone, mod sync downloads the host's mods for that session. You can trust a Steam friend's code mods
-after reading a warning, and a stranger's too while your game is sandboxed (otherwise you install them by hand).
+after reading a warning; a stranger's you install by hand unless HellForge has verified them.
 Downloads run at several MB/s: 38 MB takes about 10 seconds now, where it took about 3 minutes before commit 5fb79fe.
 Mods can also list a web address, which MOD SYNC shows as a GET IT button.
 
@@ -207,8 +209,10 @@ Status: planned. The design isn't decided yet.
 
 A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
 (everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
-XP based on difficulty, success and objectives, requisition based on difficulty, and whatever samples the game reports
-you looted. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
+XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
+game reports you looted. What a profile earns can be spent (`Purchases.cs`): medals on warbond pages, requisition on
+stratagems and the store, samples on ship modules, and requisition on weapon attachments, each checked against the
+game's prices and the profile's balance. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
 plan:
 
 1. Make the whole loop work. Everything a profile earns should be spendable on what the game sells for it (stratagems,
@@ -258,16 +262,27 @@ Linux support shipped in 0.2.0 as experimental ([linux.md](linux.md)). Testers i
 Proton, but co-op on Linux, the Steam ownership check under Proton, and Steam as a Flatpak or on the Steam Deck are
 still untested.
 
-Build patches work: setup picks a patch from the list online and keeps Steam's depot download as the fallback. Each
-new Steam build of HD2 needs a new patch.
+Setup downloads the supported build from Steam's servers for the player's account (a QR code sign-in that keeps
+nothing), copying what Steam's install shares with it. With no phone, Valve's SteamCMD downloads it, the password typed
+into SteamCMD's window. Steam's console download is the third way, with no sign-in in HellForge, and the fallback. A new
+Steam build of HD2 needs nothing published. It replaced the build patches, which carried game data from
+files.hf-mod.com; it still needs a full run with a real account.
 
 Setup still needs a full run through its GUI on a fresh PC.
+
+### Launcher updates
+
+Status: planned, after 0.4.
+
+Today a new HellForge version means downloading the release and installing it by hand. The launcher should check
+GitHub releases on start, say when a newer version is out, and install it for you: download the release, check it,
+swap the files and restart. Pre-releases would only show to players who opt in.
 
 ## Known issues
 
 | Issue | Workaround |
 |---|---|
-| Smart App Control blocks the unsigned session exe (exit code `0xC0000428`) | Turn Smart App Control off. Windows can't turn it back on without a reset ([troubleshooting.md](troubleshooting.md)) |
+| Smart App Control blocks HellForge's unsigned programs and DLLs ("An Application Control policy has blocked this file"). Setup and the launcher warn, and name the blocked file; signing is being decided ([code-signing.md](code-signing.md)) | Turn Smart App Control off. Windows may not let you turn it back on without a reset ([troubleshooting.md](troubleshooting.md#smart-app-control)) |
 | HellForge's editor and the HD2R Editor clash | Use one at a time |
 | Antivirus programs can quarantine HellForge's files | Add an exclusion for the install folder ([troubleshooting.md](troubleshooting.md#antivirus)) |
 | A crash at `helldivers2.exe+0x626296` when the game closes | Nothing to fix: it's the game's own crash on quitting |

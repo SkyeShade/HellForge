@@ -106,6 +106,39 @@ public sealed class GameDataReader : IDisposable
         return found;
     }
 
+    // Every copy of each wanted resource: a resource can be in several archives (packages carry their own), and a patch
+    // that changes it must change each copy the game may load. Missing resources are left out.
+    public Dictionary<ResourceKey, List<Location>> FindEvery(IEnumerable<ResourceKey> wanted)
+    {
+        var set = wanted.ToHashSet();
+        var found = new Dictionary<ResourceKey, List<Location>>();
+        if (set.Count == 0) return found;
+        foreach (var (archive, table, at) in TableEntries())
+        {
+            var e = table.AsSpan(at, 80);
+            var key = new ResourceKey(BinaryPrimitives.ReadUInt64LittleEndian(e[8..]), BinaryPrimitives.ReadUInt64LittleEndian(e));
+            if (!set.Contains(key)) continue;
+            if (!found.TryGetValue(key, out var copies)) found[key] = copies = [];
+            copies.Add(LocationOf(archive, e));
+        }
+        return found;
+    }
+
+    // Every copy of every resource of a type, by name (as FindEvery).
+    public Dictionary<ulong, List<Location>> Every(ulong type)
+    {
+        var found = new Dictionary<ulong, List<Location>>();
+        foreach (var (archive, table, at) in TableEntries())
+        {
+            var e = table.AsSpan(at, 80);
+            if (BinaryPrimitives.ReadUInt64LittleEndian(e[8..]) != type) continue;
+            var name = BinaryPrimitives.ReadUInt64LittleEndian(e);
+            if (!found.TryGetValue(name, out var copies)) found[name] = copies = [];
+            copies.Add(LocationOf(archive, e));
+        }
+        return found;
+    }
+
     // Every resource of a type, each name once (the first archive in name order that has it, as Find).
     public Dictionary<ulong, Location> All(ulong type)
     {

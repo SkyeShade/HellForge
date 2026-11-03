@@ -220,13 +220,7 @@ public static class BundledMods
     public const string IconStampFile = "game-icons.stamp";
     static void EditorData(InstallLayout install, string folder, bool changed, Action<string>? log)
     {
-        var catalog = Path.Combine(folder, EditorCatalog.FileName);
-        var text = EditorCatalog.Text();
-        if (!File.Exists(catalog) || File.ReadAllText(catalog) != text)
-        {
-            File.WriteAllText(catalog + ".partial", text);
-            File.Move(catalog + ".partial", catalog, overwrite: true);
-        }
+        EditorCatalog.Write(folder);
         // Only from a complete copy: the launcher syncs at start, which can be before or during setup's copy.
         var gameData = Path.Combine(install.Game, "data");
         var icons = Path.Combine(folder, EditorIcons.FileName);

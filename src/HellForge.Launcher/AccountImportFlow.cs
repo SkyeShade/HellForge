@@ -58,7 +58,7 @@ public partial class MainWindow
     {
         if (!AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder)).AutoApply)
         {
-            SetSyncStatus("Synced. Choose what to import below.", Green);
+            SetSyncStatus("Synced. Choose what to import below.", Green, "Synced. Review import to choose what else to bring into the profile.");
             await ShowReviewAsync(profile);
             return;
         }
