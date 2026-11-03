@@ -403,8 +403,9 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
  * rendered by the level's own terrain merge a second time:
  *
  * 1. At the level's CleanupTerrains (0x65, after its RenderFinalize 0x64 wrote the two named globals and before 0x66
- *    reads them back and tears the merge down) the drop point is chosen from the level's capture (lg+0xC0, lg = G+0x8758A8
- *    the merge's state; float metres, row 0 at +y) and the water levels (0x0A), and the job queue [ctx+0x50] is waited empty.
+ *    reads them back and tears the merge down) the centre is the squad's drop point on the war board (else a point
+ *    chosen from the level's capture (lg+0xC0, lg = G+0x8758A8
+ *    the merge's state; float metres, row 0 at +y, and the water levels, 0x0A), and the job queue [ctx+0x50] is waited empty.
  * 2. Two textures are created as the render config's generated_heightmap (0x2A9E3232) and generated_materials
  *    (0x95E7E3AC) are (format +0x8, size +0x14/+0x18, mips +0x20, flags +0x60/+0x63/+0x64 of the config objects; render
  *    API +0x170) and published under those names (+0x210): a published name takes the config's place for the merge's
@@ -695,9 +696,6 @@ static void TerrainNearDrop(void)
     HANDLE file = OpenLog(L"xl-drop.txt");
     if (file != INVALID_HANDLE_VALUE) { DWORD wrote; WriteFile(file, line, (DWORD)len, &wrote, NULL); CloseHandle(file); }
     g_worldDrop[0] = bestX; g_worldDrop[1] = bestY; g_worldDropLevel = g_world.levels;
-    /* the tile's centre: the drop point on a 256 m grid, so the tile is whole nodes of the level terrain's height-bounds
-     * quadtree (4096 samples over 16 km: a level-6 node is 64 samples, 256 m; the coarse terrain under the tile is
-     * hidden node by node, NearHideCoarse) */
     g_near.centre[0] = 256.0f * floorf(bestX / 256.0f + 0.5f); g_near.centre[1] = 256.0f * floorf(bestY / 256.0f + 0.5f);
     g_near.ready = 1;
     Note("difficulty: near terrain: drop point (%.0f, %.0f), ground %.2f m (water up to %.2f m), %d dry gentle candidates", (double)bestX, (double)bestY,
@@ -855,7 +853,23 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
         if (g_near.global == NULL) g_near.global = (float*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_near.global == NULL || SafeRead(data, g_near.global, bytes)) { Note("difficulty: near terrain: the level's heightmap did not copy; no tile"); return 0; }
         g_near.columns = dims[0]; g_near.rows = dims[1];
-        TerrainNearDrop();
+        /* the tile's centre: the squad's drop point on the war board (difficulty_stream.c: board [game+0x347CEE8], a u8
+         * at +0x17A2B0 = 1 when set, world metres at +0x17A2B4 / +0x17A2B8; chosen before the level generates), on a
+         * 256 m grid so the tile is whole nodes of the level terrain's height-bounds quadtree (4096 samples over 16 km:
+         * a level-6 node is 64 samples, 256 m; NearHideCoarse). Without one, the dry-ground picker's point (research
+         * runs; it also writes xl-drop.txt). */
+        {
+            uint64_t board = 0; uint8_t flag = 0; float at[2] = {0, 0};
+            if (!SafeRead(g_world.game + 0x347CEE8u, &board, 8) && board != 0 && !SafeRead(board + 0x17A2B0u, &flag, 1) && flag == 1 &&
+                !SafeRead(board + 0x17A2B4u, &at[0], 4) && !SafeRead(board + 0x17A2B8u, &at[1], 4) && isfinite(at[0]) && isfinite(at[1]) &&
+                fabsf(at[0]) <= 7000.0f && fabsf(at[1]) <= 7000.0f)
+            {
+                g_near.centre[0] = 256.0f * floorf(at[0] / 256.0f + 0.5f); g_near.centre[1] = 256.0f * floorf(at[1] / 256.0f + 0.5f);
+                g_near.ready = 1;
+                Note("difficulty: near terrain: the squad's drop point on the war board is (%.0f, %.0f)", (double)at[0], (double)at[1]);
+            }
+            else TerrainNearDrop();
+        }
         if (!g_near.ready) return 0;
         uint32_t size = 0, tiles = 0;
         g_near.lg = lg; g_near.settings = settings;
@@ -942,11 +956,19 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
         memcpy(d, p ? p : out, 24);
         uint32_t w, hgt, format; uint64_t data;
         memcpy(&w, d, 4); memcpy(&hgt, d + 4, 4); memcpy(&format, d + 8, 4); memcpy(&data, d + 16, 8);
-        if (data == 0 || w != 4096 || hgt != 4096 || NearTexelBytes(format) != 4)
+        /* the config's generated_heightmap is format 22 (16 bits a texel: u16, v / 65535 x 1000 - 500 m); a 32-bit format
+         * would be a normalized float */
+        uint32_t texel = NearTexelBytes(format);
+        if (data == 0 || w != 4096 || hgt != 4096 || (texel != 2 && texel != 4))
         { Note("difficulty: near terrain: the tile's readback is %u x %u format %u; no tile", w, hgt, format); NearReplayEnd(0); return 0; }
-        size_t bytes = (size_t)w * hgt * 4;
-        if (g_near.heights == NULL) g_near.heights = (float*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (g_near.heights == NULL || SafeRead(data, g_near.heights, bytes)) { NearReplayEnd(0); return 0; }
+        size_t count = (size_t)w * hgt;
+        if (g_near.heights == NULL) g_near.heights = (float*)VirtualAlloc(NULL, count * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (g_near.heights == NULL || SafeRead(data, g_near.heights, count * texel)) { NearReplayEnd(0); return 0; }
+        if (texel == 2) /* widen in place, from the end */
+        {
+            const uint16_t* u = (const uint16_t*)g_near.heights;
+            for (size_t i = count; i-- > 0;) g_near.heights[i] = (float)u[i] / 65535.0f;
+        }
         g_near.hw = w; g_near.hh = hgt;
         double sum = 0, diff = 0; float lo = 1e9f, hi = -1e9f; uint32_t zeros = 0, n = 0;
         for (uint32_t r = 0; r < hgt; r += 16)
