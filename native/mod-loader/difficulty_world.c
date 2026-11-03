@@ -583,13 +583,59 @@ static void WorldTileListCheck(const uint8_t* block, uintptr_t base, uint32_t si
         label, cells, listCount, badRange, firstCell, firstRange[0], firstRange[1], badEntry, (unsigned long long)firstEntry, widest);
 }
 
-static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uintptr_t gen)
+/* A tile runs the game's passes on data the game never made, and a pass can take a path vanilla never reaches:
+ * FixUnreachableAreas (0x7D) on one map found no neighbour for an area and wrote element (uint32)-1 at 0xF674A5. A
+ * fault in a tile pass must cost the tile, not the game: the thread's context before the pass is kept, and a fault on
+ * that thread while the pass runs resumes there with g_tileFault set. The CPU passes work on the tile's copy of the
+ * generator block only, so the level's data is untouched; the tile is abandoned and the level goes on. */
+static CONTEXT g_tileGuardContext;
+static volatile DWORD g_tileGuardThread;
+static volatile LONG g_tileFault;
+static volatile uintptr_t g_tileFaultAt, g_tileFaultData;
+
+static LONG CALLBACK WorldTileFault(EXCEPTION_POINTERS* info)
+{
+    if (g_tileGuardThread == 0 || g_tileGuardThread != GetCurrentThreadId()) return EXCEPTION_CONTINUE_SEARCH;
+    DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_INT_DIVIDE_BY_ZERO && code != EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
+        return EXCEPTION_CONTINUE_SEARCH;
+    g_tileGuardThread = 0;
+    g_tileFaultAt = (uintptr_t)info->ExceptionRecord->ExceptionAddress;
+    g_tileFaultData = info->ExceptionRecord->NumberParameters > 1 ? (uintptr_t)info->ExceptionRecord->ExceptionInformation[1] : 0;
+    g_tileFault = (LONG)code;
+    *info->ContextRecord = g_tileGuardContext;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+/* One tile step through the dispatcher until its index moves (or `limit` calls), guarded: 0, or the fault's code. */
+static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t context, volatile uint32_t* index, uint8_t* phase,
+    uint64_t g, uint64_t h, int limit, volatile int* calls)
+{
+    static int handler;
+    if (!handler) { AddVectoredExceptionHandler(1, WorldTileFault); handler = 1; }
+    g_tileFault = 0;
+    RtlCaptureContext(&g_tileGuardContext);
+    if (g_tileFault != 0) return g_tileFault; /* resumed here from WorldTileFault */
+    g_tileGuardThread = GetCurrentThreadId();
+    while (*index == 0 && *calls < limit)
+    {
+        g_worldDispatch((uint64_t)record, context, (uint64_t)index, 1, (uint64_t)phase, 0, g, h);
+        (*calls)++;
+        if (*index == 0 && limit > 1) Sleep(1);
+    }
+    g_tileGuardThread = 0;
+    return 0;
+}
+
+static void TerrainDiagTileFault(uint32_t op, uintptr_t at, uintptr_t data);
+
+static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uintptr_t gen)
 {
     static uint8_t one[0x19B0];
     uint32_t start = 0xFFFFFFFFu, op = 0;
     for (uint32_t i = 0; i < end; i++)
         if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x25) { start = i + 1; break; }
-    if (start == 0xFFFFFFFFu) { Note("difficulty: terrain tile: no GenerateVoronoi record"); return; }
+    if (start == 0xFFFFFFFFu) { Note("difficulty: terrain tile: no GenerateVoronoi record"); return 0; }
     int seen04 = 0, ran = 0;
     char text[1024];
     int n = 0;
@@ -608,19 +654,36 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
             if (level != NULL && !SafeRead(gen, level, GEN_BLOCK_SIZE)) WorldTileListCheck(level, gen, GEN_BLOCK_SIZE, "level");
         }
         WorldTileRelocate(one, gen, (uintptr_t)g_tileBlock);
+        { /* research: HELLFORGE_XL_TILE_FAULT_TEST=<op, hex> points that pass's block fields at unmapped memory, so the
+           * game faults inside it: a live test of the guard */
+            static int read; static uint32_t testOp;
+            if (!read) { char t[16] = ""; read = 1; if (GetEnvironmentVariableA("HELLFORGE_XL_TILE_FAULT_TEST", t, sizeof t) > 0) testOp = (uint32_t)strtoul(t, NULL, 16); }
+            if (testOp && op == testOp)
+            {
+                for (uint32_t o = 8; o + 8 <= sizeof one; o += 8)
+                {
+                    uint64_t v; memcpy(&v, one + o, 8);
+                    if (v >= (uint64_t)(uintptr_t)g_tileBlock && v < (uint64_t)(uintptr_t)g_tileBlock + GEN_BLOCK_SIZE) { v = 0x1000; memcpy(one + o, &v, 8); }
+                }
+                Note("difficulty: terrain tile: fault test: op 0x%02X gets unmapped block fields", op);
+            }
+        }
         LARGE_INTEGER t0, t1;
         QueryPerformanceCounter(&t0);
-        uint32_t index = 0;
-        int calls = 0;
+        volatile uint32_t index = 0;
+        volatile int calls = 0;
         /* Multi-phase ops keep their phase in the byte the dispatcher's 5th argument points to (0x93: setup 0xF3C870,
          * then 0xF3CF40 until it reports done, 0xC15438): the tile's own byte, from 0, so the level's (its op 0x6D is
          * two-phase too) is never touched; polled across real time, as the phases wait on worker jobs. */
         uint8_t phase = 0;
-        while (index == 0 && calls < 10000)
+        LONG fault = WorldTileGuarded(one, context, &index, &phase, g, h, 10000, &calls);
+        if (fault)
         {
-            g_worldDispatch((uint64_t)one, context, (uint64_t)&index, 1, (uint64_t)&phase, 0, g, h);
-            calls++;
-            if (index == 0) Sleep(1);
+            Note("difficulty: terrain tile: op 0x%02X faulted (%08lX at game.dll+0x%llX, address 0x%llX): the tile is abandoned, the level goes on",
+                op, (unsigned long)fault, (unsigned long long)(g_tileFaultAt - (uintptr_t)GetModuleHandleW(L"game.dll")),
+                (unsigned long long)g_tileFaultData);
+            TerrainDiagTileFault(op, g_tileFaultAt, g_tileFaultData);
+            return 0;
         }
         QueryPerformanceCounter(&t1);
         ran++;
@@ -675,11 +738,11 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
     memcpy(&routeCells, T + 0x11A71C0, 4); memcpy(&subCells, T + 0x11A71C4, 4);
     Note("difficulty: terrain tile: %d passes (op:ms):%s", ran, text);
     Note("difficulty: terrain tile: %u vertices, %u cells, route cells %u / %u", vertices, cells, routeCells, subCells);
-    if (vertices == 0 || vertices > 6000) return;
+    if (vertices == 0 || vertices > 6000) return 1;
     wchar_t name[64];
     swprintf(name, 64, L"tile-vertices-%ld.f32", (long)g_world.levels);
     HANDLE file = OpenLog(name);
-    if (file == INVALID_HANDLE_VALUE) return;
+    if (file == INVALID_HANDLE_VALUE) return 1;
     float lo = 1e30f, hi = -1e30f;
     for (uint32_t v = 0; v < vertices; v++)
     {
@@ -712,6 +775,7 @@ static void WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, ui
         Note("difficulty: terrain tile: the level's %u vertex heights %.4f..%.4f (mean %.4f); height scale [settings+0x30] %.2f", levelVertices, (double)llo, (double)lhi,
             levelVertices ? sum / levelVertices : 0.0, (double)scale);
     }
+    return 1;
 }
 
 static int g_tileExtent;
@@ -791,10 +855,11 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
         memcpy(&edge0, g_tileBlock + 0x8EB328 + 8, 8);
         Note("difficulty: terrain tile: before the passes: route cell 0 +8 = 0x%llX (copy at 0x%llX)", (unsigned long long)edge0, (unsigned long long)(uintptr_t)g_tileBlock);
     }
-    WorldTilePasses(records, end, context, e, f, g, h, gen);
+    int passed = WorldTilePasses(records, end, context, e, f, g, h, gen);
+    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
+    if (!passed) return;
     g_tileExtent = extent;
     g_tileCpuLevel = g_world.levels;
-    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
     uint32_t counts[3] = {0};
     for (int k = 0; k < 3; k++)
     {
@@ -862,6 +927,9 @@ static const uint8_t kTileGpuOps[] = {0x38, 0x39, 0x3A, 0x3C, 0x40, 0x5B, 0x5C};
 static LONG g_tileGpuLevel = -1;
 static int g_tileGpuStep, g_tileGpuDone;
 static uint32_t g_tileGpuFrames, g_tileGpuCalls, g_tileGpuRecord[sizeof kTileGpuOps];
+/* research A/B: HELLFORGE_XL_TILE_SKIP=<op, hex> leaves that merge pass out of every second tile merge (a run's two
+ * finished levels, 7 and 14, are the same map: one with the pass, one without) */
+static uint32_t g_tileSkip, g_tileRuns;
 static uint8_t g_tileGpuPhase, g_tileGpuOne[0x19B0];
 
 static int WorldTileGpuPrepare(uint64_t records, uintptr_t gen)
@@ -937,6 +1005,14 @@ static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t c
         if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return 0;
         g_tileGpuStep = 0;
         g_tileGpuFrames = 0;
+        g_tileRuns++;
+        static int skipRead;
+        if (!skipRead)
+        {
+            char text[16] = "";
+            skipRead = 1;
+            if (GetEnvironmentVariableA("HELLFORGE_XL_TILE_SKIP", text, sizeof text) > 0) g_tileSkip = (uint32_t)strtoul(text, NULL, 16);
+        }
         if (!WorldTileGpuPrepare(records, gen)) return 0;
         g_tileGpuDone = 0;
         Note("difficulty: terrain tile: the merge starts (records %u..%u), the level waits", g_tileGpuRecord[0], g_tileGpuRecord[sizeof kTileGpuOps - 1]);
@@ -954,15 +1030,30 @@ static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t c
     uint32_t size = *sizeP, disk = *diskP;
     float lo = *loP, hi = *hiP, radius = *radiusP;
     *diskP = disk ^ 1u; *sizeP = (uint32_t)g_tileExtent; *loP = 0.0f; *hiP = (float)g_tileExtent; *radiusP = (float)g_tileExtent;
-    uint32_t index = 0;
-    g_worldDispatch((uint64_t)g_tileGpuOne, context, (uint64_t)&index, 1, (uint64_t)&g_tileGpuPhase, 0, g, h);
+    volatile uint32_t index = 0;
+    volatile int calls = 0;
+    LONG fault = WorldTileGuarded(g_tileGpuOne, context, &index, &g_tileGpuPhase, g, h, 1, &calls);
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *diskP = disk;
+    if (fault)
+    {
+        Note("difficulty: terrain tile: merge op 0x%02X faulted (%08lX at game.dll+0x%llX): the tile is abandoned, the level goes on",
+            kTileGpuOps[g_tileGpuStep], (unsigned long)fault, (unsigned long long)(g_tileFaultAt - (uintptr_t)GetModuleHandleW(L"game.dll")));
+        TerrainDiagTileFault(kTileGpuOps[g_tileGpuStep], g_tileFaultAt, g_tileFaultData);
+        g_tileGpuDone = 1;
+        return 0;
+    }
     g_tileGpuCalls++;
     g_tileGpuFrames++;
     if (index != 0)
     {
         Note("difficulty: terrain tile: merge op 0x%02X done (%u calls, frame %u)", kTileGpuOps[g_tileGpuStep], g_tileGpuCalls, g_tileGpuFrames);
-        if (++g_tileGpuStep == (int)sizeof kTileGpuOps)
+        ++g_tileGpuStep;
+        if (g_tileGpuStep < (int)sizeof kTileGpuOps && g_tileSkip && kTileGpuOps[g_tileGpuStep] == g_tileSkip && (g_tileRuns & 1) == 0)
+        {
+            Note("difficulty: terrain tile: op 0x%02X left out (HELLFORGE_XL_TILE_SKIP, tile merge %u)", g_tileSkip, g_tileRuns);
+            ++g_tileGpuStep;
+        }
+        if (g_tileGpuStep == (int)sizeof kTileGpuOps)
         {
             WorldTileGpuCaptures();
             g_tileGpuDone = 1;

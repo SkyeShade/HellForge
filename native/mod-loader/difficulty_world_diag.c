@@ -130,6 +130,7 @@ static struct
     double imageDisk;                    /* the disk the image in measurement uses (m; -1: the whole image) */
     TdKey tileHeights;                   /* a terrain tile's heights (difficulty_world.c's tile merge) */
     char tilePlan[2048]; int tilePlanLen; /* the tile's Voronoi, as the plan */
+    uint32_t tileFaultOp; uintptr_t tileFaultAt, tileFaultData; /* a tile pass that faulted (the tile was abandoned) */
 } g_td = {SRWLOCK_INIT, -1};
 
 static ULONGLONG g_tdFrameTick;
@@ -187,6 +188,7 @@ static void TdLevelReset(void)
     memset(&g_td.imageHeights, 0, sizeof g_td.imageHeights);
     memset(&g_td.tileHeights, 0, sizeof g_td.tileHeights);
     g_td.tilePlanLen = 0;
+    g_td.tileFaultOp = 0; g_td.tileFaultAt = g_td.tileFaultData = 0;
     g_td.planSpacing = g_td.materialPainted = g_td.materialBars = g_td.materialMode = g_td.groundDensity = g_td.scatterRadius = 0;
     g_td.materialSeen = g_td.groundSeen = 0;
     if (g_td.lastDataCount) /* a restarted level measured nothing: the last finished one stays the previous */
@@ -981,6 +983,9 @@ static void TdFlags(void)
     if (g_td.tileHeights.set && g_td.tileHeights.slopeMean == g_td.tileHeights.slopeMean && g_td.tileHeights.slopeMean > 25.0)
         TdFlag("tile-steep", "the terrain tile's mean slope is %.1f degrees (sd %.1f m at %.2f m per sample): its height scale is off",
             g_td.tileHeights.slopeMean, g_td.tileHeights.sd, g_td.tileHeights.metresPerSample);
+    if (g_td.tileFaultOp)
+        TdFlag("tile-fault", "the terrain tile's op 0x%02X %s faulted at game.dll+0x%llX (address 0x%llX): the tile was abandoned", g_td.tileFaultOp,
+            TdOpName(g_td.tileFaultOp), (unsigned long long)(g_td.tileFaultAt - (uintptr_t)GetModuleHandleW(L"game.dll")), (unsigned long long)g_td.tileFaultData);
     if (g_td.groundSeen && g_td.groundDensity < 32) TdFlag("sparse-scatter", "the ground ids' mean density is %.1f of 127", g_td.groundDensity);
     if (g_td.scatterRadius > 0 && g_td.disk > 0 && g_td.scatterRadius < g_td.disk - 1) TdFlag("scatter-cutoff", "scatter stops %.0f m from the centre, inside the %.0f m disk", g_td.scatterRadius, g_td.disk);
     char zone[8] = ""; GetEnvironmentVariableA("HELLFORGE_XL_ZONE_REPEAT", zone, sizeof zone);
@@ -1114,12 +1119,55 @@ static void TerrainDiagTile(const char* label, const void* data, uint32_t w, uin
     ReleaseSRWLockExclusive(&g_td.lock);
 }
 
+/* The edge points RenderHeightmapVoronoi's second phase draws (G+0xEE10C8, 0x90 each: up to 16 edge pointers, then x,
+ * y, height at +0x80): how many, their extent, and where their edge pointers lead (this block, another block, else). */
+static void TdEdgePoints(const char* what, uintptr_t block, uintptr_t other)
+{
+    uint32_t n = 0, empty = 0, inBlock = 0, inOther = 0, elsewhere = 0;
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    for (uint32_t i = 0; i < 16384 && empty < 64; i++)
+    {
+        uint8_t e[0x90];
+        if (SafeRead(block + 0xEE10C8u + 0x90u * (uintptr_t)i, e, sizeof e)) break;
+        float v[3]; memcpy(v, e + 0x80, 12);
+        uint64_t first; memcpy(&first, e, 8);
+        if (first == 0 && v[0] == 0 && v[1] == 0) { empty++; continue; }
+        empty = 0; n++;
+        for (int k = 0; k < 3; k++) { if (v[k] < lo[k]) lo[k] = v[k]; if (v[k] > hi[k]) hi[k] = v[k]; }
+        for (int k = 0; k < 16; k++)
+        {
+            uint64_t q; memcpy(&q, e + 8 * k, 8);
+            if (q == 0) continue;
+            if (q >= block && q < block + GEN_BLOCK_SIZE) inBlock++;
+            else if (other && q >= other && q < other + GEN_BLOCK_SIZE) inOther++;
+            else elsewhere++;
+        }
+    }
+    Note("terrain diag (level %ld): %s edge points (G+EE10C8): %u, x %.1f..%.1f, y %.1f..%.1f, h %.4f..%.4f; edge pointers: %u into this block, %u into the %s, %u elsewhere",
+        (long)g_td.level, what, n, n ? lo[0] : 0, n ? hi[0] : 0, n ? lo[1] : 0, n ? hi[1] : 0, n ? lo[2] : 0, n ? hi[2] : 0, inBlock, inOther,
+        other == TdGen() ? "level's block" : "tile's block", elsewhere);
+}
+
+/* A terrain tile pass faulted (difficulty_world.c's guard): the tile was abandoned. */
+static void TerrainDiagTileFault(uint32_t op, uintptr_t at, uintptr_t data)
+{
+    if (!TerrainDiagOn()) return;
+    AcquireSRWLockExclusive(&g_td.lock);
+    if (g_td.level == g_world.levels) { g_td.tileFaultOp = op ? op : 0xFF; g_td.tileFaultAt = at; g_td.tileFaultData = data; }
+    ReleaseSRWLockExclusive(&g_td.lock);
+}
+
 /* A terrain tile's Voronoi (difficulty_world.c, once its CPU passes ran on a copy of the generation block). */
 static void TerrainDiagTilePlan(uintptr_t block, double extent)
 {
     if (!TerrainDiagOn()) return;
     AcquireSRWLockExclusive(&g_td.lock);
-    if (g_td.level == g_world.levels && !g_td.reported) TdPlanFrom(block, extent, 1, g_td.tilePlan, &g_td.tilePlanLen, sizeof g_td.tilePlan);
+    if (g_td.level == g_world.levels && !g_td.reported)
+    {
+        TdPlanFrom(block, extent, 1, g_td.tilePlan, &g_td.tilePlanLen, sizeof g_td.tilePlan);
+        TdEdgePoints("tile", block, TdGen());
+        TdEdgePoints("level", TdGen(), block);
+    }
     ReleaseSRWLockExclusive(&g_td.lock);
 }
 
