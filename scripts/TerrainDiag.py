@@ -9,6 +9,9 @@
       named ones, such as a terrain tile against vanilla's heights), metric by metric, with what looks wrong (less
       detail, less relief, flatter, longer features, unpainted, clamp bars, sparse), and the passes' times
 
+  TerrainDiag.py index RUN_DIR... [--all]
+      the finished levels of each run's terrain-diag-index.tsv in one table (--all: restarted levels too)
+
   TerrainDiag.py render LOGS_DIR [--level N] [--out DIR] [--max 2048]
       PNGs of the images level 2 dumped (terrain-<level>-<nn>-<label>.bin + .txt): heights as a hillshade with a slope
       map beside it, the material mix by slot and weight, the ground ids by id and density, anything else in false colour
@@ -339,6 +342,29 @@ def render(args):
         print(f"{target}: {meta.get('label')} {meta.get('columns')}x{meta.get('rows')} ({note})")
 
 
+# ---- index ------------------------------------------------------------------------------------------------------------
+def index(args):
+    rows, header = [], None
+    for run in args.runs:
+        path = run if run.endswith(".tsv") else os.path.join(run, "terrain-diag-index.tsv")
+        if not os.path.isfile(path):
+            print(f"{run}: no terrain-diag-index.tsv", file=sys.stderr)
+            continue
+        with open(path, encoding="utf-8") as f:
+            lines = [l.rstrip("\n").split("\t") for l in f if l.strip()]
+        header = header or lines[0]
+        name = os.path.basename(os.path.normpath(os.path.dirname(path) if run.endswith(".tsv") else run))
+        for cells in lines[1:]:
+            if args.all or (len(cells) > 1 and cells[1] == "1"):
+                rows.append([name] + cells)
+    if not header:
+        return
+    table = [["run"] + header] + rows
+    widths = [max(len(r[i]) if i < len(r) else 0 for r in table) for i in range(len(table[0]))]
+    for r in table:
+        print("  ".join((r[i] if i < len(r) else "").ljust(widths[i]) for i in range(len(widths))).rstrip())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -351,6 +377,10 @@ def main():
     p.add_argument("--json", action="store_true")
     p.add_argument("--map", action="append", metavar="BASE=TEST", help="also compare a baseline image with a differently named test image")
     p.set_defaults(run=compare)
+    p = sub.add_parser("index")
+    p.add_argument("runs", nargs="+")
+    p.add_argument("--all", action="store_true")
+    p.set_defaults(run=index)
     p = sub.add_parser("render")
     p.add_argument("logs")
     p.add_argument("--level", type=int)

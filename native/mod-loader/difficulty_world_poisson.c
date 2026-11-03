@@ -353,7 +353,7 @@ static void* PoissonDetour(void* arena, float radius, const float* rect, uint64_
         Note("difficulty: extra large maps: Poisson call %ld (radius %.2f, %.0f x %.0f m): tiled %llu points in %.1f ms (min distance %.4f radii), the game's %u in %.1f ms",
             (long)call, (double)radius, (double)(rect[2] - rect[0]), (double)(rect[3] - rect[1]), (unsigned long long)made, PoissonMs(a, b),
             PoissonMinRatio((const float*)points, (uint32_t)made, radius, rect), (unsigned)originalCount, originalMs);
-    else if (call <= 64 || PoissonMs(a, b) > 100.0)
+    else if (call <= 4 || PoissonMs(a, b) > 100.0)
         Note("difficulty: extra large maps: Poisson call %ld (radius %.2f, %.0f x %.0f m): tiled %llu points in %.1f ms", (long)call,
             (double)radius, (double)(rect[2] - rect[0]), (double)(rect[3] - rect[1]), (unsigned long long)made, PoissonMs(a, b));
     return points;

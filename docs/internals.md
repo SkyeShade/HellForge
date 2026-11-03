@@ -544,6 +544,29 @@ The flags are:
 - `readbacks-lost`.
 - `incomplete` (alone): the level never finished.
 
+Two more outputs, bounded so the logs stay small:
+- `terrain-diag-index.tsv` (the session's logs): one line per level (completed, world, map type, merge tiles, plan
+  spacing, painted share, most common share, clamp bars, height sd, flat share, slope, detail at 32 m, the tile's sd
+  and slope or `fault`, the flag codes), for comparing levels and runs at a glance.
+- Scatter by cell size: the scatter callback (game+0x137A2A0, which fills one cell of grass, plants or small rocks at a
+  time around the observer) is wrapped. 20 s, 60 s and 180 s after a level's first cell, one `modloader.log` line
+  covers the window since the last. For each cell size (the scatter's distance bands) it gives cells asked, the share
+  filled, instances, the share past the world radius, the share at the maximum, and the mean centre of the cells asked
+  (around the observer). It also gives the instances per scatter type. A band asked for but never filled, or never
+  asked for, shows where grass goes missing.
+
+To keep `modloader.log` readable, a terrain tile's passes get one summary line (a pass's own lines only when its route
+cells look wrong), its captures one line, and only the first image of each capture set is logged (the report keeps all).
+
+Research switches for the terrain tile (`HELLFORGE_XL_TILE=<m>`):
+- `HELLFORGE_XL_TILE_SKIP=<op>` leaves that merge pass out of every second tile merge. A run's two finished levels are
+  the same map, so the run compares the tile with and without the pass.
+- `HELLFORGE_XL_TILE_CLEAR_EDGES=1` clears the tile's copied edge points (route-cell areas, G+0xEE10C8) on every
+  second tile.
+- `HELLFORGE_XL_TILE_FAULT_TEST=<op>` points that tile pass's block fields at unmapped memory, a live test of the tile
+  guard (a faulting tile pass abandons the tile, not the game; flag `tile-fault`).
+- `HELLFORGE_XL_CAMERA_NOTES=1` lists the engine camera's callers (research for the vantage), off by default.
+
 `scripts/TerrainDiag.py` reads the reports:
 - `summary REPORT` lists one level.
 - `compare BASELINE TEST [--json] [--map BASE=TEST]` compares every shared image metric by metric against the vanilla

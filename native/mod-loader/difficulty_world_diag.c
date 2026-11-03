@@ -804,6 +804,8 @@ static void TdImage(const char* label, const char* source, uint32_t afterOp, uin
         snprintf(summary, sizeof summary, "painted %.2f%%, most common value %.1f%%, clamp bars %.2f%%", 100 * painted,
             100 * TdField(json + before, "\"mode_share\": "), 100 * TdField(json + before, "\"clamp_bar_share\": "));
     else if (dens == dens) snprintf(summary, sizeof summary, "density %.1f of 127", dens);
+    /* a capture's smaller mips go to the report only (the first of a set is logged) */
+    if (!strncmp(label, "capture", 7) && !(strlen(label) >= 2 && !strcmp(label + strlen(label) - 2, "-0"))) return;
     Note("terrain diag (level %ld, %.0fx): %s (%s, after 0x%02X %s): %u x %u at %.2f m: %s", (long)g_td.level, (double)g_world.current, label, source,
         afterOp, TdOpName(afterOp), w, h, metres, summary);
 }
@@ -993,6 +995,46 @@ static void TdFlags(void)
     if (g_td.pendingCount) TdFlag("readbacks-lost", "%u readbacks never came back", g_td.pendingCount);
 }
 
+/* One line per level in terrain-diag-index.tsv (the session's logs), for comparing levels and runs at a glance. */
+static void TdIndexLine(void)
+{
+    HANDLE file = OpenLog(L"terrain-diag-index.tsv");
+    if (file == INVALID_HANDLE_VALUE) return;
+    DWORD wrote;
+    LARGE_INTEGER size = {0};
+    if (GetFileSizeEx(file, &size) && size.QuadPart == 0)
+    {
+        static const char head[] = "level\tcompleted\tworld_m\tmap_type\tmerge_tiles\tplan_spacing_m\tpainted\tmode_share\tclamp_bars\t"
+            "heights_sd_m\tflat_lt1\tslope_deg\tdetail32_m\ttile_sd_m\ttile_slope_deg\tflags\n";
+        WriteFile(file, head, (DWORD)(sizeof head - 1), &wrote, NULL);
+    }
+    char type[24] = "-";
+    const char* t = g_td.settingsLen ? strstr(g_td.settings, "\"map_type_raw\": \"") : NULL;
+    if (t) { t += 17; int i = 0; while (t[i] && t[i] != '"' && i < 23) { type[i] = t[i]; i++; } type[i] = 0; }
+    double tiles = g_td.settingsLen ? TdField(g_td.settings, "\"merge_tiles\": ") : NAN;
+    const TdKey* k = g_td.finalHeights.set ? &g_td.finalHeights : g_td.imageHeights.set ? &g_td.imageHeights : NULL;
+    char line[1024]; int n = 0;
+    char tilesText[16] = "-"; if (tiles == tiles) snprintf(tilesText, sizeof tilesText, "%.0f", tiles);
+    n += snprintf(line + n, sizeof line - n, "%ld\t%d\t%.0f\t%s\t%s\t%.1f\t", (long)g_td.level, g_td.ended, g_td.world, type, tilesText, g_td.planSpacing);
+    if (g_td.materialSeen) n += snprintf(line + n, sizeof line - n, "%.3f\t%.3f\t%.4f\t", g_td.materialPainted, g_td.materialMode, g_td.materialBars);
+    else n += snprintf(line + n, sizeof line - n, "-\t-\t-\t");
+    if (k) n += snprintf(line + n, sizeof line - n, "%.1f\t%.3f\t%.1f\t%.2f\t", k->sd, k->flat, k->slopeMean, k->detail32);
+    else n += snprintf(line + n, sizeof line - n, "-\t-\t-\t-\t");
+    if (g_td.tileHeights.set) n += snprintf(line + n, sizeof line - n, "%.1f\t%.1f\t", g_td.tileHeights.sd, g_td.tileHeights.slopeMean);
+    else n += snprintf(line + n, sizeof line - n, "%s\t-\t", g_td.tileFaultOp ? "fault" : "-");
+    /* the flag codes from the flags JSON */
+    int first = 1;
+    for (const char* f = g_td.flags; (f = strstr(f, "\"code\": \"")) != NULL && n < (int)sizeof line - 40; f++)
+    {
+        f += 9; int i = 0; char code[32];
+        while (f[i] && f[i] != '"' && i < 31) { code[i] = f[i]; i++; } code[i] = 0;
+        n += snprintf(line + n, sizeof line - n, "%s%s", first ? "" : ",", code); first = 0;
+    }
+    n += snprintf(line + n, sizeof line - n, "\n");
+    WriteFile(file, line, (DWORD)n, &wrote, NULL);
+    CloseHandle(file);
+}
+
 static void TdReport(void)
 {
     if (g_td.reported || g_td.level < 0) return;
@@ -1036,6 +1078,116 @@ static void TdReport(void)
     CloseHandle(file);
     Note("terrain diag (level %ld, %.0fx): wrote terrain-diag-%ld.json (%u passes, %u images, %u readbacks)", (long)g_td.level, (double)g_world.current,
         (long)g_td.level, g_td.records, g_td.images, g_td.readbacks);
+    TdIndexLine();
+}
+
+/* ---- the scatter by cell size (grass, plants, small rocks) ----------------------------------------------------------
+ *
+ * The ScatterSystem asks the callback game+0x137A2A0 (op 0x95's brushes) to fill one cell at a time around an observer:
+ * count = fn(cell x, cell y, cell size m, out, context, max, brush), the cell's centre (x, y) * size in world metres
+ * from the centre; brushes at game+0x3328F90 + 0x2860 * type, the radius^2 it keeps cells inside at
+ * [[brush+0x2858]+0xC]. Per cell size (the scatter's distance bands) the wrapper counts cells asked, cells filled,
+ * instances, cells past the radius and cells at the maximum, and the mean centre of the cells asked (around the
+ * observer); per type the instances. One line per report: 20 s, 60 s and 180 s after a level's first cell, each over the
+ * window since the last. */
+static int TerrainDiagOn(void);
+typedef uint32_t (*TdScatterFn)(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush);
+static TdScatterFn g_tdScatter;
+#define TD_SCATTER_SIZES 8
+#define TD_SCATTER_TYPES 24
+static struct
+{
+    volatile LONG size[TD_SCATTER_SIZES];
+    volatile LONG64 calls[TD_SCATTER_SIZES], filled[TD_SCATTER_SIZES], instances[TD_SCATTER_SIZES], outside[TD_SCATTER_SIZES],
+        full[TD_SCATTER_SIZES], sumX[TD_SCATTER_SIZES], sumY[TD_SCATTER_SIZES];
+    volatile LONG64 typeInstances[TD_SCATTER_TYPES];
+    volatile LONG level;
+    ULONGLONG first, since;
+    int reports, firstNoted, silentNoted;
+} g_tdScat;
+
+static uint32_t TdScatterCell(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush)
+{
+    uint32_t made = g_tdScatter(x, y, size, out, context, max, brush);
+    int k = 0;
+    for (; k < TD_SCATTER_SIZES; k++)
+    {
+        LONG have = g_tdScat.size[k];
+        if (have == size) break;
+        if (have == 0 && InterlockedCompareExchange(&g_tdScat.size[k], size, 0) == 0) break;
+        if (g_tdScat.size[k] == size) break;
+    }
+    if (k == TD_SCATTER_SIZES) return made;
+    if (InterlockedCompareExchange((volatile LONG*)&g_tdScat.firstNoted, 1, 0) == 0)
+        Note("terrain diag (level %ld): first scatter cell: %ld m at (%ld, %ld), max %u, brush type %lld, made %u", (long)g_world.levels,
+            (long)size, (long)x * size, (long)y * size, max, (long long)(((intptr_t)brush - (intptr_t)(g_world.game + 0x3328F90u)) / 0x2860), made);
+    InterlockedIncrement64(&g_tdScat.calls[k]);
+    if (made) { InterlockedIncrement64(&g_tdScat.filled[k]); InterlockedAdd64(&g_tdScat.instances[k], made); }
+    if (made >= max && max) InterlockedIncrement64(&g_tdScat.full[k]);
+    double cx = (double)x * size, cy = (double)y * size;
+    InterlockedAdd64(&g_tdScat.sumX[k], (LONG64)cx); InterlockedAdd64(&g_tdScat.sumY[k], (LONG64)cy);
+    uintptr_t globals = 0; float r2 = 0;
+    if (!made && !SafeRead((uintptr_t)brush + 0x2858, &globals, 8) && globals && !SafeRead(globals + 0xC, &r2, 4) && cx * cx + cy * cy > r2)
+        InterlockedIncrement64(&g_tdScat.outside[k]);
+    uintptr_t type = ((uintptr_t)brush - (g_world.game + 0x3328F90u)) / 0x2860u;
+    if (made && type < TD_SCATTER_TYPES) InterlockedAdd64(&g_tdScat.typeInstances[type], made);
+    return made;
+}
+
+static void TdScatterReport(void)
+{
+    static const ULONGLONG kAt[] = {20000, 60000, 180000};
+    if (g_tdScatter == NULL || g_tdScat.reports >= 3) return;
+    if (g_tdScat.level != g_world.levels) return;
+    if (g_tdScat.first == 0)
+    {
+        for (int k = 0; k < TD_SCATTER_SIZES; k++) if (g_tdScat.calls[k]) g_tdScat.first = GetTickCount64();
+        /* Silence is a finding too (the 16 km map's grass may never reach the CPU callback): said once, 90 s into the level. */
+        if (g_tdScat.first == 0 && !g_tdScat.silentNoted && g_tdScat.since && GetTickCount64() - g_tdScat.since > 90000)
+        {
+            g_tdScat.silentNoted = 1;
+            Note("terrain diag (level %ld, %.0fx): no scatter cells asked in 90 s of the level (the CPU scatter callback was never called)",
+                (long)g_world.levels, (double)g_world.current);
+        }
+        return;
+    }
+    ULONGLONG age = GetTickCount64() - g_tdScat.first;
+    if (age < kAt[g_tdScat.reports]) return;
+    char line[1600]; int n = 0;
+    n += snprintf(line + n, sizeof line - n, "terrain diag (level %ld, %.0fx): scatter at %llu s (window):", (long)g_world.levels,
+        (double)g_world.current, (unsigned long long)(age / 1000));
+    /* by cell size, smallest first */
+    int order[TD_SCATTER_SIZES], m = 0;
+    for (int k = 0; k < TD_SCATTER_SIZES; k++) if (g_tdScat.size[k]) order[m++] = k;
+    for (int i = 1; i < m; i++) for (int j = i; j > 0 && g_tdScat.size[order[j]] < g_tdScat.size[order[j - 1]]; j--) { int t = order[j]; order[j] = order[j - 1]; order[j - 1] = t; }
+    for (int i = 0; i < m && n < (int)sizeof line - 200; i++)
+    {
+        int k = order[i];
+        LONG64 calls = InterlockedExchange64(&g_tdScat.calls[k], 0), filled = InterlockedExchange64(&g_tdScat.filled[k], 0),
+            made = InterlockedExchange64(&g_tdScat.instances[k], 0), outside = InterlockedExchange64(&g_tdScat.outside[k], 0),
+            full = InterlockedExchange64(&g_tdScat.full[k], 0), sx = InterlockedExchange64(&g_tdScat.sumX[k], 0),
+            sy = InterlockedExchange64(&g_tdScat.sumY[k], 0);
+        if (!calls) continue;
+        n += snprintf(line + n, sizeof line - n, " | %ld m: %lld cells, %.0f%% filled, %lld instances, %.0f%% past the radius, %.0f%% full, centre (%.0f, %.0f)",
+            (long)g_tdScat.size[k], (long long)calls, 100.0 * filled / calls, (long long)made, 100.0 * outside / calls, 100.0 * full / calls,
+            (double)sx / calls, (double)sy / calls);
+    }
+    n += snprintf(line + n, sizeof line - n, " | instances by type:");
+    for (int t = 0; t < TD_SCATTER_TYPES && n < (int)sizeof line - 24; t++)
+    {
+        LONG64 v = InterlockedExchange64(&g_tdScat.typeInstances[t], 0);
+        if (v) n += snprintf(line + n, sizeof line - n, " %d:%lld", t, (long long)v);
+    }
+    Note("%s", line);
+    g_tdScat.reports++;
+}
+
+/* Hook the scatter callback (level >= 1); the bytes are checked first. */
+static void TerrainDiagInstall(uintptr_t game)
+{
+    if (!TerrainDiagOn() || g_tdScatter != NULL) return;
+    if (!ApiCodeMatches(game + 0x137A2A0u, "40 55 53 56 57 41 54 41 56 41 57 48 8D AC 24 E0 FE FF FF")) { Note("terrain diag: the scatter callback is not the reviewed one; no scatter figures"); return; }
+    LoaderHook("terrain diag's scatter figures", game + 0x137A2A0u, (void*)TdScatterCell, (void**)&g_tdScatter);
 }
 
 /* ---- the hooks ------------------------------------------------------------------------------------------------------ */
@@ -1119,6 +1271,8 @@ static void TerrainDiagTile(const char* label, const void* data, uint32_t w, uin
     ReleaseSRWLockExclusive(&g_td.lock);
 }
 
+static double g_tdTileExtent;
+
 /* The edge points RenderHeightmapVoronoi's second phase draws (G+0xEE10C8, 0x90 each: up to 16 edge pointers, then x,
  * y, height at +0x80): how many, their extent, and where their edge pointers lead (this block, another block, else). */
 static void TdEdgePoints(const char* what, uintptr_t block, uintptr_t other)
@@ -1146,6 +1300,28 @@ static void TdEdgePoints(const char* what, uintptr_t block, uintptr_t other)
     Note("terrain diag (level %ld): %s edge points (G+EE10C8): %u, x %.1f..%.1f, y %.1f..%.1f, h %.4f..%.4f; edge pointers: %u into this block, %u into the %s, %u elsewhere",
         (long)g_td.level, what, n, n ? lo[0] : 0, n ? hi[0] : 0, n ? lo[1] : 0, n ? hi[1] : 0, n ? lo[2] : 0, n ? hi[2] : 0, inBlock, inOther,
         other == TdGen() ? "level's block" : "tile's block", elsewhere);
+    /* the edge-point index ranges RenderHeightmapVoronoi's second phase draws: each route cell's [+0xA0, +0xA4)
+     * (G+0x8EB328, 0x110 each, count G+0x11A71C0), and how many of the points they name lie in [0, extent] */
+    uint32_t cells = 0; SafeRead(block + 0x11A71C0u, &cells, 4);
+    uint32_t rlo = 0xFFFFFFFFu, rhi = 0, named = 0, local = 0, bad = 0;
+    double extent = block == TdGen() ? g_td.world : g_tdTileExtent;
+    for (uint32_t c = 0; c < cells && c < 16384; c++)
+    {
+        uint32_t r[2];
+        if (SafeRead(block + 0x8EB328u + 0x110u * (uintptr_t)c + 0xA0u, r, 8)) break;
+        if (r[1] < r[0] || r[1] - r[0] > 4096 || r[1] > 16384) { bad++; continue; }
+        if (r[0] < rlo) rlo = r[0];
+        if (r[1] > rhi) rhi = r[1];
+        for (uint32_t i = r[0]; i < r[1]; i++)
+        {
+            float v[2];
+            if (SafeRead(block + 0xEE10C8u + 0x90u * (uintptr_t)i + 0x80u, v, 8)) break;
+            named++;
+            if (v[0] >= -1.0f && v[0] <= extent + 1.0 && v[1] >= -1.0f && v[1] <= extent + 1.0) local++;
+        }
+    }
+    Note("terrain diag (level %ld): %s route cells %u: edge-point ranges %u..%u (%u bad), %u points named, %u within [0, %.0f m]",
+        (long)g_td.level, what, cells, rlo == 0xFFFFFFFFu ? 0 : rlo, rhi, bad, named, local, extent);
 }
 
 /* A terrain tile pass faulted (difficulty_world.c's guard): the tile was abandoned. */
@@ -1161,6 +1337,7 @@ static void TerrainDiagTileFault(uint32_t op, uintptr_t at, uintptr_t data)
 static void TerrainDiagTilePlan(uintptr_t block, double extent)
 {
     if (!TerrainDiagOn()) return;
+    g_tdTileExtent = extent;
     AcquireSRWLockExclusive(&g_td.lock);
     if (g_td.level == g_world.levels && !g_td.reported)
     {
@@ -1175,6 +1352,21 @@ static void TerrainDiagTilePlan(uintptr_t block, double extent)
 static void TerrainDiagTick(void)
 {
     if (g_td.mode <= 0) return;
+    if (g_tdScatter != NULL)
+    {
+        if (g_tdScat.level != g_world.levels)
+        {
+            for (int k = 0; k < TD_SCATTER_SIZES; k++)
+            {
+                g_tdScat.calls[k] = g_tdScat.filled[k] = g_tdScat.instances[k] = g_tdScat.outside[k] = g_tdScat.full[k] = 0;
+                g_tdScat.sumX[k] = g_tdScat.sumY[k] = 0;
+            }
+            for (int t = 0; t < TD_SCATTER_TYPES; t++) g_tdScat.typeInstances[t] = 0;
+            g_tdScat.first = 0; g_tdScat.reports = 0; g_tdScat.firstNoted = 0; g_tdScat.silentNoted = 0;
+            g_tdScat.since = GetTickCount64(); g_tdScat.level = g_world.levels;
+        }
+        TdScatterReport();
+    }
     AcquireSRWLockExclusive(&g_td.lock);
     if (g_td.level == g_world.levels && !g_td.reported)
     {

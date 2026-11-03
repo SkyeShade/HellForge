@@ -545,8 +545,11 @@ static void WorldRecordMap(uint64_t records, uint32_t end)
  * GenerateSubregionHeights (0x04); location placement, packages, collision, stamps and the merge are left out, and the
  * copy's location counts are zero, so the tile is the plan's nature terrain. The tile's Voronoi vertices (position and
  * height) go to tile-vertices-<level>.f32 as x, y, h floats. */
+/* FixUnreachableAreas (0x7D) is left out: reachability is a property of the whole map (a tile's border areas connect
+ * through its neighbours), so the global plan carries it. Run on a tile it also faulted on 2 of 6 maps (no neighbour
+ * region for an area: a write to element (uint32)-1 at 0xF674A5). */
 static const uint8_t kTileOps[] = {0x07, 0x12, 0x75, 0x79, 0x7B, 0x76, 0x74, 0x77, 0x78, 0x11, 0x7C, 0x28, 0xA4, 0x7A, 0x7E,
-    0x08, 0x29, 0x2A, 0xB6, 0x4E, 0x7D, 0x13, 0x92, 0x0E, 0x05, 0x02, 0x03, 0x04, 0x2C, 0x2E, 0x2D};
+    0x08, 0x29, 0x2A, 0xB6, 0x4E, 0x13, 0x92, 0x0E, 0x05, 0x02, 0x03, 0x04, 0x2C, 0x2E, 0x2D};
 /* GenerateBottomFlatLookup (0x93) is left out: it renders on the GPU and waits for the readback, which needs frames to
  * pass; a tile without stamps has nothing for it. GPU passes need the tile run spread over frames. */
 
@@ -719,11 +722,12 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
             uint32_t mergedCount = 0, listCount = 0;
             memcpy(&merged0, g_tileBlock + 0x8E9328, 8); memcpy(&list0, g_tileBlock + 0x10CB8C0, 8);
             memcpy(&mergedCount, g_tileBlock + 0x11A71BC, 4); memcpy(&listCount, g_tileBlock + 0x11A71EC, 4);
-            Note("difficulty: terrain tile: op 0x%02X lists: merged[0] = 0x%llX (count %u), associated[0] = 0x%llX (count %u)", op,
-                (unsigned long long)merged0, mergedCount, (unsigned long long)list0, listCount);
             uint32_t routeEdges = 0, routeVertices = 0;
             memcpy(&routeEdges, g_tileBlock + 0x11A71B4, 4); memcpy(&routeVertices, g_tileBlock + 0x11A71CC, 4);
-            Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); route cells %u, edges %u (room for ~978), vertices %u (room for ~1621); counts +1BC/+1C4/+1C8 %u %u %u",
+            /* only a pass whose route cells look wrong gets its lines (the summary after the passes covers the rest) */
+            if (bad || badBox) Note("difficulty: terrain tile: op 0x%02X lists: merged[0] = 0x%llX (count %u), associated[0] = 0x%llX (count %u)", op,
+                (unsigned long long)merged0, mergedCount, (unsigned long long)list0, listCount);
+            if (bad || badBox) Note("difficulty: terrain tile: op 0x%02X (%d calls): %u bad edge slots (first: cell %u slot %u = 0x%llX), %u bad boxes (first: cell %u: %g %g %g %g), most edges %u (cell %u); route cells %u, edges %u (room for ~978), vertices %u (room for ~1621); counts +1BC/+1C4/+1C8 %u %u %u",
                 op, calls, bad, firstCell, firstSlot, (unsigned long long)firstValue, badBox, boxCell, (double)box[0], (double)box[1], (double)box[2], (double)box[3],
                 most, mostCell, rc[1], routeEdges, routeVertices, rc[0], rc[2], rc[3]);
         }
@@ -844,6 +848,11 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
     0x11A7218u, 0x11A721Cu, 0x11A7220u, 0x11A7224u, 0x11A7228u, 0x11A722Cu, 0x11A7234u, 0x11A7238u, 0x11A723Cu,
     0x11A7240u, 0x11A7244u, 0x11A7248u, 0x11A724Cu, 0x11A7250u};
     for (size_t k = 0; k < sizeof kTileCounts / sizeof kTileCounts[0]; k++) memset(g_tileBlock + kTileCounts[k], 0, 4);
+    /* The copy holds the level's data, and only the counts start the tile at zero: the route-cell areas ("edge points",
+     * G+0xEE10C8, room for 13224 of 0x90 until G+0x10B1F48) kept the level's 16 km entries past the few the tile's
+     * passes wrote, and RenderHeightmapVoronoi drew them scaled into the tile: x-streaks and +-800 m heights. Cleared,
+     * the tile is vanilla-like terrain (run t9, same map: sd 148 m / 66 deg stale, 8.2 m / 17.8 deg cleared). */
+    memset(g_tileBlock + 0xEE10C8u, 0, 0x10B1F48u - 0xEE10C8u);
 
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     LARGE_INTEGER t0, t1, hz;
@@ -955,15 +964,19 @@ static int WorldTileGpuPrepare(uint64_t records, uintptr_t gen)
 
 static void WorldTileGpuCaptures(void)
 {
+    char summary[512]; int sn = 0;
     for (int k = 0; k < 8; k++)
     {
         uint64_t q[3];
         /* CaptureIntermediateHeightmapFinalize (0xF53870) copies each readback's descriptor {width, height, format,
          * ?, data} to [pass+0x18] = lg + 0x18 k (lg = G+0x8758A8; G+0x119FF68 holds the readback ids) */
         memcpy(q, g_tileBlock + 0x8758A8 + k * 0x18, 24);
-        Note("difficulty: terrain tile: capture %d: 0x%016llX 0x%016llX 0x%016llX", k, (unsigned long long)q[0], (unsigned long long)q[1], (unsigned long long)q[2]);
         uint32_t w = (uint32_t)q[0], hgt = (uint32_t)(q[0] >> 32), format = (uint32_t)q[1];
-        if (q[2] == 0 || w < 16 || w > 8192 || hgt < 16 || hgt > 8192) continue;
+        if (q[2] == 0 || w < 16 || w > 8192 || hgt < 16 || hgt > 8192)
+        {
+            if (sn < (int)sizeof summary - 48) sn += snprintf(summary + sn, sizeof summary - sn, " %d:none", k);
+            continue;
+        }
         uint64_t bytes = (uint64_t)w * hgt * (format == 0x16 ? 2u : 4u);
         uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (copy == NULL) continue;
@@ -978,11 +991,12 @@ static void WorldTileGpuCaptures(void)
                 DWORD wrote;
                 WriteFile(file, copy, (DWORD)bytes, &wrote, NULL);
                 CloseHandle(file);
-                Note("difficulty: terrain tile: wrote capture %d (%u x %u, format 0x%X)", k, w, hgt, format);
+                if (sn < (int)sizeof summary - 48) sn += snprintf(summary + sn, sizeof summary - sn, " %d:%ux%u/0x%X", k, w, hgt, format);
             }
         }
         VirtualFree(copy, 0, MEM_RELEASE);
     }
+    Note("difficulty: terrain tile: captures written (k:size/format):%s", summary);
 }
 
 static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -1104,7 +1118,9 @@ static void WorldCamNote(void)
     QueryPerformanceCounter(&now); QueryPerformanceFrequency(&hz);
     if (g_camStart.QuadPart == 0) { g_camStart = now; return; }
     double seconds = (double)(now.QuadPart - g_camStart.QuadPart) / (double)hz.QuadPart;
-    if (g_camNotes >= 30 || seconds < 20.0 * (g_camNotes + 1)) return;
+    static int on = -1; /* research: HELLFORGE_XL_CAMERA_NOTES=1 lists the camera callers (up to 48 lines every 20 s) */
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_XL_CAMERA_NOTES", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!on || g_camNotes >= 30 || seconds < 20.0 * (g_camNotes + 1)) return;
     g_camNotes++;
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
     LONG n = g_camCallerCount < 48 ? g_camCallerCount : 48;
@@ -1445,6 +1461,7 @@ static void WorldSubregionNote(void)
 
 /* difficulty_world_diag.c: terrain diagnostics around every dispatcher step (HELLFORGE_TERRAIN_DIAG) */
 static void TerrainDiagBefore(uint64_t records, uint64_t index, uint32_t end, uint32_t* at, uint32_t* op);
+static void TerrainDiagInstall(uintptr_t game);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -2031,6 +2048,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     for (size_t i = 0; i < sizeof kWorldPasses / sizeof kWorldPasses[0]; i++)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
+    TerrainDiagInstall(game);
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
     if (ApiCodeMatches(exe + DIF_OBJECT_CALL, kObjectCallPin) && ApiCodeMatches(exe + DIF_OBJECT_LOOKUP, kObjectLookupPin))
     {
