@@ -115,10 +115,20 @@
             </StackPanel>
           </Border>
 
-          <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
-          <Border x:Name="ModSyncCard" Grid.Row="3" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
-            <StackPanel x:Name="ModSyncPanel" Spacing="8" />
-          </Border>
+          <StackPanel Grid.Row="3">
+            <!-- the stranger warning, once, when the first sandboxed session runs with strangers on by default -->
+            <Border x:Name="StrangersNoticeCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel Spacing="6">
+                <TextBlock Text="PLAY WITH STRANGERS" Classes="h2" Margin="0" />
+                <SelectableTextBlock x:Name="StrangersNoticeText" Foreground="#FFA235" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <!-- the MOD SYNC prompt for a session without the in-game editor (ModSyncPrompt.cs) -->
+            <Border x:Name="ModSyncCard" Classes="card" Margin="0,16,0,0" Padding="24,18" VerticalAlignment="Top" IsVisible="False">
+              <StackPanel x:Name="ModSyncPanel" Spacing="8" />
+            </Border>
+          </StackPanel>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
             <StackPanel VerticalAlignment="Bottom" Spacing="12" Margin="0,0,24,4">
@@ -134,7 +144,7 @@
                   <TextBlock x:Name="PlaySyncStatus" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
                 </StackPanel>
               </Border>
-              <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" IsVisible="False" />
+              <TextBlock x:Name="PlatformNote" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" TextWrapping="Wrap" IsVisible="False" />
             </StackPanel>
             <StackPanel Grid.Column="1" Width="340" Spacing="10" VerticalAlignment="Bottom">
               <TextBlock Text="PROFILE" Classes="h2" Margin="0" />
@@ -383,8 +393,10 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Replaces the copy's PlayFab Party and Lobby DLLs with HellForge stand-ins for the session; they never reach PlayFab and talk to friends' backends through Steam networking. Every call is logged to the session folder." />
                 <CheckBox x:Name="StrangersBox" Content="Play with strangers" />
+                <TextBlock x:Name="StrangersEffectiveText" Classes="muted" TextWrapping="Wrap" />
+                <Button x:Name="StrangersDefaultButton" Classes="ghost" Content="Use default" HorizontalAlignment="Left" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="Off: only Steam friends reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs." />
+                           Text="Friends always reach your backend. On: your public lobby is listed on the Galactic Map for HellForge players who are not your friends, and you can join theirs. Off: friends only." />
                 <TextBlock x:Name="StrangersWarning" Foreground="#FFA235" TextWrapping="Wrap"
                            Text="Strangers' games send yours data you cannot check: a modified game can lie about its mods, and a flaw in the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It applies within a few seconds, also during a session." />
               </StackPanel>
@@ -395,7 +407,7 @@
                 <TextBlock Text="SANDBOX" Classes="h2" />
                 <CheckBox x:Name="SandboxBox" Content="Run the game sandboxed" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
-                           Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Applies to the next session." />
+                           Text="The game runs at Windows' low integrity level: code running inside it (a mod, or code that a crafted file or another player's game got it to run) cannot write your files, change other programs or start any. Steam reaches the game through HellForge's Steam broker, which passes only the calls the game needs. The game has no Steam overlay then (chat, Steam's invite dialog, screenshots); invitations from the game's social menu still work. Without the overlay there is no Steam Input either: a Steam Controller, the Steam Deck's controls and other controllers that work only through Steam Input do not work sandboxed, and the session says so. Xbox controllers work. Applies to the next session." />
                 <TextBlock x:Name="SandboxUnavailable" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False"
                            Text="This HellForge was built without the Steam bridge, so the game cannot run sandboxed." />
               </StackPanel>
@@ -434,6 +446,7 @@
                 <TextBlock Text="LAUNCH OPTIONS" Classes="h2" />
                 <TextBox x:Name="LaunchOptionsBox" Watermark="e.g. --use-d3d11" MaxLength="1024" VerticalContentAlignment="Center" />
                 <TextBlock x:Name="LaunchOptionsProblem" Classes="muted" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" IsVisible="False" />
+                <TextBlock x:Name="LaunchOptionsWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Options for the game's command line, as in Steam's Launch Options: --use-d3d11 starts it with DirectX 11, for one. Steam's &quot;%command% --use-d3d11&quot; works too. HellForge's own options come first. Applies to the next session." />
               </StackPanel>
@@ -486,6 +499,8 @@
             <TextBlock x:Name="SetupTitle" Text="Set up HellForge" Classes="h1" />
             <TextBlock x:Name="SetupIntro" Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0"
                        Text="Setup copies HELLDIVERS 2 from your own Steam library into this folder (about 24 GB) and blocks that copy from the internet. Your normal game and Steam stay as they are. Keep Steam running and signed in." />
+            <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="HellForge is an independent fan project, not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment. HELLDIVERS is a trademark of Sony Interactive Entertainment." />
           </StackPanel>
           <!-- The buttons stay in view; only the steps and options scroll. -->
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,16,0,0">
@@ -498,22 +513,53 @@
             <Border Classes="card">
               <StackPanel x:Name="SetupSteps" Spacing="10" />
             </Border>
-            <Border x:Name="DownloadCard" Classes="card" IsVisible="False">
-              <StackPanel Spacing="8">
-                <TextBlock Text="DOWNLOAD THE SUPPORTED BUILD THROUGH STEAM" Classes="h2" Margin="0" />
-                <TextBlock x:Name="DownloadIntro" Classes="muted" TextWrapping="Wrap" />
-                <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
-                <StackPanel x:Name="DownloadCommands" Spacing="6" />
-                <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1000" Height="8" />
-                <TextBlock x:Name="DownloadText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
+            <!-- How setup gets the supported build from Steam (SteamSignInFlow.cs): one of three ways, the QR code first. Each way
+                 has a "Choose another way" back to the three; the progress of every way shows on the game files card below. -->
+            <Border x:Name="SignInCard" Classes="card" IsVisible="False">
+              <StackPanel Spacing="10">
+                <TextBlock Text="GET THE SUPPORTED BUILD FROM STEAM" Classes="h2" Margin="0" />
+                <TextBlock x:Name="SignInIntro" Classes="muted" TextWrapping="Wrap" />
+                <StackPanel x:Name="ChoicesPanel" Spacing="12" IsVisible="False">
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceQrButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceQrHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceSteamCmdButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceSteamCmdHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                  <StackPanel Spacing="4">
+                    <Button x:Name="ChoiceClientButton" Classes="ghost" MinWidth="300" HorizontalContentAlignment="Left" />
+                    <TextBlock x:Name="ChoiceClientHint" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock x:Name="SignInChoiceText" TextWrapping="Wrap" />
+                <Border x:Name="SignInQrPanel" Background="White" Padding="14" HorizontalAlignment="Left">
+                  <Panel Width="200" Height="200">
+                    <Path x:Name="SignInQr" Fill="Black" Stretch="Uniform" RenderOptions.EdgeMode="Aliased" />
+                    <TextBlock x:Name="SignInQrWait" Text="Asking Steam for a code..." Foreground="#606060" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Panel>
+                </Border>
+                <StackPanel x:Name="SteamCmdPanel" Spacing="8" IsVisible="False" MaxWidth="420" HorizontalAlignment="Left">
+                  <TextBox x:Name="SteamCmdAccount" Watermark="Steam account name (the name you sign in with)" />
+                  <Button x:Name="SteamCmdButton" Content="Start SteamCMD" Classes="primary" HorizontalAlignment="Left" />
+                </StackPanel>
+                <StackPanel x:Name="ClientPanel" Spacing="8" IsVisible="False">
+                  <TextBlock x:Name="DownloadIntro" Classes="muted" TextWrapping="Wrap" />
+                  <Button x:Name="OpenConsoleButton" Content="Open the Steam console" Classes="primary" HorizontalAlignment="Left" />
+                  <StackPanel x:Name="DownloadCommands" Spacing="6" />
+                  <CheckBox x:Name="DeleteDownloadBox" IsChecked="True" />
+                </StackPanel>
+                <TextBlock x:Name="SignInStatus" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                <Button x:Name="ChooseAnotherButton" Content="Choose another way" Classes="ghost" HorizontalAlignment="Left" IsVisible="False" />
               </StackPanel>
             </Border>
             <Border x:Name="CopyCard" Classes="card" IsVisible="False">
               <StackPanel Spacing="8">
                 <TextBlock Text="GAME FILES" Classes="h2" Margin="0" />
                 <ProgressBar x:Name="CopyProgress" Minimum="0" Maximum="1000" Height="8" />
-                <TextBlock x:Name="CopyText" Classes="muted" FontSize="12" />
+                <TextBlock x:Name="CopyText" Classes="muted" FontSize="12" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
             <Border Classes="card">

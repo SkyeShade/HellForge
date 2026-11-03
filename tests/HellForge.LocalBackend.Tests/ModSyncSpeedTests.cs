@@ -45,13 +45,14 @@ static partial class ModSyncTests
     {
         root = Path.Combine(root, "mod-sync-speed");
         var hostMods = Path.Combine(root, "host", "mods");
-        Write(Path.Combine(hostMods, "big"), ModCatalog.ManifestName, """{"format":1,"id":"test.big","name":"Big","version":"1"}""");
-        Write(Path.Combine(hostMods, "big"), StatsData.FileName, Stats);
+        // A content mod (network field types, which co-op needs from everyone) of many files: the digest and the download
+        // both see the 6 MB asset and the notes.
+        Write(Path.Combine(hostMods, "big"), ModCatalog.ManifestName, Ammo.Replace("test.ammo", "test.big"));
         var big = new byte[6 << 20];
         new Random(5).NextBytes(big);
         Directory.CreateDirectory(Path.Combine(hostMods, "big", "assets"));
         File.WriteAllBytes(Path.Combine(hostMods, "big", "assets", "big.bin"), big);
-        for (var i = 0; i < 60; i++) Write(Path.Combine(hostMods, "big"), $"notes/note{i:00}.txt", new string((char)('a' + i % 26), 900 + i));
+        for (var i = 0; i < 61; i++) Write(Path.Combine(hostMods, "big"), $"notes/note{i:00}.bin", new string((char)('a' + i % 26), 900 + i));
         var hostSet = ModSet.Of(ModCatalog.LoadOrder(ModCatalog.Load(hostMods).Mods));
         var bytes = hostSet.Mods.Single().Bytes;
         check(hostSet.Mods.Single().Class == ModClass.Content && hostSet.Mods.Single().Files.Count == 63, "The speed fixture is one content mod of 63 files.");

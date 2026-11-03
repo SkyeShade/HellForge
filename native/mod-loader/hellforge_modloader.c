@@ -588,7 +588,10 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
+#include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
+#include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
+#include "terminal.c"
 #include "abilities.c"
 #include "events.c"
 #include "stats.c"
@@ -781,6 +784,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
@@ -1063,6 +1067,17 @@ static int ReadPlan(const wchar_t* path)
 
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
 
+/* A mod's DLL that LoadLibrary refused: Windows' error, and when code integrity refused it (4551, 577 and the reputation
+   codes: Smart App Control does so to an unsigned DLL, SmartAppControl.cs), that too. */
+static void NoteLoadFailure(const HfMod* mod, DWORD loadError)
+{
+    int blocked = loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582);
+    char error[288]; /* "error 126: The specified module could not be found." (mod_identity.c) */
+    LoadError(loadError, error, sizeof error);
+    Note("%s: not loaded (the DLL could not be loaded: Windows %s%s)", mod->id, error,
+        blocked ? ", an Application Control policy such as Smart App Control blocked it" : "");
+}
+
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
 static void SetupMod(HfMod* mod)
 {
@@ -1073,19 +1088,14 @@ static void SetupMod(HfMod* mod)
     if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
     NoteModIdentity(mod);
     mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
-    char why[320] = "it exports no hellforge_mod_init";
-    if (mod->module == NULL)
-    {
-        char error[288];
-        LoadError(GetLastError(), error, sizeof error);
-        snprintf(why, sizeof why, "the DLL could not be loaded: %s", error);
-    }
+    DWORD loadError = mod->module == NULL ? GetLastError() : 0;
     InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
     /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
     if (init == NULL)
     {
-        Note("%s: not loaded (%s)", mod->id, why);
+        if (mod->module == NULL) NoteLoadFailure(mod, loadError);
+        else Note("%s: not loaded (it exports no hellforge_mod_init)", mod->id);
         if (mod->module != NULL) FreeLibrary(mod->module);
         return;
     }
@@ -1121,7 +1131,8 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
         ApiRegisterEntity, ApiCopyField, ApiSetField, ApiSetTag, ApiMount, ApiRecord, ApiFind, ApiEditEntity, ApiSetLive, ApiGetLive, ApiSetPassives, ApiGetPassives,
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
-        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource, ApiSetStatus};
+        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
+        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiSetStatus};
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");

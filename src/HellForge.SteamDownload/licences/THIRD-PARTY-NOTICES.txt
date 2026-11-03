@@ -1,0 +1,34 @@
+Third-party software in HellForge's Steam download (HellForge.SteamDownload.dll)
+
+HellForge's launcher and command-line tool use these libraries, unmodified, each as its own DLL beside
+HellForge's (app/launcher, app/cli). HellForge itself is under the GNU General Public License, version 3
+(LICENSE in the installation); its source is at https://github.com/SkyeShade/HellForge.
+
+SteamKit2 3.5.0 (SteamKit2.dll)
+  Copyright (C) 2018 Ryan Stecker & SteamRE Team. GNU Lesser General Public License, version 2.1 only:
+  SteamKit2-LICENSE.txt (the licence), SteamKit2-NOTICE.txt (its notice), SteamKit2-THIRD-PARTY.txt.
+  Source: https://github.com/SteamRE/SteamKit, the release tagged 3.5.0
+  (commit 49387aec55c24104946af7a7b160148358e538b4); the DLL is the NuGet package SteamKit2 3.5.0's, as
+  published. HellForge does not change it. You may replace
+  SteamKit2.dll with another build of the library, including one you change yourself, as the LGPL allows;
+  HellForge loads whichever SteamKit2.dll is beside it.
+
+protobuf-net 3.4.30 and protobuf-net.Core 3.4.30 (protobuf-net.dll, protobuf-net.Core.dll), used by SteamKit2
+  Copyright 2008 onwards Marc Gravell. Apache License 2.0: protobuf-net-LICENSE.txt (its notice) and
+  Apache-2.0.txt (the licence). The project has no NOTICE file.
+  Source: https://github.com/protobuf-net/protobuf-net (commit f24c4c97bb146d763425a04b6b8dd7fd89219ef3)
+
+ZstdSharp.Port 0.8.8 (ZstdSharp.dll), used by SteamKit2
+  Copyright (c) 2021 Oleg Stepanischev. MIT License: ZstdSharp.Port-LICENSE.txt.
+  A port of Zstandard v1.5.7, Copyright (c) Meta Platforms, Inc. and affiliates, BSD License: zstd-LICENSE.txt.
+  Source: https://github.com/oleg-st/ZstdSharp (commit 2cd0c019693bc786a5fe5c3be94e107b24e7267e)
+
+System.IO.Hashing 10.0.12 (System.IO.Hashing.dll), used by SteamKit2
+  Copyright (c) .NET Foundation and Contributors. MIT License: System.IO.Hashing-LICENSE.txt, and the
+  notices of what it includes: System.IO.Hashing-THIRD-PARTY-NOTICES.txt.
+  Source: https://github.com/dotnet/dotnet (commit 95017c711e6afc1085133d440e42b4bd78155701, src/runtime)
+
+QRCoder 1.7.0 (QRCoder.dll), draws the Steam sign-in's QR code
+  Copyright (c) 2013-2025 Raffael Herrmann, Copyright (c) 2024-2025 Shane Krueger. MIT License:
+  QRCoder-LICENSE.txt.
+  Source: https://github.com/Shane32/QRCoder (commit 2dc55ee03cb9abf66ffed7d683cbcce0a141b124)

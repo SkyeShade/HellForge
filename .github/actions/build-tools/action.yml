@@ -1,0 +1,41 @@
+# The toolchain of the Windows builds, in one place for CI (.github/workflows/ci.yml) and the nightly build
+# (.github/workflows/nightly.yml), so both build with the same .NET SDK and the same caches. Run it after
+# actions/checkout.
+name: Build tools
+description: The .NET SDK and, for the native builds, the caches of the pinned downloads and of Zig's compiled libraries.
+
+inputs:
+  native:
+    description: "'true' for a job that builds the native code (scripts/Build-Engine.ps1, Build-Editor.ps1, Package-HellForge.ps1)"
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+    # Zig keeps its caches inside the workspace's ignored artifacts/, where the cache below finds them
+    - name: Zig's cache folders
+      if: inputs.native == 'true'
+      shell: pwsh
+      run: |
+        "ZIG_GLOBAL_CACHE_DIR=$env:GITHUB_WORKSPACE\artifacts\zig-global-cache" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "ZIG_LOCAL_CACHE_DIR=$env:GITHUB_WORKSPACE\artifacts\zig-local-cache" | Out-File -FilePath $env:GITHUB_ENV -Append
+    # the pinned downloads (Get-BuildTools.ps1, Build-Engine.ps1, Build-Editor.ps1 check every one against its pin)
+    - name: Cache the pinned downloads
+      if: inputs.native == 'true'
+      uses: actions/cache@v4
+      with:
+        path: tools/downloads
+        key: native-downloads-${{ hashFiles('scripts/Get-BuildTools.ps1', 'scripts/Build-Engine.ps1', 'scripts/Build-Editor.ps1') }}
+        restore-keys: native-downloads-
+    # Zig's compiled C runtime and C++ library, which every build would otherwise compile again
+    - name: Cache Zig's compiled libraries
+      if: inputs.native == 'true'
+      uses: actions/cache@v4
+      with:
+        path: artifacts/zig-global-cache
+        key: zig-0.17.0-${{ hashFiles('native/**', 'examples/mods/*/src/**') }}
+        restore-keys: zig-0.17.0-

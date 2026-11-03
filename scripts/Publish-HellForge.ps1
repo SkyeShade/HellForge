@@ -53,6 +53,13 @@ foreach($app in @(
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}
 }
+# The Steam download's libraries (SteamKit2: LGPL-2.1; protobuf-net: Apache-2.0; QRCoder, ZstdSharp.Port, System.IO.Hashing:
+# MIT) ship with their licences and notices beside them, in licences/ (HellForge.SteamDownload.csproj puts them there).
+foreach($folder in @('launcher','cli')){
+    foreach($name in @('THIRD-PARTY-NOTICES.txt','SteamKit2-LICENSE.txt','Apache-2.0.txt','protobuf-net-LICENSE.txt','QRCoder-LICENSE.txt','ZstdSharp.Port-LICENSE.txt','zstd-LICENSE.txt','System.IO.Hashing-LICENSE.txt')){
+        if(-not(Test-Path -LiteralPath (Join-Path $staging ($folder+'/licences/'+$name)))){throw ('app/'+$folder+' lacks licences/'+$name+'.')}
+    }
+}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -142,6 +149,9 @@ $stub=Join-Path $staging 'HellForge.exe'
     (Join-Path $project 'native/launcher-stub/launcher_stub.rc') -o $stub # the .rc: its icon, HellForge's
 if($LASTEXITCODE){throw 'Building the launcher program failed.'}
 Get-ChildItem -LiteralPath $staging -File|Where-Object {$_.Extension -in @('.pdb','.lib')}|Remove-Item
+# HellForge's own programs and DLLs, signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks
+# unsigned ones). The engine's folders are signed by Build-Engine.ps1 or not at all: engine.json pins their hashes.
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@('launcher','cli','steamprobe','capture','bundled-mods','HellForge.exe')|ForEach-Object {Join-Path $staging $_})
 $commit=(git -C $project rev-parse --short HEAD 2>$null)
 $dirty=[bool](git -C $project status --porcelain 2>$null)
 [ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');commit=$commit;uncommittedChanges=$dirty;engine=$engine.version;enginePackageSha256=$engineHash}|ConvertTo-Json|

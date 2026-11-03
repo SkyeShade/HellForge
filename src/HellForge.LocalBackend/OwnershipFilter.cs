@@ -9,6 +9,9 @@ namespace HellForge.LocalBackend;
 //   holds are served even when the profile lacks them, so premium ownership always follows the latest sync, whatever
 //   the player chose to import.
 // - a premium warbond's items only when one of its tokens is owned.
+// - a child item (a stratagem's loadout entry, a weapon's attachment) only when its parent may be served: the loadout
+//   checks a stratagem's child, so a premium stratagem's child served alone unlocked the stratagem (unlock-all profiles
+//   had every premium stratagem with no snapshot).
 // /Progression drops the purchases on a premium warbond's pages without an owned token, so its pages show nothing bought
 // (an unlock-all profile has bought every page). The profile keeps them for when the warbond is owned.
 // Everything else passes through. Without a verified snapshot no paid item is served.
@@ -46,7 +49,11 @@ public sealed class OwnershipFilter
 
     public bool IsAllowed(uint mixId) => IsAllowed(mixId, owned.Keys.ToHashSet());
 
-    bool IsAllowed(uint mixId, IReadOnlySet<uint> held)
+    bool IsAllowed(uint mixId, IReadOnlySet<uint> held) =>
+        Passes(mixId, held) && (!Paid.TryGetParent(mixId, out var parent) || Passes(parent, held));
+
+    // The item's own rules, its parent aside.
+    bool Passes(uint mixId, IReadOnlySet<uint> held)
     {
         if (PaidContentSet.IsSuperCredits(mixId)) return PaidContentSet.IsForgeCredits(mixId);
         if (Paid.WarbondTokens.Contains(mixId)) return Unlocked(mixId, held);

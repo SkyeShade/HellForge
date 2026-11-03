@@ -8,14 +8,17 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using HellForge.Core;
+using HellForge.SteamDownload;
 
 namespace HellForge.Launcher;
 
 // Setting up an installation: find HELLDIVERS 2 in Steam, confirm ownership, copy the game into the installation,
 // place its network block (WFP filters), optionally import earlier HellForge game data and create shortcuts. When Steam's own copy is
-// another build (Arrowhead patched the game) or missing, Steam itself downloads the supported build's depots through
-// its console (SteamDepotDownload) and the game is copied from there. Shown instead of the other
-// pages until the game is copied; Settings > Installation runs it again to check and repair.
+// another build (Arrowhead patched the game) or missing, the player signs in to Steam and setup downloads the supported
+// build from Steam's servers for their account, copying what Steam's install already holds (HellForge.SteamDownload). When
+// that cannot be done, the Steam client downloads the build's depots through its console (SteamDepotDownload) and the game
+// is copied from there. Shown instead of the other pages until the game is copied; Settings > Installation runs it again
+// to check and repair.
 public partial class MainWindow
 {
     enum SetupStep { Find, Ownership, Copy, NetworkBlock, Import, Shortcuts }
@@ -26,9 +29,6 @@ public partial class MainWindow
     readonly List<(Border Dot, TextBlock Detail)> setupRows = [];
     CancellationTokenSource? setupCancel;
     bool setupRunning;
-    // Build patches (by SHA-256) that failed in this launcher run: Check again uses Steam's download instead, and a
-    // re-published pack (another hash) is tried. Restarting the launcher tries a failed one again.
-    readonly HashSet<string> failedPatches = new(StringComparer.OrdinalIgnoreCase);
     DispatcherTimer? downloadTimer;
     string? downloadSteamRoot;
 
@@ -106,8 +106,8 @@ public partial class MainWindow
     }
 
     // The game found for setup: the supported build, Steam's root, Steam's installed game (or null), whether Steam's
-    // depot download holds it, and a build patch (with its source) that converts an installed build to the supported one.
-    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, DownpatchPack? DownpatchPack, string? DownpatchSource);
+    // console download holds it, and whether setup downloads it from Steam's servers (copying what Game holds).
+    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, bool FromSteamServers);
 
     async Task RunSetup()
     {
@@ -120,13 +120,13 @@ public partial class MainWindow
         try
         {
             var found = await FindGameStep(install);
-            // When downpatching, copy first so the supported build's steam_api64.dll is available for the ownership check
-            // (the newer build's DLL may not work with the probe).
-            if (found.DownpatchPack != null) { step = SetupStep.Copy; await DownpatchStep(install, found); }
+            // When downloading from Steam, that comes first, so the supported build's steam_api64.dll is there for the
+            // ownership check (the newer build's DLL may not work with the probe).
+            if (found.FromSteamServers) { step = SetupStep.Copy; await SteamDownloadStep(install, found); }
             var steamApi = SteamApiPath(install, found);
             step = SetupStep.Ownership;
             await OwnershipStep(install, steamApi);
-            if (found.DownpatchPack == null) { step = SetupStep.Copy; await CopyStep(install, found); }
+            if (!found.FromSteamServers) { step = SetupStep.Copy; await CopyStep(install, found); }
             step = SetupStep.NetworkBlock;
             await NetworkBlockStep(install);
             step = SetupStep.Import;
@@ -164,8 +164,8 @@ public partial class MainWindow
         }
     }
 
-    // Finds HELLDIVERS 2 for setup: the installed supported build, Steam's depot download, or a build patch; else offers
-    // Steam's download (throwing SetupWaiting) or stops.
+    // Finds HELLDIVERS 2 for setup: the installed supported build or Steam's console download of it; else the download
+    // from Steam's servers, copying from Steam's installed game when there is one. Stops while that game is busy.
     async Task<SetupSource> FindGameStep(InstallLayout install)
     {
         SetRow(SetupStep.Find, null, "Looking in your Steam libraries...", running: true);
@@ -175,54 +175,54 @@ public partial class MainWindow
             throw new SetupStopped("On Linux, setup runs inside HellForge's network namespace. Close HellForge and start it with " +
                 "app/linux/hellforge-linux.sh (docs/linux.md), then start setup there.");
         if (!LinuxNetworkBlock.Requested) await CheckFilteringEngine(install);
-        if (VisualCppRuntimes.Problem("start setup again.") is { } runtimes) throw new SetupStopped(runtimes);
+        // Microsoft's installer for a runtime the game needs and this PC lacks, run with Windows' permission prompt
+        if (await VisualCppRuntimes.EnsureAsync(install.Temp, "start setup again.",
+                detail => Dispatcher.UIThread.Post(() => SetRow(SetupStep.Find, null, detail, running: true))) is { } runtimes)
+            throw new SetupStopped(runtimes);
+        SetRow(SetupStep.Find, null, "Looking in your Steam libraries...", running: true);
         var build = SupportedBuild.Current;
         var steamRoot = SteamLocator.SteamRoot() ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
-        // The build patches published since this release (a game update gets one there, not a new HellForge).
-        using (var http = new HttpClient()) await Downpatcher.RefreshAsync(http, Path.Combine(install.Temp, "downpatch-index.json"));
         SteamGame? game;
         string? unusable = null;
         try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
         catch (Exception error) when (error is InvalidDataException or IOException) { game = null; unusable = error.Message; }
-        if (game is { SupportedBuild: true }) { SetRow(SetupStep.Find, true, $"Build {game.Report.Pin.BuildId} in {game.Report.Source}"); return new(build, steamRoot, game, false, null, null); }
+        if (game is { SupportedBuild: true }) { SetRow(SetupStep.Find, true, $"Build {game.Report.Pin.BuildId} in {game.Report.Source}"); return new(build, steamRoot, game, false, false); }
         if (await Task.Run(() => SteamDepotDownload.IsComplete(steamRoot, build)))
         {
             SetRow(SetupStep.Find, true, $"Build {build.BuildId}, downloaded by Steam into {Path.GetDirectoryName(SteamDepotDownload.DepotFolder(steamRoot, build, build.Depots[0].Id))}");
-            return new(build, steamRoot, game, true, null, null);
-        }
-        if (game != null && Downpatcher.FindPack(game.Report.Pin) is { } downpatch && !failedPatches.Contains(downpatch.Sha256))
-        {
-            SetRow(SetupStep.Find, true, $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. A {downpatch.Size / 1e9:0.0} GB patch converts it to build {build.BuildId}.");
-            return new(build, steamRoot, game, false, downpatch, game.Report.Source);
+            return new(build, steamRoot, game, true, false);
         }
         // the game is there but busy (Steam updating it, the game running): that passes, so no download is offered.
         // Under Wine it does not pass: Steam's Linux libraries are on the Z: drive, which counts as a linked path
-        // ("Linked/reparse paths are not supported: Z:\", GitHub issue 1), so the download is the way there.
+        // ("Linked/reparse paths are not supported: Z:\", GitHub issue 1), so everything is downloaded there.
         if (game == null && unusable != null && !LinuxNetworkBlock.UnderWine)
             throw new SetupStopped($"HELLDIVERS 2 is in Steam, but setup cannot use it right now: {unusable}");
-        OfferDownload(steamRoot, game, unusable, build);
-        throw new InvalidOperationException("unreachable"); // OfferDownload always throws
+        // Linux (Wine/Proton): setup runs inside HellForge's network namespace, which has no route out, so Steam's
+        // servers are out of its reach; the Steam client downloads the build through its console instead.
+        if (LinuxNetworkBlock.Requested)
+        {
+            ShowDownload(steamRoot, SteamHas(game, unusable));
+            throw new SetupWaiting($"Steam has {SteamHas(game, unusable)}, but this version of HellForge needs build {build.BuildId}. Setup " +
+                "runs inside HellForge's network namespace and cannot reach Steam's servers itself; the Steam client can download that exact " +
+                "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
+        }
+        SetRow(SetupStep.Find, true, game != null
+            ? $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. Steam sends build {build.BuildId} for your account; what your install already has is copied, not downloaded."
+            : $"No HELLDIVERS 2 setup can copy from. Steam sends build {build.BuildId} (about {build.TotalBytes / 1e9:0} GB) for your account.");
+        return new(build, steamRoot, game, false, true);
     }
 
-    // Offers Steam's download of the supported build and stops setup until it is complete (throws SetupWaiting).
-    void OfferDownload(string steamRoot, SteamGame? game, string? unusable, SupportedBuild build)
-    {
-        var have = game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
-            : unusable != null ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2";
-        ShowDownload(steamRoot, have);
-        var noPatch = game == null ? ""
-            : Downpatcher.FindPack(game.Report.Pin) != null ? $" The build patch for build {game.Report.Pin.BuildId} did not work earlier."
-            : $" HellForge has no patch for build {game.Report.Pin.BuildId} yet; once one is published, Check again uses it.";
-        throw new SetupWaiting($"Steam has {have}, but this version of HellForge needs build {build.BuildId}.{noPatch} Steam can download that exact " +
-            "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
-    }
+    // What Steam has, in the console card's words.
+    static string SteamHas(SteamGame? game, string? unusable = null) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
+        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 setup can copy from";
 
-    // Applies the build patch into the installation (the copy step's row), offering Steam's download when it will not fit or fails.
-    async Task DownpatchStep(InstallLayout install, SetupSource found)
+    // Gets the supported build into the installation the way the player chooses on the card (SteamSignInFlow), on the copy
+    // step's row. A full drive asks for space; a refused or failed download shows the Steam app's console download.
+    // Files already written are kept.
+    async Task SteamDownloadStep(InstallLayout install, SetupSource found)
     {
         var build = found.Build;
-        var downpatchPack = found.DownpatchPack!;
-        // Only the screen order changes: each step keeps its own row (setupRows by step), so the patch's progress
+        // Only the screen order changes: each step keeps its own row (setupRows by step), so the download's progress
         // and errors show on the copy row. (Swapping the rows here as well put them on "Confirm you own the game",
         // and a second run swapped the screen order back.)
         var copyRow = (Control)setupRows[(int)SetupStep.Copy].Dot.Parent!;
@@ -232,29 +232,31 @@ public partial class MainWindow
             SetupSteps.Children.Remove(copyRow);
             SetupSteps.Children.Insert(SetupSteps.Children.IndexOf(ownershipRow), copyRow);
         }
-        SetRow(SetupStep.Copy, null, "Downloading and applying the build patch...", running: true);
-        try { await DownpatchGame(found.DownpatchSource!, install, downpatchPack); }
-        // a full drive: the patch is fine and Steam's download would need the same room, so ask for space; the
-        // files already patched are kept
-        catch (NotEnoughSpaceException error)
+        SetRow(SetupStep.Copy, null, $"Choose below how to get build {build.BuildId} from Steam.", running: true);
+        setupCancel = new();
+        var token = setupCancel.Token;
+        SetupPauseButton.Content = "Cancel";
+        SetupPauseButton.IsVisible = true;
+        try
         {
-            throw new SetupWaiting($"{error.Message} Free some space on that drive, then click Check again: the files already patched are kept.");
+            SetRow(SetupStep.Copy, true, await GetBuildFromSteam(install, found, token));
         }
-        // the patch failed (its download, Steam's copy, the pack itself): Steam's own download of the build still
-        // works, and the files already patched are kept (each one has the build's hash), so it copies only the rest
-        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or HttpRequestException
-            or InvalidOperationException or Win32Exception)
+        catch (SteamAppChosen)
         {
-            failedPatches.Add(downpatchPack.Sha256);
-            ShowDownload(found.SteamRoot, $"HELLDIVERS 2 build {found.Game!.Report.Pin.BuildId}");
-            throw new SetupWaiting($"The build patch did not work: {Describe(error)} Steam can download build {build.BuildId} for your " +
-                "account instead: follow the steps below. Setup continues by itself when the download is complete.");
+            // the player's choice: the Steam app downloads it through its console, and setup copies it from there
+            ShowDownload(found.SteamRoot, SteamHas(found.Game));
+            throw new SetupWaiting($"The Steam app downloads build {build.BuildId} for your account: follow the steps below. Setup " +
+                "continues by itself when the download is complete, and copies it into this folder.");
         }
-        SetRow(SetupStep.Copy, true, $"{build.Files.Count} files ({build.TotalBytes / 1e9:0.0} GB), patched from build {downpatchPack.SourceBuild}.");
+        catch (Exception error) when (DownloadFailures.Describe(error, build.BuildId) is { } failure)
+        {
+            if (failure.Fallback == DownloadFallback.SteamConsole) ShowDownload(found.SteamRoot, SteamHas(found.Game));
+            throw new SetupWaiting(Privacy.Scrub(failure.Message));
+        }
     }
 
-    // The steam_api64.dll the ownership check uses: the patched copy, Steam's depot download, or the installed game.
-    static string SteamApiPath(InstallLayout install, SetupSource found) => found.DownpatchPack != null
+    // The steam_api64.dll the ownership check uses: the downloaded copy, Steam's depot download, or the installed game.
+    static string SteamApiPath(InstallLayout install, SetupSource found) => found.FromSteamServers
         ? Path.Combine(install.Game, "bin", "steam_api64.dll")
         : found.FromDepots
             ? SteamDepotDownload.Locate(found.SteamRoot, found.Build, found.Build.Files.Single(f => f.Path == "bin/steam_api64.dll"))
@@ -310,7 +312,7 @@ public partial class MainWindow
             await Task.Run(() => SteamDepotDownload.Delete(found.SteamRoot, found.Build));
             copied += " Steam's download was deleted.";
         }
-        DownloadCard.IsVisible = false;
+        SignInCard.IsVisible = false;
         SetRow(SetupStep.Copy, true, copied);
     }
 
@@ -367,84 +369,90 @@ public partial class MainWindow
     async Task CopyGame(string? source, string steamRoot, InstallLayout install)
     {
         CopyCard.IsVisible = true;
+        SetupPauseButton.Content = "Pause copying";
         SetupPauseButton.IsVisible = true;
         setupCancel = new();
         var token = setupCancel.Token;
         var clock = Stopwatch.StartNew();
+        var progress = GameFilesProgress(clock);
+        await Task.Run(() =>
+        {
+            if (source != null) GameCopier.Copy(source, install.Game, SupportedBuild.Current, progress, token);
+            else GameCopier.CopyFromDepots(steamRoot, install.Game, SupportedBuild.Current, progress, token);
+        }, token);
+        CopyProgress.Value = 1000;
+        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+    }
+
+    // A copy's (or a move's) progress on the game files card: bytes done, bytes total, the file. At most five updates a
+    // second reach the window.
+    Action<long, long, string> GameFilesProgress(Stopwatch clock)
+    {
         long shown = -1;
         var lastUpdate = TimeSpan.Zero;
-        void Progress(long done, long total, string file)
+        return (done, total, file) =>
         {
-            // At most five updates a second reach the window.
             if (clock.Elapsed - lastUpdate < TimeSpan.FromMilliseconds(200) && done < total) return;
             lastUpdate = clock.Elapsed;
             Dispatcher.UIThread.Post(() =>
             {
                 if (done == shown) return;
                 shown = done;
+                CopyCard.IsVisible = true;
                 CopyProgress.Value = total > 0 ? done * 1000.0 / total : 0;
                 var rate = clock.Elapsed.TotalSeconds > 1 ? done / clock.Elapsed.TotalSeconds / 1e6 : 0;
                 CopyText.Text = $"{done / 1e9:0.0} of {total / 1e9:0.0} GB  ·  {rate:0} MB/s  ·  {file}";
             });
-        }
-        await Task.Run(() =>
-        {
-            if (source != null) GameCopier.Copy(source, install.Game, SupportedBuild.Current, Progress, token);
-            else GameCopier.CopyFromDepots(steamRoot, install.Game, SupportedBuild.Current, Progress, token);
-        }, token);
-        CopyProgress.Value = 1000;
-        CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+        };
     }
 
-    async Task DownpatchGame(string source, InstallLayout install, DownpatchPack pack)
+    // The download from Steam's servers into the installation, its progress on the game files card. Returns the bytes
+    // downloaded and copied from Steam's install.
+    async Task<(long Downloaded, long Copied)> DownloadFromSteam(SteamDepotSession steam, InstallLayout install, SetupSource found, CancellationToken token)
     {
         CopyCard.IsVisible = true;
+        SetupPauseButton.Content = "Pause download";
         SetupPauseButton.IsVisible = true;
-        setupCancel = new();
-        var token = setupCancel.Token;
         var clock = Stopwatch.StartNew();
         var lastUpdate = TimeSpan.Zero;
-        var downloadStart = TimeSpan.Zero;
-
-        void Update(string text, double fraction)
+        AssembleProgress? last = null;
+        void Progress(AssembleProgress p)
         {
-            if (clock.Elapsed - lastUpdate < TimeSpan.FromMilliseconds(200) && fraction < 1) return;
+            last = p;
+            if (clock.Elapsed - lastUpdate < TimeSpan.FromMilliseconds(200) && p.Done < p.Total) return;
             lastUpdate = clock.Elapsed;
+            var rate = clock.Elapsed.TotalSeconds > 1 ? p.Downloaded / clock.Elapsed.TotalSeconds / 1e6 : 0;
             Dispatcher.UIThread.Post(() =>
             {
-                CopyProgress.Value = fraction * 1000;
-                CopyText.Text = text;
+                CopyProgress.Value = p.Total > 0 ? p.Done * 1000.0 / p.Total : 0;
+                CopyText.Text = $"{p.Done / 1e9:0.0} of {p.Total / 1e9:0.0} GB  ·  {p.Downloaded / 1e9:0.00} GB downloaded ({rate:0} MB/s), " +
+                    $"{p.Copied / 1e9:0.0} GB copied from your install  ·  {p.File}";
             });
         }
-
-        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        await Task.Run(async () =>
-        {
-            await Downpatcher.ApplyAsync(source, install.Game, install.Temp, pack, http, new DownpatchProgress(
-                Download: (done, total) =>
-                {
-                    if (downloadStart == TimeSpan.Zero) downloadStart = clock.Elapsed;
-                    var elapsed = clock.Elapsed - downloadStart;
-                    var rate = elapsed.TotalSeconds > 1 ? done / elapsed.TotalSeconds / 1e6 : 0;
-                    Update($"Downloading build patch: {done / 1e9:0.00} of {total / 1e9:0.0} GB  ·  {rate:0} MB/s",
-                        total > 0 ? (double)done / total * 0.5 : 0);
-                },
-                Apply: (done, total, file) =>
-                    Update($"Applying: {done / 1e9:0.0} of {total / 1e9:0.0} GB  ·  {file}",
-                        0.5 + (total > 0 ? (double)done / total * 0.5 : 0))),
-                cancellation: token);
-        }, token);
-
+        void Status(string text) => Dispatcher.UIThread.Post(() => CopyText.Text = text);
+        var job = new BuildDownloadJob(found.Build, install.Game, found.SteamRoot, found.Game);
+        await Task.Run(() => SteamBuildDownload.DownloadAsync(steam, job, Status, Progress, token), token);
         CopyProgress.Value = 1000;
         CopyText.Text = $"Done in {clock.Elapsed.TotalMinutes:0.0} min.";
+        return (last?.Downloaded ?? 0, last?.Copied ?? 0);
     }
 
-    // The download card: the console commands for the pinned depot manifests, and the download's progress, checked every
-    // 2 s. When every depot is complete, setup runs again and copies from the download.
+    // The Steam app's way, on the card (SteamSignInFlow): the console commands for the pinned depot manifests, and the
+    // download's progress on the game files card, checked every 2 s. When every depot is complete, setup runs again and
+    // copies from the download.
     void ShowDownload(string steamRoot, string have)
     {
         var build = SupportedBuild.Current;
         downloadSteamRoot = steamRoot;
+        WireSignIn();
+        downloadChoice = DownloadChoice.SteamClient;
+        ShowChoice();
+        SignInIntro.Text = OfferedChoices.Count > 1
+            ? $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). Steam can send that build " +
+              "to your own account, under your own licence; your normal game and Steam stay as they are."
+            : $"Steam has another build of HELLDIVERS 2 than the one this HellForge runs (build {build.BuildId}). On Linux, setup runs " +
+              "inside HellForge's network namespace and cannot reach Steam itself, so the Steam app downloads that build for your account.";
+        SignInCard.IsVisible = true;
         DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
             "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +
             $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.ContentFolder(steamRoot, build)} (your normal game is not touched). " +
@@ -471,7 +479,6 @@ public partial class MainWindow
             row.Children.Add(text);
             DownloadCommands.Children.Add(row);
         }
-        DownloadCard.IsVisible = true;
         downloadTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, async (_, _) => await CheckDownload());
         downloadTimer.Start();
         _ = CheckDownload();
@@ -487,25 +494,32 @@ public partial class MainWindow
         {
             var root = downloadSteamRoot;
             var states = await Task.Run(() => SteamDepotDownload.Status(root, SupportedBuild.Current));
-            long done = states.Sum(s => s.Done), total = states.Sum(s => s.Total);
-            DownloadProgress.Value = total > 0 ? done * 1000.0 / total : 0;
-            DownloadText.Text = string.Join("   ", states.Select(s => $"depot {s.Depot.Id}: {(s.Complete ? "done" : $"{s.Done / 1e9:0.0} of {s.Total / 1e9:0.0} GB")}"));
-            // Near the end (a few files left, which the rounded GB cannot show), the files it still waits for, by name: a file
-            // Steam did not write, or wrote at another size (another build's), would otherwise hold the setup with no word.
-            var left = states.Where(s => !s.Complete).SelectMany(s => s.Waiting).ToList();
-            if (left.Count is > 0 and <= 5)
-                DownloadText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
-                    : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
-                    : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
+            ShowDepotProgress(states, "Steam");
             if (states.All(s => s.Complete))
             {
                 downloadTimer?.Stop();
-                DownloadText.Text = "Download complete. Copying it into this installation...";
+                CopyText.Text = "Download complete. Copying it into this installation...";
                 if (!setupRunning) await RunSetup();
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { DownloadText.Text = "Could not check the download: " + Privacy.Scrub(error.Message); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { CopyText.Text = "Could not check the download: " + Privacy.Scrub(error.Message); }
         finally { checkingDownload = false; }
+    }
+
+    // A depot download's progress (the Steam app's or SteamCMD's, by who) on the game files card, where every way's
+    // progress shows. Near the end (a few files left, which the rounded GB cannot show) it names the files it still waits
+    // for: a file not written, or written at another size (another build's), would otherwise hold the setup with no word.
+    void ShowDepotProgress(IReadOnlyList<SteamDepotDownload.DepotState> states, string who)
+    {
+        long done = states.Sum(s => s.Done), total = states.Sum(s => s.Total);
+        CopyCard.IsVisible = true;
+        CopyProgress.Value = total > 0 ? done * 1000.0 / total : 0;
+        CopyText.Text = $"{who} downloads: " + string.Join("   ", states.Select(s => $"depot {s.Depot.Id}: {(s.Complete ? "done" : $"{s.Done / 1e9:0.0} of {s.Total / 1e9:0.0} GB")}"));
+        var left = states.Where(s => !s.Complete).SelectMany(s => s.Waiting).ToList();
+        if (left.Count is > 0 and <= 5)
+            CopyText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
+                : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
+                : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
     }
 
     static void OpenSteamConsole()
@@ -741,10 +755,10 @@ public partial class MainWindow
     // Setup waits for something outside it (Steam downloading the supported build); not a failure.
     sealed class SetupWaiting(string message) : Exception(message);
 
-    // An error as setup shows it. The build patch's download (the only download setup makes): the cause, not "see inner
-    // exception".
+    // An error as setup shows it. A failed download: the cause, not "see inner exception" (the Steam download's own
+    // failures are described by DownloadFailures).
     static string Describe(Exception error) => error is HttpRequestException download
-        ? $"Could not download the build patch: {download.InnerException?.GetBaseException().Message ?? download.Message} " +
+        ? $"A download failed: {download.InnerException?.GetBaseException().Message ?? download.Message} " +
           "Something on this PC may be blocking or inspecting HTTPS (an antivirus web shield, a VPN or a proxy); allow it, then try again."
         : error.Message;
 }

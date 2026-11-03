@@ -14,7 +14,7 @@ there) and `mappings/` (fields and content); do not edit it by hand. To change i
 
 ## Contents
 
-- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16)
+- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16)
 - [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole)
 - [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
 - [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-1-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster)
@@ -150,6 +150,12 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 ### SDK 15
 
 - `stats_source`: `uint32_t (HfMod* mod)`. Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size.
+
+### SDK 16: the lobby browser (HfBrowseState; check hf->size before calling)
+
+- `browse_state`: `int (HfMod* mod, HfBrowseState* out)`. The list as the backend last sent it: 1 with *out filled (at most out->size bytes), 0 when no backend is connected (*out is filled all the same: state HF_BROWSE_NONE, and the terminal count).
+- `browse_lobby`: `int (HfMod* mod, uint32_t index, HfBrowseLobby* out)`. The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last.
+- `browse_ask`: `int (HfMod* mod, uint32_t ask, const char* lobby_id)`. Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0 not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md.
 
 ### SDK 16
 
@@ -1127,12 +1133,12 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
-| `duration` | +0x1CC | f32 | respawn? | Orbital attack duration (unverified) |
-| `movement_speed` | +0x1D4 | f32 | respawn? | Orbital tracking speed (unverified) |
-| `search_radius` | +0x1D8 | f32 | respawn? | Orbital search radius (unverified) |
-| `tick_interval` | +0x1E0 | f32 | respawn? | Orbital damage tick interval (unverified) |
+| `duration` | +0x1CC | f32 | respawn | Orbital attack duration (unverified) |
+| `movement_speed` | +0x1D4 | f32 | now | Orbital tracking speed (unverified) |
+| `search_radius` | +0x1D8 | f32 | now? | Orbital search radius (unverified) |
+| `tick_interval` | +0x1E0 | f32 | now? | Orbital damage tick interval (unverified) |
 | `fire_delay` | +0x21C | f32 | respawn? | Shot delay (unverified) |
-| `retarget_interval` | +0x220 | f32 | respawn? | Target re-search interval (unverified) |
+| `retarget_interval` | +0x220 | f32 | now? | Target re-search interval (unverified) |
 
 ### HfRotation
 
@@ -1423,10 +1429,10 @@ and statuses without code.
 | `code` | +0x40 | u64 | mission? | pointer to its input's directions (u32: 1 up, 2 right, 3 down, 4 left) |
 | `code_length` | +0x48 | u32 | mission? | how many directions |
 | `uses` | +0x50 | u32 | mission? | uses per mission (0xFFFFFFFF unlimited) |
-| `call_in_time` | +0x54 | f32 | mission? | seconds from the throw to the arrival (unverified) |
+| `call_in_time` | +0x54 | f32 | now | seconds from the throw to the arrival (unverified) |
 | `free_spot_radius` | +0x58 | f32 | mission? | radius searched for a free landing spot (unverified) |
 | `linger` | +0x60 | f32 | mission? | seconds it lingers after activating (unverified) |
-| `cooldown` | +0x68 | f32 | mission? | seconds before it can be called again |
+| `cooldown` | +0x68 | f32 | now | seconds before it can be called again |
 | `origin_type` | +0x70 | u32 | mission? | where it comes from (StratagemOriginType) (unverified) |
 | `call_in_type` | +0x74 | u32 | mission? | throw, exact location, LZ beacon or hellpad (StratagemCallInType) (unverified) |
 | `cooldown_type` | +0x94 | u32 | mission? | individual, shared by the team or by the clan (StratagemCooldownType) (unverified) |

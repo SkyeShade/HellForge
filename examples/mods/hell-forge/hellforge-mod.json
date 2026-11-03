@@ -5,6 +5,7 @@
   "version": "0.16.1",
   "description": "Difficulty 11, after Super Helldive: twice the map size, far more enemies and objectives, 72-minute missions, and every mission paired with a second one. Unlocked with Super Helldive: press Difficulty Up past it on the war table.",
   "gameplay": true,
+  "coopLevel": 1,
   "icon": "images/hell_forge.png",
   "code": {
     "dll": "hell_forge.dll",

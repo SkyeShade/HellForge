@@ -1,0 +1,267 @@
+# The nightly build (CONTRIBUTING.md, "Nightly builds"): each night that dev changed, its head built with the release's
+# package script (scripts/Package-HellForge.ps1) on the toolchain CI uses (.github/actions/build-tools), and published as
+# the one rolling pre-release, tag "nightly". Its version is the next release's with -nightly.<date> and the commit
+# (scripts/nightly/nightly.py), so a nightly is never taken for a release.
+#
+# GitHub runs a schedule, and offers "Run workflow" in the Actions tab, only from this file on the default branch (main).
+# Until it gets there with a release, a change to it on dev runs it once there as a dry run. The schedule runs main's
+# copy of this file against dev's scripts.
+#
+# Writes only the "nightly" pre-release, its files and its tag: never a release tag (v...), a branch or the "latest"
+# release. Only the publish job can write (contents: write), and it pushes nothing with git.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish it as the nightly pre-release (unticked, a dry run keeps the files as this run's artifact only)
+        type: boolean
+        default: false
+  # a dry run of a change to this workflow, once it is on dev
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/nightly.yml
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: What to build
+    # never on a fork: the schedule and the release are this repository's
+    if: github.repository == 'SkyeShade/HellForge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+      commit: ${{ steps.plan.outputs.commit }}
+      previous: ${{ steps.plan.outputs.previous }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0        # the tags: the releases the version counts from, and the commit the nightly is on
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          commit=$(git rev-parse HEAD)
+          previous=$(git rev-parse --quiet --verify 'refs/tags/nightly^{commit}' || true)
+          version=$(python scripts/nightly/nightly.py version --date "$(date -u +%Y%m%d)")
+          build=true
+          publish=false
+          case "$EVENT" in
+            schedule)
+              publish=true
+              if [ "$commit" = "$previous" ]; then
+                echo "::notice::dev is still at ${commit:0:7}, the commit the current nightly was built from: nothing to build."
+                build=false
+                publish=false
+              fi
+              ;;
+            workflow_dispatch)
+              if [ "$PUBLISH_INPUT" = true ]; then publish=true; fi
+              ;;
+          esac
+          # A runner has no game files: the engine's steam_api64.dll stand-in is built from the text-only list of the
+          # game DLL's exports, data/steam-export-manifest.json, which dev gets with the native Linux work (#165).
+          if [ "$build" = true ] && [ ! -f data/steam-export-manifest.json ]; then
+            message="dev has no data/steam-export-manifest.json yet (it comes with the native Linux work, #165). Without the game's steam_api64.dll, a runner can build the engine's Steam stand-in only from that list, so no nightly can be built."
+            if [ "$EVENT" = push ]; then
+              echo "::notice::$message"
+              build=false
+              publish=false
+            else
+              echo "::error::$message"
+              exit 1
+            fi
+          fi
+          if [ "$publish" = true ] && [ "$WORKFLOW_REF" != refs/heads/main ] && [ "$WORKFLOW_REF" != refs/heads/dev ]; then
+            echo "::error::A nightly is published only by this workflow on main or dev, not on $WORKFLOW_REF."
+            exit 1
+          fi
+          {
+            echo "build=$build"
+            echo "publish=$publish"
+            echo "commit=$commit"
+            echo "previous=$previous"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Nightly: $version"
+            echo
+            echo "- dev at \`$commit\`; the current nightly is at \`${previous:-none}\`"
+            echo "- build: $build; publish: $publish ($EVENT)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build the package
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/build-tools
+        with:
+          native: 'true'
+      # Every reader of Directory.Build.props takes the nightly's version from it: the assemblies' (the launcher's
+      # corner, HellForge-Setup's title, crash reports, session logs) and the package scripts'. The engine's own
+      # version, EngineVersion, stays. Only on this runner: the version is the one change, so git is told to leave
+      # the file out, and app-build.json's uncommittedChanges keeps meaning changed code.
+      - name: Stamp the nightly version
+        shell: pwsh
+        run: |
+          $props = Join-Path $env:GITHUB_WORKSPACE 'Directory.Build.props'
+          $text = [IO.File]::ReadAllText($props)
+          $pattern = '<Version>[^<]*</Version>'
+          if ([regex]::Matches($text, $pattern).Count -ne 1) { throw 'Directory.Build.props has no single <Version> element.' }
+          [IO.File]::WriteAllText($props, [regex]::Replace($text, $pattern, "<Version>$env:VERSION</Version>"))
+          git update-index --skip-worktree Directory.Build.props
+          if ($LASTEXITCODE) { throw 'git update-index failed.' }
+          Write-Output "Version $env:VERSION"
+      - name: scripts/Package-HellForge.ps1 (the release's package)
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:TMP = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/tmp')).FullName
+          ./scripts/Package-HellForge.ps1 -SteamExports data/steam-export-manifest.json
+          # it throws on any failure; the last exit code of a program it ran must not decide
+          exit 0
+      # The package script already refuses a file that names this PC, and ships only the editor files it lists. Also
+      # refused here: any of the game's own files (supported-build.json's sizes and SHA-1s), and a build whose
+      # assemblies do not carry the nightly version.
+      - name: Check the package
+        shell: pwsh
+        run: |
+          $payload = 'artifacts/package/payload'
+          $cores = @(Get-ChildItem -LiteralPath $payload -Recurse -File -Filter 'HellForge.Core.dll')
+          if (-not $cores.Count) { throw 'The package has no HellForge.Core.dll to read the version from.' }
+          $expected = '^' + [regex]::Escape($env:VERSION) + '(\+|$)'
+          foreach ($core in $cores) {
+            $shown = $core.VersionInfo.ProductVersion
+            if ($shown -notmatch $expected) { throw ('{0} has version {1}, not {2}.' -f $core.FullName, $shown, $env:VERSION) }
+          }
+          $game = @{}
+          foreach ($file in (Get-Content -Raw 'src/HellForge.Core/supported-build.json' | ConvertFrom-Json).files) {
+            $game['{0}:{1}' -f $file.size, $file.sha1.ToUpperInvariant()] = $file.path
+          }
+          $found = @(foreach ($file in Get-ChildItem -LiteralPath $payload -Recurse -File) {
+            $key = '{0}:{1}' -f $file.Length, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA1).Hash
+            if ($game.ContainsKey($key)) { '{0} is the game''s {1}' -f $file.FullName, $game[$key] }
+          })
+          if ($found.Count) { throw ("The package contains the game's files:`n" + ($found -join "`n")) }
+          Write-Output ('{0} assemblies carry {1}; none of the {2} payload files is one of the game''s.' -f $cores.Count, $env:VERSION, @(Get-ChildItem -LiteralPath $payload -Recurse -File).Count)
+      # The release's files, named as a nightly's, and their SHA-256 sums
+      - name: Name the files
+        shell: pwsh
+        run: |
+          $out = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/nightly')).FullName
+          $sums = foreach ($name in @('HellForge-Setup.exe', 'HellForge-Linux-scripts.zip')) {
+            $target = Join-Path $out ($name -replace '^HellForge-', 'HellForge-Nightly-')
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "artifacts/package/$name") -Destination $target
+            '{0}  {1}' -f (Get-FileHash -LiteralPath $target).Hash.ToLowerInvariant(), (Split-Path -Leaf $target)
+          }
+          [IO.File]::WriteAllText((Join-Path $out 'HellForge-Nightly-SHA256SUMS.txt'), (($sums -join "`n") + "`n"))
+          Get-ChildItem -LiteralPath $out | Format-Table Name, Length
+      # Every artifact named nightly-* is published. A job added beside this one uploads its own, as the native Linux
+      # package will once dev has it (linux-native, #165).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-package
+          path: artifacts/nightly/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    name: Publish the nightly pre-release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true' && github.repository == 'SkyeShade/HellForge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # the nightly pre-release, its files and its tag
+    # one publish at a time; a newer one waits for the one running
+    concurrency:
+      group: nightly-release
+      cancel-in-progress: false
+    env:
+      TAG: nightly
+      COMMIT: ${{ needs.prepare.outputs.commit }}
+      PREVIOUS: ${{ needs.prepare.outputs.previous }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0        # the history since the previous nightly, for the notes
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-*
+          merge-multiple: true
+          path: dist
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$COMMIT" origin/dev || { echo "::error::$COMMIT is not on dev."; exit 1; }
+          python scripts/nightly/nightly.py notes --version "$VERSION" --commit "$COMMIT" --previous "$PREVIOUS" \
+            --repository "$GH_REPO" > "$RUNNER_TEMP/notes.md"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [ "$TAG" = nightly ] || { echo "::error::Only the nightly tag is published here."; exit 1; }
+          title="HellForge $VERSION (untested)"
+          mapfile -t files < <(find dist -maxdepth 1 -type f | sort)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::No files to publish."; exit 1; }
+          if prerelease=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
+            # a "nightly" that is not a pre-release is somebody else's: leave it alone
+            [ "$prerelease" = true ] || { echo "::error::The release $TAG is not a pre-release; not touching it."; exit 1; }
+            gh release upload "$TAG" "${files[@]}" --clobber
+            # files an earlier nightly had and this one does not
+            gh release view "$TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+              [ -f "dist/$name" ] || gh release delete-asset "$TAG" "$name" --yes
+            done
+            gh release edit "$TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
+          else
+            # the first nightly: the tag is made at the commit built, unless it is there already
+            gh release create "$TAG" "${files[@]}" --target "$COMMIT" --title "$title" \
+              --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
+          fi
+          # The tag moves to the commit built, last: until it does, the next scheduled run builds again.
+          tagged=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha)
+          if [ "$tagged" != "$COMMIT" ]; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$COMMIT" -F force=true > /dev/null
+          fi
+          url=$(gh release view "$TAG" --json url --jq .url)
+          echo "Published $VERSION from ${COMMIT:0:7}: $url" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -75,30 +75,26 @@ Test("The ownership check passes only on fresh evidence that confirms this app; 
     Reject(() => SteamOwnershipCheck.RunProbe(Path.Combine(folder, "probe.exe"), fake, folder, Path.Combine(folder, "e.json"), TimeSpan.FromSeconds(1)));
 });
 
-Test("Setup finds the downpatchable game: Steam's flags as bits, every library, the patch by build id or by file hashes", () =>
+Test("Setup finds the game to download from: Steam's flags as bits, every library, the build nearest the supported one", () =>
 {
     // a queued or paused update leaves the files usable; updating, validating, missing files or a running game do not
     foreach (var usable in new uint[] { 4, 6, 516 }) Check(LocalInstall.Unusable(usable) == null, $"Flags {usable} refused.");
     foreach (var busy in new uint[] { 0, 1026, 1028, 36, 132, 68, 1048580, 131076 }) Check(LocalInstall.Unusable(busy) != null, $"Flags {busy} accepted.");
-    // a stale copy in Steam's own library (another build) and the patch's source build in a second library
+    // a stale copy in Steam's own library (an old build) and a build just after the supported one in a second library,
+    // which shares the most with it for the Steam download to copy
     var (staleManifest, _, home) = Fixture("setup-libraries-a");
-    var (patchable, _, _) = Fixture("setup-libraries-b");
-    File.WriteAllText(patchable, File.ReadAllText(patchable).Replace("\"buildid\" \"12345\"", $"\"buildid\" \"{Downpatcher.Packs[0].SourceBuild}\""));
+    var (nearer, _, _) = Fixture("setup-libraries-b");
+    File.WriteAllText(nearer, File.ReadAllText(nearer).Replace("\"buildid\" \"12345\"", $"\"buildid\" \"{long.Parse(SupportedBuild.Current.BuildId) + 1000}\""));
     var steamRoot = Path.Combine(home, "Steam");
-    var second = Path.GetDirectoryName(Path.GetDirectoryName(patchable)!)!;
+    var second = Path.GetDirectoryName(Path.GetDirectoryName(nearer)!)!;
     File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
         "\"libraryfolders\" { \"0\" { \"path\" \"" + steamRoot.Replace("\\", "\\\\") + "\" } \"1\" { \"path\" \"" + second.Replace("\\", "\\\\") + "\" } }");
     var game = SteamLocator.FindGame(steamRoot);
-    Check(game != null && game.ManifestPath == LocalInstall.FullPath(patchable) && Downpatcher.FindPack(game.Report.Pin) != null,
-        "The patchable copy was not chosen: " + game?.ManifestPath);
-    // with only the stale copy: it, and no patch for it
-    File.Delete(patchable);
+    Check(game != null && game.ManifestPath == LocalInstall.FullPath(nearer) && !game.SupportedBuild, "The nearer build was not chosen: " + game?.ManifestPath);
+    // with only the stale copy: it
+    File.Delete(nearer);
     game = SteamLocator.FindGame(steamRoot);
-    Check(game != null && game.ManifestPath == LocalInstall.FullPath(staleManifest) && Downpatcher.FindPack(game.Report.Pin) == null, "The stale copy was not the fallback.");
-    // a copy whose manifest names another build but whose files are the patch's source build
-    var pack = Downpatcher.Packs[0];
-    Check(Downpatcher.FindPack(new BuildPin("1", pack.SourceExeSha256.ToLowerInvariant(), pack.SourceGameDllSha256)) == pack, "The patch was not found by its hashes.");
-    Check(Downpatcher.FindPack(new BuildPin("1", pack.SourceExeSha256, "00")) == null, "A half match found the patch.");
+    Check(game != null && game.ManifestPath == LocalInstall.FullPath(staleManifest), "The stale copy was not the fallback.");
     // a busy game (Steam updating it) is reported, not skipped as absent
     File.WriteAllText(staleManifest, File.ReadAllText(staleManifest).Replace("\"StateFlags\" \"4\"", "\"StateFlags\" \"1028\""));
     try { SteamLocator.FindGame(steamRoot); Check(false, "A game Steam is updating was used."); }
@@ -511,6 +507,11 @@ Test("Launch options are read as Steam takes them, and never set what a session 
     foreach (var bad in new[] { "--bundle-dir C:\\other", "-x \"--BUNDLE-DIR\" y", "--bundle-dir=C:\\other", "PROTON_LOG=1 %command%", "%command% %command%",
                  "\"open", "--a\n--b", new string('x', GameLaunchOptions.MaxLength + 1) })
         Reject(() => GameLaunchOptions.Parse(bad));
+    Check(GameLaunchOptions.Warnings(GameLaunchOptions.Parse("--use-d3d11 -windowed")).Count == 0, "Ordinary options warn of nothing.");
+    var toaster = GameLaunchOptions.Warnings(GameLaunchOptions.Parse("%command% --TOASTER_MODE"));
+    Check(toaster.Count == 1 && toaster[0].Contains("Armory icons stay blank") && toaster[0].Contains("Remove it"),
+        "--toaster_mode warns that Armory icons stay blank: " + string.Join(" | ", toaster));
+    Check(GameLaunchOptions.Warnings(["--toaster_mode_x"]).Count == 0, "Only the switch itself warns.");
 });
 
 ModTests.Register(Test, Check, Reject, root);
@@ -527,11 +528,12 @@ CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
+VisualCppRuntimesTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
+SteamDownloadTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 ModStatusTests.Register(Test, Check, Reject, root);
-DownpatchTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
 SessionJobTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
@@ -543,6 +545,8 @@ CaptureGameEndTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
 WindowsSupportTests.Register(Test, Check, Reject, root);
+SmartAppControlTests.Register(Test, Check, Reject, root);
+SteamInputNoteTests.Register(Test, Check, Reject, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;
