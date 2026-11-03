@@ -22,7 +22,7 @@ made for HD2Runtime runs unchanged.
    not a mod, and the Mods page says so if you add it.
 2. Add the Lua mods you want.
 
-Lua mods are listed in the cosmetic group with a LUA tag, and they are staged like any game patch. The F8 editor shows
+Lua mods are listed in the CLIENT ONLY group with a LUA tag, and they are staged like any game patch. The F8 editor shows
 a value a Lua mod changed with the mod's name, `lua.<mod>`. Your own F8 changes win over a Lua mod's, and a Lua mod's
 win over a code mod's.
 
