@@ -197,12 +197,12 @@ files still hash to the same content. Normal sessions never load that folder.
 offered again. Unblock it on the launcher's Mods page (MOD SYNC card).
 
 **Hosting.** Sharing is on by default. Players who join you may download your gameplay mods' counted files for 10
-minutes after their first refused join (joining again does not extend it), and at most your mods' size twice over.
-Mods that run code or carry data HellForge cannot check go to your Steam friends alone, unless HellForge's verified list
+minutes after their first refused join (joining again does not extend it), and at most your mods' size twice over. Mods
+that run code or carry data HellForge cannot check go to your Steam friends alone, unless HellForge's verified list
 names them; players who are not your friends get content and verified mods only. A source mod's sources go with it to
-your friends, so turn sharing off before hosting with sources you have not released. Your backend serves at most 8 MB/s per player and 16 MB/s
-in total, so your own game keeps its link. Turn it off with "Share my gameplay mods with players who join" on the
-Mods page.
+your friends, so turn sharing off before hosting with sources you have not released. Your backend serves at most 8 MB/s
+per player and 16 MB/s in total, so your own game keeps its link. Turn it off with "Share my gameplay mods with players
+who join" on the Mods page.
 
 **Downloaded mods.** HellForge keeps the 20 used most recently (played, or downloaded) and removes older ones when a
 session starts, never one that session plays. The Mods page shows how many there are and how much space they take,

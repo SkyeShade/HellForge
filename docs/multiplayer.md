@@ -525,12 +525,13 @@ listed, 1 shown (1 left out: its host's unchecked mods download only in a sandbo
 - `it needs mods installed by hand`.
 
 After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
-and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`):
-`Directory: left out 1100001029d1b02: its host's unchecked mods download only from a Steam friend: Code 1 (test.code): stranger
-code, not verified.` A mod's why is `share off` (the host does not share its mods), `stranger code, not verified` or
-`stranger raw data, not verified` (unverified code or raw data from a host who is not a Steam friend), `bundled differs` (another HellForge) or `blocked`. A line names at most 8 mods, then how many more; a
-search writes at most 10 lines, then how many more; and the lines are written only when they differ from the last
-search's, since the map and the debug browser search every few seconds.
+and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`): `Directory: left
+out 1100001029d1b02: its host's unchecked mods download only from a Steam friend: Code 1 (test.code): stranger code, not
+verified.` A mod's why is `share off` (the host does not share its mods), `stranger code, not verified` or `stranger raw
+data, not verified` (unverified code or raw data from a host who is not a Steam friend), `bundled differs` (another
+HellForge) or `blocked`. A line names at most 8 mods, then how many more; a search writes at most 10 lines, then how
+many more; and the lines are written only when they differ from the last search's, since the map and the debug browser
+search every few seconds.
 
 Until 2026-10-23 a search left this machine's own lobby out without counting it. On the first two-PC test, "1 listed, 0
 shown" was the searching player's own lobby, not the friend's:
@@ -582,19 +583,18 @@ lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invit
 when nothing can be joined. The browse API lists what a map search leaves out: a stranger's lobby with Play with
 strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
 and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
-`HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the
-launcher's warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then turns it on for this
-session only (`MultiplayerHost.AllowForSession`: the stranger setting's `AllowForSession`, `ModSync.ShowEditedStatsThisSession`)
-and lists again. Nothing is saved: any mod in the game can send the ask, so the launcher's switch and the Mods page stay the
+`HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the launcher's
+warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then turns it on for this session only
+(`MultiplayerHost.AllowForSession`: the stranger setting's `AllowForSession`, `ModSync.ShowEditedStatsThisSession`) and
+lists again. Nothing is saved: any mod in the game can send the ask, so the launcher's switch and the Mods page stay the
 player's, and the next session uses them again. Only the game's pipe can ask that, not the HTTP API. Every ask ends in a
 state that is not `searching`: a search that fails or times out, or a list the game refuses, is answered `failed` with
-the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's
-lobby running unverified code or raw mods has no fix: a host sends those to Steam friends alone. A squad is at most 4 although the game's lobby has 8 PlayFab places: a
-listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full (`DirectoryService.SquadSize`, also for
-older HellForge versions' listings, which count to 8). Each browse
-logs its counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per
-lobby it cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps
-lobbies out.
+the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's lobby running
+unverified code or raw mods has no fix: a host sends those to Steam friends alone. A squad is at most 4 although the
+game's lobby has 8 PlayFab places: a listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full
+(`DirectoryService.SquadSize`, also for older HellForge versions' listings, which count to 8). Each browse logs its
+counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per lobby it
+cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps lobbies out.
 
 **The terminal's camera** (`native/mod-loader/terminal_camera.c`, build 25480438). The terminal has no camera move of
 its own, so the loader makes one. When an editor read `browse_state` in the last 3 s, the terminal opens no presenter
@@ -651,15 +651,14 @@ directory, 2026-10-30):
 The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when
 chosen; with no key the default is **on when the game is sandboxed, off otherwise** (`StrangersEffective`). A legacy
 `"playWithStrangers"` keeps its value: true is on, and false stays off. Older settings saves wrote false for every
-player, so it cannot tell "never chosen" from "turned off"; off is the side that cannot let a stranger in unasked, and the
-launcher's "Use default" link clears it. The launcher's Settings > MULTIPLAYER switch shows the value the next session would use, with
-"On by default while your game is sandboxed" or "Off by default: <the sandbox's reason>" under it. Moving the switch
-stores the explicit choice;
-"Use default" removes the key. `HellForge.Cli settings --strangers yes|no|default`
-([external-launchers.md](external-launchers.md#profiles-and-settings)) does the same; its JSON output has
-`playWithStrangers` (the effective bool) and `playWithStrangersChosen` (`true`, `false` or `null`). The backend reads
-the effective value again within 2 s of a change, also during a session, and never more than once per 2 s however many
-frames strangers send (`Multiplayer/StrangerSetting.cs`); its first read logs once which rule applies and why. The
+player, so it cannot tell "never chosen" from "turned off"; off is the side that cannot let a stranger in unasked, and
+the launcher's "Use default" link clears it. The launcher's Settings > MULTIPLAYER switch shows the value the next
+session would use, with "On by default while your game is sandboxed" or "Off by default: <the sandbox's reason>" under
+it. Moving the switch stores the explicit choice; "Use default" removes the key. `HellForge.Cli settings --strangers
+yes|no|default` ([external-launchers.md](external-launchers.md#profiles-and-settings)) does the same; its JSON output
+has `playWithStrangers` (the effective bool) and `playWithStrangersChosen` (`true`, `false` or `null`). The backend
+reads the effective value again within 2 s of a change, also during a session, and never more than once per 2 s however
+many frames strangers send (`Multiplayer/StrangerSetting.cs`); its first read logs once which rule applies and why. The
 first session that runs with the sandbox default on shows the stranger warning in the launcher's Play page once;
 `strangersWarned` in the same file remembers it.
 
@@ -1483,11 +1482,12 @@ same as a sandboxed one when nobody had chosen.
 - **One protocol for a family of releases.** `LobbyService.Protocol` is `hellforge-mp-9` and `WireLevel` is 1;
   `Compatible` is the join/rejoin check, and the directory filters by `hf.wire` while `DirectoryService.Valid` checks
   the feature protocol. Later feature versions can stay compatible at the same wire level.
-- **Strangers follow the sandbox default.** `"strangers": "on"`/`"off"` is stored only when the player chooses; with
-  no key it is on in a sandboxed session and off otherwise. A legacy `playWithStrangers` true or false still counts (false
-  stays off: older saves cannot tell it from never chosen, and off cannot let a stranger in unasked). The launcher switch shows the effective next-session value, with
-  the default and its reason, a "Use default" link, and a one-time warning in the Play page on the first sandboxed
-  session that uses the default. `settings --strangers yes|no|default` exposes the same choice to external launchers.
+- **Strangers follow the sandbox default.** `"strangers": "on"`/`"off"` is stored only when the player chooses; with no
+  key it is on in a sandboxed session and off otherwise. A legacy `playWithStrangers` true or false still counts (false
+  stays off: older saves cannot tell it from never chosen, and off cannot let a stranger in unasked). The launcher
+  switch shows the effective next-session value, with the default and its reason, a "Use default" link, and a one-time
+  warning in the Play page on the first sandboxed session that uses the default. `settings --strangers yes|no|default`
+  exposes the same choice to external launchers.
 - **A joiner hears per-player differences.** After accepting a join the host sends `mods.info` [lobby id, set wire];
   the joiner takes one per join, only from that host, and shows a brief "<host> plays with N mods you don't: ... Each
   player keeps their own." Nothing downloads for those, and `ModSyncPlan` ignores per-player entries entirely.
