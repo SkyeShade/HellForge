@@ -14,10 +14,18 @@ namespace HellForge.Core;
 //   plain   the category is a single row: no header at all, the row alone, `prefix` before its label
 //   fold    a part of a single row: shown in its category without a header, `prefix` before its label
 // Keys are the HD2R Editor's ("c|<category>", "c|<category>|<part>"): a closed header stays closed on every page.
+//
+// It is written as several files (Files): editor-catalog.json, the index (the categories, the references, HD2R Editor's
+// ids and the category files in order), and one file per category with its objects (CategoryFile). One file of
+// everything outgrew what the editor reads at once (MaxFileBytes). The editor reads every file at start, so rows on the
+// same bytes on pages of different categories (a damage type on a weapon's page and on its own) stay linked.
 public static class EditorCatalog
 {
     public const string FileName = "editor-catalog.json";
-    public const int Format = 1;
+    public const int Format = 2;
+    // The editor reads no file of this size or more (native/editor/json.cpp ReadFile).
+    public const long MaxFileBytes = 64L << 20;
+    public static string CategoryFile(string category) => $"editor-catalog-{category}.json";
     // The categories the editor shows, in the HD2R Editor's groups; more come with their fields.
     // (id, label, group, tone: the game's stratagem category colour, or none)
     static readonly (string Id, string Label, string Group, string? Tone)[] Categories =
@@ -52,14 +60,79 @@ public static class EditorCatalog
     // The default catalogue depends only on data built into HellForge (StatsSchema.Current and the embedded tables), so
     // it is built once per process; every caller gets its own copy. Building it takes seconds, and a session start (the
     // bundled editor's staleness check) and the tests ask for it many times.
-    static readonly Lazy<string> DefaultText = new(() => Serialize(BuildFresh(StatsSchema.Current)));
+    static readonly Lazy<IReadOnlyList<(string Name, string Text)>> DefaultFiles = new(() => Split(BuildFresh(StatsSchema.Current)));
 
+    // The whole catalogue in one object (its files joined: every category's objects in order).
     public static JsonObject Build(StatsSchema? schema = null) =>
-        schema is null || ReferenceEquals(schema, StatsSchema.Current)
-            ? (JsonObject)JsonNode.Parse(DefaultText.Value)!
-            : BuildFresh(schema);
+        schema is null || ReferenceEquals(schema, StatsSchema.Current) ? Join(DefaultFiles.Value) : BuildFresh(schema);
+
+    // The files the editor reads, the index (FileName) first, then the category files in its order.
+    public static IReadOnlyList<(string Name, string Text)> Files(StatsSchema? schema = null) =>
+        schema is null || ReferenceEquals(schema, StatsSchema.Current) ? DefaultFiles.Value : Split(BuildFresh(schema));
+
+    // Writes the files into folder, each only where its text is not this HellForge's, and deletes the category files
+    // the index no longer names. Each is written whole (a .partial file moved over it); the index last.
+    public static void Write(string folder)
+    {
+        var files = Files();
+        foreach (var (name, text) in files.Skip(1).Append(files[0]))
+        {
+            var path = Path.Combine(folder, name);
+            if (File.Exists(path) && File.ReadAllText(path) == text) continue;
+            File.WriteAllText(path + ".partial", text);
+            File.Move(path + ".partial", path, overwrite: true);
+        }
+        var named = files.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in Directory.GetFiles(folder, CategoryFile("*")).Where(f => !named.Contains(Path.GetFileName(f))))
+            File.Delete(stale);
+    }
 
     static string Serialize(JsonObject catalog) => catalog.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) + "\n";
+
+    // The catalogue as its files: each category's objects in a file of their own, with the index's format, build and
+    // schema (the editor refuses a file of another catalogue).
+    static IReadOnlyList<(string Name, string Text)> Split(JsonObject catalog)
+    {
+        var objects = catalog["objects"]!.AsArray();
+        var order = catalog["categories"]!.AsArray().Select(c => c!["id"]!.GetValue<string>())
+            .Concat(objects.Select(o => o!["category"]!.GetValue<string>())).Distinct(StringComparer.Ordinal);
+        var files = new List<(string Name, string Text)>();
+        var names = new JsonArray();
+        foreach (var category in order)
+        {
+            var part = objects.Where(o => o!["category"]!.GetValue<string>() == category).Select(o => o!.DeepClone()).ToArray();
+            if (part.Length == 0) continue;
+            names.Add(CategoryFile(category));
+            files.Add((CategoryFile(category), Serialize(new JsonObject
+            {
+                ["format"] = catalog["format"]!.DeepClone(), ["build"] = catalog["build"]!.DeepClone(), ["schema"] = catalog["schema"]!.DeepClone(),
+                ["category"] = category, ["objects"] = new JsonArray(part),
+            })));
+        }
+        var index = new JsonObject();
+        foreach (var (key, value) in catalog)
+            if (key != "objects") index[key] = value?.DeepClone();
+        index["files"] = names;
+        files.Insert(0, (FileName, Serialize(index)));
+        return files;
+    }
+
+    // The files back in one object: the index without its file list, and every category file's objects in its order.
+    static JsonObject Join(IReadOnlyList<(string Name, string Text)> files)
+    {
+        var catalog = (JsonObject)JsonNode.Parse(files[0].Text)!;
+        catalog.Remove("files");
+        var objects = new JsonArray();
+        foreach (var (_, text) in files.Skip(1))
+        {
+            var part = JsonNode.Parse(text)!["objects"]!.AsArray();
+            var list = part.ToArray();
+            part.Clear(); /* each object to the joined list (a node has one parent) */
+            foreach (var o in list) objects.Add(o);
+        }
+        catalog["objects"] = objects;
+        return catalog;
+    }
 
     static JsonObject BuildFresh(StatsSchema schema)
     {
@@ -276,9 +349,6 @@ public static class EditorCatalog
         return middle.Count == 0 || middle[0] is "primary" or "feed_primary" or "impact" or "expiry" or "detonation" ||
             middle[0].StartsWith("primary_", StringComparison.Ordinal);
     }
-
-    public static string Text(StatsSchema? schema = null) =>
-        schema is null || ReferenceEquals(schema, StatsSchema.Current) ? DefaultText.Value : Serialize(BuildFresh(schema));
 
     // A vehicle's mount slots (HD2R Editor's "Mounted Weapons", its arm swap): a choice row per slot, kept in the
     // editor's settings and applied live (MountComponentData slot k +24k, a u64: the mounted entity), offering the weapons
