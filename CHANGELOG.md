@@ -51,6 +51,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
+  Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
+  Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
+  update to, and can open Windows Update (#14).
 - HD2R Editor (HD2Runtime's own in-game editor) doesn't work on HellForge, but HellForge loaded it anyway, on the same
   F8 key as its own editor, with nothing to say why. The Mods page now marks it UNSUPPORTED and keeps it switched off,
   so it can't take F8 or slow the game down, and says to use HellForge's own editor (F8 in game) instead. HD2Runtime
