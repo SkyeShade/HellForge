@@ -868,6 +868,8 @@ static int WorldTileGpuPrepare(uint64_t records, uintptr_t gen)
     {
         float samples = (float)(2 * g_tileExtent);
         memcpy(g_tileGpuOne + 0xB4, &samples, 4);
+        uint32_t one = 1; /* one merge tile, as vanilla's (see the merge's T in WorldDispatch) */
+        memcpy(g_tileGpuOne + 0xB0, &one, 4);
     }
     g_tileGpuPhase = 0;
     g_tileGpuCalls = 0;
@@ -879,14 +881,16 @@ static void WorldTileGpuCaptures(void)
     for (int k = 0; k < 8; k++)
     {
         uint64_t q[3];
-        memcpy(q, g_tileBlock + 0x119FF68 + k * 0x18, 24);
+        /* CaptureIntermediateHeightmapFinalize (0xF53870) copies each readback's descriptor {width, height, format,
+         * ?, data} to [pass+0x18] = lg + 0x18 k (lg = G+0x8758A8; G+0x119FF68 holds the readback ids) */
+        memcpy(q, g_tileBlock + 0x8758A8 + k * 0x18, 24);
         Note("difficulty: terrain tile: capture %d: 0x%016llX 0x%016llX 0x%016llX", k, (unsigned long long)q[0], (unsigned long long)q[1], (unsigned long long)q[2]);
-        uint32_t w = (uint32_t)q[1], hgt = (uint32_t)(q[1] >> 32);
-        if (q[0] == 0 || w < 16 || w > 8192 || hgt < 16 || hgt > 8192) continue;
-        uint64_t bytes = (uint64_t)w * hgt * 4u;
+        uint32_t w = (uint32_t)q[0], hgt = (uint32_t)(q[0] >> 32), format = (uint32_t)q[1];
+        if (q[2] == 0 || w < 16 || w > 8192 || hgt < 16 || hgt > 8192) continue;
+        uint64_t bytes = (uint64_t)w * hgt * (format == 0x16 ? 2u : 4u);
         uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (copy == NULL) continue;
-        if (!SafeRead(q[0], copy, bytes))
+        if (!SafeRead(q[2], copy, bytes))
         {
             wchar_t name[64];
             swprintf(name, 64, L"tile-capture-%ld-%d.bin", (long)g_world.levels, k);
@@ -896,7 +900,7 @@ static void WorldTileGpuCaptures(void)
                 DWORD wrote;
                 WriteFile(file, copy, (DWORD)bytes, &wrote, NULL);
                 CloseHandle(file);
-                Note("difficulty: terrain tile: wrote capture %d (%u x %u x 4 bytes)", k, w, hgt);
+                Note("difficulty: terrain tile: wrote capture %d (%u x %u, format 0x%X)", k, w, hgt, format);
             }
         }
         VirtualFree(copy, 0, MEM_RELEASE);

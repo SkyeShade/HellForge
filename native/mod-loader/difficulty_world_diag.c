@@ -20,7 +20,7 @@
  *   ops       every pass record: op, name, steps (dispatcher calls), wall time, frames from first to last step, and the
  *             locations it added (stamps are placed as locations)
  *   images    each image measured, from:
- *               - the merge's 8 intermediate captures (G+0x119FF68, 0x18 each) after each op 0x5C
+ *               - the merge's 8 intermediate captures (lg + 0x18 k, the scatter images' layout) after each op 0x5C
  *               - readbacks of the named targets (level 2, between SetupTerrainMerge and CleanupTerrainMerge, calls as
  *                 op 0x66 makes them at 0xF544F4..0xF544B5): heights 0x2A9E3232 after the passes that draw heights,
  *                 materials 0x95E7E3AC after 0x41 / 0x64, the zone lookup 0x1524FE5A after op 0x4C draws it
@@ -810,8 +810,10 @@ static void TdPassDone(uint32_t op, uint32_t record, uint64_t recordAt)
         g_td.captureSets++;
         for (int k = 0; k < 8; k++)
         {
+            /* CaptureIntermediateHeightmapFinalize (0xF53870) copies each finished readback's descriptor (the scatter
+             * images' layout) to [pass+0x18] = lg + 0x18 k (lg = G+0x8758A8); the readback ids are at G+0x119FF68+8 */
             char label[48]; snprintf(label, sizeof label, "capture%u-%d", g_td.captureSets, k);
-            TdDescriptor(label, "merge capture", op, record, TD_RAW, gen + 0x119FF68u + 0x18u * (uintptr_t)k, 0, 1, NULL);
+            TdDescriptor(label, "merge capture (lg + 0x18 k)", op, record, TD_RAW, gen + TD_IMAGE_BLOCK + 0x18u * (uintptr_t)k, 0, 1, NULL);
         }
     }
     if (op == 0x66 && gen != 0)
