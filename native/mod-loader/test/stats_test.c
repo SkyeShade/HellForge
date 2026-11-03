@@ -4,12 +4,17 @@
 #include <assert.h>
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
+#include "armory_diag_test.c"
 #include "live_sync_test.c"
 #include "director_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
 #include "table_growth_test.c"
+#include "crash_notes_test.c"
+#include "log_header_test.c"
+#include "mod_identity_test.c"
+#include "mod_status_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -2675,6 +2680,34 @@ static uint64_t FakeConsume(void* system, uint8_t* event, uint64_t r8, uint64_t 
     return r9 + 1;
 }
 
+/* Typed events (hf_on_<event>, hellforge_mod.h): the listener gets its kind's struct; a damage-pre one changes the hit. */
+static HfDamageEvent g_typedDamage;
+static int g_typedCalls;
+static void TypedDamage(HfMod* mod, const HfDamageEvent* damage, void* user) { g_typedDamage = *damage; g_typedCalls++; }
+static void TypedPre(HfMod* mod, HfDamagePreEvent* pre, void* user) { pre->damage.amount = *(const int32_t*)user; }
+
+static void TypedEvents(HfMod* mod, uint8_t* event)
+{
+    HfApi api = {0};
+    api.size = (uint32_t)sizeof api;
+    api.subscribe = ApiSubscribe;
+    const HfApi* was = mod->api;
+    mod->api = &api;
+    static const int32_t halved = 75;
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 0 && hf_on_damage_pre(mod, TypedPre, (void*)&halved, 0) == 0);
+    assert(hf_on_damage(mod, NULL, NULL, 0) == 1); /* refused */
+    api.size = (uint32_t)offsetof(HfApi, subscribe); /* a loader before SDK 7: refused, nothing called */
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 1);
+    api.size = (uint32_t)sizeof api;
+    g_typedCalls = 0;
+    ConsumeDamageDetour(NULL, event, 0, 0, 0, 0);
+    int32_t applied;
+    memcpy(&applied, event + 0x2C, 4);
+    assert(applied == 75 && g_typedCalls == 1 && g_typedDamage.info.kind == HF_ON_DAMAGE && g_typedDamage.amount == 75 &&
+        g_typedDamage.target == 0x400777 && g_typedDamage.position[1] == 2.0f);
+    mod->api = was;
+}
+
 static int g_manyTicks, g_manyHeard;
 static void ManyTick(HfMod* mod, float dt, void* user) { g_manyTicks++; }
 static void ManyHeard(HfMod* mod, const HfEventInfo* event, void* user) { g_manyHeard++; }
@@ -2763,6 +2796,8 @@ static void EventsFixture(void)
     assert(g_heardCount == 1 && g_queued == 1);
     EventsTick();
     assert(g_heardCount == 2 && g_queued == 0 && g_lastDamage.info.update == g_updates);
+    g_gameThread = thread;
+    TypedEvents(mod, event);
 
     g_listenerCount = 0; g_listening = 0; g_eventsGame = 0; g_playerCount = 0; g_lastState = 0; g_consumeDamage = NULL;
     free(player); free(peers); free(players); free(gameState); free(game);
@@ -3775,6 +3810,7 @@ int main(int argc, char** argv)
     ContentInstallFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
+    LiveBrowseFixture();
     LuaBridgeFixture();
     ActionsFixture();
     PassivesFixture();
@@ -3931,9 +3967,10 @@ int main(int argc, char** argv)
     wchar_t temporary[MAX_PATH], plan[MAX_PATH];
     assert(GetTempPathW(MAX_PATH, temporary) && GetTempFileNameW(temporary, L"hfs", 0, plan));
     FILE* file = _wfopen(plan, L"wb"); assert(file);
-    fputs("mod\ta\tfixture\t-\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
+    fputs("mod\ta\tfixture\t-\nmod_version\ta\t1.2.3 beta\nmod_version\tnobody\t9\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0;
     assert(ReadPlan(plan) == 0 && g_statCount == 1 && g_modCount == 1 && !wcscmp(g_mods[0].dll, L"-"));
+    assert(!strcmp(g_mods[0].version, "1.2.3 beta")); /* a version for no mod of the plan is dropped */
     assert(g_stats[0].hasExpect && g_stats[0].expect == 10 && g_stats[0].value == 20);
     /* More observations than the loader once held (16384), and one it cannot read: the plan, and its mods, still load. */
     file = _wfopen(plan, L"wb"); assert(file);
@@ -3941,6 +3978,7 @@ int main(int argc, char** argv)
     fputs("observe\tNoSuchTable\t-\t0\t1\t4\ti32\nmod\ta\tfixture\t-\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0; g_statsProbeCount = 0; g_statsProbesSkipped = 0;
     assert(ReadPlan(plan) == 0 && g_modCount == 1 && g_statsProbeCount == 20000 && g_statsProbesSkipped == 1);
+    assert(g_mods[0].version[0] == 0); /* a plan without the line: no version */
     g_statsProbeCount = 0;
     DeleteFileW(plan);
     if (argc == 3)
@@ -3970,6 +4008,10 @@ int main(int argc, char** argv)
         assert(!ModuleAt(0, where, sizeof where) && !ModuleAt((uintptr_t)heap, where, sizeof where));
         free(heap);
     }
+    CrashNotesFixture();
+    LogHeaderFixture();
+    ModIdentityFixture();
+    StatusFixture();
     DifficultyFixture();
     ClusterRingsFixture();
     TownsFixture();
@@ -4014,10 +4056,11 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    ArmoryDiagFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
-        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
+        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
         "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 167 sites, a table grown, built again on a reload and grown again");
     return 0;

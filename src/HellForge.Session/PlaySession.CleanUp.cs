@@ -24,6 +24,7 @@ sealed partial class PlaySession
         CheckHashes();
         CheckPlantedMods();
         SandboxCopyBack();
+        RecordShaderCacheAtEnd();
         lease?.Dispose();
         result["completedUtc"] = DateTime.UtcNow.ToString("o");
         Save();
@@ -37,12 +38,54 @@ sealed partial class PlaySession
         { result[what] = error.Message; }
     }
 
+    // How long a stop waits for the mods to hear the session's end (HF_EVENT_SESSION_END) before it takes the game down.
+    static readonly TimeSpan SessionEndWait = TimeSpan.FromSeconds(2);
+
+    // A game still running when the session ends is stopped with its job. Only a stop the player asked for (STOP, closing
+    // the launcher, a mod sync's restart) first asks the game to close, so it writes its shader cache (ShaderCache:
+    // killed, it never does). The game is ended at once when the session failed (the network block changed), when the
+    // stop asked for that (SessionRunner.SignalStop now: true, "stop-now"), when something in the session decided so
+    // (endGameNow: a game stuck quitting), and when the game has no window or a hung one (GameClose.Outcome).
+    const int CloseWaitSeconds = 30;
+    bool endGameNow;
+
+    // A game that ended by itself keeps its exit code and, for a crash, Windows' record of it (RecordWindowsCrash).
     void StopGameJob()
     {
+        // the game still runs (a stop from the launcher, or this runner failing): its mods hear the end first
+        if (job != null && endSignal != null)
+            Try("sessionEndError", () => { job.Process.Refresh(); if (!job.Process.HasExited) result["sessionEndHeard"] = endSignal.Signal(SessionEndWait); });
+        endSignal?.Dispose();
+        if (job != null && !endGameNow && (bool?)result["observationStoppedBySignal"] == true)
+            Try("gameCloseError", () =>
+            {
+                var clock = Stopwatch.StartNew();
+                var outcome = GameClose.CloseAndWait(job.Process, TimeSpan.FromSeconds(CloseWaitSeconds), out var windows);
+                result["gameClose"] = new JsonObject
+                {
+                    ["outcome"] = outcome.ToString(), ["windows"] = windows, ["closedByItself"] = outcome == GameClose.Outcome.ClosedByItself,
+                    ["seconds"] = Math.Round(clock.Elapsed.TotalSeconds, 1)
+                };
+                if (outcome == GameClose.Outcome.TimedOut)
+                    Say($"The game did not close within {CloseWaitSeconds} s; stopping it (its shader cache is not saved this time).");
+            });
+        else if (job != null && endGameNow) result["gameClose"] = new JsonObject { ["outcome"] = "EndedAtOnce" };
         if (job != null && result["gameExitCode"] == null)
-            Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
+            Try("gameExitCodeError", () =>
+            {
+                job.Process.Refresh();
+                if (!job.Process.HasExited) return;
+                result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}";
+                RecordWindowsCrash(job.Process.ExitCode);
+            });
         if (job != null)
-            try { job.Stop(); result["jobEmpty"] = job.ActiveProcesses == 0; }
+            try
+            {
+                // what was still in the job when the session ended it (the game, or what it started when it may)
+                result["jobActiveAtStop"] ??= job.ActiveProcesses; // a stuck game's, counted before it was ended (WatchQuit)
+                job.Stop();
+                result["jobEmpty"] = job.ActiveProcesses == 0;
+            }
             catch (System.ComponentModel.Win32Exception error) { result["jobStopError"] = error.Message; }
             finally { job.Dispose(); }
     }
@@ -200,6 +243,20 @@ sealed partial class PlaySession
                 };
                 Say($"WARNING: {planted.Files.Count} file(s) appeared in the mods folder during the session" +
                     (planted.DisabledMods.Count > 0 ? $"; {planted.DisabledMods.Count} mod(s) they appeared in switched off until you turn them on in Mods." : "."));
+            });
+    }
+
+    // The shader cache the next session starts with (ShaderCache), beside the one this one started with: a cache that
+    // did not change after a session that ran long enough is what makes every start slow.
+    void RecordShaderCacheAtEnd()
+    {
+        if (gameStarted != null && result["shaderCache"] is JsonObject cache)
+            Try("shaderCacheError", () =>
+            {
+                var end = ShaderCache.Read(install.UserData);
+                cache["atEnd"] = end.ToJson();
+                var start = (string?)cache["atStart"]?["newestUtc"];
+                cache["written"] = end.NewestUtc is { } newest && (start == null || newest > DateTime.Parse(start, null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime());
             });
     }
 

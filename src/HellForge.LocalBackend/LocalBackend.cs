@@ -31,6 +31,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public LiveModsHub? LiveMods { get; init; }
     // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
     public PickupRelay? Pickups { get; init; }
+    // The lobby browser's API (null: the routes answer that there is none); its multiplayer services are attached later.
+    public Multiplayer.BrowseApi? Browse { get; init; }
 }
 
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
@@ -167,7 +169,7 @@ public static partial class LocalBackend
         {
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath,
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
             LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);

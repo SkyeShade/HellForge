@@ -10,10 +10,11 @@ namespace HellForge.Core;
 // report, HellForge.Cli logs --crash-report). Nothing is sent anywhere: HellForge has no server, and the player chooses
 // where the file goes. It holds
 //   summary.txt  the versions, the system and the settings (SessionFacts), how the game ended, where it crashed (the mod
-//                loader's crash note: code, module and offset, thread), the mods, the loader's events before the crash
-//                and the last TailLines lines of its log;
+//                loader's crash note: code, module and offset, thread; and Windows' record of the crash), the mods, the
+//                loader's events before the crash and the last TailLines lines of its log;
 //   logs/        the session's export (SessionLogs.Export) without crash dumps;
-//   dump/        the crash dump, only when the player asks for it (it exists only with the Crash dump setting on).
+//   dump/        the crash dump, only when the player asks for it: the small one the mod loader writes at a crash, or
+//                the full one with the Crash dump setting.
 // Every text in it goes through ReportPrivacy, which leaves out more than the export does: it is made to be public. A
 // dump is the game's memory and cannot be scrubbed, which the summary and the launcher say plainly.
 public static partial class CrashReport
@@ -38,7 +39,7 @@ public static partial class CrashReport
     private static partial Regex ByModuleNote();
 
     // The game writes into the run folder, or into run/game when sandboxed.
-    static IEnumerable<string> GameFolders(string run) => [run, Path.Combine(run, "game")];
+    internal static IEnumerable<string> GameFolders(string run) => [run, Path.Combine(run, "game")];
 
     public static string? LoaderLog(string run) =>
         GameFolders(run).Select(f => Path.Combine(f, "modloader.log")).FirstOrDefault(File.Exists);
@@ -60,6 +61,11 @@ public static partial class CrashReport
         return LoaderLog(run) is { } log && FindFault(Tail(log, int.MaxValue)) != null;
     }
 
+    // How the game ended, for the launcher's status: "0xC0000005 (access violation)", or null when no exit code was kept.
+    public static string? ExitText(string run) =>
+        SessionFiles.ReadJson(Path.Combine(run, "result.json")) is { } result && ExitCode(result) is { } code
+            ? $"0x{code:X8}" + (Meaning(code) is { } meaning ? $" ({meaning})" : "") : null;
+
     static uint? ExitCode(JsonElement result)
     {
         var text = SessionFiles.Text(result, "gameExitCode");
@@ -68,7 +74,8 @@ public static partial class CrashReport
         return int.TryParse(SessionFiles.Text(result, "exitCode"), CultureInfo.InvariantCulture, out var code) ? unchecked((uint)code) : null;
     }
 
-    // What a Windows exit code means, for the ones crashes end with.
+    // What a Windows exit code means, for the ones crashes end with, and those of a DLL the game could not start with (as
+    // the session runner's Tools.ExitMeaning names them).
     public static string? Meaning(uint code) => code switch
     {
         0xC0000005 => "access violation",
@@ -76,7 +83,13 @@ public static partial class CrashReport
         0xC00000FD => "stack overflow",
         0xC000001D => "illegal instruction",
         0xC0000374 => "heap corruption",
+        0xC0000094 => "integer divide by zero",
         0xC0000142 => "a DLL failed to initialise",
+        0xC0000135 => "a DLL the game needs could not be found",
+        0xC000007B => "a DLL the game loads is damaged or for the wrong architecture",
+        0xC0000022 => "Windows or security software denied the game access",
+        0xC0000428 => "Windows blocked an unsigned DLL",
+        0xC0000361 => "a Windows policy blocked a file the game loads",
         0xE06D7363 => "unhandled C++ exception",
         0x80000003 => "breakpoint",
         _ => null
@@ -178,12 +191,23 @@ public static partial class CrashReport
             text.AppendLine("Failure: " + scrub.Apply(failure));
         text.AppendLine(fault == null ? "Crash: the mod loader noted none"
             : scrub.Apply($"Crash: {fault.Code} at {fault.Where} on thread {fault.Thread}" + (fault.ByModule != null ? $" (by module: {fault.ByModule})" : "")));
+        WindowsCrashLine(text, result, scrub);
+    }
+
+    // Windows' record of the crash (the session runner's windowsCrash: the module and offset, also of a crash before the
+    // mod loader's notes start), when the session looked for one.
+    static void WindowsCrashLine(StringBuilder text, JsonElement? result, ReportPrivacy scrub)
+    {
+        if (result is not { } r || !r.TryGetProperty("windowsCrash", out var crash)) return;
+        string Field(string name) => SessionFiles.Text(crash, name);
+        text.AppendLine(crash.ValueKind != JsonValueKind.Object ? "Windows' crash record: none"
+            : scrub.Apply($"Windows' crash record: {Field("code")} in {Field("module")}+{Field("offset")} ({Field("owner")}: {Field("modulePath")})"));
     }
 
     static void DumpLine(StringBuilder text, string run, bool included)
     {
         var dump = Dump(run);
-        text.AppendLine(dump == null ? "Crash dump: none (the Crash dump setting was off, or the game did not crash in a way that writes one)"
+        text.AppendLine(dump == null ? "Crash dump: none (the game did not crash in a way that writes one)"
             : included ? $"Crash dump: included as dump/{Path.GetFileName(dump)}. A dump is the game's memory as it crashed and cannot be scrubbed: " +
                 "it can hold your Steam account name and your friends' names. Only share it with someone you trust."
             : "Crash dump: not included (one was written; it is in the session's logs folder)");

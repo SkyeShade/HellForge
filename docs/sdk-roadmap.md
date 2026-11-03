@@ -4,7 +4,7 @@ For contributors: what is left in the mod SDK. [modding/README.md](modding/READM
 [sdk-reference.md](sdk-reference.md) document what exists, [engine-roadmap.md](engine-roadmap.md) is the engine's side,
 and [roadmap.md](roadmap.md) is the overview.
 
-Mod SDK 15, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
+Mod SDK 16, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
 
 | Phase | Status |
 |---|---|
@@ -13,7 +13,7 @@ Mod SDK 15, engine 0.1.41, HellForge 0.3.0-beta (2026-10-26).
 | 3. Live editing | done (SDK 6); in co-op each player keeps their own (SDK 15) or plays with a sharing host's; field timings to check in game |
 | 4. MDK | done; a New mod button and a helper kit left |
 | 5a. The in-game editor | mostly built; full HD2R Editor parity left |
-| 5b. Events, hooks and registries | built in SDK 7 to 15; some events, registries and launcher views left |
+| 5b. Events, hooks and registries | built in SDK 7 to 16; some events, registries and launcher views left |
 | 6. Co-op sync for mod content | numbering and sync built; `is_authority` and the message channel left |
 
 ## Goal
@@ -39,9 +39,12 @@ path. Stats files (`hellforge-stats.json`) hold value edits and are the editors'
 ## Mappings
 
 `mappings/components.json` names every field the SDK can touch (offset, type, count, meaning, and the game build it was
-reviewed on), and `mappings/catalog.json` names vanilla content. `HellForge.Cli sdk-headers` generates
-`hellforge_components.h`, `hellforge_content.h`, the loader's `sdk_fields.h` and `sdk_content.h`, and
-`sdk-reference.md` from them ([internals.md](internals.md#named-fields)).
+reviewed on), `mappings/catalog.json` names vanilla content, `mappings/functions.json` names game functions (SDK 16:
+offset, first bytes, signature and what each argument is) and `mappings/globals.json` names game globals (SDK 16: the
+cell, the instruction that witnesses it, the object's fields). `HellForge.Cli sdk-headers` generates
+`hellforge_components.h`, `hellforge_content.h`, `hellforge_functions.h`, `hellforge_globals.h`, the loader's
+`sdk_fields.h`, `sdk_content.h`, `sdk_functions.h` and `sdk_globals.h`, and `sdk-reference.md` from them
+([internals.md](internals.md#named-fields)).
 
 Naming grows one entry at a time: an `_unknown_XX` range becomes a named field by adding its entry (offset, type,
 meaning, build, evidence) and regenerating. Adding a name never breaks a mod, and a renamed field keeps its old name as a
@@ -84,7 +87,10 @@ Full parity with the HD2R Editor, in three steps:
 - Mod content in progression: a level requirement, a price or a warbond page for a mod's stratagems and weapons
   ([roadmap.md](roadmap.md#progression)).
 - Game functions as SDK calls (spawn, give, damage, Wwise events) instead of raw addresses, which move with every game
-  build.
+  build. Started in SDK 16: ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events
+  (`hf_on_<event>`, no cast), and 15 game globals by name (`mappings/globals.json`, `hf_global_`: the managers and
+  queues those functions take, with their named fields). Left: more names and fields, and named sites inside functions
+  for patches.
 - The launcher shows which mods hook what, and conflicts between mods. The logs and `hooks.tsv` already report both.
 - Conflict rules beyond load order: a priority set by the mod or the player, and merge rules for list data.
 - The Lua bridge's events and actions that have no engine call yet ([lua-bridge.md](lua-bridge.md)).

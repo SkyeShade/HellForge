@@ -143,12 +143,13 @@ try
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
     var liveMods = new LiveModsHub();
+    var browse = new HellForge.LocalBackend.Multiplayer.BrowseApi();
     await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
@@ -200,6 +201,11 @@ try
                 return why;
             };
         }
+    }
+    if (multiplayer != null)
+    {
+        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+        multiplayer.ShowBrowser(browse); // the in-game browser (SDK 16)
     }
     var ready = new System.Text.Json.Nodes.JsonObject
     {

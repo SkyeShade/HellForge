@@ -277,6 +277,7 @@ static void TxnModRenew(HfMod* m)
     m->unload = NULL;
     wcscpy(m->dll, L"-");
     m->last[0] = 0;
+    m->status[0] = m->statusGiven[0] = 0; /* set_status: its last set-up's line goes (mod_status.c skips it till now) */
     m->phase = 0;
     m->live = 0;
     m->staging = 1;
@@ -538,6 +539,7 @@ static const char* TxnMake(char* why, size_t size)
     TxnStatsApply();
     ReleaseSRWLockExclusive(&g_statsLock);
     ReleaseSRWLockExclusive(&g_fieldsLock);
+    StatusRefresh(); /* mod_status.c: a mod taken out leaves the launcher's status list */
     TxnNetApply();
     TxnDataApply();
     int order[TXN_MODS], count = 0;

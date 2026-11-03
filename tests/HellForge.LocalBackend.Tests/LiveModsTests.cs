@@ -25,10 +25,12 @@ static class LiveModsTests
         return path;
     }
 
-    static void Mod(string mods, string id, string? stats, string extra = "")
+    // A mod of stats edits: shared unless coop says otherwise (a stats mod is the player's own by itself, ModCatalog.Tier),
+    // so that changing it changes what friends compare.
+    static void Mod(string mods, string id, string? stats, string extra = "", string coop = "shared")
     {
         Directory.CreateDirectory(Path.Combine(mods, id));
-        File.WriteAllText(Path.Combine(mods, id, ModCatalog.ManifestName), $$"""{"format":1,"id":"{{id}}","name":"{{id}} mod","version":"1"{{extra}}}""");
+        File.WriteAllText(Path.Combine(mods, id, ModCatalog.ManifestName), $$"""{"format":1,"id":"{{id}}","name":"{{id}} mod","version":"1","coop":"{{coop}}"{{extra}}}""");
         if (stats != null) File.WriteAllText(Path.Combine(mods, id, StatsData.FileName), stats);
     }
 
@@ -209,8 +211,21 @@ static class LiveModsTests
         var ownedSync = await service.ApplySyncAsync(premiumHost, CancellationToken.None);
         check(ownedSync == null && SessionMods.Read(sessionFile).Mods.Any(m => m.Id == "p2") && changed?.Digest == premiumSet.Digest,
             "A host's premium mod the snapshot owns did not go live: " + ownedSync);
+
+        // a per-player mod goes live too, and friends compare the same digest as before
+        var mine = ModCatalog.LoadOrder(ModCatalog.Active(ModCatalog.Load(mods).Mods));
+        SessionMods.Of(mine, mine, "").Write(sessionFile);
+        var shared = ModSet.Of(mine).Digest;
+        Mod(mods, "pp", Rpm.Replace("900", "700"), coop: "per-player");
+        lock (lines) lines.Clear();
+        changed = null;
+        var perPlayer = await service.ApplyAsync(null, sync: false, "", CancellationToken.None);
+        check(perPlayer.Applied && perPlayer.Digest == shared && changed?.Digest == shared && SessionMods.Read(sessionFile).Mods.Any(m => m.Id == "pp"),
+            "A per-player mod did not go live, or changed the digest: " + perPlayer.Detail + " " + string.Join(" | ", perPlayer.Blocking));
+        lock (lines) check(lines.Contains("modadd pp"), "The per-player mod's lines: " + string.Join(" | ", lines));
         stop.Cancel();
         Console.WriteLine("PASS live mods: a stats mod changed live and recorded, a code mod held for the next session, the game's refusal, a late result settled (joins waiting meanwhile), " +
-            "a change made with something left over, a synced session, no game, a host's set taken live, premium mods not owned held for a restart (Mods page and mod sync) and owned ones live");
+            "a change made with something left over, a synced session, no game, a host's set taken live, premium mods not owned held for a restart (Mods page and mod sync) and owned ones live, " +
+            "a per-player mod live with the digest unchanged");
     }
 }

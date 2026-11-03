@@ -36,15 +36,17 @@ void ForgetKeys()
     if (window != nullptr && GetCursorPos(&at) && ScreenToClient(window, &at)) io.AddMousePosEvent((float)at.x, (float)at.y);
 }
 
+void HoldInput() { g_host.modal(g_sync.alone || g_lobbies.alone); }
+
 /* The dialog alone over the game, the window closed: the editor holds the game's input for it, as for the window. */
 void ShowSyncAlone(bool on)
 {
     if (g_sync.alone == on) return;
     g_sync.alone = on;
-    g_host.modal(on);
+    HoldInput();
     ForgetKeys();
     if (on) g_sync.shownAt = ImGui::GetTime();
-    sounds::EditorOpen(on);
+    sounds::EditorOpen(on || g_lobbies.alone);
     g_host.api->log(g_host.mod, on ? "editor: the mod sync prompt shows over the game, the window closed" : "editor: the mod sync prompt goes");
     if (on) Sound(sounds::SHOW);
 }

@@ -58,7 +58,7 @@ foreach($source in $sources){
     if($LASTEXITCODE){throw ('Dear ImGui did not compile: '+$source)}
     $built+=$object
 }
-$editorSources=@('editor.cpp','app.cpp','app_values.cpp','app_staging.cpp','app_widgets.cpp','app_page.cpp','app_presets.cpp','app_mods_logs.cpp','app_sync.cpp','app_keys.cpp','app_browse.cpp','app_views.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
+$editorSources=@('editor.cpp','app.cpp','app_values.cpp','app_staging.cpp','app_widgets.cpp','app_page.cpp','app_presets.cpp','app_mods_logs.cpp','app_sync.cpp','app_lobbies.cpp','app_keys.cpp','app_browse.cpp','app_views.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
 & $zig c++ @common -shared -Wall -Werror -Wno-unused-parameter -s @editorSources @built `
     -ld3d11 -ld3d12 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -lole32 -luser32 -o (Join-Path $out 'hellforge_editor.dll')
 if($LASTEXITCODE){throw 'The editor did not compile.'}

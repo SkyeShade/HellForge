@@ -207,7 +207,15 @@ static void KeepUnder(int index, int above)
 static int ApplyLive(int index, int replaced, const FieldEdit* previous)
 {
     FieldEdit* q = &g_edits[index];
-    if (q->table || g_fired[HF_EVENT_ENTITIES_READY]) ApplyEdit(q);
+    if (q->table || g_fired[HF_EVENT_ENTITIES_READY])
+    {
+        ApplyEdit(q);
+        /* where it went: what the game then reads there is what a live edit's effect depends on */
+        uint32_t now = 0, before = 0;
+        if (!q->failed && q->field->size <= 4) { memcpy(&now, q->value, q->field->size); memcpy(&before, q->original, q->field->size); }
+        if (!q->failed) ApiLog(q->mod, "set_live: %s.%s of %016llx at %p: %08x (before the live edits %08x)", q->component->name,
+            q->field->name, (unsigned long long)q->entity, (void*)q->address, now, q->hasOriginal ? before : now);
+    }
     if (q->failed && replaced) *q = *previous;
     else if (q->failed) RemoveEdit(index);
     else return 1;

@@ -17,8 +17,15 @@ public partial class MainWindow
     Process? syncProxy;
     LocalProfile? syncProfile;
     string? syncDir, syncSnapshotDir;
-    bool syncGameOpened, syncStarting, syncTaken, syncGameWarned;
+    bool syncGameOpened, syncStarting, syncTaken, syncSlowNoted, syncGameWarned;
     DateTime syncStartedUtc, syncTakenUtc;
+    // A capture that has not listened by then is reported (CaptureProblem.NotReady), and still waited for: its own steps
+    // before listening take well under half of this.
+    static readonly TimeSpan SyncReadyWarning = TimeSpan.FromSeconds(60);
+    // What the launcher saw of the game since it asked Steam to open it, for a message that says which step stopped.
+    bool syncGameSeen, syncFolderHidden;
+    DateTime syncAskedUtc;
+    string? syncProblem;
 
     // Busy until the capture is taken; after that the proxy only keeps the game connected, and imports may run.
     bool SyncBusy => syncProxy != null && !syncTaken || syncStarting;
@@ -94,7 +101,13 @@ public partial class MainWindow
 
     async Task StartSync()
     {
-        if (SyncBusy || paths.InstallRoot == null || InventorySync.FindCaptureProxy(paths.InstallRoot) is not { } proxy) return;
+        if (SyncBusy || paths.InstallRoot == null) return;
+        if (InventorySync.FindCaptureProxy(paths.InstallRoot) is not { } proxy)
+        {
+            // There when the launcher started, gone now: a security program's quarantine.
+            await ReportStartFailure(null, new CaptureFailure(CaptureProblem.Missing, null), ExpectedProxy(paths.InstallRoot));
+            return;
+        }
         if (syncProxy != null)
         {
             SetSyncStatus("The last sync still keeps HELLDIVERS 2 connected: close the game first.", Orange);
@@ -117,19 +130,25 @@ public partial class MainWindow
         syncStarting = true;
         SyncButton.IsEnabled = false;
         SetSyncStatus("Waiting for the administrator prompt...", Gold);
-        Process? started = null;
+        (Process? Process, CaptureProblem Refused, string? Detail) launch = (null, CaptureProblem.None, null);
         string? failure = null;
-        try { started = await Task.Run(() => InventorySync.StartCaptureProxy(proxy, folder, snapshot, account)); }
+        try { launch = await Task.Run(() => InventorySync.StartCaptureProxy(proxy, folder, snapshot, account)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { failure = error.Message; }
         syncStarting = false;
-        if (started == null)
+        if (launch.Process is not { } started)
         {
-            InventorySync.Note(folder, "capture did not start: " + (failure ?? "the administrator prompt was declined"));
             SyncButton.IsEnabled = true;
-            SetSyncStatus(failure ?? "Sync cancelled: it needs the administrator prompt.", failure != null ? Red : Orange);
+            if (failure != null)
+            {
+                InventorySync.Note(folder, "capture did not start: " + failure);
+                SetSyncStatus(failure, Red);
+            }
+            else await ReportStartFailure(folder, new CaptureFailure(launch.Refused, launch.Detail), proxy);
             return;
         }
-        (syncProxy, syncProfile, syncDir, syncSnapshotDir, syncGameOpened, syncTaken) = (started, profile, folder, snapshot, false, false);
+        (syncProxy, syncProfile, syncDir, syncSnapshotDir, syncGameOpened, syncTaken, syncSlowNoted) =
+            (started, profile, folder, snapshot, false, false, false);
+        (syncGameSeen, syncFolderHidden, syncProblem) = (false, false, null);
         syncStartedUtc = DateTime.UtcNow;
         InventorySync.Note(folder, $"sync started for profile {profile.Name}; capture pid {started.Id}; launcher {Environment.ProcessPath}");
         SetSyncStatus("Starting the capture...", Gold);
@@ -152,9 +171,7 @@ public partial class MainWindow
         if (syncProxy == null || syncProfile == null || syncDir == null || syncSnapshotDir == null) return;
         if (!syncProxy.HasExited)
         {
-            if (!syncGameOpened && InventorySync.IsListening(syncDir)) OpenGameForSync();
-            else if (!syncTaken && InventorySync.IsSealed(syncDir)) TakeCapture(syncProfile, syncDir, syncSnapshotDir);
-            else if (syncTaken) WarnIfGameStillOpen(syncDir);
+            WatchCapture(syncProfile, syncDir, syncSnapshotDir);
             return;
         }
         var exitCode = syncProxy.ExitCode;
@@ -166,11 +183,64 @@ public partial class MainWindow
         foreach (var line in InventorySync.CollectGameLogs(folder, syncStartedUtc)) InventorySync.Note(folder, line);
         if (syncTaken) ProxyClosed(exitCode, folder);
         else if (exitCode == 0) TakeCapture(profile, folder, snapshot);
-        else SyncFailed(syncGameOpened ? $"Nothing was captured within {InventorySync.TimeoutMinutes} minutes. Close the game and sync again."
-            : "The capture could not start: see " + Path.Combine(folder, "proxy.log") + ".");
+        // A sync folder this launcher cannot read hides everything the capture wrote, its start failure included.
+        else if (!InventorySync.CanReadSyncFolder(folder)) SyncFailed(InventorySync.UnreadableFolderMessage);
+        // A hosts write the capture could not make (CaptureHosts) names its own cause. Before listening it is also the
+        // capture's start failure (capture-failure.json holds the same reason), shown once, with the security program to allow.
+        else if (syncGameOpened)
+            SyncFailed(CaptureHosts.ReadFailure(folder) ?? InventorySync.NothingCaptured(InventorySync.GameState(true, syncGameSeen, InventorySync.IsGameRunning()),
+                InventorySync.TimeoutMinutes, Path.Combine(folder, "proxy.log")));
+        else if (paths.InstallRoot != null)
+            _ = ReportStartFailure(folder, CaptureStart.FromExit(exitCode, CaptureStart.Read(folder), ReadProxyLog(folder), CaptureHosts.ReadFailure(folder)),
+                ExpectedProxy(paths.InstallRoot));
         (syncProfile, syncDir, syncSnapshotDir) = (null, null, null);
         (syncTaken, syncGameWarned) = (false, false);
         UpdateSyncStatus();
+    }
+
+    // While the capture waits: the game's process since Steam was asked to open it, and a sync folder this launcher cannot
+    // read (then the capture's listening state never shows, and the game would never be opened), each said as it happens.
+    void WatchSyncProgress(string folder)
+    {
+        if (!syncGameOpened)
+        {
+            if (syncFolderHidden || DateTime.UtcNow - syncStartedUtc < TimeSpan.FromSeconds(15) || InventorySync.CanReadSyncFolder(folder)) return;
+            syncFolderHidden = true;
+            InventorySync.Note(folder, "this launcher cannot read the sync folder; the capture runs as another Windows account");
+            SetSyncStatus(InventorySync.UnreadableFolderMessage, Red);
+            return;
+        }
+        var running = InventorySync.IsGameRunning();
+        if (running && !syncGameSeen) InventorySync.Note(folder, "the game is running");
+        syncGameSeen |= running;
+        var state = InventorySync.GameState(true, syncGameSeen, running);
+        var problem = InventorySync.WaitingProblem(state, DateTime.UtcNow - syncAskedUtc);
+        if (problem == syncProblem) return;
+        syncProblem = problem;
+        if (problem != null)
+        {
+            InventorySync.Note(folder, "waiting: game " + (state == SyncGameState.Closed ? "closed before the capture" : "not started by Steam"));
+            SetSyncStatus(problem, Orange);
+        }
+        else SetSyncStatus(WaitingForLogin, Gold);
+    }
+
+    const string WaitingForLogin = "Log in to HELLDIVERS 2 and pass the title screen. This updates when the capture is done.";
+
+    // While the capture runs: the game opened once it listens, a slow start reported once, the capture taken once
+    // sealed, and after that a game it could not close; until then, what the launcher sees of the game and the folder.
+    void WatchCapture(LocalProfile profile, string folder, string snapshot)
+    {
+        if (!syncGameOpened && InventorySync.IsListening(folder)) OpenGameForSync();
+        // not when the folder is hidden from this launcher: that is said already, and is why it seems not to listen
+        else if (!syncGameOpened && !syncSlowNoted && !syncFolderHidden && DateTime.UtcNow - syncStartedUtc > SyncReadyWarning && paths.InstallRoot != null)
+        {
+            syncSlowNoted = true;
+            _ = ReportStartFailure(folder, new CaptureFailure(CaptureProblem.NotReady, null), ExpectedProxy(paths.InstallRoot));
+        }
+        else if (!syncTaken && InventorySync.IsSealed(folder)) TakeCapture(profile, folder, snapshot);
+        else if (syncTaken) WarnIfGameStillOpen(folder);
+        else WatchSyncProgress(folder);
     }
 
     // The capture closes the sync's game itself; one still open well after the capture was taken is one it could not end.
@@ -211,6 +281,32 @@ public partial class MainWindow
         _ = AfterCaptureAsync(profile);
     }
 
+    static string ExpectedProxy(string installRoot) => Path.Combine(new InstallLayout(installRoot).App, "capture", InventorySync.ProxyExe);
+
+    static string? ReadProxyLog(string folder)
+    {
+        try { return File.ReadAllText(Path.Combine(folder, "proxy.log")); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    // A capture that did not start (or is slow to): what was in its way, and for what a security program commonly causes,
+    // the security programs Windows knows of (asked only now, off the UI thread) and the exact file to allow.
+    async Task ReportStartFailure(string? folder, CaptureFailure failure, string proxy)
+    {
+        IReadOnlyList<string> antivirus = CaptureStart.SecurityProgramLikely(failure.Problem) ? await Task.Run(SecurityProducts.ThirdPartyAntivirus) : [];
+        var message = CaptureStart.Message(failure, antivirus, proxy, folder != null ? Path.Combine(folder, "proxy.log") : null);
+        if (folder != null)
+            InventorySync.Note(folder, $"capture did not start: {failure.Problem}" + (failure.Detail != null ? " (" + failure.Detail + ")" : "") +
+                "; security programs: " + (antivirus.Count == 0 ? "none besides Microsoft Defender, or not asked" : string.Join(", ", antivirus)));
+        // A later sync's status is never overwritten; a slow capture's warning shows only while that capture is still starting.
+        var current = failure.Problem == CaptureProblem.NotReady ? syncProxy != null && !syncGameOpened && syncDir == folder
+            : syncProxy == null && !syncStarting;
+        if (!current) return;
+        var brush = failure.Problem is CaptureProblem.Declined or CaptureProblem.NotReady ? Orange : Red;
+        SetSyncStatus(message, brush);
+        if (failure.Problem != CaptureProblem.Declined) Append("Inventory sync: " + message, brush);
+    }
+
     void SyncFailed(string error)
     {
         if (syncDir != null) InventorySync.Note(syncDir, "sync failed: " + error);
@@ -234,11 +330,12 @@ public partial class MainWindow
     void OpenGameForSync()
     {
         syncGameOpened = true;
+        syncAskedUtc = DateTime.UtcNow;
         try
         {
             InventorySync.OpenVanillaGame();
             if (syncDir != null) InventorySync.Note(syncDir, "capture listening; asked Steam to open the game (steam://rungameid/553850)");
-            SetSyncStatus("Log in to HELLDIVERS 2 and pass the title screen. This updates when the capture is done.", Gold);
+            SetSyncStatus(WaitingForLogin, Gold);
         }
         catch (System.ComponentModel.Win32Exception error)
         {
@@ -252,13 +349,15 @@ public partial class MainWindow
         syncStarting = true;
         SyncButton.IsEnabled = false;
         SetSyncStatus("Waiting for the administrator prompt...", Gold);
-        using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy));
+        var folder = Path.Combine(new InstallLayout(paths.InstallRoot!).Logs, "sync-cleanup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+        using var cleanup = await Task.Run(() => InventorySync.StartCleanup(proxy, folder));
         if (cleanup != null) await cleanup.WaitForExitAsync();
         syncStarting = false;
         SyncButton.IsEnabled = true;
         UpdateSyncStatus();
         if (cleanup == null) SetSyncStatus("Clean up needs the administrator prompt.", Orange);
-        else if (InventorySync.HasLeftoverRedirect()) SetSyncStatus("Clean up failed: remove the HellForge-CaptureProxy lines from the hosts file.", Red);
+        else if (InventorySync.HasLeftoverRedirect())
+            SetSyncStatus("Clean up failed: " + (CaptureHosts.ReadFailure(folder) ?? "see " + Path.Combine(folder, "proxy.log") + "."), Red);
         else SetSyncStatus("Cleaned up: the normal game reaches its servers again.", Green);
     }
 }

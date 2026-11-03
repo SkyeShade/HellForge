@@ -18,6 +18,8 @@ try
                     --depot-folder <download_depot's depot_<id> folder> [--depotcache <Steam/depotcache>] --out <file>
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
+            steam-download --out <game folder> [--file <a file of the build>] [--steam-root <Steam folder>]
+                    [--sign-in qr | steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
@@ -39,7 +41,7 @@ try
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
-            stop [--install <folder>] [--run <session folder>] [--wait yes]
+            stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
             fetch-war [--install <folder>]
@@ -53,7 +55,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--strangers yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
+                     [--strangers yes | no | default] [--forge-credits <0-100> | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -82,6 +84,11 @@ try
             newest first (--run: one session's files); --export zips one as the launcher's Save logs to Desktop does;
             --crash-report makes the crash report the launcher's Save crash report makes (scrubbed further, for a public
             issue), with the crash dump only with --dump yes. Nothing is uploaded.
+            steam-download signs in to Steam (a QR code for the Steam app; nothing kept) and downloads the supported
+            build into --out from Valve's servers, copying what Steam's own install holds (--file: one file of it;
+            --dry-run yes: the plan only), as setup does when Steam has another build. --sign-in steamcmd: Valve's
+            SteamCMD downloads it instead and asks for the password itself (HellForge never reads it); it is fetched
+            into --steamcmd (default: <out>-steamcmd), its sign-in forgotten after it runs, and removed once done.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
@@ -99,6 +106,7 @@ try
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
+        "steam-download" => ["--out", "--file", "--steam-root", "--sign-in", "--account", "--steamcmd", "--dry-run"],
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data"],
         "migrate" => ["--install", "--from", "--appdata"],
@@ -117,7 +125,7 @@ try
         "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
-        "stop" => ["--install", "--run", "--wait"],
+        "stop" => ["--install", "--run", "--wait", "--now"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
@@ -148,6 +156,8 @@ try
     {
         case "play":
             return Launch.Play(options);
+        case "steam-download":
+            return SteamDownloadCommand.Run(options);
         case "stop":
             return Launch.Stop(options);
         case "status":

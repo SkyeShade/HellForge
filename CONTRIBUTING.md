@@ -1,7 +1,7 @@
 # Contributing to HellForge
 
-Pull requests and issues are welcome. This page covers the terms for contributions, how to build and test HellForge,
-and where to start reading.
+Pull requests and issues are welcome. This page covers the terms for contributions, what may never be submitted, how
+to build and test HellForge, and where to start reading.
 
 ## Terms
 
@@ -13,11 +13,41 @@ Your contribution is licensed under the licence of the files it changes, the sam
   MIT No Attribution License ([LICENSE-SDK](LICENSE-SDK)).
 
 By opening a pull request you confirm that you wrote the change, or have the right to submit it under those terms. Do
-not submit the game's files or code taken from the game, or code from other projects whose licences do not allow it.
+not submit code from other projects whose licences do not allow it, or anything the next section rules out.
+
+## The game's content, code and trademarks
+
+HELLDIVERS 2 belongs to Arrowhead Game Studios and Sony Interactive Entertainment, and HellForge never distributes any
+of it. Everything of the game that HellForge uses comes from the player's own copy, on the player's PC. The rules below
+apply to pull requests, example mods, test fixtures, documentation, release assets, and files attached to issues.
+
+Do not submit:
+
+- **The game's files, whole or in part.** That includes its archives and bundles, executables and DLLs, textures,
+  models, audio, video, fonts, shaders, text and settings files. It includes them converted, too, such as a texture
+  exported as a PNG or a re-encoded sound. Code that needs them reads them from the player's installation when it runs.
+- **Patches or diffs that carry the game's data,** in the repository or anywhere HellForge downloads from. A diff from
+  one build to another holds the content of the build it makes.
+- **Code taken from the game.** Decompiled or disassembled source, copied functions and lifted shaders are all out. The
+  facts needed to work with the game are fine: addresses, byte patterns, structure layouts, resource ids and field
+  names, as kept in `native/mod-sdk/` and `mappings/`. Generate them with the export scripts in `scripts/` where one
+  exists, and write your own code around them.
+- **Arrowhead's or Sony's logos, key art, icons or other artwork,** in the launcher, the docs or a mod. HELLDIVERS is a
+  trademark of Sony Interactive Entertainment. Use the name only to say what HellForge or a mod works with, never as the
+  name or branding of HellForge or a mod, and never in a way that suggests either company endorses it.
+- **Leaked or confidential material,** such as internal builds, documents or source from Arrowhead, Sony or their
+  partners.
+- **Ways around ownership or onto the live game.** That means removing the Steam ownership check, giving an account
+  premium content or Super Credits it doesn't own, connecting to Arrowhead's or Sony's servers, playing with people
+  outside HellForge, or getting around an active anti-cheat ([roadmap](docs/roadmap.md), "Not planned").
+
+If you are not sure whether something is allowed, ask in an issue before you open the pull request. A pull request that
+breaks these rules is closed, and anything of this kind that reaches the repository is removed.
 
 ## Branches and pull requests
 
-- **`dev`** is where work comes together: open pull requests against `dev`. Development builds are made from it.
+- **`dev`** is where work comes together: open pull requests against `dev`. Development builds are made from it,
+  among them a nightly build ([below](#nightly-builds)).
 - **`main`** holds releases. It changes only by a release pull request from `dev`, once that release has been checked
   (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`); a pull request into `main` from any other branch fails
   its checks.
@@ -41,6 +71,31 @@ not submit the game's files or code taken from the game, or code from other proj
 - **Launchers:** if you change a `HellForge.Cli` command, an option or its JSON output, update
   [docs/external-launchers.md](docs/external-launchers.md) in the same pull request and say so in it. Launchers built
   on the CLI read that page.
+
+## Nightly builds
+
+Each night that `dev` changed, `.github/workflows/nightly.yml` builds its newest commit and publishes it as the
+**nightly** pre-release: [releases/tag/nightly](https://github.com/SkyeShade/HellForge/releases/tag/nightly), with
+`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-scripts.zip` and their SHA-256 sums. Each nightly replaces the
+one before, and its `nightly` tag moves to the commit it was built from.
+
+- **For testers, not for playing:** nobody tests a nightly in game before it is published. Install it into a folder of
+  its own. It is never GitHub's "latest" release, and its notes list what changed since the previous nightly and the
+  changelog's Unreleased section.
+- **Its version says so:** the next release's number with `-nightly.<date>`, and the commit, as in
+  `HellForge 0.4.0-nightly.20261102 (e092804)`, wherever HellForge shows its version: the launcher's corner, Setup's
+  title, crash reports and session logs. The next release's number is `Version` in `Directory.Build.props` without its
+  label, or the next minor version once that one is released (`scripts/nightly/nightly.py version`). The workflow
+  writes it into the props file on the build machine only.
+- **Built as a release is,** with `scripts/Package-HellForge.ps1` and its checks, on CI's toolchain
+  (`.github/actions/build-tools`), and also refused if any file in it is one of the game's (`supported-build.json`'s
+  hashes). GitHub's build machine has no game files and no Steamworks SDK: the engine's `steam_api64.dll` stand-in is
+  generated from `data/steam-export-manifest.json`, the text-only list of the game DLL's exports, and there is no Steam
+  bridge or broker, so on Windows a nightly does not offer the sandbox.
+- **By hand:** Actions > Nightly > Run workflow; leave "publish" unticked for a dry run, which keeps the files as the
+  run's artifact for a week. GitHub schedules and offers this button only for the workflow on `main`, the default
+  branch; until the workflow is there, a change to it on `dev` runs it once as a dry run, and "Re-run all jobs" on that
+  run dry-runs `dev` as it is then.
 
 ## Changelog
 
@@ -88,7 +143,7 @@ Build outputs and test fixtures go to the ignored `artifacts/` folder. The suppo
 This repository is all of HellForge:
 
 - the launcher, setup and command-line tool: `src/HellForge.Launcher`, `src/HellForge.Setup`, `src/HellForge.Cli`,
-  `src/HellForge.Core`;
+  `src/HellForge.Core`, and `src/HellForge.SteamDownload` (setup's download of the supported build from Steam);
 - the engine: the session runner `src/HellForge.Session`, the local backend `src/HellForge.LocalBackend`, the mod loader
   `native/mod-loader`, the SDK stand-ins `native/sdk-shims` and `native/steam-cloud`, the network block
   `native/network-block`, and `scripts/`;

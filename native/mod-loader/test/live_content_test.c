@@ -4,9 +4,9 @@
  * behaviour in the stubs; live entities in a fake entity state. Included by stats_test.c after live_mods_test.c. */
 
 /* The load events as a fixture found them, put back at its end. */
-static LONG g_contentFired[HF_EVENT_MODS_CHANGED + 1];
-static void ContentEventsSave(void) { for (int e = 0; e <= HF_EVENT_MODS_CHANGED; e++) g_contentFired[e] = g_fired[e]; }
-static void ContentEventsRestore(void) { for (int e = 0; e <= HF_EVENT_MODS_CHANGED; e++) InterlockedExchange(&g_fired[e], g_contentFired[e]); }
+static LONG g_contentFired[HF_EVENT_SESSION_END + 1];
+static void ContentEventsSave(void) { for (int e = 0; e <= HF_EVENT_SESSION_END; e++) g_contentFired[e] = g_fired[e]; }
+static void ContentEventsRestore(void) { for (int e = 0; e <= HF_EVENT_SESSION_END; e++) InterlockedExchange(&g_fired[e], g_contentFired[e]); }
 
 /* A mod entry as a live change makes one (TxnModEntry's fresh one). */
 static HfMod* ContentMod(const char* id)

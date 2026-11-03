@@ -9,8 +9,9 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The Mods page: every mod in <installation>/mods as a row, in two groups: gameplay mods (friends need the same ones;
-// the order is up to them) and client-only ones (cosmetic packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
+// The Mods page: every mod in <installation>/mods as a row, in three groups: shared gameplay mods (friends need the same
+// ones; the order is up to them), per-player gameplay mods (each player keeps their own) and client-only ones (cosmetic
+// packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
 // on it into order: the bottom mod loads first, so the top one wins where two change the same thing (ModCatalog.
 // LoadOrder). Switches, the order and each pack's options are saved in hellforge-mods.json (ModSettings). A session
 // loads the enabled mods when it starts; while one runs, a switch the game can take goes to it at once (ModsLive.cs) and
@@ -27,6 +28,9 @@ public partial class MainWindow
     readonly Dictionary<Border, TextBlock> modNumbers = []; // each row's place number, renumbered when a row moves
     FileSystemWatcher? modsWatcher;
     DispatcherTimer? modsChanged;
+    // SDK 16 set_status: each code mod's line for the player in the current or last session (ModStatus), on its row
+    Dictionary<string, string> modStatuses = [];
+    DateTime modStatusesWritten;
 
     // A row being dragged: its group's rows (top first), where it was, and where it would go.
     sealed class ModDrag(string id, StackPanel panel, List<(ModManifest Mod, Border Row)> rows, int from)
@@ -104,10 +108,37 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
+    // The statuses of the current or last session's mods; the ones read before stay while the file is being replaced.
+    void ReadModStatuses()
+    {
+        if (runDirectory == null) { (modStatuses, modStatusesWritten) = ([], default); return; }
+        modStatusesWritten = ModStatus.WrittenUtc(runDirectory);
+        if (ModStatus.Read(runDirectory) is { } statuses) modStatuses = statuses;
+    }
+
+    // Each second while there is a run folder (RefreshRun): the page drawn again when a mod's status changed.
+    void FollowModStatuses()
+    {
+        if (runDirectory == null || !ModsPage.IsVisible || modDrag != null || ModStatus.WrittenUtc(runDirectory) == modStatusesWritten) return;
+        RefreshMods();
+    }
+
+    // The Mods page's first line: how many mods are on, how the order works, and when a change applies.
+    string ModsSummaryText(int mods, int on, int problems)
+    {
+        if (mods == 0 && problems == 0)
+            return "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder.";
+        var applies = LiveSwitches ? "While the game runs, switching a mod or changing its settings applies to it at once when the game can take it; anything else applies to the next session."
+            : "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
+        return $"{on} of {mods} mod{(mods == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " + applies +
+            (LiveSwitches && liveStatus.Length > 0 ? "\n" + liveStatus : "");
+    }
+
     void RefreshMods()
     {
         modDrag = null;
         premiumOwnership = null;
+        ReadModStatuses();
         ModsList.Children.Clear();
         modSwitches.Clear();
         modNumbers.Clear();
@@ -131,18 +162,13 @@ public partial class MainWindow
         // friends must match it
         mods = mods.Where(m => m.Id != ModCatalog.LocalStatsId).ToList();
         var active = ModCatalog.Active(mods);
-        ModsSummary.Text = mods.Count == 0 && problems.Count == 0
-            ? "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder."
-            : $"{active.Count} of {mods.Count} mod{(mods.Count == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " +
-              (LiveSwitches ? "While the game runs, switching a mod or changing its settings applies to it at once when the game can take it; anything else applies to the next session."
-                  : "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".")) +
-              (LiveSwitches && liveStatus.Length > 0 ? "\n" + liveStatus : "");
+        ModsSummary.Text = ModsSummaryText(mods.Count, active.Count, problems.Count);
         // what friends compare (ModCatalog.Digest)
-        var gameplay = active.Count(m => m.Gameplay);
+        var gameplay = active.Count(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.Shared);
         string compared;
         try
         {
-            compared = gameplay == 0 ? "No gameplay mods to compare: you can play with friends who have none."
+            compared = gameplay == 0 ? "No shared gameplay mods to compare: you can play with friends who have none."
                 : $"Modlist code {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}: friends need the same {gameplay} gameplay mod{(gameplay == 1 ? "" : "s")}; the order is up to you.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -166,8 +192,10 @@ public partial class MainWindow
         if (mods.Count > 0)
         {
             var number = 0;
-            AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "GAMEPLAY", "Friends need the same ones; keeping the same order avoids surprises.",
-                "No gameplay mods.", ref number);
+            AddModGroup(mods, mods.Where(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.Shared).ToList(), "GAMEPLAY",
+                "Friends need the same ones; keeping the same order avoids surprises.", "No gameplay mods.", ref number);
+            AddModGroup(mods, mods.Where(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.PerPlayer).ToList(), "PER PLAYER",
+                "Only on your PC: friends do not need them, and each player plays with their own.", "No per-player gameplay mods.", ref number);
             AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "CLIENT ONLY", "Only on your PC: friends need not have the same ones.",
                 "No client-only mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) or a Lua mod with Add mods...", ref number);
         }
@@ -204,7 +232,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get mods that run code or carry unchecked data only if their game is sandboxed and they trust them.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get only mods HellForge checks or has verified: never ones that run code or carry unchecked data.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
@@ -407,6 +435,9 @@ public partial class MainWindow
             : mod.Description;
         if (summary.Length > 0)
             text.Children.Add(new TextBlock { Text = summary, FontSize = 12, Classes = { "muted" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, IsVisible = !expanded });
+        if (modStatuses.TryGetValue(mod.Id, out var status))
+            text.Children.Add(new TextBlock { Text = (runner.IsRunning ? "In game: " : "Last session: ") + status, FontSize = 12, Foreground = Light,
+                TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 });
         text.Tapped += (_, _) =>
         {
             if (modDragged) { modDragged = false; return; } // the end of a drag, not a click
@@ -688,12 +719,15 @@ public partial class MainWindow
         return menu;
     }
 
-    // Saves the group's new order (the other group's as it is) and shows it.
+    // The Mods page's groups, top first: shared gameplay mods, per-player gameplay mods, cosmetic ones.
+    static int GroupOf(ModManifest mod) => mod.Cosmetic ? 2 : ModCatalog.Tier(mod) == CoopTier.PerPlayer ? 1 : 0;
+
+    // Saves the group's new order (the other groups' as they are) and shows it.
     void MoveMod(List<(ModManifest Mod, Border Row)> rows, int from, int to, List<ModManifest> all)
     {
         if (paths.ModsFolder == null || modsLocked || from < 0 || from >= rows.Count) return;
         var at = Math.Clamp(to > from ? to - 1 : to, 0, rows.Count - 1);
-        var cosmetic = rows[from].Mod.Cosmetic;
+        var group = GroupOf(rows[from].Mod);
         // the rows move at once, renumbered; the page is loaded again once that is drawn (the modlist code, a pack's place)
         var numbers = rows.Select(r => modNumbers.GetValueOrDefault(r.Row)?.Text).ToList();
         var moved = rows[from];
@@ -705,8 +739,9 @@ public partial class MainWindow
             for (var i = 0; i < rows.Count; i++)
                 if (modNumbers.TryGetValue(rows[i].Row, out var number)) number.Text = numbers[i];
         }
-        var ids = rows.Select(r => r.Mod.Id);
-        var order = cosmetic ? all.Where(m => m.Gameplay).Select(m => m.Id).Concat(ids) : ids.Concat(all.Where(m => m.Cosmetic).Select(m => m.Id));
+        var ids = rows.Select(r => r.Mod.Id).ToList();
+        var order = Enumerable.Range(0, 3).SelectMany(g => g == group ? ids
+            : all.Where(m => GroupOf(m) == g && !ids.Contains(m.Id)).Select(m => m.Id));
         try { ModSettings.SetOrder(paths.ModsFolder, order.ToList()); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod order: " + error.Message, Red); }
         Dispatcher.UIThread.Post(RefreshMods, DispatcherPriority.Background);

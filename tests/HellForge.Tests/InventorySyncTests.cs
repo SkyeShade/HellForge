@@ -35,7 +35,7 @@ static class InventorySyncTests
             check(InventorySync.FindCaptureProxy(install) == proxy, "The installed capture was not found.");
         });
 
-        test("The capture's hosts line never joins the player's last entry, and cleanup removes only the capture's lines", () => Hosts(root, check));
+        test("The capture's hosts line never joins the player's last entry, cleanup removes only the capture's lines, and a read-only, missing or briefly held hosts file ends as it was", () => Hosts(root, check));
 
         test("A snapshot seal holds only for its files, its Steam account and this installation's key", () => Seals(root, check));
 
@@ -44,6 +44,9 @@ static class InventorySyncTests
 
         test("The capture's state says when it listens and when its files are sealed, for the launcher to take while the game plays on", () =>
             State(root, check));
+
+        test("A capture that does not start says why: its own reason, Windows' refusal, a crash or a kill, and names the security program and file to allow",
+            () => StartFailures(root, check));
 
         test("The capture logs a refused request's short fields, never a token-like value, and only names of headers and query parameters", () =>
             Log(check));
@@ -54,12 +57,73 @@ static class InventorySyncTests
         test("The capture's diagnostics give shapes, causes and a tally without values, and a sync collects the game's anti-cheat and crash logs", () =>
             Diagnostics(root, check));
 
+        test("The capture grants the launcher's Windows account its sync folder, by SID, so a standard account's launcher sees it", () =>
+            Grants(root, check));
+
+        test("A sync that ends or stalls without an inventory says whether the game never started, closed, or ran without logging in", () =>
+            Outcomes(check));
+
         test("Steam's 32-bit account id is the SteamID64 of an individual account", () =>
             check(SteamAccount.FromAccountId(39734273) == 76561198000000001, "Wrong SteamID64."));
 
         test("Profile backups are kept newest first, ten at most, and only profile copies count", () => Backups(root, check));
 
         test("Import choices default per category, keep what the file sets and refuse rules a category does not offer", () => Settings(root, check));
+    }
+
+    static void Grants(string root, Action<bool, string> check)
+    {
+        const string Launcher = "S-1-5-21-1004336348-1177238915-682003330-1001", Admin = "S-1-5-21-1004336348-1177238915-682003330-500";
+        var sync = Path.Combine(root, "sync-grants", "logs", "sync-1");
+        var snapshot = Path.Combine(root, "sync-grants", InventorySync.SnapshotFolder, "player");
+        var arguments = InventorySync.CaptureProxyArguments(sync, snapshot, Account, Launcher);
+        var at = Array.IndexOf(arguments, "--grant-sid");
+        check(at >= 0 && at + 1 < arguments.Length && arguments[at + 1] == Launcher, "The launcher's account is not passed to the capture.");
+        check(Directory.Exists(sync), "The sync folder is not made before the capture starts.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, null).Contains("--grant-sid"), "A grant without an account.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, "Everyone").Contains("--grant-sid"), "A name passed as a SID.");
+        check(!InventorySync.CaptureProxyArguments(sync, snapshot, Account, Launcher + " *S-1-1-0:F").Contains("--grant-sid"), "A SID with an extra grant passed.");
+
+        check(CaptureAccess.IsSid(Launcher) && CaptureAccess.IsSid("S-1-5-18"), "A real SID refused.");
+        foreach (var bad in new[] { "", "S-1", "S-1-5-", "*S-1-5-18", "S-1-5-18:F", "S-1-5-18 /grant", "S-1-5-18\n", "BUILTIN\\Users" })
+            check(!CaptureAccess.IsSid(bad), "Not a SID accepted: " + bad);
+
+        var other = CaptureAccess.SyncFolderAclArguments(@"C:\HF\logs\sync-1", Admin, Launcher);
+        check(other == $"\"C:\\HF\\logs\\sync-1\" /inheritance:r /grant:r *{Admin}:(OI)(CI)F *{Launcher}:(OI)(CI)F",
+            "A capture under another account does not grant the launcher's: " + other);
+        var same = CaptureAccess.SyncFolderAclArguments(@"C:\HF\logs\sync-1", Launcher, Launcher);
+        check(same == $"\"C:\\HF\\logs\\sync-1\" /inheritance:r /grant:r *{Launcher}:(OI)(CI)F", "The same account granted twice: " + same);
+        check(CaptureAccess.SyncFolderAclArguments("x", Admin, null).EndsWith($"*{Admin}:(OI)(CI)F", StringComparison.Ordinal), "No grant without a launcher account.");
+
+        check(InventorySync.CanReadSyncFolder(sync), "An ordinary folder is unreadable.");
+        // Only a refusal is another account's folder; a missing one is reported by what reads it.
+        check(InventorySync.CanReadSyncFolder(Path.Combine(sync, "missing")), "A missing folder is reported as another account's.");
+        check(InventorySync.FinalizeCapture(Path.Combine(sync, "missing"), snapshot) == "The capture finished without an inventory.",
+            "A missing capture is not reported as one without an inventory.");
+    }
+
+    static void Outcomes(Action<bool, string> check)
+    {
+        check(InventorySync.GameState(false, false, false) == SyncGameState.NotAsked, "Not asked.");
+        check(InventorySync.GameState(true, false, false) == SyncGameState.NotStarted, "Not started.");
+        check(InventorySync.GameState(true, true, true) == SyncGameState.Running, "Running.");
+        check(InventorySync.GameState(true, true, false) == SyncGameState.Closed, "Closed.");
+
+        check(InventorySync.WaitingProblem(SyncGameState.NotStarted, TimeSpan.FromSeconds(10)) == null, "Steam was not given time to start the game.");
+        check(InventorySync.WaitingProblem(SyncGameState.NotStarted, InventorySync.GameStartGrace)?.Contains("Steam has not started", StringComparison.Ordinal) == true,
+            "A game Steam never started is not said.");
+        check(InventorySync.WaitingProblem(SyncGameState.Closed, TimeSpan.Zero)?.Contains("closed before", StringComparison.Ordinal) == true, "A closed game is not said.");
+        check(InventorySync.WaitingProblem(SyncGameState.Running, TimeSpan.FromHours(1)) == null, "A running game is a problem.");
+
+        const string Log = @"C:\HF\logs\sync-1\proxy.log";
+        var messages = new[] { SyncGameState.NotAsked, SyncGameState.NotStarted, SyncGameState.Closed, SyncGameState.Running }
+            .Select(state => InventorySync.NothingCaptured(state, 10, Log)).ToList();
+        check(messages.Distinct().Count() == 4, "Two outcomes read the same.");
+        check(messages[0].Contains("could not start", StringComparison.Ordinal) && messages[0].Contains(Log, StringComparison.Ordinal), "A capture that never listened.");
+        check(messages[1].Contains("never started", StringComparison.Ordinal), "A game that never started.");
+        check(messages[2].Contains("closed before", StringComparison.Ordinal), "A game that closed.");
+        check(messages[3].Contains("title screen", StringComparison.Ordinal), "A game that ran without logging in.");
+        check(messages.All(message => !message.Contains("administrator", StringComparison.OrdinalIgnoreCase)), "A message tells the player to run as administrator.");
     }
 
     static void Hosts(string root, Action<bool, string> check)
@@ -73,13 +137,71 @@ static class InventorySyncTests
             File.WriteAllText(hosts, original);
             CaptureHosts.Add(hosts, Host);
             var lines = File.ReadAllLines(hosts);
-            check(lines.Contains(CaptureHosts.Marker) && lines.Contains("127.0.0.1 " + Host), name + ": the capture's lines are not lines of their own.");
+            check(lines.Any(line => line.StartsWith(CaptureHosts.Marker, StringComparison.Ordinal)) && lines.Contains("127.0.0.1 " + Host), name + ": the capture's lines are not lines of their own.");
             check(!original.Contains("foo", StringComparison.Ordinal) || lines.Contains("0.0.0.0 foo.com"), name + ": the player's last entry was changed.");
             check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
-            check(File.ReadAllLines(hosts).SequenceEqual(original.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)), name + ": cleanup changed the player's entries.");
+            check(File.ReadAllText(hosts) == original.Replace("\r\n", Environment.NewLine, StringComparison.Ordinal), name + ": cleanup did not leave the file as it was, final newline or not.");
             check(!CaptureHosts.Remove(hosts, Host), name + ": a second cleanup removed more.");
         }
         check(!CaptureHosts.Remove(Path.Combine(folder, "missing"), Host), "Cleanup of a missing file removed something.");
+
+        // No hosts file at all (and no etc folder): Add creates one, cleanup deletes it again.
+        var missing = Path.Combine(folder, "no-etc", "hosts");
+        CaptureHosts.Add(missing, Host);
+        check(File.ReadAllLines(missing).Any(line => line.Contains(CaptureHosts.Marker, StringComparison.Ordinal) && line.Contains(CaptureHosts.CreatedFlag, StringComparison.Ordinal)),
+            "A created hosts file does not say so.");
+        check(CaptureHosts.Remove(missing, Host) && !File.Exists(missing), "Cleanup kept the hosts file the capture created.");
+
+        // The launcher's message for a failed hosts write.
+        check(CaptureHosts.ReadFailure(folder) == null, "A failure is read without its file.");
+        CaptureHosts.WriteFailure(folder, "Another program kept the hosts file open.");
+        check(CaptureHosts.ReadFailure(folder) == "Another program kept the hosts file open.", "The failure did not round-trip.");
+        check(new HostsFileException(HostsFailure.Blocked, @"C:\Windows\System32\drivers\etc\hosts", null).Message.Contains("HostsFileHijack", StringComparison.Ordinal),
+            "A refused write does not name Defender's detection.");
+
+        // The read-only attribute and file locks are Windows behaviour.
+        if (!OperatingSystem.IsWindows()) return;
+        foreach (var (name, original) in new[] { ("read-only-no-newline", "# player\r\n0.0.0.0 foo.com"), ("read-only", "0.0.0.0 foo.com\r\n") })
+        {
+            var hosts = Path.Combine(folder, name);
+            File.WriteAllText(hosts, original);
+            File.SetAttributes(hosts, FileAttributes.ReadOnly | FileAttributes.Archive);
+            CaptureHosts.Add(hosts, Host);
+            check(File.GetAttributes(hosts).HasFlag(FileAttributes.ReadOnly), name + ": Add left the hosts file writable.");
+            var lines = File.ReadAllLines(hosts);
+            check(lines.Contains("127.0.0.1 " + Host) && lines.Contains("0.0.0.0 foo.com"), name + ": Add did not write past read-only, or changed the player's entry.");
+            check(lines.Any(line => line.Contains(CaptureHosts.ReadOnlyFlag, StringComparison.Ordinal)), name + ": the marker does not record read-only.");
+            // A crash between the write and the attribute: cleanup still restores read-only.
+            File.SetAttributes(hosts, FileAttributes.Archive);
+            check(CaptureHosts.Remove(hosts, Host), name + ": cleanup found nothing.");
+            check(File.GetAttributes(hosts).HasFlag(FileAttributes.ReadOnly), name + ": cleanup after a crash left the hosts file writable.");
+            check(File.ReadAllText(hosts) == original.Replace("\r\n", Environment.NewLine, StringComparison.Ordinal), name + ": cleanup changed the player's entries or their final newline.");
+            File.SetAttributes(hosts, FileAttributes.Normal);
+        }
+
+        var locked = Path.Combine(folder, "locked");
+        File.WriteAllText(locked, "0.0.0.0 foo.com\r\n");
+        var retry = CaptureHosts.LockedRetry;
+        try
+        {
+            CaptureHosts.LockedRetry = TimeSpan.FromMilliseconds(400);
+            using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                HostsFailure? failure = null;
+                try { CaptureHosts.Add(locked, Host); }
+                catch (HostsFileException error) { failure = error.Failure; }
+                check(failure == HostsFailure.InUse, "A hosts file held open is not reported as in use.");
+            }
+            // Held open only briefly (an antivirus scan): the retry gets through.
+            CaptureHosts.LockedRetry = TimeSpan.FromSeconds(5);
+            var holder = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None);
+            var release = Task.Delay(500).ContinueWith(_ => holder.Dispose(), TaskScheduler.Default);
+            CaptureHosts.Add(locked, Host);
+            release.Wait();
+            check(File.ReadAllLines(locked).Contains("127.0.0.1 " + Host), "A briefly held hosts file was not retried.");
+            check(CaptureHosts.Remove(locked, Host) && File.ReadAllLines(locked).SequenceEqual(["0.0.0.0 foo.com"]), "Cleanup after a retry changed the player's entries.");
+        }
+        finally { CaptureHosts.LockedRetry = retry; }
     }
 
     static void Seals(string root, Action<bool, string> check)
@@ -172,6 +294,88 @@ static class InventorySyncTests
         check(InventorySync.IsSealed(sync) && CaptureState.Read(sync) is { Progression: false }, "A sealed partial capture reads wrong.");
         File.WriteAllText(Path.Combine(sync, CaptureState.FileName), "{\"sealed\":");
         check(!InventorySync.IsSealed(sync), "A half-written state reads as sealed.");
+    }
+
+    static void StartFailures(string root, Action<bool, string> check)
+    {
+        const string Proxy = @"C:\HellForge\app\capture\HellForge.CaptureProxy.exe";
+        const string Log = @"C:\HellForge\logs\sync-1\proxy.log";
+
+        // Every capture-side problem has an exit code of its own that reads back, clear of 0, 1 and 2.
+        foreach (var problem in new[] { CaptureProblem.EvidenceFolder, CaptureProblem.LeftoverCapture, CaptureProblem.HostsBusy,
+            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied })
+        {
+            var code = CaptureStart.ExitCode(problem);
+            check(code >= 20 && CaptureStart.FromExitCode(code) == problem, problem + ": its exit code does not read back.");
+        }
+        check(CaptureStart.FromExitCode(0) == CaptureProblem.None && CaptureStart.FromExitCode(1) == CaptureProblem.None &&
+            CaptureStart.FromExitCode(2) == CaptureProblem.None, "A finished capture's exit code reads as a start failure.");
+
+        // The failure file wins over the exit code, and a broken or unknown one is ignored.
+        var sync = Directory.CreateDirectory(Path.Combine(root, "sync-start")).FullName;
+        check(CaptureStart.Read(sync) == null, "A missing failure file reads as a failure.");
+        CaptureStart.Write(sync, CaptureProblem.PortInUse, "used by vmware-hostd.exe (process 4242)");
+        check(CaptureStart.Read(sync) is { Problem: CaptureProblem.PortInUse, Detail: "used by vmware-hostd.exe (process 4242)" }, "The failure file does not read back.");
+        check(CaptureStart.FromExit(CaptureStart.ExitCode(CaptureProblem.Offline), CaptureStart.Read(sync), "") is { Problem: CaptureProblem.PortInUse },
+            "The exit code won over the capture's own reason.");
+        File.WriteAllText(Path.Combine(sync, CaptureStart.FailureFile), """{"problem":"Teapot"}""");
+        check(CaptureStart.Read(sync) == null, "An unknown problem was read.");
+        File.WriteAllText(Path.Combine(sync, CaptureStart.FailureFile), "{\"problem\":");
+        check(CaptureStart.Read(sync) == null, "A half-written failure file was read.");
+
+        // A hosts failure's one message is the hosts write's own reason (hosts-failure.txt), shown as written.
+        const string hostsReason = @"avp.exe (pid 77) kept the hosts file (C:\Windows\System32\drivers\etc\hosts) open, so the sync could not change it. Close it, then sync again.";
+        var hosts = CaptureStart.FromExit(CaptureStart.ExitCode(CaptureProblem.HostsBusy), null, null, hostsReason);
+        check(hosts is { Problem: CaptureProblem.HostsBusy, Detail: hostsReason } &&
+            CaptureStart.FromExit(CaptureStart.ExitCode(CaptureProblem.HostsDenied), null, null, "Windows refused.") is { Problem: CaptureProblem.HostsDenied },
+            "A hosts write's reason is not the hosts failure.");
+        var hostsMessage = CaptureStart.Message(hosts, ["Kaspersky Premium"], Proxy, Log);
+        check(hostsMessage.StartsWith(hostsReason, StringComparison.Ordinal) && hostsMessage.Split("kept the hosts file").Length == 2 &&
+            hostsMessage.Contains("Kaspersky Premium may have blocked it", StringComparison.Ordinal), "A hosts failure is not told once, with the program to allow: " + hostsMessage);
+
+        // How a capture ended without a reason of its own. The 2026-10-30 report (#160): the hosts file held by another
+        // process crashed the capture before this classification existed.
+        const string crashedLog = "01:55:00.625 CA installed\r\n01:55:00.712 crashed: IOException: The process cannot access the file " +
+            @"'C:\windows\system32\drivers\etc\hosts' because it is being used by another process." + "\r\n";
+        check(CaptureStart.FromExit(CaptureStart.UnhandledException, null, crashedLog) is { Problem: CaptureProblem.Crashed } crash &&
+            crash.Detail!.StartsWith("IOException: The process cannot access the file", StringComparison.Ordinal), "A crash is not read from proxy.log.");
+        check(CaptureStart.FromExit(CaptureStart.UnhandledException, null, null) is { Problem: CaptureProblem.Crashed, Detail: null }, "A crash without a log is not a crash.");
+        check(CaptureStart.FromExit(1, null, null) is { Problem: CaptureProblem.Stopped } silent && silent.Detail!.Contains("wrote nothing", StringComparison.Ordinal),
+            "A capture killed before it wrote anything does not say so.");
+        check(CaptureStart.FromExit(1, null, "01:55:00.527 upstream 1.2.3.4:443\r\n") is { Problem: CaptureProblem.Stopped } killed &&
+            killed.Detail == "exit code 0x00000001", "A capture stopped from outside is not reported as stopped.");
+        check(CaptureStart.FromExit(CaptureStart.ExitCode(CaptureProblem.Certificate), null, null) is { Problem: CaptureProblem.Certificate, Detail: null },
+            "A capture's exit code without its failure file is not used.");
+
+        // Windows' answers to the elevated start.
+        check(CaptureStart.FromStartError(1223) == CaptureProblem.Declined && CaptureStart.FromStartError(2) == CaptureProblem.Missing &&
+            CaptureStart.FromStartError(225) == CaptureProblem.Blocked && CaptureStart.FromStartError(5) == CaptureProblem.Blocked &&
+            CaptureStart.FromStartError(4551) == CaptureProblem.Blocked, "Windows' refusal to start the capture is misread.");
+
+        // Security Center's list without Microsoft's own, and the advice names the program and the exact file.
+        check(SecurityProducts.ThirdParty(["Windows Defender\r", "Kaspersky Premium", "", "Microsoft Defender Antivirus", "kaspersky premium", "Avast Antivirus"])
+            .SequenceEqual(["Kaspersky Premium", "Avast Antivirus"]), "Security Center's names are filtered wrong.");
+        var kaspersky = CaptureStart.Message(new CaptureFailure(CaptureProblem.Stopped, "exit code 0x00000001"), ["Kaspersky Premium"], Proxy, Log);
+        check(kaspersky.Contains("Kaspersky Premium may have blocked it", StringComparison.Ordinal) && kaspersky.Contains(Proxy, StringComparison.Ordinal) &&
+            kaspersky.Contains("Do not restrict application activity", StringComparison.Ordinal) && kaspersky.Contains(Log, StringComparison.Ordinal),
+            "A Kaspersky block does not name Kaspersky, the file and its setting: " + kaspersky);
+        var two = CaptureStart.Message(new CaptureFailure(CaptureProblem.HostsBusy, "avp.exe (pid 77) kept the hosts file open"), ["Avast Antivirus", "Norton 360"], Proxy, Log);
+        check(two.Contains("Avast Antivirus or Norton 360 may have blocked it", StringComparison.Ordinal) && two.Contains("avp.exe (pid 77)", StringComparison.Ordinal) &&
+            !two.Contains("Kaspersky", StringComparison.Ordinal), "Two security programs or the hosts file's holder are not named: " + two);
+        var none = CaptureStart.Message(new CaptureFailure(CaptureProblem.Blocked, "Operation did not complete successfully because the file contains a virus (Windows error 225)"), [], Proxy, Log);
+        check(none.Contains("Windows Security", StringComparison.Ordinal) && none.Contains(Proxy, StringComparison.Ordinal), "A block without a third-party program does not say where to allow it: " + none);
+
+        // What a security program does not cause is not blamed on one, and the player is told what to do instead.
+        var port = CaptureStart.Message(new CaptureFailure(CaptureProblem.PortInUse, "used by vmware-hostd.exe (process 4242)"), ["Kaspersky Premium"], Proxy, Log);
+        check(port.Contains("vmware-hostd.exe", StringComparison.Ordinal) && port.Contains("close it", StringComparison.Ordinal) &&
+            !port.Contains("Kaspersky", StringComparison.Ordinal), "A port held by another program is blamed on the security program: " + port);
+        var declined = CaptureStart.Message(new CaptureFailure(CaptureProblem.Declined, null), [], Proxy, Log);
+        check(declined.Contains("administrator prompt", StringComparison.Ordinal) && !declined.Contains("security", StringComparison.OrdinalIgnoreCase),
+            "A declined prompt is reported as something else: " + declined);
+        var offline = CaptureStart.Message(new CaptureFailure(CaptureProblem.Offline, null), [], Proxy, Log);
+        check(offline.Contains("internet", StringComparison.Ordinal) && !offline.Contains(Proxy, StringComparison.Ordinal), "No connection is blamed on a security program.");
+        foreach (var problem in Enum.GetValues<CaptureProblem>().Where(problem => problem != CaptureProblem.None))
+            check(!CaptureStart.Message(new CaptureFailure(problem, null), [], Proxy, Log).Contains("()", StringComparison.Ordinal), problem + ": an empty detail shows.");
     }
 
     static void Diagnostics(string root, Action<bool, string> check)

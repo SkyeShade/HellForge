@@ -212,14 +212,14 @@ public sealed unsafe class SteamLobbyDirectory(Action<string> log) : ILobbyDirec
         if (searching || !searches.TryPeek(out var next)) return;
         searching = true;
         var (query, done) = next;
-        Text(DirectoryKeys.Protocol, query.Protocol, Equal);
+        Text(query.WireKey, query.Wire, Equal);
         foreach (var (key, value) in query.Equal)
             if (key.StartsWith("number_key", StringComparison.Ordinal) && int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number))
                 fixed (byte* k = Utf8(key)) numericalFilter(matchmaking, k, number, Equal);
             else Text(key, value, Equal);
         fixed (byte* slots = Utf8(DirectoryKeys.Slots)) numericalFilter(matchmaking, slots, 1, GreaterOrEqual);
         distanceFilter(matchmaking, DistanceWorldwide);
-        resultCountFilter(matchmaking, Math.Clamp(query.Count, 1, 50));
+        resultCountFilter(matchmaking, Math.Clamp(query.Count, 1, DirectoryQuery.MaxResults));
         Call(requestLobbyList(matchmaking), LobbyMatchList, 4, result =>
         {
             searches.Dequeue();

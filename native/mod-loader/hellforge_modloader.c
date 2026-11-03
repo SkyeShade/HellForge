@@ -10,8 +10,11 @@
  *   entity_region <size> <map header hex>
  *   component <name> <offset> <header hex> <index> <indices> <records> <record offset> <stride>
  *   mod <id> <folder> <dll> [live]           (live: SDK 16, it may be taken out while the game runs)
+ *   mod_version <id> <version>              (a code mod's version, for modloader.log)
  *   stat <mod id> ...                       (stats.c)
- *   nettype <mod id> <name> <kind> <expect bits> <expect min> <bits>   (a mod's networkFieldTypes: nettypes.c) */
+ *   nettype <mod id> <name> <kind> <expect bits> <expect min> <bits>   (a mod's networkFieldTypes: nettypes.c)
+ *   function <name> <module> <rva hex> <hook 0|1> <code pattern>  (a game function by name, added to the build's own)
+ *   global <name> <module> <rva hex> <witness rva hex> <witness code>  (a game global by name, likewise) */
 #define WIN32_LEAN_AND_MEAN
 #define HF_MOD_LOADER
 #include <windows.h>
@@ -21,15 +24,18 @@
 #include <string.h>
 #include <math.h>
 #include <tlhelp32.h>
+#include <dbghelp.h> /* MiniDumpWriteDump's types: the small crash dump (crash_notes.c) */
 #include "hellforge_mod.h"
 #include "MinHook.h"
 #include "hde/hde64.h" /* MinHook's instruction decoder: FarHook */
 #include "../common/hf_privacy.h"
+#include "../common/hf_log_header.h"
 
 #define MAX_MODS 192 /* code and stats mods from the plan, then Lua mods (lua_bridge.c) */
 #define MAX_COMPONENTS 64
 #define MAX_CALLBACKS 256
 #define MAX_PINS 4
+#define STATUS_MAX 192 /* a mod's status line with its 0 (SDK 16, set_status: mod_status.c) */
 
 struct HfMod
 {
@@ -56,6 +62,9 @@ struct HfMod
     int leftover; /* taken out with something of it possibly left (live_code.c CodeRemove): its entry is never set up again */
     uintptr_t imageBase, imageEnd;
     int (*unload)(const HfApi* api, HfMod* mod, uint32_t reason);
+    char version[64]; /* a code mod's version, from the plan (mod_identity.c) */
+    char status[STATUS_MAX];      /* its status line for the player (SDK 16, set_status), as the launcher shows it */
+    char statusGiven[STATUS_MAX]; /* the text set_status was given last, to skip the same text again cheaply */
 };
 
 typedef struct Component
@@ -95,6 +104,7 @@ static int g_modCount;
  * player's load order (2026-10-18: friends with the same mods in another order). g_mods stays in load order: the
  * deferred edits queued while they set up apply in it (fields.c), so the top mod still wins a conflict. */
 static int g_modsSettingUp;
+static void PlanModVersion(const char* id, const char* version); /* mod_identity.c */
 static int ModLoadIndex(const HfMod* mod) { return mod >= g_mods && mod < g_mods + g_modCount ? mod->order : MAX_MODS; }
 /* The code mods' set-up order: indices into g_mods by mod id. */
 static void SetupOrder(int order[MAX_MODS])
@@ -111,7 +121,7 @@ static void SetupOrder(int order[MAX_MODS])
 static Callback g_callbacks[MAX_CALLBACKS];
 static int g_callbackCount;
 static SRWLOCK g_callbacksLock = SRWLOCK_INIT; /* a live change takes a mod's callbacks out (live_code.c) */
-static volatile LONG g_fired[HF_EVENT_MODS_CHANGED + 1];
+static volatile LONG g_fired[HF_EVENT_SESSION_END + 1];
 /* The load events in the order they fired (a mod set up while the game runs hears them in it: live_code.c). */
 static HfEvent g_fireOrder[4];
 static volatile LONG g_fireCount;
@@ -163,11 +173,14 @@ static void Note(const char* format, ...)
     va_end(arguments);
 }
 
+/* A log of the session's folder, opened to append, its dated line first (hf_log_header.h: the lines carry UTC times). */
 static HANDLE OpenLog(const wchar_t* name)
 {
     wchar_t path[MAX_PATH];
     if (!g_logs[0] || swprintf(path, MAX_PATH, L"%ls\\%ls", g_logs, name) < 0) return INVALID_HANDLE_VALUE;
-    return CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HfLogHeader(file);
+    return file;
 }
 
 /* While the live editor's request runs, its mod's last message is kept: the reason a refusal gives (live.c). */
@@ -371,6 +384,8 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
 }
 
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
+#include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
+#include "globals.c" /* game globals by name (SDK 16) */
 
 /* ---- network field types ---------------------------------------------------------------------------------------- */
 
@@ -607,7 +622,10 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
+#include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
+#include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
+#include "terminal.c"
 #include "abilities.c"
 #include "events.c"
 #include "stats.c"
@@ -620,18 +638,23 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 
+/* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
+static volatile LONG g_exiting;
+
 /* An event to the mods registered for it (only: one mod's, a live set-up's replay), from a copy of the list taken
- * under its lock, so a callback may register more. */
+ * under its lock, so a callback may register more. As the game quits no lock is taken: no other thread is left to
+ * change the list, and one that held a lock when it was ended would hold it for ever. */
 static void DeliverTo(HfEvent event, const HfMod* only)
 {
     static Callback copy[MAX_CALLBACKS];
     static SRWLOCK copying = SRWLOCK_INIT; /* the copy is one: the watch thread and a live change never deliver at once */
-    AcquireSRWLockExclusive(&copying);
+    int locked = !g_exiting;
+    if (locked) AcquireSRWLockExclusive(&copying);
     int n = 0;
-    AcquireSRWLockShared(&g_callbacksLock);
+    if (locked) AcquireSRWLockShared(&g_callbacksLock);
     for (int i = 0; i < g_callbackCount; i++)
         if (g_callbacks[i].event == event && g_callbacks[i].mod->loaded && (only == NULL || g_callbacks[i].mod == only)) copy[n++] = g_callbacks[i];
-    ReleaseSRWLockShared(&g_callbacksLock);
+    if (locked) ReleaseSRWLockShared(&g_callbacksLock);
     for (int i = 0; i < n; i++)
     {
         Note("event %d -> %s", (int)event, copy[i].mod->id);
@@ -640,7 +663,7 @@ static void DeliverTo(HfEvent event, const HfMod* only)
         copy[i].function(copy[i].mod, event, copy[i].user);
         g_callingMod = outer;
     }
-    ReleaseSRWLockExclusive(&copying);
+    if (locked) ReleaseSRWLockExclusive(&copying);
 }
 
 static void Deliver(HfEvent event) { DeliverTo(event, NULL); }
@@ -649,8 +672,8 @@ static void Fire(HfEvent event)
 {
     if (event == HF_EVENT_ENTITIES_READY) StratagemPayloadsCheck(); /* nothing calls in an entity that is not there */
     if (event == HF_EVENT_ENTITIES_READY) ApplyFieldEdits(); /* SDK 6 deferred edits, before any mod hears of it */
-    LONG at = g_fireCount;
-    if (!g_fired[event] && at < 4) { g_fireOrder[at] = event; InterlockedExchange(&g_fireCount, at + 1); }
+    LONG at = g_fireCount; /* the load events only: a live set-up hears them again, never the session's end */
+    if (!g_fired[event] && event <= HF_EVENT_PROJECTILES_READY && at < 4) { g_fireOrder[at] = event; InterlockedExchange(&g_fireCount, at + 1); }
     InterlockedExchange(&g_fired[event], 1);
     Deliver(event);
 }
@@ -659,7 +682,7 @@ static uint64_t ApiResourceHash(const char* name) { return name != NULL ? Murmur
 
 static int ApiOn(HfMod* mod, HfEvent event, HfEventCallback callback, void* user)
 {
-    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_MODS_CHANGED || ModGone(mod)) return 1;
+    if (mod == NULL || callback == NULL || event < HF_EVENT_GAME_LOADED || event > HF_EVENT_SESSION_END || ModGone(mod)) return 1;
     AcquireSRWLockExclusive(&g_callbacksLock);
     int ok = g_callbackCount < MAX_CALLBACKS;
     if (ok) g_callbacks[g_callbackCount++] = (Callback){mod, event, callback, user};
@@ -761,6 +784,7 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
@@ -821,7 +845,9 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
 
@@ -923,6 +949,8 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }
 
+#include "mod_status.c" /* SDK 16: set_status, and the session's end (WatchPause) */
+
 static DWORD WINAPI Watch(void* parameter)
 {
     ULONGLONG started = GetTickCount64();
@@ -945,7 +973,7 @@ static DWORD WINAPI Watch(void* parameter)
         WatchRegion(elapsed);
         WatchWaiting();
         WatchRunning();
-        Sleep(elapsed < 180000 ? 5 : 250);
+        WatchPause(elapsed < 180000 ? 5 : 250); /* ends early when the session runner stops the session */
     }
     return 0;
 }
@@ -1011,6 +1039,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
+    if (FnPlanLine(f, n) || GlPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
@@ -1056,7 +1085,9 @@ static void PlanData(char** f, int n)
         snprintf(mod->folder, sizeof mod->folder, "%s", f[2]);
         Utf8ToWide(f[3], mod->dll, MAX_PATH);
         mod->live = n == 5; /* SDK 16: it may be taken out while the game runs */
+        mod->version[0] = 0;
     }
+    else if (n == 3 && strcmp(f[0], "mod_version") == 0) PlanModVersion(f[1], f[2]);
 }
 
 /* One line of the plan. 1 when it refuses the plan. */
@@ -1104,7 +1135,25 @@ static int ReadPlan(const wchar_t* path)
 #include "netreap.c"
 #include "coop_diag.c" /* after live.c: the co-op role */
 
+#include "mod_identity.c" /* the version, SHA-256 and load error of each code mod */
+
 typedef int (*InitFunction)(const HfApi* api, HfMod* mod);
+
+/* A mod's DLL that LoadLibrary refused: Windows' error, and when code integrity refused it (4551, 577 and the reputation
+   codes: Smart App Control does so to an unsigned DLL, SmartAppControl.cs), that too. */
+static void NoteLoadFailure(const HfMod* mod, DWORD loadError)
+{
+    int blocked = loadError == 4551 || loadError == 577 || (loadError >= 4556 && loadError <= 4559) || (loadError >= 4580 && loadError <= 4582);
+    if (blocked)
+    {
+        Note("%s: not loaded (the DLL could not be loaded: Windows error %lu, an Application Control policy such as Smart App "
+            "Control blocked it)", mod->id, (unsigned long)loadError);
+        return;
+    }
+    char error[288]; /* "error 126: The specified module could not be found." (mod_identity.c) */
+    LoadError(loadError, error, sizeof error);
+    Note("%s: not loaded (the DLL could not be loaded: Windows %s)", mod->id, error);
+}
 
 /* The SDK's table of functions, handed to every mod. */
 static void ApiInit(void)
@@ -1116,7 +1165,7 @@ static void ApiInit(void)
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
-        ApiLoadPhase, ApiUnhook};
+        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus, ApiLoadPhase, ApiUnhook};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
@@ -1127,14 +1176,17 @@ static void SetupMod(HfMod* mod)
     swprintf(logName, 128, L"mod-%hs.log", mod->id);
     mod->log = OpenLog(logName);
     if (!wcscmp(mod->dll, L"-")) { mod->loaded = 1; Note("%s: data-only stats mod loaded", mod->id); return; }
+    NoteModIdentity(mod);
     mod->module = LoadLibraryExW(mod->dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    DWORD loadError = mod->module == NULL ? GetLastError() : 0;
     ModImage(mod); /* live_code.c: its image, and its unload export */
     InitFunction init = mod->module != NULL ? (InitFunction)(void*)GetProcAddress(mod->module, "hellforge_mod_init") : NULL;
     /* Mods built before the rename (HD2 Beyond The Stars) export bts_mod_init; the API is the same. */
     if (init == NULL && mod->module != NULL) init = (InitFunction)(void*)GetProcAddress(mod->module, "bts_mod_init");
     if (init == NULL)
     {
-        Note("%s: not loaded (%s)", mod->id, mod->module == NULL ? "the DLL could not be loaded" : "it exports no hellforge_mod_init");
+        if (mod->module == NULL) NoteLoadFailure(mod, loadError);
+        else Note("%s: not loaded (it exports no hellforge_mod_init)", mod->id);
         if (mod->module != NULL) FreeLibrary(mod->module);
         return;
     }
@@ -1166,6 +1218,8 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_log = OpenLog(L"modloader.log");
     if (g_statsProbesSkipped) Note("stats: %d observation(s) in the plan could not be read and are not shown", g_statsProbesSkipped);
     Note("HellForge mod loader, SDK %d, game build %s: %d code mod(s)", HF_MOD_SDK_VERSION, g_build, g_modCount);
+    FnStart(); /* functions.c: the session's functions by name, before any mod asks (after the log opens) */
+    GlStart(); /* globals.c: and its globals */
     ApiInit();
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
@@ -1175,6 +1229,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 0;
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
+    OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */
     HANDLE thread = CreateThread(NULL, 0, Watch, NULL, 0, NULL);
     if (thread != NULL) CloseHandle(thread);
     HANDLE live = g_logs[0] ? CreateThread(NULL, 0, LiveWatch, NULL, 0, NULL) : NULL; /* the launcher's live editor */

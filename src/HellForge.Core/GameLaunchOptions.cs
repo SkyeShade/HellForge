@@ -30,6 +30,17 @@ public static class GameLaunchOptions
         return options;
     }
 
+    // What the options do that a player would not expect, in plain words (the launcher shows each under the box and when
+    // a session starts). --toaster_mode turns the game's texture streaming off: Armory icons are pictures the game renders
+    // once their textures have streamed in, so with it they stay blank.
+    public static List<string> Warnings(IEnumerable<string> options)
+    {
+        var warnings = new List<string>();
+        if (options.Any(o => o.Equals("--toaster_mode", StringComparison.OrdinalIgnoreCase)))
+            warnings.Add("--toaster_mode turns the game's texture streaming off, so Armory icons stay blank (the game draws them only once their textures have loaded). Remove it to see them.");
+        return warnings;
+    }
+
     // The options as they go on a command line: quoted where they hold spaces.
     public static string CommandLine(IEnumerable<string> options) =>
         string.Join(" ", options.Select(o => o.Any(char.IsWhiteSpace) || o.Length == 0 ? "\"" + Backslashes(o) + "\"" : o));

@@ -264,7 +264,8 @@ public sealed class LiveMods
         return sync.Resolve(modsFolder, catalog).LoadOrder;
     }
 
-    // Whether the running game can take a host's mods (mod sync's APPLY AND JOIN).
+    // Whether the running game can take a host's mods (mod sync's APPLY AND JOIN). A 0.3 host's digest counts its bundled
+    // mods' files, which this machine cannot rebuild: its mods were found one by one by their hashes (Resolve) instead.
     public bool CanApplySync(ModSyncSession sync)
     {
         if (HostOrder(sync) is not { } order) return false;
@@ -272,14 +273,14 @@ public sealed class LiveMods
         var plan = Plan(current, order);
         if (!plan.Live && !plan.Empty) return false;
         var active = plan.Target.Where(m => !current.Skipped.Any(s => s.Id == m.Id && s.Hash == ModSets.ContentHash(m))).ToList();
-        return ModSet.Of(active).Digest == sync.Digest;
+        return sync.Legacy || ModSet.Of(active).Digest == sync.Digest;
     }
 
     // The running game takes a host's mods: null when done, else why not.
     public async Task<string?> ApplySyncAsync(ModSyncSession sync, CancellationToken cancel)
     {
         if (HostOrder(sync) is not { } order) return "some of the host's mods are not here as the host has them";
-        var result = await ApplyAsync(order, sync: true, sync.HostName.Length > 0 ? sync.HostName : sync.Host, cancel, expectDigest: sync.Digest);
+        var result = await ApplyAsync(order, sync: true, sync.HostName.Length > 0 ? sync.HostName : sync.Host, cancel, expectDigest: sync.Legacy ? null : sync.Digest);
         if (result.Applied || result.Live && result.Changes.Count == 0) return null;
         return string.Join(" ", result.Blocking.DefaultIfEmpty(result.Detail));
     }

@@ -57,6 +57,12 @@ typedef enum HfEvent
     /* SDK 16: the session's mods changed while the game runs (a live change: mods() and content() answer anew). Delivered
      * to every loaded mod after each change, on the loader's change thread; never fired at boot. */
     HF_EVENT_MODS_CHANGED = 5,
+    /* SDK 16: the session is ending, the last moment to save or flush. Either the launcher is stopping it (the session
+     * runner waits up to 2 s for the mods, on the loader's watch thread), or the game is quitting normally (from Windows'
+     * process exit, under its loader lock, the game's other threads gone). Keep it short: load no DLL, wait for no thread,
+     * call nothing of the game's. Once per session; not after a crash, and not when the game crashes as it quits (on build
+     * 25480438 it does: docs/modding/debugging.md). An older loader's `on` refuses it: check hf->version >= 16. */
+    HF_EVENT_SESSION_END = 6,
 } HfEvent;
 
 /* SDK 16: why hellforge_mod_unload is called, and load_phase's answers. */
@@ -523,9 +529,10 @@ typedef struct HfNotice
 
 /* ---- game events (SDK 7, subscribe) ------------------------------------------------------------------------------
  * What happens in the game, delivered on the game thread (engine calls are safe in a listener) to every listener of the
- * kind, highest priority first. A listener gets the event as an HfEventInfo and casts it to the kind's struct; the data
- * is valid during the call only. Events observe: changing their data changes nothing in the game. Every machine
- * raises its own: an event says what this machine's game did (see each kind for host and client).
+ * kind, highest priority first. A listener gets the event as an HfEventInfo and casts it to the kind's struct (or use
+ * hf_on_<event>, after HfApi, whose listener takes the struct itself); the data is valid during the call only. Events
+ * observe: changing their data changes nothing in the game. Every machine raises its own: an event says what this
+ * machine's game did (see each kind for host and client).
  *
  *     static void Spawned(HfMod* mod, const HfEventInfo* event, void* user)
  *     {
@@ -893,6 +900,88 @@ typedef struct HfSyncMod
                             * waits; a new offer follows. Ask the player first: the mod runs its own code on their PC */
 #define HF_SYNC_OPEN 6u    /* open mod_id's url in the player's browser (the backend opens only an https:// address) */
 
+/* The lobby browser (SDK 16, browse_state): every HellForge lobby the session's backend finds, with no planet or
+ * difficulty filter, and friends' lobbies, each with whether this machine can join it and why not (docs/multiplayer.md
+ * "The lobby browser"). An editor asks for a list (HF_BROWSE_REFRESH) and joins one (HF_BROWSE_JOIN); the backend answers
+ * with a new version of the list, or with the state of the same version (a search under way, a join's outcome). */
+#define HF_BROWSE_NONE 0u        /* nothing asked yet, or no backend connected */
+#define HF_BROWSE_SEARCHING 1u   /* a search runs: the lobbies are the last list's */
+#define HF_BROWSE_READY 2u       /* the list is in */
+#define HF_BROWSE_UNAVAILABLE 3u /* this session plays without multiplayer (message says) */
+#define HF_BROWSE_INVITED 4u     /* the join's invitation is in the game: the player accepts it there (a lobby with other
+                                  * shared mods brings the MOD SYNC prompt) */
+#define HF_BROWSE_FAILED 5u      /* the search or the join did not go (message says why) */
+typedef struct HfBrowseState
+{
+    uint32_t size;      /* sizeof(HfBrowseState): set by the caller */
+    uint32_t state;     /* HF_BROWSE_... */
+    uint32_t version;   /* the list's: a new one with every search */
+    uint32_t lobbies;   /* the lobbies browse_lobby lists */
+    uint32_t terminal;  /* how many times the ship's information terminal opened the browser in this game (build 25480438):
+                         * an editor shows its browser when it goes up */
+    char message[192];  /* what the backend says about it (UTF-8), or "" */
+    uint32_t camera;    /* HF_BROWSE_CAMERA_...: the terminal's camera, which zooms into its screen; an editor shows its
+                         * browser once it is HELD there (or at once with NONE), and says so with HF_BROWSE_SHOWN */
+    char owner[80];     /* the id of the mod that claimed the browser (HF_BROWSE_CLAIM), or "": HellForge's in-game editor
+                         * shows its own browser only while no mod has claimed it */
+} HfBrowseState;
+#define HF_BROWSE_CAMERA_NONE 0u      /* no terminal camera (another build, or turned off) */
+#define HF_BROWSE_CAMERA_IDLE 1u      /* the player's own view */
+#define HF_BROWSE_CAMERA_MOVING 2u    /* gliding to the terminal's screen */
+#define HF_BROWSE_CAMERA_HELD 3u      /* on the terminal's screen, until HF_BROWSE_HIDDEN */
+#define HF_BROWSE_CAMERA_RETURNING 4u /* gliding back to the player's view */
+
+/* One lobby of the list (browse_lobby): what joining it would take. */
+#define HF_LOBBY_READY 0u      /* joins as it is: the same shared mods (per-player ones never need to match) */
+#define HF_LOBBY_DOWNLOAD 1u   /* joins after downloading the host's shared mods (download_bytes; the MOD SYNC prompt) */
+#define HF_LOBBY_TRUST 2u      /* joins once the player trusts mods HellForge has not verified (the MOD SYNC prompt) */
+#define HF_LOBBY_UNJOINABLE 3u /* cannot be joined with this machine's mods (reason says why) */
+#define HF_LOBBY_BLOCKED 4u    /* the host runs a mod on the player's blocklist */
+#define HF_LOBBY_FULL 5u
+#define HF_LOBBY_LOCKED 6u     /* the host locked it */
+#define HF_LOBBY_UNKNOWN 7u    /* a friend's lobby heard through presence: its mods are known on joining */
+#define HF_LOBBY_FLAG_FRIEND 1u   /* the host is the player's Steam friend */
+#define HF_LOBBY_FLAG_MISSION 2u  /* the lobby is on a mission now */
+#define HF_LOBBY_FLAG_JOINABLE 4u /* HF_BROWSE_JOIN can be asked for it (READY, DOWNLOAD, TRUST or UNKNOWN, not full or locked) */
+typedef struct HfBrowseLobby
+{
+    uint32_t size;           /* sizeof(HfBrowseLobby): set by the caller */
+    uint32_t verdict;        /* HF_LOBBY_... */
+    uint32_t flags;          /* HF_LOBBY_FLAG_... */
+    uint32_t members;
+    uint32_t max_members;
+    int32_t difficulty;      /* 1 and up, or -1 not known */
+    int32_t planet;          /* the planet's index, or -1 not known (on the ship, or not said) */
+    uint32_t mods;           /* the host's shared mods */
+    uint64_t download_bytes; /* to download before joining (HF_LOBBY_DOWNLOAD) */
+    char lobby_id[65];       /* what HF_BROWSE_JOIN names */
+    char host[64];           /* the host's name (UTF-8), or "" */
+    char reason[192];        /* why it cannot be joined (UTF-8), or "" */
+    char players[128];       /* the players' names, comma separated (UTF-8), or "" */
+    char mod_list[256];      /* the host's shared mods a join would change, each with what happens to it ("Tanks 2.0:
+                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "" */
+    uint32_t fix;            /* HF_LOBBY_FIX_...: the player's setting that would let it in (the reason says why it is out) */
+} HfBrowseLobby;
+#define HF_LOBBY_FIX_NONE 0u
+#define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
+#define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
+
+/* What an editor asks the backend for (browse_ask). */
+#define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
+#define HF_BROWSE_JOIN 2u    /* join lobby_id, a lobby of a list from the last 2 minutes: the game gets its invitation */
+#define HF_BROWSE_SHOWN 3u   /* the editor's browser shows (the terminal's camera stays on its screen); this machine only */
+#define HF_BROWSE_HIDDEN 4u  /* it went: the terminal's camera glides back to the player; this machine only */
+#define HF_BROWSE_QUICK 5u   /* Quick Play: join the best joinable lobby of a fresh list (a friend's first, then the fewest
+                              * downloads); browse_state says INVITED with the host's name, or FAILED when there is none */
+#define HF_BROWSE_ALLOW_STRANGERS 6u   /* turn Play with strangers on for this session (HF_LOBBY_FIX_STRANGERS), never saved:
+                                        * ask only after showing the player the warning HellForge's launcher shows; a new
+                                        * list follows */
+#define HF_BROWSE_SHOW_EDITED_STATS 7u /* show lobbies whose host shares edited stats (HF_LOBBY_FIX_EDITED_STATS) for this
+                                        * session, never saved */
+#define HF_BROWSE_CLAIM 8u   /* this mod draws the lobby browser: HellForge's editor's own steps aside (browse_state's owner).
+                              * 1 when this mod holds it, 0 when another mod claimed it first; this machine only */
+#define HF_BROWSE_RELEASE 9u /* gives the browser back to HellForge's editor; 1 when this mod held it */
+
 typedef struct HfEntityDef HfEntityDef;
 
 /* Definition-block lists are arrays ending in {0}. */
@@ -1244,6 +1333,44 @@ typedef struct HfApi
     /* Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size. */
     uint32_t (*stats_source)(HfMod* mod);
 
+    /* ---- SDK 16: the lobby browser (HfBrowseState; check hf->size before calling) -------------------------------- */
+    /* The list as the backend last sent it: 1 with *out filled (at most out->size bytes), 0 when no backend is
+     * connected (*out is filled all the same: state HF_BROWSE_NONE, and the terminal count). */
+    int (*browse_state)(HfMod* mod, HfBrowseState* out);
+    /* The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last. */
+    int (*browse_lobby)(HfMod* mod, uint32_t index, HfBrowseLobby* out);
+    /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
+     * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
+     * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this
+     * session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
+     * terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and
+     * setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md. */
+    int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
+
+    /* ---- SDK 16: game functions and globals by name (hellforge_functions.h, hellforge_globals.h; check hf->size) - */
+    /* A game function mappings/functions.json names: its address, or 0 (the mod's log says why: not a mapped name,
+     * another game build, before HF_EVENT_GAME_LOADED, or its code is not the reviewed one). Use hf_fn_<Name>(mod),
+     * which returns it typed. */
+    uintptr_t (*function)(HfMod* mod, const char* name);
+    /* hook_ex on a mapped function, by name: 0 when its hook is in, or will go in once the game's code is decoded and
+     * reads as reviewed (*original stays NULL until then; the mod's log says when it went in, or why not); 1 refused
+     * (not a mapped name, a function only for calling, another game build, no detour or original). Callable from
+     * hellforge_mod_init on. Use HF_HOOK(mod, <Name>, detour, &original) or hf_hook_<Name>, which check the types. */
+    int (*hook_function)(HfMod* mod, const char* name, void* detour, void** original, int32_t priority);
+    /* The cell of a game global mappings/globals.json names (it holds a pointer to the game's object): its address, or 0
+     * (the mod's log says why: not a mapped name, another game build, before HF_EVENT_GAME_LOADED, or the code that
+     * witnesses it is not the reviewed one). Use hf_global_<Name>(mod), which reads the cell and returns the object
+     * typed. */
+    uintptr_t (*global)(HfMod* mod, const char* name);
+
+    /* ---- SDK 16: the mod's status (check hf->size before calling) ------------------------------------------------ */
+    /* The mod's status for the player: one line (UTF-8, at most 191 bytes; tabs and line breaks read as spaces) of what it
+     * does or why it stopped ("waiting for a mission", "off: this game build is not supported"). The launcher's Mods page
+     * shows it on the mod's row during the session and after it, and the mod's log records each change. NULL or "" clears
+     * it. Set it when it changes: the same text again is only a compare, a new one writes a small file. Any thread. Check
+     * hf->size before calling. */
+    void (*set_status)(HfMod* mod, const char* text);
+
     /* ---- SDK 16: live mods (see the top of this file; check hf->size before calling) --------------------------------- */
     /* How the mod was set up: HF_LOAD_BOOT, or HF_LOAD_LIVE while the game runs. */
     uint32_t (*load_phase)(HfMod* mod);
@@ -1282,8 +1409,126 @@ static inline int hf_set_field_(HfMod* mod, HfRef entity, HfField field, HfValue
 static inline int hf_live_field_(HfMod* mod, HfRef target, HfField field, HfValue value, uint32_t flags) { return HF_API(mod)->set_live(mod, target, &field, &value, flags); }
 #define hf_live(mod, target, C, f, value, flags) hf_live_field_((mod), (target), HF_LITERAL(HfField) HF_FIELD(C, f), HF_LITERAL(HfValue) value, (flags))
 
+/* ---- typed events (SDK 16's header; any loader of SDK 7 on) ---------------------------------------------------------
+ * hf_on_<event>(mod, listener, user, priority) listens to one kind of game event (subscribe) with a listener that takes
+ * the kind's own struct: nothing to cast, the compiler checks the listener's type, and typing hf_on_ lists every event.
+ * 0 when listening, 1 refused (the mod's log says why), as hook, on and HF_HOOK answer. The load events are under the
+ * same prefix (hf_on_game_loaded and the rest, through on). subscribe and on work as before.
+ *
+ *     static void Spawned(HfMod* mod, const HfSpawnEvent* spawn, void* user)
+ *     {
+ *         if (spawn->resource == mySentry) HF_API(mod)->log(mod, "sentry %u is down", spawn->entity);
+ *     }
+ *     hf_on_spawn(mod, Spawned, NULL, 0); */
+typedef void (*HfStateListener)(HfMod* mod, const HfStateEvent* event, void* user);
+typedef void (*HfPlayerListener)(HfMod* mod, const HfPlayerEvent* event, void* user);
+typedef void (*HfDamageListener)(HfMod* mod, const HfDamageEvent* event, void* user);
+typedef void (*HfDamagePreListener)(HfMod* mod, HfDamagePreEvent* event, void* user); /* may change amount or cancel */
+typedef void (*HfStratagemListener)(HfMod* mod, const HfStratagemEvent* event, void* user);
+typedef void (*HfKillListener)(HfMod* mod, const HfKillEvent* event, void* user);
+typedef void (*HfSpawnListener)(HfMod* mod, const HfSpawnEvent* event, void* user);
+typedef void (*HfHealListener)(HfMod* mod, const HfHealEvent* event, void* user);
+typedef void (*HfStatListener)(HfMod* mod, const HfStatEvent* event, void* user);
+typedef void (*HfWeaponListener)(HfMod* mod, const HfWeaponEvent* event, void* user);
+typedef void (*HfExplosionListener)(HfMod* mod, const HfExplosionEvent* event, void* user);
+typedef void (*HfBugholeListener)(HfMod* mod, const HfBugholeEvent* event, void* user);
+
+/* The listener goes to subscribe as an HfListener: its event argument points at the event's HfEventInfo, which is the
+ * struct's first member (checked below), so both take the same pointer, and on Windows x64, HellForge's only target, the
+ * same arguments in the same registers. Through void (*)(void), so -Wcast-function-type stays quiet. */
+HF_ASSERT_OFFSET(HfStateEvent, info, 0);
+HF_ASSERT_OFFSET(HfPlayerEvent, info, 0);
+HF_ASSERT_OFFSET(HfDamageEvent, info, 0);
+HF_ASSERT_OFFSET(HfDamagePreEvent, damage, 0);
+HF_ASSERT_OFFSET(HfStratagemEvent, info, 0);
+HF_ASSERT_OFFSET(HfKillEvent, info, 0);
+HF_ASSERT_OFFSET(HfSpawnEvent, info, 0);
+HF_ASSERT_OFFSET(HfHealEvent, info, 0);
+HF_ASSERT_OFFSET(HfStatEvent, info, 0);
+HF_ASSERT_OFFSET(HfWeaponEvent, info, 0);
+HF_ASSERT_OFFSET(HfExplosionEvent, info, 0);
+HF_ASSERT_OFFSET(HfBugholeEvent, info, 0);
+static inline int hf_subscribe_(HfMod* mod, uint32_t kind, void (*listener)(void), void* user, int32_t priority)
+{
+    const HfApi* hf = HF_API(mod);
+    if (listener == NULL || hf->size < offsetof(HfApi, subscribe) + sizeof(void*)) return 1;
+    return hf->subscribe(mod, kind, (HfListener)listener, user, priority) ? 0 : 1;
+}
+#define HF_LISTENER_(listener) ((void (*)(void))(listener))
+
+/* HF_ON_STATE: the game's state changed (HfStateEvent.from, to: HF_STATE_...). */
+static inline int hf_on_state(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STATE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_MISSION_START: the game entered HF_STATE_MISSION. */
+static inline int hf_on_mission_start(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_MISSION_START, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_MISSION_END: the game left HF_STATE_MISSION (to: where it went). */
+static inline int hf_on_mission_end(HfMod* mod, HfStateListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_MISSION_END, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_PLAYER_SPAWN: a player is on the ground (dropped in, or reinforced). */
+static inline int hf_on_player_spawn(HfMod* mod, HfPlayerListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_PLAYER_SPAWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_PLAYER_DOWN: a player died and waits to be reinforced. */
+static inline int hf_on_player_down(HfMod* mod, HfPlayerListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_PLAYER_DOWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_DAMAGE: damage this machine's game applies, before armour and multipliers. */
+static inline int hf_on_damage(HfMod* mod, HfDamageListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_DAMAGE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_DAMAGE_PRE (SDK 11): damage about to apply; the listener may change event->damage.amount or set cancel. */
+static inline int hf_on_damage_pre(HfMod* mod, HfDamagePreListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_DAMAGE_PRE, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_STRATAGEM: a stratagem's beacon activates (on the thrower's machine). */
+static inline int hf_on_stratagem(HfMod* mod, HfStratagemListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STRATAGEM, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_KILL: something was killed (on the victim's owner). */
+static inline int hf_on_kill(HfMod* mod, HfKillListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_KILL, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_SPAWN: an entity was spawned in this machine's world (remote spawns too). */
+static inline int hf_on_spawn(HfMod* mod, HfSpawnListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_SPAWN, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_HEAL (SDK 11): a Helldiver's health went up. */
+static inline int hf_on_heal(HfMod* mod, HfHealListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_HEAL, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_STAT (SDK 11): the local player's mission stats grew (HF_STAT_...). */
+static inline int hf_on_stat(HfMod* mod, HfStatListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_STAT, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_WEAPON (SDK 11): what the local player's Helldiver holds changed. */
+static inline int hf_on_weapon(HfMod* mod, HfWeaponListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_WEAPON, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_EXPLOSION (SDK 11): an explosion was requested in this machine's world. */
+static inline int hf_on_explosion(HfMod* mod, HfExplosionListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_EXPLOSION, HF_LISTENER_(listener), user, priority); }
+/* HF_ON_BUGHOLE (SDK 11): a bug hole was closed, on every machine. */
+static inline int hf_on_bughole(HfMod* mod, HfBugholeListener listener, void* user, int32_t priority)
+{ return hf_subscribe_(mod, HF_ON_BUGHOLE, HF_LISTENER_(listener), user, priority); }
+
+/* The load events (on): the callback once the game reaches that point of its start, at once if it has. */
+static inline int hf_on_game_loaded(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_GAME_LOADED, callback, user); }
+static inline int hf_on_network_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_NETWORK_READY, callback, user); }
+static inline int hf_on_entities_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_ENTITIES_READY, callback, user); }
+static inline int hf_on_projectiles_ready(HfMod* mod, HfEventCallback callback, void* user)
+{ return HF_API(mod)->on(mod, HF_EVENT_PROJECTILES_READY, callback, user); }
+
+/* Every game update, on the game thread (on_game_thread, SDK 6): 0 when it runs, 1 refused, as the calls above answer
+ * (on_game_thread itself answers 1 when it runs). */
+static inline int hf_on_game_thread(HfMod* mod, HfTickCallback callback, void* user)
+{
+    const HfApi* hf = HF_API(mod);
+    if (callback == NULL || hf->size < offsetof(HfApi, on_game_thread) + sizeof(void*)) return 1;
+    return hf->on_game_thread(mod, callback, user) ? 0 : 1;
+}
+
 /* Vanilla content by name (HF_ITEM_..., HF_ENTITY_..., HF_STRATAGEM_...), generated from mappings/catalog.json. */
 #include "hellforge_content.h"
+
+/* SDK 16: game functions by name (hf_fn_..., hf_hook_..., HF_HOOK), generated from mappings/functions.json. */
+#include "hellforge_functions.h"
+
+/* SDK 16: game globals by name (hf_global_..., Hf<Name>), generated from mappings/globals.json. */
+#include "hellforge_globals.h"
 
 /* Implemented by the mod. */
 #ifndef HF_MOD_LOADER

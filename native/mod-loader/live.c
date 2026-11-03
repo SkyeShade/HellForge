@@ -19,8 +19,10 @@
  *                     <id> <name> <mod version> <https:// url or -> [stranger]   (stranger: HF_SYNC_FLAG_STRANGER)
  *             syncstate <seq> <version> <none|offer|blocked|downloading|ready|failed> <host name> <bytes> <done> <mods>
  *                       <flags> <message>                              (syncmod, syncstate: SDK 14, mod sync)
+ *             browselobby, browsestate                               (SDK 16, the lobby browser: live_browse.c)
  *   loader:   <seq> ok <now|respawn|mission> [<value hex>]     or     <seq> refused <reason>
  *             syncanswer <version> <accept|decline|restart|block|trust|open> <mod id or ->   (unasked: the player's answer)
+ *             browseask <refresh|join> <lobby id or ->          (unasked: an editor's ask, live_browse.c)
  *             packages <package id hex>,... or -          (unasked: this machine's own packages, sent on connecting and
  *                                                           whenever they change, for friends to load: packages.c)
  *   backend:  mod... lines: a live change of the session's mods (live_mods.c, which lists them and the loader's
@@ -393,6 +395,8 @@ static size_t SyncAnswerId(const char* modId, char* id, size_t size)
     id[n] = 0;
     return n;
 }
+
+#include "live_browse.c" /* SDK 16, the lobby browser: after LiveQueue */
 
 /* SDK 14, sync_answer: the player's answer to the offer of that version, queued for the backend. 0 when another offer
  * came since, none stands, or no backend is connected. */
@@ -795,12 +799,22 @@ static void ListLine(const char* seq, const char* list, int (*set)(const char* l
     else snprintf(reply, size, "%s\trefused\t%s", seq, why);
 }
 
+/* A request whose verb reads the whole line itself (mod sync's offer, a live change of the mods, the lobby browser's
+ * list): 1 when it was one, with the reply in `reply`. */
+static int LiveLineRequest(char* line, char* reply, size_t size)
+{
+    if (!strncmp(line, "syncmod\t", 8)) SyncModLine(line, reply, size);
+    else if (!strncmp(line, "syncstate\t", 10)) SyncStateLine(line, reply, size);
+    else if (!strncmp(line, "browselobby\t", 12)) BrowseLobbyLine(line, reply, size);
+    else if (!strncmp(line, "browsestate\t", 12)) BrowseStateLine(line, reply, size);
+    else return !strncmp(line, "mod", 3) && LiveModsRequest(line, reply, size);
+    return 1;
+}
+
 /* One request; the reply goes to `reply`. Also the native fixture's entry point. */
 static void LiveRequest(char* line, char* reply, size_t size)
 {
-    if (!strncmp(line, "syncmod\t", 8)) { SyncModLine(line, reply, size); return; }
-    if (!strncmp(line, "syncstate\t", 10)) { SyncStateLine(line, reply, size); return; }
-    if (!strncmp(line, "mod", 3) && LiveModsRequest(line, reply, size)) return;
+    if (LiveLineRequest(line, reply, size)) return;
     char* f[12];
     int n = Split(line, f, 12);
     if (n < 2) { snprintf(reply, size, "-\trefused\tmalformed request"); return; }
@@ -931,6 +945,7 @@ static void LiveConnected(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
     RoundsSetLobby("-", &none); /* nor their edited rounds */
     SyncClear();
     LiveModsAbort("the backend disconnected");
+    BrowseClear();
 }
 
 /* Connects to the launcher's pipe while the session runs; one connection at a time. The pipe is overlapped: a

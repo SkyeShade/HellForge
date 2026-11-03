@@ -379,8 +379,8 @@ static void LiveCodeFixture(void)
     WideCharToMultiByte(CP_UTF8, 0, self, -1, folder, sizeof folder, NULL, NULL);
 
     /* the game on the ship, every load event fired in the boot's order */
-    LONG fired[HF_EVENT_MODS_CHANGED + 1];
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) fired[event] = g_fired[event];
+    LONG fired[HF_EVENT_SESSION_END + 1];
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) fired[event] = g_fired[event];
     HfEvent order[4] = {HF_EVENT_GAME_LOADED, HF_EVENT_PROJECTILES_READY, HF_EVENT_NETWORK_READY, HF_EVENT_ENTITIES_READY}, orderBefore[4];
     memcpy(orderBefore, g_fireOrder, sizeof orderBefore);
     LONG countBefore = g_fireCount;
@@ -479,7 +479,7 @@ static void LiveCodeFixture(void)
     g_liveGameState = LiveGameState;
     g_livePlayers = LivePlayers;
     g_txnInline = 0;
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) InterlockedExchange(&g_fired[event], fired[event]);
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) InterlockedExchange(&g_fired[event], fired[event]);
     memcpy(g_fireOrder, orderBefore, sizeof orderBefore);
     g_fireCount = countBefore;
     g_modCount = mods;
@@ -574,8 +574,8 @@ static void NetTypesFixture(void)
     snprintf(g_networkModule, sizeof g_networkModule, "fake_game.dll");
     g_networkRva = (uint32_t)((uintptr_t)holder - (uintptr_t)game);
     int asks = g_netAskCount, types = g_netTypeCount, mods = g_modCount;
-    LONG fired[HF_EVENT_MODS_CHANGED + 1];
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) { fired[event] = g_fired[event]; if (event >= 1 && event <= 4) InterlockedExchange(&g_fired[event], 1); }
+    LONG fired[HF_EVENT_SESSION_END + 1];
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) { fired[event] = g_fired[event]; if (event >= 1 && event <= 4) InterlockedExchange(&g_fired[event], 1); }
 
     /* the plan's ask (mod a), and one that expects another type (left alone) */
     char l1[] = "nettype\ta\tdeposit_value\t1\t10\t0\t14", l2[] = "nettype\ta\tother_value\t1\t9\t0\t12", *f[8];
@@ -618,7 +618,7 @@ static void NetTypesFixture(void)
     g_liveGameState = LiveGameState;
     g_livePlayers = LivePlayers;
     g_txnInline = 0;
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) InterlockedExchange(&g_fired[event], fired[event]);
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) InterlockedExchange(&g_fired[event], fired[event]);
     g_netAskCount = asks;
     g_netTypeCount = types;
     g_modCount = mods;
@@ -652,8 +652,8 @@ static uint8_t FakeHotCanGet(uint64_t type, uint64_t name)
 static void HotDataFixture(void)
 {
     int mods = g_modCount, overrides = g_hotOverrideCount;
-    LONG fired[HF_EVENT_MODS_CHANGED + 1];
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) { fired[event] = g_fired[event]; if (event >= 1 && event <= 4) InterlockedExchange(&g_fired[event], 1); }
+    LONG fired[HF_EVENT_SESSION_END + 1];
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) { fired[event] = g_fired[event]; if (event >= 1 && event <= 4) InterlockedExchange(&g_fired[event], 1); }
     g_hotLoad = FakeHotLoad; g_hotOverride = FakeHotOverride; g_hotClear = FakeHotClear; g_hotCanGet = FakeHotCanGet;
     g_packageState = FakeHotState;
     g_hotTimeoutMs = 300;
@@ -708,6 +708,6 @@ static void HotDataFixture(void)
     g_packageState = NULL;
     g_hotTimeoutMs = HOT_TIMEOUT_MS;
     g_hotOverrideCount = overrides;
-    for (int event = 0; event <= HF_EVENT_MODS_CHANGED; event++) InterlockedExchange(&g_fired[event], fired[event]);
+    for (int event = 0; event <= HF_EVENT_SESSION_END; event++) InterlockedExchange(&g_fired[event], fired[event]);
     g_modCount = mods;
 }

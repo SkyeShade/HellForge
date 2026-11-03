@@ -70,10 +70,11 @@ standard error and exits with 1.
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended; `--run` adds one session's files; `--export` zips a session's logs; `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
-| `stop [--run <run folder>] [--wait yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. |
+| `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
 | `fetch-war` | Fetches the live galactic war into `live-war.json`. The Linux scripts run this before a session. |
 | `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
 | `language-add --name <language> [--steam-root <Steam folder>] [--keep yes\|no]` | Copies one pack from Steam's download into the game copy, every file checked against the pinned list, then deletes the download unless `--keep yes`. Refused while a session runs, and until Steam has finished the download. |
+| `steam-download --out <folder> [--file <a file of the build>] [--steam-root <Steam folder>] [--sign-in qr\|steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]` | Downloads the supported build from Steam's servers into `--out` for the account that signs in, as setup does ([steam-download.md](steam-download.md)), copying what Steam's install already has. It is interactive: it prints a QR code on standard error to approve in the Steam app. With `--sign-in steamcmd`, Valve's SteamCMD downloads it instead into `--steamcmd` (default `<out>-steamcmd`; asks for the account name unless `--account` gives it), and SteamCMD asks for the password and any Steam Guard code in the terminal itself; the files are checked and moved into `--out`, SteamCMD's sign-in is forgotten and SteamCMD removed, and it prints `files`, `bytes`, `by`, `destination` and `seconds`. Nothing of the sign-in is kept or printed. `--file` takes one file of the build; `--dry-run yes` prints the plan (`files`, `bytes`, `knownLocalBytes`, `downloadAtMostBytes`, `notes` and a `plan` per file) and writes nothing. Without it, prints `files`, `bytes`, `downloadedBytes`, `copiedBytes`, `destination`, `seconds` and `notes`. `--out` and `--steamcmd` must be outside any `steamapps` folder. It needs no installation. |
 
 The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
 not show Local Stats (the in-game editor's saved changes, always on and never compared between friends); `mods` still
@@ -93,9 +94,11 @@ Everything in `mods\` appears on HellForge's Mods page, whoever put it there. A 
 `hellforge-mod.json`. A cosmetic pack's id is `pack.<its manifest's Guid>`, or `pack.<its name, as a slug>` when the
 manifest has no Guid. `mods` prints them.
 
-The page has two groups:
+The page has three groups:
 
 - Gameplay mods: friends need the same ones in co-op, and they make up the modlist code.
+- Per-player gameplay mods: stats-only mods, texture/sound/text-only patch mods, and manifest `"coop": "per-player"`
+  mods. Each player keeps their own; they are not in the modlist code and never download in co-op.
 - Cosmetic mods, which include Lua mods (tag `lua`: Bingus Shared Loader, HD2Runtime and the mods made for them). These
   are client-only and never part of the modlist code; see [lua-bridge.md](lua-bridge.md).
 
@@ -130,18 +133,22 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--game-options`), saves the ones given, checks them as `play` would,
-and prints every setting:
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--strangers yes|no|default`,
+`--game-options`), saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": false, "forgeCreditChance": 30,
- "file": "<installation>\\launcher-settings.json"}
+ "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": true,
+ "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
-`settings --strangers yes|no` also turns Play with strangers on or off (off by default; see
+`settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
+`"strangers": "on"`/`"off"` (a legacy `playWithStrangers` true or false still counts),
+and `default` removes it and lets the sandbox decide (on in a sandboxed session, off otherwise; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
-`launcher-settings.json`, and `play` has no option for it. A running session's backend picks it up within a few seconds.
+`launcher-settings.json`, and `play` has no option for it. The printed `playWithStrangers` is the effective bool for the
+next session's sandbox state; `playWithStrangersChosen` is `true`, `false` or `null`. A running session's backend picks
+the effective value up within a few seconds.
 
 `settings --forge-credits <0-100>|default` sets the share of the random loot caches at points of interest that hold Forge
 Credits (HellForge's default is 30 %; the game's was 20 % for Super Credits). It is saved in `mods\hellforge-mods.json` as
@@ -166,7 +173,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
-| `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
+| `--crash-dump` | `no` | a full memory dump if the game crashes (large), instead of the small dump every crash leaves |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
@@ -178,7 +185,10 @@ Once the session runner has made its run folder, `play` prints
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. A line
 `{"event": "mod-problems", "problems": [...]}` lists mods the session left out (a mod that did not compile, data that
-was not built...). Closing `play` does not stop the session; `stop` does.
+was not built...). Closing `play` does not stop the session; `stop` does. `stop` asks the game to close by itself first, as its
+window's close button does, and ends it after 30 seconds if it has not: the game saves its shader cache only when it
+closes by itself. A game without a window, or with one that does not respond, is ended at once, and so is one stopped
+with `--now yes`.
 
 | `status` | Meaning |
 |---|---|
@@ -198,16 +208,92 @@ so handle them too.
 One session runs at a time on a PC, because the game runs only once. `play` refuses while one is running, in any
 installation.
 
+### The lobby browser API
+
+While a session runs with multiplayer on, its local backend lists HellForge lobbies and can hand the game an
+invitation to one. The in-game lobby browser uses it, and a launcher of your own can too
+(`src/HellForge.LocalBackend/Multiplayer/BrowseApi.cs`).
+
+**Where.** The backend's address is in the session's `<run>\backend\ready.json`, under `"urls"`
+(`http://127.0.0.1:<port>`). It listens on loopback only.
+
+**Who may call it.** Programs on this PC only. Send no `Origin`, `Referer` or `Sec-Fetch-*` header, and keep `Host` as
+`127.0.0.1`, `localhost` or `[::1]` with the port. Anything else gets 403 with `{"errorCode": "HELLFORGE_NOT_FROM_THIS_PC"}`,
+so a web page in the player's browser cannot use it.
+
+**`GET /hellforge/v1/lobbies`.** Every HellForge lobby the lobby directory lists, with no planet or difficulty filter,
+plus Steam friends' lobbies that are not listed (Friends only). With Play with strangers off, strangers' lobbies are
+still listed (never contacted), as unjoinable with `"fix": "strangers"`. A new search runs at most once every 2 s;
+asking sooner returns the last list. 200 with:
+
+```json
+{"version": 1, "available": true, "searchedUtc": "2026-10-30T20:01:02.0000000Z",
+ "lobbies": [{"lobbyId": "<GUID>", "host": "<SteamID64>", "hostName": "Helldiver", "friend": false,
+              "source": "directory", "members": 1, "maxMembers": 4, "locked": false, "privacy": 0,
+              "difficulty": 7, "planetId": 168, "race": 2, "inMission": true, "older": false, "players": ["Helldiver"],
+              "joinable": false, "verdict": "unjoinable", "reason": "It needs mods installed by hand.",
+              "downloadBytes": 0,
+              "mods": [{"id": "author.mod", "name": "Mod", "version": "1.0", "tier": "shared", "class": "code",
+                        "action": "manual", "why": "stranger code, not verified", "url": "https://..."}]}]}
+```
+
+- `available` is false, with a `reason` and an empty list, when the session has no multiplayer.
+- `source` is `directory` for a listed lobby, or `friend` for one heard only from a Steam friend. A friend's lobby has
+  no mod list until a join; its `verdict` is `unknown`.
+- `verdict` is one of: `ready` (the same shared mods), `download` (the join downloads `downloadBytes`), `trust` (a mod
+  waits for the player's trust in the MOD SYNC prompt), `unjoinable`, `blocked`, `full`, `locked`, `unknown`.
+  `joinable` is whether a join can be tried now; `reason` says why not.
+- `fix`, when present, is the player's setting that would let the lobby in: `strangers` (Play with strangers is off;
+  the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies whose host shares edited stats are
+  hidden; the Mods page). A stranger's unchecked mods have no fix: they download only from a Steam friend. This API
+  does not change settings: point the player at them.
+- `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
+  `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
+  `inMission` is whether the host has a mission selected. `older` is whether the host runs HellForge 0.3, which this
+  HellForge joins in that version's protocol; its lobbies are joinable as any other's.
+- `mods` lists the host's gameplay mods (at most 64). `tier` is `shared` (must match) or `per-player` (each player's
+  own). A shared mod has the `action` a join would take (`have`, `download`, `trust`, `manual`, `blocked`, `update`),
+  and `why` when it keeps the lobby out (`share off`, `stranger code, not verified`, `stranger raw data, not
+  verified`, `bundled differs`, `blocked`). `url` is where to get it, when the author gave one.
+
+**`POST /hellforge/v1/lobbies/<lobbyId>/join`.** Hands this session's game an invitation to a lobby from a list of the
+last 2 minutes. The game shows it as a friend's invitation would, and joins only if the player accepts. A lobby with
+other shared mods then brings HellForge's MOD SYNC prompt, as any join does. Nothing downloads or is trusted without
+that prompt.
+- 202 `{"version": 1, "lobbyId": ..., "state": "invited", "message": ...}`.
+- 404 `HELLFORGE_LOBBY_UNKNOWN`: the lobby is not in a recent list. List again.
+- 409 `HELLFORGE_LOBBY_NOT_JOINABLE`, with `message` saying why (full, locked, or its mods).
+- 503 `HELLFORGE_MULTIPLAYER_OFF`: the session has no multiplayer.
+
+**`POST /hellforge/v1/lobbies/quick`.** Quick Play: the same invitation, to the best joinable lobby of a list at most
+2 s old: one with a slot free, a Steam friend's first, then the least a join needs (the same mods, then the smallest
+download, then a friend's lobby whose mods are known only on joining, then mods to trust), then the one with the most
+players.
+- 202 as a join's, with `hostName`.
+- 404 `HELLFORGE_NO_JOINABLE_LOBBY`: nothing can be joined now.
+- 503 `HELLFORGE_MULTIPLAYER_OFF`.
+
+The routes take only these methods: anything else is 405 with `Allow`. Version 1 only grows: fields may be added,
+none removed or changed in meaning. A change that breaks this goes to `/hellforge/v2`.
+
+A browser drawn inside the game (a code mod's, as HellForge's in-game editor draws its own) gets the same list and
+joins through the SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)),
+over the session's live-edit pipe, with no HTTP of its own. `browse_state`'s `terminal` count goes up each time the
+ship's information terminal opens the browser. [lobby-browser.md](lobby-browser.md) is the guide to building one, and
+`HF_BROWSE_CLAIM` makes HellForge's own step aside for it.
+
 ### Logs
 
 Each session has its own folder, `logs\sessions\<runId>\`, and `logs\play-session.json` names the newest one (`"run"`).
-Only the newest ten are kept. These are the files to show a player:
+Only the newest ten are kept, and of the older ones the five newest that ended in a crash. These are the files to show
+a player:
 
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
-| `modloader.log` | the mod loader: which mods loaded, and why one did not |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game |
+| `modloader.log` | the mod loader: which mods loaded, with each code mod's version and its DLL's SHA-256, and why one did not |
+| `mod-status.tsv` | each code mod's status for the player (SDK 16 `set_status`), a line `<id>\t<text>` per mod; the launcher shows it on the Mods page |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
 | `cli-output.txt` | mod builds and staging |
@@ -232,12 +318,12 @@ yet.
 the one `--run` names: one zip for a player to attach to a GitHub issue. Nothing is uploaded; offer
 `https://github.com/SkyeShade/HellForge/issues/new` (`issuePage`, no parameters) for them to attach it. It holds
 `summary.txt` (the versions, system and settings, the game's exit code, the mod loader's crash note: its code, module and
-offset and thread, the mods, the loader's events before the crash and the last 200 lines of its log), `logs\` (the
-export, without crash dumps) and, only with `--dump yes`, `dump\crash-<pid>.dmp`. Its text is scrubbed further than the
-export, for a public issue: Steam ids, IP addresses other than loopback and the other players HellForge's logs name are
-replaced with `steam-id-1`, `ip-1`, `player-1` and so on. A dump is the game's memory and cannot be scrubbed: ask the
-player before passing `--dump yes`. The JSON says `files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and
-`issuePage`.
+offset and thread, Windows' record of the crash when the session looked for one, the mods, the loader's events before
+the crash and the last 200 lines of its log), `logs\` (the export, without crash dumps) and, only with `--dump yes`,
+`dump\crash-<pid>.dmp`. Its text is scrubbed further than the export, for a public issue: Steam ids, IP addresses
+other than loopback and the other players HellForge's logs name are replaced with `steam-id-1`, `ip-1`, `player-1` and
+so on. A dump is the game's memory and cannot be scrubbed: ask the player before passing `--dump yes`. The JSON says
+`files`, `skipped`, `dump` (whether it went in), `dumpAvailable` and `issuePage`.
 
 ## Linux
 
