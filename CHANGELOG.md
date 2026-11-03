@@ -51,6 +51,9 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Big frame drops with a Difficulty 11 mod on: HellForge left a developer's diagnostic for the war table's map
+  previews running, which interrupted the game each time it read the map's size. It is off now, so Difficulty 11
+  mods don't need to be switched off any more.
 - A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
   fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
   now shows only what the mod owns. (#177)
