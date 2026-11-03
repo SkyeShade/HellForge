@@ -132,6 +132,131 @@ static int TerrainSampleInstall(void)
     return 1;
 }
 
+/* ---- Composite tiles meet without seams -------------------------------------------------------------------------------
+ * RenderHeightmapVoronoi (0x3C, 0xF499B0) draws a tile's cells as gui triangles ([api+0xD0]+0x0 = exe 0x33D140: gui,
+ * float3 p0, p1, p2 in merge pixels (metres from the world corner x lg+0x120 / settings+0x2C, y up) with the height as z,
+ * layer, colour, material, uv x 3): phase 0 the Voronoi cells (vertex heights) and phase 1 the route-cell areas (fans to
+ * the route points' heights), both with material 0x13DD2DCAD2968560 (layer terrain_height, additive), and the caps with
+ * 0x369E29988294A16F (terrain_cap_height, MAX). A tile kept every cell whose centre was inside its 704 m core, whole:
+ * across a boundary its cells and the neighbour's overlapped (added twice) or left gaps, and the two tiles' surfaces are
+ * independent anyway (run v22 step dumps: a 4.3 m mean jump across the boundary before 0x40, 1.5 m after it against
+ * 0.55 m elsewhere; a straight grid every 704 m). While a tile draws, its additive triangles are clipped to the core +-
+ * TERRAIN_BLEND and their heights weighted by w = wx wy, each a linear ramp from 0 at TERRAIN_BLEND outside the core's
+ * edge to 1 at TERRAIN_BLEND inside it (pieces split on the ramps' ends, so w is linear on each): neighbouring tiles
+ * cross-fade over 2 TERRAIN_BLEND and the weights sum to 1. Caps (MAX of a constant) are clipped to the core exactly. */
+#define TERRAIN_BLEND 32.0f
+typedef void (*TerrainTriFn)(uint64_t gui, const float* p0, const float* p1, const float* p2, uint32_t layer, const float* colour,
+    uint64_t material, const float* uv0, const float* uv1, const float* uv2);
+static TerrainTriFn g_terrainTri;
+static struct { volatile DWORD thread; float lo[2], hi[2], px; uint64_t add, cap; } g_clip;
+
+/* The part of polygon p (n vertices: x, y, z) on one side of the line coordinate[axis] = v (keep >= v when above). */
+static int TerrainClipSide(const float (*p)[3], int n, int axis, float v, int above, float (*out)[3])
+{
+    int m = 0;
+    for (int i = 0; i < n; i++)
+    {
+        const float* a = p[i], *b = p[(i + 1) % n];
+        float da = above ? a[axis] - v : v - a[axis], db = above ? b[axis] - v : v - b[axis];
+        if (da >= 0) { memcpy(out[m++], a, 12); }
+        if ((da >= 0) != (db >= 0))
+        {
+            float t = da / (da - db);
+            for (int k = 0; k < 3; k++) out[m][k] = a[k] + t * (b[k] - a[k]);
+            m++;
+        }
+    }
+    return m;
+}
+
+static float TerrainRamp(float u, float lo, float hi)
+{
+    float a = (u - (lo - TERRAIN_BLEND)) / (2 * TERRAIN_BLEND), b = ((hi + TERRAIN_BLEND) - u) / (2 * TERRAIN_BLEND);
+    a = a < 0 ? 0 : a > 1 ? 1 : a; b = b < 0 ? 0 : b > 1 ? 1 : b;
+    return a < b ? a : b;
+}
+
+/* Splits on the ramps' ends (4 lines), then draws each piece as a fan with its heights weighted. Coordinates in pixels. */
+static void TerrainClipEmit(float (*p)[3], int n, int split, uint64_t gui, uint32_t layer, const float* colour, uint64_t material)
+{
+    if (n < 3) return;
+    if (split < 4)
+    {
+        int axis = split & 1;
+        float v = (split < 2 ? g_clip.lo[axis] + TERRAIN_BLEND : g_clip.hi[axis] - TERRAIN_BLEND) * g_clip.px;
+        float a[24][3], b[24][3];
+        int na = TerrainClipSide((const float (*)[3])p, n, axis, v, 0, a), nb = TerrainClipSide((const float (*)[3])p, n, axis, v, 1, b);
+        TerrainClipEmit(a, na, split + 1, gui, layer, colour, material);
+        TerrainClipEmit(b, nb, split + 1, gui, layer, colour, material);
+        return;
+    }
+    for (int i = 0; i < n; i++)
+        p[i][2] *= TerrainRamp(p[i][0] / g_clip.px, g_clip.lo[0], g_clip.hi[0]) * TerrainRamp(p[i][1] / g_clip.px, g_clip.lo[1], g_clip.hi[1]);
+    for (int i = 1; i + 1 < n; i++)
+    {
+        float area = (p[i][0] - p[0][0]) * (p[i + 1][1] - p[0][1]) - (p[i + 1][0] - p[0][0]) * (p[i][1] - p[0][1]);
+        if (fabsf(area) < 1e-6f) continue;
+        g_terrainTri(gui, p[0], p[i], p[i + 1], layer, colour, material, NULL, NULL, NULL);
+    }
+}
+
+static void TerrainTri(uint64_t gui, const float* p0, const float* p1, const float* p2, uint32_t layer, const float* colour, uint64_t material,
+    const float* uv0, const float* uv1, const float* uv2)
+{
+    if (g_clip.thread == 0 || g_clip.thread != GetCurrentThreadId() || (material != g_clip.add && material != g_clip.cap) || uv0 != NULL)
+    {
+        g_terrainTri(gui, p0, p1, p2, layer, colour, material, uv0, uv1, uv2);
+        return;
+    }
+    float a[24][3] = {{p0[0], p0[1], p0[2]}, {p1[0], p1[1], p1[2]}, {p2[0], p2[1], p2[2]}}, b[24][3];
+    int n = 3;
+    float grow = material == g_clip.add ? TERRAIN_BLEND : 0.0f;
+    for (int axis = 0; axis < 2 && n >= 3; axis++)
+    {
+        n = TerrainClipSide((const float (*)[3])a, n, axis, (g_clip.lo[axis] - grow) * g_clip.px, 1, b);
+        n = TerrainClipSide((const float (*)[3])b, n, axis, (g_clip.hi[axis] + grow) * g_clip.px, 0, a);
+    }
+    if (n < 3) return;
+    if (material == g_clip.add) { TerrainClipEmit(a, n, 0, gui, layer, colour, material); return; }
+    for (int i = 1; i + 1 < n; i++) g_terrainTri(gui, a[0], a[i], a[i + 1], layer, colour, material, NULL, NULL, NULL);
+}
+
+static int TerrainTriInstall(void)
+{
+    if (g_terrainTri != NULL) return 1;
+    uintptr_t api = 0, table = 0;
+    if (SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0xD0, &table, 8) || table == 0) return 0;
+    void** slot = (void**)(uintptr_t)table;
+    DWORD old = 0;
+    if (!VirtualProtect(slot, 8, PAGE_READWRITE, &old)) return 0;
+    g_terrainTri = (TerrainTriFn)*slot;
+    InterlockedExchangePointer(slot, (void*)TerrainTri);
+    VirtualProtect(slot, 8, old, &old);
+    return 1;
+}
+
+/* Around one composite tile's draw on this thread: its core (generator metres) and the merge's pixel scale. 0 = no clip. */
+static int TerrainClipBegin(int tile, uintptr_t gen)
+{
+    typedef uint64_t (*MatFn)(uint64_t gui, uint64_t hash);
+    uint64_t R = 0, gui = 0; float samples = 0;
+    MatFn mat = NULL;
+    { uintptr_t api = 0, t = 0, f = 0;
+      if (!SafeRead(g_world.game + 0x3326308u, &api, 8) && api && !SafeRead(api + 0xD0, &t, 8) && t && !SafeRead(t + 0x230, &f, 8)) mat = (MatFn)f; }
+    if (!TerrainTriInstall() || mat == NULL || SafeRead(gen, &R, 8) || R == 0 || SafeRead(R + 0x110, &gui, 8) || gui == 0 ||
+        SafeRead(gen + 0x8758A8u + 0x120u, &samples, 4) || !(samples >= 1024.0f && samples <= 8192.0f)) return 0;
+    const float core = (float)TERRAIN_TILE_CORE;
+    g_clip.lo[0] = (float)(tile % g_terrain.columns) * core; g_clip.lo[1] = (float)(tile / g_terrain.columns) * core;
+    g_clip.hi[0] = g_clip.lo[0] + core; g_clip.hi[1] = g_clip.lo[1] + core;
+    g_clip.px = samples / 16384.0f; /* both callers run only on a 16384 m world (settings+0x2C checked) */
+    g_clip.add = mat(gui, 0x13DD2DCAD2968560ull); g_clip.cap = mat(gui, 0x369E29988294A16Full);
+    MemoryBarrier();
+    g_clip.thread = GetCurrentThreadId();
+    return 1;
+}
+
+static void TerrainClipEnd(void) { g_clip.thread = 0; }
+
 static int TerrainOn(void)
 {
     static int on = -1;
@@ -157,7 +282,14 @@ static int TerrainTemplate(uintptr_t gen)
     if (g_terrain.block == NULL || g_terrain.tmpl == NULL || SafeRead(gen, g_terrain.tmpl, size)) return 0;
     WorldTileRelocateIn(g_terrain.tmpl, size, gen, (uintptr_t)g_terrain.block);
     for (size_t k = 0; k < sizeof kTileCounts / sizeof kTileCounts[0]; k++) memset(g_terrain.tmpl + kTileCounts[k], 0, 4);
-    memset(g_terrain.tmpl + 0xEE10C8u, 0, 0x10B1F48u - 0xEE10C8u);
+    /* the route points (G+0xB47C78, 0x90 each: 16 segment slots, xy at +0x80, height at +0x88) and the route-cell area
+     * points after them (G+0xEE10C8). AddRoutePoints (0x03, 0xF93800) makes a new point j (in route-cell order, so
+     * along tile-local y) by writing only its xy and slot 0, and GenerateSubregionHeights (0x04, 0xF64E30) sets +0x88
+     * only for points it reaches through a subregion it does not skip (0xF656F9); RenderHeightmapVoronoi draws every
+     * subregion's fans to [point]+0x88 (0xF49FED / 0xF4A004). Uncleared, every point 0x04 did not reach kept the
+     * level's height for the same j: the same per-row heights in every tile, a step at each 704 m tile boundary along y
+     * (run v21 step dumps: composite add 12-13 m at local y 620-690, 2-5 m at 50-180, no pattern along x). */
+    memset(g_terrain.tmpl + 0xB47C78u, 0, 0x10B1F48u - 0xB47C78u);
     /* the level's subregions (G+0x92F328, 1024 x 0x20, up to G+0x937328): 0x75 resets only +8 and +0x18, and
      * SelectSubRegionCellsFromHeightGroup (0x78) keeps a non-zero type at +0 (0xF37A80 -> 0xF37CEE), so every tile took
      * the level's types by index (route cells, and so subregions, run row by row in y: the 704 m band along y) */
@@ -312,9 +444,10 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
             memcpy(T + at + 0x20, ends, 16);
         }
     }
-    /* Only the core is drawn: a cell whose centre (its edges' ends, as the render finds it) lies outside loses its
-     * edges, which the render skips; a route-cell area point outside loses its segments. Neighbouring tiles meet on
-     * cells built well inside both (gaps keep the level's own cells, drawn first). */
+    /* Only the core and its blend band are drawn (TerrainTri clips each triangle there): a cell whose centre (its edges'
+     * ends, as the render finds it) lies more than a cell (24 m) beyond the band loses its edges, which the render skips; a
+     * route-cell area point there loses its segments. Kept cells stay inside the built box (the margin is 96 m). */
+    const float keepLo[2] = {cx - TERRAIN_BLEND - 24.0f, cy - TERRAIN_BLEND - 24.0f}, keepHi[2] = {cx + core + TERRAIN_BLEND + 24.0f, cy + core + TERRAIN_BLEND + 24.0f};
     uint32_t cellCount = 0;
     memcpy(&cellCount, T + 0x11A70B8, 4);
     if (cellCount > 6000) return 0;
@@ -340,14 +473,14 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         }
         if (n == 0) continue;
         sx /= n; sy /= n;
-        if (sx < cx || sx >= cx + core || sy < cy || sy >= cy + core) memset(cell + 8, 0, 16 * 8);
+        if (sx < keepLo[0] || sx >= keepHi[0] || sy < keepLo[1] || sy >= keepHi[1]) memset(cell + 8, 0, 16 * 8);
     }
     for (uint32_t k = 0; k < last; k++)
     {
         uint8_t* point = T + 0xEE10C8 + (size_t)k * 0x90;
         float xy[2];
         memcpy(xy, point + 0x80, 8);
-        if (xy[0] < cx || xy[0] >= cx + core || xy[1] < cy || xy[1] >= cy + core) memset(point, 0, 16 * 8);
+        if (xy[0] < keepLo[0] || xy[0] >= keepHi[0] || xy[1] < keepLo[1] || xy[1] >= keepHi[1]) memset(point, 0, 16 * 8);
     }
     return 1;
 }
@@ -437,7 +570,9 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
         QueryPerformanceCounter(&d0);
         volatile uint32_t index = 0;
         volatile int calls = 0;
+        int clip = TerrainClipBegin(g_terrain.next, gen);
         LONG fault = WorldTileGuarded(g_terrain.record, context, &index, &g_terrain.phase, g, h, 1, &calls);
+        if (clip) TerrainClipEnd();
         QueryPerformanceCounter(&d1);
         g_terrain.drawMs += (double)(d1.QuadPart - d0.QuadPart) * 1000.0 / (double)hz.QuadPart;
         g_terrain.drawCalls++;
@@ -828,7 +963,8 @@ static int NearPlan(uint64_t records, uint32_t at)
         for (int t = 0; t < g_terrain.tiles && g_near.steps < NEAR_STEPS; t++)
         {
             float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core;
-            if (cx + core <= x0 || cx >= x0 + NEAR_SIDE || cy + core <= y0 || cy >= y0 + NEAR_SIDE || !TerrainTileWanted(t)) continue;
+            const float b = TERRAIN_BLEND; /* a tile draws out to its blend band */
+            if (cx + core + b <= x0 || cx - b >= x0 + NEAR_SIDE || cy + core + b <= y0 || cy - b >= y0 + NEAR_SIDE || !TerrainTileWanted(t)) continue;
             g_near.stepKind[g_near.steps] = NEAR_TILE; g_near.stepTile[g_near.steps] = t; g_near.stepOp[g_near.steps] = 0x3C; g_near.steps++;
         }
     }
@@ -1057,6 +1193,9 @@ static int TerrainMatDispatch(uint32_t op, uint64_t context)
 }
 
 /* One replayed record (or tile) step: 1 when it finished, 0 while it runs, -1 when it failed. */
+static int NearBaseOn(void);
+static int NearBaseStep(uint64_t context);
+
 static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h)
 {
     int s = g_near.step;
@@ -1076,7 +1215,9 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
             }
             g_near.building = 1; g_near.calls = 0;
         }
+        int clip = TerrainClipBegin(g_near.stepTile[s], gen);
         fault = WorldTileGuarded(g_terrain.record, context, &index, &g_terrain.phase, g, h, 1, &calls);
+        if (clip) TerrainClipEnd();
         if (fault) return -1; /* the merge's state is unknown after a fault */
         if (index == 0 && ++g_near.calls < TERRAIN_DRAW_CALLS) return 0;
         g_near.building = 0; g_near.calls = 0;
@@ -1089,6 +1230,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         g_near.matLeave = 0;
         return 1;
     }
+    if (g_near.stepKind[s] == NEAR_RECORD && g_near.stepOp[s] == 0x3C && NearBaseOn()) return NearBaseStep(context);
     int mat = 0;
     if (g_near.stepOp[s] == 0x41)
     {
@@ -1488,6 +1630,71 @@ static int NearConformDraw(uint64_t context)
     return 1;
 }
 
+/* ---- The tile's base: the level's own smoothed heights (HELLFORGE_XL_NEAR_BASE=0: the level's 0x3C record instead) ----
+ * Replaying the level's RenderHeightmapVoronoi record drew the level's ~300 m cells at the tile's 0.5 m texels: their hard
+ * features (caps; 8.0 m steps along straight lines, run v22 step dump after the record: single-texel jumps of 8.03, 8.06,
+ * 8.07 m) were made for the level's 4 m texels, where 0x40's blur (fixed in texels) widens them to 110-280 m; on the tile
+ * the same blur leaves 16-20 m cliffs. The tile starts instead from the level's heights right after its own 0x40 (the
+ * level's base, its composite tiles and the level-scale smoothing): the first intermediate capture, which the loader keeps
+ * at the level's 0x3E (g_near.caps / capData, descriptor 0 = mip 0: 1024^2 R32F, terrain_generator_capture_intermediate_
+ * heightmap = DOWNSAMPLE_4x4 of generated_heightmap_f, so heightmap_f metres, 16 m a texel; texel (c, r) covers generator
+ * metres [16c, 16c + 16] x and, row 0 at +y as the sampler 0x31C8B0 reads it (row = (1 - v)(h - 1)), world y
+ * [8192 - 16(r + 1), 8192 - 16r]). It is drawn bilinear on the conform's 2 m grid (NearConformDraw: a triangle with the
+ * Voronoi material adds its vertex z exactly) onto the target 0x39 cleared; the tile's composite tiles then add the
+ * vanilla-density cells, and the later passes (pads, zone heights, stamps) work on the level's heights as on the level. */
+static int NearBaseOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char t[4] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_NEAR_BASE", t, sizeof t) > 0 && t[0] == '0'); }
+    return on;
+}
+
+static int NearBasePlan(void)
+{
+    uint32_t w = 0, hgt = 0, format = 0;
+    memcpy(&w, g_near.caps, 4); memcpy(&hgt, g_near.caps + 4, 4); memcpy(&format, g_near.caps + 8, 4);
+    const float* L = (const float*)g_near.capData[0];
+    if (L == NULL || w != 1024 || hgt != 1024 || NearTexelBytes(format) != 4 || g_near.capBytes[0] < (size_t)1024 * 1024 * 4)
+    { Note("difficulty: near terrain: base: the level's capture is %u x %u format %u; no tile", w, hgt, format); return 0; }
+    if (g_conform.delta == NULL) g_conform.delta = (float*)VirtualAlloc(NULL, (size_t)NEAR_GRID * NEAR_GRID * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_conform.delta == NULL) return 0;
+    const float x0 = g_near.centre[0] - NEAR_SIDE / 2 + NEAR_TEXEL / 2, y0 = g_near.centre[1] + NEAR_SIDE / 2 - NEAR_TEXEL / 2;
+    float lo = 1e9f, hi = -1e9f; double sum = 0;
+    for (int j = 0; j < NEAR_GRID; j++)
+        for (int i = 0; i < NEAR_GRID; i++)
+        {
+            float wx = x0 + NEAR_TEXEL * NearGridTexel(i), wy = y0 - NEAR_TEXEL * NearGridTexel(j);
+            float fx = (wx + 8192.0f) / 16.0f - 0.5f, fy = (8192.0f - wy) / 16.0f - 0.5f;
+            if (fx < 0) fx = 0; if (fy < 0) fy = 0; if (fx > 1022.999f) fx = 1022.999f; if (fy > 1022.999f) fy = 1022.999f;
+            int c = (int)fx, r = (int)fy;
+            float ax = fx - c, ay = fy - r;
+            const float* r0 = L + (size_t)r * 1024, *r1 = r0 + 1024;
+            float v = (r0[c] * (1 - ax) + r0[c + 1] * ax) * (1 - ay) + (r1[c] * (1 - ax) + r1[c + 1] * ax) * ay;
+            if (!isfinite(v)) v = 0;
+            g_conform.delta[(size_t)j * NEAR_GRID + i] = v;
+            if (v < lo) lo = v; if (v > hi) hi = v; sum += v;
+        }
+    Note("difficulty: near terrain: base: the level's smoothed heights (its first capture, 16 m) drawn as the tile's base: %.1f..%.1f m, mean %.1f",
+        (double)lo, (double)hi, sum / ((double)NEAR_GRID * NEAR_GRID));
+    return 1;
+}
+
+/* NearRunStep for the level's 0x3C record: 0 while drawing, 1 when drawn, -1 on failure. */
+static int NearBaseStep(uint64_t context)
+{
+    if (g_near.calls == 0)
+    {
+        if (!NearBasePlan()) return -1;
+        g_conform.next = 0; g_conform.waits = 0; g_near.calls = 1;
+        return 0;
+    }
+    if (NearQueued(context) != 0) return ++g_conform.waits < 1200 ? 0 : -1;
+    g_conform.waits = 0;
+    if (g_conform.next >= (uint32_t)(NEAR_GRID - 1) * (NEAR_GRID - 1)) { g_near.calls = 0; return 1; }
+    if (!NearConformDraw(context)) return -1;
+    return 0;
+}
+
 /* The conform's stages; 1 while running, 0 when done (ok or not: the tile goes on with what the texture holds). */
 static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h)
 {
@@ -1620,6 +1827,83 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
     return 1;
 }
 
+/* ---- Step dumps (HELLFORGE_XL_NEAR_STEPDUMP=1, research): the tile's heights after each replayed op that draws heights ----
+ * Every height layer of terrain_generator_heightmap (terrain_height ADD, terrain_cap_height MAX) and the later height
+ * passes render into generated_heightmap_f; 0x64 (terrain_generator_convert_output: height_convert FROM_32F TO_16UNORM)
+ * turns it into the tile's u16 texture, which the replay already reads back. After the level's 0x3C record, after the
+ * last vanilla-density tile and after 0x40, 0x3E, 0x3F, 0x3D, 0x0D and 0x63, the queue is drained, 0x64 runs alone, and
+ * the readback is written as near-step-NN-XX.u16 (step, op; u16 as the texture). The final 0x64 converts again, so the
+ * tile is as without the dumps. 0x64 also rewrites generated_heightmap_source and the slope maps, as the final one does. */
+static struct { int phase, back, s64; uint32_t id, polls, waits; } g_stepDump;
+
+static int NearStepDumpOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_XL_NEAR_STEPDUMP", t, sizeof t) > 0 && t[0] == '1'; }
+    return on;
+}
+
+static int NearStepDumpAfter(int s)
+{
+    if (!NearStepDumpOn()) return 0;
+    if (g_near.stepKind[s] == NEAR_TILE) return s + 1 >= g_near.steps || g_near.stepKind[s + 1] != NEAR_TILE;
+    switch (g_near.stepOp[s]) { case 0x3C: case 0x40: case 0x3E: case 0x3F: case 0x3D: case 0x0D: case 0x63: return 1; }
+    return 0;
+}
+
+/* 1 while dumping; 0 when done (g_near.step is then the step after the dumped one), -1 on failure. */
+static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h)
+{
+    if (g_stepDump.phase == 1 || g_stepDump.phase == 3) /* drained, then a few frames for the consumer's last jobs */
+    {
+        if (NearQueued(context) != 0 || ++g_stepDump.waits < 4) return g_stepDump.waits < 600 ? 1 : -1;
+        g_stepDump.waits = 0;
+        if (g_stepDump.phase == 1) { g_near.step = g_stepDump.s64; g_near.calls = 0; g_stepDump.phase = 2; return 1; }
+        NearReadbackFn readback = (NearReadbackFn)NearApi(0x10, 0x1A8);
+        if (readback == NULL) return -1;
+        g_stepDump.id = readback(g_near.tex[0]); g_stepDump.polls = 0; g_stepDump.phase = 4;
+        return 1;
+    }
+    if (g_stepDump.phase == 2)
+    {
+        int r = NearRunStep(records, end, context, g, h);
+        if (r < 0) return -1;
+        if (r > 0) { g_stepDump.phase = 3; g_stepDump.waits = 0; }
+        return 1;
+    }
+    NearReadyFn ready = (NearReadyFn)NearApi(0x10, 0x1D0);
+    NearDescFn desc = (NearDescFn)NearApi(0x10, 0x1D8);
+    if (ready == NULL || desc == NULL) return -1;
+    if (!ready(g_stepDump.id)) return ++g_stepDump.polls < 2000 ? 1 : -1;
+    uint8_t out[32] = {0}, d[24];
+    const uint8_t* p = desc(out, g_stepDump.id);
+    memcpy(d, p ? p : out, 24);
+    uint32_t w, hgt, format; uint64_t data;
+    memcpy(&w, d, 4); memcpy(&hgt, d + 4, 4); memcpy(&format, d + 8, 4); memcpy(&data, d + 16, 8);
+    int s = g_stepDump.back - 1;
+    if (data != 0 && w == 4096 && hgt == 4096 && NearTexelBytes(format) == 2)
+    {
+        static uint16_t* copy;
+        if (copy == NULL) copy = (uint16_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        wchar_t name[64];
+        swprintf(name, 64, L"near-step-%02d-%02X%ls.u16", s, (unsigned)g_near.stepOp[s], g_near.stepKind[s] == NEAR_TILE ? L"t" : L"");
+        HANDLE f = OpenLog(name);
+        if (copy != NULL && f != INVALID_HANDLE_VALUE && !SafeRead(data, copy, (size_t)4096 * 4096 * 2))
+        {
+            DWORD wrote = 0; WriteFile(f, copy, 4096u * 4096u * 2u, &wrote, NULL);
+            double sum = 0; uint16_t lo = 65535, hi = 0;
+            for (size_t i = 0; i < (size_t)4096 * 4096; i += 64) { sum += copy[i]; if (copy[i] < lo) lo = copy[i]; if (copy[i] > hi) hi = copy[i]; }
+            Note("difficulty: near terrain: step dump after step %d (op 0x%02X%s): heights %.1f..%.1f m, mean %.1f", s, g_near.stepOp[s],
+                g_near.stepKind[s] == NEAR_TILE ? ", the last vanilla-density tile" : "", lo / 65535.0 * 1000 - 500, hi / 65535.0 * 1000 - 500,
+                sum / ((double)4096 * 4096 / 64) / 65535.0 * 1000 - 500);
+        }
+        if (f != INVALID_HANDLE_VALUE) CloseHandle(f);
+    }
+    else Note("difficulty: near terrain: step dump after step %d: the readback is %u x %u format %u", s, w, hgt, format);
+    g_near.step = g_stepDump.back; g_near.calls = 0; g_stepDump.phase = 0;
+    return 0;
+}
+
 /* At the level's CleanupTerrains (0x65): 1 while the level waits for the tile. */
 static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h)
 {
@@ -1713,12 +1997,25 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
     if (g_near.state == NEAR_STEP)
     {
         g_near.frames++;
+        if (g_stepDump.phase != 0)
+        {
+            int d = NearStepDump(records, end, context, g, h);
+            if (d < 0) { Note("difficulty: near terrain: a step dump failed; no tile"); g_stepDump.phase = 0; NearReplayEnd(0); return 0; }
+            if (d == 0 && g_near.step == g_near.steps) { g_near.state = NEAR_DRAIN; g_near.waits = 0; }
+            return 1;
+        }
         int r = NearRunStep(records, end, context, g, h);
         if (r < 0)
         {
             Note("difficulty: near terrain: step %d (op 0x%02X) failed; no tile", g_near.step, g_near.stepOp[g_near.step]);
             NearReplayEnd(0);
             return 0;
+        }
+        if (r > 0 && NearStepDumpAfter(g_near.step))
+        {
+            g_stepDump.s64 = -1;
+            for (int s = 0; s < g_near.steps; s++) if (g_near.stepKind[s] == NEAR_RECORD && g_near.stepOp[s] == 0x64) g_stepDump.s64 = s;
+            if (g_stepDump.s64 >= 0) { g_stepDump.back = g_near.step + 1; g_stepDump.phase = 1; g_stepDump.waits = 0; return 1; }
         }
         if (r > 0 && ++g_near.step == g_near.steps) { g_near.state = NEAR_DRAIN; g_near.waits = 0; }
         return 1;
