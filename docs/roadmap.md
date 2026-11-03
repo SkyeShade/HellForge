@@ -11,7 +11,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Local game copy | Done | Shipped in 0.2.0 |
 | Co-op with friends | Done | Shipped in 0.2.0 |
 | [Mod SDK](sdk-roadmap.md) | Done | SDK 16; some events and registries left |
-| Build patches for newer Steam builds | Done | Each new Steam build needs a new patch |
+| The supported build from Steam's servers | Testing | Replaces the build patches; nothing to publish per Steam build |
 | Open source | Done | GPL-3 |
 | In-game editor | Mostly done | Player's kit mostly ported; enemies and structures built; missions left |
 | Difficulty 11 (Hell Forge) | Mostly done | Needs its own enemy mix |
@@ -59,7 +59,8 @@ Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 16.
 - Mod groups, modlist codes, cosmetic packs, and a CLI for mod managers.
 - Difficulty 11, "Hell Forge", as a mod: bigger maps, more objectives and outposts, a 72-minute timer, more patrols,
   two missions in one, and fortresses and mega nests in the mega cities.
-- Build patches: setup turns a newer Steam build into the build HellForge runs ([downpatch.md](downpatch.md)).
+- Build patches: setup turned a newer Steam build into the build HellForge runs (since replaced by
+  [the Steam download](steam-download.md)).
 - Linux under Proton, experimental, from the community's work in issue 1 ([linux.md](linux.md)).
 - The source code, released under GPL-3.
 
@@ -261,8 +262,11 @@ Linux support shipped in 0.2.0 as experimental ([linux.md](linux.md)). Testers i
 Proton, but co-op on Linux, the Steam ownership check under Proton, and Steam as a Flatpak or on the Steam Deck are
 still untested.
 
-Build patches work: setup picks a patch from the list online and keeps Steam's depot download as the fallback. Each
-new Steam build of HD2 needs a new patch.
+Setup downloads the supported build from Steam's servers for the player's account (a QR code sign-in that keeps
+nothing), copying what Steam's install shares with it. With no phone, Valve's SteamCMD downloads it, the password typed
+into SteamCMD's window. Steam's console download is the third way, with no sign-in in HellForge, and the fallback. A new
+Steam build of HD2 needs nothing published. It replaced the build patches, which carried game data from
+files.hf-mod.com; it still needs a full run with a real account.
 
 Setup still needs a full run through its GUI on a fresh PC.
 

@@ -64,6 +64,16 @@ On `dev`, since 0.3.0-beta.
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
+- **Setup gets the supported game build from Steam itself.** When Steam has another HELLDIVERS 2 build, setup offers
+  three ways to get the build HellForge runs for your own account. Scan a QR code with the Steam app on your phone
+  (the default): setup downloads the build from Steam's servers and copies whatever your Steam install already has.
+  With no phone, sign in with SteamCMD: setup gets Valve's own SteamCMD and opens it with everything filled in, and you
+  type your password into SteamCMD's window, never into HellForge. Or use the Steam app on your PC, which downloads
+  it through its console. Every file is checked against Steam's hashes, and nothing of a sign-in is kept: SteamCMD's
+  remembered sign-in is removed after it runs, and SteamCMD itself once the build is in place. Setup also finds the
+  Steam app's download in the Linux client's `steamrt64` folder. HellForge no longer downloads build patches from
+  files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
+  Sharing), when SteamCMD can't be set up, or on Linux, setup shows the Steam console commands (#205).
 - **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
   - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
     player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
@@ -253,6 +263,10 @@ On `dev`, since 0.3.0-beta.
 
 ### For launcher developers
 
+- `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
+  that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
+  `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
+  `--steamcmd`, default `<out>-steamcmd`), which asks for the password itself (#205).
 - A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
   (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
   the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.

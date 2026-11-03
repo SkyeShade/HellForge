@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <!-- setup's Steam download: planning, writing, fallbacks and sign-in hygiene, with fakes for Steam (SteamDownloadTests) -->
+  <ItemGroup><ProjectReference Include="../../src/HellForge.SteamDownload/HellForge.SteamDownload.csproj" /></ItemGroup>
   <!-- the session runner's game job, which stands alone (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/HostBoundedProcess.cs" Link="Session/HostBoundedProcess.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>

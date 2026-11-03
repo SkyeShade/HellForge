@@ -117,7 +117,7 @@ Build outputs and test fixtures go to the ignored `artifacts/` folder. The suppo
 This repository is all of HellForge:
 
 - the launcher, setup and command-line tool: `src/HellForge.Launcher`, `src/HellForge.Setup`, `src/HellForge.Cli`,
-  `src/HellForge.Core`;
+  `src/HellForge.Core`, and `src/HellForge.SteamDownload` (setup's download of the supported build from Steam);
 - the engine: the session runner `src/HellForge.Session`, the local backend `src/HellForge.LocalBackend`, the mod loader
   `native/mod-loader`, the SDK stand-ins `native/sdk-shims` and `native/steam-cloud`, the network block
   `native/network-block`, and `scripts/`;
