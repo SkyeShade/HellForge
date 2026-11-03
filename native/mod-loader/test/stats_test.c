@@ -3570,6 +3570,37 @@ static void FieldWatchClaimFixture(void)
     puts("PASS field watch: Dr6 names the watchpoint, Dr6=0 on an armed thread with TF clear is claimed, TF single steps and unarmed threads pass on");
 }
 
+/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset, 0 or anything else,
+ * FieldWatch runs no self-test, arms no thread (another thread's debug registers stay clear) and records no field. */
+static DWORD WINAPI FieldWatchIdle(void* event) { WaitForSingleObject(event, INFINITE); return 0; }
+static void FieldWatchOffFixture(void)
+{
+    static float fields[0x10];
+    HANDLE event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchIdle, event, 0, NULL);
+    assert(event != NULL && thread != NULL);
+    const wchar_t* offValues[] = {NULL, L"0", L"yes"};
+    for (int i = 0; i < 3; i++)
+    {
+        SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", offValues[i]);
+        assert(!FieldWatchEnabled());
+        FieldWatch((uintptr_t)fields);
+        assert(g_fieldWatched == 0 && g_fieldWatchThreadCount == 0);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & 0x3F) == 0);
+    }
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1");
+    assert(FieldWatchEnabled());
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    SetEvent(event);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    CloseHandle(event);
+    puts("PASS field watch off by default: unset, 0 or another value arms no thread; 1 turns it on");
+}
+
 /* B.4 end to end: the real self-test, then FieldWatch arming a helper of this test process; the helper reads and
  * writes a watched buffer at +0 and +0x10. Nothing here needs game.dll. */
 static volatile LONG g_fieldE2eBuffer[8];
@@ -3944,8 +3975,11 @@ int main(int argc, char** argv)
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
     FieldWatchClaimFixture();
+    FieldWatchOffFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1"); /* the diagnostic's own tests opt in */
     FieldWatchEndToEndFixture();
     FieldWatchCapFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "

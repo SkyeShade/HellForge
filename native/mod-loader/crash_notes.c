@@ -681,18 +681,16 @@ static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-/* B.2: HELLFORGE_DIFFICULTY_FIELDWATCH=0 disables the preview watchpoints: no thread is suspended, no debug register is
- * set and no watchpoint handler is added. Unset or any other value keeps them. */
+/* The preview watchpoints are a developer's diagnostic, off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1. On, every access
+ * to a level's map fields traps into FieldWatchHit (one exception dispatch each, a signal as well under Wine) and every
+ * new level suspends each thread to arm it: in 0.3.0-beta, on for everyone with Difficulty 11, it cost players large
+ * frame drops. Nothing else depends on it: the preview record it finds is only its own DR2 target. Off, no thread is
+ * suspended, no debug register is set, the self-test does not run and no watchpoint handler is added. */
 static int FieldWatchEnabled(void)
 {
-    static int enabled = -1;
-    if (enabled < 0)
-    {
-        wchar_t value[8];
-        DWORD length = GetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", value, 8);
-        enabled = !(length == 1 && value[0] == L'0');
-    }
-    return enabled;
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", value, 8);
+    return length == 1 && value[0] == L'1';
 }
 
 /* One thread's watchpoints, set while it is briefly suspended: 1 when they are. B.2 logs the values that were set. */
@@ -771,11 +769,8 @@ static void FieldWatch(uintptr_t field)
     static uintptr_t record;
     if (!FieldWatchEnabled())
     {
-        if (!notedOff)
-        {
-            notedOff = 1;
-            NoteDiagnostic("difficulty: watchpoints are off (HELLFORGE_DIFFICULTY_FIELDWATCH=0): no thread is suspended, no debug register is set and no watchpoint handler is added");
-        }
+        if (!notedOff) Note("difficulty: the map preview watchpoints are off (HELLFORGE_DIFFICULTY_FIELDWATCH=1 turns them on)");
+        notedOff = 1;
         return;
     }
     if (g_fieldWatchOff) return;
