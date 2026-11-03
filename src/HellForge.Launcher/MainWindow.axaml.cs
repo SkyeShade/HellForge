@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     readonly List<ProgressBar> connectors = []; /* each step's track, to the next step: its progress */
     readonly List<ProfileTemplate> templates;
     List<LocalProfile> profiles = [];
-    bool loadingProfiles;
+    bool loadingProfiles, updatingStrangersUi;
     SelectableTextBlock? runPathText, profilePathText;
     TaskCompletionSource<bool>? confirm;
     string? runDirectory;
@@ -56,6 +56,7 @@ public partial class MainWindow : Window
     DateTime? seasonPassUtc;
     bool reachedShip;
     bool modProblemsShown; // this session's mod problems (result.json mods.problems) went to the console
+    string? steamInputShown; // the Steam Input note (result.json steamInput, SteamInputNote) the console shows last
     bool stopRequested, closeConfirmed, scrollQueued;
     (int Index, bool Failed) shownStep = (-2, false);
     double? stepProgress; /* the current step's progress (0 .. 1), or null while it cannot be told */
@@ -110,24 +111,18 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
-        // Play with strangers lives in the installation's mods settings (ModSettings), which the backend reads: off by default.
-        StrangersBox.IsEnabled = paths.ModsFolder != null;
-        StrangersBox.IsChecked = paths.ModsFolder != null && ModSettings.PlayWithStrangers(paths.ModsFolder);
-        StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-        StrangersBox.IsCheckedChanged += (_, _) =>
-        {
-            StrangersWarning.IsVisible = StrangersBox.IsChecked == true;
-            if (paths.ModsFolder == null) return;
-            try { ModSettings.SetPlayWithStrangers(paths.ModsFolder, StrangersBox.IsChecked == true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save Play with strangers: " + error.Message, Red); }
-        };
         // The sandbox (docs/steam-bridge.md): on unless turned off, and only with an engine built with the Steam bridge, on
         // Windows (SessionRunner.CanSandbox).
         var steamBridge = SessionRunner.HasSteamBridge(paths);
         SandboxBox.IsEnabled = SessionRunner.CanSandbox(paths);
         SandboxBox.IsChecked = SessionRunner.SandboxByDefault(paths);
         SandboxUnavailable.IsVisible = !steamBridge;
-        SandboxBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+        SandboxBox.IsCheckedChanged += (_, _) =>
+        {
+            ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+            ApplyStrangersSetting();
+        };
+        InitializeStrangers();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
@@ -173,6 +168,13 @@ public partial class MainWindow : Window
                 BootProgress.IsVisible = true;
                 BootProgress.Value = 400;
                 await Task.Delay(1500);
+                // HELLFORGE_LAUNCHER_SHOT_SHOW=<control name> scrolls its page so that control is near the picture's top.
+                if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_SHOW") is { Length: > 0 } show && this.FindControl<Control>(show) is { } shown &&
+                    Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<ScrollViewer>(shown) is { Content: Visual content } viewer && shown.TranslatePoint(default, content) is { } at)
+                {
+                    viewer.Offset = new Vector(0, Math.Max(0, at.Y - 120));
+                    await Task.Delay(500);
+                }
                 var size = new PixelSize((int)Bounds.Width, (int)Bounds.Height);
                 using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size);
                 bitmap.Render(this);
@@ -221,6 +223,32 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) RequestStop();
         else if (SyncBusy) SetStatus("Inventory sync is running. Play once it finishes.", Phase.Idle);
+        else if (!installingRuntimes && VisualCppRuntimes.Needed().Count > 0) _ = InstallRuntimesThenStart();
+        else if (!installingRuntimes) Start();
+    }
+
+    bool installingRuntimes;
+
+    // An installation set up before setup installed the Visual C++ runtimes (0.2), or a runtime removed since: Microsoft's
+    // installer runs first, with Windows' permission prompt; PLAY stays disabled and says so meanwhile.
+    async Task InstallRuntimesThenStart()
+    {
+        installingRuntimes = true;
+        UpdateButton();
+        string? problem;
+        try
+        {
+            var downloads = paths.InstallRoot != null ? new InstallLayout(paths.InstallRoot).Temp : Path.Combine(Path.GetTempPath(), "HellForge");
+            problem = await VisualCppRuntimes.EnsureAsync(downloads, "press PLAY again.",
+                detail => Dispatcher.UIThread.Post(() => SetStatus(detail, Phase.Busy, "The game cannot start without it.")));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { problem = VisualCppRuntimes.Problem("press PLAY again.") + " (" + error.Message + ")"; }
+        finally
+        {
+            installingRuntimes = false;
+            UpdateButton();
+        }
+        if (problem != null) SetStatus("A Microsoft runtime the game needs is missing.", Phase.Failed, failure: problem);
         else Start();
     }
 
@@ -244,6 +272,7 @@ public partial class MainWindow : Window
         launchedUtc = DateTime.UtcNow;
         lines.Clear();
         modProblemsShown = false;
+        steamInputShown = null;
         Append("Starting play session.", LauncherLine);
         Append($"Profile: {profile.Name} (template {profile.Template}) in {profile.Folder}", LauncherLine);
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
@@ -258,11 +287,13 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true));
+            ShowStrangersDefaultNotice();
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
@@ -408,10 +439,20 @@ public partial class MainWindow : Window
             if (problem.ValueKind == JsonValueKind.String) Append("Mod left out of this session: " + problem.GetString(), Orange);
     }
 
+    // A sandboxed game's controllers that Steam Input handles cannot reach it (SteamInputNote): in the console each time
+    // the note changes, and under the status while the game runs (ShowObserving).
+    void ShowSteamInput(JsonElement state)
+    {
+        if (SteamInputNote.Of(state) is not { } note || note == steamInputShown) return;
+        steamInputShown = note;
+        Append(note, Orange);
+    }
+
     void ShowState(JsonElement state)
     {
         var stopped = !runner.IsRunning;
         ShowModProblems(state);
+        ShowSteamInput(state);
         switch (SessionFiles.Text(state, "status"))
         {
             case "preparing": ShowPreparing(); break;
@@ -429,7 +470,7 @@ public partial class MainWindow : Window
                 RenderSteps(LaunchStep, false);
                 if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");
                 break;
-            case "observing": ShowObserving(); break;
+            case "observing": ShowObserving(state); break;
             case "observed": ShowObserved(state, stopped); break;
             case "failed": ShowFailed(state, stopped); break;
             case "cleanup_failed":
@@ -446,20 +487,29 @@ public partial class MainWindow : Window
         if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
     }
 
-    void ShowObserving()
+    void ShowObserving(JsonElement state)
     {
         RenderSteps(RunStep, false);
         if (stopRequested) return;
-        if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
+        // No shader cache yet: the game builds it behind a black screen before it asks the backend for anything.
+        if (seasonPassUtc == null && !reachedShip && ShaderCache.Building(state))
+            SetStatus("Building the shader cache (first start only, this can take a few minutes)...", Phase.Running,
+                "The game window stays black until it is done. Later starts are quick. Press STOP or close the game to end the session.");
+        else if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
             SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
                 "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
+        else if (SteamInputNote.Of(state) is { } controllers)
+            SetStatus("Running. Steam Input can't reach the sandboxed game.", Phase.Attention, controllers);
         else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
     }
 
     void ShowObserved(JsonElement state, bool stopped)
     {
         RenderSteps(SessionFiles.Text(state, "gameLaunched") == "true" ? StepNames.Length : -1, false);
-        if (stopped) SetStatus("Session ended.", Phase.Ended, Cleanup(state) + "Press PLAY to start another session.");
+        // the game closed its window and kept running: the session runner ended it (QuitWatch) and finished as after STOP
+        var stuck = state.TryGetProperty("stuckQuitting", out _)
+            ? "The game closed its window but did not exit, so HellForge ended it and finished the session as usual. " : "";
+        if (stopped) SetStatus("Session ended.", Phase.Ended, stuck + Cleanup(state) + "Press PLAY to start another session.");
         else SetStatus("Ending the session...", Phase.Busy);
     }
 
@@ -672,9 +722,9 @@ public partial class MainWindow : Window
     void UpdateButton()
     {
         var running = runner.IsRunning;
-        PlayLabel.Text = !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
+        PlayLabel.Text = installingRuntimes ? "INSTALLING" : !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
         PlayButton.Classes.Set("stop", running);
-        PlayButton.IsEnabled = SessionRunner.IsSupported && !(running && stopRequested) && !(bundledSyncing && !running);
+        PlayButton.IsEnabled = SessionRunner.IsSupported && !installingRuntimes && !(running && stopRequested) && !(bundledSyncing && !running);
         // The session keeps the profile it started with.
         ProfileCombo.IsEnabled = NewProfileButton.IsEnabled = !running;
         CreateProfileButton.IsEnabled = !running && TemplateCombo.SelectedItem != null;
@@ -795,6 +845,7 @@ public partial class MainWindow : Window
         Control[] pages = [PlayPage, ProfilePage, ModsPage, ConsolePage, SettingsPage];
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
+        if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
         if (index == 2) RefreshMods();
         if (index == 3) QueueScroll();
     }
@@ -875,14 +926,17 @@ public partial class MainWindow : Window
         Close();
     }
 
-    // What is wrong with the typed launch options, under their box (nothing when they can be used).
+    // What is wrong with the typed launch options, under their box (nothing when they can be used), and what they do that a
+    // player would not expect (GameLaunchOptions.Warnings).
     void ShowLaunchOptionsProblem()
     {
-        string? problem = null;
-        try { HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
+        string? problem = null, warning = null;
+        try { warning = string.Join(" ", HellForge.Core.GameLaunchOptions.Warnings(HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text))); }
         catch (InvalidDataException error) { problem = error.Message; }
         LaunchOptionsProblem.Text = problem;
         LaunchOptionsProblem.IsVisible = problem != null;
+        LaunchOptionsWarning.Text = warning;
+        LaunchOptionsWarning.IsVisible = !string.IsNullOrEmpty(warning);
     }
 
     static IBrush Solid(string color) => new ImmutableSolidColorBrush(Color.Parse(color));

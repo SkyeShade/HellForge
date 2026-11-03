@@ -19,7 +19,8 @@ public static class SteamLocator
 
     // The installed game, or null when Steam or the game is not installed. Throws when the game is present but not
     // usable as a source (an update in progress, missing files). With HELLDIVERS 2 in several libraries (a copy left on
-    // another drive), the best one: the supported build, else one a downpatch converts, else the first usable one.
+    // another drive), the best one: the supported build, else the build nearest it, which has the most of it for setup's
+    // Steam download to copy instead of downloading (build ids grow with each update).
     public static SteamGame? FindGame(string? steamRoot = null)
     {
         steamRoot ??= SteamRoot();
@@ -36,9 +37,12 @@ public static class SteamLocator
             }
             catch (Exception error) when (error is InvalidDataException or IOException) { unusable ??= error; }
         }
-        var best = games.FirstOrDefault(g => g.SupportedBuild) ?? games.FirstOrDefault(g => Downpatcher.FindPack(g.Report.Pin) != null) ??
-            games.FirstOrDefault();
+        var best = games.FirstOrDefault(g => g.SupportedBuild) ?? games.MinBy(g => Distance(g.Report.Pin.BuildId));
         if (best == null && unusable != null) throw unusable;
         return best;
     }
+
+    // How far a build is from the supported one, by build id (an unreadable one is the farthest).
+    static long Distance(string buildId) =>
+        long.TryParse(buildId, out var id) && long.TryParse(SupportedBuild.Current.BuildId, out var supported) ? Math.Abs(id - supported) : long.MaxValue;
 }

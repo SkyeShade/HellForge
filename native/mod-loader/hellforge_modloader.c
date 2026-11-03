@@ -553,7 +553,8 @@ static int InstallReaper(int pinsReady);
 /* SDK 7 events (events.c, after abilities.c: the silo countdowns listen for a mission's end). */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
 #include "registry.c"
-#include "registry_load.c" /* right after registry.c: the registry at work when the entity data loads */
+#include "table_growth.c" /* the component tables the registry grows */
+#include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "projectiles.c"
 #include "stratagems.c"
@@ -564,6 +565,8 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
+#include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
+#include "difficulty_terrain.c" /* terrain heights on larger maps */
 #include "difficulty_artillery.c" /* the SEAF Artillery's reach on larger maps */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
@@ -574,6 +577,10 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
 #include "packages.c"
 #include "loadout_preview.c"
+#include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
+#include "forge_credits.c"
+#include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
+#include "terminal.c"
 #include "abilities.c"
 #include "events.c"
 #include "stats.c"
@@ -762,6 +769,10 @@ static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
@@ -947,6 +958,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
+    if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
         snprintf(g_pinModule, sizeof g_pinModule, "%s", f[1]);
@@ -1087,7 +1099,8 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
         ApiRegisterEntity, ApiCopyField, ApiSetField, ApiSetTag, ApiMount, ApiRecord, ApiFind, ApiEditEntity, ApiSetLive, ApiGetLive, ApiSetPassives, ApiGetPassives,
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
-        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource};
+        ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
+        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk};
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");
