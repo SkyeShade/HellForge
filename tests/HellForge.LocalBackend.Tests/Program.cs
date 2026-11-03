@@ -522,6 +522,13 @@ try
                 afterWarbond.ContainsKey(1861407750), "Warbond purchase not saved (medals, medals spent, item).");
             Check((await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":1,\"warId\":801}")).Status == HttpStatusCode.BadRequest,
                 "A warbond item was sold twice.");
+            // A page's Super Credits (Helldivers Mobilize item 6: 100 into the wallet 0xCBFFC645) pay Forge Credits.
+            var creditsBuy = await Buy("/SeasonPass/item/buy", "{\"expectedCost\":[{\"mixId\":1276729503,\"amount\":1}],\"seasonPassItemId\":6,\"warId\":801}");
+            var afterCredits = Inventory();
+            Check(creditsBuy.Status == HttpStatusCode.OK && creditsBuy.Body.Contains(PaidContentSet.ForgeCreditsWallet.ToString()) && !creditsBuy.Body.Contains("3422537285") &&
+                afterCredits.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) == afterWarbond.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) + 100 &&
+                !afterCredits.ContainsKey(0xCBFFC645), "A warbond page's 100 Super Credits did not pay 100 Forge Credits: " + creditsBuy.Body);
+            afterWarbond = afterCredits;
             const uint stratagem = 2273387135;
             var requisition = afterWarbond[MissionService.RequisitionMixId];
             var storeBuy = await Buy("/Progression/buy/v2", "{\"mixId\":" + stratagem + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":3608481516,\"amount\":4000}]}");

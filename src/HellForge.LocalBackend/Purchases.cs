@@ -64,7 +64,12 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             if (ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64() || ProfileStore.Held(inventory, medals) < cost) return false;
             ProfileStore.AddItem(inventory, medals, -cost);
             ProfileStore.AddItem(inventory, spent, cost);
-            foreach (var (content, amount) in Contents(mixId, 1)) granted.Add((JsonNode)new JsonObject { ["mixId"] = content, ["amount"] = ProfileStore.AddItem(inventory, content, amount) });
+            foreach (var (content, amount) in Contents(mixId, 1))
+            {
+                /* a page's Super Credits (73 items, all into the wallet 0xCBFFC645, which is never stored) pay Forge Credits */
+                var paid = PaidContentSet.IsSuperCredits(content) ? PaidContentSet.ForgeCreditsWallet : content;
+                granted.Add((JsonNode)new JsonObject { ["mixId"] = paid, ["amount"] = ProfileStore.AddItem(inventory, paid, amount) });
+            }
             if (!repeatable) { bought.Add((JsonNode)itemId); progression["purchasedSeasonPassItems"] = bought; }
             return true;
         });
