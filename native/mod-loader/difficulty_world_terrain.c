@@ -301,9 +301,9 @@ static int TerrainTemplate(uintptr_t gen)
     return 1;
 }
 
-/* One tile: the game's GenerateVoronoi and height passes on the tile's block, then moved to its world position.
- * 1 when built. */
-static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
+/* One tile: the game's GenerateVoronoi and height passes on the tile's block, then (move) moved to its world position.
+ * 1 when built. Without move the tile stays in its own frame (the stamp rings run the level's op 0x2B on it). */
+static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, int move)
 {
     const float extent = (float)TERRAIN_TILE_EXTENT, core = (float)TERRAIN_TILE_CORE;
     float cx = (float)(tile % g_terrain.columns) * core, cy = (float)(tile / g_terrain.columns) * core;
@@ -377,6 +377,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     g_terrainThread = 0;
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
     if (!ok || !seen04) return 0;
+    if (!move) return 1;
 
     /* to the tile's world position: the Voronoi vertices (x, y at +0) and the route-cell areas' points (x, y at +0x80)
      * the route cells name ([+0xA0, +0xA4)) */
@@ -560,7 +561,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
             }
             LARGE_INTEGER b0, b1;
             QueryPerformanceCounter(&b0);
-            int built = TerrainBuild(g_terrain.next, records, end, context, g, h, gen) && TerrainDrawPrepare(records, gen);
+            int built = TerrainBuild(g_terrain.next, records, end, context, g, h, gen, 1) && TerrainDrawPrepare(records, gen);
             QueryPerformanceCounter(&b1);
             g_terrain.buildMs += (double)(b1.QuadPart - b0.QuadPart) * 1000.0 / (double)hz.QuadPart;
             if (!built) { g_terrain.failed++; g_terrain.next++; continue; }
@@ -1208,7 +1209,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     {
         if (!g_near.building)
         {
-            if (!(TerrainBuild(g_near.stepTile[s], records, end, context, g, h, gen) && TerrainDrawPrepare(records, gen)))
+            if (!(TerrainBuild(g_near.stepTile[s], records, end, context, g, h, gen, 1) && TerrainDrawPrepare(records, gen)))
             {
                 g_near.tilesFailed++; g_near.calls = 0;
                 return 1; /* the level's own cells stay there */
@@ -1904,6 +1905,402 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
     return 0;
 }
 
+/* ---- Stamps in rings around the drop point (static analysis: knowledge base, xl-world-streaming, 2026-11-03) ----
+ * PlaceStampWithWeightRule (op 0x2B, 0xF34CC0) picks a fixed number of route-cell groups per rule ([rule+0x20] against a
+ * permutation of the items, 0xF327D9), whatever the map's size: a 16 km level's 290 route cells (~650 m apart) get about
+ * one vanilla map's stamps over 200+ km^2, so the rocks, cliffs and mesas that make vanilla's relief are 20-75x sparser.
+ * Here, once the level's own 0x2B has run (record 91, before 0x5F hashes the locations and 0x31/0x2F spawn them), the op
+ * runs again on vanilla-density composite tiles (TerrainBuild, 16 m Voronoi, ~40 m route cells) around the drop point,
+ * and the stamps it places are filtered by distance (rings: all near the drop, larger ones only further out) and appended
+ * to the level's locations, so 0x31 (units), 0x2F (stamp terrains), 0x63 (heights), the near replay and the streamer take
+ * them as their own.
+ * What the tile run needs beyond TerrainBuild (proven unless noted):
+ *  - 0x4E GenerateOutsideMapDistance (G+123FE8, read at 0xF33893) and 0x26 GenerateFbr (G+106018, stamp angles,
+ *    0xF33E75) are CPU passes over the Voronoi vertices: rerun on the tile with its vertices moved to level metres and
+ *    the level's settings, 0x26 from its record as it was before it ran (its permutation comes from the record's RNG,
+ *    +0x1990, which it advances), so both match the level's fields at those points.
+ *  - the per-vertex clearing byte (G+11A0020; 0xF3487E, 0xF34164, 0xF319C1) is 0xB3's: every vertex within 1.01 r of a
+ *    level clearing point (G+11A16FC, 16 bytes: x, y, r, flags; count G+11A7244) is marked, the rest cleared.
+ *  - the run's own stamp index ([ctx+0x20]) over 0..896: the level's index holds level objects in level metres.
+ *  - the world gates use settings+0x2C/+0x50/+0x54/+0x5C (0xF32816, 0xF346E3, 0xF347D9): widened for the tile run, the
+ *    level's applied to the result here (per location, with its rule flags loc+0xD4 bit 0).
+ *  - stamps of a type the level did not load are dropped: packages are queued per type of the level's list (0xA5,
+ *    0xC194FA: G+18008, count G+11A7080; 0xF41F80), and a location's type is loc+0xD8 (the cell entry's +0xC, 0xF32813).
+ *  - the level's index then tests each kept stamp against the level's locations (flags bit 0 clear: [P+0x2050] + id x
+ *    0xE0, box +0xB0) and roads (bit 0 set: the segment from point id - 1 to id of [P+0x2060] = G+9568E4, float x, y
+ *    each, half the width at +0x30 of the route [P+0x2058] = G+937348 + (flags >> 2) x 0x48; 0xF30D40, 0xFCC180) before
+ *    it is inserted (0xC04EF0, slot = the location's number), as the placement loop does.
+ * Locations: 0xE0 at G+11A7280 (xy +0, box +0xB0..+0xBC: moved to level metres), extras 0x40 at G+1367280 (read by no op
+ * after record 91; +0x10 = the record, +0x38 the vertex list's length: cleared), count G+11A7108 and G+11A710C. */
+#define STAMP_TILE_CELLS_VANILLA 430.0f /* a vanilla map's route-cell items: 434 (planet 70) and 425 (planet 259), measured */
+#define STAMP_LOCATION_LIMIT 8000u      /* of the table's 8192 (0x1C0000 / 0xE0) */
+typedef struct { uint8_t loc[0xE0]; uint8_t extra[0x40]; float side, prio; uint32_t ring, hash; } StampCandidate;
+static struct
+{
+    LONG level;                 /* g_world.levels the centre and the records are for */
+    float centre[2];            /* world metres, on the near tile's 256 m grid */
+    LONG rec26Level, rec4ELevel;
+    uint8_t rec26[0x19B0], rec4E[0x19B0];
+    StampCandidate* cand;
+    uint32_t count, capacity;
+    uint8_t* header;            /* the tile run's stamp index: a copy of the level's header ... */
+    uint8_t* memory;            /* ... and its own memory */
+    uint32_t memoryBytes;
+} g_stamps = {-1, {0.0f, 0.0f}, -1, -1};
+
+static int StampsOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char t[8] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_STAMPS", t, sizeof t) > 0 && t[0] == '0'); }
+    return on;
+}
+
+/* Rings (Chebyshev metres from the centre) and what each keeps: HELLFORGE_XL_STAMP_RINGS="r0,r1,r2,side1,side2,share1". */
+static void StampRings(float* r)
+{
+    static float v[6] = {1088.0f, 2048.0f, 4096.0f, 16.0f, 32.0f, 0.25f};
+    static int read;
+    if (!read)
+    {
+        read = 1;
+        char t[96] = "";
+        if (GetEnvironmentVariableA("HELLFORGE_XL_STAMP_RINGS", t, sizeof t) > 0)
+        {
+            float w[6];
+            if (sscanf(t, "%f,%f,%f,%f,%f,%f", &w[0], &w[1], &w[2], &w[3], &w[4], &w[5]) == 6 && w[0] > 0 && w[1] >= w[0] && w[2] >= w[1])
+                memcpy(v, w, sizeof v);
+        }
+    }
+    memcpy(r, v, sizeof v);
+}
+
+/* Before the level runs op 0x26 or 0x4E (difficulty_world.c's WorldDispatch): their records as they are then. */
+static void TerrainStampsRecord(uint64_t record, uint32_t op)
+{
+    if (op == 0x26 && g_stamps.rec26Level != g_world.levels && !SafeRead(record, g_stamps.rec26, sizeof g_stamps.rec26)) g_stamps.rec26Level = g_world.levels;
+    if (op == 0x4E && g_stamps.rec4ELevel != g_world.levels && !SafeRead(record, g_stamps.rec4E, sizeof g_stamps.rec4E)) g_stamps.rec4ELevel = g_world.levels;
+}
+
+static int StampWritable(uintptr_t at, size_t bytes)
+{
+    MEMORY_BASIC_INFORMATION m;
+    if (VirtualQuery((void*)at, &m, sizeof m) != sizeof m || m.State != MEM_COMMIT) return 0;
+    if ((uintptr_t)m.BaseAddress + m.RegionSize < at + bytes) return 0;
+    return (m.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) != 0;
+}
+
+static void StampShiftVertices(uint8_t* T, uint32_t vertices, float dx, float dy)
+{
+    for (uint32_t v = 0; v < vertices; v++)
+    {
+        float xy[2];
+        memcpy(xy, T + 0x9F310 + (size_t)v * 0x48, 8);
+        xy[0] += dx; xy[1] += dy;
+        memcpy(T + 0x9F310 + (size_t)v * 0x48, xy, 8);
+    }
+}
+
+static int StampRunRecord(const uint8_t* saved, uintptr_t gen, uint8_t* T, uint64_t seed, uint64_t context, uint64_t g, uint64_t h, int limit)
+{
+    static uint8_t one[0x19B0];
+    memcpy(one, saved, sizeof one);
+    WorldTileRelocate(one, gen, (uintptr_t)T);
+    if (seed) { uint64_t r; memcpy(&r, one + 0x1990, 8); r ^= seed; memcpy(one + 0x1990, &r, 8); }
+    volatile uint32_t index = 0;
+    volatile int calls = 0;
+    uint8_t phase = 0;
+    LONG fault = WorldTileGuarded(one, context, &index, &phase, g, h, limit, &calls);
+    return fault ? -1 : index != 0 ? 1 : 0;
+}
+
+/* The tile run's stamp index over 0..896: the level's header (its other tables at +0x2058/+0x2060), its own memory,
+ * built as the level init builds the level's (WorldIndex), locations from the tile's table. */
+static uintptr_t StampIndex(uintptr_t level, uint8_t* T, float extent)
+{
+    WorldIndexSize size = (WorldIndexSize)(g_world.game + DIF_INDEX_SIZE);
+    uint32_t bytes = size(extent, extent, extent / 64.0f);
+    if (g_stamps.header == NULL) g_stamps.header = (uint8_t*)VirtualAlloc(NULL, 0x3000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_stamps.memory == NULL || g_stamps.memoryBytes < bytes)
+    {
+        if (g_stamps.memory != NULL) VirtualFree(g_stamps.memory, 0, MEM_RELEASE);
+        g_stamps.memory = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        g_stamps.memoryBytes = g_stamps.memory ? bytes : 0;
+    }
+    if (g_stamps.header == NULL || g_stamps.memory == NULL || SafeRead(level, g_stamps.header, 0x2068)) return 0;
+    uintptr_t p = (uintptr_t)g_stamps.header, memory = (uintptr_t)g_stamps.memory, table = (uintptr_t)(T + 0x11A7280);
+    memcpy((void*)p, &extent, 4);
+    memset((void*)memory, 0, bytes);
+    memset((void*)(p + 0x50), 0, 0x2000);
+    memcpy((void*)(p + 0x48), &memory, 8);
+    ((WorldIndexInit)(g_world.game + DIF_INDEX_INIT))(p + 8, 0.0f, 0.0f, extent, extent, extent / 64.0f, 0, 0, 0, 0, memory);
+    memset((void*)(p + 4), 0, 4);
+    memcpy((void*)(p + 0x2050), &table, 8);
+    return p;
+}
+
+static int StampCompare(const void* a, const void* b)
+{
+    const StampCandidate* x = (const StampCandidate*)a; const StampCandidate* y = (const StampCandidate*)b;
+    if ((x->ring == 0) != (y->ring == 0)) return x->ring == 0 ? -1 : 1;
+    if (x->prio != y->prio) return x->prio > y->prio ? -1 : 1;
+    return x->hash < y->hash ? -1 : x->hash > y->hash ? 1 : 0;
+}
+
+/* Distance from a segment to a box (2D), for the level's roads in its stamp index. */
+static float StampSegmentBox(const float* s, const float* lo, const float* hi)
+{
+    float best = 1e30f;
+    for (int k = 0; k <= 16; k++)
+    {
+        float t = (float)k / 16.0f, x = s[0] + (s[2] - s[0]) * t, y = s[1] + (s[3] - s[1]) * t;
+        float dx = x < lo[0] ? lo[0] - x : x > hi[0] ? x - hi[0] : 0.0f, dy = y < lo[1] ? lo[1] - y : y > hi[1] ? y - hi[1] : 0.0f;
+        float d = sqrtf(dx * dx + dy * dy);
+        if (d < best) best = d;
+    }
+    return best;
+}
+
+typedef uint32_t (*StampKeyFn)(uintptr_t index, float x, float y);
+typedef uint32_t (*StampQueryFn)(uintptr_t index, uint32_t lo, uint32_t hi, uint64_t* out, uint32_t max);
+typedef uint32_t* (*StampInsertFn)(uintptr_t index, float x0, float y0, float x1, float y1, void* out);
+
+/* After the level's op 0x2B has finished (difficulty_world.c's WorldDispatch). */
+static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
+{
+    if (!StampsOn() || g_world.current != 8.0f || g_world.below == NULL) return;
+    if (g_terrain.level != g_world.levels || g_terrain.columns == 0 || g_terrain.block == NULL || g_terrain.tmpl == NULL)
+    { Note("difficulty: stamps: the level's tiles are not built; no stamp rings"); return; }
+    LARGE_INTEGER hz, t0, t1;
+    QueryPerformanceFrequency(&hz); QueryPerformanceCounter(&t0);
+    uintptr_t settings = 0, P = 0, levelIndex = 0;
+    if (SafeRead(context + 8, &settings, 8) || settings == 0 || SafeRead(context + 0x20, &P, 8) || P == 0 ||
+        SafeRead(g_worldLevel + 0x2C0, &levelIndex, 8) || levelIndex != P)
+    { Note("difficulty: stamps: the context's stamp index is not the level's (0x%llX); no stamp rings", (unsigned long long)P); return; }
+    uint32_t W = 0; float s50 = 0, s54 = 0, s5C = 0;
+    SafeRead(settings + 0x2C, &W, 4); SafeRead(settings + 0x50, &s50, 4); SafeRead(settings + 0x54, &s54, 4); SafeRead(settings + 0x5C, &s5C, 4);
+    const float world = (float)W, half = world * 0.5f;
+    /* the type tables of 0x2B and 0xA5 must be the same for the package test */
+    uint64_t rec91 = records + (uint64_t)at91 * 0x19B0u, table91 = 0, tableA5 = 0;
+    SafeRead(rec91 + 8 + 0x48, &table91, 8);
+    for (uint32_t i = 0; i < end && tableA5 == 0; i++)
+    {
+        uint32_t op = 0;
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0xA5) SafeRead(records + (uint64_t)i * 0x19B0u + 8, &tableA5, 8);
+    }
+    if (table91 == 0 || table91 != tableA5) { Note("difficulty: stamps: 0x2B's type table 0x%llX is not 0xA5's 0x%llX; no stamp rings", (unsigned long long)table91, (unsigned long long)tableA5); return; }
+    uint32_t types[256], typeCount = 0;
+    {
+        uint32_t n = 0; SafeRead(gen + 0x11A7080u, &n, 4);
+        for (uint32_t k = 0; k < n && typeCount < 256; k++) if (!SafeRead(gen + 0x18008u + 4ull * k, &types[typeCount], 4)) typeCount++;
+    }
+    uint32_t clearingCount = 0; SafeRead(gen + 0x11A7244u, &clearingCount, 4);
+    if (clearingCount > 4096) clearingCount = 0;
+    /* the centre: the squad's drop point on the war board (as the near tile reads it), else the world's centre */
+    {
+        uint64_t board = 0; uint8_t flag = 0; float p[2] = {0, 0};
+        int have = !SafeRead(g_world.game + 0x347CEE8u, &board, 8) && board != 0 && !SafeRead(board + 0x17A2B0u, &flag, 1) && flag == 1 &&
+            !SafeRead(board + 0x17A2B4u, &p[0], 4) && !SafeRead(board + 0x17A2B8u, &p[1], 4) && isfinite(p[0]) && isfinite(p[1]) &&
+            fabsf(p[0]) <= 7000.0f && fabsf(p[1]) <= 7000.0f;
+        if (!have) p[0] = p[1] = 0.0f;
+        g_stamps.centre[0] = 256.0f * floorf(p[0] / 256.0f + 0.5f); g_stamps.centre[1] = 256.0f * floorf(p[1] / 256.0f + 0.5f);
+        g_stamps.level = g_world.levels;
+        Note("difficulty: stamps: centre (%.0f, %.0f) (%s); world %u, settings +0x50 %.3f +0x54 %.3f +0x5C %.3f; %u level types, %u clearings, 0x26 %s, 0x4E %s",
+            (double)g_stamps.centre[0], (double)g_stamps.centre[1], have ? "the war board's drop point" : "no drop point: the world's centre", W, (double)s50,
+            (double)s54, (double)s5C, typeCount, clearingCount, g_stamps.rec26Level == g_world.levels ? "kept" : "MISSING", g_stamps.rec4ELevel == g_world.levels ? "kept" : "MISSING");
+    }
+    float rings[6]; StampRings(rings);
+    const float core = (float)TERRAIN_TILE_CORE, margin = (float)TERRAIN_TILE_MARGIN, extent = (float)TERRAIN_TILE_EXTENT;
+    const float cgx = g_stamps.centre[0] + half, cgy = g_stamps.centre[1] + half; /* generator metres */
+    /* the tiles whose core meets the outer ring, nearest first */
+    int order[1024], tiles = 0;
+    for (int t = 0; t < g_terrain.tiles && tiles < 1024; t++)
+    {
+        float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core;
+        if (cx + core <= cgx - rings[2] || cx >= cgx + rings[2] || cy + core <= cgy - rings[2] || cy >= cgy + rings[2] || !TerrainTileWanted(t)) continue;
+        order[tiles++] = t;
+    }
+    for (int a = 1; a < tiles; a++) /* by the Chebyshev distance of the tile's centre */
+    {
+        int t = order[a], b = a;
+        float da = fmaxf(fabsf((float)(t % g_terrain.columns) * core + core / 2 - cgx), fabsf((float)(t / g_terrain.columns) * core + core / 2 - cgy));
+        while (b > 0)
+        {
+            int u = order[b - 1];
+            float du = fmaxf(fabsf((float)(u % g_terrain.columns) * core + core / 2 - cgx), fabsf((float)(u / g_terrain.columns) * core + core / 2 - cgy));
+            if (du <= da) break;
+            order[b] = u; b--;
+        }
+        order[b] = t;
+    }
+    if (g_stamps.cand == NULL) { g_stamps.capacity = 65536; g_stamps.cand = (StampCandidate*)VirtualAlloc(NULL, sizeof(StampCandidate) * g_stamps.capacity, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); }
+    if (g_stamps.cand == NULL) { Note("difficulty: stamps: no memory"); return; }
+    g_stamps.count = 0;
+    uint8_t* T = g_terrain.block;
+    uint32_t built = 0, ran = 0, made = 0, why[8] = {0}; /* why: core, type, gate, ring, room */
+    uint32_t sides[3][8] = {{0}};
+    volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
+    volatile float* g50 = (volatile float*)(settings + 0x50); volatile float* g54 = (volatile float*)(settings + 0x54); volatile float* g5C = (volatile float*)(settings + 0x5C);
+    for (int k = 0; k < tiles; k++)
+    {
+        int t = order[k];
+        float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core, ox = cx - margin, oy = cy - margin;
+        if (!TerrainBuild(t, records, end, context, g, h, gen, 0)) continue;
+        built++;
+        uint32_t vertices = 0; memcpy(&vertices, T + 0x11A7090, 4);
+        if (vertices == 0 || vertices > 6000) continue;
+        /* 0x4E and 0x26 in level metres, with the level's settings (TerrainBuild put them back) */
+        StampShiftVertices(T, vertices, ox, oy);
+        int fixed = (g_stamps.rec4ELevel != g_world.levels || StampRunRecord(g_stamps.rec4E, gen, T, 0, context, g, h, 1000) == 1) &&
+                    (g_stamps.rec26Level != g_world.levels || StampRunRecord(g_stamps.rec26, gen, T, 0, context, g, h, 1000) == 1);
+        StampShiftVertices(T, vertices, -ox, -oy);
+        if (!fixed) { Note("difficulty: stamps: tile %d: 0x4E/0x26 did not run", t); continue; }
+        /* the clearing bytes, from the level's clearing points */
+        memset(T + 0x11A0020, 0, vertices);
+        for (uint32_t c = 0; c < clearingCount; c++)
+        {
+            float q[3];
+            if (SafeRead(gen + 0x11A16FCu + 16ull * c, q, 12) || !(q[2] > 0.0f)) continue;
+            float r2 = (1.01f * q[2]) * (1.01f * q[2]), lx = q[0] - ox, ly = q[1] - oy;
+            if (lx < -q[2] || ly < -q[2] || lx > extent + q[2] || ly > extent + q[2]) continue;
+            for (uint32_t v = 0; v < vertices; v++)
+            {
+                float xy[2]; memcpy(xy, T + 0x9F310 + (size_t)v * 0x48, 8);
+                if ((xy[0] - lx) * (xy[0] - lx) + (xy[1] - ly) * (xy[1] - ly) < r2) T[0x11A0020 + v] = 1;
+            }
+        }
+        /* the run's own index, the widened gates, no thinning, the rules' picks scaled to the tile's items */
+        uintptr_t index = StampIndex(P, T, extent);
+        if (index == 0) { Note("difficulty: stamps: no index for tile %d", t); break; }
+        uint32_t items = 0; memcpy(&items, T + 0x11A71C4, 4);
+        float scale = items > 0 && (float)items < STAMP_TILE_CELLS_VANILLA ? (float)items / STAMP_TILE_CELLS_VANILLA : 1.0f;
+        static uintptr_t ruleAt[4096]; static uint32_t ruleOld[4096];
+        uint32_t rules = 0;
+        if (scale < 1.0f)
+            for (uint32_t i = 0; i < items && i < 1024; i++)
+            {
+                int32_t type = -1; uint64_t T8 = 0, list = 0; uint32_t n = 0;
+                memcpy(&type, T + 0x92F328 + (size_t)i * 0x20 + 0xC, 4);
+                if (type < 0 || type > 4096 || SafeRead(table91 + 8ull * (uint32_t)type, &T8, 8) || T8 == 0 || SafeRead(T8 + 0x10, &list, 8) || SafeRead(T8 + 0x18, &n, 4) || list == 0 || n > 64) continue;
+                for (uint32_t r = 0; r < n && rules < 4096; r++)
+                {
+                    uintptr_t a = (uintptr_t)list + 0x70ull * r + 0x20;
+                    int seen = 0;
+                    for (uint32_t q = 0; q < rules && !seen; q++) seen = ruleAt[q] == a;
+                    uint32_t old = 0;
+                    if (seen || SafeRead(a, &old, 4) || old == 0 || !StampWritable(a, 4)) continue;
+                    ruleAt[rules] = a; ruleOld[rules] = old; rules++;
+                    uint32_t now = (uint32_t)floorf((float)old * scale + 0.5f);
+                    *(volatile uint32_t*)a = now < 1 ? 1 : now;
+                }
+            }
+        uint32_t below[2] = {g_world.below[0], g_world.below[1]};
+        uint32_t size = *sizeP; float k50 = *g50, k54 = *g54, k5C = *g5C;
+        uint64_t keepIndex = P;
+        *sizeP = (uint32_t)extent; *g50 = 4.0f; *g54 = 4.0f; *g5C = 4.0f;
+        g_world.below[0] = g_world.below[1] = 0xFFFFFFFFu;
+        *(volatile uint64_t*)(uintptr_t)(context + 0x20) = index;
+        InterlockedIncrement(&g_worldOpRun);
+        uint8_t rec[0x19B0];
+        int ok = !SafeRead(rec91, rec, sizeof rec) && StampRunRecord(rec, gen, T, TerrainSeed(t) ^ 0x5354414D50ull, context, g, h, 100000) == 1;
+        *(volatile uint64_t*)(uintptr_t)(context + 0x20) = keepIndex;
+        g_world.below[0] = below[0]; g_world.below[1] = below[1];
+        *sizeP = size; *g50 = k50; *g54 = k54; *g5C = k5C;
+        for (uint32_t q = 0; q < rules; q++) *(volatile uint32_t*)ruleAt[q] = ruleOld[q];
+        InterlockedIncrement(&g_worldOpRun);
+        if (!ok) { Note("difficulty: stamps: tile %d: op 0x2B did not run", t); continue; }
+        ran++;
+        uint32_t n = 0; memcpy(&n, T + 0x11A7108, 4);
+        if (n > 8192) n = 8192;
+        made += n;
+        for (uint32_t i = 0; i < n; i++)
+        {
+            const uint8_t* loc = T + 0x11A7280 + (size_t)i * 0xE0;
+            float xy[2], box[4]; uint32_t type = 0; uint16_t flags = 0;
+            memcpy(xy, loc, 8); memcpy(box, loc + 0xB0, 16); memcpy(&type, loc + 0xD8, 4); memcpy(&flags, loc + 0xD4, 2);
+            if (xy[0] < margin || xy[0] >= margin + core || xy[1] < margin || xy[1] >= margin + core) { why[0]++; continue; }
+            int known = 0;
+            for (uint32_t q = 0; q < typeCount && !known; q++) known = types[q] == type;
+            if (!known) { why[1]++; continue; }
+            float gx = xy[0] + ox, gy = xy[1] + oy, d = sqrtf((gx - half) * (gx - half) + (gy - half) * (gy - half));
+            float lo[2] = {fminf(box[0], box[2]) + ox, fminf(box[1], box[3]) + oy}, hi[2] = {fmaxf(box[0], box[2]) + ox, fmaxf(box[1], box[3]) + oy};
+            if (d >= world * s5C * 0.5f || (d >= world * s54 * 0.5f && !(flags & 1)) || lo[0] < 0.02f * world || lo[1] < 0.02f * world ||
+                hi[0] > 0.98f * world || hi[1] > 0.98f * world) { why[2]++; continue; }
+            float reach = fmaxf(fabsf(gx - cgx), fabsf(gy - cgy)), side = fmaxf(hi[0] - lo[0], hi[1] - lo[1]);
+            uint32_t ring = reach <= rings[0] ? 0 : reach <= rings[1] ? 1 : reach <= rings[2] ? 2 : 3;
+            uint32_t hash = (uint32_t)t * 0x9E3779B1u ^ (i + 1) * 0x85EBCA6Bu; hash ^= hash >> 15; hash *= 0xC2B2AE35u; hash ^= hash >> 13;
+            if (ring < 3) { int bin = side < 4 ? 0 : side < 8 ? 1 : side < 16 ? 2 : side < 32 ? 3 : side < 64 ? 4 : side < 128 ? 5 : side < 256 ? 6 : 7; sides[ring][bin]++; }
+            int keep = ring == 0 || (ring == 1 && (side >= rings[3] || (float)hash < rings[5] * 4294967295.0f)) || (ring == 2 && side >= rings[4]);
+            if (!keep) { why[3]++; continue; }
+            if (g_stamps.count >= g_stamps.capacity) { why[4]++; continue; }
+            StampCandidate* c = &g_stamps.cand[g_stamps.count++];
+            memcpy(c->loc, loc, 0xE0);
+            memcpy(c->extra, T + 0x1367280 + (size_t)i * 0x40, 0x40);
+            float w2[2] = {gx, gy}, b4[4] = {box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy};
+            memcpy(c->loc, w2, 8); memcpy(c->loc + 0xB0, b4, 16);
+            memcpy(c->extra + 0x10, &rec91, 8); memset(c->extra + 0x38, 0, 4);
+            c->side = side; c->ring = ring; c->hash = hash;
+            c->prio = ring == 0 ? side : side / fmaxf(reach, 1.0f); /* beyond ring 0: by the size it shows from the centre */
+        }
+    }
+    /* into the level, ring 0 first (larger first), then the rest by apparent size (side / distance), while the table has
+     * room; each tested against the level's own locations and roads in its index. Not against the stamps added here:
+     * each tile's run already tested its own with the game's footprint test, and boxes of rotated footprints overlap far
+     * more often than the footprints (run s70c: 4160 of the 4900 ring-0 stamps fell to a box test among themselves). */
+    qsort(g_stamps.cand, g_stamps.count, sizeof *g_stamps.cand, StampCompare);
+    uint32_t n0 = 0; SafeRead(gen + 0x11A7108u, &n0, 4);
+    uint32_t n = n0, added[3] = {0}, blocked[2] = {0};
+    uint64_t roads = 0, points = 0; SafeRead(P + 0x2058, &roads, 8); SafeRead(P + 0x2060, &points, 8);
+    int roadsAreRoutes = roads == gen + 0x937348u && points == gen + 0x9568E4u;
+    StampKeyFn key = (StampKeyFn)(g_world.game + 0xC04860u);
+    StampQueryFn query = (StampQueryFn)(g_world.game + 0xC05360u);
+    StampInsertFn insert = (StampInsertFn)(g_world.game + 0xC04EF0u);
+    uint64_t locTable = 0; SafeRead(P + 0x2050, &locTable, 8);
+    static uint64_t hits[0x400];
+    for (uint32_t k = 0; k < g_stamps.count && n < STAMP_LOCATION_LIMIT; k++)
+    {
+        StampCandidate* c = &g_stamps.cand[k];
+        float box[4]; memcpy(box, c->loc + 0xB0, 16);
+        float lo[2] = {fminf(box[0], box[2]), fminf(box[1], box[3])}, hi[2] = {fmaxf(box[0], box[2]), fmaxf(box[1], box[3])};
+        uint32_t found = query(P + 8, key(P + 8, lo[0], lo[1]), key(P + 8, hi[0], hi[1]), hits, 0x400);
+        int clash = 0;
+        for (uint32_t e = 0; e < found && e < 0x400 && !clash; e++)
+        {
+            uint16_t id = 0, fl = 0;
+            if (SafeRead(hits[e], &id, 2) || SafeRead(hits[e] + 2, &fl, 2)) continue;
+            if (!(fl & 1))
+            {
+                if (id >= n0) continue;
+                float ob[4];
+                if (locTable == 0 || SafeRead(locTable + 0xE0ull * id + 0xB0, ob, 16)) continue;
+                float olo[2] = {fminf(ob[0], ob[2]), fminf(ob[1], ob[3])}, ohi[2] = {fmaxf(ob[0], ob[2]), fmaxf(ob[1], ob[3])};
+                if (lo[0] < ohi[0] && hi[0] > olo[0] && lo[1] < ohi[1] && hi[1] > olo[1]) { clash = 1; blocked[0]++; }
+            }
+            else
+            {
+                float seg[4], width = 0;
+                if (!roadsAreRoutes || id == 0 || SafeRead(points + 8ull * (id - 1u), seg, 16) || SafeRead(roads + 0x48ull * (fl >> 2) + 0x30, &width, 4)) { clash = 1; blocked[1]++; continue; }
+                if (StampSegmentBox(seg, lo, hi) < 0.5f * width) { clash = 1; blocked[1]++; }
+            }
+        }
+        if (clash) continue;
+        memcpy((void*)(uintptr_t)(gen + 0x11A7280u + 0xE0ull * n), c->loc, 0xE0);
+        memcpy((void*)(uintptr_t)(gen + 0x1367280u + 0x40ull * n), c->extra, 0x40);
+        uint8_t scratch[16];
+        uint32_t* slot = insert(P + 8, lo[0], lo[1], hi[0], hi[1], scratch);
+        if (slot != NULL) { *slot = n; (*(volatile uint32_t*)(uintptr_t)(P + 4))++; }
+        n++; added[c->ring]++;
+    }
+    *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;
+    *(volatile uint32_t*)(uintptr_t)(gen + 0x11A710Cu) = n;
+    QueryPerformanceCounter(&t1);
+    Note("difficulty: stamps: %d tiles in reach, %u built, %u ran 0x2B (%u stamps); kept %u (dropped: %u outside the core, %u type not loaded, %u world gates, %u ring), %u blocked by level locations, %u by roads (roads %s); locations %u -> %u (ring 0 %u, 1 %u, 2 %u) in %.1f s",
+        tiles, built, ran, made, g_stamps.count, why[0], why[1], why[2], why[3], blocked[0], blocked[1], roadsAreRoutes ? "the route list" : "not the route list: blocked", n0, n, added[0], added[1], added[2],
+        (double)(t1.QuadPart - t0.QuadPart) / (double)hz.QuadPart);
+    for (int r = 0; r < 3; r++)
+        Note("difficulty: stamps: ring %d sides (m) <4 %u, 4-8 %u, 8-16 %u, 16-32 %u, 32-64 %u, 64-128 %u, 128-256 %u, >=256 %u", r,
+            sides[r][0], sides[r][1], sides[r][2], sides[r][3], sides[r][4], sides[r][5], sides[r][6], sides[r][7]);
+}
+
 /* At the level's CleanupTerrains (0x65): 1 while the level waits for the tile. */
 static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h)
 {
@@ -1929,6 +2326,13 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
          * 256 m grid so the tile is whole nodes of the level terrain's height-bounds quadtree (4096 samples over 16 km:
          * a level-6 node is 64 samples, 256 m; NearHideCoarse). Without one, the dry-ground picker's point (research
          * runs; it also writes xl-drop.txt). */
+        if (g_stamps.level == g_world.levels) /* the stamp rings ran around this centre (TerrainStamps, record 91) */
+        {
+            g_near.centre[0] = g_stamps.centre[0]; g_near.centre[1] = g_stamps.centre[1];
+            g_near.ready = 1;
+            Note("difficulty: near terrain: the stamp rings' centre (%.0f, %.0f)", (double)g_near.centre[0], (double)g_near.centre[1]);
+        }
+        else
         {
             uint64_t board = 0; uint8_t flag = 0; float at[2] = {0, 0};
             if (!SafeRead(g_world.game + 0x347CEE8u, &board, 8) && board != 0 && !SafeRead(board + 0x17A2B0u, &flag, 1) && flag == 1 &&
@@ -2658,6 +3062,84 @@ static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t
 }
 
 /* The samplers' wrappers, on any larger map (they only act while a tile builds). */
+/* Scatter (grass, plants, small rocks) on the near tile. The brushes' callback game+0x137A2A0 fills a cell's instances
+ * (0x30 each: x, y at +0 in world metres from the centre, z at +8; 0x137A9B9 / 0x137A9DD) and takes z from one image,
+ * [[brush+0x2858]+0x10] = {cols, rows, .., u16 data at +0x10}, bilinear at u = x / world + 0.5, v = y / world + 0.5
+ * with the rows flipped (0x137A8A3..0x137A9CD), h / 65535 x 1000 - 500: the level's coarse heights. Under the near tile
+ * (its own 0.5 m terrain, the coarse one hidden) the ground is the tile's, so grass and rocks floated or sank by the
+ * difference. Each instance inside the tile keeps the callback's own offsets and moves by tile - image at its point.
+ * The engine calls it as fn(x, y, size, -, out, max, brush) (exe 0x213450..0x213479: r9 unused by the callback, out
+ * at [rsp+0x20], max +0x28, brush +0x30; the callback writes through [rbp+0x180] and checks [rbp+0x188]). */
+typedef uint32_t (*NearScatterFn)(int32_t x, int32_t y, int32_t size, void* unused, void* out, uint32_t max, uint8_t* brush);
+static NearScatterFn g_nearScatter;
+static volatile LONG64 g_nearScatterMoved, g_nearScatterSeen, g_nearScatterCalls, g_nearScatterNear, g_nearScatterNoTile, g_nearScatterNoImage;
+static volatile LONG64 g_nearScatterNoted;
+static volatile LONG g_nearScatterNotes;
+static volatile LONG g_nearScatterLevel = -1;
+static float NearScatterImage(uintptr_t image, float x, float y)
+{
+    uint32_t dims[2] = {0}; uint64_t data = 0;
+    if (SafeRead(image, dims, 8) || SafeRead(image + 0x10, &data, 8) || data == 0 || dims[0] < 2 || dims[1] < 2 || dims[0] > 16384 || dims[1] > 16384) return -9999.0f;
+    float world = 2048.0f * g_world.current, u = x / world + 0.5f, v = y / world + 0.5f;
+    if (!(u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f)) return -9999.0f;
+    uint32_t w = dims[0], h = dims[1];
+    float fx = (float)(w - 1) * u, fy = (float)(h - 1) * v;
+    uint32_t c0 = (uint32_t)fx, r0 = (uint32_t)fy, c1 = c0 + 1 < w - 1 ? c0 + 1 : w - 1, r1 = r0 + 1 < h - 1 ? r0 + 1 : h - 1;
+    float ax = fx - (float)c0, ay = fy - (float)r0;
+    uint64_t rowA = (uint64_t)(h - r0 - 1) * w, rowB = (uint64_t)(h - r1 - 1) * w;
+    uint16_t a = 0, b = 0, c = 0, d = 0;
+    if (SafeRead(data + (rowA + c0) * 2, &a, 2) || SafeRead(data + (rowA + c1) * 2, &b, 2) || SafeRead(data + (rowB + c0) * 2, &c, 2) || SafeRead(data + (rowB + c1) * 2, &d, 2))
+        return -9999.0f;
+    float top = ((float)a / 65535.0f) * (1.0f - ax) + ((float)b / 65535.0f) * ax, bottom = ((float)c / 65535.0f) * (1.0f - ax) + ((float)d / 65535.0f) * ax;
+    return (top * (1.0f - ay) + bottom * ay) * 1000.0f - 500.0f;
+}
+
+static uint32_t NearScatterCell(int32_t x, int32_t y, int32_t size, void* unused, void* out, uint32_t max, uint8_t* brush)
+{
+    uint32_t made = g_nearScatter(x, y, size, unused, out, max, brush);
+    if (g_nearScatterLevel != g_world.levels)
+    {
+        g_nearScatterLevel = g_world.levels;
+        g_nearScatterMoved = g_nearScatterSeen = g_nearScatterCalls = g_nearScatterNear = g_nearScatterNoTile = g_nearScatterNoImage = 0;
+        g_nearScatterNoted = (LONG64)GetTickCount64(); g_nearScatterNotes = 0;
+    }
+    InterlockedIncrement64(&g_nearScatterCalls);
+    {
+        LONG64 now = (LONG64)GetTickCount64(), last = g_nearScatterNoted;
+        if (now - last > 15000 && g_nearScatterNotes < 8 && InterlockedCompareExchange64(&g_nearScatterNoted, now, last) == last)
+        {
+            g_nearScatterNotes++;
+            Note("difficulty: near terrain: scatter so far: %lld cells asked, %lld near the tile (tile state %d), %lld instances on it (%lld moved over 5 cm), %lld off the tile copy, %lld without the image",
+                (long long)g_nearScatterCalls, (long long)g_nearScatterNear, g_near.state, (long long)g_nearScatterSeen, (long long)g_nearScatterMoved,
+                (long long)g_nearScatterNoTile, (long long)g_nearScatterNoImage);
+        }
+    }
+    if (made == 0 || out == NULL || g_near.state != NEAR_IN || g_near.level != g_world.levels || g_nearTileGround.v == NULL) return made;
+    float cx = (float)x * (float)size, cy = (float)y * (float)size, reach = (float)size + NEAR_SIDE / 2;
+    if (fabsf(cx - g_near.centre[0]) > reach || fabsf(cy - g_near.centre[1]) > reach) return made;
+    InterlockedIncrement64(&g_nearScatterNear);
+    uintptr_t globals = 0, image = 0;
+    if (SafeRead((uintptr_t)brush + 0x2858, &globals, 8) || globals == 0 || SafeRead(globals + 0x10, &image, 8) || image == 0) { InterlockedIncrement64(&g_nearScatterNoImage); return made; }
+    uint8_t* inst = (uint8_t*)out;
+    for (uint32_t i = 0; i < made && i < max; i++, inst += 0x30)
+    {
+        float p[3];
+        memcpy(p, inst, 12);
+        float tile = NearGroundAt(&g_nearTileGround, p[0], p[1]);
+        if (tile < -9000.0f) { InterlockedIncrement64(&g_nearScatterNoTile); continue; }
+        float coarse = NearScatterImage(image, p[0], p[1]);
+        if (coarse < -9000.0f) { InterlockedIncrement64(&g_nearScatterNoImage); continue; }
+        p[2] += tile - coarse;
+        memcpy(inst + 8, &p[2], 4);
+        LONG64 n = InterlockedIncrement64(&g_nearScatterSeen);
+        if (fabsf(tile - coarse) > 0.05f) InterlockedIncrement64(&g_nearScatterMoved);
+        if (n == 1 || n == 100000 || n == 1000000)
+            Note("difficulty: near terrain: scatter on the tile: %lld instances so far, %lld moved (this one %.2f m: tile %.2f, coarse %.2f at %.1f, %.1f)",
+                (long long)n, (long long)g_nearScatterMoved, (double)(tile - coarse), (double)tile, (double)coarse, (double)p[0], (double)p[1]);
+    }
+    return made;
+}
+
 static void TerrainInstall(uintptr_t game)
 {
     if (g_terrainNoise != NULL) return;
@@ -2668,4 +3150,8 @@ static void TerrainInstall(uintptr_t game)
     }
     if (LoaderHook("extra large maps' terrain noise", game + 0xF3A2E0u, (void*)TerrainNoise, (void**)&g_terrainNoise))
         Note("difficulty: terrain: a sampler could not be hooked; extra large maps keep the level's own terrain");
+    if (!ApiCodeMatches(game + 0x137A2A0u, "40 55 53 56 57 41 54 41 56 41 57 48 8D AC 24 E0 FE FF FF") ||
+        !ApiCodeMatches(game + 0x137A9B9u, "F2 0F 11 06") || !ApiCodeMatches(game + 0x137A9DDu, "89 46 08") ||
+        LoaderHook("extra large maps' scatter on the near tile", game + 0x137A2A0u, (void*)NearScatterCell, (void**)&g_nearScatter))
+        Note("difficulty: near terrain: the scatter callback is not the reviewed one; scatter keeps the coarse ground under the tile");
 }

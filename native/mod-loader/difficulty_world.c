@@ -1505,6 +1505,8 @@ static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t
 static int TerrainMatDispatch(uint32_t op, uint64_t context);
 static void TerrainMatPatch(int on);
 static void TerrainNearWater(uint64_t record);
+static void TerrainStampsRecord(uint64_t record, uint32_t op);
+static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -1652,8 +1654,15 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } if (oa == 0x76) g_pass76 = records + (uint64_t)ia * 0x19B0u + 8; }
     if (matPatch) TerrainMatPatch(1);
+    /* the stamp rings (difficulty_world_terrain.c) rerun 0x26 / 0x4E on tiles from their records as they were before */
+    if (watch && g_world.current == 8.0f && (op == 0x26 || op == 0x4E)) TerrainStampsRecord(records + (uint64_t)at * 0x19B0u, op);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (matPatch) TerrainMatPatch(0);
+    if (watch && g_world.current == 8.0f && op == 0x2B)
+    {
+        uint32_t now = at;
+        if (!SafeRead(index, &now, 4) && now != at) TerrainStamps(records, (uint32_t)d, at, b, g, h, block);
+    }
     TerrainDiagAfter(records, index, diagAt, diagOp);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (mergeTiles != 0) *(volatile uint32_t*)mergeTiles = mergeT;

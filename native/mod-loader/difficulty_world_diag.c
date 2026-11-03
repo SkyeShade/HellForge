@@ -1084,7 +1084,7 @@ static void TdReport(void)
 /* ---- the scatter by cell size (grass, plants, small rocks) ----------------------------------------------------------
  *
  * The ScatterSystem asks the callback game+0x137A2A0 (op 0x95's brushes) to fill one cell at a time:
- * count = fn(cell x, cell y, cell size m, out, context, max, brush), the cell's centre (x, y) * size in world metres
+ * count = fn(cell x, cell y, cell size m, -, out, max, brush) (r9 unused; out at the first stack argument), the cell's centre (x, y) * size in world metres
  * from the centre; brushes at game+0x3328F90 + 0x2860 * type, the radius^2 it keeps cells inside at
  * [[brush+0x2858]+0xC]. Measured (t11): it is not asked around the player but in sweeps over the whole world, 16 m
  * cells, one brush type after another, when a level starts (vanilla D10: ~300k cells, 654k instances; 16 km: ~15.7M
@@ -1094,7 +1094,7 @@ static void TdReport(void)
 static int TerrainDiagOn(void);
 static int TdScatterLayers(char* out, int len);
 static int WorldStreamFirstPlayer(float* xy); /* difficulty_stream.c */
-typedef uint32_t (*TdScatterFn)(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush);
+typedef uint32_t (*TdScatterFn)(int32_t x, int32_t y, int32_t size, void* unused, void* out, uint32_t max, uint8_t* brush);
 static TdScatterFn g_tdScatter;
 #define TD_SCATTER_SIZES 8
 #define TD_SCATTER_TYPES 24
@@ -1111,9 +1111,9 @@ static struct
     ULONGLONG sweptAt;
 } g_tdScat;
 
-static uint32_t TdScatterCell(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush)
+static uint32_t TdScatterCell(int32_t x, int32_t y, int32_t size, void* unused, void* out, uint32_t max, uint8_t* brush)
 {
-    uint32_t made = g_tdScatter(x, y, size, out, context, max, brush);
+    uint32_t made = g_tdScatter(x, y, size, unused, out, max, brush);
     int k = 0;
     for (; k < TD_SCATTER_SIZES; k++)
     {
