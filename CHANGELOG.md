@@ -117,6 +117,10 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
+  running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
+  settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
+  Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
 - "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
   Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
   permission. You only get the download link when that fails, with the reason. This also covers installations set up
@@ -211,6 +215,11 @@ On `dev`, since 0.3.0-beta.
 
 ### For launcher developers
 
+- A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
+  (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
+  the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
+  `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
+  `<run>/processes-now.txt`.
 - A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
   `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
   to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
