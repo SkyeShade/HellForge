@@ -79,17 +79,30 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         return StoreItem((uint)id, Whole(body, "amount", out var n) ? n : 1);
     }
 
-    // A store front's item (the requisition terminal's stratagems: /StoreFront/buy): named by its mixId, or by the
-    // salesId its store front lists it under; then sold as StoreItem sells it.
+    // A store front's item (the requisition terminal's stratagems: /StoreFront/buy 0xdf12cd01,
+    // {expectedCost:[{mixId, amount}], salesId, warId}): the item its store front lists under the salesId (or a mixId),
+    // sold as StoreItem sells it. The reply goes through the warbond item's parser (0x105a470, the case at 0x12ca52b):
+    // {items:[{mixId, amount}]}, which the client adds, taking the price itself; so it lists only what was bought.
     JsonNode? StoreFrontItem(JsonElement body)
     {
         var count = Whole(body, "amount", out var n) ? n : 1;
-        if (Whole(body, "mixId", out var id) && id is > 0 and <= uint.MaxValue) return StoreItem((uint)id, count);
-        if (!body.TryGetProperty("salesId", out var sales) || sales.ValueKind != JsonValueKind.String) return null;
+        var mixId = Whole(body, "mixId", out var id) && id is > 0 and <= uint.MaxValue ? (uint)id : ListedItem(body);
+        return mixId != 0 && StoreItem(mixId, count) is JsonArray sold ? StoreFrontReply(sold) : null;
+    }
+
+    // StoreItem's reply ([{mixId, amount}], the price negative) as /StoreFront/buy's: {items:[...]} without the price.
+    public static JsonObject StoreFrontReply(JsonArray sold) => new()
+    {
+        ["items"] = new JsonArray([.. sold.OfType<JsonObject>().Where(e => e["amount"]!.GetValue<long>() > 0).Select(e => e.DeepClone())])
+    };
+
+    static uint ListedItem(JsonElement body)
+    {
+        if (!body.TryGetProperty("salesId", out var sales) || sales.ValueKind != JsonValueKind.String) return 0;
         var listed = Progression.Value.RootElement.GetProperty("storeFront").EnumerateArray()
             .SelectMany(front => front.GetProperty("sections").EnumerateArray()).SelectMany(section => section.GetProperty("items").EnumerateArray())
             .FirstOrDefault(item => item.GetProperty("salesId").GetString() == sales.GetString());
-        return listed.ValueKind == JsonValueKind.Object ? StoreItem(listed.GetProperty("mixId").GetUInt32(), count) : null;
+        return listed.ValueKind == JsonValueKind.Object ? listed.GetProperty("mixId").GetUInt32() : 0;
     }
 
     JsonNode? StoreItem(uint mixId, long count)
