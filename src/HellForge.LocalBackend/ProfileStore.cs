@@ -82,7 +82,7 @@ public sealed class ProfileStore : IDisposable
             if (File.Exists(path))
             {
                 var existing = Load(path);
-                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardStratagems(existing) | GrantTemplateBoosters(existing) |
+                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardItems(existing) | GrantTemplateBoosters(existing) |
                     CompletePackageProgress(existing)) Save(path, existing);
                 return new ProfileStore(existing, path, lease, false);
             }
@@ -447,7 +447,7 @@ public sealed class ProfileStore : IDisposable
         }
         NameShipIfIntroSkipped(profile);
         GrantOnboardingRewards(profile);
-        GrantStandardStratagems(profile);
+        GrantStandardItems(profile);
         Validate(profile);
         return profile;
     }
@@ -500,20 +500,24 @@ public sealed class ProfileStore : IDisposable
         return added > 0;
     }
 
-    // Stratagems every account owns from the start: the requisition terminal lists them with no price, so a profile
-    // without them cannot get them at all (GitHub issue 9: a fresh profile could not "buy" either). Catalogue items
-    // (progression category 11) whose stratagem ids are 0xd2062cbc (Orbital Precision Strike, type 118) and 0x1b4f8fa2
-    // (MG-43 Machine Gun, type 92). Missing ones are added to every profile, new or saved before this.
-    static readonly uint[] StandardStratagems = [1497469599, 3787370254];
+    // Items every account owns from the start, which no progression package gives:
+    // - stratagems: the requisition terminal lists them with no price, so a profile without them cannot get them at all
+    //   (GitHub issue 9: a fresh profile could not "buy" either). Catalogue items (progression category 11) whose
+    //   stratagem ids are 0xd2062cbc (Orbital Precision Strike, type 118) and 0x1b4f8fa2 (MG-43 Machine Gun, type 92).
+    // - level 1's unlock item (0xF96CE664, progression category 16): the onboarding chain's nine rewards unlock levels 2
+    //   to 10 (its last, 0xA0AE653A, is level 10's), so without it level 1 was locked: no level-1 missions on the war
+    //   table, and its difficulty bar went to the highest level when a planet's view closed.
+    // Missing ones are added to every profile, new or saved before this.
+    static readonly uint[] StandardItems = [1497469599, 3787370254, 0xF96CE664];
 
-    static bool GrantStandardStratagems(JsonObject profile)
+    static bool GrantStandardItems(JsonObject profile)
     {
         // a profile with no template (development only: the launcher always picks one) keeps the parser-tested fixture
         // inventory ({}) exactly
         if (profile["inventory"]?["items"] is not JsonArray inventory) return false;
         var held = inventory.Select(item => Number(item!["mixId"]!)).ToHashSet();
         var added = 0;
-        foreach (var mixId in StandardStratagems)
+        foreach (var mixId in StandardItems)
             if (held.Add(mixId))
             {
                 inventory.Add((JsonNode?)new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });
