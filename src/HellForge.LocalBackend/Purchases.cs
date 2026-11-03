@@ -90,7 +90,8 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     // A store front's item (the requisition terminal's stratagems: /StoreFront/buy 0xdf12cd01,
     // {expectedCost:[{mixId, amount}], salesId, warId}): the item its store front lists under the salesId (or a mixId),
     // sold as StoreItem sells it. The reply goes through the warbond item's parser (0x105a470, the case at 0x12ca52b):
-    // {items:[{mixId, amount}]}, which the client adds, taking the price itself; so it lists only what was bought.
+    // {items:[{mixId, amount}]}, which the client adds; unlike a warbond page it does not take the price itself, so the
+    // price is in the list too, negative (in game 2026-11-03: without it the requisition shown never went down).
     JsonNode? StoreFrontItem(JsonElement body)
     {
         var count = Whole(body, "amount", out var n) ? n : 1;
@@ -98,11 +99,8 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         return mixId != 0 && StoreItem(mixId, count) is JsonArray sold ? StoreFrontReply(sold) : null;
     }
 
-    // StoreItem's reply ([{mixId, amount}], the price negative) as /StoreFront/buy's: {items:[...]} without the price.
-    public static JsonObject StoreFrontReply(JsonArray sold) => new()
-    {
-        ["items"] = new JsonArray([.. sold.OfType<JsonObject>().Where(e => e["amount"]!.GetValue<long>() > 0).Select(e => e.DeepClone())])
-    };
+    // StoreItem's reply ([{mixId, amount}], the price negative) as /StoreFront/buy's: {items:[...]}.
+    public static JsonObject StoreFrontReply(JsonArray sold) => new() { ["items"] = sold.DeepClone() };
 
     static uint ListedItem(JsonElement body)
     {
