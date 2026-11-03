@@ -710,7 +710,8 @@ public static class ModLoaderPlan
     // [[helldivers2.exe+0x1A10268]] is the engine's loaded network configuration (HD2Runtime deposit-limit research).
     const string NetworkConfig = "helldivers2.exe\t1a10268";
 
-    // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance), null for the game's.
+    // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
+    // null to leave the game's loot roll alone.
     public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null)
     {
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
@@ -775,10 +776,14 @@ public static class ModSettings
         // listings only, and a join to a stranger's lobby is refused with the reason (docs/multiplayer.md).
         public bool PlayWithStrangers { get; set; }
         // Forge Credits (the game's Super Credits pickup) in this share, 0 to 100, of the random loot caches at points of
-        // interest; null keeps the game's own odds (20 %). For testing; the loader applies it to every mission's loot roll
+        // interest; null is HellForge's (DefaultForgeCreditChance). The loader applies it to every mission's loot roll
         // (forge_credits.c).
         public int? ForgeCreditChance { get; set; }
     }
+
+    // HellForge's share of loot caches that hold Forge Credits: the game's 20 % for Super Credits, raised for a nicer
+    // progression (they open warbonds).
+    public const int DefaultForgeCreditChance = 30;
 
     public static State Read(string modsFolder)
     {
