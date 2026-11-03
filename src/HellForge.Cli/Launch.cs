@@ -155,7 +155,8 @@ static class Launch
             throw new InvalidDataException($"{run} is not a session of this installation.");
         if (!SessionRunning() || (SessionFiles.ReadJson(Path.Combine(run, "result.json")) is { } state && Ended.Contains(SessionFiles.Text(state, "status"))))
             throw new InvalidDataException("That session is not running.");
-        SessionRunner.SignalStop(run);
+        // --now yes: the game is ended at once instead of being asked to close first (and save its shader cache)
+        SessionRunner.SignalStop(run, Yes(options, "--now", false));
         Emit(new { @event = "stopping", run });
         return Yes(options, "--wait", false) ? Follow(run, SessionRunning) : 0;
     }
