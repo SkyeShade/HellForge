@@ -1858,6 +1858,8 @@ static float* g_heightCopy;
 static uint64_t g_heightSource, g_heightBytes;
 /* g_heightField (above WorldDispatch): the generator's descriptor, its data pointer replaced by the copy */
 static volatile LONG g_heightLent;
+static uint64_t NearLayerField(uint64_t unit, uint64_t field); /* difficulty_world_terrain.c: the near tile's grid */
+static int NearLayerHeight(uint64_t desc, float x, float y, float* height);
 static uint64_t WorldLayerSnap(uint64_t a, uint64_t b, uint64_t c, uint64_t field, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     uint8_t now[0x28];
@@ -1886,7 +1888,8 @@ static uint64_t WorldLayerSnap(uint64_t a, uint64_t b, uint64_t c, uint64_t fiel
             if (InterlockedIncrement(&g_heightLent) <= 3) Note("difficulty: extra large maps: lent the kept heightfield to a layer spawn");
         }
     }
-    return g_layerSnap(a, b, c, field, e, f, g, h);
+    uint64_t tile = NearLayerField(a, field); /* a stamp on or near the near tile: its 1 m grid (a = the stamp's level unit) */
+    return g_layerSnap(a, b, c, tile != 0 ? tile : field, e, f, g, h);
 }
 
 /* The engine's other height sampler (exe 0xD5B10: rcx the address of the descriptor pointer, x/y in xmm1/xmm2; it reads
@@ -1902,6 +1905,8 @@ static float WorldLayerSample(uint64_t* holder, float x, float y)
         memcpy((void*)(uintptr_t)desc, g_heightField, sizeof g_heightField); /* a stack copy, like WorldLayerSnap's */
         if (InterlockedIncrement(&g_heightLent) <= 3) Note("difficulty: extra large maps: lent the kept heightfield to a layer sample");
     }
+    float tile;
+    if (NearLayerHeight(*holder, x, y, &tile)) return tile; /* on the near tile: its own height */
     return g_layerSample(holder, x, y);
 }
 

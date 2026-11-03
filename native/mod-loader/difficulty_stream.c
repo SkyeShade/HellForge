@@ -534,6 +534,34 @@ static int WorldStreamBegin(uint8_t* pass, uint8_t* record, uint8_t* context)
     return watched;
 }
 
+/* The generator's record and context live in the generation block [level+0x2B0] (records = blk, ctx = blk + 0x19B008,
+ * 0xC14950 at game 0xF6E49C..0xF6E4C7), which the game frees when the level goes live (0xFBF1CB..0xFBF22C, state 3).
+ * Their fields point into G (records-2: record 137's +0x10..+0xD0 are all G+ offsets), which stays, so the streamer
+ * keeps its own copies of both from the moment the op is done and calls SpawnLevelLayers with those. A context field
+ * that points back into the freed block is logged. */
+static uint8_t g_streamRecordCopy[0x19B0];
+static uint8_t g_streamContextCopy[0x100];
+static void WorldStreamDetachLocked(void)
+{
+    uintptr_t ctx = (uintptr_t)g_stream.context, blk = ctx - 0x19B008u, end = ctx + 0xE8;
+    if (SafeRead((uintptr_t)g_stream.record, g_streamRecordCopy, sizeof g_streamRecordCopy) || SafeRead(ctx, g_streamContextCopy, 0xE8))
+    {
+        Note("difficulty: extra large maps: content streaming: the generator's record or context did not read; streaming keeps the originals");
+        return;
+    }
+    char inside[160]; int len = 0;
+    for (uint32_t k = 0; k < 0xE8; k += 8)
+    {
+        uint64_t v; memcpy(&v, g_streamContextCopy + k, 8);
+        if (v >= blk && v < end && len < (int)sizeof inside - 8) len += snprintf(inside + len, sizeof inside - len, " +0x%X", k);
+    }
+    g_stream.pass = g_streamRecordCopy + ((uint8_t*)g_stream.pass - (uint8_t*)g_stream.record);
+    g_stream.record = g_streamRecordCopy;
+    g_stream.context = g_streamContextCopy;
+    Note("difficulty: extra large maps: content streaming: kept its own copy of the generator's record and context (the generation block is freed when the level goes live)%s%s",
+        len ? "; context fields into that block:" : "", len ? inside : "");
+}
+
 /* After a generator call: at the count the op is done, so every zeroed stamp unit goes back. */
 static void WorldStreamEnd(uint8_t* pass)
 {
@@ -557,6 +585,7 @@ static void WorldStreamEnd(uint8_t* pass)
             g_stream.generatorDone = 1;
             Note("difficulty: extra large maps: content streaming: the generator finished; %u deferred locations are streamed near the players",
                 g_stream.deferred);
+            WorldStreamDetachLocked();
         }
     }
     ReleaseSRWLockExclusive(&g_streamLock);
