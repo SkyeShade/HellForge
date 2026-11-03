@@ -126,12 +126,15 @@ sealed class SetupForm : Form
         {
             error = "Enter a valid folder path.";
         }
-        if (error.Length == 0 && SmartAppControl.Warning(appControl) is { } warning) message = message.Length > 0 ? message + "\n\n" + warning : warning;
-        note.Text = Privacy.Scrub(error.Length > 0 ? error : message);
+        note.Text = Privacy.Scrub(error.Length > 0 ? error : WithAppControlWarning(message));
         note.ForeColor = error.Length > 0 ? Color.Firebrick : Color.DarkOrange;
         install.Enabled = error.Length == 0 && !busy;
         return error.Length == 0;
     }
+
+    // The folder's note, and after it Smart App Control's warning while it would block HellForge
+    string WithAppControlWarning(string message) => SmartAppControl.Warning(appControl) is not { } warning ? message
+        : message.Length > 0 ? message + "\n\n" + warning : warning;
 
     // Outside OneDrive and free of links: an installation refuses linked paths (LocalInstall.NoLinks), and OneDrive's
     // folders are links (cloud files) on most PCs.
