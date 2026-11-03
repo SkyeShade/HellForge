@@ -29,8 +29,14 @@ static class BundledModsTests
             check(lines.Count == 0 && File.GetLastWriteTimeUtc(catalog) == stamp, "Unchanged: nothing copied or rewritten.");
             // a catalogue from another HellForge (a fix to it alone, the editor unchanged) is written again
             File.WriteAllText(catalog, "{\"objects\": []}");
+            var primary = Path.Combine(target, EditorCatalog.CategoryFile("primary"));
+            File.WriteAllText(primary, "{}");
+            var gone = Path.Combine(target, EditorCatalog.CategoryFile("removed"));
+            File.WriteAllText(gone, "{}");
             BundledMods.Sync(install, lines.Add);
-            check(File.ReadAllText(catalog) == EditorCatalog.Text() && lines.Count == 0, "A stale catalogue is replaced though the editor did not change.");
+            check(EditorCatalog.Files().All(f => File.ReadAllText(Path.Combine(target, f.Name)) == f.Text) && lines.Count == 0,
+                "A stale catalogue (its index and a category's file) is replaced though the editor did not change.");
+            check(!File.Exists(gone), "A category file the index no longer names is deleted.");
 
             File.WriteAllText(Path.Combine(shipped, "hellforge_editor.dll"), "version 2");
             BundledMods.Sync(install, lines.Add);

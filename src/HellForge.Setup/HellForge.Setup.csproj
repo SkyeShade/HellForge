@@ -7,6 +7,10 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- The launcher's icon (scripts/Build-LauncherIcon.ps1): the file in Explorer, and the window's (SetupForm). -->
     <ApplicationIcon>../HellForge.Launcher/Assets/hellforge.ico</ApplicationIcon>
+    <!-- Without .NET's CET (shadow stack) mark, so Setup starts on a Windows 10 whose CET support is too old for .NET
+         and tells the player to update Windows (WindowsSupport, #14), where a marked program closes before its first
+         line. Setup only unpacks its own payload; the launcher and the rest of the app keep the mark. -->
+    <CetCompat>false</CetCompat>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
   <!-- scripts/Package-HellForge.ps1 passes the zipped app; a plain build has no payload and says so when run. -->

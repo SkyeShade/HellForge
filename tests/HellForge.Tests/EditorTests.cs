@@ -6,6 +6,35 @@ static class EditorTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("The editor's catalogue is an index and a file per category, each well under what the editor reads", () =>
+        {
+            var files = EditorCatalog.Files();
+            var index = JsonNode.Parse(files[0].Text)!;
+            check(files[0].Name == EditorCatalog.FileName && index["objects"] == null && index["references"] != null && index["hd2r"] != null,
+                "The index comes first, with the references and HD2R Editor's ids and no objects.");
+            check(index["files"]!.AsArray().Select(f => f!.GetValue<string>()).SequenceEqual(files.Skip(1).Select(f => f.Name)),
+                "The index names the category files, in order.");
+            var whole = EditorCatalog.Build()["objects"]!.AsArray();
+            var seen = 0;
+            foreach (var (name, text) in files.Skip(1))
+            {
+                var file = JsonNode.Parse(text)!;
+                var category = file["category"]!.GetValue<string>();
+                check(name == EditorCatalog.CategoryFile(category) && file["objects"]!.AsArray().All(o => o!["category"]!.GetValue<string>() == category),
+                    $"{name} holds its category's objects only.");
+                check(file["format"]!.GetValue<int>() == EditorCatalog.Format && file["build"]!.GetValue<string>() == index["build"]!.GetValue<string>() &&
+                    file["schema"]!.GetValue<string>() == index["schema"]!.GetValue<string>(), $"{name} is of the index's catalogue.");
+                seen += file["objects"]!.AsArray().Count;
+            }
+            check(seen == whole.Count, $"Every object is in one category file: {seen} of {whole.Count}.");
+            // A quarter of the editor's limit: a category growing past it is a warning to split it further, long before
+            // the editor would refuse it. Characters undercount UTF-8 bytes only for non-ASCII text, which a margin this
+            // size covers.
+            var largest = files.MaxBy(f => f.Text.Length);
+            check(largest.Text.Length < EditorCatalog.MaxFileBytes / 4,
+                $"The largest file, {largest.Name}, is {largest.Text.Length / 1048576.0:0.0} MB (the editor reads up to {EditorCatalog.MaxFileBytes >> 20} MB).");
+        });
+
         test("The in-game editor's catalogue lists the weapons, stratagems and boosters with fields it can read, change and save", () =>
         {
             var catalog = EditorCatalog.Build();
