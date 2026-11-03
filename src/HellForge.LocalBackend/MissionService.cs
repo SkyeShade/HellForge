@@ -155,7 +155,7 @@ public sealed class MissionService
 
         // A Forge Credits pile: the live game's amounts are the server's (the client sends none), so HellForge's own: mostly 10,
         // sometimes 20, 50 or 100, the same for a pile wherever it is asked (its objectId).
-        public static long ForgeCredits(long pile) => (uint)(unchecked((ulong)pile * 0x9E3779B97F4A7C15UL) >> 32) % 100 switch
+        public static long ForgeCredits(long pile) => ((uint)(unchecked((ulong)pile * 0x9E3779B97F4A7C15UL) >> 32) % 100) switch
         {
             < 75 => 10,
             < 92 => 20,

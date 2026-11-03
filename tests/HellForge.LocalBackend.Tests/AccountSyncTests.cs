@@ -60,7 +60,10 @@ static class AccountSyncTests
         check(Items(store.Current())[Wallet] == amount && Served(store).Contains(Wallet), "The pile's Forge Credits were not kept and served.");
         check(Activity(MissionService.ForgeCreditsActivity, 123456).Count == 0 && Items(store.Current())[Wallet] == amount, "A pile paid twice.");
         check(Activity(0x0A2ECD4E, 99).Count == 0, "Another activity paid Forge Credits.");
-        check(new[] { 10L, 20, 50, 100 }.Contains(amount), "A pile's amount is " + amount);
+        // Every pile pays 10, 20, 50 or 100, mostly 10.
+        var amounts = Enumerable.Range(0, 1000).Select(i => MissionService.Rewards.ForgeCredits(i * 7919L + 12345)).ToList();
+        check(amounts.All(a => a is 10 or 20 or 50 or 100) && amounts.Count(a => a == 10) > 600 && amounts.Contains(100),
+            "Pile amounts: " + string.Join(",", amounts.Distinct().Order()));
 
         // The owned warbond waits for its token; its price comes out of the wallet once there is enough.
         var catalogue = LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray()
