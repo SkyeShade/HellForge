@@ -285,18 +285,32 @@ static const uint8_t kZoneHeightStub[16] = {
     0xF3, 0x44, 0x0F, 0x10, 0x4C, 0x88, 0x08,                         /*  4 movss xmm9, [rax+rcx*4+8] */
     0xE9, 0, 0, 0, 0};                                                /* 11 jmp 0xF4C3ED (rel32 at 12) */
 static const uint8_t kCellSpacingPin[7] = {0xF3, 0x0F, 0x5E, 0xD0, 0x48, 0x8B, 0x12};
-static const uint8_t kCellSpacingStub[52] = {
+/* Op 3's areas fill the route cells, which cover the generated disk, except on map type 1 ([[ctx+8]+0xC0]+0x1D == 1,
+ * FinalizeVoronoi's gate at 0xF68165): there 0xA4 rebuilds the route cells over the whole site square, 4 / pi of the
+ * disk's area, and the disk's spacing overran op 3's 26205 points (runs 084134 and 095937: the owner array at
+ * G+0x10B1F48, written unchecked at 0xF94B87, ran into the associated-route list at G+0x10CB8C0 that op 2 had filled,
+ * and GenerateSubregionHeights read (504, 504) as a route at 0xF6481C). So map type 1 takes the spacing x sqrt(4 / pi)
+ * (factor + 8); rdx is the op's ctx ([rbp+0x18] = r8 at 0xF9385C): [ctx+0x18] the level, [ctx+8] the settings. */
+static const uint8_t kCellSpacingStub[82] = {
     0xF3, 0x0F, 0x5E, 0xD0,                                           /*  0 divss xmm2, xmm0 */
     0x50,                                                             /*  4 push rax */
     0x48, 0x8B, 0x42, 0x18,                                           /*  5 mov rax, [rdx+0x18] */
     0x81, 0xB8, 0x7C, 0x2D, 0x00, 0x00, 0, 0, 0, 0,                   /*  9 cmp dword [rax+0x2d7c], disk / 1024 (at 15) */
-    0x58,                                                             /* 19 pop rax */
-    0x75, 0x16,                                                       /* 20 jne 44 */
-    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,                               /* 22 mulss xmm2, [rip+factor x 4] (rel32 at 26) */
-    0x66, 0x0F, 0x3A, 0x0A, 0xD2, 0x02,                               /* 30 roundss xmm2, xmm2, ceil */
-    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,                               /* 36 mulss xmm2, [rip+0.25] (rel32 at 40) */
-    0x48, 0x8B, 0x12,                                                 /* 44 mov rdx, [rdx] */
-    0xE9, 0, 0, 0, 0};                                                /* 47 jmp back (rel32 at 48) */
+    0x75, 0x3A,                                                       /* 19 jne 79 */
+    0x48, 0x8B, 0x42, 0x08,                                           /* 21 mov rax, [rdx+8] (the settings) */
+    0x48, 0x8B, 0x80, 0xC0, 0x00, 0x00, 0x00,                         /* 25 mov rax, [rax+0xc0] */
+    0x80, 0x78, 0x1D, 0x01,                                           /* 32 cmp byte [rax+0x1d], 1 (map type 1) */
+    0x58,                                                             /* 36 pop rax */
+    0x74, 0x0A,                                                       /* 37 je 49 */
+    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,                               /* 39 mulss xmm2, [rip+factor x 4] (rel32 at 43) */
+    0xEB, 0x08,                                                       /* 47 jmp 57 */
+    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,                               /* 49 mulss xmm2, [rip+square factor x 4] (rel32 at 53) */
+    0x66, 0x0F, 0x3A, 0x0A, 0xD2, 0x02,                               /* 57 roundss xmm2, xmm2, ceil */
+    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,                               /* 63 mulss xmm2, [rip+0.25] (rel32 at 67) */
+    0x48, 0x8B, 0x12,                                                 /* 71 mov rdx, [rdx] */
+    0xE9, 0, 0, 0, 0,                                                 /* 74 jmp back (rel32 at 75) */
+    0x58,                                                             /* 79 pop rax (not this level's disk) */
+    0xEB, 0xF5};                                                      /* 80 jmp 71 */
 static const uint8_t kGridPin[9] = {0x4C, 0x89, 0x74, 0x24, 0x20, 0xF3, 0x0F, 0x10, 0x10};
 /* Level init (0xF71220) gives a war-table preview (lg+0x2D48 set, at 0xF715BE) a view rect of (0.175, 0.175, 0.65,
  * 0.65) of the world (0xF7178C), +-666 m around the centre, missions (0, 0, 1, 1): lg+0x2D94 (0xF717A8), which every
@@ -546,8 +560,8 @@ static const char* PrepareCellStubs(DifficultyInstall* d)
 {
     uintptr_t game = d->game;
     int32_t rel;
-    float* cellFactor = (float*)(d->code + 0x5C0);
-    uint8_t* cellStub = d->code + 0x5D0;
+    float* cellFactor = (float*)(d->code + 0x5C0); /* the disk's factor x 4, 0.25, the site square's factor x 4 */
+    uint8_t* cellStub = d->code + 0xF70; /* 82 bytes, after the objective stubs (0xEE0 + 0x40 + 78) */
     uint8_t* finalizeStub = d->code + 0x610;
     d->cellFactor = cellFactor;
     d->cellStub = cellStub;
@@ -555,15 +569,20 @@ static const char* PrepareCellStubs(DifficultyInstall* d)
     if (!LargerMaps()) return NULL;
     cellFactor[0] = (d->disk + 1.0f) / 681.0f * 1.04f * 4.0f;
     cellFactor[1] = 0.25f;
+    cellFactor[2] = cellFactor[0] * sqrtf(4.0f / 3.14159265f);
     float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale));
     memcpy(cellStub, kCellSpacingStub, sizeof kCellSpacingStub);
     memcpy(cellStub + 15, &diskBits, 4);
-    rel = (int32_t)((uint8_t*)&cellFactor[0] - (cellStub + 30)); memcpy(cellStub + 26, &rel, 4);
-    rel = (int32_t)((uint8_t*)&cellFactor[1] - (cellStub + 44)); memcpy(cellStub + 40, &rel, 4);
-    rel = (int32_t)(game + DIF_CELL_SPACING_SITE + 7 - (uintptr_t)(cellStub + 52)); memcpy(cellStub + 48, &rel, 4);
+    rel = (int32_t)((uint8_t*)&cellFactor[0] - (cellStub + 47)); memcpy(cellStub + 43, &rel, 4);
+    rel = (int32_t)((uint8_t*)&cellFactor[2] - (cellStub + 57)); memcpy(cellStub + 53, &rel, 4);
+    rel = (int32_t)((uint8_t*)&cellFactor[1] - (cellStub + 71)); memcpy(cellStub + 67, &rel, 4);
+    rel = (int32_t)(game + DIF_CELL_SPACING_SITE + 7 - (uintptr_t)(cellStub + 79)); memcpy(cellStub + 75, &rel, 4);
     memcpy(finalizeStub, kFinalizeSpacingStub, sizeof kFinalizeSpacingStub);
     memcpy(finalizeStub + 24, &diskBits, 4);
-    rel = (int32_t)((uint8_t*)&cellFactor[0] - (finalizeStub + 38)); memcpy(finalizeStub + 34, &rel, 4);
+    /* 0xF68273 is on FinalizeVoronoi's rebuild path only (after the map type 1 gate; the other paths jump to 0xF691BE /
+     * 0xF691C0 and every jump into it comes from inside it): points over the site square, so the square's factor (its
+     * route vertices were 1015-1023 of 975 on the disk's factor) */
+    rel = (int32_t)((uint8_t*)&cellFactor[2] - (finalizeStub + 38)); memcpy(finalizeStub + 34, &rel, 4);
     rel = (int32_t)((uint8_t*)&cellFactor[1] - (finalizeStub + 52)); memcpy(finalizeStub + 48, &rel, 4);
     rel = (int32_t)(game + DIF_FINALIZE_SPACING_SITE + 9 - (uintptr_t)(finalizeStub + 57)); memcpy(finalizeStub + 53, &rel, 4);
     return NULL;

@@ -1946,7 +1946,24 @@ static struct
     uint8_t* header;            /* the tile run's stamp index: a copy of the level's header ... */
     uint8_t* memory;            /* ... and its own memory */
     uint32_t memoryBytes;
-} g_stamps = {-1, {0.0f, 0.0f}, -1, -1};
+    LONG ringLevel;             /* g_world.levels the rings below are for */
+    uint32_t first, end;        /* the added locations' indices: first .. end - 1 */
+    uint8_t ring[STAMP_LOCATION_LIMIT];
+} g_stamps = {.level = -1, .rec26Level = -1, .rec4ELevel = -1, .ringLevel = -1};
+
+/* The content streamer (difficulty_stream.c) asks this for every location it defers at generation: 1 when the location
+ * is a stamp added here in ring 1 or 2. Those rings hold only the large formations, which make the skyline from afar, so
+ * the streamer spawns them after generation wherever the players are, under its physics budget, and keeps them (the rest
+ * spawn within 500 m of a player and go past 800 m). A layer cannot be spawned without its non-visual members (0xDBEC0
+ * spawns every member kind of a selected layer), so they bring their whole default content; objective layers only
+ * spawn where the plan put an objective, which added stamps never have. Spawning all of them with the level (run s70i:
+ * 3069) filled the physics body store. HELLFORGE_XL_FAR_STAMPS=0 streams them like the rest. */
+static int StampsKeepFar(uint32_t i)
+{
+    static int on = -1;
+    if (on < 0) { char v[8]; DWORD k = GetEnvironmentVariableA("HELLFORGE_XL_FAR_STAMPS", v, sizeof v); on = !(k > 0 && k < sizeof v && v[0] == '0'); }
+    return on && g_stamps.ringLevel == g_world.levels && i >= g_stamps.first && i < g_stamps.end && g_stamps.ring[i] >= 1;
+}
 
 static int StampsOn(void)
 {
@@ -2288,10 +2305,12 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         uint8_t scratch[16];
         uint32_t* slot = insert(P + 8, lo[0], lo[1], hi[0], hi[1], scratch);
         if (slot != NULL) { *slot = n; (*(volatile uint32_t*)(uintptr_t)(P + 4))++; }
+        g_stamps.ring[n] = (uint8_t)c->ring;
         n++; added[c->ring]++;
     }
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A710Cu) = n;
+    g_stamps.first = n0; g_stamps.end = n; g_stamps.ringLevel = g_world.levels;
     QueryPerformanceCounter(&t1);
     Note("difficulty: stamps: %d tiles in reach, %u built, %u ran 0x2B (%u stamps); kept %u (dropped: %u outside the core, %u type not loaded, %u world gates, %u ring), %u blocked by level locations, %u by roads (roads %s); locations %u -> %u (ring 0 %u, 1 %u, 2 %u) in %.1f s",
         tiles, built, ran, made, g_stamps.count, why[0], why[1], why[2], why[3], blocked[0], blocked[1], roadsAreRoutes ? "the route list" : "not the route list: blocked", n0, n, added[0], added[1], added[2],
@@ -2299,6 +2318,26 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     for (int r = 0; r < 3; r++)
         Note("difficulty: stamps: ring %d sides (m) <4 %u, 4-8 %u, 8-16 %u, 16-32 %u, 32-64 %u, 64-128 %u, 128-256 %u, >=256 %u", r,
             sides[r][0], sides[r][1], sides[r][2], sides[r][3], sides[r][4], sides[r][5], sides[r][6], sides[r][7]);
+    /* where the level's locations are from the drop point (loc+0 in generator metres, 0..world): the level's own
+     * (index < n0) and the added ones, and the added ones' footprint side (sqrt of the box area) by distance */
+    {
+        static const float edge[8] = {50, 100, 200, 400, 600, 1000, 2000, 4000};
+        uint32_t own[9] = {0}, mine[9] = {0}; double area[9] = {0};
+        const float half = 8192.0f;
+        for (uint32_t i = 0; i < n; i++)
+        {
+            float xy[2], box[4];
+            if (SafeRead(gen + 0x11A7280u + 0xE0ull * i, xy, 8) || SafeRead(gen + 0x11A7280u + 0xE0ull * i + 0xB0, box, 16)) continue;
+            float dx = xy[0] - half - g_stamps.centre[0], dy = xy[1] - half - g_stamps.centre[1], d = sqrtf(dx * dx + dy * dy);
+            int b = 0; while (b < 8 && d >= edge[b]) b++;
+            if (i < n0) own[b]++; else { mine[b]++; area[b] += fabs((double)(box[2] - box[0]) * (double)(box[3] - box[1])); }
+        }
+        char text[640]; int len = 0;
+        for (int b = 0; b < 9; b++)
+            len += snprintf(text + len, sizeof text - len, "%s%s%.0f m: %u own, %u added (mean side %.0f m)", b ? "; " : "", b < 8 ? "<" : ">=",
+                (double)edge[b < 8 ? b : 7], own[b], mine[b], mine[b] ? sqrt(area[b] / mine[b]) : 0.0);
+        Note("difficulty: stamps: locations by distance from the drop point: %s", text);
+    }
 }
 
 /* At the level's CleanupTerrains (0x65): 1 while the level waits for the tile. */

@@ -107,6 +107,7 @@ typedef struct WorldStreamState
     uintptr_t countAt;       /* *(pass + 0x48): the count */
     float half;              /* g_world.values->half when captured (map space -> world space) */
     uint32_t count, kept, deferred, bad;  /* locations, kept at the start, deferred, unreadable at capture */
+    uint32_t bodiesUsed, bodySlots;       /* the mission world's physics bodies at the last scan, and its store */
     uint32_t spawned, broken, removed, respawned; /* streamed now, records skipped, removals and respawns (cumulative) */
     uint32_t orderCount, orderCursor;     /* the due locations, nearest first */
     int captured, failed, generatorDone;  /* state, the capture was refused, the generator's op is at its count */
@@ -135,6 +136,8 @@ static uint8_t g_streamPoseGood[kStreamMaxLocations];    /* 1: resource and pose
 static uint8_t g_streamLive[kStreamMaxLocations];        /* 1: the streamer queued its layers and they are live */
 static uint8_t g_streamDetached[kStreamMaxLocations];    /* 1: the real record's +0xA8 stays 0 (a respawned unit) */
 static uint8_t g_streamNeedsUnit[kStreamMaxLocations];   /* 1: removed; a new stamp unit is needed before layers */
+static uint8_t g_streamFormation[kStreamMaxLocations];   /* 1: a large formation of the outer stamp rings: streamed in
+                                                            under the physics budget wherever the players are, kept */
 static ULONGLONG g_streamOutSince[kStreamMaxLocations];  /* tick it first went beyond kStreamOutRadius (0: not out) */
 
 static SRWLOCK g_streamLock = SRWLOCK_INIT;
@@ -181,6 +184,7 @@ static void WorldStreamClearLocked(void)
     g_stream.nextNote = 0;
     g_stream.spentMs = 0.0;
     memset(g_streamDeferred, 0, sizeof g_streamDeferred);
+    memset(g_streamFormation, 0, sizeof g_streamFormation);
     memset(g_streamDue, 0, sizeof g_streamDue);
     memset(g_streamSpawned, 0, sizeof g_streamSpawned);
     memset(g_streamPoseGood, 0, sizeof g_streamPoseGood);
@@ -284,6 +288,23 @@ static int WorldStreamBodies(uint32_t* bodies)
     if (exe == 0 || SafeRead(exe + 0x27BA890u + 0xB0u * 2u, &physics, 8) || physics == 0 ||
         SafeRead((uintptr_t)physics + 0x4C, bodies, 4)) return 0;
     return 1;
+}
+
+/* The mission world's physics bodies in use and the body store's size (Havok's body manager at world + 0x38: bodies
+ * [+0x38], slot count [+0x40] compared by the allocator 0xD456B0, free list [+0x48]; in use [+0x4C], 0x814F00's lock
+ * xadd). The far formations stream in only while the bodies in use stay under kStreamFormationShare of the store: a
+ * formation's trees each take a lightweight body (0x814F00) and its rocks their actors, and a full store makes the
+ * allocator's "none" (0xFFFFFF) a body that the navmesh cutter reads (exe 0xCB304C; run s70i spawned 3069 at load). */
+static const float kStreamFormationShare = 0.40f;
+static const uint32_t kStreamFormationsPerScan = 16;
+static int WorldStreamBodyStore(uint32_t* used, uint32_t* slots)
+{
+    uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
+    uint64_t physics = 0;
+    if (exe == 0 || SafeRead(exe + 0x27BA890u + 0xB0u * 2u, &physics, 8) || physics == 0 ||
+        SafeRead((uintptr_t)physics + 0x4C, used, 4) || SafeRead((uintptr_t)physics + 0x40, slots, 4)) return 0;
+    *slots &= 0x3FFFFFFFu;
+    return *slots >= 1024 && *slots <= (1u << 24) && *used <= *slots;
 }
 
 /* Remove one streamed location: DestroyUnit (the table's +0x388) takes its stamp unit and the layer units go; the real
@@ -445,7 +466,7 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
             (unsigned long long)g_stream.level, count);
         return;
     }
-    uint32_t kept = 0, deferred = 0, bad = 0;
+    uint32_t kept = 0, deferred = 0, bad = 0, formations = 0;
     float keep = kStreamStartRadius * kStreamStartRadius;
     float full = 2.0f * g_stream.half;
     for (uint32_t i = 0; i < count;)
@@ -487,6 +508,7 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
             uint64_t zero = 0;
             memcpy((void*)((uintptr_t)array + (size_t)i * kStreamRecord + 0xA8), &zero, 8);
             g_streamDeferred[i] = 1;
+            if (StampsKeepFar(i)) { g_streamFormation[i] = 1; formations++; }
             deferred++;
         }
     }
@@ -495,8 +517,8 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
     g_stream.bad = bad;
     g_stream.captured = 1;
     if (deferred == 0) g_stream.generatorDone = 1; /* nothing held back: the original's op needs no restore */
-    Note("difficulty: extra large maps: content streaming: level 0x%llX: %u locations, %u kept at the start, %u deferred",
-        (unsigned long long)g_stream.level, count, kept, deferred);
+    Note("difficulty: extra large maps: content streaming: level 0x%llX: %u locations, %u kept at the start, %u deferred (%u of them far formations, streamed under the physics budget)",
+        (unsigned long long)g_stream.level, count, kept, deferred, formations);
     if (bad) Note("difficulty: extra large maps: content streaming: %u location record(s) did not read; they stay with the generator", bad);
 }
 
@@ -581,7 +603,9 @@ static void WorldStreamScanLocked(ULONGLONG now)
     }
     float keep = kStreamInRadius * kStreamInRadius;
     float out = kStreamOutRadius * kStreamOutRadius;
-    uint32_t order = 0, removes = 0;
+    uint32_t order = 0, removes = 0, formationsDue = 0, bodies = 0, slots = 0;
+    int budget = WorldStreamBodyStore(&bodies, &slots) && (float)bodies < kStreamFormationShare * (float)slots;
+    g_stream.bodiesUsed = bodies; g_stream.bodySlots = slots;
     for (uint32_t i = 0; i < g_stream.count; i++)
     {
         if (!g_streamDeferred[i]) continue;
@@ -593,6 +617,7 @@ static void WorldStreamScanLocked(ULONGLONG now)
             float distance = dx * dx + dy * dy;
             if (distance < best) best = distance;
         }
+        if (g_streamLive[i] && g_streamFormation[i]) continue; /* a far formation stays */
         if (g_streamLive[i])
         {
             if (g_stream.playerCount > 0 && best > out)
@@ -609,6 +634,11 @@ static void WorldStreamScanLocked(ULONGLONG now)
         }
         if (g_streamSpawned[i]) continue; /* a record that did not read: never streamed */
         if (best < keep) g_streamDue[i] = 1;
+        else if (g_streamFormation[i] && !g_streamDue[i] && budget && g_stream.playerCount > 0 && formationsDue < kStreamFormationsPerScan)
+        {
+            g_streamDue[i] = 1; /* in the stamps' order (largest apparent size first); the due list then goes nearest first */
+            formationsDue++;
+        }
         if (g_streamDue[i])
         {
             g_streamDistance[i] = best;
@@ -754,7 +784,12 @@ static void WorldStreamSpawnDueLocked(void)
         g_stream.spentMs += (double)(now.QuadPart - start.QuadPart) * 1000.0 / (double)g_streamFrequency;
 }
 
-/* Every 10 s while streaming: what is spawned now, what is due, removals and respawns so far, the players and time. */
+/* The game thread's frames since the last note (WorldStreamTick's dt): the cost of what is spawned, as frame rate. */
+static uint32_t g_streamFrames;
+static float g_streamFrameSum, g_streamFrameMax;
+
+/* Every 10 s while streaming: what is spawned now, what is due, removals and respawns so far, the players and time,
+ * and the frame rate over those 10 s (mean and the slowest frame). */
 static void WorldStreamNoteLocked(ULONGLONG now)
 {
     if (g_stream.deferred == 0) return;
@@ -762,16 +797,21 @@ static void WorldStreamNoteLocked(ULONGLONG now)
     if (now < g_stream.nextNote) return;
     g_stream.nextNote = now + 10000;
     uint32_t due = WorldStreamDueCountLocked();
-    Note("difficulty: extra large maps: streaming: %u of %u spawned (%u due now, %u skipped), %u removed so far, %u respawned so far, %d player(s), %.1f ms spent",
-        g_stream.spawned, g_stream.deferred, due, g_stream.broken, g_stream.removed, g_stream.respawned, g_stream.playerCount, g_stream.spentMs);
+    uint32_t formations = 0, formationsLive = 0;
+    for (uint32_t i = 0; i < g_stream.count; i++) if (g_streamFormation[i]) { formations++; if (g_streamLive[i]) formationsLive++; }
+    Note("difficulty: extra large maps: streaming: %u of %u spawned (%u due now, %u skipped; far formations %u of %u), %u removed so far, %u respawned so far, %d player(s), %.1f ms spent; physics bodies %u of %u; %.1f fps, slowest frame %.1f ms",
+        g_stream.spawned, g_stream.deferred, due, g_stream.broken, formationsLive, formations, g_stream.removed, g_stream.respawned, g_stream.playerCount, g_stream.spentMs,
+        g_stream.bodiesUsed, g_stream.bodySlots,
+        g_streamFrameSum > 0 ? (double)g_streamFrames / (double)g_streamFrameSum : 0.0, (double)g_streamFrameMax * 1000.0);
+    g_streamFrames = 0; g_streamFrameSum = g_streamFrameMax = 0;
 }
 
 /* Called from TickDetour (packages.c) every frame: nothing until a level is captured and the generator's op is done,
  * nothing once g_worldLevel is another level (all state is dropped), nothing while the world is back to vanilla. */
 static void WorldStreamTick(float dt)
 {
-    (void)dt;
     if (g_streamInstallState != 1) return;
+    if (dt > 0 && dt < 10.0f) { g_streamFrames++; g_streamFrameSum += dt; if (dt > g_streamFrameMax) g_streamFrameMax = dt; }
     if (g_streamInside) return; /* a generator call is inside: it owns the pass */
     AcquireSRWLockExclusive(&g_streamLock);
     if (!g_stream.captured)
