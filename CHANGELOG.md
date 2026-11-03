@@ -22,7 +22,7 @@ On `dev`, since 0.3.0-beta.
   once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
   (#206).
 - Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
-  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts.
+  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
 
 ### Changed
 
