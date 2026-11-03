@@ -112,13 +112,73 @@ public sealed class RegisteredItems(string path)
     // The id of the new weapon's mastery package.
     public static uint PackageFor(uint basePackage, uint from, uint to) => Rehome(basePackage, from, to);
 
+    // What the game keeps (build 25480438; research\catalogue-cap): the first 4,096 /Progression/items (game.dll+0x107EA50
+    // `mov eax,0x1000; cmp; cmovb` caps the parse, into a buffer of 4,096 records, +0x12CA837), the first 4,096 inventory
+    // entries (+0x103927B) and the first 256 progression packages (+0x1080093). The rest is dropped, unsaid: with 64
+    // Liberator copies (6,573 items) the cut fell inside the 21st copy, and every mod stratagem after it was lost.
+    public const int CatalogueCap = 4096, InventoryCap = 4096, PackageCap = 256;
+
+    // The order the items are added in: difficulties and stratagems (one or two catalogue items each) before weapons (the
+    // base's item and every one of its children: 57 for the AR-23 Liberator), each kind in the order mods registered it.
+    // Weapons register as mods load and stratagems only once the game has loaded its own, so in registration order a large
+    // weapon pack pushed out every stratagem and level 11; in this order, only its last weapons.
+    public static IReadOnlyList<Item> Prioritized(IReadOnlyList<Item> items) =>
+        [.. items.OrderBy(i => i.IsDifficulty ? 0 : i.IsStratagem ? 1 : 2)];
+
+    // Where a line goes when a registered item does not fit (the backend's log); each item is reported once.
+    public Action<string> Log { get; set; } = line => Console.Error.WriteLine("[registered items] " + line);
+    readonly HashSet<uint> reported = [];
+
+    // The items that fit the game's catalogue and packages whole, in priority order (Prioritized): a weapon with every one of
+    // its base's children and its mastery package, or not at all, never cut through. Without the vanilla catalogue to count
+    // (Source), every item.
+    public IReadOnlyList<Item> Admitted(IReadOnlyList<Item> items)
+    {
+        if (Source?.Invoke("/Progression/items") is not { ValueKind: JsonValueKind.Array } catalogue) return items;
+        var children = ChildCounts(catalogue);
+        var packages = Source("/Progression/ProgressionPackages") is { ValueKind: JsonValueKind.Array } p ? (JsonArray)JsonNode.Parse(p.GetRawText())! : [];
+        int room = CatalogueCap - catalogue.GetArrayLength(), packageRoom = PackageCap - packages.Count;
+        var admitted = new List<Item>();
+        foreach (var item in items)
+        {
+            var cost = item.IsStratagem ? 2 : 1 + children.GetValueOrDefault(item.CopyOf);
+            var package = item.IsWeapon && MasteryPackage(packages, item.CopyOf) != null ? 1 : 0;
+            if (cost <= room && package <= packageRoom)
+            {
+                (room, packageRoom) = (room - cost, packageRoom - package);
+                admitted.Add(item);
+            }
+            else Report(item, cost > room ? $"the game keeps {CatalogueCap} catalogue items, and it needs {cost} more where {room} are left"
+                : $"the game keeps {PackageCap} progression packages, and none is left for its mastery package");
+        }
+        return admitted;
+    }
+
+    // How many children each catalogue item has: what a copy of it adds besides itself.
+    static Dictionary<uint, int> ChildCounts(JsonElement catalogue)
+    {
+        var children = new Dictionary<uint, int>();
+        foreach (var entry in catalogue.EnumerateArray())
+            if (entry.TryGetProperty("parentId", out var parent) && parent.TryGetUInt32(out var parentId))
+                children[parentId] = children.GetValueOrDefault(parentId) + 1;
+        return children;
+    }
+
+    void Report(Item item, string why)
+    {
+        lock (reported)
+            if (!reported.Add(item.MixId)) return;
+        var kind = item.IsDifficulty ? "difficulty" : item.IsStratagem ? "stratagem" : "weapon";
+        Log($"{(item.Mod.Length > 0 ? item.Mod + "'s " : "")}{kind} {item.MixId} is left out: {why}.");
+    }
+
     // The response body for a startup path, with the registered items added where they belong.
     public JsonElement Apply(string path, JsonElement body)
     {
         if (path is not ("/Progression/items" or "/Progression/inventory" or "/Progression/ProgressionPackages" or "/Progression" or
             "/Configuration/GameClient"))
             return body;
-        var items = Load();
+        var items = Admitted(Prioritized(Load()));
         if (items.Count == 0) return body;
         var node = JsonNode.Parse(body.GetRawText());
         switch (path)
@@ -250,6 +310,8 @@ public sealed class RegisteredItems(string path)
         }
     }
 
+    // Each item with its copies of the held children, while the game's 4,096 inventory entries (InventoryCap) hold all of
+    // them: past that the game ignores the rest, and a weapon would be held without its attachments.
     void AddInventory(JsonArray held, IReadOnlyList<Item> items)
     {
         var have = held.Select(i => Id(i, "mixId")).ToHashSet();
@@ -257,6 +319,13 @@ public sealed class RegisteredItems(string path)
         foreach (var item in items.Where(i => !Locked(i)))
         {
             if (item.IsDifficulty && !have.Contains(item.CopyOf)) continue; /* not before level 10 is unlocked */
+            var entries = (have.Contains(item.MixId) ? 0 : 1) +
+                (item.IsWeapon ? held.Count(e => Id(e, "mixId") is { } id && children.TryGetValue(id, out var parent) && parent == item.CopyOf) : 0);
+            if (held.Count + entries > InventoryCap)
+            {
+                Report(item, $"the game keeps {InventoryCap} inventory entries, and it needs {entries} more where {InventoryCap - held.Count} are left");
+                continue;
+            }
             if (have.Add(item.MixId)) held.Add((JsonNode?)new JsonObject { ["mixId"] = item.MixId, ["amount"] = 1, ["isDiscovered"] = true });
             if (item.IsWeapon) AddChildren(held, have, children, item);
         }

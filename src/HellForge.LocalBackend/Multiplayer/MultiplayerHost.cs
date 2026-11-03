@@ -25,6 +25,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
     public PartyService Party { get; }
     // The host's stats for joiners, and this game's when joined (null without a peer link or the session's mods folder).
     public StatsShare? Stats { get; private set; }
+    public PickupShare? Pickups { get; private set; }
     public AssetShare? Assets { get; private set; }
     // Mod sync: joiners download this session's mods, and this machine the mods of a host it could not join (null
     // without a peer link or the session's mods folder).
@@ -70,6 +71,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
         Lobby.HostedChanged += () => Task.Run(WritePeers);
         Lobby.PeerAdmitted += ListPeer;
+        // the squad's other joiners too (three or more players): a game may talk to each of them, not only to the host
+        Lobby.MateAdded += ListPeer;
+        // and out again at once when they leave (not after PinnedFor)
+        Lobby.MateRemoved += peer => { lock (peersGate) pinned.Remove(peer); Task.Run(WritePeers); };
         Lobby.LocalJoinStarted += (owner, _) => { ListPeer(owner); Task.Run(WritePeers); };
         // A refused join, in both games (the in-game editor shows it over the game): the joiner's says why, the host's who,
         // briefly, in a corner.
@@ -102,6 +107,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type.StartsWith("stats.", StringComparison.Ordinal)) Stats?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("assets.", StringComparison.Ordinal)) Assets?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
+                else if (frame.Type.StartsWith("pickup.", StringComparison.Ordinal)) Pickups?.FromPeer(peer, frame);
                 else if (frame.Type == "war.clock" && warClock != null && Lobby.HostsJoinedLobby(peer) && long.TryParse(frame.Text(0), out var seconds))
                 {
                     // Any host, a stranger's too, only within a war's possible time: from its start to MaxWarSeconds.
@@ -131,7 +137,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
             }
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
         }
-        if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory);
+        if (host.transport != null && settings.Pickups != null) host.Pickups = new PickupShare(host.transport, host.Lobby, settings.Pickups, host.Log);
+        if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
         host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder);
@@ -147,14 +154,17 @@ public sealed class MultiplayerHost : IAsyncDisposable
     }
 
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
-    void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory)
+    void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory, bool sandboxed)
     {
         ModSet? own = null;
         try { if (modSetFile != null) own = ModSet.Parse(File.ReadAllText(modSetFile), local: true); }
         catch (Exception error) when (error is InvalidDataException or IOException) { Log("Mod sync: this session's mod set could not be read, so joiners cannot download it: " + error.Message); }
         var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
+        // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
+        var verifiedSource = VerifiedMods.UseInstallation(install);
+        Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
         Sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
-            ModSyncSession.PathIn(install)), own, FriendName, Log);
+            ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
         Lobby.ModsRefused = Sync.OfferMods;
         Sync.Expected = Lobby.JoinedRecently;
         if (Stats?.Live is { } live)
@@ -237,17 +247,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
         throw new ArgumentException("--link must be none, steam:<steam_api64.dll> or udp:<id>:<port>:<peer>=<port>,...");
     }
 
-    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, and the peers
-    // listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read just before an
-    // admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach peersGate in any
-    // order: one whose list was read before a later one's is not written after it, so a list from before a kick cannot put
-    // the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
+    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, the other
+    // members of a friend's lobby this game is in (LobbyService.LobbyMates; one who left is written out at once,
+    // MateRemoved), and the peers listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read
+    // just before an admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach
+    // peersGate in any order: one whose list was read before a later one's is not written after it, so a list from
+    // before a kick cannot put the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
     void WritePeers()
     {
         try
         {
             var ticket = Interlocked.Increment(ref peersTicket);
-            var listed = Lobby.Peers().Concat(Party.Peers()).ToHashSet();
+            var listed = Lobby.Peers().Concat(Party.Peers()).Concat(Lobby.LobbyMates()).ToHashSet();
             lock (peersGate)
             {
                 if (ticket < peersWrittenTicket) return;
@@ -436,4 +447,8 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public string? RejoinFile { get; init; }
     // A sandboxed game's editor saves (the run's game/sandbox-stats), which StatsShare shares over the mods folder's files.
     public string? SandboxStats { get; init; }
+    // Whether the session's game is sandboxed: mod sync then lets the player trust a stranger's code and raw mods.
+    public bool Sandboxed { get; init; }
+    // The backend's pickups, shared with the lobby's other backends (PickupShare).
+    public PickupRelay? Pickups { get; init; }
 }

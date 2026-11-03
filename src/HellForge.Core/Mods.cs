@@ -63,6 +63,9 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Arrowhead's premium content the mod builds on (the manifest's "premium", PremiumContent entries): a player who does
     // not own all of it gets none of the mod's weapons and stratagems, and a cosmetic mod is not loaded for them.
     public IReadOnlyList<string> Premium { get; init; } = [];
+    // Why HellForge never loads it (LuaRuntimes.EditorUnsupported: HD2R Editor), or null. Such a mod stays listed but off,
+    // whatever the Mods page's switch says.
+    public string? Unsupported { get; init; }
 }
 
 public static partial class ModCatalog
@@ -152,6 +155,7 @@ public static partial class ModCatalog
         var ordered = Ordered(mods, settings.Order);
         StatsConflicts(ordered, problems);
         problems.AddRange(LuaRuntimes.Problems(ordered.Where(m => m.Enabled)));
+        problems.AddRange(ordered.Where(m => m.Unsupported != null).Select(m => $"{m.Name}: {m.Unsupported}"));
         return (ordered, problems);
     }
 
@@ -167,6 +171,7 @@ public static partial class ModCatalog
         }
         else mod = Parse(folder, profile);
         mod = mod with { Archive = archive };
+        if (LuaRuntimes.IsEditor(folder)) return mod with { Enabled = false, Unsupported = LuaRuntimes.EditorUnsupported };
         // Local Stats (the in-game editor's saved changes) is always on: the Mods page does not list it
         return settings.Disabled.Contains(mod.Id) && mod.Id != LocalStatsId ? mod with { Enabled = false } : mod;
     }
@@ -710,7 +715,9 @@ public static class ModLoaderPlan
     // [[helldivers2.exe+0x1A10268]] is the engine's loaded network configuration (HD2Runtime deposit-limit research).
     const string NetworkConfig = "helldivers2.exe\t1a10268";
 
-    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId)
+    // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
+    // null to leave the game's loot roll alone.
+    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null)
     {
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A path in the mod loader plan contains a tab or line break.") : value;
@@ -726,6 +733,7 @@ public static class ModLoaderPlan
             lines.Add($"component\t{name}\t{c.Offset}\t{c.Header.ToLowerInvariant()}\t{c.Index}\t{c.Indices}\t{c.Records}\t{c.RecordOffset}\t{c.Stride}");
         lines.Add("stats_schema\t" + StatsSchema.Fingerprint);
         foreach (var key in StatsSchema.Observed) lines.Add("observe\t" + key);
+        if (forgeCreditChance is { } chance) lines.Add(FormattableString.Invariant($"forge_credits_chance\t{Math.Clamp(chance, 0, 100)}"));
         // in the order given, a session's load order (ModCatalog.LoadOrder): code loads and stats apply in it, the last winning
         var mods = codeMods.Where(m => m.Enabled && m.NeedsLoader).ToList();
         if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits)
@@ -765,12 +773,13 @@ public static class ModSettings
     // HostStats: hosting, whether friends play with this player's editor changes (the in-game editor's Local Stats, mod
     // content values and arm swaps) instead of their own (off by default: everyone keeps their own; StatsShare).
     // Trusted: mods the player trusted on mod sync's prompt (TRUST), each by its exact content (id and content hash), with
-    // its name and version, the Steam friend who hosted it and when: they download as the verified list's do (ModSyncPlan).
+    // its name and version, the player who hosted it and when: they download as the verified list's do (ModSyncPlan). One
+    // trusted from a host who is not a Steam friend (Stranger) counts only in a sandboxed session.
     public sealed record State(HashSet<string> Disabled, List<string> Order, Dictionary<string, CosmeticPacks.Choice> Choices)
     {
         public HashSet<string> Blocked { get; } = new(StringComparer.Ordinal);
         public List<TrustedMod> Trusted { get; } = [];
-        public bool Trusts(string id, string hash) => Trusted.Any(t => t.Id == id && t.Hash == hash);
+        public bool Trusts(string id, string hash, bool sandboxed = false) => Trusted.Any(t => t.Id == id && t.Hash == hash && (sandboxed || !t.Stranger));
         public bool Share { get; set; } = true;
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
@@ -779,7 +788,15 @@ public static class ModSettings
         // always accepted. Off, this machine's lobby is not listed in the lobby directory, a search shows friends'
         // listings only, and a join to a stranger's lobby is refused with the reason (docs/multiplayer.md).
         public bool PlayWithStrangers { get; set; }
+        // Forge Credits (the game's Super Credits pickup) in this share, 0 to 100, of the random loot caches at points of
+        // interest; null is HellForge's (DefaultForgeCreditChance). The loader applies it to every mission's loot roll
+        // (forge_credits.c).
+        public int? ForgeCreditChance { get; set; }
     }
+
+    // HellForge's share of loot caches that hold Forge Credits: the game's 20 % for Super Credits, raised for a nicer
+    // progression (they open warbonds).
+    public const int DefaultForgeCreditChance = 30;
 
     public static State Read(string modsFolder)
     {
@@ -813,7 +830,7 @@ public static class ModSettings
     {
         if (root.TryGetProperty("trusted", out var trusted) && trusted.ValueKind == JsonValueKind.Array)
             foreach (var e in trusted.EnumerateArray())
-                if (TrustedMod.Read(e) is { } mod && !state.Trusts(mod.Id, mod.Hash)) state.Trusted.Add(mod);
+                if (TrustedMod.Read(e) is { } mod && !state.Trusted.Any(t => t.Id == mod.Id && t.Hash == mod.Hash)) state.Trusted.Add(mod);
     }
 
     // The switches: each changes from its default only when the file says the other value.
@@ -824,6 +841,8 @@ public static class ModSettings
         if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
         if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
         if (root.TryGetProperty("playWithStrangers", out var strangers) && strangers.ValueKind == JsonValueKind.True) state.PlayWithStrangers = true;
+        if (root.TryGetProperty("forgeCreditChance", out var chance) && chance.ValueKind == JsonValueKind.Number && chance.TryGetInt32(out var percent) &&
+            percent is >= 0 and <= 100) state.ForgeCreditChance = percent;
     }
 
     static void ReadOrder(JsonElement root, State state)
@@ -873,8 +892,8 @@ public static class ModSettings
         else state.Blocked.Remove(id);
     });
 
-    // Mod sync's trusted mods: one the player trusted (that exact content) downloads from a Steam friend as a verified one
-    // does; untrusted (the Mods page), it is the player's to install again.
+    // Mod sync's trusted mods: one the player trusted (that exact content) downloads as a verified one does (a stranger's
+    // only while sandboxed); untrusted (the Mods page), it is the player's to install again.
     public static void SetTrusted(string modsFolder, TrustedMod mod) => Change(modsFolder, state =>
     {
         state.Trusted.RemoveAll(t => t.Id == mod.Id && t.Hash == mod.Hash);
@@ -897,6 +916,11 @@ public static class ModSettings
 
     // Hosting: whether friends play with this player's editor changes instead of their own.
     public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
+
+    // null: the game's own odds.
+    public static void SetForgeCreditChance(string modsFolder, int? percent) => Change(modsFolder, state =>
+        state.ForgeCreditChance = percent is null or (>= 0 and <= 100) ? percent : throw new InvalidDataException("A Forge Credits chance is 0 to 100."));
+    public static int? ForgeCreditChance(string modsFolder) => Read(modsFolder).ForgeCreditChance;
 
     static void Change(string modsFolder, Action<State> change)
     {
@@ -922,6 +946,7 @@ public static class ModSettings
             ["hostStats"] = state.HostStats,
             ["playWithStrangers"] = state.PlayWithStrangers
         };
+        if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         File.WriteAllText(path + ".tmp", text);
         LastWritten = text;
@@ -931,21 +956,25 @@ public static class ModSettings
 }
 
 // A mod the player trusted on mod sync's prompt: its id and content hash (ModSets.ContentHash: that exact content, no
-// other version or bytes), its name and version as the host listed them, the Steam friend who hosted it (their name, then
-// their SteamID64) and when (UTC, ISO 8601). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
-public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since)
+// other version or bytes), its name and version as the host listed them, the player who hosted it (their name, then their
+// SteamID64), when (UTC, ISO 8601), and whether that host was not a Steam friend (Stranger, "stranger": true: trusted in a
+// sandboxed session, and counted only in one). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
+public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since, bool Stranger = false)
 {
-    public JsonObject ToJson() => new()
+    public JsonObject ToJson()
     {
-        ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since
-    };
+        var json = new JsonObject { ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since };
+        if (Stranger) json["stranger"] = true;
+        return json;
+    }
 
     public static TrustedMod? Read(JsonElement e)
     {
         if (e.ValueKind != JsonValueKind.Object) return null;
         string Text(string name, int max) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Length <= max &&
             !v.GetString()!.Any(char.IsControl) ? v.GetString()! : "";
-        var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40));
+        var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40),
+            e.TryGetProperty("stranger", out var stranger) && stranger.ValueKind == JsonValueKind.True);
         return ModCatalog.IsModId(mod.Id) && ModSets.Hex(mod.Hash, 64) ? mod : null;
     }
 }
@@ -953,7 +982,8 @@ public sealed record TrustedMod(string Id, string Hash, string Name, string Vers
 // Data mods for one session: their patch files are copied into game/data, renumbered so each bundle's patches stay
 // contiguous after any the player installed there by hand, and listed in temp/staged-mods.json so the next session
 // removes exactly them first. Game files from Steam are never touched. A mod's generated data (ModDataCache.Prepare) is
-// staged after its data/ folder, the same way.
+// staged after its data/ folder, the same way, and HellForge's own patches for the session (the locked warbond art,
+// WarbondLocks) after every mod's.
 public static class ModStaging
 {
     const string RecordName = "staged-mods.json";
@@ -965,11 +995,12 @@ public static class ModStaging
     // time as the file they come from: a copy keeps its source's time): a session start copied and deleted every patch
     // again, ~3 GB for a tester's packs, and kept the drive busy for minutes. Only new or changed patches are copied;
     // those no longer staged are removed.
-    public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods)
+    // own: folders of HellForge's own patch files, staged after the mods'.
+    public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods, IReadOnlyList<string>? own = null)
     {
         var data = Path.Combine(install.Game, "data");
         var previous = Previous(install);
-        var plan = Plan(mods, data, previous);
+        var plan = Plan(mods, own ?? [], data, previous);
         var wanted = plan.Select(p => p.Target).ToHashSet(StringComparer.Ordinal);
         var left = new HashSet<string>(previous, StringComparer.Ordinal); /* staged here before and still in game/data */
         var staged = new List<string>();
@@ -1005,7 +1036,7 @@ public static class ModStaging
 
     // Each mod's patch files (its data/, its pack's chosen folders, its generated data) with the names they are staged
     // under: each bundle's patches renumbered after the ones already in game/data, in load order.
-    static List<(string Source, string Target)> Plan(IReadOnlyList<ModManifest> mods, string data, HashSet<string> previous)
+    static List<(string Source, string Target)> Plan(IReadOnlyList<ModManifest> mods, IReadOnlyList<string> own, string data, HashSet<string> previous)
     {
         var next = new Dictionary<string, int>(StringComparer.Ordinal);
         int NextIndex(string bundle)
@@ -1020,18 +1051,22 @@ public static class ModStaging
             return index;
         }
         var plan = new List<(string Source, string Target)>();
+        void Add(string folder, IEnumerable<string> files)
+        {
+            foreach (var group in files.GroupBy(f => (Bundle: f[..16], Index: int.Parse(ModCatalog.PatchFile().Match(f).Groups[1].Value, CultureInfo.InvariantCulture)))
+                .OrderBy(g => g.Key.Bundle, StringComparer.Ordinal).ThenBy(g => g.Key.Index))
+            {
+                var index = NextIndex(group.Key.Bundle);
+                foreach (var file in group.Order(StringComparer.Ordinal))
+                    plan.Add((Path.Combine(folder, file), $"{group.Key.Bundle}.patch_{index}{ModCatalog.PatchFile().Match(file).Groups[2].Value}"));
+            }
+        }
         foreach (var mod in mods)
         {
             if (mod.HasDataSpec && mod.GeneratedData == null) throw new InvalidDataException($"{mod.Id}: its data has not been generated.");
-            foreach (var (folder, files) in Sources(mod))
-                foreach (var group in files.GroupBy(f => (Bundle: f[..16], Index: int.Parse(ModCatalog.PatchFile().Match(f).Groups[1].Value, CultureInfo.InvariantCulture)))
-                    .OrderBy(g => g.Key.Bundle, StringComparer.Ordinal).ThenBy(g => g.Key.Index))
-                {
-                    var index = NextIndex(group.Key.Bundle);
-                    foreach (var file in group.Order(StringComparer.Ordinal))
-                        plan.Add((Path.Combine(folder, file), $"{group.Key.Bundle}.patch_{index}{ModCatalog.PatchFile().Match(file).Groups[2].Value}"));
-                }
+            foreach (var (folder, files) in Sources(mod)) Add(folder, files);
         }
+        foreach (var folder in own) Add(folder, PatchFiles(folder));
         return plan;
     }
 
@@ -1040,10 +1075,12 @@ public static class ModStaging
     {
         var sources = new List<(string Folder, IEnumerable<string> Files)> { (Path.Combine(mod.Folder, "data"), mod.DataFiles) };
         foreach (var folder in mod.PackFolders) sources.Add((folder, CosmeticPacks.PatchFiles(folder)));
-        if (mod.GeneratedData != null)
-            sources.Add((mod.GeneratedData, Directory.GetFiles(mod.GeneratedData).Select(f => Path.GetFileName(f)).Where(f => ModCatalog.PatchFile().IsMatch(f))));
+        if (mod.GeneratedData != null) sources.Add((mod.GeneratedData, PatchFiles(mod.GeneratedData)));
         return sources;
     }
+
+    static IEnumerable<string> PatchFiles(string folder) =>
+        Directory.GetFiles(folder).Select(f => Path.GetFileName(f)).Where(f => ModCatalog.PatchFile().IsMatch(f));
 
     // The last session's staged files (patch file names only).
     static HashSet<string> Previous(InstallLayout install)

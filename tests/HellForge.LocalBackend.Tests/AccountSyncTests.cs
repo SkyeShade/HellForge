@@ -30,7 +30,115 @@ static class AccountSyncTests
         Imports(root, ids, check);
         WarbondChoices(root, paid, ids, check);
         DuplicateItems(root, ids, check);
+        ShipAwayFromPlanet(root, ids, check);
         ModItems(root, paid, check);
+        ForgeCredits(paid, check);
+    }
+
+    // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
+    // served, and a profile that earns its warbonds buys an owned premium warbond's token with them, never one not owned.
+    static void ForgeCredits(PaidContentSet paid, Action<bool, string> check)
+    {
+        const uint Wallet = PaidContentSet.ForgeCreditsWallet;
+        using var store = ProfileStore.Open(null, "starter");
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var other = paid.Warbonds.First(w => w.Tokens.Length > 0 && w.Id != steeled.Id);
+        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]) { EarnWarbonds = true };
+        var missions = new MissionService(store);
+        JsonArray Activity(uint activity, long pile)
+        {
+            using var body = JsonDocument.Parse("{\"missionId\":\"m1\",\"activityId32\":" + activity + ",\"objectId\":" + pile + ",\"participants\":[" +
+                Player + "," + Sibling + "],\"gmiStr\":\"\"}");
+            return (JsonArray)missions.Handle("/Operation/Mission/Activity", body.RootElement).Reply["rewards"]!;
+        }
+        var amount = MissionService.Rewards.ForgeCredits(123456);
+        var rewards = Activity(MissionService.ForgeCreditsActivity, 123456);
+        check(rewards.Count == 2 && rewards.All(r => r!["platformAccountId"]!.GetValueKind() == JsonValueKind.String &&
+                (uint)Whole(r["rewards"]![0]!["mixId"]) == Wallet && Whole(r["rewards"]![0]!["amount"]) == amount) &&
+            (string)rewards[1]!["platformAccountId"]! == Sibling.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "A Forge Credits pile did not pay every participant: " + rewards.ToJsonString());
+        check(Items(store.Current())[Wallet] == amount && Served(store).Contains(Wallet), "The pile's Forge Credits were not kept and served.");
+        check(Activity(MissionService.ForgeCreditsActivity, 123456).Count == 0 && Items(store.Current())[Wallet] == amount, "A pile paid twice.");
+        check(Activity(0x12345678, 99).Count == 0, "An unknown activity paid something.");
+        // Medals and requisition slips the same way: the reply names the medal reward item (the client turns it into its
+        // medals), the profile holds medals; each pile once.
+        var medals = Items(store.Current()).GetValueOrDefault(Medals);
+        var medalReply = Activity(MissionService.MedalsActivity, 4242);
+        var medalAmount = MissionService.Rewards.MedalPickup(4242);
+        check(medalReply.Count == 2 && (uint)Whole(medalReply[0]!["rewards"]![0]!["mixId"]) == MissionService.MedalRewardMixId &&
+            Whole(medalReply[0]!["rewards"]![0]!["amount"]) == medalAmount && Items(store.Current())[Medals] == medals + medalAmount,
+            "A medal pickup did not pay: " + medalReply.ToJsonString());
+        check(Activity(MissionService.MedalsActivity, 4242).Count == 0, "A medal pickup paid twice.");
+        var requisition = Items(store.Current()).GetValueOrDefault(Requisition);
+        var slipReply = Activity(MissionService.RequisitionActivity, 777);
+        check(slipReply.Count == 2 && (uint)Whole(slipReply[0]!["rewards"]![0]!["mixId"]) == Requisition &&
+            Items(store.Current())[Requisition] == requisition + MissionService.Rewards.RequisitionPickup(777), "A requisition pickup did not pay: " + slipReply.ToJsonString());
+        check(Enumerable.Range(0, 500).All(i => MissionService.Rewards.MedalPickup(i * 31L) is 1 or 2 or 5 &&
+            MissionService.Rewards.RequisitionPickup(i * 31L) is 50 or 100 or 200), "A medal or slip pile paid an odd amount.");
+        // Every pile pays 10, 20, 50 or 100, mostly 10.
+        var amounts = Enumerable.Range(0, 1000).Select(i => MissionService.Rewards.ForgeCredits(i * 7919L + 12345)).ToList();
+        check(amounts.All(a => a is 10 or 20 or 50 or 100) && amounts.Count(a => a == 10) > 600 && amounts.Contains(100),
+            "Pile amounts: " + string.Join(",", amounts.Distinct().Order()));
+
+        // The owned warbond waits for its token; its price comes out of the wallet once there is enough.
+        var catalogue = LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray()
+            .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32())
+            .ToDictionary(g => g.Key, g => g.First());
+        var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null);
+        var price = catalogue[steeled.Tokens[0]].GetProperty("buyPrice").EnumerateArray().Single().GetProperty("amount").GetInt64();
+        (int Status, JsonNode Reply) Buy(uint token)
+        {
+            using var body = JsonDocument.Parse("{\"mixId\":" + token + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice +
+                ",\"amount\":" + price + "}]}");
+            var (status, reply, _) = purchases.Handle("/Progression/buy/v2", body.RootElement);
+            return (status, reply);
+        }
+        check(!Served(store).Contains(steeled.Tokens[0]) && !Served(store).Contains(steeled.Items[0].MixId), "A profile that earns its warbonds was handed an owned one.");
+        // The catalogue offers no purchase of a warbond the live account does not own; the owned one keeps its price.
+        var offered = store.Ownership!.FilterCatalogueResponse(LocalBackend.LoadStartupFixtures()["/Progression/items"]).EnumerateArray()
+            .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
+        check(offered[other.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 0 && offered[steeled.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1,
+            "A warbond not owned on the live game is offered, or the owned one is not.");
+        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold without the Forge Credits for it.");
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, Wallet, price) > 0);
+        var before = Items(store.Current())[Wallet];
+        check(Buy(other.Tokens[0]).Status == 400, "A warbond not owned on the live game was sold for Forge Credits.");
+        var (status, reply) = Buy(steeled.Tokens[0]);
+        check(status == 200 && reply is JsonArray bought && bought.Count == 2 && (uint)Whole(bought[0]!["mixId"]) == steeled.Tokens[0] && Whole(bought[0]!["amount"]) == 1 &&
+            (uint)Whole(bought[1]!["mixId"]) == Wallet && Whole(bought[1]!["amount"]) == -price, "The warbond purchase replied " + reply.ToJsonString());
+        check(Items(store.Current())[Wallet] == before - price && Served(store).Contains(steeled.Tokens[0]),
+            "The bought warbond is not open, or its price was not taken.");
+        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold twice.");
+
+        // An unlock-all profile is handed it, as before.
+        using var dev = ProfileStore.Open(null, "unlock-all");
+        dev.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(Served(dev).Contains(steeled.Tokens[0]), "An unlock-all profile was not handed its owned warbond.");
+    }
+
+    // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The
+    // import still goes through with the ship's name, the profile keeps its location, and the review names no planet.
+    static void ShipAwayFromPlanet(string root, Ids ids, Action<bool, string> check)
+    {
+        var (profileDir, snapshot) = Install(root, "away-from-planet", ids);
+        var file = Path.Combine(snapshot, InventorySync.ProgressionFile);
+        File.WriteAllText(file, File.ReadAllText(file).Replace("{\"warId\":801,\"planetIndex\":171,\"territoryIndex\":11}",
+            "{\"warId\":-1,\"planetIndex\":-1,\"regionIndex\":-1}"));
+        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        var settings = new AccountImportSettings();
+        settings.Set("ship", true, ImportRule.Vanilla);
+        settings.Save(AccountImportSettings.PathIn(profileDir));
+        using (var store = ProfileStore.Open(profileDir, "starter"))
+            store.TrySetLocation(JsonSerializer.SerializeToElement(new { warId = 801, planetIndex = 64, regionIndex = 2 }));
+
+        check(Command(AccountCommands.Preview, profileDir, Player, out var preview) == 0, "The preview failed.");
+        using (var review = JsonDocument.Parse(preview))
+            check(review.RootElement.GetProperty("categories").GetProperty("ship").GetProperty("vanilla").GetString() == "name 9-16",
+                "The review of a ship away from any planet is wrong: " + preview);
+        check(Command(AccountCommands.Import, profileDir, Player, out var error) == 0, "A ship away from any planet failed the import: " + error);
+        var progression = ProfileStore.Load(Path.Combine(profileDir, ProfileStore.FileName))["progression"]!;
+        check(progression["shipName"]!.ToJsonString() == "[9,16]" && Whole(progression["location"]!["planetIndex"]) == 64,
+            "A ship away from any planet did not import its name or replaced the profile's location.");
     }
 
     // Mods' weapons and stratagems (RegisteredItems): a copy of premium content is the player's only when they own the
@@ -125,6 +233,20 @@ static class AccountSyncTests
         check(!served.Contains(ids.OwnedWarbondItem) && !served.Contains(ids.OtherWarbondItem), "A premium warbond's item was served without its token.");
         check(served.Contains(MobilizeToken) && served.Contains(ids.MobilizeItem) && served.Count > 1000, "The free warbond or ordinary items were withheld.");
         check(!served.Overlaps(DlcGear), "Steam DLC gear was served without a snapshot.");
+
+        // Its pages show nothing bought on a premium warbond it does not own; the free warbond's and an owned one's stay,
+        // and the profile keeps them all.
+        var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
+        var mobilize = paid.Warbonds.Single(w => w.Tokens.Length == 0);
+        HashSet<long> Bought(ProfileStore store) =>
+            store.TryGetResponse("/Progression", out var body) ? [.. body.GetProperty("purchasedSeasonPassItems").EnumerateArray().Select(i => i.GetInt64())] : [];
+        var stored = ((JsonArray)unlockAll.Current()["progression"]!["purchasedSeasonPassItems"]!).Count;
+        var shown = Bought(unlockAll);
+        check(shown.Count > 0 && !shown.Overlaps(steeled.Items.Select(i => i.ItemId)) && mobilize.Items.All(i => shown.Contains(i.ItemId)),
+            "A premium warbond not owned shows its items bought, or the free warbond's purchases were dropped.");
+        unlockAll.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(steeled.Items.All(i => Bought(unlockAll).Contains(i.ItemId)), "An owned premium warbond lost its purchases.");
+        check(((JsonArray)unlockAll.Current()["progression"]!["purchasedSeasonPassItems"]!).Count == stored, "Serving changed the profile's purchases.");
     }
 
     static void SuperCredits(string root, Action<bool, string> check)

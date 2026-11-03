@@ -259,11 +259,14 @@ static class Launch
         return new { fetched = true, cache = paths.LiveWarCache };
     }
 
-    // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones).
+    // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones). A .rar or .7z
+    // dropped into mods/ is added first (ModInstaller.TakeDropped), as the Mods page does.
     public static object Mods(Dictionary<string, string> options)
     {
         var install = Install(options);
+        var dropped = ModInstaller.TakeDropped(install);
         var (mods, problems) = ModCatalog.Load(install.Mods);
+        problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);
         var gameplay = active.Count(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId);
         return new
@@ -476,6 +479,11 @@ static class Launch
         }
         // Play with strangers is the mods settings' (hellforge-mods.json), which the backend reads, even during a session.
         if (options.ContainsKey("--strangers")) ModSettings.SetPlayWithStrangers(install.Mods, Yes(options, "--strangers", false));
+        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
+        if (options.TryGetValue("--forge-credits", out var forgeCredits))
+            ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
+                : int.TryParse(forgeCredits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
+                    ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default."));
         return new
         {
             profile = ProfileStore.LoadSelected(paths),
@@ -488,6 +496,7 @@ static class Launch
             sandbox = ProfileStore.LoadSandbox(paths),
             steamBridge = SessionRunner.HasSteamBridge(paths),
             playWithStrangers = ModSettings.PlayWithStrangers(install.Mods),
+            forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
             file = paths.SettingsFile
         };
     }

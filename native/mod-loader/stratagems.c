@@ -42,6 +42,7 @@ typedef struct TableBound { uint32_t rva; uint8_t immAt, width; uint32_t value; 
 #define STR_VANILLA 150u
 #define STR_MAX_NEW 48u
 _Static_assert(STR_VANILLA + STR_MAX_NEW <= 256u, "stratagem types travel in 8 bits (co-op research 2026-10-21)");
+_Static_assert(STR_MAX_NEW * 3 <= REG_STRATAGEM_TEXTS, "each stratagem's three texts have room of their own (registry.c g_texts)");
 #define STR_ROW 400u
 #define STR_MAX_CODE 9u
 #define STR_MAX_PAYLOAD 8u
@@ -283,7 +284,8 @@ static uint32_t ApiAddStratagem(HfMod* mod, const HfStratagem* def)
  * known once the game has loaded its stratagems, so the file is written again then; until then it is 0. */
 static int StratagemItems(char* text, int n, int size, int first)
 {
-    for (uint32_t i = 0; i < g_stratagemCount && n < size - 512; i++, first = 0)
+    char mod[6 * 80 + 1], name[6 * 192 + 1];
+    for (uint32_t i = 0; i < g_stratagemCount && n < size - REG_ITEM_ROOM; i++, first = 0)
     {
         Stratagem* s = &g_stratagems[i];
         uint32_t baseStable = 0;
@@ -291,7 +293,7 @@ static int StratagemItems(char* text, int n, int size, int first)
         if (g_stratagemTable != NULL) memcpy(&base, g_stratagemTable + s->base * 8, 8);
         if (base != 0) SafeRead(base + 4, &baseStable, 4);
         n += snprintf(text + n, size - n, "%s{\"kind\":\"stratagem\",\"mixId\":%u,\"stable\":%u,\"copyOfType\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"name\":\"%s\"}",
-            first ? "" : ",", s->item, s->stable, s->base, baseStable, s->mod->id, s->name);
+            first ? "" : ",", s->item, s->stable, s->base, baseStable, JsonText(s->mod->id, mod, sizeof mod), JsonText(s->name, name, sizeof name));
     }
     return n;
 }

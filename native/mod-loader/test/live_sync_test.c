@@ -121,7 +121,7 @@ static void LiveSyncFixture(void)
     SyncLine("syncstate\t9\t6\tready\tFriend One\t0\t0\t2\t", reply, sizeof reply);
     assert(!strcmp(reply, "9\tok\tnow"));
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_READY && state.version == 6 && state.mods == 2);
-    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && mod.kind == HF_SYNC_CLASS_CODE && mod.url[0] == 0);
+    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && mod.kind == HF_SYNC_CLASS_CODE && mod.url[0] == 0 && mod.flags == 0);
     assert(ApiSyncMod(NULL, 1, &mod) && mod.action == HF_SYNC_MOD_OFF && mod.kind == HF_SYNC_CLASS_RAW && !strcmp(mod.id, "mine.extra") && mod.url[0] == 0);
 
     /* malformed lines: refused, nothing changes */
@@ -205,6 +205,18 @@ static void LiveSyncFixture(void)
     /* withdrawn: state none of a new version, then the pipe going clears it */
     SyncLine("syncstate\t22\t9\tnone\t\t0\t0\t0\t", reply, sizeof reply);
     assert(!strcmp(reply, "22\tok\tnow") && !ApiSyncState(NULL, &state) && state.state == HF_SYNC_NONE && state.version == 9);
+
+    /* a stranger's mod to trust (a sandboxed game's offer): flagged, its address kept; a 12th field that is not "stranger"
+     * is refused; a later offer without it is not flagged */
+    SyncLine("syncmod\t23\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tfriend", reply, sizeof reply);
+    assert(strstr(reply, "\trefused\t") != NULL);
+    SyncLine("syncmod\t24\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tstranger", reply, sizeof reply);
+    SyncLine("syncstate\t25\t10\tblocked\tFar One\t0\t0\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "25\tok\tnow"));
+    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && (mod.flags & HF_SYNC_FLAG_STRANGER) && !strcmp(mod.url, "https://example.com/trusty"));
+    SyncLine("syncmod\t26\t11\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\t-", reply, sizeof reply);
+    SyncLine("syncstate\t27\t11\tblocked\tFriend One\t0\t0\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "27\tok\tnow") && ApiSyncMod(NULL, 0, &mod) && mod.flags == 0);
     SyncClear();
     assert(!ApiSyncState(NULL, &state) && state.version == 0);
 

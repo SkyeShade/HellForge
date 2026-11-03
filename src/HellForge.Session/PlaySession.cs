@@ -158,6 +158,15 @@ sealed partial class PlaySession(PlayOptions options)
         return exit == 0 || (exit == 2 && arguments[0] == "prepare-session") ? output : null;
     }
 
+    // HellForge's published verified list (VerifiedMods), fetched for this session's mods-stage and backend, which read the
+    // installation's saved copy: within 5 s, else the saved copy or the embedded list.
+    void RefreshVerifiedMods()
+    {
+        using var http = new HttpClient();
+        var (source, problem) = VerifiedMods.RefreshAsync(http, install, TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        result["verifiedMods"] = new JsonObject { ["source"] = source.ToString().ToLowerInvariant(), ["serial"] = VerifiedMods.Current.Serial, ["problem"] = problem };
+    }
+
     void Prepare(string profileDirectory)
     {
         CheckPreconditions();
@@ -166,6 +175,7 @@ sealed partial class PlaySession(PlayOptions options)
         profileName = Path.GetFileName(profileDirectory);
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
         RecoverStandIns();
+        RefreshVerifiedMods();
         StageMods(profileDirectory);
         // The player's mods are held read-only so nothing the game runs can change or plant a mod.
         try { modsHold = ModsHold.Take(install.Mods); }
@@ -236,7 +246,7 @@ sealed partial class PlaySession(PlayOptions options)
         // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
             "--modset", ModSetFile, .. PremiumStageArguments(profileDirectory)];
-        if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync)];
+        if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync), "--sandbox", options.Sandbox ? "yes" : "no"];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
         if ((bool?)plan["loaderRequired"] == true)

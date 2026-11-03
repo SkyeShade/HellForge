@@ -260,7 +260,7 @@ static int DifficultyFlags(HfMod* mod, const char* name, const HfDifficulty* def
 {
     if (def->size < offsetof(HfDifficulty, flags) + sizeof def->flags) return 0;
     uint32_t known = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
-        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM | HF_DIFFICULTY_HEAVY_ARTILLERY;
     if (def->flags & ~known)
     {
         ApiLog(mod, "add_difficulty(%s): unknown flags 0x%x", name, def->flags & ~known);
@@ -339,9 +339,11 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
  * the catalogue, and to the inventory of a player who has unlocked level 10). */
 static int DifficultyItems(char* text, int n, int size, int first)
 {
-    if (!g_difficultyAdded || n >= size - 512) return n;
+    if (!g_difficultyAdded || n >= size - REG_ITEM_ROOM) return n;
+    char mod[6 * 80 + 1], name[6 * 192 + 1];
     return n + snprintf(text + n, size - n, "%s{\"kind\":\"difficulty\",\"mixId\":%u,\"copyOf\":%u,\"level\":%u,\"mod\":\"%s\",\"name\":\"%s\"}",
-        first ? "" : ",", g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1, g_difficulty.mod->id, g_difficulty.name);
+        first ? "" : ",", g_difficulty.item, kDifficultyItems[DIF_VANILLA - 1], DIF_VANILLA + 1, JsonText(g_difficulty.mod->id, mod, sizeof mod),
+        JsonText(g_difficulty.name, name, sizeof name));
 }
 
 static uintptr_t ApiDifficultyRow(uint32_t level)
@@ -818,6 +820,6 @@ static void NoteDifficulty(const DifficultyInstall* d)
     ApiLog(g_difficulty.mod, "difficulty %s is level 11 (unlock item %08x): encounter %.0f, guardforce %.0f, spawner cooldown %.2f s",
         g_difficulty.name, g_difficulty.item, (double)points[0], (double)points[1], (double)points[2]);
     if (g_difficulty.mapScale > 1.0f)
-        ApiLog(g_difficulty.mod, "difficulty %s: maps %.2f x the radius (structured maps excepted), generated within %.0f m, route cells %.1f m apart, Voronoi grid %.2f m, route cell areas x %.3f",
+        ApiLog(g_difficulty.mod, "difficulty %s: maps %.2f x the radius (mega cities too), generated within %.0f m, route cells %.1f m apart, Voronoi grid %.2f m, route cell areas x %.3f",
             g_difficulty.name, (double)g_difficulty.mapScale, (double)d->disk, (double)*d->spacingValue, (double)*d->gridValue, (double)(d->cellFactor[0] / 4.0f));
 }

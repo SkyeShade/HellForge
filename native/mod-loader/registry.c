@@ -66,12 +66,17 @@
 #define REG_LOADOUT_STRIDE 32u
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
-/* Weapons and entities mods add, together. Each needs a network type, and the game sends a type in 11 bits: build
- * 25480438 has 1855 (NET_VANILLA_TYPES), so 193 more at most. */
-#define REG_MAX_WEAPONS 192
+/* Weapons and entities mods add, together. Each needs a network type: build 25480438 has 1855 (NET_VANILLA_TYPES), and
+ * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
+ * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
+ * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
+ * (2,187 more rows), and for weapons the game's 4,096 catalogue items (RegisteredItems.cs). 512: the research's target
+ * (research\entity-limit\README.md). */
+#define REG_MAX_WEAPONS 512
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
-#define REG_MAX_OWNED 192 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has) */
+#define REG_MAX_OWNED 325 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one each, every
+                           * component index of build 25480438 (0..324); 192 could run out before the tables did */
 #define REG_MAX_OWN 8     /* components a weapon may own beyond its unit, text and loadout entry */
 #define REG_TEXT_COMPONENT 76u
 #define REG_TEXT_STRIDE 56u
@@ -93,7 +98,11 @@ static const uint8_t kBuilderPin[16] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89
  * and 91 divide by multiply-shift, 0x4F7C70 and 0x4FA390, which the scan missed). The rest
  * (from {10, 6} on) from a scan of every table's lookup loop bound (`cmp reg, slots; jb` after the table's load; 2026-10-18),
  * which agrees with every count above and finds each one among the component catalogue's table sizes: the barrage's
- * bombardment (95) and the silo missile (219) were refused for want of theirs. */
+ * bombardment (95) and the silo missile (219) were refused for want of theirs. 140 (ShipPropVisibility), 201 (Decoration)
+ * and 215 (Encounter) have 2: every lookup masks with 1 and stops at 2 (game.dll+0x4FF151 `and r8d, 1`, +0x4FF199
+ * `cmp r10d, 2`; +0x504B41, +0x504B89; +0x50676F, +0x5067AB; the entity-limit research's lookup-patch-manifest.md), where
+ * the scan read 4, 20 and 4: a copy of an entity with one of them could take a row past the second, in the table's
+ * records. */
 typedef struct SlotCount { uint16_t component, slots; } SlotCount;
 static const SlotCount kSlots[] = {
     {0, 152}, {1, 114}, {3, 1122}, {5, 540}, {8, 38}, {12, 598}, {15, 58}, {22, 30}, {23, 154}, {25, 14}, {28, 1080},
@@ -114,9 +123,9 @@ static const SlotCount kSlots[] = {
     {322, 454},
     {10, 6}, {11, 10}, {18, 8}, {24, 16}, {31, 8}, {36, 4}, {45, 4}, {60, 12}, {68, 12}, {73, 6}, {74, 6}, {75, 18},
     {80, 18}, {85, 24}, {89, 96}, {95, 32}, {97, 12}, {98, 6}, {99, 6}, {108, 72}, {109, 4}, {114, 6}, {123, 16},
-    {127, 4}, {130, 16}, {131, 32}, {135, 10}, {139, 4}, {140, 4}, {143, 4}, {144, 4}, {145, 12}, {153, 6}, {154, 4},
+    {127, 4}, {130, 16}, {131, 32}, {135, 10}, {139, 4}, {140, 2}, {143, 4}, {144, 4}, {145, 12}, {153, 6}, {154, 4},
     {166, 8}, {168, 8}, {169, 10}, {173, 10}, {176, 16}, {179, 8}, {186, 6}, {187, 4}, {190, 80}, {195, 8}, {199, 16},
-    {201, 20}, {202, 6}, {204, 20}, {205, 16}, {215, 4}, {216, 4}, {219, 18}, {221, 12}, {222, 4}, {228, 4}, {229, 12},
+    {201, 2}, {202, 6}, {204, 20}, {205, 16}, {215, 2}, {216, 4}, {219, 18}, {221, 12}, {222, 4}, {228, 4}, {229, 12},
     {242, 64}, {245, 18}, {246, 12}, {251, 6}, {252, 6}, {258, 10}, {264, 6}, {265, 20}, {267, 18}, {272, 6}, {281, 4},
     {291, 8}, {293, 4}, {300, 36}, {301, 16}, {308, 4}, {313, 10}, {314, 12}, {317, 6}, {320, 20}, {323, 20}};
 
@@ -141,15 +150,18 @@ typedef struct Weapon
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
-    int ownAll;          /* add_entity: a record of its own in every component of its base (HfEntity.own_all) */
+    int ownAll;          /* a record of its own in every component of its base (HfEntity.own_all, HfWeapon.own_all) */
     uint64_t copies;     /* the entity it was registered as a copy of (its map row's components are that entity's) */
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
 } Weapon;
 
-/* Mod text by id, answered by the text lookup detour. */
+/* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
+ * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
+ * once shared 4 * REG_MAX_WEAPONS with the others, so a full pack left a stratagem with its base's name. */
+#define REG_STRATAGEM_TEXTS (48 * 3)
 typedef struct ModText { uint32_t id; char* text; } ModText;
-static ModText g_texts[REG_MAX_WEAPONS * 4];
+static ModText g_texts[REG_MAX_WEAPONS * 4 + REG_STRATAGEM_TEXTS + 2];
 static int g_textCount;
 static int g_textHooked;
 static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
@@ -191,12 +203,16 @@ static EntityLoaderFn g_entityLoader;
 static ArmoryBuilderFn g_armoryBuilder;
 static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
+static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
+static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
 
 static uint32_t SlotsOf(uint32_t component)
 {
+    uint32_t grown = GrownSlots(component);
+    if (grown != 0) return grown;
     for (size_t i = 0; i < sizeof kSlots / sizeof kSlots[0]; i++)
         if (kSlots[i].component == component) return kSlots[i].slots;
     for (int i = 0; i < g_componentCount; i++)
@@ -278,7 +294,7 @@ static int PlainCopy(uint64_t entity)
 static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
 {
     uint64_t owner = 0;
-    for (uint32_t i = 0; i < REG_LOADOUT_SLOTS; i++)
+    for (uint32_t i = 0, slots = SlotsOf(REG_LOADOUT); i < slots; i++)
     {
         uint64_t entity;
         uint32_t r;
@@ -300,25 +316,64 @@ static HANDLE CreateSessionFile(const wchar_t* name)
     return CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
+/* Room one entry of registered-items.json may take: a mod id (79 bytes) and a name (191), each escaped (JsonText: at most 6
+ * bytes a byte), and the numbers. A text is complete only while this much stays free. */
+#define REG_ITEM_ROOM 4096
+
+/* text as a JSON string's contents into out (size bytes, at least 6 * strlen + 1 to hold all of it): '"', '\' and control
+ * bytes escaped. A mod's names are its own text, and one quote left as it is lost the backend every registered item. */
+static const char* JsonText(const char* text, char* out, size_t size)
+{
+    size_t n = 0;
+    for (const unsigned char* c = (const unsigned char*)text; *c && n + 7 < size; c++)
+        if (*c == '"' || *c == '\\') { out[n++] = '\\'; out[n++] = (char)*c; }
+        else if (*c < 0x20) n += (size_t)snprintf(out + n, size - n, "\\u%04x", *c);
+        else out[n++] = (char)*c;
+    out[n] = 0;
+    return out;
+}
+
+/* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
+static int RegisteredItemsText(char* text, int size)
+{
+    char mod[6 * 80 + 1], name[6 * 192 + 1];
+    int n = snprintf(text, size, "{\"format\":1,\"items\":[");
+    int listed = 0;
+    for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
+        if (!g_weapons[i].plain)
+            n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
+                g_weapons[i].id, g_weapons[i].base, JsonText(g_weapons[i].mod->id, mod, sizeof mod), JsonText(g_weapons[i].name, name, sizeof name));
+    int before = n;
+    n = StratagemItems(text, n, size, listed == 0);
+    n = DifficultyItems(text, n, size, listed == 0 && n == before);
+    return n + snprintf(text + n, size - n, "]}\n");
+}
+
+/* Every weapon, stratagem and difficulty mods registered, for the backend (RegisteredItems.cs). The text grows until all
+ * of it fits: a fixed 16 KiB stopped, unsaid, at about 150 weapons, and the backend never heard of the rest or of any
+ * stratagem. */
 static void WriteRegisteredItems(void)
 {
     if (g_logs[0] == 0) return;
-    char text[16384];
-    int n = snprintf(text, sizeof text, "{\"format\":1,\"items\":[");
-    int listed = 0;
-    for (int i = 0; i < g_weaponCount && n < (int)sizeof text - 512; i++)
-        if (!g_weapons[i].plain)
-            n += snprintf(text + n, sizeof text - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
-                g_weapons[i].id, g_weapons[i].base, g_weapons[i].mod->id, g_weapons[i].name);
-    int before = n;
-    n = StratagemItems(text, n, (int)sizeof text, listed == 0);
-    n = DifficultyItems(text, n, (int)sizeof text, listed == 0 && n == before);
-    n += snprintf(text + n, sizeof text - n, "]}\n");
-    HANDLE file = CreateSessionFile(L"registered-items.json");
-    if (file == INVALID_HANDLE_VALUE) return;
-    DWORD written;
-    WriteFile(file, text, (DWORD)n, &written, NULL);
-    CloseHandle(file);
+    for (int size = 16384; size <= (1 << 24); size *= 2)
+    {
+        char* text = (char*)malloc((size_t)size);
+        if (text == NULL) return;
+        int n = RegisteredItemsText(text, size);
+        if (n < size - REG_ITEM_ROOM)
+        {
+            HANDLE file = CreateSessionFile(L"registered-items.json");
+            if (file != INVALID_HANDLE_VALUE)
+            {
+                DWORD written;
+                WriteFile(file, text, (DWORD)n, &written, NULL);
+                CloseHandle(file);
+            }
+            free(text);
+            return;
+        }
+        free(text);
+    }
 }
 
 /* The client's id of a weapon's child item (an attachment for that weapon), and its inverse (RegisteredItems.cs). */
@@ -413,6 +468,17 @@ static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
     w->text[3] = AddText(def->designation, key, 0x04);
 }
 
+/* The mod's log line for a weapon add_weapon accepted: its text, entity and ids, and the records it owns. */
+static void LogWeaponAdded(HfMod* mod, const HfWeapon* def, const Weapon* w)
+{
+    char own[48];
+    if (w->ownAll) snprintf(own, sizeof own, "records of its own in every component");
+    else snprintf(own, sizeof own, "%d record(s) of its own", w->ownCount);
+    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %s",
+        w->name, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
+        (unsigned long long)w->entity, w->id, def->base, own);
+}
+
 static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfWeapon, own_components) + sizeof def->own_components)
@@ -439,11 +505,10 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     snprintf(w.name, sizeof w.name, "%s", unit);
     if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
+    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);
     g_weapons[g_weaponCount++] = w;
-    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %d record(s) of its own",
-        unit, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
-        (unsigned long long)entity, id, def->base, w.ownCount);
+    LogWeaponAdded(mod, def, &w);
     WriteRegisteredItems();
     return id;
 }
@@ -767,6 +832,13 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
 /* The engine's text function; any further register arguments are passed on untouched. */
 typedef const char* (*EngineTextFn)(uint32_t id, void* a, void* b, void* c);
 static EngineTextFn g_engineText;
+
+/* A mod text's text (AddText's id), or NULL for none. */
+static const char* ModTextOf(uint32_t id)
+{
+    for (int i = 0; id != 0 && i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
+    return NULL;
+}
 
 /* The engine's text function with the mods' text first. */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)

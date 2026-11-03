@@ -5,7 +5,7 @@ to do. The launcher's messages are quoted as it shows them. If your problem is n
 and [ask](#where-to-ask).
 
 - [Steam](#steam)
-- [Setup](#setup): the folder, the supported build, the build patch, the network block
+- [Setup](#setup): the folder, the supported build, the build patch, languages other than English, the network block
 - [Antivirus](#antivirus)
 - [Sessions that fail](#sessions-that-fail)
 - [Playing with friends](#playing-with-friends)
@@ -49,6 +49,15 @@ Setup found no Steam installation. Install Steam and HELLDIVERS 2, then start se
 
 Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is not code-signed; choose More info > Run
 anyway.
+
+### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
+
+HellForge's programs are built on .NET 10, which uses the processor's hardware stack protection (Intel 11th generation
+and AMD Ryzen 5000 and later). Windows 10 needs Microsoft's fixes for it from October 2024 or later; without them every
+HellForge program closes as soon as it starts, and the Application event log shows ".NET Runtime" and "Application
+Error" entries with 0x80131506. Windows 10 2004, 20H2 and 21H1 never got those fixes. Setup checks this first and names
+your Windows: update to Windows 10 version 22H2 or Windows 11 in Settings > Update & Security > Windows Update (on 22H2,
+install the latest updates), then run Setup again. Run `winver` to see your version and build.
 
 ### Setup cannot find the supported build
 
@@ -108,6 +117,23 @@ game. When one is missing, the message names it and gives Microsoft's download l
 
 Install the one named, then start setup (or press PLAY) again. Both install side by side with any other versions you
 have.
+
+### Playing in a language other than English
+
+The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
+installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
+it.
+
+Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
+the only language HellForge has pinned so far; more follow.
+
+1. Run `HellForge.Cli.exe languages`. It lists the pinned languages and, for each, a `download_depot` command.
+2. Open Steam's console (`steam://open/console` in a browser or the Run dialog), paste that command and wait for
+   "Depot download complete".
+3. Close HellForge, then run `HellForge.Cli.exe language-add --name japanese`. It copies the language into the game copy,
+   checks every file, and deletes Steam's download.
+
+`languages` then shows `"inCopy": true` for it. Your live game is never touched.
 
 ### The network block
 
