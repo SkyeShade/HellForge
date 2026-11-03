@@ -243,19 +243,25 @@ static void InstallLockedWarbonds(void)
     }
     uint8_t* cave = AllocateNearGame(game, 128);
     if (cave == NULL) { Note("forge credits: locked warbonds not applied; no memory near game.dll"); return; }
-    /* the moved instruction, then: if (+0x2E78 != 1 && w->variant && !w->owned && !w->offer) +0x2E88 = label; back */
+    /* The moved instruction, then, for the warbond's own button (+0x2E78 != 1): its price (the widget at +0x110, which the
+     * refresh shows only when "owned" changes from the warbond shown before, 0x1969FA5; the button is shared, so after a
+     * locked warbond it would stay hidden) shown exactly when the warbond can be bought (not owned, a Super Credits offer),
+     * and a locked one (not owned, no offer, not free) labelled in both slots; back. */
     uint8_t* c = cave;
     memcpy(c, kLabelHookPin, sizeof kLabelHookPin); c += sizeof kLabelHookPin;
     static const uint8_t checks[] = {
         0x83,0xbf,0x78,0x2e,0x00,0x00,0x01,     /* cmp dword [rdi+0x2E78], 1 */
-        0x74,0x3b,                              /* je back */
+        0x74,0x3f,                              /* je back */
         0x48,0x8b,0x87,0x58,0x2e,0x00,0x00,     /* mov rax, [rdi+0x2E58] (the warbond's data) */
-        0x83,0x78,0x60,0x00,                    /* cmp dword [rax+0x60], 0 (variant: free) */
-        0x74,0x2e,                              /* je back */
+        0x31,0xd2,                              /* xor edx, edx (price hidden) */
         0x80,0x78,0x64,0x00,                    /* cmp byte [rax+0x64], 0 (owned) */
-        0x75,0x28,                              /* jne back */
+        0x75,0x24,                              /* jne price */
         0x83,0x78,0x68,0x00,                    /* cmp dword [rax+0x68], 0 (its Super Credits offer) */
-        0x75,0x22,                              /* jne back */
+        0x74,0x04,                              /* je locked */
+        0xb2,0x01,                              /* mov dl, 1 (price shown) */
+        0xeb,0x1a,                              /* jmp price */
+        0x83,0x78,0x60,0x00,                    /* locked: cmp dword [rax+0x60], 0 (variant: free) */
+        0x74,0x14,                              /* je price */
         0xc7,0x87,0x88,0x2e,0x00,0x00};         /* mov dword [rdi+0x2E88], imm32 (the buy label) */
     memcpy(c, checks, sizeof checks); c += sizeof checks;
     uint32_t label = FC_LOCKED_LABEL;
@@ -263,17 +269,16 @@ static void InstallLockedWarbonds(void)
     static const uint8_t unlockedSlot[] = {0xc7,0x87,0x8c,0x2e,0x00,0x00}; /* mov dword [rdi+0x2E8C], imm32 (state 4's) */
     memcpy(c, unlockedSlot, sizeof unlockedSlot); c += sizeof unlockedSlot;
     memcpy(c, &label, 4); c += 4;
-    /* and hide its price (the widget at +0x110, which the refresh shows for a warbond not owned, 0x1969FA5) */
-    static const uint8_t hidePrice[] = {0x48,0x8d,0x8f,0x10,0x01,0x00,0x00, 0x31,0xd2}; /* lea rcx, [rdi+0x110]; xor edx, edx */
-    memcpy(c, hidePrice, sizeof hidePrice); c += sizeof hidePrice;
+    static const uint8_t price[] = {0x48,0x8d,0x8f,0x10,0x01,0x00,0x00}; /* price: lea rcx, [rdi+0x110] */
+    memcpy(c, price, sizeof price); c += sizeof price;
     int32_t show = (int32_t)((intptr_t)(game + FC_SET_VISIBLE) - (intptr_t)(c + 5));
-    *c = 0xe8; memcpy(c + 1, &show, 4); c += 5;                                       /* call game+0x14508E0 */
+    *c = 0xe8; memcpy(c + 1, &show, 4); c += 5;                                       /* call game+0x14508E0 (rcx, dl) */
     *c++ = 0xe9;                                /* back: jmp game+0x196A230 */
     int32_t back = (int32_t)((intptr_t)(game + FC_LABEL_HOOK + 7) - (intptr_t)(c + 4));
     memcpy(c, &back, 4); c += 4;
     /* The button's state (0x1969E00): an owned warbond's is 4 (no hover, no press, no price); a locked one's too:
      * if (owned || (+0x2E78 != 1 && variant && !offer)) state 4 */
-    uint8_t* state = cave + 96; /* after the label code (80 bytes) */
+    uint8_t* state = cave + 96; /* after the label code (84 bytes) */
     static const uint8_t stateChecks[] = {
         0x80,0x78,0x64,0x00,                    /* cmp byte [rax+0x64], 0 (owned) */
         0x75,0x15,                              /* jne four */
