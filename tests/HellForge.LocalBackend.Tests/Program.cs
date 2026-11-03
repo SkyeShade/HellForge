@@ -562,6 +562,11 @@ try
             Check(frontBuy.Status == (beforeFront >= 5000 ? HttpStatusCode.OK : HttpStatusCode.BadRequest) &&
                 (beforeFront < 5000 || Inventory()[MissionService.RequisitionMixId] == beforeFront - 5000 && Inventory().ContainsKey(3499930023)),
                 "A store front purchase by salesId answered wrongly: " + frontBuy.Body);
+            // Its reply is the warbond item's shape, {items:[...]}: the client adds them and takes the price itself.
+            var frontReply = Purchases.StoreFrontReply(new JsonArray(new JsonObject { ["mixId"] = 3499930023u, ["amount"] = 1L },
+                new JsonObject { ["mixId"] = MissionService.RequisitionMixId, ["amount"] = -5000L }));
+            Check(frontReply["items"] is JsonArray frontItems && frontItems.Count == 1 && (uint)frontItems[0]!["mixId"]! == 3499930023u &&
+                (long)frontItems[0]!["amount"]! == 1, "A store front purchase's reply is not {items:[the item]}: " + frontReply.ToJsonString());
             Check((await Buy("/StoreFront/buy", "{\"salesId\":\"00000000-0000-0000-0000-000000000000\",\"amount\":1}")).Status == HttpStatusCode.BadRequest,
                 "A store front purchase of an unknown salesId went through.");
             var shipModule = await Buy("/Progression/ProgressionPackage/AcquireLevel", "{\"id32\":131213678,\"level\":1,\"expectedCost\":[{\"mixId\":3992382197,\"amount\":60}]}");
