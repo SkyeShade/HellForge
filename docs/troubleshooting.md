@@ -50,6 +50,15 @@ Setup found no Steam installation. Install Steam and HELLDIVERS 2, then start se
 Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is not code-signed; choose More info > Run
 anyway.
 
+### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
+
+HellForge's programs are built on .NET 10, which uses the processor's hardware stack protection (Intel 11th generation
+and AMD Ryzen 5000 and later). Windows 10 needs Microsoft's fixes for it from October 2024 or later; without them every
+HellForge program closes as soon as it starts, and the Application event log shows ".NET Runtime" and "Application
+Error" entries with 0x80131506. Windows 10 2004, 20H2 and 21H1 never got those fixes. Setup checks this first and names
+your Windows: update to Windows 10 version 22H2 or Windows 11 in Settings > Update & Security > Windows Update (on 22H2,
+install the latest updates), then run Setup again. Run `winver` to see your version and build.
+
 ### Setup cannot find the supported build
 
 Each HellForge release runs one HELLDIVERS 2 build (Steam build 25480438). When Steam has another build, setup finds the

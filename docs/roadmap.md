@@ -27,6 +27,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
+| Launcher updates | Later | Planned after 0.4: update from GitHub releases |
 | Custom models | Later | Mesh importer works; physics, AI and textures left |
 | 1.0 release | Later | No date yet |
 
@@ -207,8 +208,10 @@ Status: planned. The design isn't decided yet.
 
 A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
 (everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
-XP based on difficulty, success and objectives, requisition based on difficulty, and whatever samples the game reports
-you looted. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
+XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
+game reports you looted. What a profile earns can be spent (`Purchases.cs`): medals on warbond pages, requisition on
+stratagems and the store, samples on ship modules, and requisition on weapon attachments, each checked against the
+game's prices and the profile's balance. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
 plan:
 
 1. Make the whole loop work. Everything a profile earns should be spendable on what the game sells for it (stratagems,
@@ -262,6 +265,14 @@ Build patches work: setup picks a patch from the list online and keeps Steam's d
 new Steam build of HD2 needs a new patch.
 
 Setup still needs a full run through its GUI on a fresh PC.
+
+### Launcher updates
+
+Status: planned, after 0.4.
+
+Today a new HellForge version means downloading the release and installing it by hand. The launcher should check
+GitHub releases on start, say when a newer version is out, and install it for you: download the release, check it,
+swap the files and restart. Pre-releases would only show to players who opt in.
 
 ## Known issues
 
