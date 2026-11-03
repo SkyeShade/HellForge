@@ -31,7 +31,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "icon": "images/icon.png",
   "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 16 }
 }
 ```
 
@@ -44,6 +44,8 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
 | `icon` | optional: a PNG or JPEG in the mod folder; square looks best |
 | `url` | optional: where players get the mod, an `https://` address of at most 200 characters (no `http://`, user name, port or spaces). The Mods page links it, and the in-game MOD SYNC prompt shows it as GET IT to a joiner who has to install the mod themselves. Any other address is left out; a bundled mod's is never shown |
 | `gameplay` | default `true`: friends must run the same gameplay mods. Set `false` for cosmetic mods, which are not compared. A mod with stats or `componentWrites` is always gameplay; one holding only Lua patches is always cosmetic |
+| `coop` | optional, `"shared"` or `"per-player"`. Shared mods must match on every machine; per-player mods stay on the player's PC and leave the modlist code. Without the field HellForge infers it: stats-only mods, texture/sound/text-only patch mods, and Local Stats are per-player, everything else shared. `"shared"` always wins; `"per-player"` is refused when the mod has network field types or a data spec, since those change the wire or numbered resources |
+| `coopLevel` | a non-negative whole number that replaces the mod's file hashes in the modlist code (`id\|coop\|<level>`; a bundled mod's `id\|bundled\|<level>`): players whose copies have the same level play together, whatever version each has. Bump it when a change alters what other machines see or need (added content, network messages, host-side logic, other stats or data the host's game uses), not for a fix that stays on one machine. A joiner without the mod still downloads the host's exact copy. A mod without it is compared by its files |
 | `code.dll` | the DLL's file name; HellForge builds it from `src/` |
 | `code.sdk` | the SDK version the mod needs (see [compatibility](#compatibility)) |
 | `code.prebuilt`, `code.game` | for a mod that ships its DLL ([tools](tools.md#prebuilt-mods)) |
@@ -129,10 +131,11 @@ game: use `hf_set` or `edit_entity` instead.
 
 ## Co-op
 
-- The modlist code. Before a friend joins, HellForge compares both players' gameplay mods: ids, versions and files (a
-  source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
-  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic
-  mods, packs and Lua mods are not compared. Nor is the order: friends who order the same mods differently can play
+- The modlist code. Before a friend joins, HellForge compares both players' **shared** gameplay mods: ids, versions and
+  files (a source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
+  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic mods, packs, Lua
+  mods, and per-player gameplay mods (stats-only, texture/sound/text-only patches, or manifest `"coop":
+  "per-player"`) are not compared. Nor is the order: friends who order the same mods differently can play
   together, but where two mods conflict, a different one may win on each machine.
 - Every machine runs its own mods. Each player's game runs the mods' code and data. A hit is applied by the machine
   that owns the target, and its damage events are raised there; a stratagem's activation is applied on its thrower's
@@ -180,7 +183,7 @@ HellForge does most of this for you.
     "name": "Knight Carbine",
     "version": "1.0.0",
     "premium": ["dlc:super-citizen-edition"],
-    "code": { "dll": "knight_carbine.dll", "sdk": 15 }
+    "code": { "dll": "knight_carbine.dll", "sdk": 16 }
   }
   ```
 
@@ -215,7 +218,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 17; this HellForge provides SDK 16"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c

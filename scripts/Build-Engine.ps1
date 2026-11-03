@@ -187,7 +187,7 @@ if($bridge){
     & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -DHELLFORGE_BRIDGE_BUILD -I (Join-Path $minHook 'include') `
         -I $steamCloud -I $gen $cloudSource @cloudSources @bridgeStandIn @minHookSources (Join-Path $gen 'steam_api64_bridge.def') -ladvapi32 -o (Join-Path $out 'steam_api64_bridge.dll')
     if($LASTEXITCODE){throw 'Compiling the bridge build of steam_api64.dll failed.'}
-    $brokerSources=@($bridgeSources)+@((Join-Path $steamCloud 'broker_bridge.c'),(Join-Path $steamCloud 'broker_lobby.c'),(Join-Path $gen 'broker_dispatch_gen.c'))
+    $brokerSources=@($bridgeSources)+@((Join-Path $steamCloud 'broker_bridge.c'),(Join-Path $steamCloud 'broker_lobby.c'),(Join-Path $steamCloud 'broker_input.c'),(Join-Path $gen 'broker_dispatch_gen.c'))
     & $zig cc -target x86_64-windows-gnu -municode -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $steamCloud -I $gen (Join-Path $steamCloud 'hellforge_steam_broker.c') `
         @brokerSources -ladvapi32 -lws2_32 -o (Join-Path $out 'hellforge_steam_broker.exe')
     if($LASTEXITCODE){throw 'Compiling hellforge_steam_broker.exe failed.'}
@@ -257,7 +257,8 @@ if($bridge){
     & $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $steamCloud 'test/fake_valve.c') -o (Join-Path $bridgeTest 'fake_valve.dll')
     if($LASTEXITCODE){throw 'Compiling the fake Valve DLL failed.'}
     & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter -I $steamCloud -I $gen (Join-Path $steamCloud 'test/bridge_test.c') `
-        @bridgeSources (Join-Path $steamCloud 'broker_bridge.c') (Join-Path $steamCloud 'broker_lobby.c') (Join-Path $gen 'broker_dispatch_gen.c') -ladvapi32 -lws2_32 -o (Join-Path $testOut 'bridge_test.exe')
+        @bridgeSources (Join-Path $steamCloud 'broker_bridge.c') (Join-Path $steamCloud 'broker_lobby.c') (Join-Path $steamCloud 'broker_input.c') (Join-Path $gen 'broker_dispatch_gen.c') `
+        -ladvapi32 -lws2_32 -o (Join-Path $testOut 'bridge_test.exe')
     if($LASTEXITCODE){throw 'Compiling the Steam bridge test failed.'}
     Get-ChildItem -LiteralPath $bridgeTest -Filter '*.lib'|Remove-Item
     if(-not $SkipSmoke){& (Join-Path $testOut 'bridge_test.exe') (Join-Path $out 'steam_api64_bridge.dll') (Join-Path $bridgeTest 'fake_valve.dll');if($LASTEXITCODE){throw 'Steam bridge test failed.'}}
@@ -268,6 +269,12 @@ if($bridge){
     (Join-Path $steamCloud 'broker_lobby.c') -lws2_32 -o (Join-Path $testOut 'lobby_test.exe')
 if($LASTEXITCODE){throw 'Compiling the local Steam lobby test failed.'}
 if(-not $SkipSmoke){& (Join-Path $testOut 'lobby_test.exe');if($LASTEXITCODE){throw 'Local Steam lobby test failed.'}}
+# which controllers Steam Input handles, as the broker asks Steam and logs them for the session (broker_input.c, with
+# fakes: nothing generated from the SDK, so it is tested without it too)
+& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -I $steamCloud (Join-Path $steamCloud 'test/input_test.c') `
+    (Join-Path $steamCloud 'broker_input.c') -o (Join-Path $testOut 'input_test.exe')
+if($LASTEXITCODE){throw 'Compiling the broker''s Steam Input test failed.'}
+if(-not $SkipSmoke){& (Join-Path $testOut 'input_test.exe');if($LASTEXITCODE){throw 'The broker''s Steam Input test failed.'}}
 & $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $project 'native/mod-loader/test/fake_game.c') -o (Join-Path $testOut 'fake_game.dll')
 if($LASTEXITCODE){throw 'Compiling the fake game failed.'}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `

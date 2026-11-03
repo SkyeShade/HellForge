@@ -5,7 +5,8 @@
  * machines; a silo missile launched on one machine stayed in its silo on the other, or vanished with no flight or blast;
  * a host's Orbital Plasma Barrage was not seen by the friend, and the friend's landed on the host's previous beacon on
  * the host's screen; a host's custom support weapon fired no shots the friend could see.
- *   stratagem  every activated beacon of an added stratagem (HF_ON_STRATAGEM: the thrower's machine): its type and name,
+ *   stratagem  every activated beacon (HF_ON_STRATAGEM: the thrower's machine): its row's cooldown, call-in and uses as the
+ *              game reads them at that call; for an added stratagem also its type and name,
  *              the thrower, the beacon, and whether the stratagem's package is resident here
  *   spawn      every spawn of an added entity (HF_ON_SPAWN: remote spawns too): entity, network id, name, authority
  *   explosion  for 45 s after an added stratagem's beacon, an added entity's spawn or a silo launch: the explosions this
@@ -225,6 +226,15 @@ static int DiagBarrageBlock(uint32_t entity, const char* name, int authority)
 static void DiagOnStratagem(const HfEventInfo* event)
 {
     const HfStratagemEvent* e = (const HfStratagemEvent*)event;
+    /* every beacon, vanilla ones too: the row the game reads its cooldown (+0x68) and call-in time (+0x54) from at this
+     * call (0x8796A0, 0x879900) and its uses (+0x50, copied at the hellpod launch), so a live edit's effect can be checked */
+    int ready = 0;
+    uintptr_t row = TypedRowOf(g_game, 0, 0, e->type, &ready);
+    float cooldown = 0, callIn = 0;
+    uint32_t uses = 0;
+    if (row != 0 && !SafeRead(row + 0x68, &cooldown, 4) && !SafeRead(row + 0x54, &callIn, 4) && !SafeRead(row + 0x50, &uses, 4))
+        CoopDiag("stratagem %u: row %p, cooldown %.2f s, call-in %.2f s, uses %u (%s, update %llu)", e->type, (void*)row,
+            (double)cooldown, (double)callIn, uses, DiagRole(), (unsigned long long)event->update);
     const Stratagem* s = DiagStratagem(e->type);
     if (s == NULL) return;
     uint64_t package = DiagStratagemPackage(s);

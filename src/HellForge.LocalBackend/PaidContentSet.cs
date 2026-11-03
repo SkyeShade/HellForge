@@ -15,6 +15,9 @@ namespace HellForge.LocalBackend;
 //   those wallets (ForgeCreditsWallet, the one the client shows), so the game shows it where it showed Super Credits; the
 //   others are never stored, served or granted.
 // - currencies: medals, requisition and samples, which the import treats as numbers.
+// - parents: a catalogue item's parent (item-catalog.json parentId). A stratagem is a catalogue item with one child whose
+//   itemId is the stable id the loadout checks; a weapon's attachments are its children. Neither is on a warbond page or
+//   priced, so a child follows its parent (OwnershipFilter).
 public sealed class PaidContentSet
 {
     public const uint SuperCreditPrice = 0xCF875032;
@@ -35,6 +38,9 @@ public sealed class PaidContentSet
     readonly Dictionary<uint, uint[]> warbondItemTokens;
 
     public IReadOnlyList<Warbond> Warbonds { get; private init; } = [];
+
+    // Each catalogue item that has a parent, and that parent.
+    IReadOnlyDictionary<uint, uint> Parents { get; init; } = new Dictionary<uint, uint>();
 
     // Premium warbond tokens, items sold for Super Credits and Steam DLC gear.
     public HashSet<uint> MixIds { get; }
@@ -87,7 +93,18 @@ public sealed class PaidContentSet
         paid.UnionWith(SoldForSuperCredits().Where(Bought));
         paid.UnionWith(dlc);
         var gated = tokensByItem.Where(entry => !freeItems.Contains(entry.Key)).ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
-        return new PaidContentSet(warbondTokens, dlc, paid, gated, warbondItems, currencies) { Warbonds = ReadWarbonds(data.RootElement) };
+        return new PaidContentSet(warbondTokens, dlc, paid, gated, warbondItems, currencies)
+            { Warbonds = ReadWarbonds(data.RootElement), Parents = CatalogueParents() };
+    }
+
+    static Dictionary<uint, uint> CatalogueParents()
+    {
+        using var catalog = LocalBackend.LoadResource("item-catalog.json");
+        var parents = new Dictionary<uint, uint>();
+        foreach (var item in catalog.RootElement.GetProperty("items").EnumerateArray())
+            if (item.TryGetProperty("parentId", out var parent) && parent.TryGetUInt32(out var parentId) && parentId != 0)
+                parents[item.GetProperty("mixId").GetUInt32()] = parentId;
+        return parents;
     }
 
     static List<Warbond> ReadWarbonds(JsonElement data) =>
@@ -150,4 +167,7 @@ public sealed class PaidContentSet
     // A premium warbond's item: the tokens of the warbonds that offer it, one of which the player must own.
     public bool TryGetWarbondTokens(uint mixId, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out uint[] tokens) =>
         warbondItemTokens.TryGetValue(mixId, out tokens);
+
+    // A child item's parent: a stratagem's for its loadout entry, a weapon's for its attachments.
+    public bool TryGetParent(uint mixId, out uint parent) => Parents.TryGetValue(mixId, out parent);
 }

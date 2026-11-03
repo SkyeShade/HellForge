@@ -31,6 +31,8 @@ sealed partial class PlaySession
         // backend's folder, which the low-integrity game cannot write
         brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
         broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
+        helpers.Add(broker);
+        if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
         broker.ErrorDataReceived += (_, e) => { if (e.Data != null) BrokerLine(brokerLog, e.Data); };
         broker.BeginErrorReadLine();
@@ -65,6 +67,7 @@ sealed partial class PlaySession
         }
         if (SteamBrokerLog.IsReady(line)) brokerReady.Set();
         if (SteamBrokerLog.IsConnected(line)) brokerConnected = true;
+        if (SteamInputNote.Parse(line) is { } controllers) Volatile.Write(ref steamInput, controllers);
     }
 
     // The game is still suspended: it runs only once the broker has Steam and waits for it, so the stand-in's own wait for

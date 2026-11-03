@@ -16,9 +16,13 @@ namespace HellForge.LocalBackend.Multiplayer;
 // edited stats. Long values are split into parts (DirectoryData).
 public sealed record DirectoryListing(ulong Host, IReadOnlyDictionary<string, string> Data);
 
-// What a search asks the directory for: the protocol always; a value a key must equal (the build, privacy), coarse
-// filters a directory may apply before the backend evaluates the game's whole filter (LobbyFilter).
-public sealed record DirectoryQuery(string Protocol, IReadOnlyDictionary<string, string> Equal, int Count = 50);
+// What a search asks the directory for: the wire level always (under WireKey: HellForge 0.3's listings carry their
+// protocol in DirectoryKeys.Protocol instead); a value a key must equal (the build, privacy), coarse filters a directory
+// may apply before the backend evaluates the game's whole filter (LobbyFilter). Steam returns at most MaxResults.
+public sealed record DirectoryQuery(string Wire, IReadOnlyDictionary<string, string> Equal, int Count = DirectoryQuery.MaxResults, string WireKey = DirectoryKeys.Wire)
+{
+    public const int MaxResults = 50;
+}
 
 public interface ILobbyDirectory
 {
@@ -32,9 +36,12 @@ public interface ILobbyDirectory
 
 public static class DirectoryKeys
 {
-    public const string Protocol = "hellforge", Connection = "hf.connection", Host = "hf.host", LobbyId = "hf.lobbyId", Members = "hf.members",
+    // Protocol: the protocol a HellForge 0.3 search asks for; Feature: this HellForge's own when Protocol is 0.3's (a
+    // listing 0.3 can join: DirectoryService.Desired). Mods: the mod set (0.3's form in such a listing, ModSet its whole
+    // set). Open: anyone can join after a download (ModSync.Open).
+    public const string Protocol = "hellforge", Wire = "hf.wire", Connection = "hf.connection", Host = "hf.host", LobbyId = "hf.lobbyId", Members = "hf.members",
         MaxMembers = "hf.maxMembers", Lock = "hf.lock", Record = "hf.lobby", Live = "hf.live", Mods = "hf.mods", Share = "hf.share",
-        Digest = "hf.digest", Stats = "hf.stats", Slots = "hf.slots";
+        Digest = "hf.digest", Stats = "hf.stats", Slots = "hf.slots", Feature = "hf.protocol", ModSet = "hf.modset", Open = "hf.open";
 }
 
 // Values over PartLength characters are stored as parts: the key holds "#<count>", key.0 .. key.<count-1> the text.
@@ -101,9 +108,10 @@ public static class DirectoryData
         return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
 
-    // Does the listing match the query's coarse filters (what a directory may apply itself)?
+    // Does the listing match the query's coarse filters (what a directory may apply itself)? A listing's feature version
+    // is checked by DirectoryService.Valid; the wire level is what a directory can filter on.
     public static bool Matches(DirectoryListing listing, DirectoryQuery query) =>
-        listing.Data.GetValueOrDefault(DirectoryKeys.Protocol) == query.Protocol && query.Equal.All(e => listing.Data.GetValueOrDefault(e.Key) == e.Value);
+        listing.Data.GetValueOrDefault(query.WireKey) == query.Wire && query.Equal.All(e => listing.Data.GetValueOrDefault(e.Key) == e.Value);
 }
 
 // Backends in one process (tests).

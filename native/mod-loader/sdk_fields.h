@@ -172,10 +172,10 @@ static const SdkField kSdkFieldsStratagemSettings[] = {
     {"code", 64, 8, HF_TYPE_U64, HF_APPLIES_MISSION, REF_NONE},
     {"code_length", 72, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
     {"uses", 80, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
-    {"call_in_time", 84, 4, HF_TYPE_F32, HF_APPLIES_MISSION, REF_NONE},
+    {"call_in_time", 84, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"free_spot_radius", 88, 4, HF_TYPE_F32, HF_APPLIES_MISSION, REF_NONE},
     {"linger", 96, 4, HF_TYPE_F32, HF_APPLIES_MISSION, REF_NONE},
-    {"cooldown", 104, 4, HF_TYPE_F32, HF_APPLIES_MISSION, REF_NONE},
+    {"cooldown", 104, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"origin_type", 112, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
     {"call_in_type", 116, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
     {"cooldown_type", 148, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
@@ -911,11 +911,11 @@ static const SdkField kSdkFieldsHiveMind[] = {
 };
 static const SdkField kSdkFieldsOrbitalAbility[] = {
     {"duration", 460, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"movement_speed", 468, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"search_radius", 472, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"tick_interval", 480, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"movement_speed", 468, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"search_radius", 472, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"tick_interval", 480, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"fire_delay", 540, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"retarget_interval", 544, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"retarget_interval", 544, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsRotation[] = {
     {"rotation_turn_speed", 0, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
