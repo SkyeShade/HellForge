@@ -312,8 +312,22 @@ static void LiveArmory(void)
     if (!ApiWrite(g_game + REG_ARMORY_GLOBAL, &armory, 8)) g_armory = armory;
 }
 
-/* On the game thread: the set-ups' entities registered (in resource id order), then their network types, the apply
- * switch, the armory, texts, and their items to own. */
+/* The deferred edits of entities a set-up just registered: queued from hellforge_mod_init, when their records did not
+ * exist yet (FieldRestack skips those), so nothing has written them. At a boot ApplyFieldEdits runs after the entities
+ * load; here this is its turn. */
+static void LiveNewEntityEdits(void)
+{
+    AcquireSRWLockExclusive(&g_fieldsLock);
+    for (int i = 0; i < g_editCount; i++)
+    {
+        FieldEdit* e = &g_edits[i];
+        if (!e->table && !e->live && e->address == 0 && ModEntity(e->entity) != NULL) ApplyEdit(e);
+    }
+    ReleaseSRWLockExclusive(&g_fieldsLock);
+}
+
+/* On the game thread: the set-ups' entities registered (in resource id order), then their deferred edits, their network
+ * types, the apply switch, the armory, texts, and their items to own. */
 static void LiveRegistryStep(LivePlan* plan)
 {
     if (!LiveWeaponsPending()) return;
@@ -348,6 +362,7 @@ static void LiveRegistryStep(LivePlan* plan)
     HeldFollowFrom(ownedBefore); /* a table a registration moved takes the stats and edits held in it along */
     if (L.appended == 0 && first) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, first);
+    LiveNewEntityEdits();
     LiveNetworkTypes();
     LiveNetSwitch(g_game);
     LiveArmory();
