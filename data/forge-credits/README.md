@@ -5,7 +5,7 @@ HellForge's own pictures for Forge Credits, built into the game's textures on th
 
 - `pickup-color.png`: the Super Credits pickup's colour texture (256 x 256), the Forge Credit card painted flat and
   wrapped onto the game's card atlas so it fits the game's own mesh.
-  The card body is tinted HellForge red (229, 57, 43) so the pile stands out on the ground; the logo's whites and reds
+  The card body is tinted HellForge red (229, 57, 43) and brightened (x1.3) so the pile stands out on the ground; the logo's whites and reds
   are kept as painted.
 - `currency-icon.png`: the currency icon (120 x 120, white with transparency), in place of the Super Credits sprite.
 
