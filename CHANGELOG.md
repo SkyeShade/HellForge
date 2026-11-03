@@ -110,6 +110,11 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
 - Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
   game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
   to close and waits up to 30 seconds for it before ending it (#194).
