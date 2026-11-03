@@ -56,6 +56,11 @@ On `dev`, since 0.3.0-beta.
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
   (`HF_DIFFICULTY_HEAVY_ARTILLERY`, on in the Hell Forge difficulty).
 
+- **Nightly builds** for testers: each night that the `dev` branch changed, an untested build of it is published on
+  GitHub as the Nightly pre-release (`HellForge-Nightly-Setup.exe`). Its version, as the launcher shows it, reads
+  `-nightly.<date>` (`0.4.0-nightly.20261102`), so it is never taken for a release. Releases stay the builds to play
+  on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)) (#211).
+
 ### Changed
 
 - The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
@@ -163,6 +168,11 @@ On `dev`, since 0.3.0-beta.
   and the session log says if the broker stops during play.
 - The network census in every session wiped the game's error code after each call it watches (connections, name
   lookups, programs started): a failed connection read back as no error.
+- When Windows 11's Smart App Control blocked HellForge, the launcher showed only Windows' "An Application Control
+  policy has blocked this file". It now says which file Windows blocked, that it is because HellForge's files aren't
+  signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
+  off. Setup and the launcher warn before you install or play while Smart App Control is on, a mod whose DLL Windows
+  blocked says so in its log, and the session log says whether Smart App Control was on.
 - With the sandbox on (Settings > Sandbox), a Steam Controller and other controllers that work only through Steam
   Input did nothing in the game, and nothing said why (#94, #204): Steam Input can't reach a sandboxed game yet. While
   the game runs, the launcher now names the controller Steam Input is handling and says it won't work, and that Steam

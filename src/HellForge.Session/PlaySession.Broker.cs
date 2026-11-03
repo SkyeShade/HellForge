@@ -30,7 +30,7 @@ sealed partial class PlaySession
         // the backend's co-op peers (MultiplayerHost.PeersFile), the only Steam users the game's P2P reaches: in the
         // backend's folder, which the low-integrity game cannot write
         brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
-        broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
+        broker = Tools.Starting(brokerStart.FileName, () => Process.Start(brokerStart)) ?? throw new SessionFailure("The Steam broker did not start.");
         helpers.Add(broker);
         if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
