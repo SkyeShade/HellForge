@@ -418,6 +418,16 @@ static int WatchSpawners(void)
     return 1;
 }
 
+static int WatchMines(void)
+{
+    static LONG dropped;
+    LONG left = g_minesLeftOut != NULL ? *g_minesLeftOut : 0;
+    if (left == dropped) return 0;
+    dropped = left;
+    Note("difficulty: the enemy director's 512 mines are full: %ld more left out so far (no mine there)", left);
+    return 1;
+}
+
 static int WatchPockets(void)
 {
     static uint32_t pockets;
@@ -495,6 +505,7 @@ static void DifficultyWatch(void)
     logged += WatchCapture();
     logged += WatchLaunch();
     logged += WatchSpawners();
+    logged += WatchMines();
     logged += WatchPockets();
     logged += WatchRestarts();
 }

@@ -102,6 +102,9 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- A difficulty 11 mission could crash while loading when its map had more than 512 mines: the game copies every mine
+  into a list of 512 without checking, and the 513th overwrote the list's count. Mines past the 512th are now left out
+  (no mine there), and the session log counts them, as it already did for the enemy director's 128 spawners.
 - The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
   about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
   faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
