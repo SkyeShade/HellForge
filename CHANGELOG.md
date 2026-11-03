@@ -80,6 +80,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,

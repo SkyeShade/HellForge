@@ -488,6 +488,11 @@ Test("Launch options are read as Steam takes them, and never set what a session 
     foreach (var bad in new[] { "--bundle-dir C:\\other", "-x \"--BUNDLE-DIR\" y", "--bundle-dir=C:\\other", "PROTON_LOG=1 %command%", "%command% %command%",
                  "\"open", "--a\n--b", new string('x', GameLaunchOptions.MaxLength + 1) })
         Reject(() => GameLaunchOptions.Parse(bad));
+    Check(GameLaunchOptions.Warnings(GameLaunchOptions.Parse("--use-d3d11 -windowed")).Count == 0, "Ordinary options warn of nothing.");
+    var toaster = GameLaunchOptions.Warnings(GameLaunchOptions.Parse("%command% --TOASTER_MODE"));
+    Check(toaster.Count == 1 && toaster[0].Contains("Armory icons stay blank") && toaster[0].Contains("Remove it"),
+        "--toaster_mode warns that Armory icons stay blank: " + string.Join(" | ", toaster));
+    Check(GameLaunchOptions.Warnings(["--toaster_mode_x"]).Count == 0, "Only the switch itself warns.");
 });
 
 ModTests.Register(Test, Check, Reject, root);
