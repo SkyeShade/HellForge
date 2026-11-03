@@ -438,6 +438,12 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
     moment it hears of a joiner, so the file must already list it; before, the file was written a few milliseconds
     after the announcement. A peer listed that way stays in the file until the lobby or Party lists it too (at most
     30 s), and a kick takes it out at once.
+  - A joiner also lists the lobby's **other members** (`LobbyService.LobbyMates`): the members of the host's join
+    answer, then each one the host reports added, written in before the game hears of them (`MateAdded`), and taken
+    out at once when the host reports them gone or this game leaves the lobby (`MateRemoved`). Before (0.3.0-beta), a joiner listed only the host, so
+    in a squad of three or four the joiners' games could not reach each other. The list comes from the host of a lobby
+    this game is in, at most 8 a lobby, never this machine or the host itself. The joiners' backends still never talk:
+    these peers are not pinged.
   - The broker reads the file when its time stamp moves, and again at once when a SteamID is not in it: a host sends
     within a second of a join, seconds before the joiner enters its Steam lobby.
 - **Out:** `SendP2PPacket` (at most 7000 bytes, channels 0-7), `AcceptP2PSessionWithUser` and `GetP2PSessionState` to a
@@ -447,9 +453,30 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
   dropped, so they never pile up in Steam. The stand-in puts each whole packet in a queue of 32 (a static array, no
   allocation). `ReadP2PPacket` and `IsP2PPacketAvailable` answer from the queue with no system call. A full ring or
   queue loses the packet, and it is logged.
+- **A squadmate the game cannot reach** (static reading of the game's 2026-10-30 memory dumps, not confirmed live):
+  - Co-op is a full mesh. Each game opens its own Steam P2P session to every other player, not only to the host.
+  - A session that never becomes active (`GetP2PSessionState`, which the bridge refuses for a SteamID not listed) gets
+    no PlayFab fallback. After at least 45 s without a pong, the connection fails with `PongTimeout` ("Pong timeout for
+    %llx", exe `0x2A5D0A`). Only a session that was active once falls back to PlayFab Party on a pong timeout
+    ("Platform pong timeout ... Falling back to playfab").
+  - The other way to the fallback is Steam's `P2PSessionConnectFail_t` (1203) for that player (exe `0x751B80`): the
+    next send to them fails, and the game falls back to PlayFab Party (exe `0x2A9A9B`). It tells the other game, which
+    falls back too (a packet whose first byte is 5, exe `0x2A6BA2`). HellForge's Party relays through the host's
+    backend, so the pair keeps playing. A refused `SendP2PPacket` never reaches Steam, so a game whose own bridge
+    refused the send never gets that callback. A game outside the sandbox should get it (Steam's timeout error, "target
+    isn't responding, perhaps not calling AcceptP2PSessionWithUser()"), since the sandboxed game's bridge refuses to
+    accept its session. That fits #202's report that unsandboxing one player let everyone join, if that player was one
+    of the two joiners.
+  - The failure is reported to the host's game session. 20 s after the first report, it votes one of the pair out (exe
+    `0x296AB0`): a player accused twice, else the one of the two that joined the session first. The host then removes
+    that player (game.dll `0x108A9CB`, "Peer %llx was voted out").
+  - With the joiners not listed (0.3.0-beta), this is issue #202. The third player waits. About a minute later the
+    second player is pushed out, and then the third gets in. When the second rejoins, the third is pushed out.
 - Tests: `bridge_test.c` covers a send to the entered lobby's host, a refused one to anyone else, a peer the backend
   lists mid-session, more than 7000 bytes, session state, accept, a 3000-byte packet in pieces, a stranger's packet
   dropped, and a second channel. `smoke-lobby-link` checks each backend lists the other after a join.
+  `SquadTests` (HellForge.LocalBackend.Tests) runs three backends over loopback UDP and checks each one's
+  `p2p-peers.txt` as a third player joins, the second leaves and rejoins, and the host kicks the third.
 - Unmeasured: how much P2P co-op sends, and whether 8192 bytes and 60 ring slots are enough for it.
 
 ## Cost
