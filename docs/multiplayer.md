@@ -644,6 +644,22 @@ other machine in the lobby load them too.
   is applied (and on joining), which is normally long before anyone calls in what it changed; a vehicle called in at
   once may still show a missing asset on a friend's screen until its package is resident.
 
+### Pickups in co-op
+
+A pile picked up on the map (Forge Credits, medals, requisition slips) is sent by the picking player's game alone:
+`POST /Operation/Mission/Activity` to its own backend once every player confirmed it, with the lobby's account ids
+(`MissionService`). The reply pays each of them the same amount; the game adds its own share and forwards the others'
+to their games. `PickupShare` (`src/HellForge.LocalBackend/Multiplayer/PickupShare.cs`) tells their backends, so the
+share is in their profiles too and survives a reload:
+
+- The picking backend sends `pickup.paid` [mission id, pile, activityId32, participant count, account ids]: a joiner
+  to the host of the lobby it joined, a host to every participant in its lobby. The host credits itself when listed
+  and passes a joiner's on to the other participants in its lobby.
+- A backend takes it only from a machine in a lobby with it (the host it joined, or a member of its own) that names
+  itself among the participants. It works out the amount from the pile itself (`MissionService.Rewards`) and pays a
+  pile once: `ProfileStore.ApplyPickup` saves the receipt (`progression.paidPiles`, "mission/pile", the last 256) with
+  the item, so a relayed copy, a retried request or a restart adds nothing.
+
 ### Shots in co-op
 
 Every machine simulates every player's shots from its own data, and nothing about a shot's projectile type travels over

@@ -167,6 +167,13 @@ public partial class MainWindow : Window
                 BootProgress.IsVisible = true;
                 BootProgress.Value = 400;
                 await Task.Delay(1500);
+                // HELLFORGE_LAUNCHER_SHOT_SHOW=<control name> scrolls its page so that control is near the picture's top.
+                if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT_SHOW") is { Length: > 0 } show && this.FindControl<Control>(show) is { } shown &&
+                    Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<ScrollViewer>(shown) is { Content: Visual content } viewer && shown.TranslatePoint(default, content) is { } at)
+                {
+                    viewer.Offset = new Vector(0, Math.Max(0, at.Y - 120));
+                    await Task.Delay(500);
+                }
                 var size = new PixelSize((int)Bounds.Width, (int)Bounds.Height);
                 using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size);
                 bitmap.Render(this);
@@ -215,6 +222,32 @@ public partial class MainWindow : Window
     {
         if (runner.IsRunning) RequestStop();
         else if (SyncBusy) SetStatus("Inventory sync is running. Play once it finishes.", Phase.Idle);
+        else if (!installingRuntimes && VisualCppRuntimes.Needed().Count > 0) _ = InstallRuntimesThenStart();
+        else if (!installingRuntimes) Start();
+    }
+
+    bool installingRuntimes;
+
+    // An installation set up before setup installed the Visual C++ runtimes (0.2), or a runtime removed since: Microsoft's
+    // installer runs first, with Windows' permission prompt; PLAY stays disabled and says so meanwhile.
+    async Task InstallRuntimesThenStart()
+    {
+        installingRuntimes = true;
+        UpdateButton();
+        string? problem;
+        try
+        {
+            var downloads = paths.InstallRoot != null ? new InstallLayout(paths.InstallRoot).Temp : Path.Combine(Path.GetTempPath(), "HellForge");
+            problem = await VisualCppRuntimes.EnsureAsync(downloads, "press PLAY again.",
+                detail => Dispatcher.UIThread.Post(() => SetStatus(detail, Phase.Busy, "The game cannot start without it.")));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { problem = VisualCppRuntimes.Problem("press PLAY again.") + " (" + error.Message + ")"; }
+        finally
+        {
+            installingRuntimes = false;
+            UpdateButton();
+        }
+        if (problem != null) SetStatus("A Microsoft runtime the game needs is missing.", Phase.Failed, failure: problem);
         else Start();
     }
 
@@ -252,6 +285,7 @@ public partial class MainWindow : Window
             return;
         }
         if (gameOptions.Count > 0) Append("Launch options: " + HellForge.Core.GameLaunchOptions.CommandLine(gameOptions), LauncherLine);
+        foreach (var warning in HellForge.Core.GameLaunchOptions.Warnings(gameOptions)) Append(warning, Orange);
         if (SandboxBox.IsChecked == true) Append("Sandboxed (Settings > Sandbox): the game runs at low integrity, with Steam through the Steam broker.", LauncherLine);
         try
         {
@@ -424,7 +458,7 @@ public partial class MainWindow : Window
                 RenderSteps(LaunchStep, false);
                 if (!stopRequested) SetStatus("Launching the game...", Phase.Busy, "Starting the copied game against the local backend.");
                 break;
-            case "observing": ShowObserving(); break;
+            case "observing": ShowObserving(state); break;
             case "observed": ShowObserved(state, stopped); break;
             case "failed": ShowFailed(state, stopped); break;
             case "cleanup_failed":
@@ -441,11 +475,15 @@ public partial class MainWindow : Window
         if (!stopRequested) SetStatus("Verifying game files...", Phase.Busy, "Checking the copied game against its pinned hashes.");
     }
 
-    void ShowObserving()
+    void ShowObserving(JsonElement state)
     {
         RenderSteps(RunStep, false);
         if (stopRequested) return;
-        if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
+        // No shader cache yet: the game builds it behind a black screen before it asks the backend for anything.
+        if (seasonPassUtc == null && !reachedShip && ShaderCache.Building(state))
+            SetStatus("Building the shader cache (first start only, this can take a few minutes)...", Phase.Running,
+                "The game window stays black until it is done. Later starts are quick. Press STOP or close the game to end the session.");
+        else if (!reachedShip && DateTime.UtcNow - seasonPassUtc > IntroStallAfter)
             SetStatus("The game seems stuck in the cryo pod.", Phase.Attention,
                 "This can happen on the first launch of a new installation. Press STOP, then PLAY again: the next launch goes through.");
         else SetStatus("Running", Phase.Running, "Press STOP or close the game to end the session.");
@@ -667,9 +705,9 @@ public partial class MainWindow : Window
     void UpdateButton()
     {
         var running = runner.IsRunning;
-        PlayLabel.Text = !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
+        PlayLabel.Text = installingRuntimes ? "INSTALLING" : !running ? "PLAY" : stopRequested ? "STOPPING" : "STOP";
         PlayButton.Classes.Set("stop", running);
-        PlayButton.IsEnabled = SessionRunner.IsSupported && !(running && stopRequested) && !(bundledSyncing && !running);
+        PlayButton.IsEnabled = SessionRunner.IsSupported && !installingRuntimes && !(running && stopRequested) && !(bundledSyncing && !running);
         // The session keeps the profile it started with.
         ProfileCombo.IsEnabled = NewProfileButton.IsEnabled = !running;
         CreateProfileButton.IsEnabled = !running && TemplateCombo.SelectedItem != null;
@@ -790,6 +828,7 @@ public partial class MainWindow : Window
         Control[] pages = [PlayPage, ProfilePage, ModsPage, ConsolePage, SettingsPage];
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
+        if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
         if (index == 2) RefreshMods();
         if (index == 3) QueueScroll();
     }
@@ -870,14 +909,17 @@ public partial class MainWindow : Window
         Close();
     }
 
-    // What is wrong with the typed launch options, under their box (nothing when they can be used).
+    // What is wrong with the typed launch options, under their box (nothing when they can be used), and what they do that a
+    // player would not expect (GameLaunchOptions.Warnings).
     void ShowLaunchOptionsProblem()
     {
-        string? problem = null;
-        try { HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
+        string? problem = null, warning = null;
+        try { warning = string.Join(" ", HellForge.Core.GameLaunchOptions.Warnings(HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text))); }
         catch (InvalidDataException error) { problem = error.Message; }
         LaunchOptionsProblem.Text = problem;
         LaunchOptionsProblem.IsVisible = problem != null;
+        LaunchOptionsWarning.Text = warning;
+        LaunchOptionsWarning.IsVisible = !string.IsNullOrEmpty(warning);
     }
 
     static IBrush Solid(string color) => new ImmutableSolidColorBrush(Color.Parse(color));

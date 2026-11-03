@@ -310,6 +310,7 @@ sealed partial class PlaySession(PlayOptions options)
         // Sandboxed, the game's user data is a copy in gameOut, which carries the low label (SandboxFolders): the profile's
         // settings and saves and the shader cache go in now and come back once the game is gone.
         string[] prepare = ["prepare-session", "--install", install.Root, "--profile", profileName];
+        RecordShaderCacheAtStart();
         if (options.Sandbox)
         {
             var copiedIn = SandboxFolders.Copy(install.UserData, SandboxUserData, SandboxFolders.UserDataParts(profileName));
@@ -337,6 +338,31 @@ sealed partial class PlaySession(PlayOptions options)
             result["installedDllSha256"] = Tools.Sha256(Path.Combine(normal, "data", "game", "game.dll"));
         }
         profileDirectoryUsed = profileDirectory;
+    }
+
+    // The shader cache the game starts with (ShaderCache): an installation without one first takes the normal game's.
+    // Recorded for Save logs (a slow start with a cache, or a cache that never grows, is a bug), and for the launcher to
+    // say the game is building it. A cache that cannot be read or seeded does not stop the session.
+    void RecordShaderCacheAtStart()
+    {
+        var cache = new JsonObject();
+        result["shaderCache"] = cache;
+        try
+        {
+            if (ShaderCache.Seed(install.UserData, GameSettings.VanillaUserData()) is { } seeded)
+            {
+                cache["seededFromGame"] = new JsonObject { ["files"] = seeded.Files, ["bytes"] = seeded.Bytes, ["skipped"] = seeded.Skipped };
+                Say($"Shader cache: started from the normal game's ({seeded.Bytes / (1024.0 * 1024):0.0} MB).");
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { cache["seedError"] = error.Message; }
+        try
+        {
+            var start = ShaderCache.Read(install.UserData);
+            cache["atStart"] = start.ToJson();
+            if (start.Empty) Say("Shader cache: none yet. The game builds it on this start, behind a black screen for a few minutes.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { cache["readError"] = error.Message; }
     }
 
     // The session's mods, each with its version and content hash, for a bug report to say exactly which mods ran.
@@ -1097,6 +1123,12 @@ sealed partial class PlaySession(PlayOptions options)
             // clearMatchmaking holds the game to the genuine sign-in; ClearPlatformMatchmaking runs each loop.
             var matchmaking = clearMatchmaking ? ClearMatchmaking() : null;
             requestCount += Tools.BackendRequests(requestLog, ref requestOffset).Count;
+            // how long the game took to its first backend request: past its black screen (a shader cache build, ShaderCache)
+            if (requestCount > ((int?)result["preLaunchBackendRequests"] ?? 0) && result["firstBackendRequestSeconds"] == null && gameStarted is { } started)
+            {
+                result["firstBackendRequestSeconds"] = Math.Round((DateTime.UtcNow - started).TotalSeconds, 1);
+                Save();
+            }
             // Play sessions keep only the periodic samples so the log stays small; the engine's own diagnostics are kept
             // only under HELLFORGE_DEBUG.
             if (clock.ElapsedMilliseconds >= nextSample)
@@ -1158,6 +1190,8 @@ sealed partial class PlaySession(PlayOptions options)
     {
         if (!File.Exists(Path.Combine(run, "stop-observation.signal"))) return false;
         result["observationStoppedBySignal"] = true;
+        // "stop-now" (SessionRunner.SignalStop now: true): the game is ended at once, without asking it to close
+        if (ReadSignal() == SessionRunner.StopNowSignal) endGameNow = true;
         // The backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
         if (ReadSignal() == "mod-sync") result["restart"] = "mod-sync";
         return true;

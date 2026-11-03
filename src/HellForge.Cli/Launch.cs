@@ -155,7 +155,8 @@ static class Launch
             throw new InvalidDataException($"{run} is not a session of this installation.");
         if (!SessionRunning() || (SessionFiles.ReadJson(Path.Combine(run, "result.json")) is { } state && Ended.Contains(SessionFiles.Text(state, "status"))))
             throw new InvalidDataException("That session is not running.");
-        SessionRunner.SignalStop(run);
+        // --now yes: the game is ended at once instead of being asked to close first (and save its shader cache)
+        SessionRunner.SignalStop(run, Yes(options, "--now", false));
         Emit(new { @event = "stopping", run });
         return Yes(options, "--wait", false) ? Follow(run, SessionRunning) : 0;
     }
@@ -490,6 +491,11 @@ static class Launch
         // yes/no stores the player's choice; default removes it, so a sandboxed session turns strangers on.
         if (options.TryGetValue("--strangers", out var strangers))
             ModSettings.SetPlayWithStrangers(install.Mods, StrangersChoice(strangers));
+        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
+        if (options.TryGetValue("--forge-credits", out var forgeCredits))
+            ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
+                : int.TryParse(forgeCredits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
+                    ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default."));
         var chosenStrangers = ModSettings.PlayWithStrangers(install.Mods);
         var sandboxed = SessionRunner.SandboxByDefault(paths);
         return new
@@ -505,6 +511,7 @@ static class Launch
             steamBridge = SessionRunner.HasSteamBridge(paths),
             playWithStrangers = ModSettings.StrangersEffective(chosenStrangers, sandboxed),
             playWithStrangersChosen = chosenStrangers,
+            forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
             file = paths.SettingsFile
         };
     }

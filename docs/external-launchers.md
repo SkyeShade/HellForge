@@ -70,7 +70,7 @@ standard error and exits with 1.
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended; `--run` adds one session's files; `--export` zips a session's logs; `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
-| `stop [--run <run folder>] [--wait yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. |
+| `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
 | `fetch-war` | Fetches the live galactic war into `live-war.json`. The Linux scripts run this before a session. |
 | `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
 | `language-add --name <language> [--steam-root <Steam folder>] [--keep yes\|no]` | Copies one pack from Steam's download into the game copy, every file checked against the pinned list, then deletes the download unless `--keep yes`. Refused while a session runs, and until Steam has finished the download. |
@@ -138,7 +138,7 @@ To change them for good, use `settings`. It takes the same options as `play` (`-
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
  "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": true,
- "playWithStrangersChosen": null, "file": "<installation>\\launcher-settings.json"}
+ "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
@@ -148,6 +148,11 @@ and `default` removes it and lets the sandbox decide (on in a sandboxed session,
 `launcher-settings.json`, and `play` has no option for it. The printed `playWithStrangers` is the effective bool for the
 next session's sandbox state; `playWithStrangersChosen` is `true`, `false` or `null`. A running session's backend picks
 the effective value up within a few seconds.
+
+`settings --forge-credits <0-100>|default` sets the share of the random loot caches at points of interest that hold Forge
+Credits (HellForge's default is 30 %; the game's was 20 % for Super Credits). It is saved in `mods\hellforge-mods.json` as
+`forgeCreditChance` and applies from the next session. Everyone in a co-op mission should use the same value: each player
+rolls the loot from the mission's seed.
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
@@ -179,7 +184,10 @@ Once the session runner has made its run folder, `play` prints
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. A line
 `{"event": "mod-problems", "problems": [...]}` lists mods the session left out (a mod that did not compile, data that
-was not built...). Closing `play` does not stop the session; `stop` does.
+was not built...). Closing `play` does not stop the session; `stop` does. `stop` asks the game to close by itself first, as its
+window's close button does, and ends it after 30 seconds if it has not: the game saves its shader cache only when it
+closes by itself. A game without a window, or with one that does not respond, is ended at once, and so is one stopped
+with `--now yes`.
 
 | `status` | Meaning |
 |---|---|
@@ -207,7 +215,7 @@ Only the newest ten are kept. These are the files to show a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc` |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`) |
 | `modloader.log` | the mod loader: which mods loaded, and why one did not |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
