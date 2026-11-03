@@ -10,7 +10,9 @@
  *   entity_region <size> <map header hex>
  *   component <name> <offset> <header hex> <index> <indices> <records> <record offset> <stride>
  *   mod <id> <folder> <dll>
- *   mod_version <id> <version>              (a code mod's version, for modloader.log) */
+ *   mod_version <id> <version>              (a code mod's version, for modloader.log)
+ *   function <name> <module> <rva hex> <hook 0|1> <code pattern>  (a game function by name, added to the build's own)
+ *   global <name> <module> <rva hex> <witness rva hex> <witness code>  (a game global by name, likewise) */
 #define WIN32_LEAN_AND_MEAN
 #define HF_MOD_LOADER
 #include <windows.h>
@@ -340,6 +342,8 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
 }
 
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
+#include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
+#include "globals.c" /* game globals by name (SDK 16) */
 
 /* ---- network field types ---------------------------------------------------------------------------------------- */
 
@@ -787,6 +791,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
 
@@ -973,6 +978,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
+    if (FnPlanLine(f, n) || GlPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
@@ -1126,6 +1132,8 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_log = OpenLog(L"modloader.log");
     if (g_statsProbesSkipped) Note("stats: %d observation(s) in the plan could not be read and are not shown", g_statsProbesSkipped);
     Note("HellForge mod loader, SDK %d, game build %s: %d code mod(s)", HF_MOD_SDK_VERSION, g_build, g_modCount);
+    FnStart(); /* functions.c: the session's functions by name, before any mod asks (after the log opens) */
+    GlStart(); /* globals.c: and its globals */
     g_api = (HfApi){HF_MOD_SDK_VERSION, sizeof(HfApi), ApiLog, ApiBuildId, ApiModId, ApiModFolder, ApiOn, ApiModuleBase, ApiFindPattern,
         SafeRead, ApiWrite, ApiWriteU32If, ApiHook, ApiNetworkFieldType, ApiSetNetworkFieldBits, ApiComponentRecord, ApiAddWeapon, ApiWeaponEntity, ApiAddProjectile, ApiProjectileRow, ApiAddDamage, ApiDamageRow, ApiResourceHash,
         ApiAddStratagem, ApiStratagemRow, ApiAddEntity, ApiAddBehaviour, ApiAddDifficulty, ApiDifficultyRow,
@@ -1133,7 +1141,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
-        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiSetStatus};
+        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus};
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");

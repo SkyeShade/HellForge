@@ -225,6 +225,11 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- On a standard (non-administrator) Windows account, Sync Inventory never opened the game, or said "The capture
+  finished without an inventory" after a capture that worked, until the launcher was run as administrator. The capture
+  runs as the administrator who answers the prompt and kept its folder to that account; it now shares it with yours.
+  A sync that ends without an inventory now also says whether the game never started, closed before logging in, or
+  ran without reaching the title screen, and says so while the sync still waits.
 - Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
   program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
   straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
@@ -298,6 +303,26 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### For mod makers
 
+- SDK 16: game functions by name. `HF_HOOK(mod, SpawnEntity, detour, &original)` hooks a game function HellForge has
+  mapped (`mappings/functions.json`, generated into `hellforge_functions.h`), and `hf_fn_<Name>(mod)` gives one to
+  call. The compiler checks the detour against the function's signature, IDEs complete the names, and HellForge keeps
+  the addresses and checks, so a game update doesn't mean rebuilding the mod. A hook can be asked for from
+  `hellforge_mod_init`; HellForge puts it in once the game's code is ready. The first ten names: the damage consumer,
+  kill dispatch, beacon activation, entity spawner and explosion request to hook or call, and five functions behind
+  the SDK's actions to call ([docs/modding/hooks.md](docs/modding/hooks.md#hooking-by-name)). `hook`, `hook_ex` and
+  `find_pattern` work as before (#179).
+- Game globals by name: `hf_global_ExplosionQueue(mod)` gives one of the game's objects (its managers and queues,
+  what the functions above take) as a struct with its named fields, so `queue->count` instead of an offset. 15 to
+  start (the players, the local user, the game mode, entities, health, motion, explosion, projectile and combat queues,
+  scores, wielders, inventories, destructibles), each checked against an instruction of the game's code that loads it
+  ([docs/modding/hooks.md](docs/modding/hooks.md#game-globals), #179).
+- Typed events: `hf_on_spawn(mod, listener, user, priority)` and one call per event, whose listener takes the event's
+  own struct (`const HfSpawnEvent*`), so there is nothing to cast and a listener for the wrong event doesn't compile.
+  Only `hf_on_damage_pre`'s struct is writable. The load events are under the same prefix (`hf_on_game_loaded` and the
+  rest), and so is the game thread: `hf_on_game_thread`, which answers 0 when it runs, as every `hf_on_` call does.
+  They come with SDK 16's header and run on any HellForge from SDK 7 on; `subscribe` and `on` work as before
+  ([docs/modding/runtime.md](docs/modding/runtime.md#game-events), #179).
+- A renamed game function or global keeps its old name as an alias, so mods written or built with it keep working (#179).
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
 - SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge

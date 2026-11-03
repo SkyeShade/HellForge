@@ -57,6 +57,8 @@ var hostsAdded = false;
 var timeoutMin = 10;
 string? sealKey = null;
 ulong? steamAccount = null;
+// The launcher's Windows account, granted the sync folder beside this one's (it differs on a standard account).
+string? grantSid = null;
 
 try
 {
@@ -78,9 +80,14 @@ try
             case "--close-game": closeGame = true; break;
             case "--seal-key": sealKey = Next(); break;
             case "--steam-account": steamAccount = ulong.Parse(Next(), NumberStyles.None, CultureInfo.InvariantCulture); break;
+            case "--grant-sid":
+                grantSid = Next();
+                if (!CaptureAccess.IsSid(grantSid)) throw new ArgumentException("--grant-sid needs a SID (S-1-5-...).");
+                break;
             case "--help":
                 Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
-                Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
+                Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--grant-sid <launcher's SID>]");
+                Console.WriteLine("  [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
                 Console.WriteLine("  [--close-game] [--no-hosts] [--no-ca] | --cleanup");
                 return 0;
             default: throw new ArgumentException("Unknown argument: " + args[i]);
@@ -115,8 +122,14 @@ catch (Exception error) when (error is IOException or UnauthorizedAccessExceptio
     return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
-// The sync folder stays private to this user.
-Run("icacls", $"\"{evidenceDir}\" /inheritance:r /grant:r \"{System.Security.Principal.WindowsIdentity.GetCurrent().Name}:(OI)(CI)F\"");
+// The sync folder stays private to this account and the launcher's. On a standard Windows account the UAC prompt runs
+// this capture as the administrator who answered it: granting only this account hid the folder from the launcher, which
+// then never opened the game and found no inventory after a capture that worked.
+string captureSid;
+using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent()) captureSid = identity.User!.Value;
+var aclCode = Run("icacls", CaptureAccess.SyncFolderAclArguments(evidenceDir, captureSid, grantSid));
+Log($"sync folder private to {(grantSid == null ? "this account only (no launcher account given)" : string.Equals(grantSid, captureSid, StringComparison.OrdinalIgnoreCase) ? "this account, which is the launcher's" : "this account and the launcher's, another account")}" +
+    (aclCode == 0 ? "" : $": icacls failed with code {aclCode}"));
 
 // What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
 // (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
@@ -725,10 +738,11 @@ bool Step(string name, Action action)
     }
 }
 
-static void Run(string file, string arguments)
+// The exit code, or -1 when it did not start or finish in time.
+static int Run(string file, string arguments)
 {
     using var process = Process.Start(new ProcessStartInfo(file, arguments) { UseShellExecute = false, CreateNoWindow = true });
-    process?.WaitForExit(8000);
+    return process != null && process.WaitForExit(8000) ? process.ExitCode : -1;
 }
 
 void RemoveHosts()

@@ -21,6 +21,8 @@ what people reach for hooks for, and its [game thread](runtime.md#the-game-threa
 - [When to hook](#when-to-hook)
 - [How a hook works](#how-a-hook-works)
 - [The calls](#the-calls)
+- [Hooking by name](#hooking-by-name)
+- [Game globals](#game-globals)
 - [Finding a function](#finding-a-function)
 - [Hooking it](#hooking-it)
 - [Writing a detour](#writing-a-detour)
@@ -74,8 +76,99 @@ chain, so several mods (and HellForge itself) can hook the same function without
 | `hook_ex(mod, target, detour, &original, priority)` | the same with a priority ([several mods, one function](#several-mods-one-function)); SDK 13 |
 | `code_matches(address, pattern)` | 1 when the code at `address`, as it was before any hook HellForge placed, matches the pattern; SDK 13 |
 | `read_code(address, buffer, size)` | like `read`, with a hooked function's first bytes as they were before HellForge's hooks; SDK 13 |
+| `HF_HOOK(mod, Name, detour, &original)`, `hf_hook_<Name>(...)` | hooks a game function by its name, the compiler checking the detour's type ([hooking by name](#hooking-by-name)); SDK 16 |
+| `hf_fn_<Name>(mod)` | a game function by its name, typed, to call; NULL when it is not there to call; SDK 16 |
+| `hf_global_<Name>(mod)` | one of the game's objects (a manager, a queue) by name, with its named fields ([game globals](#game-globals)); SDK 16 |
 
 The others exist since SDK 1. Hooks stay for the session.
+
+## Hooking by name
+
+HellForge names game functions the way Minecraft's mappings do (`mappings/functions.json`, generated into
+`hellforge_functions.h`). A named function has its signature as a type (`HfFn_SpawnEntity`), so the compiler checks
+your detour, your IDE completes `hf_hook_` and `hf_fn_` with every function there is, and HellForge keeps the address
+and the check of its first bytes. When the game updates, HellForge updates where the functions are. A mod that hooks by
+name keeps working without being rebuilt, unless a function's signature itself changed.
+
+```c
+static HfFn_SpawnEntity g_spawn;   /* calls the next hook, or the game's code */
+
+static uint64_t OnSpawn(void* manager, uint32_t entity, uint64_t resource, const uint8_t* info, uint64_t s5, uint64_t s6)
+{
+    uint64_t result = g_spawn(manager, entity, resource, info, s5, s6);
+    /* your change: after (as here), before, or instead of it */
+    return result;
+}
+
+HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
+{
+    if (api->version < 16) return 1;   /* the manifest asks for "sdk": 16 */
+    HF_HOOK(mod, SpawnEntity, OnSpawn, &g_spawn);   /* 0 when it is in, or will be */
+    return 0;
+}
+```
+
+- Hook from `hellforge_mod_init` on. There is no `HF_EVENT_GAME_LOADED` callback to write: HellForge puts the hook in
+  once the game's code is decoded and its first bytes read as reviewed. `g_spawn` stays NULL until then, and your
+  detour cannot run before it. The log says `hooked SpawnEntity by name`, or why not.
+- A detour of the wrong signature does not compile (`incompatible function pointer types`). Arguments the research has
+  not named yet (`s5`, `s6` above) are part of the signature as pass-through slots: pass them on as they came.
+- Only functions whose whole signature is known can be hooked. The others are "call only": `hf_fn_<Name>` gives them,
+  and `HF_HOOK` on one does not compile. Where an action does the same job (`hf->spawn_explosion` for
+  `RequestExplosion`), prefer it: it checks the session and the arguments first.
+- `hf_hook_<Name>(mod, detour, &original, priority)` is `HF_HOOK` with a priority, as `hook_ex` takes it. Hooks by name
+  join the same chain as every other hook ([several mods, one function](#several-mods-one-function)).
+- `hf_fn_<Name>(mod)` returns NULL before `HF_EVENT_GAME_LOADED`, on a game build HellForge has not mapped, or when the
+  function's code is not the reviewed one (logged once). Check it before you call it.
+- A call through `hf_fn_<Name>` runs the function's whole hook chain, as the game's own calls do: every mod's detour,
+  then HellForge's (its events), then the game's code. So do not call the function you are hooking from its own detour:
+  that calls your detour again. Call the original your hook was given instead.
+- A renamed function keeps its old name as an alias (`"aliases"` in `mappings/functions.json`): `hf_fn_` and `hf_hook_`
+  of the old name still compile, and the loader still resolves it for mods built with it.
+- On a HellForge older than SDK 16, `hf_fn_` returns NULL and `hf_hook_` returns 1.
+
+[The SDK reference](../sdk-reference.md#functions) lists every named function with its arguments. A function you need
+that has no name yet can still be hooked by address, as below. Better still, add it to `mappings/functions.json`
+(offset, first bytes, signature, what each argument is, and where that came from) and send it in, so every mod gets it.
+
+## Game globals
+
+The game keeps its managers and queues (the players, every entity's health, this frame's explosion requests...) in
+cells of game.dll's data, each holding a pointer to the object. `mappings/globals.json` names them, generated into
+`hellforge_globals.h`: `hf_global_<Name>(mod)` gives the object as an `Hf<Name>*`, a struct with the fields the
+research has named at their offsets, so you read `queue->count` instead of `*(uint32_t*)(queue + 0x20)`.
+
+```c
+static void EveryUpdate(HfMod* mod, float dt, void* user)
+{
+    HfExplosionQueue* queue = hf_global_ExplosionQueue(mod);
+    HfPlayerManager* players = hf_global_PlayerManager(mod);
+    if (queue == NULL || players == NULL) return;   /* not there yet, or not this build */
+    if (queue->count < 256) { /* RequestExplosion has room this frame */ }
+    HF_API(mod)->log(mod, "%u players", players->count);
+}
+
+/* in hellforge_mod_init */
+hf_on_game_thread(mod, EveryUpdate, NULL);
+```
+
+- `hf_global_<Name>` returns NULL before `HF_EVENT_GAME_LOADED`, on a game build HellForge has not mapped, while the
+  game has not made the object (some only exist in a mission), or when the game code HellForge checks it against is
+  not the reviewed one. Ask for it each time you use it rather than keeping the pointer: the game makes some objects
+  again each mission.
+- The object is the game's own, alive. Read it on the game thread (an event listener, `on_game_thread`), and write only
+  what a field's comment says you may.
+- Use the pointer, never a copy. A struct reaches as far as its last named field (`HfGame` is 0xAC220 bytes), so
+  `HfGame g = *game;` copies most of a megabyte onto the stack.
+- A global whose fields are not named yet is an incomplete type (`HfEntityManager`): its comment in
+  `hellforge_globals.h` and its entry in [the SDK reference](../sdk-reference.md#globals) say what is known of it, by
+  offset. Naming a field is adding it to `mappings/globals.json`.
+- Every global is checked against its witnesses, instructions of the game's code that load it (two each, so a later
+  patch over one of them does not lose the global). HellForge's generator checks that each witness points at the cell,
+  and the loader that one of them is still there before it hands the cell out. A renamed global keeps its old name as
+  an alias, as functions do. `hf->global(mod, name)` gives the cell itself, for code that wants it.
+- These are the objects the functions of [hooking by name](#hooking-by-name) take: `ExplosionQueue` is
+  `RequestExplosion`'s `queue`, `ProjectileSystem` is `FireProjectile`'s `system`.
 
 ## Finding a function
 
