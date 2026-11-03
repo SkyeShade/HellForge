@@ -246,10 +246,11 @@ try
         Check(templated.TryGetResponse("/Progression/inventory", out var inventory), "Template inventory missing.");
         var granted = inventory.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("mixId").GetUInt32()).ToArray();
         Check(granted.Length > 0 && granted.All(catalogue.Contains), "Template grants an item outside the catalogue: " + template);
-        // Three weapons, the onboarding chain's required item and its nine unlock rewards, and the two stratagems every
-        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9).
-        Check(template != "starter" || granted.Length == 3 + 10 + 2, "Starter kit is not three weapons, the onboarding unlocks and the two standard stratagems.");
+        // Three weapons, the onboarding chain's required item and its nine unlock rewards, the two stratagems every
+        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9) and level 1's unlock item.
+        Check(template != "starter" || granted.Length == 3 + 10 + 3, "Starter kit is not three weapons, the onboarding unlocks, the two standard stratagems and level 1.");
         Check(granted.Contains(1497469599u) && granted.Contains(3787370254u), "A new profile lacks Orbital Precision Strike or the MG-43: " + template);
+        Check(granted.Contains(0xF96CE664u), "A new profile has level 1 locked (no 0xF96CE664): " + template);
         Check(templated.TryGetResponse("/Progression", out var templatedProgression) &&
             templatedProgression.GetProperty("packageProgress").EnumerateArray().Any(entry => entry.GetProperty("level").GetInt32() == 9),
             "Template lacks the completed tutorial chain: " + template);
@@ -269,15 +270,15 @@ try
     using (var again = ProfileStore.Open(unnamedDirectory)) { }
     Check(JsonNode.Parse(File.ReadAllText(unnamedFile))!["progression"]!["shipName"]!.ToJsonString() == repairedShip,
         "An unnamed profile was not given a lasting ship name.");
-    // A profile saved before every profile got the two standard stratagems gets them when opened, once.
+    // A profile saved before every profile got the two standard stratagems and level 1 gets them when opened, once.
     var savedProfile = JsonNode.Parse(File.ReadAllText(unnamedFile))!.AsObject();
     var savedItems = savedProfile["inventory"]!["items"]!.AsArray();
-    foreach (var standard in savedItems.Where(item => (uint)item!["mixId"]! is 1497469599u or 3787370254u).ToList()) savedItems.Remove(standard);
+    foreach (var standard in savedItems.Where(item => (uint)item!["mixId"]! is 1497469599u or 3787370254u or 0xF96CE664u).ToList()) savedItems.Remove(standard);
     File.WriteAllText(unnamedFile, savedProfile.ToJsonString());
     using (var reopened = ProfileStore.Open(unnamedDirectory)) { }
     var reopenedItems = JsonNode.Parse(File.ReadAllText(unnamedFile))!["inventory"]!["items"]!.AsArray().Select(item => (uint)item!["mixId"]!).ToList();
-    Check(reopenedItems.Count(id => id == 1497469599u) == 1 && reopenedItems.Count(id => id == 3787370254u) == 1,
-        "A saved profile was not given the two standard stratagems exactly once.");
+    Check(reopenedItems.Count(id => id == 1497469599u) == 1 && reopenedItems.Count(id => id == 3787370254u) == 1 &&
+        reopenedItems.Count(id => id == 0xF96CE664u) == 1, "A saved profile was not given the two standard stratagems and level 1 exactly once.");
     // A package progress entry saved without sortOrder and claimedLevels (a ship module bought before 2026-11-03), which the
     // client's /Progression parser refuses, is completed when the profile is opened; what it has stays.
     var partial = JsonNode.Parse(File.ReadAllText(unnamedFile))!.AsObject();

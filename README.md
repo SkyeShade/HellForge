@@ -46,7 +46,8 @@ HellForge's frozen war, or open every planet to liberation (Settings > Galactic 
 
 ## Requirements
 
-- Windows 10 or 11 (64-bit). Linux under Proton is experimental: see [docs/linux.md](docs/linux.md).
+- Windows 11, or Windows 10 version 22H2 with current updates (64-bit). Linux under Proton is experimental: see
+  [docs/linux.md](docs/linux.md).
 - Steam running and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing.
 - The Microsoft Visual C++ 2012 and 2015-2022 Redistributables (x64), which the game needs. Setup checks for both and
   links Microsoft's downloads when one is missing ([troubleshooting](docs/troubleshooting.md#microsoft-visual-c-runtimes)).

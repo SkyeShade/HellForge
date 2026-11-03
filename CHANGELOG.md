@@ -14,7 +14,11 @@ On `dev`, since 0.3.0-beta.
   the operation's card on the war table shows what its missions pay. Medals unlock warbond pages and items, requisition
   buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
   purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
-  from the map. Premium warbonds still need to be owned in the normal game.
+  from the map. Premium warbonds still need to be owned in the normal game (#232).
+- Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
+  (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
+  while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
+  page. Editing a mod weapon's page never changes the weapon it copies. (#177)
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
@@ -37,9 +41,15 @@ On `dev`, since 0.3.0-beta.
   restart. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button
   (#224, #225).
 
+- Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
+  and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
+  (`HF_DIFFICULTY_HEAVY_ARTILLERY`, on in the Hell Forge difficulty).
+
 ### Changed
 
-- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission.
+- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
+- The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
+  which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
   stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
   mod can't change your files or reach the internet, but it can read your files and send them to the host through the
@@ -55,6 +65,9 @@ On `dev`, since 0.3.0-beta.
   ignored.
 - Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
   #149).
+- The in-game editor's catalogue is split into a file per category. As one file it had reached 48 MB of the 64 MB the
+  editor reads, and it grows with every category the editor gains. If a catalogue file can't be read, the editor now
+  names the file and says why (missing, too large, or from another HellForge), instead of always saying it's missing. (#176)
 - Mods together can add 512 weapons and entities, up from 192. Past 2,048 network types, HellForge widens the game's
   network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
   Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
@@ -63,11 +76,29 @@ On `dev`, since 0.3.0-beta.
 ### Fixed
 
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
-  up empty. Heavy loot is still added to your profile.
+  up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
-  medals and samples a second time. Thanks to diemitze, whose PR #27 found it.
+  medals and samples a second time. Thanks to diemitze, whose PR #27 found it (#232).
 - Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
   Mobilize at the top (#206).
+- On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
+  Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
+  Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
+  update to, and can open Windows Update (#14).
+- HD2R Editor (HD2Runtime's own in-game editor) doesn't work on HellForge, but HellForge loaded it anyway, on the same
+  F8 key as its own editor, with nothing to say why. The Mods page now marks it UNSUPPORTED and keeps it switched off,
+  so it can't take F8 or slow the game down, and says to use HellForge's own editor (F8 in game) instead. HD2Runtime
+  and the Lua mods made for it still run.
+- Big frame drops with a Difficulty 11 mod on: HellForge left a developer's diagnostic for the war table's map
+  previews running, which interrupted the game each time it read the map's size. It is off now, so Difficulty 11
+  mods don't need to be switched off any more.
+- A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
+  fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
+  now shows only what the mod owns. (#177)
+- A mod entity with `own_all = 1` (`HfEntity`) refused live edits (`set_live`, the in-game editor's saved values) of
+  any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
+- New profiles (Starter) had difficulty 1 locked: no level-1 missions showed on the war table, and the difficulty
+  bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
@@ -99,6 +130,10 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
+  about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
+  faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
+  it already did. Other levels keep the game's shells.
 - A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
   separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
   does, and the session log counts them.
