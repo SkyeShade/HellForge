@@ -1,5 +1,6 @@
-/* The editor's catalogue (editor-catalog.json, written by HellForge's EditorCatalog.cs next to the DLL): its categories,
- * their objects (a weapon, a throwable) and each object's page of fields, laid out as the HD2R Editor lays out a page. */
+/* The editor's catalogue (editor-catalog.json and a file per category, written by HellForge's EditorCatalog.cs next to
+ * the DLL): its categories, their objects (a weapon, a throwable) and each object's page of fields, laid out as the HD2R
+ * Editor lays out a page. */
 #pragma once
 #include <stdint.h>
 #include <deque>
@@ -108,6 +109,9 @@ struct Catalog
     std::vector<Object*> Of(const std::string& nav) const;
     /* The object whose page holds the stratagem's settings row (StratagemDefinition of that type), or nullptr. */
     const Object* StratagemObject(uint64_t type) const;
+    /* The first object whose page holds fields of the entity's records (an arsenal weapon's, in its loadout section), or
+     * nullptr. */
+    const Object* EntityObject(uint64_t entity) const;
     /* A new object with a copy of like's page pointed through remap (a mod's stratagem: its own settings row, entities,
      * projectile and damage): rows with nothing to point at are left out, and so are rows HellForge's catalogue reads
      * another way (stats snapshot reads, choices, arm swaps). Its rows' Local Stats entry is (names.category,
@@ -118,6 +122,11 @@ struct Catalog
     Row* Entry(const std::string& category, const std::string& target, const std::string& key) const;
 };
 
-/* Reads the catalogue; false with *error when it is missing or not one this editor reads. */
-bool Load(const std::wstring& path, Catalog* out, std::string* error);
+/* The catalogue's files in the editor's folder: the index, which names a file per category (EditorCatalog.cs Files). */
+constexpr const char* INDEX_FILE = "editor-catalog.json";
+constexpr int FORMAT = 2;
+/* Reads the catalogue from the editor's folder: the index, then every category file it names (all of them: rows on the
+ * same bytes on pages of different categories are linked); false with *error naming the file when one is missing, too
+ * large, or not one this editor reads. */
+bool Load(const std::wstring& folder, Catalog* out, std::string* error);
 } // namespace catalog

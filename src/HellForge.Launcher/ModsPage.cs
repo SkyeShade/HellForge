@@ -10,7 +10,7 @@ using HellForge.Core;
 namespace HellForge.Launcher;
 
 // The Mods page: every mod in <installation>/mods as a row, in two groups: gameplay mods (friends need the same ones;
-// the order is up to them) and cosmetic ones (packs of game patches; only on this PC). Within a group a row is dragged anywhere
+// the order is up to them) and client-only ones (cosmetic packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
 // on it into order: the bottom mod loads first, so the top one wins where two change the same thing (ModCatalog.
 // LoadOrder). Switches, the order and each pack's options are saved in hellforge-mods.json (ModSettings). A session
 // loads the enabled mods when it starts, so the page is locked while one runs (docs/mods.md). The page follows the
@@ -164,8 +164,8 @@ public partial class MainWindow
             var number = 0;
             AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "GAMEPLAY", "Friends need the same ones; keeping the same order avoids surprises.",
                 "No gameplay mods.", ref number);
-            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "COSMETIC", "Only on your PC: friends need not have the same ones.",
-                "No cosmetic mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) with Add mods...", ref number);
+            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "CLIENT ONLY", "Only on your PC: friends need not have the same ones.",
+                "No client-only mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) or a Lua mod with Add mods...", ref number);
         }
         AddModSyncCard(paths.ModsFolder);
         SetModsLocked(modsLocked);
@@ -376,7 +376,13 @@ public partial class MainWindow
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod switch: " + error.Message, Red); }
             RefreshMods();
         };
-        modSwitches.Add(toggle);
+        // a mod HellForge never loads (HD2R Editor): its switch stays off, and the page lock never turns it back on
+        if (mod.Unsupported != null)
+        {
+            toggle.IsEnabled = false;
+            ToolTip.SetTip(toggle, mod.Unsupported);
+        }
+        else modSwitches.Add(toggle);
         Grid.SetColumn(toggle, 2);
         grid.Children.Add(toggle);
 
@@ -386,7 +392,7 @@ public partial class MainWindow
 
         // name and one line of description; a click shows the details
         var build = BuildState(mod);
-        var expanded = modsExpanded.Contains(mod.Id) || removeAsked == mod.Id || build?.Colour == Red;
+        var expanded = modsExpanded.Contains(mod.Id) || removeAsked == mod.Id || build?.Colour == Red || mod.Unsupported != null;
         var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new(12, 0, 8, 0), Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
         var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         title.Children.Add(new TextBlock { Text = mod.Name, FontWeight = FontWeight.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
@@ -434,6 +440,7 @@ public partial class MainWindow
     {
         var tags = new List<(string, string)>();
         if (build?.Colour == Red) tags.Add(("DID NOT COMPILE", "#FF6054"));
+        if (mod.Unsupported != null) tags.Add(("UNSUPPORTED", "#FF6054"));
         if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("BUNDLED", "#9AA0A8"));
         if (mod.Pack != null) tags.Add(("PACK", "#4FA3FF"));
         if (mod.Lua) tags.Add(("LUA", "#F2A541"));
@@ -540,6 +547,7 @@ public partial class MainWindow
     Control Details(ModManifest mod, (string Text, IBrush Colour)? build)
     {
         var details = new StackPanel { Spacing = 8, Margin = new(12, 10, 0, 2) };
+        if (mod.Unsupported != null) details.Children.Add(new TextBlock { Text = mod.Unsupported, FontSize = 12, Foreground = Red, TextWrapping = TextWrapping.Wrap });
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
         var changes = ModChanges(mod);
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
