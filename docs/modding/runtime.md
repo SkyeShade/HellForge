@@ -147,8 +147,8 @@ The kinds:
 - Each machine raises its own. A hit is raised on the machine that applies it (the target's owner); a stratagem's
   activation on its thrower's machine.
 - Entity ids are the session's entity instances, not resource ids. `HF_ON_SPAWN` pairs the two.
-- There is room for 128 listeners across all mods. Events wait in a queue of 256 for the game thread; when it is full,
-  new ones are dropped.
+- There is no limit on listeners, however many mods subscribe. Events wait in a queue of 256 for the game thread; when
+  it is full, new ones are dropped.
 - A kind's source is installed when a mod first listens to it, and only if the game code it reads looks as reviewed.
   Otherwise `modloader.log` says so and that kind stays silent.
 
@@ -159,8 +159,8 @@ helps it become an event.
 
 `hf->on_game_thread(mod, callback, user)` (SDK 6) calls you every game update on the game thread, before the game's
 update, with the frame time in seconds. The callback starts once the loader has hooked the game's update, which can
-take up to a minute after `HF_EVENT_GAME_LOADED`. There is room for 16 callbacks across all mods. It runs every frame,
-so keep it short.
+take up to a minute after `HF_EVENT_GAME_LOADED`. There is no limit on callbacks, however many mods register them. It
+runs every frame, so keep it short.
 
 This callback heals the local Helldiver by 10 every 5 seconds:
 
