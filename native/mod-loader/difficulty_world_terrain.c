@@ -539,6 +539,7 @@ static struct {
     uint32_t stepRecord[NEAR_STEPS]; int stepTile[NEAR_STEPS]; uint8_t stepKind[NEAR_STEPS], stepOp[NEAR_STEPS];
     int steps, step, building, tilesDrawn, tilesFailed;
     uint8_t one[0x19B0]; uint8_t phase; int calls; uint32_t frames, waits;
+    int matLeave; /* the replayed 0x41 finished: its cameras go back once its jobs are drained */
     uint32_t readId; float* heights; uint32_t hw, hh;
     uint8_t one69[0x19B0], one6B[0x19B0]; uint32_t at69, at6B;
     uint64_t handle, handleCell;
@@ -555,10 +556,24 @@ static uintptr_t NearApi(uint32_t table, uint32_t slot)
     return f;
 }
 
-/* WorldCamSetPosition: a replayed job's own camera position (the consumer's call at game 0xAB0721) moves to the tile */
+/* Op 0x41's painters drawn in vanilla space (TerrainMat*, below): on while the merge cameras are aimed for it. */
+static struct {
+    volatile LONG on, patched; /* cameras in vanilla space; the pose loads point at the mod's rows (a 0x41 call runs) */
+    DWORD thread;              /* the thread of that call (the noise wrapper acts on it alone) */
+    int owner, waits, quiet;   /* MAT_LEVEL / MAT_TILE */
+    LONG level;                /* g_world.levels when entered */
+    float s;                   /* 2048 / the span drawn */
+    uint64_t cam[2], world; uint32_t node[2];
+    float back[2], backAt[2]; /* the cameras' half extents and centre to put back */
+    uint8_t* rows;            /* the three pose rows, 16-byte aligned, within 2 GB of game.dll */
+} g_mat;
+enum { MAT_LEVEL = 1, MAT_TILE = 2 };
+
+/* WorldCamSetPosition: a replayed job's own camera position (the consumer's call at game 0xAB0721) moves to the tile
+ * (not for the tile's 0x41 in vanilla space: its cameras stay at the origin) */
 static int TerrainNearCamShift(uint64_t camera, uintptr_t at, const float* v, float* out)
 {
-    if (!g_nearActive || at != g_world.game + 0xAB0725u || (camera != g_near.cam[0] && camera != g_near.cam[1])) return 0;
+    if (!g_nearActive || g_mat.on || at != g_world.game + 0xAB0725u || (camera != g_near.cam[0] && camera != g_near.cam[1])) return 0;
     out[0] = v[0] + g_near.centre[0]; out[1] = v[1] + g_near.centre[1]; out[2] = v[2];
     return 1;
 }
@@ -818,6 +833,8 @@ static void NearCameras(float half0, float half1, float cx, float cy)
 static void NearReplayEnd(int ok)
 {
     InterlockedExchange(&g_nearActive, 0);
+    if (g_mat.on && g_mat.owner == MAT_TILE) InterlockedExchange(&g_mat.on, 0); /* the cameras go back below */
+    g_near.matLeave = 0;
     if (g_near.R != 0)
     {
         NearCameras(g_near.world_size / 2, g_near.world_size / 2, 0.0f, 0.0f);
@@ -833,6 +850,183 @@ static void NearReplayEnd(int ok)
         for (int k = 0; k < 2; k++) if (g_near.tex[k] != 0 && release != NULL) { release(g_near.tex[k]); g_near.tex[k] = 0; }
         g_near.state = NEAR_FAILED;
     }
+}
+
+/* ---- Op 0x41's material painters in vanilla space --------------------------------------------------------------------
+ * RenderVoronoiMaterials (op 0x41; setup 0xF4F9E0, per frame 0xF52CC0) spawns the zone painters (units in the merge's
+ * world, all with the one pose its setup builds at rbp+0xD0..+0x10F: rows loaded from game 0x263CC50 / 0x263CC60 /
+ * 0x263CC70 / 0x263CC80 at 0xF4FACF / 0xF4FADB / 0xF4FAFC / 0xF4FB26, an identity) and draws them with the merge
+ * cameras. The painters' vertex shaders (materials 11b26119177842e2, 5a503dfb17d3b948, 8448abc93ddacf85,
+ * b01bc7148e58524c) have vanilla's world size compiled in: uv = (position x cb_world).xy x (1/2048, -1/2048) + 0.5, at
+ * which the pixel shaders sample generated_heightmap_properties(_height), generated_route_distance and
+ * generated_water_replace_lookup, and their noise at uv x 2048 / noise_scale (metres). On a 16 km level the uv runs
+ * from -3.5 to 4.5: the whole world squeezed into the central 2 km and edge texels everywhere else (run v14: the
+ * level's material map a central disc with "+" streaks out along rows and columns). The other two painter materials
+ * (the zone mesh 1e02661b6eab49b7 at 0xF51AEE, the fallback quad b6e50e2b95081af1 at 0xF4FE97 / 0xF501E6) read only
+ * cb_world and the camera.
+ * So 0x41 draws in vanilla space: for a span L centred on c, s = 2048 / L, the pose rows (s,0,0,0), (0,s,0,0),
+ * (0,0,1,0), (-s cx, -s cy, 0, 1) (the three loads' displacements point at the mod's rows for each 0x41 call, then
+ * back), both merge cameras +-1024 at the origin while 0x41's jobs run (its tile job puts camera R+0x10 at
+ * ((col + 0.5) W/T - W/2, ...), 0 for T = 1; its final job camera R+0 at 0), and noise_scale (0x53D111F6, set per
+ * painter by 0xF48C50 through [[api+0x28]+0] at 0xF48D6B) x s, so the noise stays in metres. The textures the
+ * painters sample cover the span drawn: the level's (whole world, its own 0x3C / 0x0D / 0x42) or the tile's (the
+ * replay's, on the tile's cameras). The cameras change only once the job queue is empty and go back once 0x41's jobs
+ * are drained (the queue holds a camera pointer; the consumer reads the camera when it runs the job). Any map larger
+ * than vanilla's; off with HELLFORGE_XL_MATERIAL_SPACE=0. */
+static const uint32_t kMatLoads[3] = {0xF4FACFu, 0xF4FADBu, 0xF4FB26u}; /* movaps xmmN, [rip+disp]: the displacement at +3 */
+static const uint32_t kMatRows[3] = {0x263CC50u, 0x263CC60u, 0x263CC80u};
+#define MAT_NOISE_SCALE 0x53D111F6u
+typedef uint64_t (*MatVarFn)(uint64_t object, uint64_t name, float value, uint64_t d);
+static MatVarFn g_matVarOriginal;
+
+static uint64_t MatVar(uint64_t object, uint64_t name, float value, uint64_t d)
+{
+    if (g_mat.patched && (uint32_t)name == MAT_NOISE_SCALE && (uintptr_t)__builtin_return_address(0) == g_world.game + 0xF48D6Eu &&
+        GetCurrentThreadId() == g_mat.thread)
+        value *= g_mat.s;
+    return g_matVarOriginal(object, name, value, d);
+}
+
+static int MatOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char t[4] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_MATERIAL_SPACE", t, sizeof t) > 0 && t[0] == '0'); }
+    return on;
+}
+
+/* Once: the reviewed code, the rows' block and the noise wrapper. 1 when ready. */
+static int MatInstall(void)
+{
+    static int state; /* 0 not tried, 1 ready, -1 not possible */
+    if (state != 0) return state > 0;
+    state = -1;
+    uintptr_t game = g_world.game;
+    if (!ApiCodeMatches(game + 0xF4FACFu, "0F 28 05 7A D1 6E 01") || !ApiCodeMatches(game + 0xF4FADBu, "0F 28 0D 7E D1 6E 01") ||
+        !ApiCodeMatches(game + 0xF4FAFCu, "0F 28 05 6D D1 6E 01") || !ApiCodeMatches(game + 0xF4FB26u, "0F 28 0D 53 D1 6E 01") ||
+        !ApiCodeMatches(game + 0xF48D5Bu, "48 8B 05 A6 D5 3D 02 8B 11 48 8B CF 4C 8B 40 28 41 FF 10"))
+    { Note("difficulty: extra large maps: the material pass is not the reviewed one; its painters draw as the game has them"); return 0; }
+    g_mat.rows = AllocateNearGame(game, 0x1000);
+    uintptr_t api = 0, table = 0;
+    if (g_mat.rows == NULL || ((uintptr_t)g_mat.rows & 15) != 0 || SafeRead(game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0x28, &table, 8) ||
+        table == 0)
+    { Note("difficulty: extra large maps: no room for the material pass's pose; its painters draw as the game has them"); return 0; }
+    for (int k = 0; k < 3; k++)
+    {
+        intptr_t reach = (intptr_t)(g_mat.rows + 16 * k) - (intptr_t)(game + kMatLoads[k] + 7);
+        if (reach != (intptr_t)(int32_t)reach) { Note("difficulty: extra large maps: the material pose is out of reach"); return 0; }
+    }
+    void** slot = (void**)(uintptr_t)table;
+    DWORD old = 0;
+    if (!VirtualProtect(slot, 8, PAGE_READWRITE, &old)) return 0;
+    g_matVarOriginal = (MatVarFn)*slot;
+    InterlockedExchangePointer(slot, (void*)MatVar);
+    VirtualProtect(slot, 8, old, &old);
+    state = 1;
+    return 1;
+}
+
+/* The three pose loads at the mod's rows (on) or the game's (off). */
+static void TerrainMatPatch(int on)
+{
+    uintptr_t game = g_world.game, first = game + kMatLoads[0], last = game + kMatLoads[2] + 7;
+    DWORD old = 0;
+    if (on) { g_mat.thread = GetCurrentThreadId(); MemoryBarrier(); }
+    if (!VirtualProtect((void*)first, last - first, PAGE_EXECUTE_READWRITE, &old)) return;
+    for (int k = 0; k < 3; k++)
+    {
+        uintptr_t at = game + kMatLoads[k] + 3, next = game + kMatLoads[k] + 7;
+        uintptr_t to = on ? (uintptr_t)(g_mat.rows + 16 * k) : game + kMatRows[k];
+        *(volatile int32_t*)at = (int32_t)((intptr_t)to - (intptr_t)next);
+    }
+    VirtualProtect((void*)first, last - first, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)first, last - first);
+    InterlockedExchange(&g_mat.patched, on);
+}
+
+static void MatCameras(float half0, float half1, float cx, float cy)
+{
+    NearExtentsFn extents = (NearExtentsFn)NearApi(0x20, 0x98);
+    CamPoseFn position = (CamPoseFn)NearApi(0x20, 0x20);
+    NearUnitFn update = (NearUnitFn)NearApi(0x08, 0x100);
+    if (extents == NULL || position == NULL || update == NULL) return;
+    float at[3] = {cx, cy, 501.0f};
+    for (int k = 0; k < 2; k++)
+    {
+        float h = k == 0 ? half0 : half1;
+        extents(g_mat.cam[k], -h, h, -h, h, 0);
+        position(g_mat.cam[k], g_mat.node[k], at);
+        update(g_mat.world, g_mat.node[k]);
+    }
+}
+
+static uint32_t NearQueued(uint64_t context);
+
+/* Vanilla space for a span L centred on (cx, cy), the cameras put back to back0 / back1 at (bx, by) after: 1 entered,
+ * 0 wait (the queue still holds earlier jobs), -1 not possible (0x41 draws as the game has it). */
+static int MatEnter(int owner, uint64_t context, uint64_t R, float span, float cx, float cy, float back0, float back1, float bx, float by)
+{
+    if (!MatOn() || !MatInstall()) return -1;
+    uint32_t queued = NearQueued(context);
+    if (queued != 0)
+    {
+        if (queued != 0xFFFFFFFFu && ++g_mat.waits < 1200) return 0;
+        Note("difficulty: extra large maps: the job queue did not empty before the material pass; it draws as the game has it");
+        g_mat.waits = 0;
+        return -1;
+    }
+    if (SafeRead(R, &g_mat.cam[0], 8) || SafeRead(R + 8, &g_mat.node[0], 4) || SafeRead(R + 0x10, &g_mat.cam[1], 8) || SafeRead(R + 0x18, &g_mat.node[1], 4) ||
+        SafeRead(context + 0x40, &g_mat.world, 8) || g_mat.cam[0] == 0 || g_mat.cam[1] == 0 || g_mat.world == 0 || !NearApi(0x20, 0x98) ||
+        !NearApi(0x20, 0x20) || !NearApi(0x08, 0x100))
+    { g_mat.waits = 0; return -1; }
+    g_mat.s = 2048.0f / span;
+    float rows[12] = {g_mat.s, 0, 0, 0, 0, g_mat.s, 0, 0, -g_mat.s * cx, -g_mat.s * cy, 0, 1};
+    memcpy(g_mat.rows, rows, sizeof rows);
+    g_mat.back[0] = back0; g_mat.back[1] = back1; g_mat.backAt[0] = bx; g_mat.backAt[1] = by;
+    g_mat.owner = owner; g_mat.level = g_world.levels; g_mat.waits = 0; g_mat.quiet = 0;
+    MatCameras(1024.0f, 1024.0f, 0.0f, 0.0f);
+    MemoryBarrier();
+    InterlockedExchange(&g_mat.on, 1);
+    return 1;
+}
+
+/* After 0x41: once its jobs are drained, the cameras go back. 1 done, 0 wait. */
+static int MatLeave(uint64_t context)
+{
+    if (!g_mat.on) return 1;
+    uint32_t queued = NearQueued(context);
+    if (queued != 0 && queued != 0xFFFFFFFFu && ++g_mat.waits < 1200) return 0;
+    if (queued == 0 && ++g_mat.quiet < 4) return 0; /* the consumer's last job: a few frames */
+    if (queued != 0) Note("difficulty: extra large maps: the material pass's jobs did not drain; the cameras go back now");
+    MatCameras(g_mat.back[0], g_mat.back[1], g_mat.backAt[0], g_mat.backAt[1]);
+    InterlockedExchange(&g_mat.on, 0);
+    g_mat.waits = 0; g_mat.quiet = 0;
+    return 1;
+}
+
+/* The level's dispatcher, before a record runs: 1 run it, 2 run it with the pose rows in place, 0 wait. */
+static int TerrainMatDispatch(uint32_t op, uint64_t context)
+{
+    if (g_mat.on && g_mat.level != g_world.levels) InterlockedExchange(&g_mat.on, 0); /* a level that ended inside 0x41: its cameras are gone */
+    if (g_mat.on && g_mat.owner == MAT_LEVEL && op != 0x41) return MatLeave(context);
+    if (op != 0x41) return 1;
+    uintptr_t gen = 0, settings = 0, R = 0;
+    uint32_t size = 0, tiles = 1;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen, &R, 8) || R == 0 || SafeRead(context + 8, &settings, 8) || settings == 0 ||
+        SafeRead(settings + 0x2C, &size, 4) || size <= 2048u || size > 65536u)
+        return 1;
+    if (!g_mat.on)
+    {
+        SafeRead(gen + 0x8758A8u + 0x124u, &tiles, 4); /* lg+0x124: the merge's T (the second camera is +-size / 2T) */
+        if (tiles == 0 || tiles > 16) tiles = 1;
+        float half = (float)size / 2.0f;
+        int e = MatEnter(MAT_LEVEL, context, R, (float)size, 0.0f, 0.0f, half, half / (float)tiles, 0.0f, 0.0f);
+        if (e == 0) return 0;
+        if (e < 0) return 1;
+        static LONG noted = -1;
+        if (noted != g_world.levels)
+        { noted = g_world.levels; Note("difficulty: extra large maps: the material pass draws the %u m world in vanilla space (scale %.4f)", size, (double)g_mat.s); }
+    }
+    return g_mat.owner == MAT_LEVEL ? 2 : 1;
 }
 
 /* One replayed record (or tile) step: 1 when it finished, 0 while it runs, -1 when it failed. */
@@ -862,6 +1056,24 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         if (index != 0) g_near.tilesDrawn++; else g_near.tilesFailed++;
         return 1;
     }
+    if (g_near.matLeave)
+    {
+        if (!MatLeave(context)) return 0;
+        g_near.matLeave = 0;
+        return 1;
+    }
+    int mat = 0;
+    if (g_near.stepOp[s] == 0x41)
+    {
+        /* the tile's materials in vanilla space: its span on the full target, the cameras back on the tile after */
+        if (g_near.calls == 0 && !g_mat.on)
+        {
+            int e = MatEnter(MAT_TILE, context, g_near.R, NEAR_SIDE, g_near.centre[0], g_near.centre[1], NEAR_SIDE / 2, NEAR_SIDE / 2, g_near.centre[0],
+                g_near.centre[1]);
+            if (e == 0) return 0;
+        }
+        mat = g_mat.on && g_mat.owner == MAT_TILE;
+    }
     if (g_near.calls == 0)
     {
         if (SafeRead(records + (uint64_t)g_near.stepRecord[s] * 0x19B0u, g_near.one, sizeof g_near.one)) return -1;
@@ -878,7 +1090,9 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     int swapCaps = g_near.stepOp[s] == 0x3E;
     if (swapCaps) { memcpy(live, (void*)(uintptr_t)g_near.lg, sizeof live); memcpy((void*)(uintptr_t)g_near.lg, g_near.caps, sizeof live); }
     int zone = g_near.stepOp[s] == 0x3D && NearZoneRepeat(1);
+    if (mat) TerrainMatPatch(1);
     fault = WorldTileGuarded(g_near.one, context, &index, &g_near.phase, g, h, 1, &calls);
+    if (mat) TerrainMatPatch(0);
     if (zone) NearZoneRepeat(0);
     if (swapCaps) memcpy((void*)(uintptr_t)g_near.lg, live, sizeof live);
     if (fault)
@@ -888,7 +1102,12 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         return -1;
     }
     g_near.calls++;
-    if (index != 0) { g_near.calls = 0; return 1; }
+    if (index != 0)
+    {
+        g_near.calls = 0;
+        if (mat) { g_near.matLeave = 1; return 0; }
+        return 1;
+    }
     return g_near.calls < 3000 ? 0 : -1;
 }
 

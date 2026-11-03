@@ -1495,6 +1495,8 @@ static void TerrainDiagInstall(uintptr_t game);
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
 static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context, uint64_t g, uint64_t h);
+static int TerrainMatDispatch(uint32_t op, uint64_t context);
+static void TerrainMatPatch(int on);
 static void TerrainNearWater(uint64_t record);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
@@ -1537,6 +1539,15 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uintptr_t block = 0;
     int watch = g_world.current > 1.0f && g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 &&
         !SafeRead(index, &at, 4) && !SafeRead(records + (uint64_t)at * 0x19B0u, &op, 4) && !SafeRead(block + 0x11A7108, &before, 4);
+    /* op 0x41's material painters in vanilla space (difficulty_world_terrain.c): the level waits while the job queue
+     * drains around it */
+    int matPatch = 0;
+    if (watch)
+    {
+        int m = TerrainMatDispatch(op, b);
+        if (m == 0) return 0;
+        matPatch = m == 2;
+    }
     if (watch && at != g_worldOpAt) { g_worldOpAt = at; InterlockedIncrement(&g_worldOpRun); }
     if (watch && op == 0x25) { g_rec25 = records + (uint64_t)at * 0x19B0u; g_tileContext = b; }
     LARGE_INTEGER start, now, frequency;
@@ -1633,7 +1644,9 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     int vanilla2B = !watch && g_worldLevel != 0 && !SafeRead(index, &vanillaAt, 4) && !SafeRead(records + (uint64_t)vanillaAt * 0x19B0u, &vanillaOp, 4) &&
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } if (oa == 0x76) g_pass76 = records + (uint64_t)ia * 0x19B0u + 8; }
+    if (matPatch) TerrainMatPatch(1);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (matPatch) TerrainMatPatch(0);
     TerrainDiagAfter(records, index, diagAt, diagOp);
     if (mergeSet) *(volatile uint32_t*)(uintptr_t)(mergeSettings + 0x2C) = mergeSize;
     if (mergeTiles != 0) *(volatile uint32_t*)mergeTiles = mergeT;
