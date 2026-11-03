@@ -50,23 +50,30 @@ public sealed class MissionService
         _ => (new JsonObject(), "acknowledged")
     };
 
-    // A Super Credits pile's activity (hash32 of "mission_activity_<type>", set at spawn by 0x593d30); medals' and requisition
-    // slips' (0x0A2ECD4E, 0x7549A744) still pay nothing here.
-    public const uint ForgeCreditsActivity = 0x7F8FCE26;
+    // The pickups' activities (hash32 of "mission_activity_<type>", set at spawn by 0x593d30): a Super Credits pile (Forge
+    // Credits), medals and requisition slips.
+    public const uint ForgeCreditsActivity = 0x7F8FCE26, MedalsActivity = 0x0A2ECD4E, RequisitionActivity = 0x7549A744;
     // Piles already paid: mission and pile (objectId hashes the pile's type and position), so a retried request pays nothing.
     readonly ConcurrentDictionary<(string Mission, long Pile), bool> paidPiles = new();
 
-    // A Forge Credits pile (the game's Super Credits pickup): every participant gets the same amount, as on the live game.
-    // This profile is credited here; the client forwards the others' entries to their games.
+    // A pickup: every participant gets the same amount, as on the live game. This profile is credited here (in what it
+    // holds: medals as MedalsMixId); the reply names what the client adds (medals as the reward item MedalRewardMixId,
+    // which it turns into its medals) and the client forwards the others' entries to their games.
     JsonObject Activity(JsonElement body)
     {
         var rewards = new JsonArray();
-        if (body.ValueKind != JsonValueKind.Object || !TryInt(body, "activityId32", out var activity) || (uint)activity != ForgeCreditsActivity ||
-            !TryInt(body, "objectId", out var pile)) return new JsonObject { ["rewards"] = rewards };
+        if (body.ValueKind != JsonValueKind.Object || !TryInt(body, "activityId32", out var activity) || !TryInt(body, "objectId", out var pile))
+            return new JsonObject { ["rewards"] = rewards };
+        (uint Held, uint Shown, long Amount)? pickup = (uint)activity switch
+        {
+            ForgeCreditsActivity => (PaidContentSet.ForgeCreditsWallet, PaidContentSet.ForgeCreditsWallet, Rewards.ForgeCredits(pile)),
+            MedalsActivity => (MedalsMixId, MedalRewardMixId, Rewards.MedalPickup(pile)),
+            RequisitionActivity => (RequisitionMixId, RequisitionMixId, Rewards.RequisitionPickup(pile)),
+            _ => null
+        };
         var mission = body.TryGetProperty("missionId", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString()! : "";
-        if (!paidPiles.TryAdd((mission, pile), true)) return new JsonObject { ["rewards"] = rewards };
-        var amount = Rewards.ForgeCredits(pile);
-        profile.TryChange((_, inventory) => ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, amount) > 0);
+        if (pickup is not { } paid || !paidPiles.TryAdd((mission, pile), true)) return new JsonObject { ["rewards"] = rewards };
+        profile.TryChange((_, inventory) => ProfileStore.AddItem(inventory, paid.Held, paid.Amount) > 0);
         if (body.TryGetProperty("participants", out var participants) && participants.ValueKind == JsonValueKind.Array)
             foreach (var participant in participants.EnumerateArray().Take(16))
                 if (participant.ValueKind is JsonValueKind.Number or JsonValueKind.String &&
@@ -75,7 +82,7 @@ public sealed class MissionService
                     rewards.Add((JsonNode)new JsonObject
                     {
                         ["platformAccountId"] = account.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                        ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["mixId"] = PaidContentSet.ForgeCreditsWallet, ["amount"] = amount })
+                        ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["mixId"] = paid.Shown, ["amount"] = paid.Amount })
                     });
         return new JsonObject { ["rewards"] = rewards };
     }
@@ -162,6 +169,12 @@ public sealed class MissionService
             < 98 => 50,
             _ => 100
         };
+
+        // A medal pickup: mostly 1, sometimes 2, now and then 5; requisition slips: 50, 100 or 200 the same way. Per pile, as
+        // ForgeCredits.
+        public static long MedalPickup(long pile) => Bucket(pile) switch { < 75 => 1, < 95 => 2, _ => 5 };
+        public static long RequisitionPickup(long pile) => Bucket(pile) switch { < 75 => 50, < 95 => 100, _ => 200 };
+        static uint Bucket(long pile) => (uint)(unchecked((ulong)pile * 0x9E3779B97F4A7C15UL) >> 32) % 100;
 
         // Level 11 is a mod's (native/mod-loader/difficulty.c, HfDifficulty).
         public static long Requisition(int difficulty) => 200L * Math.Clamp(difficulty, 1, 11);

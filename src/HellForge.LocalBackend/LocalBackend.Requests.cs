@@ -123,9 +123,13 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems).
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ??
-                    new Reply(StatusCodes.Status200OK, source, RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody);
+            {
+                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
+                // premium warbonds the account does not own have no price in it (OwnershipFilter).
+                var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
+                if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, served);
+            }
             return Unsupported();
         }
 

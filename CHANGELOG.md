@@ -32,6 +32,8 @@ On `dev`, since 0.3.0-beta.
   do in the live game, and your balance shows where Super Credits did. On every profile but unlock-all, a premium
   warbond you own in the live game now opens once you buy it with Forge Credits (its Super Credits price); a warbond
   you don't own still can't be bought. Unlock-all profiles open your owned warbonds as before.
+- Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
+  in the squad. Premium warbonds your profile's sync shows you don't own no longer offer a buy button.
 
 ### Changed
 

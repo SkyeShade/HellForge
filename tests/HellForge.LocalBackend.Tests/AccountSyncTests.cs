@@ -59,7 +59,22 @@ static class AccountSyncTests
             "A Forge Credits pile did not pay every participant: " + rewards.ToJsonString());
         check(Items(store.Current())[Wallet] == amount && Served(store).Contains(Wallet), "The pile's Forge Credits were not kept and served.");
         check(Activity(MissionService.ForgeCreditsActivity, 123456).Count == 0 && Items(store.Current())[Wallet] == amount, "A pile paid twice.");
-        check(Activity(0x0A2ECD4E, 99).Count == 0, "Another activity paid Forge Credits.");
+        check(Activity(0x12345678, 99).Count == 0, "An unknown activity paid something.");
+        // Medals and requisition slips the same way: the reply names the medal reward item (the client turns it into its
+        // medals), the profile holds medals; each pile once.
+        var medals = Items(store.Current()).GetValueOrDefault(Medals);
+        var medalReply = Activity(MissionService.MedalsActivity, 4242);
+        var medalAmount = MissionService.Rewards.MedalPickup(4242);
+        check(medalReply.Count == 2 && (uint)Whole(medalReply[0]!["rewards"]![0]!["mixId"]) == MissionService.MedalRewardMixId &&
+            Whole(medalReply[0]!["rewards"]![0]!["amount"]) == medalAmount && Items(store.Current())[Medals] == medals + medalAmount,
+            "A medal pickup did not pay: " + medalReply.ToJsonString());
+        check(Activity(MissionService.MedalsActivity, 4242).Count == 0, "A medal pickup paid twice.");
+        var requisition = Items(store.Current()).GetValueOrDefault(Requisition);
+        var slipReply = Activity(MissionService.RequisitionActivity, 777);
+        check(slipReply.Count == 2 && (uint)Whole(slipReply[0]!["rewards"]![0]!["mixId"]) == Requisition &&
+            Items(store.Current())[Requisition] == requisition + MissionService.Rewards.RequisitionPickup(777), "A requisition pickup did not pay: " + slipReply.ToJsonString());
+        check(Enumerable.Range(0, 500).All(i => MissionService.Rewards.MedalPickup(i * 31L) is 1 or 2 or 5 &&
+            MissionService.Rewards.RequisitionPickup(i * 31L) is 50 or 100 or 200), "A medal or slip pile paid an odd amount.");
         // Every pile pays 10, 20, 50 or 100, mostly 10.
         var amounts = Enumerable.Range(0, 1000).Select(i => MissionService.Rewards.ForgeCredits(i * 7919L + 12345)).ToList();
         check(amounts.All(a => a is 10 or 20 or 50 or 100) && amounts.Count(a => a == 10) > 600 && amounts.Contains(100),
@@ -79,6 +94,11 @@ static class AccountSyncTests
             return (status, reply);
         }
         check(!Served(store).Contains(steeled.Tokens[0]) && !Served(store).Contains(steeled.Items[0].MixId), "A profile that earns its warbonds was handed an owned one.");
+        // The catalogue offers no purchase of a warbond the live account does not own; the owned one keeps its price.
+        var offered = store.Ownership!.FilterCatalogueResponse(LocalBackend.LoadStartupFixtures()["/Progression/items"]).EnumerateArray()
+            .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
+        check(offered[other.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 0 && offered[steeled.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1,
+            "A warbond not owned on the live game is offered, or the owned one is not.");
         check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold without the Forge Credits for it.");
         store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, Wallet, price) > 0);
         var before = Items(store.Current())[Wallet];

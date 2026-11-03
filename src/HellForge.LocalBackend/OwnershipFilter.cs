@@ -84,6 +84,19 @@ public sealed class OwnershipFilter
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
 
+    // The item catalogue as served: a premium warbond's token the live account does not own has no price, so the client
+    // offers no purchase for it (its unlock looks for the token priced in Super Credits, game.dll 0x136C270) and nobody
+    // spends Forge Credits on a warbond they cannot have; Purchases refuses one anyway.
+    public JsonElement FilterCatalogueResponse(JsonElement catalogue)
+    {
+        if (catalogue.ValueKind != JsonValueKind.Array) return catalogue;
+        var node = JsonNode.Parse(catalogue.GetRawText())!.AsArray();
+        foreach (var item in node.OfType<JsonObject>())
+            if (MixId(item) is { } id && Paid.WarbondTokens.Contains(id) && !owned.ContainsKey(id) && item["buyPrice"] is JsonArray { Count: > 0 })
+                item["buyPrice"] = new JsonArray();
+        return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
+    }
+
     // The progression section as served: purchasedSeasonPassItems without the items of a premium warbond not open
     // (inventorySection: the profile's, for the tokens it bought).
     public JsonElement FilterProgressionResponse(JsonElement progressionSection, JsonElement inventorySection)
