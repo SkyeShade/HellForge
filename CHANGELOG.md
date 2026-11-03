@@ -33,7 +33,8 @@ On `dev`, since 0.3.0-beta.
   warbond you own in the live game now opens once you buy it with Forge Credits (its Super Credits price); a warbond
   you don't own still can't be bought. Unlock-all profiles open your owned warbonds as before (#225).
 - Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
-  in the squad. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button
+  in the squad. Every player keeps their share, not only the one who picked it up, and a pile pays once, also after a
+  restart. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button
   (#224, #225).
 
 ### Changed

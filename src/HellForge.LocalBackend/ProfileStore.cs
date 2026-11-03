@@ -335,6 +335,24 @@ public sealed class ProfileStore : IDisposable
             return true;
         });
 
+    // A pickup (Mission/Activity, or a friend's backend's through multiplayer): the item added once per pile of a mission,
+    // the receipt saved with it (progression.paidPiles, the last PaidPilesKept "mission/pile"), so a retried request or a
+    // relayed copy, also after a restart, adds nothing and returns false.
+    public const int PaidPilesKept = 256;
+
+    public bool ApplyPickup(string missionId, long pile, uint mixId, long amount) =>
+        TryChange((progression, inventory) =>
+        {
+            var receipt = missionId + "/" + pile.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var paid = progression["paidPiles"] as JsonArray ?? [];
+            if (paid.Any(p => p is JsonValue v && v.TryGetValue<string>(out var id) && id == receipt)) return false;
+            paid.Add((JsonNode)receipt);
+            while (paid.Count > PaidPilesKept) paid.RemoveAt(0);
+            progression["paidPiles"] = paid;
+            AddItem(inventory, mixId, amount);
+            return true;
+        });
+
     // A change to progression and inventory together (a purchase, a reward): edit works on copies and returns whether to
     // keep them; false changes nothing. The result is validated and saved before it is served.
     public bool TryChange(Func<JsonObject, JsonArray, bool> edit)

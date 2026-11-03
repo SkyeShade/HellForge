@@ -34,8 +34,14 @@ public sealed class MissionService
 
     readonly ProfileStore profile;
     readonly ConcurrentDictionary<long, int> operationDifficulty = new();
+    readonly PickupRelay? pickups;
 
-    public MissionService(ProfileStore profile) => this.profile = profile;
+    public MissionService(ProfileStore profile, PickupRelay? pickups = null)
+    {
+        this.profile = profile;
+        this.pickups = pickups;
+        if (pickups != null) pickups.Credit = Credit;
+    }
 
     public static bool Handles(string path) => path is "/Operation/Create" or "/Operation/Abandon" or "/Operation/Mission/Start"
         or "/Operation/Mission/end" or "/Operation/Mission/Activity" or "/Operation/Mission/SetMaxRewards" or "/Progression/inventory/consume";
@@ -53,39 +59,54 @@ public sealed class MissionService
     // The pickups' activities (hash32 of "mission_activity_<type>", set at spawn by 0x593d30): a Super Credits pile (Forge
     // Credits), medals and requisition slips.
     public const uint ForgeCreditsActivity = 0x7F8FCE26, MedalsActivity = 0x0A2ECD4E, RequisitionActivity = 0x7549A744;
-    // Piles already paid: mission and pile (objectId hashes the pile's type and position), so a retried request pays nothing.
-    readonly ConcurrentDictionary<(string Mission, long Pile), bool> paidPiles = new();
+    // What a pile pays: the item the profile holds (medals as MedalsMixId), the one the reply names (medals as the reward
+    // item MedalRewardMixId, which the client turns into its medals) and the amount; null for another activity.
+    static (uint Held, uint Shown, long Amount)? PileOf(uint activity, long pile) => activity switch
+    {
+        ForgeCreditsActivity => (PaidContentSet.ForgeCreditsWallet, PaidContentSet.ForgeCreditsWallet, Rewards.ForgeCredits(pile)),
+        MedalsActivity => (MedalsMixId, MedalRewardMixId, Rewards.MedalPickup(pile)),
+        RequisitionActivity => (RequisitionMixId, RequisitionMixId, Rewards.RequisitionPickup(pile)),
+        _ => null
+    };
 
-    // A pickup: every participant gets the same amount, as on the live game. This profile is credited here (in what it
-    // holds: medals as MedalsMixId); the reply names what the client adds (medals as the reward item MedalRewardMixId,
-    // which it turns into its medals) and the client forwards the others' entries to their games.
+    // A pickup: every participant gets the same amount, as on the live game. This profile is credited here, once per pile
+    // (ProfileStore.ApplyPickup), and the other participants' backends through multiplayer (PickupRelay); the reply names
+    // what the client adds, and the client forwards the others' entries to their games.
     JsonObject Activity(JsonElement body)
     {
         var rewards = new JsonArray();
         if (body.ValueKind != JsonValueKind.Object || !TryInt(body, "activityId32", out var activity) || !TryInt(body, "objectId", out var pile))
             return new JsonObject { ["rewards"] = rewards };
-        (uint Held, uint Shown, long Amount)? pickup = (uint)activity switch
-        {
-            ForgeCreditsActivity => (PaidContentSet.ForgeCreditsWallet, PaidContentSet.ForgeCreditsWallet, Rewards.ForgeCredits(pile)),
-            MedalsActivity => (MedalsMixId, MedalRewardMixId, Rewards.MedalPickup(pile)),
-            RequisitionActivity => (RequisitionMixId, RequisitionMixId, Rewards.RequisitionPickup(pile)),
-            _ => null
-        };
         var mission = body.TryGetProperty("missionId", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString()! : "";
-        if (pickup is not { } paid || !paidPiles.TryAdd((mission, pile), true)) return new JsonObject { ["rewards"] = rewards };
-        profile.TryChange((_, inventory) => ProfileStore.AddItem(inventory, paid.Held, paid.Amount) > 0);
-        if (body.TryGetProperty("participants", out var participants) && participants.ValueKind == JsonValueKind.Array)
-            foreach (var participant in participants.EnumerateArray().Take(16))
-                if (participant.ValueKind is JsonValueKind.Number or JsonValueKind.String &&
-                    ulong.TryParse(participant.ValueKind == JsonValueKind.String ? participant.GetString() : participant.GetRawText(),
-                        System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var account))
-                    rewards.Add((JsonNode)new JsonObject
-                    {
-                        ["platformAccountId"] = account.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                        ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["mixId"] = paid.Shown, ["amount"] = paid.Amount })
-                    });
+        if (PileOf((uint)activity, pile) is not { } paid || !profile.ApplyPickup(mission, pile, paid.Held, paid.Amount))
+            return new JsonObject { ["rewards"] = rewards };
+        var accounts = Participants(body);
+        foreach (var account in accounts)
+            rewards.Add((JsonNode)new JsonObject
+            {
+                ["platformAccountId"] = account.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["mixId"] = paid.Shown, ["amount"] = paid.Amount })
+            });
+        pickups?.OnPaid(new PickupRelay.Pickup(mission, pile, (uint)activity, accounts));
         return new JsonObject { ["rewards"] = rewards };
     }
+
+    // The request's participants: account ids as numbers or decimal strings, each once, 16 at most.
+    static List<ulong> Participants(JsonElement body)
+    {
+        var accounts = new List<ulong>();
+        if (!body.TryGetProperty("participants", out var participants) || participants.ValueKind != JsonValueKind.Array) return accounts;
+        foreach (var participant in participants.EnumerateArray().Take(16))
+            if (participant.ValueKind is JsonValueKind.Number or JsonValueKind.String &&
+                ulong.TryParse(participant.ValueKind == JsonValueKind.String ? participant.GetString() : participant.GetRawText(),
+                    System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var account) && !accounts.Contains(account))
+                accounts.Add(account);
+        return accounts;
+    }
+
+    // A pile a friend's backend paid: this profile gets the same amount, worked out here from the pile, once.
+    bool Credit(PickupRelay.Pickup pickup) =>
+        PileOf(pickup.Activity, pickup.Pile) is { } paid && profile.ApplyPickup(pickup.Mission, pickup.Pile, paid.Held, paid.Amount);
 
     JsonObject Create(JsonElement body)
     {

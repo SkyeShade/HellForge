@@ -661,6 +661,9 @@ try
     await AssetShareTests.Run(root, Check);
     results.Add(new { mode = "asset-share", outcome = "passed" });
     Console.WriteLine("PASS asset share: every game loads the lobby's packages less its own, a joiner's new package reaches the others, malformed lists dropped, each player's projectile swaps reach every game");
+    PickupShareTests.Run(root, Check);
+    results.Add(new { mode = "pickup-share", outcome = "passed" });
+    Console.WriteLine("PASS pickup share: a pickup pays every backend in the lobby once (a joiner's through the host), not players left out, not from outside the lobby; receipts survive a restart");
     RecordGuardTests.Run(root, Check);
     await DirectoryTests.Run(root, Check);
     results.Add(new { mode = "directory", outcome = "passed" });

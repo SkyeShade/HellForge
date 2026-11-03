@@ -102,6 +102,7 @@ try
     var warClock = new WarClock();
     var accountKeys = new AccountKeys();
     var presence = new FriendPresence();
+    var pickups = new PickupRelay();
     // --sandbox: the session's game runs at low integrity, so it writes only into the run's game folder (PlaySession's
     // gameOut), and the pipes it opens carry a low label (PipeServer)
     var sandboxed = options.GetValueOrDefault("--sandbox") == "true";
@@ -143,7 +144,7 @@ try
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, Pickups = pickups
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
@@ -155,7 +156,8 @@ try
         {
             WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
             ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin"),
-            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
+            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed,
+            Pickups = pickups
         })
         : null;
     var ready = new System.Text.Json.Nodes.JsonObject

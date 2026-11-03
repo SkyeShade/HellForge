@@ -25,6 +25,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
     public PartyService Party { get; }
     // The host's stats for joiners, and this game's when joined (null without a peer link or the session's mods folder).
     public StatsShare? Stats { get; private set; }
+    public PickupShare? Pickups { get; private set; }
     public AssetShare? Assets { get; private set; }
     // Mod sync: joiners download this session's mods, and this machine the mods of a host it could not join (null
     // without a peer link or the session's mods folder).
@@ -101,6 +102,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type.StartsWith("stats.", StringComparison.Ordinal)) Stats?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("assets.", StringComparison.Ordinal)) Assets?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
+                else if (frame.Type.StartsWith("pickup.", StringComparison.Ordinal)) Pickups?.FromPeer(peer, frame);
                 else if (frame.Type == "war.clock" && warClock != null && Lobby.HostsJoinedLobby(peer) && long.TryParse(frame.Text(0), out var seconds))
                 {
                     // Any host, a stranger's too, only within a war's possible time: from its start to MaxWarSeconds.
@@ -130,6 +132,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
             }
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
         }
+        if (host.transport != null && settings.Pickups != null) host.Pickups = new PickupShare(host.transport, host.Lobby, settings.Pickups, host.Log);
         if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
@@ -440,4 +443,6 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public string? SandboxStats { get; init; }
     // Whether the session's game is sandboxed: mod sync then lets the player trust a stranger's code and raw mods.
     public bool Sandboxed { get; init; }
+    // The backend's pickups, shared with the lobby's other backends (PickupShare).
+    public PickupRelay? Pickups { get; init; }
 }
