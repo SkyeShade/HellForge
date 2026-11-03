@@ -502,15 +502,28 @@ Which lobbies a search shows is mod sync's rule (`ModSync.Joinable`), and it use
 - A stranger's lobby running such mods is hidden, because they are mods to install by hand.
 
 Each search logs what it found, what it showed, and why it left out the rest: `Directory: search "<the game's filter>": 2
-listed, 1 shown (1 left out: it needs mods installed by hand)`. The reasons are:
+listed, 1 shown (1 left out: its host's unchecked mods download only in a sandboxed session)`. The reasons are:
 - `this machine's own lobby`, which Steam's search returns too;
 - `malformed (...)`;
 - `the game's filter`, which covers clauses Steam's search does not apply, such as difficulty ranges and member counts;
 - `its host plays with edited stats`;
 - `its mod list is malformed`;
 - `it runs a blocked mod`;
-- `its host runs another HellForge version`;
+- `its host runs an older HellForge (<bundled mod> <its version>, yours <yours>): the host needs to update`, `its host
+  runs a newer HellForge (...): update HellForge to join`, or `its host runs another HellForge version` when the
+  versions do not compare;
+- `its host's unchecked mods download only from a Steam friend` (a stranger's unverified code or raw data, which the
+  host sends to Steam friends alone);
 - `it needs mods installed by hand`.
+
+After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
+and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`): `Directory: left
+out 1100001029d1b02: its host's unchecked mods download only from a Steam friend: Code 1 (test.code): stranger code, not
+verified.` A mod's why is `share off` (the host does not share its mods), `stranger code, not verified` or `stranger raw
+data, not verified` (unverified code or raw data from a host who is not a Steam friend), `bundled differs` (another
+HellForge) or `blocked`. A line names at most 8 mods, then how many more; a search writes at most 10 lines, then how
+many more; and the lines are written only when they differ from the last search's, since the map and the debug browser
+search every few seconds.
 
 Until 2026-10-23 a search left this machine's own lobby out without counting it. On the first two-PC test, "1 listed, 0
 shown" was the searching player's own lobby, not the friend's:
@@ -521,6 +534,70 @@ shown" was the searching player's own lobby, not the friend's:
 
 `HELLFORGE_TEST_STRANGERS=1` makes a backend treat friends as strangers, for testing with two friends' PCs. Details and
 open questions: [Step 7](#step-7-public-lobbies-on-the-galactic-map-2026-10-22).
+
+**The lobby browser** (`Multiplayer/BrowseApi.cs`, `DirectoryService.BrowseAsync`). Besides the map's per-planet
+searches, the backend lists every lobby the directory has, with no planet or difficulty filter, and friends' lobbies
+heard through presence. Each comes with the join check a search makes (`ModSync.Check`): lobbies the map would leave
+out for their mods stay in the list, with why, so the player sees what keeps them out. It runs at most one directory
+search every 2 s. Joining a listed lobby hands the game an invitation (`LobbyService.InviteLocal`, as a rejoin after a
+mod sync does), so the game's own join runs only when the player accepts it. The API is
+`GET /hellforge/v1/lobbies` and `POST /hellforge/v1/lobbies/<id>/join` on the loopback HTTP, for programs on this PC
+only ([external-launchers.md](external-launchers.md#the-lobby-browser-api)). The game's own debug lobby browser
+(menu presenter 41, DebugServerBrowser) searches with an empty filter every ~4 s, so the map's search answers it as
+well (seen live on 2026-10-30: a bare list of one row per lobby, or "NO SERVERS").
+
+**The ship's information terminal opens the lobby browser** (`native/mod-loader/terminal.c`, build 25480438). The
+terminal across from the Armory is menu presenter 6 (InformationTerminal). It needs Arrowhead's news, Major Order and
+statistics services; offline the game asks for `NewsFeed/801`, `v2/Assignment/War/801`, the war and profile statistics
+and `Episode/801`, gets 501 for each, and closes the terminal into an error popup. The loader hooks the presenter
+manager's open (game.dll+0x14C0550, which the game calls directly; the table entry at +0x14C0350 that Ship Station
+Hotkeys calls checks the open stack and jumps to it) and opens presenter 41 when 6 is asked for. Seen live on
+2026-10-30: walking up to the terminal and Ship Station Hotkeys' Control Center key both open the browser, and a click
+closes it. Ship Station Hotkeys checks that entry's first bytes through `code_matches`, which reads through hooks, so it
+still matches. Each presenter asked for is logged once with its caller (`terminal: the game opens menu presenter N`).
+`HELLFORGE_TERMINAL=news` keeps the terminal as the game has it.
+
+**The in-game browser** (SDK 16; `native/mod-loader/live_browse.c`, `LiveBrowse` in `Multiplayer/BrowseApi.cs`,
+`native/editor/app_lobbies.cpp`). An editor asks over the live-edit pipe (`browseask refresh|join <lobby id>`), and the
+backend answers with the API's own list: one `browselobby` line per lobby (at most 128), then `browsestate`, which
+publishes them, as mod sync's `syncmod` and `syncstate` do. A search under way (`searching`) and a join's outcome
+(`invited`, `failed`) are a `browsestate` of the same version, which keeps the lobbies. The terminal hook counts each
+redirect, and `browse_state`'s `terminal` carries the count: the in-game editor opens its LOBBY BROWSER panel when it
+goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. The panel asks for a
+new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
+It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API.
+
+**Quick Play and the hidden lobbies.** `browseask quick -` (Q or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
+lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invited` with the host's name, or `failed`
+when nothing can be joined. The browse API lists what a map search leaves out: a stranger's lobby with Play with
+strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
+and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
+`HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the launcher's
+warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then turns it on for this session only
+(`MultiplayerHost.AllowForSession`: the stranger setting's `AllowForSession`, `ModSync.ShowEditedStatsThisSession`) and
+lists again. Nothing is saved: any mod in the game can send the ask, so the launcher's switch and the Mods page stay the
+player's, and the next session uses them again. Only the game's pipe can ask that, not the HTTP API. Every ask ends in a
+state that is not `searching`: a search that fails or times out, or a list the game refuses, is answered `failed` with
+the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's lobby running
+unverified code or raw mods has no fix: a host sends those to Steam friends alone. A squad is at most 4 although the
+game's lobby has 8 PlayFab places: a listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full
+(`DirectoryService.SquadSize`, also for older HellForge versions' listings, which count to 8). Each browse logs its
+counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per lobby it
+cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps lobbies out.
+
+**The terminal's camera** (`native/mod-loader/terminal_camera.c`, build 25480438). The terminal has no camera move of
+its own, so the loader makes one. When an editor read `browse_state` in the last 3 s, the terminal opens no presenter
+at all, and when the player pressed E at it (the open is called from game.dll; Ship Station Hotkeys' key calls the
+table entry from its own code and gets the browser without a glide) the camera glides for 1.1 s from the player's view to the wall screen, square to it and close enough that it
+fills the view, and `browse_state`'s `camera` goes `moving`, then `held`. The editor draws nothing (and holds input)
+until it is held, then powers its full-screen browser on and says `HF_BROWSE_SHOWN`; closing it says `HF_BROWSE_HIDDEN`
+and the camera glides back in 0.8 s. Held with no `HF_BROWSE_SHOWN` for 4 s, it glides back by itself. Without an
+editor the terminal still opens presenter 41. The glide hooks the engine's script render step (helldivers2.exe +
+0x689BC0): after it, the camera unit's pose (the main world's unit with a camera at the world's last render pose) is
+blended toward the terminal's and set with the engine's own `set_local_pose` and `update_unit`, so the frame renders
+with it. Lua's `render()` setting the pose does the same, which is how it was found; game.dll's camera code sets it
+before that step. The pins cover the five engine functions it calls; any mismatch turns it off (`camera` stays
+`none`) and the browser shows at once.
 
 ### Play with strangers
 

@@ -245,6 +245,14 @@ public sealed class FriendPresence
         }
     }
 
+    // The friends' lobbies heard from within Fresh (the browse API lists them beside the directory's).
+    public IReadOnlyList<(ulong Friend, string LobbyId, string ConnectionString, JsonObject Body)> FriendLobbies()
+    {
+        lock (gate)
+            return [.. friendLobbies.Where(f => DateTime.UtcNow - f.Value.Heard <= Fresh)
+                .Select(f => (f.Key, f.Value.LobbyId, f.Value.ConnectionString, f.Value.Body.DeepClone().AsObject()))];
+    }
+
     public void ClearFriendLobby(ulong friend)
     {
         lock (gate) friendLobbies.Remove(friend);

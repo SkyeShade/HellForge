@@ -181,6 +181,13 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"Mod sync: {(own != null ? own.Mods.Count + " gameplay mods to share" : "nothing to share")}; offers go to {(Sync.Display != null ? "the game" : "the session log only")}.");
     }
 
+    // The lobby browser in this session's game (LiveBrowse, SDK 16), over the live-edit pipe mod sync shares.
+    public LiveBrowse? Browser { get; private set; }
+    public void ShowBrowser(BrowseApi browse)
+    {
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, AllowForSession);
+    }
+
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
     void StartRejoin(string file, string modDigest)
     {
@@ -196,13 +203,25 @@ public sealed class MultiplayerHost : IAsyncDisposable
         rejoin.Start();
     }
 
+    StrangerSetting? strangers;
+
+    // The lobby browser's "allow" (LiveBrowse): Play with strangers or edited-stats lobbies, for this session only; false
+    // when this session has no such setting to change.
+    bool AllowForSession(string what)
+    {
+        if (what == "strangers") { strangers?.AllowForSession(); return strangers != null; }
+        if (Sync is not { } sync) return false;
+        sync.ShowEditedStatsThisSession = true;
+        return true;
+    }
+
     // The lobby directory and the gate for strangers, who reach this machine through it only.
     // modsFolder: where the Mods page keeps the switch that lists this player's public lobbies (ModSettings.ListPublic; on
     // without one). sandboxed: whether this session's game is, which decides the stranger default when the player never chose.
     void StartDirectory(ILobbyDirectory? directory, string? modsFolder, bool sandboxed)
     {
         if (transport == null) return;
-        var setting = new StrangerSetting(modsFolder, sandboxed: sandboxed, log: Log);
+        var setting = strangers = new StrangerSetting(modsFolder, sandboxed: sandboxed, log: Log);
         bool StrangersAllowed() => setting.Allowed;
         if (directory != null && presence != null)
             Directory = new DirectoryService(directory, Lobby, presence, transport.LocalId, pipes.SendLobby, Log, new DirectorySettings(Sync,

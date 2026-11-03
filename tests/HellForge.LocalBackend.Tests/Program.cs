@@ -55,6 +55,20 @@ try
                 using var response = await client.SendAsync(request);
                 Check(response.StatusCode == HttpStatusCode.Forbidden, $"A request to {address.Authority} with {header} was served.");
             }
+            // The lobby browser's API takes the same check, and a backend without a browser says so.
+            using (var request = new HttpRequestMessage(HttpMethod.Get, "/hellforge/v1/lobbies"))
+            {
+                request.Headers.TryAddWithoutValidation("Origin", "https://attacker.example");
+                using var response = await client.SendAsync(request);
+                Check(response.StatusCode == HttpStatusCode.Forbidden, "The lobby list was served to a web page.");
+            }
+            using (var response = await client.GetAsync("/hellforge/v1/lobbies"))
+                Check(response.StatusCode == HttpStatusCode.OK && (await response.Content.ReadAsStringAsync()).Contains("\"available\":false"),
+                    "A backend without a lobby browser says it has none.");
+            using (var response = await client.PostAsync("/hellforge/v1/lobbies/" + Guid.NewGuid().ToString("D") + "/join", null))
+                Check(response.StatusCode == HttpStatusCode.ServiceUnavailable, "A join without a lobby browser is unavailable: " + response.StatusCode);
+            using (var response = await client.PostAsync("/hellforge/v1/lobbies", null))
+                Check(response.StatusCode == HttpStatusCode.MethodNotAllowed, "The list takes GET only.");
             Console.WriteLine("PASS web pages: another Host, Origin, Referer and Sec-Fetch-* refused; 127.0.0.1, localhost and [::1] served");
         }
         finally { await app.StopAsync(); }

@@ -38,6 +38,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // The member counts a listing may claim: HD2's lobbies are made for 8 PlayFab members (max 8 members in every captured
     // PFMultiplayerCreateAndJoinLobby), a squad is at most 4.
     public const int MaxListedMembers = 4, MaxListedLimit = 8;
+    // The places left in a squad: its lobby's 8 PlayFab places stop at the squad's 4, so a full squad has no slot (Steam's
+    // search asks for one) and the lobby browser shows it full, not 4 of 8.
+    public static int SquadSize(int max) => Math.Min(max, MaxListedMembers);
+    public static int SquadSlots(int max, int members) => Math.Max(0, SquadSize(max) - members);
 
     readonly ILobbyDirectory directory;
     readonly LobbyService lobby;
@@ -147,7 +151,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
             [DirectoryKeys.Host] = localId.ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.Members] = hosted.Members.ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.MaxMembers] = hosted.MaxMembers.ToString(CultureInfo.InvariantCulture),
-            [DirectoryKeys.Slots] = (hosted.MaxMembers - hosted.Members).ToString(CultureInfo.InvariantCulture),
+            [DirectoryKeys.Slots] = SquadSlots((int)Math.Min(hosted.MaxMembers, int.MaxValue), hosted.Members).ToString(CultureInfo.InvariantCulture),
             [DirectoryKeys.Lock] = hosted.Locked ? "1" : "0",
             [DirectoryKeys.Stats] = editedStats() ? "1" : "0",
             [DirectoryKeys.Digest] = sync?.OwnDigest ?? "none",
@@ -202,11 +206,17 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var answer = new Frame("lobby.found").Add(op).Add(0);
         var kept = new List<DirectoryListing>();
         var refused = new Dictionary<string, int>(StringComparer.Ordinal);
+        var leftOut = new List<string>();
         var strangers = strangersAllowed?.Invoke() != false;
         var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
         foreach (var (listing, vouched) in Unambiguous(listings, refused))
         {
-            if (LeftOut(listing, vouched, filter, strangers, friends) is { } why) { Count(refused, why); continue; }
+            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
+            {
+                Count(refused, why);
+                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
+                continue;
+            }
             kept.Add(listing);
             if (kept.Count == count) break;
         }
@@ -221,12 +231,84 @@ public sealed partial class DirectoryService : IAsyncDisposable
         log($"Directory: search \"{filterText}\": {listings.Count} listed, {kept.Count} shown" +
             (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value} left out: {r.Key}")) + ")" : "") +
             (filter.Ignored.Count > 0 ? $"; {filter.Ignored.Count} clause(s) not applied (random window, continent)" : "") + ".");
+        LogLeftOut(leftOut);
         return answer;
     }
 
-    // Why a search leaves out a listing that is not ambiguous (vouched: its host vouches for it), or null when it is shown.
-    string? LeftOut(DirectoryListing listing, bool vouched, LobbyFilter filter, bool strangers, HashSet<ulong> friends)
+    // The browse API (BrowseApi; docs/external-launchers.md): every listing the directory has (the wire level, a slot free,
+    // worldwide, at most 50), with none of the game's filter, checked as a search checks them (Unambiguous, Valid), each
+    // with its join check (ModSync.Check). Lobbies a search would leave out stay in, with why and the setting that would
+    // let them in (JoinCheck.Fix): a stranger's while Play with strangers is off is listed as one to join after turning it
+    // on, and is not contacted. A listing under a friend's id that the friend does not vouch for is a stranger's.
+    public async Task<IReadOnlyList<BrowseLobby>> BrowseAsync()
     {
+        var query = new DirectoryQuery(LobbyService.WireLevel.ToString(CultureInfo.InvariantCulture), new Dictionary<string, string>(StringComparer.Ordinal));
+        var listings = await Listings(query);
+        var strangers = strangersAllowed?.Invoke() != false;
+        var friends = presence.Friends.Select(f => f.SteamId).ToHashSet();
+        var lobbies = new List<BrowseLobby>();
+        var refused = new Dictionary<string, int>(StringComparer.Ordinal);
+        var leftOut = new List<string>();
+        foreach (var (listing, vouched) in Unambiguous(listings, refused))
+        {
+            if (listing.Host == localId) continue;
+            var check = Check(listing);
+            if (!check.Valid || check.Record is not { } record) { Count(refused, "malformed"); continue; }
+            var friend = friends.Contains(listing.Host) && vouched;
+            var join = !strangers && !friend ? new JoinCheck(false, StrangersOff, null, []) { Fix = JoinCheck.FixStrangers }
+                : sync?.Check(listing) ?? new JoinCheck(true, "", null, []);
+            if (!join.Joinable) { Count(refused, join.Why); leftOut.Add(LeftOutLine(listing.Host, join.Why, join)); }
+            lobbies.Add(new BrowseLobby(listing.Data[DirectoryKeys.LobbyId], listing.Data[DirectoryKeys.Connection], listing.Host,
+                friend, "directory", check.Members, SquadSize(check.Max), check.Locked, check.Props, record, join));
+            if (join.Fix != JoinCheck.FixStrangers) Remember(listing); // as before: not a stranger's, with strangers off
+        }
+        var summary = $"Directory: browse: {lobbies.Count} listed, {lobbies.Count(l => l.Join.Joinable)} joinable" +
+            (refused.Count > 0 ? " (" + string.Join(", ", refused.Select(r => $"{r.Value}: {r.Key}")) + ")" : "") + ".";
+        lock (gate)
+        {
+            if (summary != lastBrowse) { lastBrowse = summary; log(summary); }
+        }
+        LogLeftOut(leftOut, browse: true);
+        return lobbies;
+    }
+
+    // Why the browse API lists a stranger's lobby as one that cannot be joined (JoinCheck.FixStrangers turns it on).
+    public const string StrangersOff = "its host is not a Steam friend, and Play with strangers is off";
+
+    // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
+    // every few seconds, and the same lines again say nothing new.
+    public const int LeftOutLines = 10, BlockersPerLine = 8;
+    string lastLeftOut = "", lastBrowseLeftOut = "", lastBrowse = "";
+
+    // browse: the browse API's lines, remembered apart from the map's searches (both run while the browser shows).
+    void LogLeftOut(List<string> lines, bool browse = false)
+    {
+        var signature = string.Join("\n", lines.Order(StringComparer.Ordinal));
+        lock (gate)
+        {
+            if (signature == (browse ? lastBrowseLeftOut : lastLeftOut)) return;
+            if (browse) lastBrowseLeftOut = signature;
+            else lastLeftOut = signature;
+        }
+        if (lines.Count == 0) return;
+        foreach (var line in lines.Take(LeftOutLines)) log((browse ? "Directory: browse: cannot join " : "Directory: left out ") + line);
+        if (lines.Count > LeftOutLines) log($"Directory: and {lines.Count - LeftOutLines} more left out.");
+    }
+
+    // One left-out lobby for the log: its host, the reason, and for a mod plan the mods in the way, each with why.
+    public static string LeftOutLine(ulong host, string why, JoinCheck? check)
+    {
+        var line = LobbyService.EntityId(host) + ": " + why;
+        if (check == null || check.Blocking.Count == 0) return line + ".";
+        var mods = check.Blocking.Take(BlockersPerLine).Select(b => $"{b.Mod.Name} {b.Mod.Version} ({b.Mod.Id}): {b.Why}");
+        var more = check.Blocking.Count > BlockersPerLine ? $", and {check.Blocking.Count - BlockersPerLine} more" : "";
+        return line + ": " + string.Join(", ", mods) + more + ".";
+    }
+
+    // Why a search leaves out a listing that is not ambiguous (vouched: its host vouches for it), or null when it is shown.
+    string? LeftOut(DirectoryListing listing, bool vouched, LobbyFilter filter, bool strangers, HashSet<ulong> friends, out JoinCheck? check)
+    {
+        check = null;
         // (Steam's search finds this machine's own listing too: counted, so "1 listed, 0 shown" never hides why)
         if (listing.Host == localId) return "this machine's own lobby";
         if (!Valid(listing, out var props, out var members, out var max, out var locked, out var malformed)) return "malformed (" + malformed + ")";
@@ -234,8 +316,9 @@ public sealed partial class DirectoryService : IAsyncDisposable
         // a friend's id on a listing their backend did not publish: a stranger's (Unambiguous)
         if (!strangers && !vouched) return "under a friend's id, not published by them (Play with strangers is off)";
         if (!filter.Matches(props, members, max, locked)) return "the game's filter";
-        if (sync != null && !sync.Joinable(listing, out var why)) return why;
-        return null;
+        if (sync == null) return null;
+        check = sync.Check(listing);
+        return check.Joinable ? null : check.Why;
     }
 
     static void Count(Dictionary<string, int> reasons, string why) => reasons[why] = reasons.GetValueOrDefault(why) + 1;
@@ -391,3 +474,8 @@ public sealed partial class DirectoryService : IAsyncDisposable
 // (ListPublic) and Play with strangers (StrangersAllowed), each on when null.
 public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bool AutoPublish = true, Func<bool>? ListPublic = null,
     Func<bool>? StrangersAllowed = null);
+
+// One lobby the browse API lists: from the directory, or a friend's lobby heard through presence (Source "friend": no
+// listing, so no mod set until a join; Join is then an empty check). Record is the lobby record as the schema rebuilt it.
+public sealed record BrowseLobby(string LobbyId, string ConnectionString, ulong Host, bool Friend, string Source, int Members, int MaxMembers,
+    bool Locked, IReadOnlyDictionary<string, string> SearchProperties, JsonObject Record, JoinCheck Join);

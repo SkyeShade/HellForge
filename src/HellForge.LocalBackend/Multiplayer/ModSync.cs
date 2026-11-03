@@ -26,7 +26,8 @@ namespace HellForge.LocalBackend.Multiplayer;
 //           SYNC view). A Steam friend's code or raw mod HellForge has not verified waits for the player's trust (TRUST on
 //           the prompt: that exact content goes on ModSettings' Trusted list); a stranger's is the player's to install, and
 //           GET IT opens a mod's web address in the player's browser. A trust a stranger's mod got from an earlier build
-//           counts only in a sandboxed session (Sandboxed). On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
+//           counts only in a sandboxed session (Sandboxed).
+//           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
 //           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
 //           stop-observation.signal), which the launcher starts again with them.
 public sealed class ModSync : IAsyncDisposable
@@ -197,6 +198,10 @@ public sealed class ModSync : IAsyncDisposable
 
     // This session's mod set as a lobby listing carries it (the wire form), its digest, and whether this player shares it.
     public string? OwnSetWire => ownWire;
+    // Lobbies whose host shares edited stats show for this session (the lobby browser's ask), whatever the Mods page says;
+    // never saved.
+    public bool ShowEditedStatsThisSession { get => Volatile.Read(ref showEditedStats); set => Volatile.Write(ref showEditedStats, value); }
+    bool showEditedStats;
     public string OwnDigest => own?.Digest ?? "none";
     public bool Sharing => Shares();
 
@@ -210,24 +215,49 @@ public sealed class ModSync : IAsyncDisposable
     // mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
     public bool Joinable(DirectoryListing listing, out string why)
     {
-        why = "";
+        var check = Check(listing);
+        why = check.Why;
+        return check.Joinable;
+    }
+
+    // The same answer with what stands in the way (DirectoryService's search log, the browse API): the plan, and the
+    // mods that keep the lobby out, each with why.
+    public JoinCheck Check(DirectoryListing listing)
+    {
         var settings = ModSettings.Read(modsFolder);
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats) { why = "its host plays with edited stats"; return false; }
-        if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return true;
-        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return true;
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats && !ShowEditedStatsThisSession)
+            return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
+        if (listing.Data.GetValueOrDefault(DirectoryKeys.Digest) == OwnDigest) return new(true, "", null, []);
+        if (DirectoryData.Unpack(DirectoryData.Get(listing.Data, DirectoryKeys.Mods)) is not { } wire) return new(true, "", null, []);
         ModSet set;
         try { set = ModSet.Parse(wire, local: false); }
-        catch (InvalidDataException) { why = "its mod list is malformed"; return false; }
-        var plan = ModSyncPlan.Make(set, listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1", own ?? new ModSet("none", []), Locator.Find, settings.Blocked,
-            Trust(listing.Host, settings, Locator));
-        why = plan.Verdict switch
+        catch (InvalidDataException) { return new(false, "its mod list is malformed", null, []); }
+        var shares = listing.Data.GetValueOrDefault(DirectoryKeys.Share) == "1";
+        var trust = Trust(listing.Host, settings, Locator);
+        var plan = ModSyncPlan.Make(set, shares, own ?? new ModSet("none", []), Locator.Find, settings.Blocked, trust);
+        var why = plan.Verdict switch
         {
             SyncVerdict.Blocked => "it runs a blocked mod",
-            SyncVerdict.Unjoinable when plan.Items.Any(i => i.Action == SyncAction.Update) => "its host runs another HellForge version",
+            SyncVerdict.Unjoinable when plan.Items.FirstOrDefault(i => i.Action == SyncAction.Update) is { } other => OtherVersion(other.Mod, own?.Mods.FirstOrDefault(m => m.Id == other.Mod.Id)),
+            SyncVerdict.Unjoinable when !trust.HostIsFriend && shares && plan.Items.Any(i => i.Action == SyncAction.Manual) =>
+                "its host's unchecked mods download only from a Steam friend",
             SyncVerdict.Unjoinable => "it needs mods installed by hand",
             _ => ""
         };
-        return plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust;
+        var blocking = plan.Items.Where(i => i.Action is SyncAction.Manual or SyncAction.Blocked or SyncAction.Update)
+            .Select(i => new JoinBlocker(i.Mod, i.Action, JoinCheck.Reason(i, shares))).ToList();
+        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set };
+    }
+
+    // Why another HellForge keeps a lobby out, and who updates: a bundled mod's version against this machine's (an older
+    // host updates; a newer one, the player). Versions that do not compare (the same, or not numbers) say neither.
+    public static string OtherVersion(ModSetEntry hostMod, ModSetEntry? mine)
+    {
+        var order = mine != null && Version.TryParse(hostMod.Version, out var theirs) && Version.TryParse(mine.Version, out var ours) ? theirs.CompareTo(ours) : 0;
+        var which = $"{hostMod.Name} {hostMod.Version}, yours {mine?.Version}";
+        return order < 0 ? $"its host runs an older HellForge ({which}): the host needs to update"
+            : order > 0 ? $"its host runs a newer HellForge ({which}): update HellForge to join"
+            : "its host runs another HellForge version";
     }
 
     // A machine this one downloads from or lets download (a stranger is let through for that: MultiplayerHost's gate).
@@ -980,3 +1010,34 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
 // Where a session's mod sync works: the session's mods folder, its run folder (the evidence folder's parent) and evidence
 // folder, and the file the next session's mods are written to (ModSyncSession).
 public sealed record ModSyncPaths(string ModsFolder, string RunDirectory, string EvidenceDirectory, string SessionFile);
+
+// A host's mod that keeps its lobby out, and why (JoinCheck.Reason).
+public sealed record JoinBlocker(ModSetEntry Mod, SyncAction Action, string Why);
+
+// Whether a listed lobby could be joined (ModSync.Check): Why is the search log's reason when it cannot, Plan the join's
+// mod plan (null when the mods match, the listing carries no set, or it was left out before planning), Blocking the mods
+// that keep it out.
+public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IReadOnlyList<JoinBlocker> Blocking)
+{
+    // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
+    public ModSet? Set { get; init; }
+
+    // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
+    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null. A stranger's
+    // unchecked mods have none: they download only from a Steam friend, whatever this machine's settings.
+    public string? Fix { get; init; }
+    public const string FixStrangers = "strangers", FixEditedStats = "editedStats";
+
+    // Why one item stands in the way: the host does not share, a stranger's unchecked mod (HellForge has not verified it,
+    // and the host sends those to Steam friends alone), a different bundled mod (another HellForge), or the player's
+    // blocklist.
+    public static string Reason(SyncItem item, bool hostShares) => item.Action switch
+    {
+        SyncAction.Blocked => "blocked",
+        SyncAction.Update => "bundled differs",
+        SyncAction.Manual when !hostShares => "share off",
+        SyncAction.Manual when item.Mod.Class == ModClass.Raw => "stranger raw data, not verified",
+        SyncAction.Manual => "stranger code, not verified",
+        _ => ModSyncPlan.ActionName(item.Action)
+    };
+}

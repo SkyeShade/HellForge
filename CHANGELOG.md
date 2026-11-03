@@ -22,6 +22,13 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
+  Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
+  (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
+  lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
+  in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
+  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  that lets them in, which you can turn on from the browser for that session.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
   gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
@@ -52,6 +59,8 @@ On `dev`, since 0.3.0-beta.
   the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
   already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
   them (#234).
+- A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
+  or you do.
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
@@ -90,6 +99,8 @@ On `dev`, since 0.3.0-beta.
 
 - In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
   it again, as if they were gone. They were kept, and they now show as saved (#234).
+- The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
+  places, a squad 4. A full squad's listing now has no free slot.
 - Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
   appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
   textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
@@ -219,6 +230,13 @@ On `dev`, since 0.3.0-beta.
 
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge
+  lobby with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information
+  terminal opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and
+  `HF_BROWSE_HIDDEN` keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and
+  `HfBrowseLobby.fix` names the setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`,
+  `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved; show the player the launcher's warning
+  before turning strangers on).
 
 ### For launcher developers
 

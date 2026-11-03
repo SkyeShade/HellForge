@@ -31,7 +31,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "icon": "images/icon.png",
   "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 16 }
 }
 ```
 
@@ -183,7 +183,7 @@ HellForge does most of this for you.
     "name": "Knight Carbine",
     "version": "1.0.0",
     "premium": ["dlc:super-citizen-edition"],
-    "code": { "dll": "knight_carbine.dll", "sdk": 15 }
+    "code": { "dll": "knight_carbine.dll", "sdk": 16 }
   }
   ```
 
@@ -218,7 +218,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 17; this HellForge provides SDK 16"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c
