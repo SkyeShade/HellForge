@@ -116,8 +116,17 @@ On `dev`, since 0.3.0-beta.
 - The first start of a new installation built the shader cache from nothing even when the normal game already had
   one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
   "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
 - During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
   closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
   inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
