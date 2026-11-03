@@ -93,6 +93,37 @@ static void LiveShortIds(uint32_t* first, uint32_t* last)
     if (!registered) { *first = LiveVanillaLastShort() + 1; *last = *first - 1; }
 }
 
+/* Whether a set-up's entity is one the change leaves out of the rows it adds (its old version's registration is kept). */
+static int LiveRowsSkip(int i) { return i < g_lcWeaponsBefore || LiveWeaponIsCarry(i); }
+
+/* Whether the component tables have a free row for each row the set-ups' entities take. A boot grows a table its
+ * entities would fill before adding them (registry_load.c GrowForPending); a running game's tables keep their slot
+ * counts, and RegisterWeapon refuses an entity whose table is full while the others go in, which would number them as no
+ * boot of these mods does. So the change refuses instead, and the restart grows the table. NULL, or "<reason>\t<why>". */
+static const char* LiveTablesCheck(char* why, size_t size)
+{
+    uint8_t* state = EntityState();
+    uint8_t* map = StatePointer(state, REG_MAP);
+    uint32_t records;
+    uint8_t* loadout = LoadoutTable(state, &records);
+    if (map == NULL || loadout == NULL) return NULL; /* not loaded: nothing is registered into them yet */
+    static uint32_t rows[GROW_COMPONENTS];
+    memset(rows, 0, sizeof rows);
+    PendingRows(map, loadout, records, rows, 2, LiveRowsSkip);
+    for (uint32_t c = 0; c < GROW_COMPONENTS; c++)
+    {
+        uint8_t* table = rows[c] != 0 ? StatePointer(state, REG_TABLES + 8 * c) : NULL;
+        uint32_t slots = SlotsOf(c);
+        if (table == NULL || slots == 0) continue; /* a component without data, or not understood: RegisterWeapon's own */
+        uint32_t used = UsedRows(table, slots);
+        if (used + rows[c] <= slots) continue;
+        snprintf(why, size, "capability\tthese mods' weapons and entities need %u row(s) in component table %u, which has %u of its %u "
+            "free; a restart grows it", rows[c], c, used < slots ? slots - used : 0, slots);
+        return why;
+    }
+    return NULL;
+}
+
 /* The network type index's width a boot of the change's mods would have against the session's. A boot sends it in 12
  * bits only when its entities need them (registry_load.c NetworkTypesToAdd), else in 11; a session keeps what its boot
  * set (a width is never narrowed, and widened only before the session has connections). A friend with these mods reads
@@ -117,6 +148,13 @@ static const char* LiveNetWidthCheck(uint32_t after, char* why, size_t size)
     return why;
 }
 
+/* After the numbering: the tables' free rows, then the network type index's width. */
+static const char* LiveRowsAndWidthCheck(uint32_t after, char* why, size_t size)
+{
+    const char* refused = LiveTablesCheck(why, size);
+    return refused != NULL ? refused : LiveNetWidthCheck(after, why, size);
+}
+
 static const char* LiveWeaponsCheck(char* why, size_t size)
 {
     for (int i = 0; i < REG_MAX_WEAPONS; i++) g_lrCarry[i] = -1;
@@ -138,7 +176,7 @@ static const char* LiveWeaponsCheck(char* why, size_t size)
             w->mod->id, w->plain ? "entity" : "weapon", w->name, i < g_lcWeaponsBefore ? "has" : "would take", has, expected);
         return why;
     }
-    return LiveNetWidthCheck(rank, why, size);
+    return LiveRowsAndWidthCheck(rank, why, size);
 }
 
 /* Once the change is made: each carried registration is the new version's, its item owned again (a mod taken out gave

@@ -447,20 +447,20 @@ static void PublishWeaponLoad(const WeaponLoad* L, int first)
 
 /* The entity a pending weapon copies, without logging (RegisterWeapon says why when it has none): through the loadout
  * record of its base's id, or its base entity; a base that is itself a pending weapon of another mod, followed to the
- * game's. 0 when there is none. */
-static const Weapon* PendingBaseWeapon(const Weapon* w)
+ * game's. 0 when there is none. Pending: `state` 0 at boot, 2 in a live change (live_registry.c). */
+static const Weapon* PendingBaseWeapon(const Weapon* w, int state)
 {
     for (int i = 0; i < g_weaponCount; i++)
     {
         const Weapon* o = &g_weapons[i];
-        if (o != w && o->state == 0 && (w->plain ? o->entity == w->baseEntity : !o->plain && o->id == w->base)) return o;
+        if (o != w && o->state == state && (w->plain ? o->entity == w->baseEntity : !o->plain && o->id == w->base)) return o;
     }
     return NULL;
 }
 
-static uint64_t PendingBase(uint8_t* loadout, uint32_t records, const Weapon* w)
+static uint64_t PendingBase(uint8_t* loadout, uint32_t records, const Weapon* w, int state)
 {
-    for (int depth = 0; depth < 8 && PendingBaseWeapon(w) != NULL; depth++) w = PendingBaseWeapon(w);
+    for (int depth = 0; depth < 8 && PendingBaseWeapon(w, state) != NULL; depth++) w = PendingBaseWeapon(w, state);
     if (w->plain) return w->baseEntity;
     uint8_t* recordsAt = loadout + (size_t)SlotsOf(REG_LOADOUT) * 16;
     for (uint32_t r = 0; r < records; r++)
@@ -474,22 +474,28 @@ static uint64_t PendingBase(uint8_t* loadout, uint32_t records, const Weapon* w)
 
 #define GROW_COMPONENTS 1024u
 
-/* The rows the pending weapons will take in each component table: one per component of its base (the loadout table's
- * only for a weapon with a loadout record of its own). */
-static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32_t* rows)
+/* One row per component of the base's map row, in its table (the loadout table's only for a weapon with a loadout record
+ * of its own). */
+static void BaseRows(const uint8_t* baseRow, int plain, uint32_t* rows)
+{
+    uint16_t* components;
+    uint64_t count;
+    memcpy(&components, baseRow + 8, 8);
+    memcpy(&count, baseRow + 16, 8);
+    for (uint64_t k = 0; k < count; k++)
+        if (components[k] < GROW_COMPONENTS && (components[k] != REG_LOADOUT || !plain)) rows[components[k]]++;
+}
+
+/* The rows the pending weapons (`state`, as PendingBase; `skip`, when set, leaves some out) will take in each component
+ * table: one per component of its base (BaseRows). */
+static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32_t* rows, int state, int (*skip)(int))
 {
     for (int i = 0; i < g_weaponCount; i++)
     {
         const Weapon* w = &g_weapons[i];
-        uint64_t base = w->state == 0 ? PendingBase(loadout, records, w) : 0;
+        uint64_t base = w->state == state && (skip == NULL || !skip(i)) ? PendingBase(loadout, records, w, state) : 0;
         uint8_t* baseRow = base != 0 ? FindRow(map, REG_MAP_SLOTS, 32, base) : NULL;
-        if (baseRow == NULL) continue;
-        uint16_t* components;
-        uint64_t count;
-        memcpy(&components, baseRow + 8, 8);
-        memcpy(&count, baseRow + 16, 8);
-        for (uint64_t k = 0; k < count; k++)
-            if (components[k] < GROW_COMPONENTS && (components[k] != REG_LOADOUT || !w->plain)) rows[components[k]]++;
+        if (baseRow != NULL) BaseRows(baseRow, w->plain, rows);
     }
 }
 
@@ -499,7 +505,7 @@ static void GrowForPending(uint8_t* state, uint8_t* map, uint8_t* loadout, uint3
 {
     static uint32_t rows[GROW_COMPONENTS];
     memset(rows, 0, sizeof rows);
-    PendingRows(map, loadout, records, rows);
+    PendingRows(map, loadout, records, rows, 0, NULL);
     for (size_t i = 0; i < sizeof kGrowthTables / sizeof kGrowthTables[0]; i++)
     {
         uint32_t c = kGrowthTables[i].component, slots = SlotsOf(c);

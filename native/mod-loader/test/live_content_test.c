@@ -676,7 +676,28 @@ static void ContentWeaponsFixture(void)
         carried.items.items[0].mixId == g_weapons[1].id && carried.items.items[0].baseMixId == g_weapons[1].base && !carried.items.items[0].take);
     g_weapons[1].plain = plain;
     g_lcWeaponsBefore = before;
-    printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 3 refusals\n");
+    /* a component table with no free row for a new entity that numbers right: refused, nothing registered (a boot grows
+     * the table first; a running game's keeps its size); with a row free, the same change goes in */
+    static uint8_t filled[2008];
+    for (uint32_t i = 0; i < 2008; i++)
+    {
+        uint64_t key;
+        memcpy(&key, behaviours + (size_t)i * 16, 8);
+        filled[i] = key == 0;
+        key = 0xF000000000000000ull + i;
+        if (filled[i]) memcpy(behaviours + (size_t)i * 16, &key, 8);
+    }
+    char last[32];
+    ContentEntityName("z", first > second ? first : second, 0, last);
+    HfMod* z = ContentMod("z");
+    ContentChange(NULL, z);
+    assert(ContentEntity(z, base, last) != 0 && !ContentCommit() && g_weaponCount == 2 && g_regListCount == 3);
+    for (uint32_t i = 0; i < 2008; i++) if (filled[i]) memset(behaviours + (size_t)i * 16, 0, 8);
+    HfMod* z2 = ContentMod("z");
+    ContentChange(NULL, z2);
+    uint64_t third = ContentEntity(z2, base, last);
+    assert(third != 0 && ContentCommit() && g_weaponCount == 3 && g_weapons[2].shortId == 80 && FindRow(behaviours, 2008, 16, third) != NULL);
+    printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 4 refusals (one a full component table)\n");
 
     memset(g_lcTomb, 0, sizeof g_lcTomb);
     g_weaponCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regListCount = 0; g_ownedCount = 0;
