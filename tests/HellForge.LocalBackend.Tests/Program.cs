@@ -243,10 +243,12 @@ try
         var granted = inventory.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("mixId").GetUInt32()).ToArray();
         Check(granted.Length > 0 && granted.All(catalogue.Contains), "Template grants an item outside the catalogue: " + template);
         // Three weapons, the onboarding chain's required item and its nine unlock rewards, the two stratagems every
-        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9) and level 1's unlock item.
-        Check(template != "starter" || granted.Length == 3 + 10 + 3, "Starter kit is not three weapons, the onboarding unlocks, the two standard stratagems and level 1.");
+        // account owns (Orbital Precision Strike, MG-43 Machine Gun; GitHub issue 9), level 1's unlock item and the six ship
+        // module tracks' required items.
+        Check(template != "starter" || granted.Length == 3 + 10 + 9, "Starter kit is not three weapons, the onboarding unlocks, the two standard stratagems, level 1 and the ship module tracks.");
         Check(granted.Contains(1497469599u) && granted.Contains(3787370254u), "A new profile lacks Orbital Precision Strike or the MG-43: " + template);
         Check(granted.Contains(0xF96CE664u), "A new profile has level 1 locked (no 0xF96CE664): " + template);
+        Check(granted.Contains(0xCD183602u) && granted.Contains(0xE0623D4Cu), "A new profile has no ship module tracks: " + template);
         Check(templated.TryGetResponse("/Progression", out var templatedProgression) &&
             templatedProgression.GetProperty("packageProgress").EnumerateArray().Any(entry => entry.GetProperty("level").GetInt32() == 9),
             "Template lacks the completed tutorial chain: " + template);
