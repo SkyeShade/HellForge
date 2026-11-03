@@ -207,7 +207,7 @@ static const uint8_t kSpreadReferenceStub[24] = {
  * registered more destructibles than the world's destruction-record map holds ([game + 0x346D528] + 0xC5F48, 0x8000
  * slots set at 0x13DF877; its records at +0xC5F78) and ended the game as the mission launched. A full table now skips
  * the entry and counts it (DifficultyWatch logs the count): that destructible has no record lookup instead of the game
- * ending. A table with room is unchanged. The map cannot simply grow: its storage is inline, followed by another table. */
+ * ending. A table with room is unchanged. On a larger map the map also has twice the slots (InstallRecordMap). */
 #define DIF_HASH_INSERT_END 0x172F7F2u
 static const uint8_t kHashInsertEndPin[12] = {0x89, 0x71, 0x04, 0x48, 0x8B, 0x74, 0x24, 0x10, 0x44, 0x89, 0x09, 0xC3};
 static const uint8_t kHashInsertEndStub[26] = {
@@ -217,6 +217,59 @@ static const uint8_t kHashInsertEndStub[26] = {
     0x89, 0x71, 0x04, 0x44, 0x89, 0x09,                               /* 14 mov [rcx+4], esi; mov [rcx], r9d */
     0x48, 0x8B, 0x74, 0x24, 0x10, 0xC3};                              /* 20 mov rsi, [rsp+0x10]; ret */
 static volatile LONG* g_hashFullCount;
+/* The destruction-record map's slots: 0x8000 inline at +0x5F48, followed by another table, but every reader (0x13E0200's
+ * static registration, the hash insert, ~40 lookups and clears) goes through its slot pointer (+0xC5F48) and count
+ * (+0xC5F50, mask count - 1), and only its setup (0x13DF7D0) writes them. A 2 x city map with its streets dressed to the
+ * border needed ~33300 slots, and the destructibles registered last (objective and outpost props) were left without a
+ * record and missing in the world. On a larger map the setup now gives the map 0x10000 slots of its own, one buffer per
+ * map address (DIF_RECORD_MAPS of them, reused when the game sets the same map up again); past them it keeps 0x8000. */
+#define DIF_RECORD_SETUP 0x13DF870u /* lea rax, [rbx+0x5f48]; mov qword [rbx+0xc5f50], 0x8000; mov [rbx+0xc5f48], rax */
+#define DIF_RECORD_SETUP_BACK 0x13DF889u
+#define DIF_RECORD_SLOTS 0x10000u
+#define DIF_RECORD_MAPS 8
+static const uint8_t kRecordSetupPin[25] = {0x48, 0x8D, 0x83, 0x48, 0x5F, 0x00, 0x00, 0x48, 0xC7, 0x83, 0x50, 0x5F, 0x0C, 0x00,
+    0x00, 0x80, 0x00, 0x00, 0x48, 0x89, 0x83, 0x48, 0x5F, 0x0C, 0x00};
+/* rsp is 16-aligned here (the setup called 0x208AAA0 just before) and the volatile registers are dead (the loop after
+ * reloads them): RecordMapPlaced(rbx), then back. */
+static const uint8_t kRecordSetupStub[30] = {
+    0x48, 0x83, 0xEC, 0x20,                                           /*  0 sub rsp, 0x20 */
+    0x48, 0x89, 0xD9,                                                 /*  4 mov rcx, rbx (the map's owner) */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /*  7 mov rax, RecordMapPlaced (imm64 at 9) */
+    0xFF, 0xD0,                                                       /* 17 call rax */
+    0x48, 0x83, 0xC4, 0x20,                                           /* 19 add rsp, 0x20 */
+    0xE9, 0, 0, 0, 0,                                                 /* 23 jmp 0x13DF889 (rel32 at 24) */
+    0xCC, 0xCC};
+static SRWLOCK g_recordLock = SRWLOCK_INIT;
+static struct { uint8_t* owner; uint64_t* slots; uint32_t setup; } g_recordMaps[DIF_RECORD_MAPS];
+static uint32_t g_recordSetups;
+static volatile LONG g_recordKept; /* setups left at 0x8000 (no memory) */
+
+/* The map's slots and their count (the qword also clears +0xC5F54, the empty key, as the game's does): the owner's own
+ * buffer, else a free one, else the one set up longest ago (a map the game has long let go). */
+static void RecordMapPlaced(uint8_t* owner)
+{
+    AcquireSRWLockExclusive(&g_recordLock);
+    int at = -1;
+    for (int i = 0; i < DIF_RECORD_MAPS && at < 0; i++)
+        if (g_recordMaps[i].owner == owner) at = i;
+    for (int i = 0; i < DIF_RECORD_MAPS && at < 0; i++)
+        if (g_recordMaps[i].owner == NULL) at = i;
+    if (at < 0)
+    {
+        at = 0;
+        for (int i = 1; i < DIF_RECORD_MAPS; i++)
+            if (g_recordMaps[i].setup < g_recordMaps[at].setup) at = i;
+    }
+    if (g_recordMaps[at].slots == NULL)
+        g_recordMaps[at].slots = (uint64_t*)VirtualAlloc(NULL, DIF_RECORD_SLOTS * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint64_t* slots = g_recordMaps[at].slots;
+    if (slots != NULL) { g_recordMaps[at].owner = owner; g_recordMaps[at].setup = ++g_recordSetups; }
+    ReleaseSRWLockExclusive(&g_recordLock);
+    uint64_t count = DIF_RECORD_SLOTS;
+    if (slots == NULL) { slots = (uint64_t*)(owner + 0x5F48); count = 0x8000u; InterlockedIncrement(&g_recordKept); }
+    *(uint64_t*)(owner + 0xC5F50) = count;
+    *(uint64_t**)(owner + 0xC5F48) = slots;
+}
 /* The height zones (force_flatten_zones, 0xF4C100, pass op 0x3E): each group of connected cells whose type sets a height
  * (+0x208) gets an entry of a 16-entry table on the stack (rbp+0x60, 12 bytes each, unchecked), and the second loop
  * flattens every zone cell to its group's height (0xF4C3E6). Level 10 stays below 16; a 2 x map made more and the stack
@@ -603,6 +656,38 @@ static const char* InstallHashInsertGuard(DifficultyInstall* d)
     uint8_t insertJump[12] = {0xE9, 0, 0, 0, 0, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
     int32_t rel = DifficultyJumpRel(game + DIF_HASH_INSERT_END, (uintptr_t)insertEnd); memcpy(insertJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_HASH_INSERT_END, insertJump, 12)) return "the game's hash insert could not be guarded";
+    return NULL;
+}
+
+static const char* RecordMapFailed(uintptr_t game)
+{
+    if (!LargerMaps()) return NULL;
+    uint8_t setup[sizeof kRecordSetupPin];
+    if (SafeRead(game + DIF_RECORD_SETUP, setup, sizeof setup) || memcmp(setup, kRecordSetupPin, sizeof setup) != 0)
+        return "the destruction-record map's setup is not the reviewed one (a map_scale above 1 needs it)";
+    return NULL;
+}
+
+/* A larger map's destruction-record map set up with 0x10000 slots, through its own stub. */
+static const char* InstallRecordMap(DifficultyInstall* d)
+{
+    if (!LargerMaps()) return NULL;
+    uintptr_t game = d->game;
+    uint8_t* stub = AllocateNearGame(game, 0x1000);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the destruction-record map";
+    memcpy(stub, kRecordSetupStub, sizeof kRecordSetupStub);
+    uint64_t placed = (uint64_t)(uintptr_t)RecordMapPlaced;
+    memcpy(stub + 9, &placed, 8);
+    int32_t rel = (int32_t)(game + DIF_RECORD_SETUP_BACK - (uintptr_t)(stub + 28)); memcpy(stub + 24, &rel, 4);
+    DWORD protect;
+    if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the destruction-record map's stub could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x1000);
+    uint8_t jump[25];
+    memset(jump, 0xCC, sizeof jump);
+    jump[0] = 0xE9;
+    rel = (int32_t)((uintptr_t)stub - (game + DIF_RECORD_SETUP + 5)); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + DIF_RECORD_SETUP, jump, sizeof jump)) return "the destruction-record map could not be enlarged";
+    Note("difficulty: the destruction-record map has %u slots on larger maps (level 10's 32768 filled up on cities)", DIF_RECORD_SLOTS);
     return NULL;
 }
 

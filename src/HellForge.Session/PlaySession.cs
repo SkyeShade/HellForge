@@ -41,10 +41,17 @@ sealed partial class PlaySession(PlayOptions options)
     string[] erlBefore = [];
     FileStream? lease;
     HostBoundedProcess? job;
+    SessionEndSignal? endSignal; // SDK 16: the mods hear the session's end before a stop takes the game down
+    // The backend and the broker end with this runner, however it ends (HelperJob).
+    readonly HelperJob helpers = new();
     Process? server, broker;
+    // The controllers Steam Input handles, as the broker last logged them (SteamInputNote; set on its log's thread), and
+    // the list result.json has.
+    IReadOnlyList<int>? steamInput, steamInputRecorded;
     nint lowToken;
     Thread? applier;
     DateTime? gameStarted;
+    WindowsCrash.Record? windowsCrash;
     TextWriter? log;
     // Whether this session asked Steam itself (Ownership): its second check then does too.
     bool fullOwnershipCheckRan;
@@ -124,6 +131,7 @@ sealed partial class PlaySession(PlayOptions options)
     void InitializeResult(string runId)
     {
         log = new StreamWriter(Path.Combine(run, "session.log"), append: true, new UTF8Encoding(false));
+        Say(LogHeader.Line(DateTimeOffset.Now, utcTimes: false));
         result["runId"] = runId;
         result["status"] = "preparing";
         result["sandboxed"] = options.Sandbox;
@@ -198,6 +206,11 @@ sealed partial class PlaySession(PlayOptions options)
             foreach (var line in facts.Lines()) Say(line);
         }
         catch (Exception error) { Say("Session facts not recorded: " + error.Message); }
+        // Smart App Control blocks unsigned programs and DLLs, HellForge's among them (SmartAppControl): a report says
+        // whether it was on.
+        var appControl = SmartAppControl.Current;
+        result["smartAppControl"] = SmartAppControl.Describe(appControl);
+        if (appControl != SmartAppControlState.NotPresent) Say("Smart App Control: " + SmartAppControl.Describe(appControl));
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
@@ -404,6 +417,7 @@ sealed partial class PlaySession(PlayOptions options)
         // settings and saves and the shader cache go in now and come back once the game is gone.
         string[] prepare = ["prepare-session", "--install", install.Root, "--profile", profileName];
         if (fullVerify) prepare = [.. prepare, "--verify-all", "yes"];
+        RecordShaderCacheAtStart();
         if (options.Sandbox)
         {
             var copiedIn = SandboxFolders.Copy(install.UserData, SandboxUserData, SandboxFolders.UserDataParts(profileName));
@@ -435,6 +449,31 @@ sealed partial class PlaySession(PlayOptions options)
             result["installedDllSha256"] = Tools.Sha256(Path.Combine(normal, "data", "game", "game.dll"));
         }
         profileDirectoryUsed = profileDirectory;
+    }
+
+    // The shader cache the game starts with (ShaderCache): an installation without one first takes the normal game's.
+    // Recorded for Save logs (a slow start with a cache, or a cache that never grows, is a bug), and for the launcher to
+    // say the game is building it. A cache that cannot be read or seeded does not stop the session.
+    void RecordShaderCacheAtStart()
+    {
+        var cache = new JsonObject();
+        result["shaderCache"] = cache;
+        try
+        {
+            if (ShaderCache.Seed(install.UserData, GameSettings.VanillaUserData()) is { } seeded)
+            {
+                cache["seededFromGame"] = new JsonObject { ["files"] = seeded.Files, ["bytes"] = seeded.Bytes, ["skipped"] = seeded.Skipped };
+                Say($"Shader cache: started from the normal game's ({seeded.Bytes / (1024.0 * 1024):0.0} MB).");
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { cache["seedError"] = error.Message; }
+        try
+        {
+            var start = ShaderCache.Read(install.UserData);
+            cache["atStart"] = start.ToJson();
+            if (start.Empty) Say("Shader cache: none yet. The game builds it on this start, behind a black screen for a few minutes.");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { cache["readError"] = error.Message; }
     }
 
     // The session's mods, each with its version and content hash, for a bug report to say exactly which mods ran.
@@ -940,7 +979,7 @@ sealed partial class PlaySession(PlayOptions options)
     }
 
     // Starts the copied game in its job (low-integrity and brokered when sandboxed), then resumes it after the status is
-    // saved.
+    // saved; sandboxed, once the broker has Steam and waits for the game (WaitForBroker).
     void LaunchGame()
     {
         // The engine's own --log-to-file switch (its console log); whatever .log files it writes are copied at the end.
@@ -970,38 +1009,22 @@ sealed partial class PlaySession(PlayOptions options)
             Environment.SetEnvironmentVariable("HELLFORGE_SANDBOX_STATS", sandboxStats);
             lowToken = LowIntegrityHelper.CreateLowToken();
             result["sandbox"] = true;
+            SetUpOverlayProbe();
         }
-        job = new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
-            Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken);
+        job = Tools.Starting(exe, () => new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
+            Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken));
         result["gamePid"] = job.Process.Id;
+        // made before the game runs, so the mod loader finds them as it starts (native/mod-loader/mod_status.c)
+        Try("sessionEndSignalError", () => endSignal = SessionEndSignal.Create(job.Process.Id));
         result["gameLaunched"] = true;
-        if (options.Sandbox) StartBroker(bridgeSuffix!);
+        if (options.Sandbox)
+        {
+            StartBroker(bridgeSuffix!);
+            WaitForBroker();
+        }
         result["status"] = "patching";
         Save();
         job.Resume();
-    }
-
-    void StartBroker(string bridgeSuffix)
-    {
-        var brokerExe = Path.Combine(Shims, "hellforge_steam_broker.exe");
-        // Pinned like the stand-ins: the broker runs at the player's integrity and loads Valve's DLL for the game.
-        var brokerPin = (string?)Tools.ReadJson(Path.Combine(Shims, "build.json"))?["steamBroker"];
-        if (!File.Exists(brokerExe) || brokerPin == null) throw new SessionFailure("The Steam broker is missing; reinstall HellForge.");
-        if (!Tools.Sha256(brokerExe).Equals(brokerPin, StringComparison.OrdinalIgnoreCase)) throw new SessionFailure("The Steam broker changed since it was built; reinstall HellForge.");
-        var brokerStart = new ProcessStartInfo(brokerExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
-        brokerStart.ArgumentList.Add(bridgeSuffix);
-        brokerStart.ArgumentList.Add(job!.Process.Id.ToString());
-        brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(copy, "bin", CloudReal)));
-        // Play with strangers, which the broker reads as the backend does: off, the game's Public Steam lobby is Friends only
-        brokerStart.ArgumentList.Add(Path.GetFullPath(install.Mods));
-        // the backend's co-op peers (MultiplayerHost.PeersFile), the only Steam users the game's P2P reaches: in the
-        // backend's folder, which the low-integrity game cannot write
-        brokerStart.ArgumentList.Add(Path.GetFullPath(Path.Combine(run, "backend", "p2p-peers.txt")));
-        broker = Process.Start(brokerStart) ?? throw new SessionFailure("The Steam broker did not start.");
-        var brokerLog = new StreamWriter(Path.Combine(run, "steam-broker.log")) { AutoFlush = true };
-        broker.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (brokerLog) brokerLog.WriteLine(e.Data); };
-        broker.BeginErrorReadLine();
-        result["brokerPid"] = broker.Id;
     }
 
     // The memory-only launch edits on the running game: the PlayFab redirect, the native mod applier, the early
@@ -1036,42 +1059,62 @@ sealed partial class PlaySession(PlayOptions options)
         HellForgeHostEarlyResult experiment;
         try { experiment = HellForgeHostEarlyConstructorExperiment.ApplySteamGame(job!.Process.Id, job.Process.StartTime.Ticks, "SkipConstructorAndMainCheck"); }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
-        { throw new SessionFailure("The game could not be prepared for the local backend." + (Debug ? " " + error.Message : "")); }
+        { throw new SessionFailure(GameClosed(LaunchFailure.Prepare) ?? "The game could not be prepared for the local backend." + (Debug ? " " + error.Message : "")); }
         if (Debug) File.WriteAllText(Path.Combine(run, "launch-step-1.json"), JsonSerializer.Serialize(experiment, SessionJson.Default.HellForgeHostEarlyResult));
+        result["prepare"] = new JsonObject { ["outcome"] = experiment.Outcome, ["waitedMilliseconds"] = experiment.ElapsedMilliseconds };
         var startupReady = experiment.Written && experiment.MainCheckWritten && experiment.LaterStatusWritten && experiment.ReadbackMatched;
         if (experiment.Outcome != "applied_at_candidate_boundary" || !startupReady)
-            throw new SessionFailure("The game could not be prepared for the local backend" + ExitNote() + ".");
+            throw new SessionFailure(GameClosed(LaunchFailure.Prepare) ?? "The game could not be prepared for the local backend.");
     }
 
     // The memory-only routing edit: the game's backend selection points at the loopback backend (HellForgeLocalRoutingPatch).
+    // How it ended is kept: the outcome, how long it waited, and when game.dll appeared (-1: never).
     void ApplyRouting()
     {
         HellForgeLocalRoutingResult routing;
         try { routing = HellForgeLocalRoutingPatch.Apply(job!.Process.Id, job.Process.StartTime.Ticks, exe, gameDll, (string)result["backendOrigin"]!, 45000, false); }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
-        { throw new SessionFailure("The game could not be connected to the local backend." + (Debug ? " " + error.Message : "")); }
+        { throw new SessionFailure(GameClosed(LaunchFailure.Connect) ?? "The game could not be connected to the local backend." + (Debug ? " " + error.Message : "")); }
         if (Debug) File.WriteAllText(Path.Combine(run, "launch-step-2.json"), JsonSerializer.Serialize(routing, SessionJson.Default.HellForgeLocalRoutingResult));
+        result["connect"] = new JsonObject
+        {
+            ["outcome"] = routing.Outcome, ["waitedMilliseconds"] = routing.ElapsedMilliseconds, ["gameDllSeenMilliseconds"] = routing.ModuleSeenMilliseconds
+        };
         var backendReady = routing.Outcome == "applied" && routing.ReadbackMatched;
-        if (!backendReady) throw new SessionFailure("The game could not be connected to the local backend." + (Debug ? " (" + routing.Outcome + ")" : ""));
+        if (!backendReady) throw new SessionFailure(GameClosed(LaunchFailure.Connect) ?? LaunchFailure.NotConnected(routing.Outcome));
     }
 
-    // The game sometimes quits before the launch is prepared; its exit code names why, for the player (" (...)", or "").
-    string ExitNote()
+    // The game sometimes closes before the launch is prepared: then why `step` was not made, for the player
+    // (LaunchFailure.Closed), with its exit code and Windows' record of a crash kept in the result. Null while it runs.
+    string? GameClosed(string step)
     {
         try
         {
             job!.Process.Refresh();
-            if (job.Process.HasExited)
-            {
-                var code = job.Process.ExitCode;
-                result["gameExitCode"] = $"0x{code:X8}";
-                var meaning = Tools.ExitMeaning(code);
-                return $" (the game exited with 0x{code:X8}{(meaning.Length > 0 ? ": " + meaning : "")})";
-            }
+            if (!job.Process.HasExited) return null;
         }
-        catch (InvalidOperationException) { }
-        return "";
+        catch (InvalidOperationException) { return null; }
+        var code = job.Process.ExitCode;
+        result["gameExitCode"] = $"0x{code:X8}";
+        var crash = RecordWindowsCrash(code);
+        var closed = LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
+        return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? closed + " " + warning : closed;
     }
+
+    // Windows' record of the game's crash (WindowsCrash), looked up once for an exit code that may be one: kept in the
+    // result (windowsCrash, "none" when Windows has none) and said in the log.
+    WindowsCrash.Record? RecordWindowsCrash(int code)
+    {
+        if (result["windowsCrash"] != null || !WindowsCrash.IsCrash(code) || gameStarted is not { } started) return windowsCrash;
+        windowsCrash = WindowsCrash.Find(job!.Process.Id, started.AddSeconds(-5), TimeSpan.FromSeconds(2));
+        result["windowsCrash"] = windowsCrash == null ? "none" : WindowsCrash.ToJson(windowsCrash, CrashOwner(windowsCrash));
+        if (windowsCrash != null) Say($"Windows recorded the game's crash: {windowsCrash.Code} in {windowsCrash.Module}+{windowsCrash.Offset} ({windowsCrash.ModulePath}).");
+        return windowsCrash;
+    }
+
+    WindowsCrash.Owner CrashOwner(WindowsCrash.Record crash) =>
+        WindowsCrash.OwnerOf(crash, install.Root, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
 
     // The verified original is held open read-only: released, saved, the stand-in put in its place and held the same way.
     // The Steam stand-in keeps the original next to it (real), where it forwards Steam's API.
@@ -1111,7 +1154,9 @@ sealed partial class PlaySession(PlayOptions options)
         // The block permits only this port, so the backend has no other: say so when another program holds it.
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
             throw new SessionFailure($"Port {install.BackendPort}, HellForge's backend port, is used by another program on this PC. Close it and start again.");
-        server = Process.Start(start) ?? throw new SessionFailure("The local backend did not start.");
+        server = Tools.Starting(backend, () => Process.Start(start)) ?? throw new SessionFailure("The local backend did not start.");
+        helpers.Add(server);
+        if (helpers.Error != null) result["helperJobError"] = helpers.Error;
         var stdout = new StreamWriter(Path.Combine(run, "backend-stdout.txt")) { AutoFlush = true };
         var stderr = new StreamWriter(Path.Combine(run, "backend-stderr.txt")) { AutoFlush = true };
         server.OutputDataReceived += (_, e) => { if (e.Data != null) lock (stdout) stdout.WriteLine(Privacy.Scrub(e.Data)); };

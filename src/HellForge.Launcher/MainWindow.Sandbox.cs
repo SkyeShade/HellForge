@@ -20,7 +20,9 @@ public partial class MainWindow
         {
             if (updatingSandboxUi) return;
             ProfileStore.SaveSandbox(paths, SandboxBox.IsChecked == true);
+            // the Linux settings apply the stranger default too
             if (linux && paths.InstallRoot != null) ApplyLinuxSandboxSettings(new InstallLayout(paths.InstallRoot));
+            else ApplyStrangersSetting();
         };
         if (linux && paths.InstallRoot != null)
         {
@@ -59,6 +61,8 @@ public partial class MainWindow
             SandboxLinuxNote.Text = note;
         }
         finally { updatingSandboxUi = false; }
+        // a self-test that passed or failed since changes the switch, and with it the stranger default
+        ApplyStrangersSetting();
     }
 
     // The result is bound to the app build and kernel. Run it once when either changed, not on every start after a current

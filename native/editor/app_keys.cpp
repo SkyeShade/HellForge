@@ -136,6 +136,7 @@ static bool CommonKeys(bool ctrl, bool shift)
     if ((Pressed(ImGuiKey_Tab) && shift) || ImGui::IsKeyPressed(ImGuiKey_F6, false)) { NextView(1); Sound(sounds::CLICK); return true; }
     if (ctrl && Pressed(ImGuiKey_F)) { g_view = BROWSE; g_search.active = true; g_focus = OBJECTS; return true; }
     if (ctrl && Pressed(ImGuiKey_E)) { g_view = CHANGES; return true; }
+    if (ctrl && Pressed(ImGuiKey_L)) { OpenLobbies("Ctrl+L in the window"); return true; }
     return false;
 }
 
@@ -305,14 +306,15 @@ static void ViewKeys(const std::vector<std::string>& chars, bool ctrl, bool shif
     }
 }
 
-/* This frame's keys (the characters typed are taken from ImGui's queue every frame): to mod sync's dialog, the errors
- * popup, the picker, the value being typed or BROWSE's search box when one is up, else the views'. */
+/* This frame's keys (the characters typed are taken from ImGui's queue every frame): to mod sync's dialog, the lobby
+ * browser, the errors popup, the picker, the value being typed or BROWSE's search box when one is up, else the views'. */
 void HandleKeys()
 {
     ImGuiIO& io = ImGui::GetIO();
     bool ctrl = io.KeyCtrl, shift = io.KeyShift;
     auto chars = Chars();
     if (g_sync.on) { SyncKeys(); return; }
+    if (g_lobbies.on) { LobbyKeys(); return; }
     if (g_errorsPopup.on) { ErrorsKeys(); return; }
     if (g_picker.on) { PickerKeys(chars, ctrl); return; }
     if (g_edit.on) { EditKeys(chars); return; }

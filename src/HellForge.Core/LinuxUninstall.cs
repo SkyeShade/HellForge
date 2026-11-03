@@ -272,7 +272,7 @@ public static class LinuxUninstall
     }
 
     // Builds the list the confirmation shows and the removal uses. A path that is a link, is outside its folder, or cannot
-    // be read is left and named, not followed. Steam is searched only in its four content folders and its steamapps trees.
+    // be read is left and named, not followed. Steam is searched only in its five content folders and its steamapps trees.
     // Its download and state files are removed only when removeSteam is set, the separate box on the confirmation.
     public static LinuxUninstallPlan Plan(InstallLayout install, SupportedBuild build, LinuxUninstallLocations locations,
         string? steamRoot, string logPath, bool removeSteam = false)

@@ -66,17 +66,18 @@ static class LinuxUninstallTests
             check(!LinuxUninstall.OldMenuEntryBelongs(menu.Replace("\" run", "\" status"), command), "Other Exec accepted.");
         });
 
-        test("Steam's uninstall paths cover its four content folders and its state patch names", () =>
+        test("Steam's uninstall paths cover its five content folders and its state patch names", () =>
         {
             var build = SupportedBuild.Current;
             var steam = Path.Combine(root, "linux-uninstall-steam-paths");
             var folders = SteamDepotDownload.ContentFolders(steam, build);
-            check(folders.Count == 4, "Wrong number of content folders.");
+            check(folders.Count == 5, "Wrong number of content folders.");
             check(folders[0] == Path.Combine(steam, "steamapps", "content", "app_" + build.AppId), "Usual folder.");
             check(folders[1] == Path.Combine(steam, "ubuntu12_32", "steamapps", "content", "app_" + build.AppId), "ubuntu12_32 folder.");
             check(folders[2] == Path.Combine(steam, "ubuntu12_64", "steamapps", "content", "app_" + build.AppId), "ubuntu12_64 folder.");
             check(folders[3] == Path.Combine(steam, "steamrt64", "steamapps", "content", "app_" + build.AppId), "steamrt64 folder.");
-            check(SteamDepotDownload.SteamAppsFolders(steam).Count == 4, "Wrong number of steamapps folders.");
+            check(folders[4] == Path.Combine(steam, "linux32", "steamapps", "content", "app_" + build.AppId), "SteamCMD's linux32 folder.");
+            check(SteamDepotDownload.SteamAppsFolders(steam).Count == 5, "Wrong number of steamapps folders.");
             check(LinuxUninstall.StatePatchName(Path.Combine(steam, "state_" + build.AppId + "_1.patch"), build.AppId), "State patch rejected.");
             check(!LinuxUninstall.StatePatchName(Path.Combine(steam, "state_1_" + build.AppId + ".patch"), build.AppId), "Other app accepted.");
             check(LinuxUninstall.Within(steam, Path.Combine(steam, "steamapps", "content")), "Inside Steam rejected.");

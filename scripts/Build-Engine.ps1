@@ -197,7 +197,7 @@ if($bridge){
     & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -DHELLFORGE_BRIDGE_BUILD -I (Join-Path $minHook 'include') `
         -I $steamCloud -I $gen $cloudSource @cloudSources @bridgeStandIn @minHookSources (Join-Path $gen 'steam_api64_bridge.def') -ladvapi32 -o (Join-Path $out 'steam_api64_bridge.dll')
     if($LASTEXITCODE){throw 'Compiling the bridge build of steam_api64.dll failed.'}
-    $brokerSources=@($bridgeSources)+@((Join-Path $steamCloud 'broker_bridge.c'),(Join-Path $steamCloud 'broker_lobby.c'),(Join-Path $gen 'broker_dispatch_gen.c'))
+    $brokerSources=@($bridgeSources)+@((Join-Path $steamCloud 'broker_bridge.c'),(Join-Path $steamCloud 'broker_lobby.c'),(Join-Path $steamCloud 'broker_input.c'),(Join-Path $gen 'broker_dispatch_gen.c'))
     & $zig cc -target x86_64-windows-gnu -municode -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $steamCloud -I $gen (Join-Path $steamCloud 'hellforge_steam_broker.c') `
         @brokerSources -ladvapi32 -lws2_32 -o (Join-Path $out 'hellforge_steam_broker.exe')
     if($LASTEXITCODE){throw 'Compiling hellforge_steam_broker.exe failed.'}
@@ -224,7 +224,7 @@ New-Item -ItemType Directory $testOut -Force|Out-Null
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $testOut 'stats_test.exe')
 if($LASTEXITCODE){throw 'Compiling the stats fixture failed.'}
 if(-not $SkipSmoke){& (Join-Path $testOut 'stats_test.exe');if($LASTEXITCODE){throw 'Stats fixture failed.'}}
-& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/net_gate_test.c') -lws2_32 `
+& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/net_gate_test.c') -lws2_32 -ladvapi32 `
     -o (Join-Path $testOut 'net_gate_test.exe')
 if($LASTEXITCODE){throw 'Compiling the network gate test failed.'}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/common/test/privacy_test.c') -o (Join-Path $testOut 'privacy_test.exe')
@@ -233,6 +233,8 @@ if(-not $SkipSmoke){
     & (Join-Path $testOut 'privacy_test.exe')|Out-Null;if($LASTEXITCODE){throw 'Log privacy test failed: native logs name the PC.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-census.jsonl');if($LASTEXITCODE){throw 'Network gate test failed.'}
     & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-dns.jsonl') 'dns';if($LASTEXITCODE){throw 'Network gate group filter test failed.'}
+    & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-default.jsonl') 'default';if($LASTEXITCODE){throw 'Network gate default groups test failed.'}
+    & (Join-Path $testOut 'net_gate_test.exe') (Join-Path $out 'steam_api64.dll') (Join-Path $testOut 'net-gate-sandbox.jsonl') 'sandbox-default';if($LASTEXITCODE){throw 'Network gate sandbox default test failed.'}
     # The WFP block tool with no arguments prints usage and exits 2: a check it built and starts (install/uninstall
     # need administrator rights, so the round trip is tested by hand, not here).
     & (Join-Path $out 'hellforge_wfp.exe')|Out-Null;if($LASTEXITCODE -ne 2){throw 'Network block tool did not start.'}
@@ -271,7 +273,8 @@ if($SteamApi){
         & $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $steamCloud 'test/fake_valve.c') -o (Join-Path $bridgeTest 'fake_valve.dll')
         if($LASTEXITCODE){throw 'Compiling the fake Valve DLL failed.'}
         & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter -I $steamCloud -I $gen (Join-Path $steamCloud 'test/bridge_test.c') `
-            @bridgeSources (Join-Path $steamCloud 'broker_bridge.c') (Join-Path $steamCloud 'broker_lobby.c') (Join-Path $gen 'broker_dispatch_gen.c') -ladvapi32 -lws2_32 -o (Join-Path $testOut 'bridge_test.exe')
+            @bridgeSources (Join-Path $steamCloud 'broker_bridge.c') (Join-Path $steamCloud 'broker_lobby.c') (Join-Path $steamCloud 'broker_input.c') `
+            (Join-Path $gen 'broker_dispatch_gen.c') -ladvapi32 -lws2_32 -o (Join-Path $testOut 'bridge_test.exe')
         if($LASTEXITCODE){throw 'Compiling the Steam bridge test failed.'}
         Get-ChildItem -LiteralPath $bridgeTest -Filter '*.lib'|Remove-Item
         if(-not $SkipSmoke){& (Join-Path $testOut 'bridge_test.exe') (Join-Path $out 'steam_api64_bridge.dll') (Join-Path $bridgeTest 'fake_valve.dll');if($LASTEXITCODE){throw 'Steam bridge test failed.'}}
@@ -283,6 +286,12 @@ if($SteamApi){
     (Join-Path $steamCloud 'broker_lobby.c') -lws2_32 -o (Join-Path $testOut 'lobby_test.exe')
 if($LASTEXITCODE){throw 'Compiling the local Steam lobby test failed.'}
 if(-not $SkipSmoke){& (Join-Path $testOut 'lobby_test.exe');if($LASTEXITCODE){throw 'Local Steam lobby test failed.'}}
+# which controllers Steam Input handles, as the broker asks Steam and logs them for the session (broker_input.c, with
+# fakes: nothing generated from the SDK, so it is tested without it too)
+& $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -I $steamCloud (Join-Path $steamCloud 'test/input_test.c') `
+    (Join-Path $steamCloud 'broker_input.c') -o (Join-Path $testOut 'input_test.exe')
+if($LASTEXITCODE){throw 'Compiling the broker''s Steam Input test failed.'}
+if(-not $SkipSmoke){& (Join-Path $testOut 'input_test.exe');if($LASTEXITCODE){throw 'The broker''s Steam Input test failed.'}}
 & $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $project 'native/mod-loader/test/fake_game.c') -o (Join-Path $testOut 'fake_game.dll')
 if($LASTEXITCODE){throw 'Compiling the fake game failed.'}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `
@@ -307,6 +316,8 @@ function Publish-Aot([string]$Staging){
         if($LASTEXITCODE){throw ('Compiling '+$app.folder+' failed.')}
         Get-ChildItem -LiteralPath (Join-Path $Staging $app.folder) -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
     }
+    # signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks unsigned programs), before engine.json hashes them
+    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (Join-Path $Staging 'session'),(Join-Path $Staging 'backend')
     if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $Staging 'backend/HellForge.LocalBackend.exe')|Select-Object -Last 1}
 }
 $env:PATH+=';'+(Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer')
@@ -321,6 +332,10 @@ if($NoSteamApi){
     Write-Output 'Built and tested without Valve''s steam_api64.dll (-NoSteamApi): no build.json, no engine package.'
     return
 }
+# The stand-ins, mod loader, WFP tool and broker, signed when a certificate is configured (Sign-Files.ps1), before build.json
+# pins them: the session checks them against these hashes.
+$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@($signed|ForEach-Object {Join-Path $out $_})+$(if($SteamCensus){@(Join-Path $census 'steam_api64.dll')}else{@()}))
 $receipt=[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');zig='0.17.0';
     originals=[ordered]@{'PartyWin.dll'=(Get-FileHash $partyOriginal).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash $lobbyOriginal).Hash;'steam_api64.dll'=$steamApiPin};
     standIns=[ordered]@{'PartyWin.dll'=(Get-FileHash (Join-Path $out 'PartyWin.dll')).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash (Join-Path $out 'PlayFabMultiplayerWin.dll')).Hash;
@@ -347,6 +362,8 @@ $scriptTarget=New-Item -ItemType Directory (Join-Path $staging 'scripts')
 foreach($name in @('NetworkBlock.Common.ps1','Install-NetworkBlock.ps1','Install-WfpBlock.ps1','Test-SteamOwnership.ps1','OfflineControlNetworkProbe.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $scriptTarget}
 # The WFP block tool ships beside the block scripts that drive it.
 Copy-Item -LiteralPath (Join-Path $out 'hellforge_wfp.exe') -Destination $scriptTarget
+# the block and ownership scripts too, when a certificate is configured (Sign-Files.ps1): Windows can refuse unsigned scripts
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $scriptTarget
 foreach($name in @('LICENSE','LICENSE-EXCEPTION')){Copy-Item -LiteralPath (Join-Path $project $name) -Destination $staging}
 # Nothing that ships names the PC it was built on: its user folder (debug paths) or the git author's email.
 $private=@($env:USERPROFILE,$env:USERPROFILE.Replace('\','/'),(git -C $project config user.email))|Where-Object {$_}

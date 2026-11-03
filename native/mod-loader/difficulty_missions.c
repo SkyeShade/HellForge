@@ -31,6 +31,24 @@ static const uint8_t kSpawnerStub[30] = {
     0xE9, 0, 0, 0, 0,                                                 /* 13 jmp 0xAD377E (the add; rel32 at 14) */
     0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 18 lock inc dword [rip+watch+0x3c] (rel32 at 21) */
     0xE9, 0, 0, 0, 0};                                                /* 25 jmp 0xAD390B (after the add; rel32 at 26) */
+/* The director's mines (HiveMind manager +0x6A35C, 512 x 0x40, count +0x7235C right after them) are added at mission
+ * load from the map's 'mine' locations (0xAD36A3, the same loader as the spawners) without a check: a level-11 map with
+ * more minefields had more, the 513th overwrote the count and the next write crashed (0xAD36C0). Past the 512th they
+ * are left out (no mine there), counted; DifficultyWatch logs them. */
+#define DIF_MINE_SITE 0xAD36A3u
+#define DIF_MINE_ADD 0xAD36A9u
+#define DIF_MINE_DONE_JUMP 0xAD36E6u  /* jmp 0xAD3DBD: where an added mine goes on */
+#define DIF_MINE_DONE 0xAD3DBDu
+static const uint8_t kMinePin[6] = {0x8B, 0x83, 0x5C, 0x23, 0x07, 0x00};
+static const uint8_t kMineDonePin[5] = {0xE9, 0xD2, 0x06, 0x00, 0x00};
+static const uint8_t kMineStub[30] = {
+    0x8B, 0x83, 0x5C, 0x23, 0x07, 0x00,                               /*  0 mov eax, [rbx+0x7235c] (the count) */
+    0x3D, 0x00, 0x02, 0x00, 0x00,                                     /*  6 cmp eax, 512 */
+    0x73, 0x05,                                                       /* 11 jae 18 */
+    0xE9, 0, 0, 0, 0,                                                 /* 13 jmp 0xAD36A9 (the add; rel32 at 14) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 18 lock inc dword [rip+the count left out] (rel32 at 21) */
+    0xE9, 0, 0, 0, 0};                                                /* 25 jmp 0xAD3DBD (after the add; rel32 at 26) */
+static volatile LONG* g_minesLeftOut; /* on the stub's second page, read-write: within the stub's rel32 reach */
 /* The mission-end telemetry (0x1347A10: [0x347CE18]+0x31820) keeps 16 objective instances (count +0x319A0) and its reader
  * (0x13462C0) two 16-place stack arrays: the count and the loop stop at 16. */
 #define DIF_TELEMETRY_COUNT_SITE 0x1347D77u
@@ -757,6 +775,8 @@ static const char* MissionSitesFailed(uintptr_t game)
     uint8_t pin[11];
     if (SafeRead(game + DIF_TELEMETRY_SITE, pin, 5) || memcmp(pin, kTelemetryPin, 5) != 0) return "the selected mission's telemetry is not the reviewed one";
     if (SafeRead(game + DIF_SPAWNER_SITE, pin, 6) || memcmp(pin, kSpawnerPin, 6) != 0) return "the director's spawner list is not the reviewed one";
+    if (SafeRead(game + DIF_MINE_SITE, pin, 6) || memcmp(pin, kMinePin, 6) != 0 || SafeRead(game + DIF_MINE_DONE_JUMP, pin, 5) ||
+        memcmp(pin, kMineDonePin, 5) != 0) return "the director's mine list is not the reviewed one";
     if (SafeRead(game + DIF_MARKER_LOOP_SITE, pin, 8) || memcmp(pin, kMarkerLoopPin, 8) != 0 ||
         SafeRead(game + DIF_MARKER_ROUTE_SITE, pin, 6) || memcmp(pin, kMarkerRoutePin, 6) != 0)
         return "the map's marker slots are not the reviewed ones";
@@ -926,6 +946,27 @@ static const char* JumpToTelemetry(DifficultyInstall* d)
     int32_t rel = DifficultyJumpRel(d->game + DIF_TELEMETRY_SITE, (uintptr_t)d->telemetryStub);
     memcpy(limit + 1, &rel, 4);
     if (ApiWrite(d->game + DIF_TELEMETRY_SITE, limit, sizeof limit)) return "the selected mission's telemetry could not be limited";
+    return NULL;
+}
+
+/* The mine list's limit: its stub on a page of its own and the count it leaves out on the next one (both within 2 GB of
+ * game.dll, which the stub's rel32 needs), then the count's load sent to it. */
+static const char* InstallMineLimit(DifficultyInstall* d)
+{
+    uint8_t* stub = AllocateNearGame(d->game, 0x2000);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the director's mine list";
+    memcpy(stub, kMineStub, sizeof kMineStub);
+    int32_t rel = (int32_t)(int64_t)(d->game + DIF_MINE_ADD - (uintptr_t)(stub + 18)); memcpy(stub + 14, &rel, 4);
+    g_minesLeftOut = (volatile LONG*)(stub + 0x1000);
+    rel = (int32_t)(int64_t)((uintptr_t)g_minesLeftOut - (uintptr_t)(stub + 25)); memcpy(stub + 21, &rel, 4);
+    rel = (int32_t)(int64_t)(d->game + DIF_MINE_DONE - (uintptr_t)(stub + 30)); memcpy(stub + 26, &rel, 4);
+    DWORD protect;
+    if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the director's mine list stub could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x1000);
+    uint8_t mines[6] = {0xE9, 0, 0, 0, 0, 0x90};
+    rel = (int32_t)(int64_t)((uintptr_t)stub - (d->game + DIF_MINE_SITE + 5));
+    memcpy(mines + 1, &rel, 4);
+    if (ApiWrite(d->game + DIF_MINE_SITE, mines, sizeof mines)) return "the director's mine list could not be limited";
     return NULL;
 }
 

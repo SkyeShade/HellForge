@@ -1,6 +1,6 @@
 namespace HellForge.Core;
 
-// A drive without room for what setup is about to write (the game copy, a build patch and the files it patches). Setup
+// A drive without room for what setup is about to write (the game copy, or the files the Steam download writes). Setup
 // asks for space instead of another download, which would need the same space again.
 public sealed class NotEnoughSpaceException(string message) : IOException(message);
 

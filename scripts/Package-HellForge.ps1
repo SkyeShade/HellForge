@@ -30,6 +30,8 @@ dotnet publish (Join-Path $project 'src/HellForge.Setup/HellForge.Setup.csproj')
 if($LASTEXITCODE){throw 'Building HellForge-Setup.exe failed.'}
 $result=Join-Path $package 'HellForge-Setup.exe'
 Copy-Item -LiteralPath (Join-Path $setup 'HellForge-Setup.exe') -Destination $result -Force
+# signed when a certificate is configured (Sign-Files.ps1, docs/code-signing.md)
+& (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $result
 $file=Get-Item -LiteralPath $result
 
 # HellForge-Linux-scripts.zip, the release's second file: linux/ and docs/linux.md in a HellForge-Linux folder. Entries are

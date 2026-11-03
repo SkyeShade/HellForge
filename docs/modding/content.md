@@ -289,6 +289,11 @@ its model, its text and the components it owns. `own_components` lists up to 8 c
 (`{"WeaponMagazineComponentData", NULL}`); after `HF_EVENT_ENTITIES_READY`,
 `hf_record(mod, hf->weapon_entity(id), HfWeaponMagazine)` is the weapon's own record.
 
+`own_all = 1` gives the weapon its own copy of every record its base has, as it does for an entity
+([what a copy shares](#what-a-copy-shares)): an edit of the base never changes the weapon, and the weapon's edits never
+change the base. Older HellForge versions ignore it. The weapon's log names any component HellForge couldn't copy,
+which it still shares.
+
 ### Text
 
 Text is one language for every game language. The armory shows `<designation> <NAME>`. Without a `name`, the weapon
@@ -306,6 +311,30 @@ in which a mod adds a weapon (or changes component stats) writes `arsenal.tsv` i
 designation and name, for choosing a base.
 
 `cube-gun` gives a weapon a model of your own, built from an OBJ file.
+
+### The in-game editor
+
+The in-game editor gives every mod weapon a page in its base's section (Primary, Secondary...), named
+`<designation> <name>`. The page is a copy of the base's page with only the fields of the records the weapon owns, so
+editing it never changes the base:
+
+- with `own_all = 1`, every field of its base's page the editor can change while the game runs (handling, fire modes,
+  rates of fire);
+- otherwise, the components in `own_components`, and the rates of fire when the weapon has a `projectile` of its own;
+- the projectile's flight and damage rows when it fires a projectile (and damage) a mod added.
+
+A weapon that owns none of its page's records gets no page; the editor's log says so. Fields the game reads only at
+start (magazines, reloads, attachments) aren't on a mod weapon's page yet. Values saved on the page are kept in the
+editor's file and applied at the next start, like a mod stratagem's.
+
+```c
+HfWeapon gold = {sizeof gold};
+gold.base = HF_ITEM_AR23_LIBERATOR;
+gold.unit = "skyeshade/golden_liberator/assault_rifle_gold";
+gold.designation = "AR-23G";
+gold.name = "Liberator Gold";
+gold.own_all = 1; /* its own records: a full page in the in-game editor */
+```
 
 ## Projectiles and damage
 
@@ -441,7 +470,9 @@ saved to the profile; a saved loadout naming a removed stratagem drops it.
 ### The in-game editor
 
 The in-game editor gives every mod stratagem a page under its category. `editor_like` chooses which vanilla
-stratagem's page it takes, and `editor_entities` which of your entities stand for the vanilla ones on that page.
+stratagem's page it takes, and `editor_entities` which of your entities stand for the vanilla ones on that page. An
+entity's fields are on the page only where the entity owns the record (`own_all` gives it all of them), and a
+projectile's or damage's only where a mod added it, so the page never edits anything vanilla.
 
 ### Limits
 

@@ -274,9 +274,13 @@ public sealed class SessionRunner
     static bool IsWineDrivePath(string path) => path.Length >= 3 &&
         char.ToUpperInvariant(path[0]) is 'C' or 'Z' && path[1] == ':' && path[2] is '\\' or '/';
 
-    // The session runner stops the game and the backend, then exits.
-    public static void SignalStop(string runDirectory) =>
-        File.WriteAllText(Path.Combine(runDirectory, "stop-observation.signal"), "stop");
+    // The stop signal's text that ends the game at once, without asking it to close first.
+    public const string StopNowSignal = "stop-now";
+
+    // The session runner stops the game and the backend, then exits. It first asks the game to close and gives it up to
+    // 30 s, so the game saves its shader cache (ShaderCache); now: true ends the game at once.
+    public static void SignalStop(string runDirectory, bool now = false) =>
+        File.WriteAllText(Path.Combine(runDirectory, "stop-observation.signal"), now ? StopNowSignal : "stop");
 
     // Used before a run directory exists, when the session runner has not started the game yet, and on Linux when closing
     // the launcher after a stop did not finish in time. The latter skips the session runner's own cleanup.

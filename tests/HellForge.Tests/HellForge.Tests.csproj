@@ -4,6 +4,8 @@
     <ProjectReference Include="../../src/HellForge.Core/HellForge.Core.csproj" />
     <ProjectReference Include="../../src/HellForge.SdkShimGen/HellForge.SdkShimGen.csproj" />
   </ItemGroup>
+  <!-- setup's Steam download: planning, writing, fallbacks and sign-in hygiene, with fakes for Steam (SteamDownloadTests) -->
+  <ItemGroup><ProjectReference Include="../../src/HellForge.SteamDownload/HellForge.SteamDownload.csproj" /></ItemGroup>
   <!-- the session runner's game job, which stands alone (SessionJobTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Session/HostBoundedProcess.cs" Link="Session/HostBoundedProcess.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/HellForge.Session/LowIntegrityHelper.cs" Link="Session/LowIntegrityHelper.cs" /></ItemGroup>
@@ -16,4 +18,12 @@
   <ItemGroup><Compile Include="../../src/HellForge.Cli/CrashDump.cs" Link="Cli/CrashDump.cs" /></ItemGroup>
   <!-- the Steam bridge check's 0/1/3 exit codes (SteamBridgeTests) -->
   <ItemGroup><Compile Include="../../src/HellForge.Cli/SteamBridgeCommand.cs" Link="Cli/SteamBridgeCommand.cs" /></ItemGroup>
+  <!-- what a game that closed while starting is said to have done, and Windows' record of its crash (LaunchFailureTests) -->
+  <ItemGroup>
+    <Compile Include="../../src/HellForge.Session/LaunchFailure.cs" Link="Session/LaunchFailure.cs" />
+    <Compile Include="../../src/HellForge.Session/WindowsCrash.cs" Link="Session/WindowsCrash.cs" />
+    <Compile Include="../../src/HellForge.Session/Tools.cs" Link="Session/Tools.cs" />
+  </ItemGroup>
+  <!-- when a game that closed its window is ended (SessionJobTests) -->
+  <ItemGroup><Compile Include="../../src/HellForge.Session/QuitWatch.cs" Link="Session/QuitWatch.cs" /></ItemGroup>
 </Project>

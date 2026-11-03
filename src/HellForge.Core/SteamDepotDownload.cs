@@ -4,7 +4,9 @@ namespace HellForge.Core;
 // installed). The Steam console's "download_depot <app> <depot> <manifest>" downloads one depot at an exact manifest, for
 // an account that owns the game, into <Steam>/steamapps/content/app_<app>/depot_<depot>. HellForge shows the commands for the
 // manifests it pins (SupportedBuild.Depots), watches those folders and copies the game from them like from an install:
-// every file is hashed against the build's list. HellForge downloads nothing itself and ships no game content.
+// every file is hashed against the build's list. On this path the Steam client downloads, not HellForge, and HellForge ships no
+// game content. Setup offers it as a choice ("Use the Steam app") and as the fallback of the other ways. SteamCMD's
+// download_depot (HellForge.SteamDownload's SteamCmd) writes the same folders under SteamCMD's own folder, read the same way.
 public static class SteamDepotDownload
 {
     // Waiting: the depot's files not (yet) present with their listed size, as (path, the size on disk or -1 when missing,
@@ -19,8 +21,8 @@ public static class SteamDepotDownload
 
     // Where else download_depot may have put it: the Linux Steam client downloads relative to the folder its program runs
     // from, so <Steam>/ubuntu12_32/steamapps/content (or ubuntu12_64, or steamrt64 for the 64-bit client) instead of
-    // <Steam>/steamapps/content (GitHub issue 11).
-    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64"];
+    // <Steam>/steamapps/content (GitHub issue 11). SteamCMD for Linux does the same from its linux32 folder.
+    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64", "linux32"];
 
     // Steam's steamapps folders: its own and the ones under the client folders its download_depot runs from.
     public static IReadOnlyList<string> SteamAppsFolders(string steamRoot) =>
@@ -31,7 +33,7 @@ public static class SteamDepotDownload
 
     // The depot's folder: of the places Steam may have put it, the one holding most of it (the first on a tie), else the
     // usual one (while nothing is there yet). An empty depot folder left by an earlier download must not hide the real
-    // one under a client folder (GitHub issue 112).
+    // one under a client folder (GitHub issue 112; the same as linux-native's #181).
     public static string DepotFolder(string steamRoot, SupportedBuild build, uint depot)
     {
         var found = ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot))

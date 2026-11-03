@@ -223,30 +223,26 @@ Test("The ownership check passes only on fresh evidence that confirms this app; 
     Reject(() => SteamOwnershipCheck.RunProbe(Path.Combine(folder, "probe.exe"), fake, folder, Path.Combine(folder, "e.json"), TimeSpan.FromSeconds(1)));
 });
 
-Test("Setup finds the downpatchable game: Steam's flags as bits, every library, the patch by build id or by file hashes", () =>
+Test("Setup finds the game to download from: Steam's flags as bits, every library, the build nearest the supported one", () =>
 {
     // a queued or paused update leaves the files usable; updating, validating, missing files or a running game do not
     foreach (var usable in new uint[] { 4, 6, 516 }) Check(LocalInstall.Unusable(usable) == null, $"Flags {usable} refused.");
     foreach (var busy in new uint[] { 0, 1026, 1028, 36, 132, 68, 1048580, 131076 }) Check(LocalInstall.Unusable(busy) != null, $"Flags {busy} accepted.");
-    // a stale copy in Steam's own library (another build) and the patch's source build in a second library
+    // a stale copy in Steam's own library (an old build) and a build just after the supported one in a second library,
+    // which shares the most with it for the Steam download to copy
     var (staleManifest, _, home) = Fixture("setup-libraries-a");
-    var (patchable, _, _) = Fixture("setup-libraries-b");
-    File.WriteAllText(patchable, File.ReadAllText(patchable).Replace("\"buildid\" \"12345\"", $"\"buildid\" \"{Downpatcher.Packs[0].SourceBuild}\""));
+    var (nearer, _, _) = Fixture("setup-libraries-b");
+    File.WriteAllText(nearer, File.ReadAllText(nearer).Replace("\"buildid\" \"12345\"", $"\"buildid\" \"{long.Parse(SupportedBuild.Current.BuildId) + 1000}\""));
     var steamRoot = Path.Combine(home, "Steam");
-    var second = Path.GetDirectoryName(Path.GetDirectoryName(patchable)!)!;
+    var second = Path.GetDirectoryName(Path.GetDirectoryName(nearer)!)!;
     File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
         "\"libraryfolders\" { \"0\" { \"path\" \"" + steamRoot.Replace("\\", "\\\\") + "\" } \"1\" { \"path\" \"" + second.Replace("\\", "\\\\") + "\" } }");
     var game = SteamLocator.FindGame(steamRoot);
-    Check(game != null && game.ManifestPath == LocalInstall.FullPath(patchable) && Downpatcher.FindPack(game.Report.Pin) != null,
-        "The patchable copy was not chosen: " + game?.ManifestPath);
-    // with only the stale copy: it, and no patch for it
-    File.Delete(patchable);
+    Check(game != null && game.ManifestPath == LocalInstall.FullPath(nearer) && !game.SupportedBuild, "The nearer build was not chosen: " + game?.ManifestPath);
+    // with only the stale copy: it
+    File.Delete(nearer);
     game = SteamLocator.FindGame(steamRoot);
-    Check(game != null && game.ManifestPath == LocalInstall.FullPath(staleManifest) && Downpatcher.FindPack(game.Report.Pin) == null, "The stale copy was not the fallback.");
-    // a copy whose manifest names another build but whose files are the patch's source build
-    var pack = Downpatcher.Packs[0];
-    Check(Downpatcher.FindPack(new BuildPin("1", pack.SourceExeSha256.ToLowerInvariant(), pack.SourceGameDllSha256)) == pack, "The patch was not found by its hashes.");
-    Check(Downpatcher.FindPack(new BuildPin("1", pack.SourceExeSha256, "00")) == null, "A half match found the patch.");
+    Check(game != null && game.ManifestPath == LocalInstall.FullPath(staleManifest), "The stale copy was not the fallback.");
     // a busy game (Steam updating it) is reported, not skipped as absent
     File.WriteAllText(staleManifest, File.ReadAllText(staleManifest).Replace("\"StateFlags\" \"4\"", "\"StateFlags\" \"1028\""));
     try { SteamLocator.FindGame(steamRoot); Check(false, "A game Steam is updating was used."); }
@@ -669,6 +665,29 @@ Test("Session logs: only the newest ten earlier sessions stay; other folders are
     Check(SessionLogs.Prune(sessions).Removed == 0 && SessionLogs.Prune(Path.Combine(root, "no-such-folder")).Removed == 0, "Nothing more to remove.");
 });
 
+Test("Session logs: the older sessions that ended in a crash stay too, the newest five of them", () =>
+{
+    var sessions = Directory.CreateDirectory(Path.Combine(root, "prune-crashes")).FullName;
+    var start = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+    var runs = Enumerable.Range(0, 20).Select(i => Guid.NewGuid().ToString("N")).ToList();
+    var crashed = new HashSet<int> { 0, 1, 2, 3, 4, 5, 7, 12, 15 }; /* 7 crashes among the 10 older sessions, 2 among the newest */
+    for (var i = 0; i < runs.Count; i++)
+    {
+        var run = Directory.CreateDirectory(Path.Combine(sessions, runs[i])).FullName;
+        File.WriteAllText(Path.Combine(run, "result.json"), crashed.Contains(i)
+            ? """{"gameLaunched": true, "gameExitCode": "0xC0000005"}""" : """{"gameLaunched": true, "gameExitCode": "0x00000000"}""");
+        Directory.SetCreationTimeUtc(run, start.AddMinutes(i)); /* runs[0] the oldest */
+    }
+    var pruned = SessionLogs.Prune(sessions);
+    var left = Directory.GetDirectories(sessions).Select(Path.GetFileName).ToHashSet();
+    var kept = new[] { 2, 3, 4, 5, 7 }; /* the five newest crashes past the ten newest sessions */
+    Check(pruned.Removed == 5 && runs.Skip(10).All(left.Contains) && kept.All(i => left.Contains(runs[i])) && left.Count == 15,
+        $"The ten newest and the five newest older crashes stayed: {pruned}, {left.Count} left");
+    Check(!left.Contains(runs[0]) && !left.Contains(runs[1]) && !left.Contains(runs[6]), "The oldest crashes and the older clean sessions went.");
+    Check(SessionLogs.Prune(sessions).Removed == 0, "Nothing more to remove.");
+    Check(SessionLogs.Prune(sessions, keepCrashes: 0).Removed == 5, "Without crashes kept, the ten newest stay.");
+});
+
 Test("Launch options are read as Steam takes them, and never set what a session sets itself", () =>
 {
     Check(GameLaunchOptions.Parse("  ").Count == 0 && GameLaunchOptions.Parse(null).Count == 0, "Empty options are none.");
@@ -680,11 +699,19 @@ Test("Launch options are read as Steam takes them, and never set what a session 
     foreach (var bad in new[] { "--bundle-dir C:\\other", "-x \"--BUNDLE-DIR\" y", "--bundle-dir=C:\\other", "PROTON_LOG=1 %command%", "%command% %command%",
                  "\"open", "--a\n--b", new string('x', GameLaunchOptions.MaxLength + 1) })
         Reject(() => GameLaunchOptions.Parse(bad));
+    Check(GameLaunchOptions.Warnings(GameLaunchOptions.Parse("--use-d3d11 -windowed")).Count == 0, "Ordinary options warn of nothing.");
+    var toaster = GameLaunchOptions.Warnings(GameLaunchOptions.Parse("%command% --TOASTER_MODE"));
+    Check(toaster.Count == 1 && toaster[0].Contains("Armory icons stay blank") && toaster[0].Contains("Remove it"),
+        "--toaster_mode warns that Armory icons stay blank: " + string.Join(" | ", toaster));
+    Check(GameLaunchOptions.Warnings(["--toaster_mode_x"]).Count == 0, "Only the switch itself warns.");
 });
 
 ModTests.Register(Test, Check, Reject, root);
 StatsTests.Register(Test, Check, Reject, root);
 DataBuilderTests.Register(Test, Check, Reject, root);
+WarbondLocksTests.Register(Test, Check, Reject, root);
+ForgeCreditsTests.Register(Test, Check, Reject, root);
+ForgeCreditsTests.RegisterChance(Test, Check, Reject, root);
 SdkTests.Register(Test, Check, Reject, root);
 LiveEditTests.Register(Test, Check, Reject, root);
 ModKitTests.Register(Test, Check, Reject, root);
@@ -694,16 +721,20 @@ OtherArchivesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
 WinePathTests.Register(Test, Check, root);
+VisualCppRuntimesTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
+SteamDownloadTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
-DownpatchTests.Register(Test, Check, Reject, root);
 SetupSourceTests.Register(Test, Check, Reject, root);
+ModStatusTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
 DiskSpaceTests.Register(Test, Check, Reject, root);
 SteamBridgeTests.Register(Test, Check, root);
 CrashDumpTests.Register(Test, Check);
 SessionJobTests.Register(Test, Check, Reject, root);
+SandboxSessionTests.Register(Test, Check, Reject, root);
+LaunchFailureTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 LinuxInstallerTests.Register(Test, Check, Reject, root);
@@ -722,11 +753,15 @@ ContainerCheckTests.Register(Test, Check, Reject, root);
 LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
 VerifiedListTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
+CaptureGameEndTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
 OwnershipLogTests.Register(Test, Check, root);
 LauncherPollTests.Register(Test, Check, root);
 IntegrityTests.Register(Test, Check, root);
+WindowsSupportTests.Register(Test, Check, Reject, root);
+SmartAppControlTests.Register(Test, Check, Reject, root);
+SteamInputNoteTests.Register(Test, Check, Reject, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;

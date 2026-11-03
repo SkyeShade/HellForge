@@ -69,15 +69,15 @@ public partial class MainWindow
         BackupCombo.IsVisible = RestoreBackupButton.IsVisible = backups.Count > 0;
     }
 
-    // The capture keeps the normal game connected after the sync; HellForge does not close the player's game for them.
-    string CloseGameNote => SyncCaptureId != null ? " Close HELLDIVERS 2 to finish: until then the sync keeps it connected." : "";
+    // The Linux capture keeps the normal game connected after the sync (the Windows one closes it, AppendGameClosing).
+    string CloseGameNote => NativeLinux && SyncCaptureId != null ? " Close HELLDIVERS 2 to finish: until then the sync keeps it connected." : "";
 
     // After a complete sync (inventory and progression): the review, or the saved choices.
     async Task AfterCaptureAsync(LocalProfile profile)
     {
         if (!AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder)).AutoApply)
         {
-            SetSyncStatus("Synced. Choose what to import below." + CloseGameNote, Green);
+            SetSyncStatus("Synced. Choose what to import below." + CloseGameNote, Green, "Synced. Review import to choose what else to bring into the profile.");
             await ShowReviewAsync(profile);
             return;
         }

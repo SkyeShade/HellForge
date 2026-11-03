@@ -10,14 +10,19 @@
 // repeating the client headers the login carried (CaptureHeaders: the API refuses a read without Accept-Language), and
 // writes them to --progression and --output. With --seal-key and --steam-account it seals the two files for that Steam
 // account (HellForge.Core SnapshotSeal) as soon as the inventory is in, and says so in its state file (CaptureState), so
-// the launcher takes them while the game plays on; the backend unlocks premium items only from a seal. It then keeps
-// forwarding until the game exits, removes the hosts line and the CA, and exits 0 (1 when nothing was captured before
+// the launcher takes them; the backend unlocks premium items only from a seal. With --close-game it then closes the game
+// the sync opened (CaptureGameEnd), before the game gets the login's answer. It keeps forwarding until the game exits,
+// removes the hosts line and the CA, and exits 0 (1 when nothing was captured before
 // the timeout or the seal failed). Nothing else is kept. The log (proxy.log) is detailed but holds no values: for every
 // connection its TLS version, cipher and SNI, timings and where it failed; for every request and response the method, the
 // first two path segments, status, sizes, content types and the names of headers and query parameters; a refused
 // request's reason (CaptureLog); the key-and-count shape of what the capture keeps (CaptureDiagnostics); the game's and
 // Easy Anti-Cheat's processes; and a summary. Never bodies, header or query values, or the session.
 //
+// A run that cannot get as far as listening ends with a CaptureStart exit code (20 and up) and writes capture-failure.json
+// beside proxy.log with what was in its way (StartProblems), for the launcher to tell the player.
+//
+//   --close-game   end the sync's game once the capture is sealed (the launcher's sync passes it)
 //   --cleanup      only remove a hosts line and CA left by a run that was killed
 //   --ca-cert <file>  write the public CA for the Linux supervisor to put in the game prefix
 //   --no-hosts --no-ca --listen-port 8443 --real-ip <ip>   local plumbing test, no system changes
@@ -29,6 +34,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -48,10 +54,15 @@ List<IPAddress>? fixedUpstream = null;
 var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
-bool manageHosts = true, manageCa = true, cleanupOnly = false;
+bool manageHosts = true, manageCa = true, cleanupOnly = false, closeGame = false;
+var startedUtc = DateTime.UtcNow;
+// Set once this run's hosts line is in, until cleanup removes it: a line already gone at cleanup was removed by something else.
+var hostsAdded = false;
 var timeoutMin = 10;
 string? sealKey = null;
 ulong? steamAccount = null;
+// The launcher's Windows account, granted the sync folder beside this one's (it differs on a standard account).
+string? grantSid = null;
 string? caCertificatePath = null;
 
 try
@@ -71,13 +82,19 @@ try
             case "--no-hosts": manageHosts = false; break;
             case "--no-ca": manageCa = false; break;
             case "--cleanup": cleanupOnly = true; break;
+            case "--close-game": closeGame = true; break;
             case "--seal-key": sealKey = Next(); break;
             case "--steam-account": steamAccount = ulong.Parse(Next(), NumberStyles.None, CultureInfo.InvariantCulture); break;
             case "--ca-cert": caCertificatePath = Next(); break;
+            case "--grant-sid":
+                grantSid = Next();
+                if (!CaptureAccess.IsSid(grantSid)) throw new ArgumentException("--grant-sid needs a SID (S-1-5-...).");
+                break;
             case "--help":
                 Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
-                Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
-                Console.WriteLine("  [--ca-cert <file>] [--no-hosts] [--no-ca] | --cleanup");
+                Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--grant-sid <launcher's SID>]");
+                Console.WriteLine("  [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
+                Console.WriteLine("  [--ca-cert <file>] [--close-game] [--no-hosts] [--no-ca] | --cleanup");
                 return 0;
             default: throw new ArgumentException("Unknown argument: " + args[i]);
         }
@@ -98,7 +115,11 @@ catch (Exception error) when (error is ArgumentException or FormatException or O
 
 if (cleanupOnly)
 {
-    var removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null));
+    try { Directory.CreateDirectory(evidenceDir); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message); }
+    // A capture still running would remove or re-add its lines as it ends.
+    var removed = StartProblems.StopOtherCaptures(Log) == null;
+    removed = Step("hosts cleanup", RemoveHosts) & Step("CA cleanup", () => RemoveCas(null)) & removed;
     return removed ? 0 : 1;
 }
 
@@ -106,17 +127,28 @@ try { Directory.CreateDirectory(evidenceDir); }
 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine("Cannot use " + evidenceDir + ": " + error.Message);
-    return 1;
+    return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
-// The sync folder stays private to this user: an ACL on Windows, 0700 on Linux.
+// The sync folder stays private to this account and the launcher's (0700 on Linux, where both are the same user). On a
+// standard Windows account the UAC prompt runs this capture as the administrator who answered it: granting only this
+// account hid the folder from the launcher, which then never opened the game and found no inventory after a capture
+// that worked.
 if (OperatingSystem.IsWindows())
-    Run("icacls", $"\"{evidenceDir}\" /inheritance:r /grant:r \"{System.Security.Principal.WindowsIdentity.GetCurrent().Name}:(OI)(CI)F\"");
-else
-    CapturePlatform.RestrictDirectory(evidenceDir);
+{
+    string captureSid;
+    using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent()) captureSid = identity.User!.Value;
+    var aclCode = Run("icacls", CaptureAccess.SyncFolderAclArguments(evidenceDir, captureSid, grantSid));
+    Log($"sync folder private to {(grantSid == null ? "this account only (no launcher account given)" : string.Equals(grantSid, captureSid, StringComparison.OrdinalIgnoreCase) ? "this account, which is the launcher's" : "this account and the launcher's, another account")}" +
+        (aclCode == 0 ? "" : $": icacls failed with code {aclCode}"));
+}
+else CapturePlatform.RestrictDirectory(evidenceDir);
 
+// What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
+// (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
+if (StartProblems.StopOtherCaptures(Log) is { } stillRunning) return Fail(CaptureProblem.LeftoverCapture, stillRunning);
 // Resolve the real host before the hosts line points it at loopback; clear a line an earlier killed run left first.
-if (manageHosts && !Step("hosts cleanup", RemoveHosts)) return 1;
+if (manageHosts && HostsStep("hosts cleanup", RemoveHosts) is { } cleanupFailure) return Fail(cleanupFailure.Problem, cleanupFailure.Detail);
 List<IPAddress> upstreamIps;
 try
 {
@@ -125,10 +157,15 @@ try
 catch (SocketException error)
 {
     Log("could not resolve " + host + ": " + error.SocketErrorCode);
-    return 1;
+    return Fail(CaptureProblem.Offline, host + " does not resolve: " + error.SocketErrorCode);
 }
-if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return 1; }
+if (upstreamIps.Count == 0) { Log("no IPv4 address for " + host); return Fail(CaptureProblem.Offline, "no IPv4 address for " + host); }
 Log("upstream " + string.Join(", ", upstreamIps) + ":443");
+
+// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
+// Bound before the certificate and the hosts line: when another program holds the port, neither is touched.
+var listener = new TcpListener(IPAddress.Loopback, listenPort);
+if (StartListener() is { } portFailure) return Fail(portFailure.Problem, portFailure.Detail);
 
 string? caThumbprint = null;
 X509Certificate2 serverCert;
@@ -140,44 +177,60 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     if (manageHosts) Step("hosts cleanup", RemoveHosts);
     if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
 };
-if (manageCa)
+// Making the certificates can fail as well as installing the CA (a broken crypto provider; Wine's, 2026-10-30): either
+// stops the run as a certificate problem, with every HellForge CA removed.
+try
 {
-    var crlListener = new TcpListener(IPAddress.Loopback, 0);
-    crlListener.Start();
-    var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
-    using var caKey = RSA.Create(2048);
-    var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-    caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
-    caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
-    using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-    caThumbprint = ca.Thumbprint;
-    if (CapturePlatform.ManagesSystemTrustStore)
+    if (manageCa)
     {
-        if (!Step("CA cleanup", () => RemoveCas(null))) return 1;
-        using (var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine))
+        var crlListener = new TcpListener(IPAddress.Loopback, 0);
+        crlListener.Start();
+        var cdp = EncodeCdp($"http://127.0.0.1:{((IPEndPoint)crlListener.LocalEndpoint).Port}/ca-{Guid.NewGuid():N}.crl");
+        using var caKey = RSA.Create(2048);
+        var caRequest = new CertificateRequest("CN=" + CaName + ", O=HellForge", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        caRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
+        using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        caThumbprint = ca.Thumbprint;
+        if (CapturePlatform.ManagesSystemTrustStore)
         {
-            store.Open(OpenFlags.ReadWrite);
-            using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
-            store.Add(publicCa);
+            if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
+            try
+            {
+                using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+                store.Open(OpenFlags.ReadWrite);
+                using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
+                store.Add(publicCa);
+            }
+            catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
+            {
+                // A security program guarding the trusted root store refuses the add.
+                throw new CryptographicException("Windows refused to add the certificate: " + error.Message, error);
+            }
+            Log("CA installed");
         }
-        Log("CA installed");
+        else
+        {
+            // Native Linux cannot write the game's Wine prefix store without Wine; the supervisor imports this public
+            // certificate as the system store's serialized Blob with reg.exe and proves the value before the game opens.
+            WriteCaCertificate(ca);
+            Log("CA written for the game prefix");
+        }
+        serverCert = MakeLeaf(ca, host, cdp);
+        StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
     }
-    else
-    {
-        // Native Linux cannot write the game's Wine prefix store without Wine; the supervisor imports this public
-        // certificate as the system store's serialized Blob with reg.exe and proves the value before the game opens.
-        WriteCaCertificate(ca);
-        Log("CA written for the game prefix");
-    }
-    serverCert = MakeLeaf(ca, host, cdp);
-    StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
-        HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
+    else serverCert = MakeLeaf(null, host, null);
 }
-else serverCert = MakeLeaf(null, host, null);
+catch (CryptographicException error)
+{
+    Log("certificate failed: " + CaptureDiagnostics.Chain(error));
+    if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
+    listener.Stop();
+    return Fail(CaptureProblem.Certificate, error.Message);
+}
 
-// Loopback only: the hosts line points the API host at 127.0.0.1, and nothing else on the network may log in through us.
-var listener = new TcpListener(IPAddress.Loopback, listenPort);
 var cleaned = 0;
 void Cleanup()
 {
@@ -238,9 +291,8 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
-    if (manageHosts) AddHosts();
+    if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
     LogResolution();
-    listener.Start();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
     CapturePlatform.RestrictFile(statePath);
@@ -262,6 +314,51 @@ Log(captured == 1 ? "capture complete" : "nothing captured");
 LogSummary();
 return captured == 1 && sealOk ? 0 : 1;
 
+// Stops before listening: says why in proxy.log and capture-failure.json, for the launcher (CaptureStart).
+int Fail(CaptureProblem problem, string? detail)
+{
+    Log($"could not start: {problem}" + (detail != null ? ": " + detail : ""));
+    // A hosts failure's reason is already in hosts-failure.txt (HostsWrite): one message per failure.
+    if (problem is not (CaptureProblem.HostsBusy or CaptureProblem.HostsDenied)) Step("failure", () => CaptureStart.Write(evidenceDir, problem, detail));
+    return CaptureStart.ExitCode(problem);
+}
+
+CaptureFailure? StartListener()
+{
+    try
+    {
+        listener.Start();
+        return null;
+    }
+    catch (SocketException error)
+    {
+        Log($"port {listenPort} refused: {CaptureDiagnostics.Chain(error)}");
+        if (error.SocketErrorCode != SocketError.AddressAlreadyInUse)
+            return new CaptureFailure(CaptureProblem.PortDenied, $"{error.Message} ({(int)error.SocketErrorCode})");
+        var owner = StartProblems.PortOwner(listenPort);
+        if (owner is { } pid && StartProblems.Describe(pid).StartsWith(StartProblems.ProcessName + ".exe", StringComparison.OrdinalIgnoreCase))
+            return new CaptureFailure(CaptureProblem.LeftoverCapture, "it still holds port " + listenPort);
+        return new CaptureFailure(CaptureProblem.PortInUse, owner is { } holder ? "used by " + StartProblems.Describe(holder) : null);
+    }
+}
+
+// A hosts change before listening (CaptureHosts retries a locked file and clears read-only; HostsWrite names who holds it
+// and writes the reason to hosts-failure.txt). Null when it worked; otherwise that same reason, as this run's start failure.
+CaptureFailure? HostsStep(string name, Action change)
+{
+    try
+    {
+        change();
+        return null;
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+    {
+        Log(name + " failed: " + error.Message);
+        var failure = error as HostsFileException ?? error.InnerException as HostsFileException;
+        return new CaptureFailure(failure?.Failure == HostsFailure.InUse ? CaptureProblem.HostsBusy : CaptureProblem.HostsDenied, error.Message);
+    }
+}
+
 // What this run is, so a log from another PC or build can be read on its own.
 void LogStart()
 {
@@ -269,7 +366,7 @@ void LogStart()
     var built = exe != null ? File.GetLastWriteTimeUtc(exe).ToString("u", CultureInfo.InvariantCulture) : "unknown";
     Log($"capture built {built}, {Environment.OSVersion.VersionString}, .NET {Environment.Version}, elevated {(CapturePlatform.IsElevated ? "yes" : "no")}");
     Log($"options: host {host}, port {listenPort}, timeout {timeoutMin} min, hosts line {(manageHosts ? "yes" : "no")}, " +
-        $"CA {(manageCa ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
+        $"CA {(manageCa ? "yes" : "no")}, close game {(closeGame ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
 }
 
 // Where the system now sends the API's name: 127.0.0.1 when the hosts line holds.
@@ -319,7 +416,10 @@ void LogProcessChanges(Dictionary<int, string> seen)
     foreach (var entry in now) seen[entry.Key] = entry.Value;
 }
 
-// Once the inventory is in: seal what was captured and tell the launcher, then keep the game's connection until it exits.
+// Once the inventory is in: seal what was captured and tell the launcher, then (--close-game) end the sync's game, and
+// keep forwarding until it exits. In this order: the files are sealed and the state says so before the game is ended, so
+// the launcher always finds a finished capture; the game is ended before this returns, so it never gets the login's answer
+// and never reaches Easy Anti-Cheat's "Could not connect" (CaptureGameEnd).
 void CompleteCapture()
 {
     var progression = progressionPath != null && File.Exists(progressionPath);
@@ -332,13 +432,16 @@ void CompleteCapture()
     }
     Step("state", () => CaptureState.Write(evidenceDir, Environment.ProcessId, sealOk, progression));
     CapturePlatform.RestrictFile(statePath);
+    if (closeGame) EndSyncGame();
     _ = Task.Run(ForwardUntilGameExits);
 }
 
+void EndSyncGame() => Log("close game: " + CaptureGameEnd.Describe(ProcessGame.EndSyncGame(startedUtc, Log)));
+
 // The redirect and the CA stay until the game exits, so its requests after the login still reach the API. Easy Anti-Cheat
 // closed the game ("Could not connect to Easy Anti Cheat network") both when the redirect ended right after the login and
-// when it stayed (live runs, 2026-10-26), so that error has another cause; WatchProcesses and the per-connection lines
-// are there to find it.
+// when it stayed (live runs, 2026-10-26), so that error has another cause; with --close-game the game is ended before it
+// shows, and WatchProcesses and the per-connection lines are there to find the cause.
 async Task ForwardUntilGameExits()
 {
     stop.CancelAfter(TimeSpan.FromHours(ForwardHoursAtMost));
@@ -674,23 +777,32 @@ bool Step(string name, Action action)
     }
 }
 
-static void Run(string file, string arguments)
+// The exit code, or -1 when it did not start or finish in time.
+static int Run(string file, string arguments)
 {
     using var process = Process.Start(new ProcessStartInfo(file, arguments) { UseShellExecute = false, CreateNoWindow = true });
-    process?.WaitForExit(8000);
+    return process != null && process.WaitForExit(8000) ? process.ExitCode : -1;
 }
 
 void RemoveHosts()
 {
-    if (!CaptureHosts.Remove(hostsPath, host)) return;
+    if (!HostsWrite(() => CaptureHosts.Remove(hostsPath, host)))
+    {
+        if (hostsAdded) HostsGone();
+        return;
+    }
+    hostsAdded = false;
     CapturePlatform.FlushDns();
     Log("hosts line removed");
 }
 
 void AddHosts()
 {
-    CaptureHosts.Add(hostsPath, host);
+    LogHostsFile();
+    HostsWrite(() => { CaptureHosts.Add(hostsPath, host); return true; });
+    hostsAdded = true;
     CapturePlatform.FlushDns();
+    Log("hosts line added");
 }
 
 // The public half only: the supervisor imports this as the prefix Root certificate's Blob with reg.exe. The private key
@@ -701,6 +813,99 @@ void WriteCaCertificate(X509Certificate2 ca)
     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     File.WriteAllBytes(path, ca.Export(X509ContentType.Cert));
     CapturePlatform.RestrictFile(path);
+}
+
+// A failed hosts write: the plain reason, named more exactly where Windows can say who, goes to the log and to the sync
+// folder for the launcher's message (CaptureHosts.FailureFile). Rethrown as an IOException with that reason for Step.
+bool HostsWrite(Func<bool> write)
+{
+    try
+    {
+        return write();
+    }
+    catch (HostsFileException error)
+    {
+        Log($"hosts file {error.Failure}: {CaptureDiagnostics.Chain(error.InnerException ?? error)}");
+        var reason = error.Failure switch
+        {
+            HostsFailure.InUse when HostsLockers() is { Count: > 0 } lockers =>
+                $"{string.Join(", ", lockers)} kept the hosts file ({hostsPath}) open, so the sync could not change it. Close it, then sync again.",
+            HostsFailure.Blocked or HostsFailure.Reverted or HostsFailure.ReadOnly when DefenderFlaggedHosts() => DefenderReason("blocked the sync's change to"),
+            _ => error.Message
+        };
+        Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+        throw new IOException(reason, error);
+    }
+}
+
+string DefenderReason(string what) =>
+    $"Microsoft Defender {what} the hosts file ({hostsPath}) as SettingsModifier:Win32/HostsFileHijack. The sync needs one line " +
+    "there pointing the game's API at this PC while it reads your inventory, and removes it afterwards.";
+
+// The capture's line vanished before cleanup: something other than the capture removed it while the game was meant to use it.
+void HostsGone()
+{
+    hostsAdded = false;
+    Log("hosts line was already gone at cleanup: something else removed it");
+    var reason = DefenderFlaggedHosts() ? DefenderReason("removed the sync's line from")
+        : HostsFileException.Describe(HostsFailure.Reverted, hostsPath);
+    Step("hosts failure note", () => CaptureHosts.WriteFailure(evidenceDir, reason));
+}
+
+// The hosts file's attributes before the capture changes it (read-only, system, hidden), for a log from another PC.
+void LogHostsFile()
+{
+    try { Log(File.Exists(hostsPath) ? $"hosts file attributes: {File.GetAttributes(hostsPath)}" : "hosts file missing: the capture creates it and deletes it at cleanup"); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("hosts file attributes unreadable: " + error.Message); }
+}
+
+// Whether Microsoft Defender's threat history holds its hosts-file detection (asked only after a hosts write failed).
+bool DefenderFlaggedHosts()
+{
+    try
+    {
+        using var process = Process.Start(new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -Command \"if (Get-MpThreat -ErrorAction SilentlyContinue | Where-Object ThreatName -like '*HostsFileHijack*') { exit 3 } else { exit 0 }\"")
+            { UseShellExecute = false, CreateNoWindow = true });
+        if (process == null || !process.WaitForExit(15000)) return false;
+        var flagged = process.ExitCode == 3;
+        Log("Microsoft Defender's history " + (flagged ? "holds" : "does not hold") + " HostsFileHijack");
+        return flagged;
+    }
+    catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+    {
+        Log("Microsoft Defender's history not read: " + error.Message);
+        return false;
+    }
+}
+
+// The programs holding the hosts file open, by name (Windows Restart Manager).
+List<string> HostsLockers()
+{
+    var names = new List<string>();
+    try
+    {
+        if (RestartManager.RmStartSession(out var session, 0, Guid.NewGuid().ToString("N")) != 0) return names;
+        try
+        {
+            if (RestartManager.RmRegisterResources(session, 1, [hostsPath], 0, null, 0, null) == 0)
+            {
+                uint count = 0;
+                // ERROR_MORE_DATA with the count needed, then the list.
+                if (RestartManager.RmGetList(session, out var needed, ref count, null, out _) == 234 && needed > 0)
+                {
+                    var processes = new RestartManager.ProcessInfo[needed];
+                    count = needed;
+                    if (RestartManager.RmGetList(session, out _, ref count, processes, out _) == 0)
+                        names.AddRange(processes.Take((int)count).Select(process => $"{process.AppName} (pid {process.Process.ProcessId})"));
+                }
+            }
+        }
+        finally { RestartManager.RmEndSession(session); }
+    }
+    catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
+    Log("hosts file held open by: " + (names.Count > 0 ? string.Join(", ", names) : "not known"));
+    return names;
 }
 
 // This run's CA by thumbprint, or with null every CA this tool installed.
@@ -776,4 +981,40 @@ static X509Certificate2 MakeLeaf(X509Certificate2? issuer, string name, byte[]? 
         : request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(8)).CopyWithPrivateKey(key);
     // SslStream needs the key in a form Schannel can use; a PKCS#12 round trip gives it one.
     return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
+}
+
+// Windows Restart Manager: which programs hold a file open, to name the one blocking a hosts write.
+static class RestartManager
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniqueProcess
+    {
+        public int ProcessId;
+        public System.Runtime.InteropServices.ComTypes.FILETIME StartTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ProcessInfo
+    {
+        public UniqueProcess Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceShortName;
+        public int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
+        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
+    }
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmStartSession(out uint session, int flags, string key);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmEndSession(uint session);
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
+    public static extern int RmRegisterResources(uint session, uint files, string[] names, uint applications, UniqueProcess[]? processes,
+        uint services, string[]? serviceNames);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmGetList(uint session, out uint needed, ref uint count, [In, Out] ProcessInfo[]? processes, out uint rebootReasons);
 }

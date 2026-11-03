@@ -3,7 +3,8 @@ using System.Text.Json.Nodes;
 namespace HellForge.Session;
 
 // The network gate's census of a session (the stand-in's net_gate.c writes network-census.jsonl): which hooks were in
-// place, and every connection, name lookup and program the copy attempted, by where it went. Repeats of one call, target
+// place, and every connection, name lookup and program the copy attempted, by where it went; sandboxed, also what Windows
+// refused the low-integrity game (scope "denied": named objects, pipes and files, SandboxRefusals). Repeats of one call, target
 // and caller are written at 1, 2, 3, 10, 100... times, so the counts here are lower bounds.
 static class NetworkCensus
 {
@@ -32,6 +33,7 @@ static class NetworkCensus
                     summary["watchingLoads"] = row["watchingLoads"]?.DeepClone();
                 }
                 else if (gate == "module loaded") modules.Add((JsonNode?)JsonValue.Create((string?)row["module"]));
+                else if (gate == "crowded") summary["crowded"] = true; /* some counts are shared from here on (net_gate.c Seen) */
                 continue;
             }
             var key = ((string?)row["api"] ?? "?", (string?)row["to"] ?? "?", (string?)row["scope"] ?? "?", (string?)row["caller"] ?? "?");
@@ -46,11 +48,13 @@ static class NetworkCensus
         summary["outside"] = Sum(Outside);
         summary["programs"] = Sum(s => s == "program");
         summary["unspecified"] = Sum(s => s == "unspecified");
+        summary["denied"] = Sum(s => s == "denied");
         JsonArray List(Func<string, bool> scope) => new(counts.Where(c => scope(c.Key.Scope)).OrderByDescending(c => c.Value).Take(ListedTargets)
             .Select(c => (JsonNode?)new JsonObject { ["api"] = c.Key.Api, ["to"] = c.Key.To, ["scope"] = c.Key.Scope, ["caller"] = c.Key.Caller, ["count"] = c.Value })
             .ToArray());
         summary["outsideTargets"] = List(Outside);
         summary["programsStarted"] = List(s => s == "program");
+        summary["deniedTargets"] = List(s => s == "denied");
         return summary;
     }
 }

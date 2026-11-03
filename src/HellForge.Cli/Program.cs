@@ -19,6 +19,8 @@ try
                     --depot-folder <download_depot's depot_<id> folder> [--depotcache <Steam/depotcache>] --out <file>
             verify-game --game <game folder> [--cache <file>]
             install-game --manifest <appmanifest_553850.acf> --destination <game folder>
+            steam-download --out <game folder> [--file <a file of the build>] [--steam-root <Steam folder>]
+                    [--sign-in qr | steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]
             create-install --root <folder>
             prepare-session --install <folder> --profile <name> [--user-data <root>] [--verify-all yes | no]
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
@@ -41,7 +43,7 @@ try
             play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
-            stop [--install <folder>] [--run <session folder>] [--wait yes]
+            stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
             fetch-war [--install <folder>]
@@ -55,7 +57,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--steam-udp yes | no] [--strangers yes | no] [--game-options <options>]
+                     [--steam-udp yes | no] [--strangers yes | no | default] [--forge-credits <0-100> | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -98,6 +100,11 @@ try
             sandbox-prefix-case does alone, when Proton made its drive_c case-insensitive); hf-inner.sh starts the supervisor, which builds the game
             domain and performs the hardened copy-back after the domain is gone. The supervisor and copy-back never
             invoke a shell or start an unsandboxed game.
+            steam-download signs in to Steam (a QR code for the Steam app; nothing kept) and downloads the supported
+            build into --out from Valve's servers, copying what Steam's own install holds (--file: one file of it;
+            --dry-run yes: the plan only), as setup does when Steam has another build. --sign-in steamcmd: Valve's
+            SteamCMD downloads it instead and asks for the password itself (HellForge never reads it); it is fetched
+            into --steamcmd (default: <out>-steamcmd), its sign-in forgotten after it runs, and removed once done.
             Close Steam and the game before prepare; installations must remain idle.
             Failed preparations retain preparing.lock and must not be used.
             """);
@@ -118,6 +125,7 @@ try
         "verify-game" => ["--game", "--cache"],
         "crash-dump" => ["--pid", "--thread", "--pointers", "--out"],
         "install-game" => ["--manifest", "--destination"],
+        "steam-download" => ["--out", "--file", "--steam-root", "--sign-in", "--account", "--steamcmd", "--dry-run"],
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
@@ -136,7 +144,7 @@ try
         "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
-        "stop" => ["--install", "--run", "--wait"],
+        "stop" => ["--install", "--run", "--wait", "--now"],
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
@@ -144,7 +152,7 @@ try
         "mod-switch" => ["--install", "--id", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--game-options"],
+        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--forge-credits", "--game-options"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
@@ -178,6 +186,8 @@ try
     {
         case "play":
             return Launch.Play(options);
+        case "steam-download":
+            return SteamDownloadCommand.Run(options);
         case "stop":
             return Launch.Stop(options);
         case "status":
@@ -328,11 +338,37 @@ try
                 progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
-            var staged = ModStaging.Stage(modInstall, active);
+            // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
+            // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
+            string? warbondLocks = null;
+            try
+            {
+                var progressionData = Path.Combine(modInstall.App, "progression-data.json");
+                if (File.Exists(progressionData))
+                    warbondLocks = WarbondLocks.Prepare(modInstall,
+                        PremiumContent.ForSnapshot(progressionData, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current()), Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Locked warbond art: not shown this session (" + error.Message + ").");
+            }
+            // Super Credits are dressed as Forge Credits (ForgeCredits): the pickup's textures and the currency icon. Art that
+            // cannot be built stays as it is; the session goes on.
+            string? forgeCredits = null;
+            try
+            {
+                forgeCredits = ForgeCredits.Prepare(modInstall, Console.Error.WriteLine);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
-                File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId));
+                File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);
@@ -491,7 +527,7 @@ try
             // The in-game editor's catalogue, and its icons and fonts from the game data of --install (its game copy) or --game.
             var outFolder = Path.GetFullPath(Required("--out"));
             Directory.CreateDirectory(outFolder);
-            File.WriteAllText(Path.Combine(outFolder, EditorCatalog.FileName), EditorCatalog.Text());
+            EditorCatalog.Write(outFolder);
             var gameData = options.TryGetValue("--game", out var game) ? Path.GetFullPath(game)
                 : options.TryGetValue("--install", out var editorInstall) ? Path.Combine(new InstallLayout(Path.GetFullPath(editorInstall)).Game, "data") : null;
             object icons = "skipped (no --install or --game)";
@@ -500,7 +536,7 @@ try
                 var (count, missing) = HellForge.Core.GameData.EditorIcons.Write(gameData, Path.Combine(outFolder, HellForge.Core.GameData.EditorIcons.FileName));
                 icons = new { count, missing, fonts = HellForge.Core.GameData.EditorFonts.Write(gameData, outFolder) };
             }
-            result = new { folder = outFolder, catalog = EditorCatalog.FileName, icons };
+            result = new { folder = outFolder, catalog = EditorCatalog.FileName, files = EditorCatalog.Files().Select(f => f.Name).ToArray(), icons };
             break;
         }
         case "sdk-headers":

@@ -5,7 +5,7 @@
 static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     DifficultyReadersFailed, KeepTenFailed, BandFailed, LevelReadersFailed, BoardFailed, SpreadFailed, HashInsertFailed,
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
-    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, /* a map_scale above 1 */
+    MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, StreetPinsFailed, RecordMapFailed, TerrainPinsFailed, /* a map_scale above 1 */
     LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
     ArtilleryPinsFailed};
@@ -30,8 +30,8 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     WidenMissionRanges, InstallBoard, InstallSpreadGuard, InstallHashInsertGuard, MixStep, InstallGrant, InstallRadar,
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
-    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
-    MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
+    InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallStreets, InstallRecordMap, InstallTerrain, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
+    MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, InstallMineLimit, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells};
 
 /* B.2: the same steps by name, so a refusal says which one (and how many completed) kept their patches. */
@@ -44,8 +44,9 @@ static const char* const kInstallStepNames[] = {
     "WidenMissionRanges", "InstallBoard", "InstallSpreadGuard", "InstallHashInsertGuard", "MixStep", "InstallGrant", "InstallRadar",
     "MoveBandsAndIcons",
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
-    "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallFootprintWatch", "InstallNavGrid",
-    "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
+    "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallStreets", "InstallRecordMap",
+    "InstallTerrain", "InstallFootprintWatch", "InstallNavGrid",
+    "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "InstallMineLimit", "JumpToMapView",
     "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs", "InstallArtilleryShells"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
     "every install step needs a name");

@@ -7,27 +7,24 @@ static class ModKitTests
 
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
-        test("A pinned tool is found where its archive unpacks: HDiffPatch's one linux64 folder becomes the tool's own (issue 112)", () =>
+        test("A pinned tool is found where its archive unpacks: an archive's one top folder becomes the tool's own", () =>
         {
-            // an archive laid out as hdiffpatch_v5.1.3_bin_linux64.zip is: one top-level linux64/ holding the programs
+            // an archive with one top-level folder holding the programs (as zig's own archives are)
             var folder = Directory.CreateDirectory(Path.Combine(root, "tool-unpack")).FullName;
-            var zip = Path.Combine(folder, "hdiffpatch_v5.1.3_bin_linux64.zip");
+            var zip = Path.Combine(folder, "tool_1.0_linux64.zip");
             using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
-                foreach (var name in new[] { "linux64/hdiffz", "linux64/hpatchz" })
+                foreach (var name in new[] { "linux64/helper", "linux64/tool" })
                     using (var entry = new StreamWriter(archive.CreateEntry(name).Open())) entry.Write("#!/bin/sh\n");
             var bytes = File.ReadAllBytes(zip);
-            var pinned = ModKit.Tools(ModSdk.Find(Directory.GetCurrentDirectory())!).Single(t => t.Name == "hpatchz-linux") with
-            {
-                Url = "https://example.invalid/hdiffpatch_v5.1.3_bin_linux64.zip", Bytes = bytes.Length,
-                Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))
-            };
+            var pinned = new ModTool("tool-linux", "1.0", "https://example.invalid/tool_1.0_linux64.zip",
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), "tool", false, "linux-x64", bytes.Length);
             var sdk = new ModSdk(folder, Path.Combine(folder, "tools"), folder, folder);
             using var http = new HttpClient(new OneFile(bytes));
             ModKit.InstallToolAsync(http, sdk, pinned, _ => { }, CancellationToken.None).GetAwaiter().GetResult();
-            check(File.Exists(ModKit.ToolPath(sdk, pinned)) && ModKit.ToolPath(sdk, pinned).EndsWith(Path.Combine("hpatchz-linux", "hpatchz"), StringComparison.Ordinal),
-                "The Linux hpatchz pin does not name where its archive unpacks: " + ModKit.ToolPath(sdk, pinned));
+            check(File.Exists(ModKit.ToolPath(sdk, pinned)) && ModKit.ToolPath(sdk, pinned).EndsWith(Path.Combine("tool-linux", "tool"), StringComparison.Ordinal),
+                "The pin does not name where its archive unpacks: " + ModKit.ToolPath(sdk, pinned));
             var failed = false;
-            try { ModKit.InstallToolAsync(http, sdk, pinned with { Exe = "linux64/hpatchz" }, _ => { }, CancellationToken.None).GetAwaiter().GetResult(); }
+            try { ModKit.InstallToolAsync(http, sdk, pinned with { Exe = "linux64/tool" }, _ => { }, CancellationToken.None).GetAwaiter().GetResult(); }
             catch (InvalidDataException) { failed = true; }
             check(failed, "A pin naming the archive's top folder, which the unpack removes, was installed.");
         });
@@ -38,15 +35,14 @@ static class ModKitTests
             check(repository != null && repository.Folder.EndsWith(Path.Combine("native", "mod-sdk"), StringComparison.Ordinal) &&
                 Directory.Exists(repository.Template) && File.Exists(Path.Combine(repository.Template, "hellforge-mod.json")), "Repository SDK.");
             var tools = ModKit.Tools(repository!);
-            check(tools.Count == 5 && tools.All(t => t.Platform is "windows-x64" or "linux-x64") &&
+            check(tools.Count == 4 && tools.All(t => t.Platform is "windows-x64" or "linux-x64") &&
                 tools.Single(t => t.Name == "zig") is { Ide: false, Version: "0.17.0", Platform: "windows-x64" } &&
                 tools.Single(t => t.Name == "zig-linux") is { Ide: false, Version: "0.17.0", Platform: "linux-x64", Exe: "zig", Bytes: 57332648L,
                     Sha256: "1CBE9DF9F27E6B78D14CCBCA43B6703A404EF79EF1C463DE901D7F088D4E2026",
                     Url: "https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz" } &&
-                tools.Single(t => t.Name == "hpatchz-linux") is { Ide: false, Version: "5.1.3", Platform: "linux-x64", Exe: "hpatchz" } &&
-                tools.All(t => t.Sha256.Length == 64), "Tool pins, including the native Linux Zig and hpatchz.");
-            var placeholder = new ModTool("native-patch", "5.1.3", "https://example.invalid/tool.tar.gz", new string('0', 64),
-                "hpatchz", false, "linux-x64");
+                tools.All(t => t.Sha256.Length == 64), "Tool pins, including the native Linux Zig.");
+            var placeholder = new ModTool("native-tool", "1.0", "https://example.invalid/tool.tar.gz", new string('0', 64),
+                "tool", false, "linux-x64");
             check(!ModKit.HasPinnedArchive(placeholder) && !ModKit.HasCompletePin(placeholder),
                 "A zero-filled placeholder must not be downloaded or run.");
 

@@ -67,7 +67,9 @@ Every session writes `network-census.jsonl` (each attempt: call, target, loopbac
 offset; repeats counted), and `result.json` holds its summary (`networkCensus`). `HellForge.Session census <log>`
 summarises one from a player's logs. `native/steam-cloud/test/net_gate_test.c` tests it against the built stand-in.
 The session turns the census on by default (`HELLFORGE_NETGATE=census`), with the send, dns, http and process hook
-groups (see step 4 for why the connect groups are left out).
+groups (see step 4 for why the connect groups are left out), and in a sandboxed session the denied group
+(`docs/steam-bridge.md`). Repeats are counted per call, target and caller in a table of 2048; once it is full, further
+new ones share one count and the summary has `crowded`.
 
 ### Step 2: classify
 

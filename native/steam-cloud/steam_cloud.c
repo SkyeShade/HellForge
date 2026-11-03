@@ -25,6 +25,7 @@
 #include "steam_census.h"
 #include "bridge_channel.h"
 #include "../common/hf_privacy.h"
+#include "../common/hf_log_header.h"
 #ifdef HELLFORGE_BRIDGE_BUILD
 #include "bridge_local.h"
 void BridgeContextsChanged(void); // bridge_exports.c
@@ -80,6 +81,7 @@ static BOOL CALLBACK Initialize(PINIT_ONCE once, void *parameter, void **context
     DWORD length = GetEnvironmentVariableW(L"HELLFORGE_CLOUD_LOG", log, MAX_PATH);
     if (length > 0 && length < MAX_PATH)
         g_log = CreateFileW(log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HfLogHeader(g_log);
     length = GetEnvironmentVariableW(L"HELLFORGE_CLOUD_DIR", g_dir, MAX_PATH - 64);
     DWORD attributes = length > 0 && length < MAX_PATH - 64 ? GetFileAttributesW(g_dir) : INVALID_FILE_ATTRIBUTES;
     g_enabled = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
@@ -349,9 +351,27 @@ HELLFORGE_API int __cdecl SteamAPI_RestartAppIfNecessary(uint32_t appId)
 
 // The pinned build's SDK exports SteamAPI_Init and SteamAPI_InitSafe (both bool); newer SDKs replace them with
 // SteamAPI_InitFlat and SteamInternal_SteamAPI_Init, which the .def generator would refuse here.
+// The overlay probe (HELLFORGE_OVERLAY_PROBE, set by the session runner only under HELLFORGE_SANDBOX_OVERLAY_PROBE=1):
+// Steam's GameOverlayRenderer64.dll, which SteamAPI_Init loads into the process that calls it (the broker, in bridge
+// mode), loaded into the sandboxed game instead, once, so the network gate's census records every object Steam's overlay
+// is refused at low integrity (docs/steam-bridge.md). A diagnostic: nothing else changes, and the path is the session's.
+static void OverlayProbe(void)
+{
+    static bool done;
+    if (done) return;
+    done = true;
+    wchar_t path[MAX_PATH];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_OVERLAY_PROBE", path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) return;
+    HMODULE overlay = LoadLibraryExW(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (overlay) Log("overlay probe: Steam's overlay loaded into the game");
+    else Log("overlay probe: Steam's overlay did not load (%lu)", GetLastError());
+}
+
 // Bridge mode: connects here rather than in DllMain, since the wait for the broker must not run under the loader lock.
 static bool BridgeInit(const char *how)
 {
+    OverlayProbe();
 #ifdef HELLFORGE_BRIDGE_BUILD
     if (!g_bridged)
     {

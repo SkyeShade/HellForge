@@ -37,6 +37,8 @@ Reference and related pages:
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
+- [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
+  terminal; the SDK 16 calls, the terminal's visit, what each lobby says and the rules a browser keeps.
 
 ## Contributing and the engine
 
@@ -47,8 +49,10 @@ Reference and related pages:
   editing.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
   each profile.
-- [Build patches](downpatch.md): for maintainers; how setup patches a newer Steam build and how to publish a patch after
-  a game update.
+- [Code signing and Smart App Control](code-signing.md): for maintainers; which files Smart App Control blocks, what
+  signing would fix, the options, and the build scripts' optional signing step.
+- [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
+  Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
 - [The published verified list](verified-list.md): for maintainers; how HellForge takes its verified list from
   files.hf-mod.com, the signing key, and how to publish a list.
 - [Co-op and public lobbies](multiplayer.md): how HellForge's co-op, mod sync and public lobbies work, and the research
@@ -72,22 +76,26 @@ On Linux, the graphical installer and native setup wizard do this instead; see
 
 1. Finds HELLDIVERS 2 in your Steam libraries and checks that it is the supported build (Steam build 25480438).
    - When Steam has that build, setup copies it as it is.
-   - When Steam has a newer build that HellForge has a patch pack for, setup downloads the pack (about 1.7 GB, checked
-     against its SHA-256) and makes the copy by patching your own Steam files. A pack holds the binary differences
-     between the two builds and a few small files the newer build no longer has. [downpatch.md](downpatch.md) explains
-     how setup picks and checks a pack.
-   - Otherwise (another build, or no HELLDIVERS 2), Steam itself downloads the supported build on your account. The
-     wizard shows one `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
+   - When Steam has another build, or no HELLDIVERS 2, the setup screen offers three ways to get the supported build
+     for your account. With a QR code approved in the Steam app on your phone (the default), setup signs in and
+     downloads the build from Steam's servers; what your Steam install already has is copied, not downloaded. With no
+     phone, Valve's SteamCMD downloads it, and you type your password into its window, not into HellForge. Nothing of a
+     sign-in is kept, and every file is checked against Steam's hashes. [steam-download.md](steam-download.md) explains
+     how.
+   - When you choose Use the Steam app, when Steam does not allow the download (a game borrowed through Steam Family
+     Sharing, for example), when SteamCMD cannot be set up, or on Linux, the Steam app downloads the supported build on
+     your account. The wizard shows one
+     `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
      `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches
      `<Steam>/steamapps/content/app_553850/`, continues when every depot is complete, copies from there and can delete
      the download afterwards. [Troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build) walks through
      it.
 
    The normal game is not touched either way.
-2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When a patch
-   pack is used, this runs after the copy, with the copy's Steam library.
-3. Copies or patches the game's 135 depot files (about 24 GB) from your own Steam library, each checked against Steam's
-   hashes. Mods and other files in the Steam folder are not copied, and an interrupted copy continues where it stopped.
+2. Confirms with Steam that the signed-in account owns the game or has it through Steam Family Sharing. When the build
+   is downloaded from Steam's servers, this runs after the download, with the downloaded copy's `steam_api64.dll`.
+3. Copies (or downloads) the game's 135 depot files (about 24 GB), each checked against Steam's hashes. Mods and other
+   files in the Steam folder are not copied, and an interrupted copy or download continues where it stopped.
 4. Places the network block for this folder's copy (the only Windows administrator prompt) and checks that it blocks.
    Setup does not finish until it is in place.
 5. Optionally imports game settings and saves from an earlier HellForge setup on this PC (the originals stay where they

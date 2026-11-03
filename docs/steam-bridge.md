@@ -4,7 +4,8 @@
 channel (phase 2), the generated bridge with its first allow-list (phase 3), and the session side of phase 4. In game,
 one sandboxed solo session reached the title screen (2026-10-23, phase 4 below); a mission, a controller and co-op are
 untested. The allow-list covers the calls one census run saw, and the next census (a controller, a whole mission, the
-social tab) will show what it misses. Since the 0.3.0 beta a session is sandboxed by default: the launcher's Settings >
+social tab) will show what it misses. Players found that Steam Input's controllers (a Steam Controller, for one) do
+not reach a sandboxed game: "Controllers and Steam Input" below says why and what a session does. Since the 0.3.0 beta a session is sandboxed by default: the launcher's Settings >
 Sandbox, "Run the game sandboxed", is on unless turned off (`launcher-settings.json` `sandboxed`; the earlier betas'
 `sandbox` key is not read, so every installation starts sandboxed once). It is offered only by an engine built with the
 Steam bridge and only on Windows (`SessionRunner.CanSandbox`; under Wine/Proton the network namespace is the block and
@@ -45,8 +46,8 @@ client's IPC objects are at the player's normal integrity, so a low-integrity pr
   `HELLFORGE_BRIDGE_PIPE`).
   - Its own functions never load Valve's DLL in that mode. Its `SteamAPI_Init` and `SteamAPI_InitSafe` (the pinned
     build's init exports) connect to the broker on first use, never in `DllMain` (no wait under the loader lock).
-    It waits up to 10 s for the broker's pipe. Without a broker it **fails closed**: init returns false,
-    `IsSteamRunning` 0, and nothing falls back to Valve's DLL.
+    It waits up to 10 s for the broker's pipe, which the session runner has already made sure of (below). Without a
+    broker it **fails closed**: init returns false, `IsSteamRunning` 0, and nothing falls back to Valve's DLL.
   - It answers the flat API itself: init, shutdown, `RunCallbacks`, `IsSteamRunning` (asked of the broker), callback
     registration, the user and pipe handles, and `SteamInternal_ContextInit` (the inline accessors' cache).
   - The **bridge build** of the stand-in (`steam_api64_bridge.dll`, phase 3) has no forwarders to Valve's DLL: an export
@@ -201,12 +202,12 @@ rather than run on Valve's DLL.
 | `SteamMatchMaking009` | `JoinLobby` | call | reviewed 2026-10-24: any lobby by id, as the game joins the host's own Steam lobby in a co-op join; that lobby learns this player's SteamID, as without HellForge, and its members are no co-op peers for P2P unless the backend lists them |
 | `SteamMatchMaking009` | `SetLobbyData`, `GetLobbyData`, `SetLobbyJoinable`, `LeaveLobby`, `GetNumLobbyMembers`, `GetLobbyMemberByIndex`, `GetLobbyOwner` | call | only a lobby the game made or entered this session (`LobbyCreated_t`, or a `LobbyEnter_t` that says it entered); key at most 255, value at most 8192 bytes |
 | `STEAMUSERSTATS_INTERFACE_VERSION012` | `RequestCurrentStats`, `GetAchievement` | call | name at most 128 |
-| `SteamInput006` | `GetControllerForGamepadIndex` | call | index 0-15; per-frame use unknown until a controller census |
+| `SteamInput006` | `GetControllerForGamepadIndex` | local | 0, "not one of Steam Input's pads": Steam's emulated pads are the broker's ("Controllers and Steam Input"); a call in 0.3.0-beta |
 | `SteamClient020` | `GetISteam*`; the pipe and user calls | interface; local | the bridge's own objects; one pipe, one user |
 
 In the table, local and snapshot are both mode `hand`. Callbacks: the 16 ids the census saw, and 504 (`LobbyEnter_t`)
-from the co-op census. 28 methods are calls, 47 are answered in the game, and the other 292 the nine interfaces declare
-are refused.
+from the co-op census. 30 methods are calls, 48 are answered in the game, and the other 289 the nine interfaces declare
+are refused (367 in all, as the first table's 20, 47 and 300).
 
 **Cost per frame, from the census's rates (unmeasured in game):** `ReadP2PPacket` (1.00 per frame) takes a slim lock and looks at the packet queue (no system call while uncontended); the DLC
 answers (0.85) and `BLoggedOn` (0.024) are memory reads. None makes a system call, so an idle frame stays at the ring
@@ -227,7 +228,7 @@ HellForge's public lobbies go through its own directory instead (docs/multiplaye
 The census saw `CreateLobby`, `SetLobbyData`, `SetLobbyJoinable` and `LeaveLobby`, never `SetLobbyType`, so the
 lobby's type is the one asked for at creation. The table marks `eLobbyType` for the broker to adjust (`adjust` in
 `bridge-methods.json`, `BrokerApi.adjust`, run once every check of the table passed):
-- **Play with strangers off** (the default): a Public lobby (`2`) is made Friends only (`1`). Friends and invitees
+- **Play with strangers off:** a Public lobby (`2`) is made Friends only (`1`). Friends and invitees
   can still join it, and it is in no search. Strangers could reach no one anyway, so nothing is lost.
 - **Play with strangers on:** the type is left as the game asked. A stranger joining through the directory may join
   the host's Steam lobby too (a joiner posts it as its `platform_lobby`), which Friends only would refuse. To settle
@@ -235,8 +236,10 @@ lobby's type is the one asked for at creation. The table marks `eLobbyType` for 
   which keeps it Friends only with strangers on): if a stranger's join still works, it can be Friends only always.
 - Every other type is left as asked, and every request is logged: `broker: CreateLobby asks lobby type 2; Steam gets
   1 (Play with strangers off)`.
-- The broker reads the setting as the backend does (`mods/hellforge-mods.json` `playWithStrangers`, top level only, off
-  without the file). It looks at the file's time stamp every 2 s, in the broker's process. When the setting changes,
+- The broker reads the setting as the backend does (`mods/hellforge-mods.json` `"strangers": "on"`/`"off"`, top level
+  only; a legacy `playWithStrangers` true or false still counts, and without a choice it is on because the broker runs only in a
+  sandboxed session). It looks at the file's time stamp
+  every 2 s, in the broker's process. When the setting changes,
   each lobby the game asked to be Public gets `SetLobbyType`, Public or Friends only.
 - `bridge_test.c` checks the clamp, a nested key that is not the setting, both changes, the test switch and a private
   lobby left alone.
@@ -249,6 +252,31 @@ lobby stays listed.
 - **The game process:** the session runner starts it with a lowered copy of its own token (`CreateProcessAsUser`; no
   admin needed). Its job adds an active-process limit of 1, so no child processes. That loses the crash handler, and
   NVIDIA's DLSS updater that Steam's overlay starts.
+- **The broker's start:** the game is created suspended, and the runner resumes it only once the broker's log says
+  `broker: waiting for the game`: Steam started in the broker, the snapshot filled and the pipe open
+  (`PlaySession.WaitForBroker`, `SteamBrokerLog`). Before that the broker started after the game and the game resumed at
+  once, so a broker held up more than about 10 s (an antivirus checking a new program, say) or one whose
+  `SteamAPI_Init` failed left the game at STEAM NOT DETECTED while the session said it was running. Now a broker that
+  ends first is the session's failure, with its reason (Steam not running or signed in, or run as administrator;
+  Valve's DLL; the channel), and one not ready in 60 s is too. The session log says it is waiting after 3 s. A broker
+  that ends while the game runs, other than with the game (its `SteamAPI_Shutdown` or exit), is said in the session
+  log once and recorded (`brokerEndedDuringPlay`); `brokerReadyMilliseconds` and `brokerGameConnected` are recorded
+  for every sandboxed session.
+- **What the sandbox refuses the game** is recorded. In a sandboxed session the network gate's census (`net_gate.c`)
+  adds a `denied` group: kernelbase's `OpenFileMappingW`, `CreateFileMappingW`, `OpenEventW`, `CreateEventW`,
+  `CreateEventExW`, `OpenMutexW`, `CreateMutexW`, `CreateMutexExW`, `OpenSemaphoreW`, `CreateFileW` (files and pipes)
+  and `WaitNamedPipeW`. A call that fails with `ERROR_ACCESS_DENIED` is written with the object's name and the module
+  that asked (`"scope":"denied"`), and the caller's last error is kept. A folder opened as a file and a read-only file
+  opened for writing are left out: Windows refuses those at any level. Overlays reach their own program through such
+  objects, which other programs made at the player's level, so these lines say exactly what each one is refused:
+  `result.json` has `networkCensus.denied` and `deniedTargets`, and `session.log` names each module, by the overlay it
+  is when it is a known one (`SandboxRefusals`). The A variants and direct `Nt*` calls are not hooked.
+  `HELLFORGE_NETGATE_HOOKS` without `denied` leaves it out. The census's hooks also keep the caller's last error
+  now: `TlsGetValue` in their bookkeeping reset it to 0, so a failed `connect` read back as no error.
+- **Steam's overlay** loads with `SteamAPI_Init`, so only into the broker. `HELLFORGE_SANDBOX_OVERLAY_PROBE=1` (a
+  diagnostic) has the stand-in load Steam's `GameOverlayRenderer64.dll` into the sandboxed game at `SteamAPI_Init`
+  (`OverlayProbe`; the runner passes its path, from Steam's `SteamPath`, as `HELLFORGE_OVERLAY_PROBE`), so the census
+  records what Steam's overlay is refused there; `result.json` has `overlayProbe`.
 - **Folders the game writes** are all inside the session's `game/` folder in its run folder, which the runner **makes
   new with a low label** (`LowIntegrityHelper.CreateLowFolder`); everything made in it later inherits the label.
   Labelling at creation, at or below one's own integrity, needs no admin. Relabelling an existing folder needs
@@ -262,7 +290,9 @@ lobby stays listed.
     ImGui settings. The game's logs, dumps and crash data land there too and stay with the session.
 
   Both copies go back once the game is gone (`SandboxFolders`): regular files only, never through a link or junction
-  (a low process can make one in its own folder), at most 4 GiB and 100,000 files. The rest of the run folder stays at
+  (a low process can make one in its own folder), at most 4 GiB and 100,000 files. The game writes its shader cache only on a clean exit,
+  so a stop the player asked for first posts WM_CLOSE to the game's windows and waits up to 30 s (`GameClose`); an
+  installation without a shader cache starts from the normal game's (`ShaderCache.Seed`). The rest of the run folder stays at
   the player's level: the runner's result, the backend's evidence and the `steam_api64.dll` copy the backend loads for
   the peer link must stay out of the game's reach.
 - **Pipes the game opens** carry a low label when the backend runs with `--sandbox` (`PipeServer`): the lobby and party
@@ -284,7 +314,60 @@ lobby stays listed.
 - **Traffic to this PC:** the backend's HTTP on loopback, and its pipes. The backend treats everything from the game
   as untrusted, as it does today.
 - **Steam's overlay.** It is loaded by `SteamAPI_Init` in the process that calls it, which is now the broker, so the
-  game has no overlay: no chat, invite dialog or screenshots. The invite dialog's callbacks are still bridged.
+  game has no overlay: no chat, invite dialog or screenshots. The invite dialog's callbacks are still bridged. Steam
+  Input's controllers come with the overlay, so the game has none of them either (below).
+
+### Controllers and Steam Input
+
+**What players saw (#94, #204, 0.3.0-beta):** with the sandbox on, a Steam Controller did nothing in the game while
+keyboard and mouse worked, and with the sandbox off it worked again. Through a non-Steam shortcut with Steam Input on,
+its A button opened the chat and the game's controller page showed no bindings. An Xbox controller worked.
+
+**Why (from the code and the reports; not reproduced on a PC with these controllers):**
+- The game reads controllers itself, through XInput (and its own PlayStation support, as far as is known). Of Steam
+  Input it calls only `GetControllerForGamepadIndex`, four times at start (census step 2), and the stand-in's log of
+  #94's sandboxed session refuses no Steam Input call. There is no Steam Input traffic to forward.
+- A controller that Steam Input handles (a Steam Controller, the Steam Deck's controls, a PlayStation or Switch
+  controller with Steam Input on) reaches such a game as an XInput pad Steam emulates. That pad exists only in a
+  process Steam's overlay is in, which hooks XInput there. Sandboxed, the overlay is in the broker (above), so Steam's
+  pad is the broker's and the game gets none.
+- Steam still counts the game as running (the broker is app 553850), so Steam Input keeps the controller. The game's
+  window is no window of the process Steam knows, so Steam can treat it as the desktop and send its desktop layout: A
+  presses Enter, which opens the chat.
+- A controller the game reads itself reaches it as before: an Xbox controller through XInput. Whether a low-integrity
+  process may open a PlayStation controller's HID device for the game's own support (which writes to it) is untested.
+
+**What would not do:**
+- The overlay in the game: it needs Steam's IPC, which a low-integrity process cannot use, the reason the game alone
+  stops at STEAM NOT DETECTED ("Why"). It would take raising the game's integrity or loosening Steam's objects.
+- Forwarding `ISteamInput`: the game makes no such calls.
+- Starting the game unsandboxed by itself when Steam Input has a controller: the sandbox lost without the player's
+  choice. The player can turn it off (Settings > Sandbox).
+
+**What a sandboxed session does:**
+- The broker asks Steam which controllers Steam Input handles (`broker_input.c`; `Init` with the broker calling
+  `RunFrame`, then every 2 s `GetConnectedControllers`, `GetInputTypeForHandle` and `GetGamepadIndexForController`) and
+  logs the list when it changes: `broker: Steam Input controllers: Steam Controller [1] as XInput pad 0`, or `none`.
+- The session reads that line (`SteamInputNote` in HellForge.Core) into result.json's `steamInput` (the controllers'
+  names and types, and the note), and the note into its log. The launcher shows it under the status while the game
+  runs and in its console; the CLI writes a `steam-input` event. Settings > Sandbox says it beforehand. Xbox and
+  PlayStation controllers, which the game may still read itself, get a milder note than the others.
+- `GetControllerForGamepadIndex` is answered 0 in the game: with `Init` done in the broker, Steam could name a pad it
+  emulates there, which is none of the game's.
+- For a relay (below), the broker's log also says whether the overlay is in the broker, which XInput pad Steam
+  emulates for each controller, and once a minute how often that pad changed in the broker's own XInput (`broker:
+  XInput pad 0 in the broker changed 37 times in the last minute: ...`), or that XInput there does not show it.
+- Tests: `test/input_test.c` (every build, fakes for Steam Input, XInput and the overlay) checks when Steam is asked,
+  the lines, the 16-controller bound, the pads' changes, and a DLL without Steam Input or an `Init` that fails.
+  `SteamInputNoteTests` reads the lines that test checks, compares the two type-name tables, and checks the note and
+  result.json's `steamInput`.
+
+**A relay, not built:** the broker reads Steam's emulated pad in its own XInput and publishes its state (16 bytes a
+pad) beside the snapshot; the stand-in answers the game's `XInputGetState` and `XInputGetCapabilities` for a free pad
+from it (a MinHook detour, as the network gate's), and `GetControllerForGamepadIndex` names it. Data goes only from the
+broker to the game (rumble back would be two numbers a pad), so nothing new leaves the sandbox. It works only if the log
+above shows the pad changing while the player plays the game, and only once Steam's desktop layout stays off the game's
+window.
 
 ## The census
 
@@ -302,7 +385,7 @@ each requested once.
 | `ISteamRemoteStorage` | `016` | the cloud save; HellForge's stand-in already answers it locally |
 | `ISteamUserStats` | `012` | stats and achievements |
 | `ISteamApps` | `008` | ownership, DLC, language |
-| `ISteamInput` | `SteamInput006` | controllers: called every frame while a controller is used |
+| `ISteamInput` | `SteamInput006` | controllers: which XInput pad is one of Steam Input's (`GetControllerForGamepadIndex` only, "Controllers and Steam Input") |
 | `ISteamUser` | `SteamUser021` | SteamID, auth tickets |
 | `ISteamNetworking` | `SteamNetworking006` | the old P2P API |
 | `ISteamFriends` | `SteamFriends017` | names, overlay, invites, rich presence |
@@ -438,6 +521,12 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
     moment it hears of a joiner, so the file must already list it; before, the file was written a few milliseconds
     after the announcement. A peer listed that way stays in the file until the lobby or Party lists it too (at most
     30 s), and a kick takes it out at once.
+  - A joiner also lists the lobby's **other members** (`LobbyService.LobbyMates`): the members of the host's join
+    answer, then each one the host reports added, written in before the game hears of them (`MateAdded`), and taken
+    out at once when the host reports them gone or this game leaves the lobby (`MateRemoved`). Before (0.3.0-beta), a joiner listed only the host, so
+    in a squad of three or four the joiners' games could not reach each other. The list comes from the host of a lobby
+    this game is in, at most 8 a lobby, never this machine or the host itself. The joiners' backends still never talk:
+    these peers are not pinged.
   - The broker reads the file when its time stamp moves, and again at once when a SteamID is not in it: a host sends
     within a second of a join, seconds before the joiner enters its Steam lobby.
 - **Out:** `SendP2PPacket` (at most 7000 bytes, channels 0-7), `AcceptP2PSessionWithUser` and `GetP2PSessionState` to a
@@ -447,9 +536,30 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
   dropped, so they never pile up in Steam. The stand-in puts each whole packet in a queue of 32 (a static array, no
   allocation). `ReadP2PPacket` and `IsP2PPacketAvailable` answer from the queue with no system call. A full ring or
   queue loses the packet, and it is logged.
+- **A squadmate the game cannot reach** (static reading of the game's 2026-10-30 memory dumps, not confirmed live):
+  - Co-op is a full mesh. Each game opens its own Steam P2P session to every other player, not only to the host.
+  - A session that never becomes active (`GetP2PSessionState`, which the bridge refuses for a SteamID not listed) gets
+    no PlayFab fallback. After at least 45 s without a pong, the connection fails with `PongTimeout` ("Pong timeout for
+    %llx", exe `0x2A5D0A`). Only a session that was active once falls back to PlayFab Party on a pong timeout
+    ("Platform pong timeout ... Falling back to playfab").
+  - The other way to the fallback is Steam's `P2PSessionConnectFail_t` (1203) for that player (exe `0x751B80`): the
+    next send to them fails, and the game falls back to PlayFab Party (exe `0x2A9A9B`). It tells the other game, which
+    falls back too (a packet whose first byte is 5, exe `0x2A6BA2`). HellForge's Party relays through the host's
+    backend, so the pair keeps playing. A refused `SendP2PPacket` never reaches Steam, so a game whose own bridge
+    refused the send never gets that callback. A game outside the sandbox should get it (Steam's timeout error, "target
+    isn't responding, perhaps not calling AcceptP2PSessionWithUser()"), since the sandboxed game's bridge refuses to
+    accept its session. That fits #202's report that unsandboxing one player let everyone join, if that player was one
+    of the two joiners.
+  - The failure is reported to the host's game session. 20 s after the first report, it votes one of the pair out (exe
+    `0x296AB0`): a player accused twice, else the one of the two that joined the session first. The host then removes
+    that player (game.dll `0x108A9CB`, "Peer %llx was voted out").
+  - With the joiners not listed (0.3.0-beta), this is issue #202. The third player waits. About a minute later the
+    second player is pushed out, and then the third gets in. When the second rejoins, the third is pushed out.
 - Tests: `bridge_test.c` covers a send to the entered lobby's host, a refused one to anyone else, a peer the backend
   lists mid-session, more than 7000 bytes, session state, accept, a 3000-byte packet in pieces, a stranger's packet
   dropped, and a second channel. `smoke-lobby-link` checks each backend lists the other after a join.
+  `SquadTests` (HellForge.LocalBackend.Tests) runs three backends over loopback UDP and checks each one's
+  `p2p-peers.txt` as a third player joins, the second leaves and rejoins, and the host kicks the third.
 - Unmeasured: how much P2P co-op sends, and whether 8192 bytes and 60 ring slots are enough for it.
 
 ## Cost

@@ -316,6 +316,7 @@ sealed partial class PlaySession
             }
             CheckBlock(clock, blockRules, ref nextBlockCheck);
             requestCount += Tools.BackendRequests(requestLog, ref requestOffset).Count;
+            RecordFirstBackendRequest(requestCount);
             if (clock.ElapsedMilliseconds >= nextSample)
             {
                 WriteSandboxSample(observations, clock.ElapsedMilliseconds, requestCount, current);

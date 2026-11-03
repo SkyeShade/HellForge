@@ -174,7 +174,7 @@ public static partial class ModKit
     public static bool HasCompletePin(ModTool tool) => tool.Bytes > 0 && HasPinnedArchive(tool);
 
     // The host whose tools an installation needs: Windows sessions and IDEs keep zig.exe, CMake and Ninja; a Linux host
-    // installs zig-linux, which builds its source mods natively before a session, and hpatchz-linux for build patches.
+    // installs zig-linux, which builds its source mods natively before a session.
     public static string HostPlatform => OperatingSystem.IsLinux() ? "linux-x64" : "windows-x64";
 
     public static IReadOnlyList<ModTool> ToolsForThisPlatform(ModSdk sdk, bool ide = false) =>
@@ -240,21 +240,13 @@ public static partial class ModKit
         return null;
     }
 
-    // Downloads the pinned tools into the SDK's tools folder (Zig; CMake and Ninja too with ide; hpatchz-linux on Linux),
+    // Downloads the pinned tools into the SDK's tools folder (Zig; CMake and Ninja too with ide; zig-linux on Linux),
     // each checked against its SHA-256 before it is unpacked. Tools already there at their pinned archive are kept.
     public static async Task InstallToolsAsync(ModSdk sdk, bool ide, Action<string> progress, CancellationToken cancel = default)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
         foreach (var tool in ToolsForThisPlatform(sdk, ide))
             await InstallToolAsync(http, sdk, tool, progress, cancel);
-    }
-
-    // One pinned tool, by the same path and checks as InstallToolsAsync; the build-patch setup uses this for hpatchz-linux
-    // without fetching the mod compiler.
-    public static async Task InstallToolAsync(ModSdk sdk, ModTool tool, Action<string> progress, CancellationToken cancel = default)
-    {
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
-        await InstallToolAsync(http, sdk, tool, progress, cancel);
     }
 
     internal static async Task InstallToolAsync(HttpClient http, ModSdk sdk, ModTool tool, Action<string> progress, CancellationToken cancel)

@@ -5,8 +5,9 @@ using System.Text.Json;
 namespace HellForge.Core;
 
 // The SDK's mappings (docs/sdk-roadmap.md "Mappings"): mappings/components.json names the fields of component records,
-// mappings/catalog.json names vanilla content. Both generate the typed C headers mods include and the loader's table of
-// reviewed fields (hellforge sdk-headers), so a mod's field and the loader's check come from one entry.
+// mappings/catalog.json names vanilla content, mappings/functions.json names game functions. They generate the typed C
+// headers mods include and the loader's tables of reviewed fields and functions (hellforge sdk-headers), so a mod's
+// field or function and the loader's check come from one entry.
 public sealed record SdkField(string Name, int Offset, string Type, int Count, string Meaning, bool Verified, string Source)
 {
     public int Size => Count * SdkMappings.TypeSize(Type);
@@ -28,14 +29,56 @@ public sealed record SdkComponent(string Name, string Component, int Index, int 
     public bool Table { get; init; }
 }
 public sealed record SdkContent(string Kind, string Name, string Constant, ulong Id, string Note);
+// A game function's argument: its C type (SdkMappings.ParamTypes) and what it is.
+public sealed record SdkParam(string Name, string Type, string Meaning);
+// A game function (SDK 16): where it is in its module, its first bytes as reviewed (an IDA-style pattern), its signature.
+// Hook: the signature is whole (every argument, unnamed ones as pass-through slots, and the return value), so a detour
+// can pass everything on; without it the function is for calling only.
+// Aliases: its former names, which the loader still resolves (mods built with them keep working).
+public sealed record SdkFunction(string Name, string Module, uint Rva, string Code, string Returns, IReadOnlyList<SdkParam> Params,
+    bool Hook, string Meaning, string Source)
+{
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+}
+// A named field of a global's object: its offset from the object's start, a field type (u8 ... u64, f32, ptr).
+public sealed record SdkGlobalField(string Name, uint Offset, string Type, string Meaning);
+// An instruction that loads a global's cell: its rva, and its bytes with the ones after it (an IDA-style pattern).
+public sealed record SdkWitness(uint Rva, string Code);
+// A game global (SDK 16): a cell in a module's data holding a pointer to one of the game's objects, the instructions that
+// witness it (1 to 3; the loader needs any one of them as reviewed), the object's named fields, by offset, and its former
+// names (Aliases), which the loader still resolves.
+public sealed record SdkGlobal(string Name, string Module, uint Rva, IReadOnlyList<SdkWitness> Witnesses, string Meaning,
+    IReadOnlyList<SdkGlobalField> Fields, string Source)
+{
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+}
 
 public sealed class SdkMappings
 {
     public const string ComponentsFile = "components.json";
     public const string CatalogFile = "catalog.json";
+    public const string FunctionsFile = "functions.json";
+    public const string GlobalsFile = "globals.json";
     public static readonly string[] HeaderFiles =
         ["native/mod-sdk/hellforge_components.h", "native/mod-sdk/hellforge_content.h", "native/mod-loader/sdk_fields.h",
-         "native/mod-loader/sdk_content.h", "docs/sdk-reference.md"];
+         "native/mod-loader/sdk_content.h", "docs/sdk-reference.md", "native/mod-sdk/hellforge_functions.h",
+         "native/mod-loader/sdk_functions.h", "native/mod-sdk/hellforge_globals.h", "native/mod-loader/sdk_globals.h"];
+
+    // hellforge_mod.h's other Hf types, which a global's struct (Hf<Name>) can't take either.
+    static readonly HashSet<string> SdkTypes = ["Ability", "BugholeEvent", "Content", "DamageEvent", "DamagePreEvent", "EditDef",
+        "EditorEntity", "EventInfo", "ExplosionEvent", "HealEvent", "Homing", "KillEvent", "LimbState", "LiveValue", "ModInfo",
+        "Notice", "Passives", "PelicanCall", "PlayerEvent", "Session", "Shot", "ShotRule", "SpawnEvent", "Stat", "StatEvent",
+        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener"];
+    // A global's field types: the record field types and ptr, a pointer.
+    static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
+
+    // The C types a function's arguments and return value may have (and void, for a return value).
+    public static readonly string[] ParamTypes = ["uint8_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
+        "uint8_t*", "const uint8_t*", "uint32_t*", "const uint32_t*", "float*", "const float*"];
+    // Names an argument can't take: C's keywords, and mod (the hf_ wrappers' own argument).
+    static readonly HashSet<string> CKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
+        "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed",
+        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod"];
 
     // Content kinds, in header order: (JSON key, constant prefix, C type of the ids, what the ids are for).
     static readonly (string Key, string Prefix, bool Wide, string Doc)[] Kinds =
@@ -61,6 +104,8 @@ public sealed class SdkMappings
     public required string Build { get; init; }
     public required IReadOnlyList<SdkComponent> Components { get; init; }
     public required IReadOnlyList<SdkContent> Content { get; init; }
+    public IReadOnlyList<SdkFunction> Functions { get; init; } = [];
+    public IReadOnlyList<SdkGlobal> Globals { get; init; } = [];
 
     public static readonly string[] AppliesValues = ["now", "respawn", "mission"];
     public static readonly string[] RefValues = ["projectile", "explosion", "status", "damage", "mount", "pickup"];
@@ -81,7 +126,7 @@ public sealed class SdkMappings
             using var stream = typeof(SdkMappings).Assembly.GetManifestResourceStream("HellForge.Core.mappings." + name)!;
             return new StreamReader(stream).ReadToEnd();
         }
-        return Parse(Resource(ComponentsFile), Resource(CatalogFile));
+        return Parse(Resource(ComponentsFile), Resource(CatalogFile), Resource(FunctionsFile), Resource(GlobalsFile));
     });
     // The mappings this build of HellForge was made with (embedded from mappings/).
     public static SdkMappings Current => CurrentMappings.Value;
@@ -94,11 +139,16 @@ public sealed class SdkMappings
 
     public static SdkMappings Load(string folder)
     {
-        try { return Parse(File.ReadAllText(Path.Combine(folder, ComponentsFile)), File.ReadAllText(Path.Combine(folder, CatalogFile))); }
+        try
+        {
+            return Parse(File.ReadAllText(Path.Combine(folder, ComponentsFile)), File.ReadAllText(Path.Combine(folder, CatalogFile)),
+                File.ReadAllText(Path.Combine(folder, FunctionsFile)), File.ReadAllText(Path.Combine(folder, GlobalsFile)));
+        }
         catch (JsonException error) { throw new InvalidDataException($"mappings: {error.Message}"); }
     }
 
-    public static SdkMappings Parse(string componentsJson, string catalogJson)
+    // functionsJson, globalsJson: mappings/functions.json and globals.json, or null for none.
+    public static SdkMappings Parse(string componentsJson, string catalogJson, string? functionsJson = null, string? globalsJson = null)
     {
         using var components = JsonDocument.Parse(componentsJson);
         using var catalog = JsonDocument.Parse(catalogJson);
@@ -119,7 +169,156 @@ public sealed class SdkMappings
             if (!croot.TryGetProperty(kind.Key, out var section)) continue;
             foreach (var item in section.EnumerateObject()) content.Add(ParseContent(kind, item, constants));
         }
-        return new SdkMappings { Build = build, Components = list, Content = content };
+        var functions = functionsJson != null ? ParseFunctions(functionsJson, build) : [];
+        var globals = globalsJson != null ? ParseGlobals(globalsJson, build, list) : [];
+        return new SdkMappings { Build = build, Components = list, Content = content, Functions = functions, Globals = globals };
+    }
+
+    static List<SdkGlobal> ParseGlobals(string json, string build, List<SdkComponent> components)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Allowed(root, "globals", "format", "build", "note", "globals");
+        if (Int(root, "format") != 1 || Text(root, "build") != build) throw new InvalidDataException("mappings/globals.json: format 1, the components' build.");
+        var globals = new List<SdkGlobal>();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in Property(root, "globals").EnumerateObject())
+        {
+            var at = $"global {entry.Name}";
+            Identifier(entry.Name, at);
+            var global = ParseGlobal(entry, at);
+            foreach (var name in global.Aliases.Prepend(global.Name))
+                if (name.Length > 63 || !names.Add(name) || Reserved.Contains(name) || SdkTypes.Contains(name) || components.Any(c => c.Name == name))
+                    throw new InvalidDataException($"{at}: {name} must be a unique name (or alias) of 63 characters at most, and no other SDK type's (Hf{name}).");
+            globals.Add(global);
+        }
+        return globals;
+    }
+
+    static SdkGlobal ParseGlobal(JsonProperty entry, string at)
+    {
+        var v = entry.Value;
+        Allowed(v, at, "module", "rva", "witnesses", "aliases", "meaning", "fields", "source");
+        var module = v.TryGetProperty("module", out _) ? Text(v, "module") : "game.dll";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(module, @"^[A-Za-z0-9_.-]{1,60}\.(dll|exe)$")) throw new InvalidDataException($"{at}: module must be a dll or exe name.");
+        var rva = Hex32(Text(v, "rva"), $"{at} rva");
+        var witnesses = Property(v, "witnesses").EnumerateArray().Select(w => ParseWitness(w, rva, at)).ToList();
+        if (witnesses.Count is < 1 or > 3 || witnesses.DistinctBy(w => w.Rva).Count() != witnesses.Count)
+            throw new InvalidDataException($"{at}: 1 to 3 witnesses, at different places.");
+        var fields = v.TryGetProperty("fields", out var fieldsElement) ? fieldsElement.EnumerateObject().Select(f => ParseGlobalField(f, at)).ToList() : [];
+        fields.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+        for (var i = 1; i < fields.Count; i++)
+            if (fields[i].Offset < fields[i - 1].Offset + GlobalFieldSize(fields[i - 1].Type))
+                throw new InvalidDataException($"{at}: {fields[i - 1].Name} and {fields[i].Name} overlap.");
+        return new SdkGlobal(entry.Name, module, rva, witnesses, Text(v, "meaning"), fields, Text(v, "source")) { Aliases = AliasesOf(v, at) };
+    }
+
+    static SdkWitness ParseWitness(JsonElement w, uint rva, string at)
+    {
+        Allowed(w, at + " witness", "rva", "code");
+        var witness = new SdkWitness(Hex32(Text(w, "rva"), $"{at} witness rva"), Pattern(Text(w, "code"), $"{at} witness"));
+        Witnesses(witness.Code, witness.Rva, rva, at);
+        return witness;
+    }
+
+    // A function's or global's former names ("aliases", optional): C identifiers.
+    static List<string> AliasesOf(JsonElement v, string at)
+    {
+        if (!v.TryGetProperty("aliases", out var aliases)) return [];
+        var list = aliases.EnumerateArray().Select(a => a.GetString() ?? "").ToList();
+        foreach (var alias in list) Identifier(alias, $"{at} alias {alias}");
+        return list;
+    }
+
+    static SdkGlobalField ParseGlobalField(JsonProperty f, string global)
+    {
+        var at = $"{global}.{f.Name}";
+        Identifier(f.Name, at);
+        if (f.Name.StartsWith("_unknown", StringComparison.Ordinal)) throw new InvalidDataException($"{at}: _unknown names are generated.");
+        Allowed(f.Value, at, "offset", "type", "meaning");
+        var type = Text(f.Value, "type");
+        if (!GlobalFieldTypes.Contains(type)) throw new InvalidDataException($"{at}: type must be one of {string.Join(", ", GlobalFieldTypes)}.");
+        var offset = Hex32(Text(f.Value, "offset"), at + " offset", allowZero: true);
+        if (offset % (uint)Math.Min(GlobalFieldSize(type), 4) != 0) throw new InvalidDataException($"{at}: misaligned.");
+        return new SdkGlobalField(f.Name, offset, type, Text(f.Value, "meaning"));
+    }
+
+    // A witness is a RIP-relative load, store or lea of the cell: a REX prefix, 8B, 89 or 8D, a ModRM of [rip+disp32], the
+    // displacement fixed and pointing at the cell (the instruction ends after it).
+    static void Witnesses(string code, uint witnessRva, uint rva, string where)
+    {
+        var bytes = code.Split(' ');
+        if (bytes.Length < 7 || bytes.Take(7).Any(b => b == "??")) throw new InvalidDataException($"{where}: the witness's first 7 bytes must be fixed.");
+        var b = bytes.Take(7).Select(x => Convert.ToByte(x, 16)).ToArray();
+        if (b[0] is < 0x48 or > 0x4F || b[1] is not (0x8B or 0x89 or 0x8D) || (b[2] & 0xC7) != 0x05)
+            throw new InvalidDataException($"{where}: the witness must be a mov or lea with [rip+disp32] (48-4F, 8B/89/8D, ModRM 05-3D).");
+        var target = (long)witnessRva + 7 + BitConverter.ToInt32(b, 3);
+        if (target != rva) throw new InvalidDataException($"{where}: the witness points at 0x{target:X}, not the global's 0x{rva:X}.");
+    }
+
+    static uint Hex32(string text, string where, bool allowZero = false)
+    {
+        if (!text.StartsWith("0x", StringComparison.Ordinal) || !uint.TryParse(text[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value) || (value == 0 && !allowZero))
+            throw new InvalidDataException($"{where}: must be a hex number (0x...).");
+        return value;
+    }
+
+    static int GlobalFieldSize(string type) => type == "ptr" ? 8 : TypeSize(type);
+
+    static List<SdkFunction> ParseFunctions(string json, string build)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Allowed(root, "functions", "format", "build", "note", "functions");
+        if (Int(root, "format") != 1 || Text(root, "build") != build) throw new InvalidDataException("mappings/functions.json: format 1, the components' build.");
+        var functions = new List<SdkFunction>();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in Property(root, "functions").EnumerateObject())
+        {
+            var function = ParseFunction(entry);
+            foreach (var name in function.Aliases.Prepend(function.Name))
+                if (name.Length > 63 || !names.Add(name))
+                    throw new InvalidDataException($"function {entry.Name}: {name} must be a unique name (or alias) of 63 characters at most.");
+            functions.Add(function);
+        }
+        return functions;
+    }
+
+    static SdkFunction ParseFunction(JsonProperty entry)
+    {
+        var at = $"function {entry.Name}";
+        Identifier(entry.Name, at);
+        var v = entry.Value;
+        Allowed(v, at, "module", "rva", "code", "returns", "params", "hook", "aliases", "meaning", "source");
+        var module = v.TryGetProperty("module", out _) ? Text(v, "module") : "game.dll";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(module, @"^[A-Za-z0-9_.-]{1,60}\.(dll|exe)$")) throw new InvalidDataException($"{at}: module must be a dll or exe name.");
+        var rva = Hex32(Text(v, "rva"), $"{at} rva");
+        var returns = Text(v, "returns");
+        if (returns != "void" && !ParamTypes.Contains(returns)) throw new InvalidDataException($"{at}: returns {returns}, not void or one of {string.Join(", ", ParamTypes)}.");
+        var parameters = new List<SdkParam>();
+        foreach (var p in Property(v, "params").EnumerateArray())
+        {
+            Allowed(p, at + " param", "name", "type", "meaning");
+            var param = new SdkParam(Text(p, "name"), Text(p, "type"), Text(p, "meaning"));
+            Identifier(param.Name, $"{at} param {param.Name}");
+            if (CKeywords.Contains(param.Name) || parameters.Any(q => q.Name == param.Name)) throw new InvalidDataException($"{at}: param {param.Name} is a C keyword, mod, or named twice.");
+            if (!ParamTypes.Contains(param.Type)) throw new InvalidDataException($"{at}: param {param.Name}'s type {param.Type} is not one of {string.Join(", ", ParamTypes)}.");
+            parameters.Add(param);
+        }
+        return new SdkFunction(entry.Name, module, rva, Pattern(Text(v, "code"), at), returns, parameters, Bool(v, "hook"), Text(v, "meaning"), Text(v, "source"))
+        {
+            Aliases = AliasesOf(v, at)
+        };
+    }
+
+    // A function's reviewed first bytes as the loader's code check takes them: two hex digits or ?? a byte, upper case,
+    // single spaces; 8 to 256 bytes, the first one fixed.
+    static string Pattern(string code, string where)
+    {
+        var bytes = code.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(b => b.ToUpperInvariant()).ToList();
+        if (bytes.Count < 8 || bytes.Count > 256 || bytes[0] == "??" || bytes.Any(b => b != "??" && !(b.Length == 2 && b.All(char.IsAsciiHexDigit))))
+            throw new InvalidDataException($"{where}: code must be 8 to 256 bytes (two hex digits or ?? each, the first fixed).");
+        return string.Join(' ', bytes);
     }
 
     static SdkComponent ParseComponent(JsonProperty entry)
@@ -226,6 +425,10 @@ public sealed class SdkMappings
         [HeaderFiles[2]] = LoaderTable(),
         [HeaderFiles[3]] = LoaderContent(),
         [HeaderFiles[4]] = Reference(apiHeader),
+        [HeaderFiles[5]] = FunctionsHeader(),
+        [HeaderFiles[6]] = LoaderFunctions(),
+        [HeaderFiles[7]] = GlobalsHeader(),
+        [HeaderFiles[8]] = LoaderGlobals(),
     };
 
     // Writes the generated files under the repository root (the SDK's headers and reference, and the mod loader's
@@ -340,7 +543,8 @@ public sealed class SdkMappings
     }
 
     // The SDK reference (docs/sdk-reference.md): every API call with its comment, every component and table with its
-    // fields, and every vanilla content constant, after an opening and a contents list that links every section.
+    // fields, every vanilla content constant and every mapped game function, after an opening and a contents list that
+    // links every section.
     string Reference(string? apiHeader)
     {
         var s = new StringBuilder();
@@ -382,7 +586,53 @@ public sealed class SdkMappings
                 else s.Append(line).Append('\n');
             }
         }
+        void FunctionsSection()
+        {
+            Section("Functions", """
+                Game functions by name (`hellforge_functions.h`, SDK 16), from `mappings/functions.json`. `hf_fn_<Name>(mod)` gives
+                the function to call; `HF_HOOK(mod, <Name>, detour, &original)` and `hf_hook_<Name>` hook it, for the functions
+                marked "hook or call" (their whole signature is known). The compiler checks the detour's type against the
+                signature. Each entry gives where the function is in this build, its signature and its arguments.
+
+                See also: [Hooks and game memory](modding/hooks.md#hooking-by-name).
+
+                """);
+            foreach (var f in Functions)
+            {
+                Entry(f.Name, f.Name);
+                s.Append($"\n`{f.Module}+0x{f.Rva:X}`, {(f.Hook ? "hook or call" : "call only")}. {f.Meaning}. From {f.Source}." +
+                    (f.Aliases.Count > 0 ? $" Former names: {string.Join(", ", f.Aliases.Select(a => $"`{a}`"))}." : "") + "\n\n");
+                s.Append($"```c\ntypedef {Signature(f, $"*HfFn_{f.Name}")};\n```\n");
+                if (f.Params.Count > 0)
+                {
+                    s.Append("\n| Argument | Type | Meaning |\n|---|---|---|\n");
+                    foreach (var p in f.Params) s.Append($"| `{p.Name}` | `{p.Type}` | {p.Meaning.Replace("|", "\\|")} |\n");
+                }
+            }
+        }
+        void GlobalsSection()
+        {
+            Section("Globals", """
+                The game's objects by name (`hellforge_globals.h`, SDK 16), from `mappings/globals.json`: its managers and queues,
+                what the functions above take. `hf_global_<Name>(mod)` gives the object as an `Hf<Name>*`, or NULL. Each entry gives
+                where its cell is in this build, what is known of the object, and its named fields.
+
+                See also: [Hooks and game memory](modding/hooks.md#game-globals).
+
+                """);
+            foreach (var g in Globals)
+            {
+                Entry(g.Name, g.Name);
+                s.Append($"\n`{g.Module}+0x{g.Rva:X}` (a pointer to it), `Hf{g.Name}`. {g.Meaning}. From {g.Source}." +
+                    (g.Aliases.Count > 0 ? $" Former names: {string.Join(", ", g.Aliases.Select(a => $"`{a}`"))}." : "") + "\n");
+                if (g.Fields.Count == 0) continue;
+                s.Append("\n| Field | Offset | Type | Meaning |\n|---|---|---|---|\n");
+                foreach (var f in g.Fields) s.Append($"| `{f.Name}` | +0x{f.Offset:X} | {f.Type} | {f.Meaning.Replace("|", "\\|")} |\n");
+            }
+        }
         if (apiHeader != null) Api(apiHeader);
+        if (Functions.Count > 0) FunctionsSection();
+        if (Globals.Count > 0) GlobalsSection();
         string Applies(SdkField f) => f.Applies + (f.AppliesVerified ? "" : "?");
         void Component(SdkComponent c)
         {
@@ -450,8 +700,9 @@ public sealed class SdkMappings
         page.Append($"""
             # HellForge mod SDK reference (game build {Build})
 
-            For code mod authors who need to look something up: every call in the `HfApi` table, every component and settings
-            table field, and every vanilla content constant, for game build {Build}. To learn how to make a mod, follow the
+            For code mod authors who need to look something up: every call in the `HfApi` table, every game function and global mapped
+            by name, every component and settings table field, and every vanilla content constant, for game build {Build}. To
+            learn how to make a mod, follow the
             guide in [modding/README.md](modding/README.md), starting with [your first mod](modding/first-mod.md), and keep this
             page open beside it. Models, textures, effects, sounds and icons are covered in [Data mods](modding/data.md).
 
@@ -459,7 +710,7 @@ public sealed class SdkMappings
             such as `HF_ITEM_...`), or use the contents below.
 
             This page is generated by `HellForge.Cli sdk-headers` from `native/mod-sdk/hellforge_mod.h` (the API, as documented
-            there) and `mappings/` (fields and content); do not edit it by hand. To change it, edit those sources and regenerate
+            there) and `mappings/` (functions, globals, fields and content); do not edit it by hand. To change it, edit those sources and regenerate
             (docs/sdk-roadmap.md, "Mappings"; [Tools and sharing](modding/tools.md) has the command).
 
             ## Contents
@@ -554,6 +805,190 @@ public sealed class SdkMappings
             s.Append($"    {{{KindConstant(kind.Prefix)}, \"{CString(item.Name)}\", 0x{item.Id:X}ull}},\n");
         }
         s.Append("};\n");
+        return s.ToString().ReplaceLineEndings("\n");
+    }
+
+    // Text as comment lines of 120 columns at most: the first line after `first`, the others after `rest`.
+    static string Wrap(string text, string first, string rest)
+    {
+        var s = new StringBuilder();
+        var line = new StringBuilder(first);
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var prefix = s.Length == 0 ? first : rest;
+            if (line.Length > prefix.Length && line.Length + 1 + word.Length > 120) { s.Append(line).Append('\n'); line.Clear().Append(rest); }
+            if (line.Length > (s.Length == 0 ? first : rest).Length) line.Append(' ');
+            line.Append(word);
+        }
+        return s.Append(line).Append('\n').ToString();
+    }
+
+    // "uint64_t (*HfFn_SpawnEntity)(void* manager, uint32_t entity)": a function's typedef without the typedef.
+    static string Signature(SdkFunction f, string declarator) =>
+        $"{f.Returns} ({declarator})({(f.Params.Count == 0 ? "void" : string.Join(", ", f.Params.Select(p => $"{p.Type} {p.Name}")))})";
+
+    string FunctionsHeader()
+    {
+        var s = new StringBuilder();
+        s.Append($$"""
+            /* HellForge mod SDK: game functions by name, for game build {{Build}}.
+             * {{Generated}}
+             *
+             * Hook or call a game function by its name, the compiler checking the detour's and the original's types (SDK 16;
+             * docs/modding/hooks.md, "Hooking by name"). For each function:
+             *   HfFn_<Name>                      its C signature;
+             *   hf_fn_<Name>(mod)                the function to call, or NULL: before HF_EVENT_GAME_LOADED, on another game
+             *                                    build, or when its code is not the reviewed one;
+             *   hf_hook_<Name>(mod, detour, &original, priority), HF_HOOK(mod, <Name>, detour, &original)
+             *                                    hooks it as hook_ex does (HF_HOOK with priority 0), only where its whole
+             *                                    signature is known. Ask from hellforge_mod_init on: HellForge puts the hook
+             *                                    in once the game's code is decoded and reads as reviewed; *original stays
+             *                                    NULL until then. 0 when the hook is in or will be; the mod's log says when
+             *                                    it went in, or why not.
+             * Names stay the same across game builds; HellForge updates where they are. A renamed function keeps its old name
+             * as an alias, which the loader still resolves. Calling a function through hf_fn_ runs its whole hook chain (every
+             * mod's detour, then HellForge's events, then the game's code), as the game's own calls do: do not call the
+             * function you are hooking from its own detour (call the original instead). On a HellForge older than SDK 16,
+             * hf_fn_ returns NULL and hf_hook_ 1. hook, hook_ex and find_pattern still work as before. Included by
+             * hellforge_mod.h. */
+            #ifndef HELLFORGE_FUNCTIONS_H
+            #define HELLFORGE_FUNCTIONS_H
+
+            /* Whether the loader has function and hook_function (SDK 16). */
+            static inline int hf_has_functions_(HfMod* mod) { return HF_API(mod)->size >= offsetof(HfApi, hook_function) + sizeof(void*); }
+            static inline void* hf_function_(HfMod* mod, const char* name) { return hf_has_functions_(mod) ? (void*)HF_API(mod)->function(mod, name) : NULL; }
+            static inline int hf_hook_function_(HfMod* mod, const char* name, void* detour, void** original, int32_t priority)
+            {
+                return hf_has_functions_(mod) ? HF_API(mod)->hook_function(mod, name, detour, original, priority) : 1;
+            }
+
+            /* Hooks a mapped function with priority 0: HF_HOOK(mod, SpawnEntity, MySpawn, &g_spawn). */
+            #define HF_HOOK(mod, Name, detour, original) hf_hook_##Name((mod), (detour), (original), 0)
+
+            """);
+        foreach (var f in Functions)
+        {
+            s.Append('\n').Append(Wrap($"{f.Name} ({f.Module}+0x{f.Rva:X}; {(f.Hook ? "hook or call" : "call only")}). {f.Meaning}.", "/* ", " * "));
+            var width = f.Params.Count == 0 ? 0 : f.Params.Max(p => p.Name.Length);
+            foreach (var p in f.Params) s.Append(Wrap(p.Meaning, $" *   {p.Name.PadRight(width)}  ", " *   " + new string(' ', width + 2)));
+            s.Append(Wrap($"From {f.Source}. */", " * ", " * "));
+            s.Append($"typedef {Signature(f, $"*HfFn_{f.Name}")};\n");
+            s.Append($"static inline HfFn_{f.Name} hf_fn_{f.Name}(HfMod* mod) {{ return (HfFn_{f.Name})hf_function_(mod, \"{f.Name}\"); }}\n");
+            if (f.Hook)
+                s.Append($"static inline int hf_hook_{f.Name}(HfMod* mod, HfFn_{f.Name} detour, HfFn_{f.Name}* original, int32_t priority)\n{{\n" +
+                    $"    return hf_hook_function_(mod, \"{f.Name}\", (void*)detour, (void**)original, priority);\n}}\n");
+            foreach (var alias in f.Aliases)
+            {
+                s.Append($"/* {alias}: {f.Name}'s former name, kept for mods written with it; use {f.Name}. */\n");
+                s.Append($"typedef HfFn_{f.Name} HfFn_{alias};\n");
+                s.Append($"static inline HfFn_{f.Name} hf_fn_{alias}(HfMod* mod) {{ return hf_fn_{f.Name}(mod); }}\n");
+                if (f.Hook)
+                    s.Append($"static inline int hf_hook_{alias}(HfMod* mod, HfFn_{f.Name} detour, HfFn_{f.Name}* original, int32_t priority)\n{{\n" +
+                        $"    return hf_hook_{f.Name}(mod, detour, original, priority);\n}}\n");
+            }
+        }
+        s.Append("\n#endif\n");
+        return s.ToString().ReplaceLineEndings("\n");
+    }
+
+    static string GlobalCType(string type) => type == "ptr" ? "void*" : CType(type);
+
+    string GlobalsHeader()
+    {
+        var s = new StringBuilder();
+        s.Append($$"""
+            /* HellForge mod SDK: game globals by name, for game build {{Build}}.
+             * {{Generated}}
+             *
+             * The game's objects (its managers and queues: what the functions of hellforge_functions.h take), by name (SDK 16;
+             * docs/modding/hooks.md, "Game globals"). For each global:
+             *   Hf<Name>                 the object, its named fields at their offsets and the bytes between as _unknown_XX
+             *                            (an incomplete type where none is named yet: its comment gives what is known);
+             *   hf_global_<Name>(mod)    the object, or NULL: before HF_EVENT_GAME_LOADED, on another game build, when the code
+             *                            that witnesses it is not the reviewed one, or while the game has not made it (out of
+             *                            a mission, some are not).
+             * The object is the game's own, alive: read it, and write it only where its field says so, on the game thread (an
+             * event listener's or on_game_thread's call). Ask for it each time you use it rather than keeping it: the game
+             * makes some again (each mission). Use the pointer, never a copy: a struct reaches as far as its last named field
+             * (HfGame is 0xAC220 bytes), so `HfGame g = *game` copies most of a megabyte onto the stack. A renamed global keeps
+             * its old name as an alias. On a HellForge older than SDK 16, hf_global_ returns NULL. Included by
+             * hellforge_mod.h. */
+            #ifndef HELLFORGE_GLOBALS_H
+            #define HELLFORGE_GLOBALS_H
+
+            /* The object a global's cell points at, or NULL. */
+            static inline void* hf_global_object_(HfMod* mod, const char* name)
+            {
+                const HfApi* hf = HF_API(mod);
+                void* object = NULL;
+                uintptr_t cell = hf->size >= offsetof(HfApi, global) + sizeof(void*) ? hf->global(mod, name) : 0;
+                return cell != 0 && hf->read(cell, &object, sizeof object) == 0 ? object : NULL;
+            }
+
+            #pragma pack(push, 1)
+
+            """);
+        foreach (var g in Globals)
+        {
+            s.Append('\n').Append(Wrap($"{g.Name} ({g.Module}+0x{g.Rva:X}, a pointer to it). {g.Meaning}.", "/* ", " * "));
+            s.Append(Wrap($"From {g.Source}. */", " * ", " * "));
+            GlobalStruct(s, g);
+            s.Append($"static inline Hf{g.Name}* hf_global_{g.Name}(HfMod* mod) {{ return (Hf{g.Name}*)hf_global_object_(mod, \"{g.Name}\"); }}\n");
+            foreach (var alias in g.Aliases)
+            {
+                s.Append($"/* {alias}: {g.Name}'s former name, kept for mods written with it; use {g.Name}. */\n");
+                s.Append($"typedef Hf{g.Name} Hf{alias};\n");
+                s.Append($"static inline Hf{g.Name}* hf_global_{alias}(HfMod* mod) {{ return hf_global_{g.Name}(mod); }}\n");
+            }
+        }
+        s.Append("\n#pragma pack(pop)\n\n#endif\n");
+        return s.ToString().ReplaceLineEndings("\n");
+    }
+
+    // A global's object as a struct: its named fields at their offsets, the bytes between as _unknown_XX (an incomplete
+    // type when none is named).
+    static void GlobalStruct(StringBuilder s, SdkGlobal g)
+    {
+        if (g.Fields.Count == 0) { s.Append($"typedef struct Hf{g.Name} Hf{g.Name};\n"); return; }
+        s.Append($"typedef struct Hf{g.Name}\n{{\n");
+        uint at = 0;
+        foreach (var f in g.Fields)
+        {
+            if (f.Offset > at) s.Append($"    uint8_t _unknown_{at:X2}[0x{f.Offset - at:X}];\n");
+            s.Append($"{$"    {GlobalCType(f.Type)} {f.Name};".PadRight(40)} /* +0x{f.Offset:X} {f.Meaning} */\n");
+            at = f.Offset + (uint)GlobalFieldSize(f.Type);
+        }
+        s.Append($"}} Hf{g.Name};\n");
+        foreach (var f in g.Fields) s.Append($"HF_ASSERT_OFFSET(Hf{g.Name}, {f.Name}, 0x{f.Offset:X});\n");
+    }
+
+    // The globals by name, for global: a table ending in {0}.
+    string LoaderGlobals()
+    {
+        var s = new StringBuilder();
+        s.Append($"/* Game globals by name, for game build {Build}: what global resolves (a former name as a row of its own).\n * Witnesses: up to 3, any one of which must read as reviewed.\n * {Generated} Included by globals.c. */\n");
+        s.Append($"#define SDK_GLOBALS_BUILD \"{Build}\"\n");
+        s.Append("static const SdkGlobal kSdkGlobals[] = {\n");
+        foreach (var g in Globals)
+        {
+            var rvas = string.Join(", ", Enumerable.Range(0, 3).Select(i => i < g.Witnesses.Count ? $"0x{g.Witnesses[i].Rva:X}u" : "0"));
+            var codes = string.Join(", ", Enumerable.Range(0, 3).Select(i => i < g.Witnesses.Count ? $"\"{g.Witnesses[i].Code}\"" : "NULL"));
+            foreach (var name in g.Aliases.Prepend(g.Name)) s.Append($"    {{\"{name}\", \"{g.Module}\", 0x{g.Rva:X}u, {{{rvas}}}, {{{codes}}}}},\n");
+        }
+        s.Append("    {0},\n};\n");
+        return s.ToString().ReplaceLineEndings("\n");
+    }
+
+    // The functions by name, for function and hook_function: a table ending in {0}.
+    string LoaderFunctions()
+    {
+        var s = new StringBuilder();
+        s.Append($"/* Game functions by name, for game build {Build}: what function and hook_function resolve (a former name as a row\n * of its own). {Generated} Included by functions.c. */\n");
+        s.Append($"#define SDK_FUNCTIONS_BUILD \"{Build}\"\n");
+        s.Append("static const SdkFunction kSdkFunctions[] = {\n");
+        foreach (var f in Functions)
+            foreach (var name in f.Aliases.Prepend(f.Name)) s.Append($"    {{\"{name}\", \"{f.Module}\", 0x{f.Rva:X}u, \"{f.Code}\", {(f.Hook ? 1 : 0)}}},\n");
+        s.Append("    {0},\n};\n");
         return s.ToString().ReplaceLineEndings("\n");
     }
 

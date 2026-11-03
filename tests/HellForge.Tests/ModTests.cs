@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using HellForge.Core;
+using HellForge.Core.GameData;
 
 // Mods: manifests, the modlist digest, data staging and the native applier against a synthetic entity region in this
 // process (the game's real region has the profile's size and framing; here only the bytes HellForge reads are filled in).
@@ -62,6 +63,7 @@ static class ModTests
             check(plan.Contains("build\t25480438") && plan.Contains("network_config\thelldivers2.exe\t1a10268") &&
                 plan.Any(l => l.StartsWith("component\tDepositComponentData\t7287344\t", StringComparison.Ordinal)) &&
                 plan.Contains($"mod\ttest.code\t{loaded[0].Folder}\t{Path.Combine(loaded[0].Folder, "mod.dll")}"), "The loader plan is incomplete.");
+            check(plan.Contains("mod_version\ttest.code\t1"), "The loader plan lacks the code mod's version.");
             var digest = ModCatalog.Digest(loaded);
             File.WriteAllText(Path.Combine(mods, "good", "mod.dll"), "rebuilt dll");
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != digest, "A rebuilt DLL kept the modlist code.");
@@ -187,6 +189,132 @@ static class ModTests
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) == first, "A cosmetic mod changed the digest.");
             File.WriteAllText(Path.Combine(mods, "ammo", ModCatalog.ManifestName), Example.Replace("\"value\":5000", "\"value\":4000"));
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != first && first.Length == 32, "A gameplay change kept the digest.");
+        });
+
+        test("The modlist code counts every file of a mod, documentation and pictures too, as HellForge 0.3 does, and a synced mod rehashes", () =>
+        {
+            var mods = Path.Combine(root, "mods-unloaded");
+            var manifest = """
+                {"format":1,"id":"test.docs","name":"Docs","version":"1","native":{"networkFieldTypes":[
+                  {"name":"deposit_value","expect":{"kind":1,"bits":10,"min":0},"bits":14}]}}
+                """;
+            void Write(string folder, bool extras)
+            {
+                Directory.CreateDirectory(Path.Combine(mods, folder, "data"));
+                File.WriteAllText(Path.Combine(mods, folder, ModCatalog.ManifestName), manifest);
+                File.WriteAllText(Path.Combine(mods, folder, "data", "0123456789abcdef.patch_0"), "a unit patch");
+                if (!extras) return;
+                File.WriteAllText(Path.Combine(mods, folder, "README.md"), "read me");
+                File.WriteAllText(Path.Combine(mods, folder, "LICENSE"), "licence");
+                Directory.CreateDirectory(Path.Combine(mods, folder, "docs"));
+                File.WriteAllText(Path.Combine(mods, folder, "docs", "notes.txt"), "notes");
+                File.WriteAllBytes(Path.Combine(mods, folder, "icon.png"), [1, 2, 3]);
+            }
+            Write("with", extras: true);
+            Write("without", extras: false);
+            var with = ModCatalog.Parse(Path.Combine(mods, "with"), EntityProfile.Current);
+            var without = ModCatalog.Parse(Path.Combine(mods, "without"), EntityProfile.Current);
+            // HellForge 0.3 (hellforge-mp-8) takes these files too: leaving them out would split 0.3 players and orphan synced
+            // copies and trusted entries kept by the old hash
+            check(ModCatalog.Digest([with]) != ModCatalog.Digest([without]), "A README, licence or picture left the modlist code.");
+            var withEntry = ModSet.Of(ModCatalog.LoadOrder([with])).Mods.Single();
+            check(withEntry.Files.Any(f => f.Path == "README.md") && withEntry.Files.Any(f => f.Path == "icon.png") &&
+                withEntry.Files.Any(f => f.Path == "docs/notes.txt"), "The shared file list leaves out a mod's documentation or pictures.");
+            // What a host shares is the counted files; the joiner's copy rehashes to the host's content hash.
+            Directory.Delete(Path.Combine(mods, "without"), recursive: true);
+            var (loaded, problems) = ModCatalog.Load(mods);
+            check(problems.Count == 0, "The mods load: " + string.Join(" | ", problems));
+            var entry = ModSet.Of(ModCatalog.LoadOrder(loaded.Where(m => m.Id == "test.docs"))).Mods.Single();
+            var guestMods = Path.Combine(root, "mods-unloaded-guest");
+            Directory.CreateDirectory(guestMods);
+            var partial = SyncedStore.Partial(guestMods, entry.Id, entry.Hash);
+            foreach (var file in entry.Files)
+            {
+                var target = Path.Combine(partial, file.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(Path.Combine(entry.Folder!, file.Path), target);
+            }
+            var installed = SyncedStore.Install(guestMods, entry, partial, (_, _) => true);
+            check(SyncedStore.Find(guestMods, entry.Id, entry.Hash) == installed &&
+                ModSets.ContentHash(ModCatalog.Parse(installed, EntityProfile.Current)) == entry.Hash,
+                "A synced mod with a README and an icon does not rehash to the host's content hash.");
+        });
+
+        test("Co-op tiers: stats-only mods are per-player, and explicit coop tiers follow the manifest", () =>
+        {
+            var mods = Path.Combine(root, "mods-coop");
+            const string stats = """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}}}""";
+            void Write(string folder, string manifest, bool dll = false)
+            {
+                Directory.CreateDirectory(Path.Combine(mods, folder));
+                File.WriteAllText(Path.Combine(mods, folder, ModCatalog.ManifestName), manifest);
+                File.WriteAllText(Path.Combine(mods, folder, StatsData.FileName), stats);
+                if (dll) File.WriteAllText(Path.Combine(mods, folder, "mod.dll"), "synthetic dll");
+            }
+            Write("stats", """{"format":1,"id":"test.stats-only","name":"Stats","version":"1","gameplay":true}""");
+            var perPlayer = ModCatalog.Parse(Path.Combine(mods, "stats"), EntityProfile.Current);
+            check(perPlayer.Coop == CoopTier.PerPlayer && !ModCatalog.Counted(perPlayer) && ModCatalog.Digest([perPlayer]) == "none" &&
+                ModSet.Of([perPlayer]).Mods.Single().Tier == CoopTier.PerPlayer, "A stats-only mod is not per-player or is missing from the mod set.");
+            Write("stats-code", """{"format":1,"id":"test.stats-code","name":"Stats code","version":"1","code":{"dll":"mod.dll","sdk":1}}""", dll: true);
+            var withCode = ModCatalog.Parse(Path.Combine(mods, "stats-code"), EntityProfile.Current);
+            check(withCode.Coop == CoopTier.Shared && ModCatalog.Counted(withCode) && ModCatalog.Digest([withCode]) != "none",
+                "Adding a DLL did not make a stats mod shared.");
+            Write("stats-shared", """{"format":1,"id":"test.stats-shared","name":"Stats shared","version":"1","coop":"shared"}""");
+            check(ModCatalog.Parse(Path.Combine(mods, "stats-shared"), EntityProfile.Current).Coop == CoopTier.Shared,
+                "\"coop\": \"shared\" did not put a stats mod back in the digest.");
+            Write("stats-bad-coop", """{"format":1,"id":"test.stats-bad","name":"Bad","version":"1","coop":"sometimes"}""");
+            reject(() => ModCatalog.Parse(Path.Combine(mods, "stats-bad-coop"), EntityProfile.Current));
+            Write("stats-spec", """{"format":1,"id":"test.stats-spec","name":"Stats spec","version":"1","coop":"per-player"}""");
+            File.WriteAllText(Path.Combine(mods, "stats-spec", DataSpecs.FileName),
+                """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"texture","include":["0x1"]}]}]}""");
+            reject(() => ModCatalog.Parse(Path.Combine(mods, "stats-spec"), EntityProfile.Current));
+            Write("stats-wire", """
+                {"format":1,"id":"test.stats-wire","name":"Stats wire","version":"1","coop":"per-player","native":{"networkFieldTypes":[
+                  {"name":"deposit_value","expect":{"kind":1,"bits":10,"min":0},"bits":14}]}}
+                """);
+            reject(() => ModCatalog.Parse(Path.Combine(mods, "stats-wire"), EntityProfile.Current));
+        });
+
+        test("Client-only data patches are per-player; a unit, another type or a truncated patch is shared", () =>
+        {
+            var mods = Path.Combine(root, "mods-patch-tiers");
+            void WritePatch(string folder, string id, bool truncated, params ulong[] types)
+            {
+                var data = Path.Combine(mods, folder, "data");
+                Directory.CreateDirectory(data);
+                File.WriteAllText(Path.Combine(mods, folder, ModCatalog.ManifestName),
+                    $$"""{"format":1,"id":"{{id}}","name":"{{id}}","version":"1"}""");
+                var resources = new Dictionary<ResourceKey, ResourceParts>();
+                for (var i = 0; i < types.Length; i++) resources[new(types[i], (ulong)(0x100 + i))] = new([1, 2, 3, 4], [], []);
+                var (archive, gpu, stream) = ResourceArchive.Write(resources);
+                var patch = Path.Combine(data, "0123456789abcdef.patch_0");
+                File.WriteAllBytes(patch, truncated ? archive[..40] : archive);
+                File.WriteAllBytes(patch + ".gpu_resources", gpu);
+                File.WriteAllBytes(patch + ".stream", stream);
+            }
+            ModManifest Parse(string folder) => ModCatalog.Parse(Path.Combine(mods, folder), EntityProfile.Current);
+
+            WritePatch("texture", "test.texture-only", truncated: false, ResourceTypes.Texture);
+            var texture = Parse("texture");
+            check(texture.Coop == CoopTier.PerPlayer && ModCatalog.Digest([texture]) == "none" && ModSet.Of([texture]).Mods.Single().Tier == CoopTier.PerPlayer,
+                "A texture-only patch is not per-player or is missing from the mod set.");
+            check(Parse("texture").Coop == CoopTier.PerPlayer, "The cached patch answer changed.");
+            WritePatch("client-only", "test.client-only", truncated: false, ResourceTypes.Texture, ResourceTypes.Material,
+                ResourceTypes.Hash("wwise_bank"), ResourceTypes.Hash("wwise_stream"), ResourceTypes.Hash("wwise_dep"),
+                ResourceTypes.Hash("wwise_metadata"), ResourceTypes.Hash("wwise_properties"), ResourceTypes.Hash("font"), ResourceTypes.Hash("strings"));
+            check(Parse("client-only").Coop == CoopTier.PerPlayer, "A picture, sound, font or strings patch is not per-player.");
+            WritePatch("unit", "test.unit-patch", truncated: false, ResourceTypes.Texture, ResourceTypes.Unit);
+            var unit = Parse("unit");
+            check(unit.Coop == CoopTier.Shared && ModCatalog.Counted(unit) && ModCatalog.Digest([unit]) != "none",
+                "A unit in a texture patch left the mod per-player.");
+            WritePatch("truncated", "test.truncated", truncated: true, ResourceTypes.Texture);
+            check(Parse("truncated").Coop == CoopTier.Shared, "A patch that does not parse left the mod per-player.");
+            WritePatch("lua", "test.lua-patch", truncated: false, ResourceTypes.Texture, ResourceTypes.Lua);
+            check(Parse("lua").Coop == CoopTier.Shared, "A patch holding Lua left the mod per-player.");
+            WritePatch("explicit-shared", "test.explicit-shared", truncated: false, ResourceTypes.Texture);
+            File.WriteAllText(Path.Combine(mods, "explicit-shared", ModCatalog.ManifestName),
+                """{"format":1,"id":"test.explicit-shared","name":"Explicit","version":"1","coop":"shared"}""");
+            check(Parse("explicit-shared").Coop == CoopTier.Shared, "\"coop\": \"shared\" did not win over a client-only patch.");
         });
 
         test("Data mods are staged after existing patches and removed exactly", () =>
