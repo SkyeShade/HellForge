@@ -482,9 +482,22 @@ static bool under(const char *ancestor, const char *path)
     return path[length] == '\0' || path[length] == '/';
 }
 
+// /run/media/<user>/<drive> is where udisks mounts a second drive (KDE, GNOME, SteamOS), so an installation can be there
+// (GitHub issue 112). The view's private /run never puts anything under /run/media, and the installation, prefix and
+// session are bound over it at their real paths after it is made. The rest of /run stays refused.
+static bool removable_drive(const char *path)
+{
+    if (!under("/run/media", path)) return false;
+    const char *user = path + strlen("/run/media");
+    if (user[0] != '/' || user[1] == '\0' || user[1] == '/') return false;
+    const char *drive = strchr(user + 1, '/');
+    return drive != NULL && drive[1] != '\0' && drive[1] != '/';
+}
+
 static bool forbidden_base(const char *path)
 {
-    return under("/tmp", path) || under("/dev/shm", path) || under("/run", path) || under("/usr", path) || under("/etc", path);
+    return under("/tmp", path) || under("/dev/shm", path) || (under("/run", path) && !removable_drive(path)) ||
+        under("/usr", path) || under("/etc", path);
 }
 
 static int copy_working_dir(char *out, size_t size)
@@ -518,7 +531,7 @@ static int copy_test_dir_spec(const char *directory, char *out, size_t size)
 static int check_forbidden_base(const char *path)
 {
     if (forbidden_base(path))
-        return hf_fail_msg("--self-test-dir must not be under /tmp, /dev/shm, /run, /usr or /etc: %s", path);
+        return hf_fail_msg("--self-test-dir must not be under /tmp, /dev/shm, /run (except a drive under /run/media), /usr or /etc: %s", path);
     return 0;
 }
 
@@ -535,10 +548,41 @@ static int resolve_test_base(char *out, size_t size)
     return 0;
 }
 
+// The folder the self-test would create, with its existing part resolved: the deepest existing ancestor through
+// realpath, then the missing components, which may not be "." or "..". Checked before anything is created, so a link or
+// ".." under /run/media cannot make a folder elsewhere in /run.
+static int check_planned_base(const char *path)
+{
+    char existing[PATH_MAX], planned[PATH_MAX];
+    if (snprintf(existing, sizeof(existing), "%s", path) >= (int)sizeof(existing))
+        return hf_fail_msg("the self-test directory is too long");
+    size_t missing = strlen(existing);
+    struct stat info;
+    while (lstat(existing, &info) != 0)
+    {
+        char *slash = strrchr(existing, '/');
+        if (slash == NULL) return hf_fail_msg("the self-test directory is not absolute: %s", path);
+        const char *name = path + (slash - existing) + 1;
+        size_t length = strcspn(name, "/");
+        if (length == 0 || (length == 1 && name[0] == '.') || (length == 2 && name[0] == '.' && name[1] == '.'))
+            return hf_fail_msg("the self-test directory's new part may not hold \".\" or \"..\": %s", path);
+        missing = (size_t)(slash - existing);
+        if (slash == existing) { existing[1] = '\0'; break; }
+        *slash = '\0';
+    }
+    char *resolved = realpath(existing, NULL);
+    if (resolved == NULL) return hf_fail("the self-test directory's existing part");
+    int written = snprintf(planned, sizeof(planned), "%s%s", strcmp(resolved, "/") == 0 ? "" : resolved, path + missing);
+    free(resolved);
+    if (written >= (int)sizeof(planned)) return hf_fail_msg("the self-test directory is too long");
+    return check_forbidden_base(planned);
+}
+
 static int self_test_base(const char *directory, char *out, size_t size)
 {
     if (copy_test_dir_spec(directory, out, size) != 0) return 1;
     if (check_forbidden_base(out) != 0) return 1;
+    if (check_planned_base(out) != 0) return 1;
     if (make_parent_dirs(out) != 0 || make_dir(out) != 0) return hf_fail("the self-test directory");
     if (resolve_test_base(out, size) != 0) return 1;
     return check_forbidden_base(out);

@@ -122,7 +122,9 @@ profiles and mods stay in that prefix. A link above the prefix also works, for e
 `ln -s /mnt/games/hellforge-prefix ~/.local/share/hellforge-prefix`: a link above the folder HellForge protects is
 resolved and the real folder is used. A link at the installation folder or inside it is refused with
 `Linked/reparse paths are not supported: <path>`, because a game copy written through it could land somewhere else. The
-same rule covers the game folder and every Steam library HellForge reads.
+same rule covers the game folder and every Steam library HellForge reads. A drive your desktop mounted under
+`/run/media/<user>/<drive>` (KDE, GNOME, SteamOS) works too, sandbox included; the rest of `/run` is refused for the
+sandbox self-test, because the sandbox gives the game its own private `/run`.
 
 The supported build's copy is 23.8 GB (about 24 GB). A first setup that copies from Steam's download needs room for that
 download too, about another 24 GB, unless setup can use an installed game or a build patch; a patch needs about 2 GB more

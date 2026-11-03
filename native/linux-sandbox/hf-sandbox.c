@@ -41,7 +41,7 @@ static void usage(const char *program)
         "The command must be an exposed system or Proton program.\n"
         "--session, --prefix and a command containing / are resolved against the caller's current folder; the command runs\n"
         "with its working directory set to the session's\n"
-        "game folder. --self-test-dir defaults to the current folder and must not be under /tmp, /dev/shm, /run or /usr.\n",
+        "game folder. --self-test-dir defaults to the current folder and must not be under /tmp, /dev/shm, /run (a drive under /run/media is fine) or /usr.\n",
         program, program);
 }
 
