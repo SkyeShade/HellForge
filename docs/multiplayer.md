@@ -527,15 +527,14 @@ open questions: [Step 7](#step-7-public-lobbies-on-the-galactic-map-2026-10-22).
 The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when
 chosen; with no key the default is **on when the game is sandboxed, off otherwise** (`StrangersEffective`). A legacy
 `"playWithStrangers"` keeps its value: true is on, and false stays off. Older settings saves wrote false for every
-player, so it cannot tell "never chosen" from "turned off"; off is the side that cannot let a stranger in unasked, and the
-launcher's "Use default" link clears it. The launcher's Settings > MULTIPLAYER switch shows the value the next session would use, with
-"On by default while your game is sandboxed" or "Off by default: <the sandbox's reason>" under it. Moving the switch
-stores the explicit choice;
-"Use default" removes the key. `HellForge.Cli settings --strangers yes|no|default`
-([external-launchers.md](external-launchers.md#profiles-and-settings)) does the same; its JSON output has
-`playWithStrangers` (the effective bool) and `playWithStrangersChosen` (`true`, `false` or `null`). The backend reads
-the effective value again within 2 s of a change, also during a session, and never more than once per 2 s however many
-frames strangers send (`Multiplayer/StrangerSetting.cs`); its first read logs once which rule applies and why. The
+player, so it cannot tell "never chosen" from "turned off"; off is the side that cannot let a stranger in unasked, and
+the launcher's "Use default" link clears it. The launcher's Settings > MULTIPLAYER switch shows the value the next
+session would use, with "On by default while your game is sandboxed" or "Off by default: <the sandbox's reason>" under
+it. Moving the switch stores the explicit choice; "Use default" removes the key. `HellForge.Cli settings --strangers
+yes|no|default` ([external-launchers.md](external-launchers.md#profiles-and-settings)) does the same; its JSON output
+has `playWithStrangers` (the effective bool) and `playWithStrangersChosen` (`true`, `false` or `null`). The backend
+reads the effective value again within 2 s of a change, also during a session, and never more than once per 2 s however
+many frames strangers send (`Multiplayer/StrangerSetting.cs`); its first read logs once which rule applies and why. The
 first session that runs with the sandbox default on shows the stranger warning in the launcher's Play page once;
 `strangersWarned` in the same file remembers it.
 
@@ -1359,11 +1358,12 @@ same as a sandboxed one when nobody had chosen.
 - **One protocol for a family of releases.** `LobbyService.Protocol` is `hellforge-mp-9` and `WireLevel` is 1;
   `Compatible` is the join/rejoin check, and the directory filters by `hf.wire` while `DirectoryService.Valid` checks
   the feature protocol. Later feature versions can stay compatible at the same wire level.
-- **Strangers follow the sandbox default.** `"strangers": "on"`/`"off"` is stored only when the player chooses; with
-  no key it is on in a sandboxed session and off otherwise. A legacy `playWithStrangers` true or false still counts (false
-  stays off: older saves cannot tell it from never chosen, and off cannot let a stranger in unasked). The launcher switch shows the effective next-session value, with
-  the default and its reason, a "Use default" link, and a one-time warning in the Play page on the first sandboxed
-  session that uses the default. `settings --strangers yes|no|default` exposes the same choice to external launchers.
+- **Strangers follow the sandbox default.** `"strangers": "on"`/`"off"` is stored only when the player chooses; with no
+  key it is on in a sandboxed session and off otherwise. A legacy `playWithStrangers` true or false still counts (false
+  stays off: older saves cannot tell it from never chosen, and off cannot let a stranger in unasked). The launcher
+  switch shows the effective next-session value, with the default and its reason, a "Use default" link, and a one-time
+  warning in the Play page on the first sandboxed session that uses the default. `settings --strangers yes|no|default`
+  exposes the same choice to external launchers.
 - **A joiner hears per-player differences.** After accepting a join the host sends `mods.info` [lobby id, set wire];
   the joiner takes one per join, only from that host, and shows a brief "<host> plays with N mods you don't: ... Each
   player keeps their own." Nothing downloads for those, and `ModSyncPlan` ignores per-player entries entirely.

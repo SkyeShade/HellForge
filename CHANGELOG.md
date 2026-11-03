@@ -59,7 +59,8 @@ On `dev`, since 0.3.0-beta.
     players.
   - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
     Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
-    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default applies, the launcher shows the stranger warning once.
+    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default
+    applies, the launcher shows the stranger warning once.
   - Players on HellForge versions from before this change can't join you, and you can't join them.
 - A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
   it: one taken off the list, or one you untrusted, waits for your trust again.
