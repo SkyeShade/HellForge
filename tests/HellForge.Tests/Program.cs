@@ -512,6 +512,7 @@ SteamDownloadTests.Register(Test, Check, Reject, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 ReportedIssuesTests.Register(Test, Check, Reject, root);
 SessionJobTests.Register(Test, Check, Reject, root);
+LaunchFailureTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 ModSyncTests.Register(Test, Check, Reject, root);

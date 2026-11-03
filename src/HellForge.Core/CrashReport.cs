@@ -10,8 +10,8 @@ namespace HellForge.Core;
 // report, HellForge.Cli logs --crash-report). Nothing is sent anywhere: HellForge has no server, and the player chooses
 // where the file goes. It holds
 //   summary.txt  the versions, the system and the settings (SessionFacts), how the game ended, where it crashed (the mod
-//                loader's crash note: code, module and offset, thread), the mods, the loader's events before the crash
-//                and the last TailLines lines of its log;
+//                loader's crash note: code, module and offset, thread; and Windows' record of the crash), the mods, the
+//                loader's events before the crash and the last TailLines lines of its log;
 //   logs/        the session's export (SessionLogs.Export) without crash dumps;
 //   dump/        the crash dump, only when the player asks for it (it exists only with the Crash dump setting on).
 // Every text in it goes through ReportPrivacy, which leaves out more than the export does: it is made to be public. A
@@ -178,6 +178,17 @@ public static partial class CrashReport
             text.AppendLine("Failure: " + scrub.Apply(failure));
         text.AppendLine(fault == null ? "Crash: the mod loader noted none"
             : scrub.Apply($"Crash: {fault.Code} at {fault.Where} on thread {fault.Thread}" + (fault.ByModule != null ? $" (by module: {fault.ByModule})" : "")));
+        WindowsCrashLine(text, result, scrub);
+    }
+
+    // Windows' record of the crash (the session runner's windowsCrash: the module and offset, also of a crash before the
+    // mod loader's notes start), when the session looked for one.
+    static void WindowsCrashLine(StringBuilder text, JsonElement? result, ReportPrivacy scrub)
+    {
+        if (result is not { } r || !r.TryGetProperty("windowsCrash", out var crash)) return;
+        string Field(string name) => SessionFiles.Text(crash, name);
+        text.AppendLine(crash.ValueKind != JsonValueKind.Object ? "Windows' crash record: none"
+            : scrub.Apply($"Windows' crash record: {Field("code")} in {Field("module")}+{Field("offset")} ({Field("owner")}: {Field("modulePath")})"));
     }
 
     static void DumpLine(StringBuilder text, string run, bool included)

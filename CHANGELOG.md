@@ -157,6 +157,11 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- A game that crashed while starting showed "The game could not be connected to the local backend.", as if HellForge's
+  backend were the problem (#203, #212). It now says the game closed while starting, with its exit code and, when
+  Windows recorded the crash, the file the game crashed in. When that file belongs to another program that puts itself
+  into games (an overlay, a recorder, RGB or security software), the message names it as the one to close. The crash
+  report carries Windows' record too, also for crashes later in a session.
 - When Windows 11's Smart App Control blocked HellForge, the launcher showed only Windows' "An Application Control
   policy has blocked this file". It now says which file Windows blocked, that it is because HellForge's files aren't
   signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
@@ -299,6 +304,9 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A session's `result.json` has `prepare` and `connect`, how the two launch edits ended (`outcome`, the wait, and when
+  `game.dll` appeared), and `windowsCrash`: Windows' record of a game crash (`module`, `offset`, `code`, `modulePath`,
+  `owner`), or `none` (#203, #212).
 - A sandboxed session's `result.json` has `steamInput` once the Steam broker has asked Steam: `controllers` (names),
   `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null). `HellForge.Cli play` writes a
   `steam-input` event with the note when it changes; `SteamInputNote.Of` reads it.

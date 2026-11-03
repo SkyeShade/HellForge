@@ -47,6 +47,7 @@ sealed partial class PlaySession
     const int CloseWaitSeconds = 30;
     bool endGameNow;
 
+    // A game that ended by itself keeps its exit code and, for a crash, Windows' record of it (RecordWindowsCrash).
     void StopGameJob()
     {
         if (job != null && !endGameNow && (bool?)result["observationStoppedBySignal"] == true)
@@ -64,7 +65,13 @@ sealed partial class PlaySession
             });
         else if (job != null && endGameNow) result["gameClose"] = new JsonObject { ["outcome"] = "EndedAtOnce" };
         if (job != null && result["gameExitCode"] == null)
-            Try("gameExitCodeError", () => { job.Process.Refresh(); if (job.Process.HasExited) result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}"; });
+            Try("gameExitCodeError", () =>
+            {
+                job.Process.Refresh();
+                if (!job.Process.HasExited) return;
+                result["gameExitCode"] = $"0x{job.Process.ExitCode:X8}";
+                RecordWindowsCrash(job.Process.ExitCode);
+            });
         if (job != null)
             try
             {
