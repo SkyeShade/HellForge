@@ -29,14 +29,20 @@ static class ReportedIssuesTests
             check(damage["shared"]!.GetValue<bool>(), "The row is still marked shared.");
             check(Row("AR-23 Liberator", "damage.standard_damage")["alsoIf"] == null, "An ammunition no other weapon lists stays unconditional.");
         });
-        test("A drive that fills up while patching asks for space instead of Steam's download (hpatchz exit code 24)", () =>
+        test("A drive without room for the game asks for space before the Steam download writes anything, not for another download", () =>
         {
-            var output = Path.Combine(root, "space", "bundles.00.nxa.partial");
-            var full = Downpatcher.PatchFailed("data/bundles.00.nxa", 24, output);
-            check(full is NotEnoughSpaceException && full.Message.Contains("ran out of space", StringComparison.Ordinal) &&
-                full.Message.Contains(Path.GetPathRoot(Path.GetFullPath(output))!, StringComparison.OrdinalIgnoreCase), "Exit code 24: " + full.Message);
-            var bad = Downpatcher.PatchFailed("data/bundles.00.nxa", 11, output);
-            check(bad is InvalidDataException && bad.Message.Contains("validate the game in Steam", StringComparison.Ordinal), "Another exit code: " + bad.Message);
+            var folder = Path.Combine(root, "space");
+            var huge = new HellForge.SteamDownload.PlannedFile(new SupportedFile("data/bundles.00.nxa", long.MaxValue / 4, new string('0', 40), 553853), []);
+            try
+            {
+                new HellForge.SteamDownload.DepotAssembler(null!).AssembleAsync(new([huge]), folder, null, default).GetAwaiter().GetResult();
+                check(false, "A download larger than the drive started.");
+            }
+            catch (NotEnoughSpaceException error)
+            {
+                check(HellForge.SteamDownload.DownloadFailures.Describe(error, "1")?.Fallback == HellForge.SteamDownload.DownloadFallback.FreeSpace, error.Message);
+            }
+            check(!File.Exists(Path.Combine(folder, "data", "bundles.00.nxa.partial")), "The download wrote before asking for space.");
             // the check before writing: a drive's free space, with folders on one drive added up
             DiskSpace.Require((root, 1), (root, 1));
             try { DiskSpace.Require((root, long.MaxValue / 4), (root, 1)); check(false, "An impossible amount of space was granted."); }

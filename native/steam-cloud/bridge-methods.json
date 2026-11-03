@@ -420,13 +420,8 @@
       "class": "ISteamInput",
       "methods": {
         "GetControllerForGamepadIndex": {
-          "mode": "call",
-          "range": {
-            "nIndex": [
-              0,
-              15
-            ]
-          }
+          "mode": "hand",
+          "review": "answered 0 in the game (bridge_local.c): Steam Input's emulated pads live in Steam's overlay, in the broker's process, so none of the game's own XInput pads is one; asked of the broker, Steam could name a pad it emulates there (broker_input.c asks Steam Input)"
         }
       }
     }

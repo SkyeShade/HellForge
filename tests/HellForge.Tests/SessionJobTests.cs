@@ -85,5 +85,42 @@ static class SessionJobTests
                 if (above) Directory.Delete(other, recursive: true);
             }
         });
+
+        test("Sessions: a game that closed its window but kept running is ended after the grace; a hung window is only noted", () =>
+        {
+            var watch = new HellForge.Session.QuitWatch(graceMilliseconds: 30000, hungNoteMilliseconds: 15000);
+            var Running = HellForge.Session.QuitWatch.Verdict.Running;
+            // starting: no window yet, for as long as it takes
+            check(watch.Update(0, 0, false) == Running && watch.Update(120000, 0, false) == Running && !watch.SawWindow, "A game with no window yet is never ended.");
+            check(watch.Update(121000, 1, false) == Running && watch.SawWindow, "Its window appeared.");
+            // a window that goes for a moment (a display mode change) and comes back
+            check(watch.Update(122000, 0, false) == Running && watch.Update(140000, 0, false) == Running && watch.WindowlessMilliseconds(140000) == 18000, "A short gap is waited out.");
+            check(watch.Update(141000, 1, false) == Running && watch.WindowlessMilliseconds(141000) == 0, "The window came back.");
+            // hung: noted once after 15 s, never ended for it
+            check(watch.Update(142000, 1, true) == Running && watch.Update(156000, 1, true) == Running, "Hung for less than 15 s: nothing yet.");
+            check(watch.Update(157000, 1, true) == HellForge.Session.QuitWatch.Verdict.HungNote, "Hung for 15 s: noted.");
+            check(watch.Update(400000, 1, true) == Running, "Still hung: noted once, and the game is not ended.");
+            check(watch.Update(401000, 1, false) == Running && watch.Update(402000, 1, true) == Running &&
+                  watch.Update(417000, 1, true) == HellForge.Session.QuitWatch.Verdict.HungNote, "A new hang is noted again.");
+            // the window closed (the player quit) and the game is still running
+            check(watch.Update(418000, 0, false) == Running && watch.Update(447000, 0, false) == Running, "Windowless for less than 30 s: still waiting.");
+            check(watch.Update(448000, 0, false) == HellForge.Session.QuitWatch.Verdict.StuckQuitting, "Windowless for 30 s: stuck quitting.");
+        });
+
+        test("Save logs: the zip lists which of the session's programs were still running", () =>
+        {
+            var run = Directory.CreateDirectory(Path.Combine(root, "processes-export", new string('d', 32))).FullName;
+            File.WriteAllText(Path.Combine(run, "session.log"), "x");
+            var zip = Path.Combine(root, "processes-export", "logs.zip");
+            HellForge.Core.SessionLogs.Export(run, null, zip);
+            using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
+            var entry = archive.Entries.SingleOrDefault(e => e.FullName == new string('d', 32) + "/" + HellForge.Core.SessionLogs.ProcessesFile);
+            check(entry != null, "No process list in: " + string.Join(", ", archive.Entries.Select(e => e.FullName)));
+            using var reader = new StreamReader(entry!.Open());
+            check(reader.ReadToEnd().StartsWith("Session programs running at", StringComparison.Ordinal), "The process list has no header.");
+            // only the session's programs: this test program is none of them
+            var self = HellForge.Core.SessionLogs.RunningProcesses(DateTime.UtcNow, [System.Diagnostics.Process.GetCurrentProcess()]);
+            check(self.EndsWith("none\n", StringComparison.Ordinal), "Another program was listed: " + self);
+        });
     }
 }

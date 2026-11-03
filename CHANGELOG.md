@@ -22,6 +22,13 @@ On `dev`, since 0.3.0-beta.
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
+  Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
+  (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
+  lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
+  in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
+  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  that lets them in, which you can turn on from the browser for that session.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
   gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
@@ -48,19 +55,46 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
+  the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
+  already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
+  them (#234).
+- A lobby that refuses you for another HellForge version now says whose HellForge is older: the host needs to update,
+  or you do.
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
-- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
-  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
-  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
-  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
-  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
-  Map when you're sandboxed.
+- **Setup gets the supported game build from Steam itself.** When Steam has another HELLDIVERS 2 build, setup offers
+  three ways to get the build HellForge runs for your own account. Scan a QR code with the Steam app on your phone
+  (the default): setup downloads the build from Steam's servers and copies whatever your Steam install already has.
+  With no phone, sign in with SteamCMD: setup gets Valve's own SteamCMD and opens it with everything filled in, and you
+  type your password into SteamCMD's window, never into HellForge. Or use the Steam app on your PC, which downloads
+  it through its console. Every file is checked against Steam's hashes, and nothing of a sign-in is kept: SteamCMD's
+  remembered sign-in is removed after it runs, and SteamCMD itself once the build is in place. Setup also finds the
+  Steam app's download in the Linux client's `steamrt64` folder. HellForge no longer downloads build patches from
+  files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
+  Sharing), when SteamCMD can't be set up, or on Linux, setup shows the Steam console commands (#205).
+- **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
+  - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
+    player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
+    names them. A mod's author can set this with the manifest's new `"coop"` field.
+  - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
+    players.
+  - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
+    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default
+    applies, the launcher shows the stranger warning once.
+  - **Players on HellForge 0.3 still play with you.** Their lobbies show on the Galactic Map and in the lobby browser,
+    yours show in theirs, and joins work both ways, MOD SYNC included. A lobby with Hell Forge's difficulty or Vanilla
+    Plus on is not listed for 0.3 players, though 0.3 friends who run the same mod still join it. Versions before 0.3
+    can't join you, and you can't join them.
+  - A mod's author can give it a `"coopLevel"` in its manifest: players whose copies have the same level play together,
+    whatever version of the mod each has, so a fix release no longer splits them.
+  - With more than 50 HellForge lobbies listed (the most Steam returns in one search), lobbies you can join right away,
+    with your mods or after a download, are searched for and shown first.
+- A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
+  it: one taken off the list, or one you untrusted, waits for your trust again.
 - Mods on HellForge's verified list download from any host, not just Steam friends.
-- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
-  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
-  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
 - `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
   on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
   ignored.
@@ -80,6 +114,14 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
+  it again, as if they were gone. They were kept, and they now show as saved (#234).
+- The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8
+  places, a squad 4. A full squad's listing now has no free slot.
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
@@ -115,8 +157,37 @@ On `dev`, since 0.3.0-beta.
   signed yet, and what you can do, including that Windows may not let you turn Smart App Control back on once it is
   off. Setup and the launcher warn before you install or play while Smart App Control is on, a mod whose DLL Windows
   blocked says so in its log, and the session log says whether Smart App Control was on.
+- With the sandbox on (Settings > Sandbox), a Steam Controller and other controllers that work only through Steam
+  Input did nothing in the game, and nothing said why (#94, #204): Steam Input can't reach a sandboxed game yet. While
+  the game runs, the launcher now names the controller Steam Input is handling and says it won't work, and that Steam
+  may send its desktop keys instead (A presses Enter, which opens the chat). Xbox controllers work. Settings > Sandbox
+  says so too.
+- The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
+  running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
+  settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
+  Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
+- Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
+  game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
+  to close and waits up to 30 seconds for it before ending it (#194).
+- The first start of a new installation built the shader cache from nothing even when the normal game already had
+  one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
 - During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
   closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
   inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
@@ -186,11 +257,33 @@ On `dev`, since 0.3.0-beta.
 
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
   Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+- SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge
+  lobby with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information
+  terminal opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and
+  `HF_BROWSE_HIDDEN` keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and
+  `HfBrowseLobby.fix` names the setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`,
+  `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved; show the player the launcher's warning
+  before turning strangers on). A mod that draws a browser of its own asks `HF_BROWSE_CLAIM`, and HellForge's in-game
+  editor then shows none (`HfBrowseState.owner`). How to build one: [docs/lobby-browser.md](docs/lobby-browser.md).
 
 ### For launcher developers
 
-- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
-  `--sandbox yes`.
+- `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
+  that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
+  `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
+  `--steamcmd`, default `<out>-steamcmd`), which asks for the password itself (#205).
+- A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
+  (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
+  the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
+  `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
+  `<run>/processes-now.txt`.
+- A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
+  `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
+  to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
+  `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
+  itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
+- `HellForge.Cli mods-stage --sync` loads a synced code or raw-data mod only while it is verified or trusted;
+  `--sandbox yes|no` says whether the session is sandboxed, which a trust marked `"stranger": true` needs.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
   `"stranger": true`.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
@@ -201,6 +294,9 @@ On `dev`, since 0.3.0-beta.
   installation's saved list.
 - A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
   and why a published list was not taken.
+- A sandboxed session's `result.json` has `steamInput` once the Steam broker has asked Steam: `controllers` (names),
+  `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null). `HellForge.Cli play` writes a
+  `steam-input` event with the note when it changes; `SteamInputNote.Of` reads it.
 
 ## 0.3.0-beta (2026-10-26)
 

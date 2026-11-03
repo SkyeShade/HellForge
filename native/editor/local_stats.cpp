@@ -275,11 +275,14 @@ bool Load(const std::string& modsFolder, std::string* error)
     {
         std::lock_guard<std::mutex> hold(g_lock);
         g_modSaved = mods;
+        /* sandboxed: the files in mods/ lack this session's saved changes until the game is gone, so they go back over them */
+        for (auto& entry : g_journal) if (ModCategory(entry.second.category)) Apply(g_modSaved, entry.second);
         g_version++;
     }
     if (!ReadDocument(hfjson::Wide(modsFolder) + L"\\zz.local.stats", &document, &existed, error)) return false;
     std::lock_guard<std::mutex> hold(g_lock);
     g_saved = document;
+    for (auto& entry : g_journal) if (!ModCategory(entry.second.category)) Apply(g_saved, entry.second);
     g_version++;
     return true;
 }

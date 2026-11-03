@@ -53,6 +53,13 @@ foreach($app in @(
     dotnet publish (Join-Path $project $app.project) -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $staging $app.folder)
     if($LASTEXITCODE){throw ('Publishing '+$app.folder+' failed.')}
 }
+# The Steam download's libraries (SteamKit2: LGPL-2.1; protobuf-net: Apache-2.0; QRCoder, ZstdSharp.Port, System.IO.Hashing:
+# MIT) ship with their licences and notices beside them, in licences/ (HellForge.SteamDownload.csproj puts them there).
+foreach($folder in @('launcher','cli')){
+    foreach($name in @('THIRD-PARTY-NOTICES.txt','SteamKit2-LICENSE.txt','Apache-2.0.txt','protobuf-net-LICENSE.txt','QRCoder-LICENSE.txt','ZstdSharp.Port-LICENSE.txt','zstd-LICENSE.txt','System.IO.Hashing-LICENSE.txt')){
+        if(-not(Test-Path -LiteralPath (Join-Path $staging ($folder+'/licences/'+$name)))){throw ('app/'+$folder+' lacks licences/'+$name+'.')}
+    }
+}
 
 # The engine: session runner, backend, mod loader and stand-ins, and its scripts, as its package has them.
 Add-Type -AssemblyName System.IO.Compression.FileSystem

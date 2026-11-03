@@ -41,10 +41,16 @@ sealed class SetupForm : Form
         Row(new Label { Text = "Install HellForge", AutoSize = true, Font = new Font(Font.FontFamily, 14f, FontStyle.Bold), Margin = new(0, 0, 0, 8) });
         Row(new Label
         {
-            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 12),
+            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 8),
             Text = "HellForge runs HELLDIVERS 2 locally against a backend on this PC, with co-op over Steam. Setup unpacks it into the folder below; " +
                 "the launcher then copies the game from your own Steam library (about 24 GB) and finishes setting up. Everything " +
                 "HellForge stores stays inside this folder."
+        });
+        Row(new Label
+        {
+            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 12), ForeColor = SystemColors.GrayText,
+            Text = "HellForge is an independent fan project, not affiliated with or endorsed by Arrowhead Game Studios or Sony " +
+                "Interactive Entertainment. HELLDIVERS is a trademark of Sony Interactive Entertainment."
         });
         Row(new Label { Text = "Install folder", AutoSize = true });
         layout.Controls.Add(folder);
