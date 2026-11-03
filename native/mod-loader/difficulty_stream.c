@@ -265,6 +265,15 @@ static void WorldStreamPlayersLocked(void)
     }
 }
 
+/* The first player's x, y (for the terrain diagnostics); 0 without one. */
+static int WorldStreamFirstPlayer(float* xy)
+{
+    if (g_stream.playerCount <= 0) return 0;
+    xy[0] = g_streamPlayerAt[0][0];
+    xy[1] = g_streamPlayerAt[0][1];
+    return 1;
+}
+
 /* The mission's physics bodies in use, as difficulty_diag.c's NoteMissionMap reads them. */
 static int WorldStreamBodies(uint32_t* bodies)
 {

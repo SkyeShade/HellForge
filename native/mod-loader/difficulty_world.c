@@ -767,7 +767,10 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
         double sum = 0;
         uint64_t settings = 0;
         SafeRead(gen + 0x11A7090, &levelVertices, 4);
-        if (!SafeRead(context + 8, &settings, 8) && settings) SafeRead(settings + 0x30, &scale, 4);
+        /* SmoothHeightmap (0x40) hands its GPU job settings+0x74 (16 bytes): a kernel in texels would cover less ground on a
+         * tile (4096 texels over 768 m, vanilla's over 2048 m), so the values are logged with the scale */
+        uint32_t smooth[4] = {0};
+        if (!SafeRead(context + 8, &settings, 8) && settings) { SafeRead(settings + 0x30, &scale, 4); SafeRead(settings + 0x74, smooth, sizeof smooth); }
         for (uint32_t v = 0; v < levelVertices && v < 6000; v++)
         {
             float hv;
@@ -776,11 +779,27 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
             if (hv > lhi) lhi = hv;
             sum += hv;
         }
-        Note("difficulty: terrain tile: the level's %u vertex heights %.4f..%.4f (mean %.4f); height scale [settings+0x30] %.2f", levelVertices, (double)llo, (double)lhi,
-            levelVertices ? sum / levelVertices : 0.0, (double)scale);
+        Note("difficulty: terrain tile: the level's %u vertex heights %.4f..%.4f (mean %.4f); height scale [settings+0x30] %.2f; smoothing [settings+0x74] %08X %08X %08X %08X (%g %g %g %g)",
+            levelVertices, (double)llo, (double)lhi, levelVertices ? sum / levelVertices : 0.0, (double)scale, smooth[0], smooth[1], smooth[2], smooth[3],
+            (double)*(float*)&smooth[0], (double)*(float*)&smooth[1], (double)*(float*)&smooth[2], (double)*(float*)&smooth[3]);
     }
     return 1;
 }
+
+/* every count field the pipeline's records name (records-<level>.txt): a tile starts them at zero, as a new level does */
+static const uint32_t kTileCounts[] = {
+    0x11A7070u, 0x11A7074u, 0x11A7078u, 0x11A707Cu, 0x11A7080u, 0x11A7084u, 0x11A7088u, 0x11A708Cu, 0x11A7090u,
+    0x11A7094u, 0x11A7098u, 0x11A709Cu, 0x11A70A8u, 0x11A70ACu, 0x11A70B0u, 0x11A70B4u, 0x11A70B8u, 0x11A70BCu,
+    0x11A70C0u, 0x11A70C4u, 0x11A70CCu, 0x11A70D0u, 0x11A70D4u, 0x11A70D8u, 0x11A70E0u, 0x11A70E4u, 0x11A70E8u,
+    0x11A70F0u, 0x11A70F4u, 0x11A70F8u, 0x11A70FCu, 0x11A7100u, 0x11A7104u, 0x11A7108u, 0x11A710Cu, 0x11A7118u,
+    0x11A711Cu, 0x11A7124u, 0x11A712Cu, 0x11A7130u, 0x11A7134u, 0x11A7138u, 0x11A713Cu, 0x11A7140u, 0x11A7144u,
+    0x11A7148u, 0x11A7154u, 0x11A715Cu, 0x11A7160u, 0x11A7164u, 0x11A7168u, 0x11A716Cu, 0x11A7170u, 0x11A7174u,
+    0x11A7178u, 0x11A717Cu, 0x11A7180u, 0x11A7184u, 0x11A718Cu, 0x11A7190u, 0x11A7194u, 0x11A7198u, 0x11A719Cu,
+    0x11A71A0u, 0x11A71A4u, 0x11A71A8u, 0x11A71ACu, 0x11A71B0u, 0x11A71B4u, 0x11A71B8u, 0x11A71BCu, 0x11A71C0u,
+    0x11A71C4u, 0x11A71C8u, 0x11A71CCu, 0x11A71D0u, 0x11A71D4u, 0x11A71D8u, 0x11A71DCu, 0x11A71E0u, 0x11A71E4u,
+    0x11A71E8u, 0x11A71ECu, 0x11A71F0u, 0x11A71F4u, 0x11A71F8u, 0x11A71FCu, 0x11A7200u, 0x11A7204u, 0x11A7210u,
+    0x11A7218u, 0x11A721Cu, 0x11A7220u, 0x11A7224u, 0x11A7228u, 0x11A722Cu, 0x11A7234u, 0x11A7238u, 0x11A723Cu,
+    0x11A7240u, 0x11A7244u, 0x11A7248u, 0x11A724Cu, 0x11A7250u};
 
 static int g_tileExtent;
 static LONG g_tileCpuLevel = -1;
@@ -834,19 +853,7 @@ static void WorldTileProbe(uint64_t records, uint32_t end, uint64_t context, uin
      * (MergeSubRegionCells 0x13, BuildRouteCellAssociatedRoutes 0x02): every count field the pipeline's records name
      * (records-<level>.txt) starts the tile at zero, as for a new level. That also leaves the tile without the level's
      * locations, routes and segments (for now). */
-    static const uint32_t kTileCounts[] = {
-    0x11A7070u, 0x11A7074u, 0x11A7078u, 0x11A707Cu, 0x11A7080u, 0x11A7084u, 0x11A7088u, 0x11A708Cu, 0x11A7090u,
-    0x11A7094u, 0x11A7098u, 0x11A709Cu, 0x11A70A8u, 0x11A70ACu, 0x11A70B0u, 0x11A70B4u, 0x11A70B8u, 0x11A70BCu,
-    0x11A70C0u, 0x11A70C4u, 0x11A70CCu, 0x11A70D0u, 0x11A70D4u, 0x11A70D8u, 0x11A70E0u, 0x11A70E4u, 0x11A70E8u,
-    0x11A70F0u, 0x11A70F4u, 0x11A70F8u, 0x11A70FCu, 0x11A7100u, 0x11A7104u, 0x11A7108u, 0x11A710Cu, 0x11A7118u,
-    0x11A711Cu, 0x11A7124u, 0x11A712Cu, 0x11A7130u, 0x11A7134u, 0x11A7138u, 0x11A713Cu, 0x11A7140u, 0x11A7144u,
-    0x11A7148u, 0x11A7154u, 0x11A715Cu, 0x11A7160u, 0x11A7164u, 0x11A7168u, 0x11A716Cu, 0x11A7170u, 0x11A7174u,
-    0x11A7178u, 0x11A717Cu, 0x11A7180u, 0x11A7184u, 0x11A718Cu, 0x11A7190u, 0x11A7194u, 0x11A7198u, 0x11A719Cu,
-    0x11A71A0u, 0x11A71A4u, 0x11A71A8u, 0x11A71ACu, 0x11A71B0u, 0x11A71B4u, 0x11A71B8u, 0x11A71BCu, 0x11A71C0u,
-    0x11A71C4u, 0x11A71C8u, 0x11A71CCu, 0x11A71D0u, 0x11A71D4u, 0x11A71D8u, 0x11A71DCu, 0x11A71E0u, 0x11A71E4u,
-    0x11A71E8u, 0x11A71ECu, 0x11A71F0u, 0x11A71F4u, 0x11A71F8u, 0x11A71FCu, 0x11A7200u, 0x11A7204u, 0x11A7210u,
-    0x11A7218u, 0x11A721Cu, 0x11A7220u, 0x11A7224u, 0x11A7228u, 0x11A722Cu, 0x11A7234u, 0x11A7238u, 0x11A723Cu,
-    0x11A7240u, 0x11A7244u, 0x11A7248u, 0x11A724Cu, 0x11A7250u};
+
     for (size_t k = 0; k < sizeof kTileCounts / sizeof kTileCounts[0]; k++) memset(g_tileBlock + kTileCounts[k], 0, 4);
     /* The copy holds the level's data, and only the counts start the tile at zero: the route-cell areas ("edge points",
      * G+0xEE10C8, room for 13224 of 0x90 until G+0x10B1F48) kept the level's 16 km entries past the few the tile's
@@ -1462,6 +1469,9 @@ static void WorldSubregionNote(void)
 /* difficulty_world_diag.c: terrain diagnostics around every dispatcher step (HELLFORGE_TERRAIN_DIAG) */
 static void TerrainDiagBefore(uint64_t records, uint64_t index, uint32_t end, uint32_t* at, uint32_t* op);
 static void TerrainDiagInstall(uintptr_t game);
+/* difficulty_world_terrain.c: the map at vanilla density, as tiles drawn into the level's merge */
+static void TerrainInstall(uintptr_t game);
+static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -1494,6 +1504,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0 && !SafeRead(genAt + 0x11A71C4u, &subs, 4)) WorldSuggestDrop(genAt, subs);
         }
         if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
+        /* the map's terrain at vanilla density: the level waits at its SmoothHeightmap while the tiles are drawn */
+        if (o == 0x40 && TerrainStep(records, (uint32_t)d, i, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;
     uintptr_t block = 0;
@@ -2049,6 +2061,7 @@ static const char* InstallWorld(DifficultyInstall* d)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
     TerrainDiagInstall(game);
+    TerrainInstall(game);
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
     if (ApiCodeMatches(exe + DIF_OBJECT_CALL, kObjectCallPin) && ApiCodeMatches(exe + DIF_OBJECT_LOOKUP, kObjectLookupPin))
     {

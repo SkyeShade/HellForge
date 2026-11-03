@@ -1083,14 +1083,17 @@ static void TdReport(void)
 
 /* ---- the scatter by cell size (grass, plants, small rocks) ----------------------------------------------------------
  *
- * The ScatterSystem asks the callback game+0x137A2A0 (op 0x95's brushes) to fill one cell at a time around an observer:
+ * The ScatterSystem asks the callback game+0x137A2A0 (op 0x95's brushes) to fill one cell at a time:
  * count = fn(cell x, cell y, cell size m, out, context, max, brush), the cell's centre (x, y) * size in world metres
  * from the centre; brushes at game+0x3328F90 + 0x2860 * type, the radius^2 it keeps cells inside at
- * [[brush+0x2858]+0xC]. Per cell size (the scatter's distance bands) the wrapper counts cells asked, cells filled,
- * instances, cells past the radius and cells at the maximum, and the mean centre of the cells asked (around the
- * observer); per type the instances. One line per report: 20 s, 60 s and 180 s after a level's first cell, each over the
- * window since the last. */
+ * [[brush+0x2858]+0xC]. Measured (t11): it is not asked around the player but in sweeps over the whole world, 16 m
+ * cells, one brush type after another, when a level starts (vanilla D10: ~300k cells, 654k instances; 16 km: ~15.7M
+ * cells over ~60 s, 173M instances). So the figures are per sweep: a sweep ends when no cell has been asked for 5 s,
+ * and one line then gives its cells, filled, instances, past the radius, at the maximum and the time it took, per cell
+ * size and per type (up to 4 sweeps a level). The first cell's line names the caller (the engine's scatter code). */
 static int TerrainDiagOn(void);
+static int TdScatterLayers(char* out, int len);
+static int WorldStreamFirstPlayer(float* xy); /* difficulty_stream.c */
 typedef uint32_t (*TdScatterFn)(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush);
 static TdScatterFn g_tdScatter;
 #define TD_SCATTER_SIZES 8
@@ -1099,11 +1102,13 @@ static struct
 {
     volatile LONG size[TD_SCATTER_SIZES];
     volatile LONG64 calls[TD_SCATTER_SIZES], filled[TD_SCATTER_SIZES], instances[TD_SCATTER_SIZES], outside[TD_SCATTER_SIZES],
-        full[TD_SCATTER_SIZES], sumX[TD_SCATTER_SIZES], sumY[TD_SCATTER_SIZES];
-    volatile LONG64 typeInstances[TD_SCATTER_TYPES];
-    volatile LONG level;
+        full[TD_SCATTER_SIZES];
+    volatile LONG64 typeCells[TD_SCATTER_TYPES], typeInstances[TD_SCATTER_TYPES];
+    volatile LONG64 last; /* tick of the latest cell */
+    volatile LONG level, firstNoted;
     ULONGLONG first, since;
-    int reports, firstNoted, silentNoted;
+    int sweeps, silentNoted, quietNoted;
+    ULONGLONG sweptAt;
 } g_tdScat;
 
 static uint32_t TdScatterCell(int32_t x, int32_t y, int32_t size, void* out, void* context, uint32_t max, uint8_t* brush)
@@ -1118,32 +1123,45 @@ static uint32_t TdScatterCell(int32_t x, int32_t y, int32_t size, void* out, voi
         if (g_tdScat.size[k] == size) break;
     }
     if (k == TD_SCATTER_SIZES) return made;
-    if (InterlockedCompareExchange((volatile LONG*)&g_tdScat.firstNoted, 1, 0) == 0)
-        Note("terrain diag (level %ld): first scatter cell: %ld m at (%ld, %ld), max %u, brush type %lld, made %u", (long)g_world.levels,
-            (long)size, (long)x * size, (long)y * size, max, (long long)(((intptr_t)brush - (intptr_t)(g_world.game + 0x3328F90u)) / 0x2860), made);
+    uintptr_t type = ((uintptr_t)brush - (g_world.game + 0x3328F90u)) / 0x2860u;
+    if (InterlockedCompareExchange(&g_tdScat.firstNoted, 1, 0) == 0)
+    {
+        uintptr_t from = (uintptr_t)__builtin_return_address(0), exe = (uintptr_t)GetModuleHandleW(NULL);
+        Note("terrain diag (level %ld): first scatter cell: %ld m at (%ld, %ld), max %u, brush type %lld, made %u; asked from %s+0x%llX",
+            (long)g_world.levels, (long)size, (long)x * size, (long)y * size, max, (long long)(intptr_t)type, made,
+            from >= g_world.game && from < g_world.game + 0x4000000u ? "game.dll" : "exe",
+            (unsigned long long)(from >= g_world.game && from < g_world.game + 0x4000000u ? from - g_world.game : from - exe));
+    }
+    InterlockedExchange64(&g_tdScat.last, (LONG64)GetTickCount64());
     InterlockedIncrement64(&g_tdScat.calls[k]);
     if (made) { InterlockedIncrement64(&g_tdScat.filled[k]); InterlockedAdd64(&g_tdScat.instances[k], made); }
     if (made >= max && max) InterlockedIncrement64(&g_tdScat.full[k]);
     double cx = (double)x * size, cy = (double)y * size;
-    InterlockedAdd64(&g_tdScat.sumX[k], (LONG64)cx); InterlockedAdd64(&g_tdScat.sumY[k], (LONG64)cy);
     uintptr_t globals = 0; float r2 = 0;
     if (!made && !SafeRead((uintptr_t)brush + 0x2858, &globals, 8) && globals && !SafeRead(globals + 0xC, &r2, 4) && cx * cx + cy * cy > r2)
         InterlockedIncrement64(&g_tdScat.outside[k]);
-    uintptr_t type = ((uintptr_t)brush - (g_world.game + 0x3328F90u)) / 0x2860u;
-    if (made && type < TD_SCATTER_TYPES) InterlockedAdd64(&g_tdScat.typeInstances[type], made);
+    if (type < TD_SCATTER_TYPES) { InterlockedIncrement64(&g_tdScat.typeCells[type]); if (made) InterlockedAdd64(&g_tdScat.typeInstances[type], made); }
     return made;
 }
 
 static void TdScatterReport(void)
 {
-    static const ULONGLONG kAt[] = {20000, 60000, 180000};
-    if (g_tdScatter == NULL || g_tdScat.reports >= 3) return;
-    if (g_tdScat.level != g_world.levels) return;
+    if (g_tdScatter == NULL || g_tdScat.level != g_world.levels) return;
+    ULONGLONG now = GetTickCount64(), last = (ULONGLONG)g_tdScat.last;
     if (g_tdScat.first == 0)
     {
-        for (int k = 0; k < TD_SCATTER_SIZES; k++) if (g_tdScat.calls[k]) g_tdScat.first = GetTickCount64();
-        /* Silence is a finding too (the 16 km map's grass may never reach the CPU callback): said once, 90 s into the level. */
-        if (g_tdScat.first == 0 && !g_tdScat.silentNoted && g_tdScat.since && GetTickCount64() - g_tdScat.since > 90000)
+        if (last != 0) { g_tdScat.first = last; return; }
+        /* after the sweeps, one line on the player's view 30 s later (with or without new cells) */
+        if (g_tdScat.sweeps > 0 && !g_tdScat.quietNoted && now - g_tdScat.sweptAt > 30000)
+        {
+            char quiet[2400];
+            g_tdScat.quietNoted = 1;
+            TdScatterLayers(quiet, (int)sizeof quiet);
+            Note("terrain diag (level %ld, %.0fx): scatter 30 s after the last sweep%s", (long)g_world.levels, (double)g_world.current, quiet);
+            return;
+        }
+        /* Silence is a finding too: said once, 90 s into the level. */
+        if (!g_tdScat.silentNoted && !g_tdScat.firstNoted && g_tdScat.since && now - g_tdScat.since > 90000)
         {
             g_tdScat.silentNoted = 1;
             Note("terrain diag (level %ld, %.0fx): no scatter cells asked in 90 s of the level (the CPU scatter callback was never called)",
@@ -1151,11 +1169,10 @@ static void TdScatterReport(void)
         }
         return;
     }
-    ULONGLONG age = GetTickCount64() - g_tdScat.first;
-    if (age < kAt[g_tdScat.reports]) return;
-    char line[1600]; int n = 0;
-    n += snprintf(line + n, sizeof line - n, "terrain diag (level %ld, %.0fx): scatter at %llu s (window):", (long)g_world.levels,
-        (double)g_world.current, (unsigned long long)(age / 1000));
+    if (now - last < 5000 || g_tdScat.sweeps >= 4) return;
+    char line[3200]; int n = 0;
+    n += snprintf(line + n, sizeof line - n, "terrain diag (level %ld, %.0fx): scatter sweep %d, %.1f s:", (long)g_world.levels,
+        (double)g_world.current, g_tdScat.sweeps + 1, (double)(last - g_tdScat.first) / 1000.0);
     /* by cell size, smallest first */
     int order[TD_SCATTER_SIZES], m = 0;
     for (int k = 0; k < TD_SCATTER_SIZES; k++) if (g_tdScat.size[k]) order[m++] = k;
@@ -1165,21 +1182,153 @@ static void TdScatterReport(void)
         int k = order[i];
         LONG64 calls = InterlockedExchange64(&g_tdScat.calls[k], 0), filled = InterlockedExchange64(&g_tdScat.filled[k], 0),
             made = InterlockedExchange64(&g_tdScat.instances[k], 0), outside = InterlockedExchange64(&g_tdScat.outside[k], 0),
-            full = InterlockedExchange64(&g_tdScat.full[k], 0), sx = InterlockedExchange64(&g_tdScat.sumX[k], 0),
-            sy = InterlockedExchange64(&g_tdScat.sumY[k], 0);
+            full = InterlockedExchange64(&g_tdScat.full[k], 0);
         if (!calls) continue;
-        n += snprintf(line + n, sizeof line - n, " | %ld m: %lld cells, %.0f%% filled, %lld instances, %.0f%% past the radius, %.0f%% full, centre (%.0f, %.0f)",
-            (long)g_tdScat.size[k], (long long)calls, 100.0 * filled / calls, (long long)made, 100.0 * outside / calls, 100.0 * full / calls,
-            (double)sx / calls, (double)sy / calls);
+        n += snprintf(line + n, sizeof line - n, " | %ld m: %lld cells, %.0f%% filled, %lld instances, %.0f%% past the radius, %.1f%% full",
+            (long)g_tdScat.size[k], (long long)calls, 100.0 * filled / calls, (long long)made, 100.0 * outside / calls, 100.0 * full / calls);
     }
-    n += snprintf(line + n, sizeof line - n, " | instances by type:");
-    for (int t = 0; t < TD_SCATTER_TYPES && n < (int)sizeof line - 24; t++)
+    n += snprintf(line + n, sizeof line - n, " | by type (instances/cells):");
+    for (int t = 0; t < TD_SCATTER_TYPES && n < (int)sizeof line - 32; t++)
     {
-        LONG64 v = InterlockedExchange64(&g_tdScat.typeInstances[t], 0);
-        if (v) n += snprintf(line + n, sizeof line - n, " %d:%lld", t, (long long)v);
+        LONG64 v = InterlockedExchange64(&g_tdScat.typeInstances[t], 0), c = InterlockedExchange64(&g_tdScat.typeCells[t], 0);
+        if (c) n += snprintf(line + n, sizeof line - n, " %d:%lld/%lld", t, (long long)v, (long long)c);
     }
+    if (n < (int)sizeof line - 64) n += TdScatterLayers(line + n, (int)sizeof line - n);
     Note("%s", line);
-    g_tdScat.reports++;
+    g_tdScat.sweeps++;
+    g_tdScat.sweptAt = now;
+    g_tdScat.first = 0;
+    InterlockedExchange64(&g_tdScat.last, 0);
+}
+
+/* The engine's scatter update (exe+0x212F10, the callback's caller at +0x21347C), per frame and scatter layer
+ * (r9 = the layer): the camera's view (rdx +0x20 position, a distance from [layer+0x5C]) picks quadtree nodes
+ * ([[layer+0x40]+0x88], 0xE0 each, count +0x90; cells x/y at node +0x50/+0x54, cell size [layer+0x22C]); each cell is
+ * looked up in a hash cache ([layer+0x10] entries of 0x30: +0 key, +8 instance count, +0x10 instances, +0x28 next;
+ * [layer+0x24] buckets, [layer+0x8] entries, [layer+0x20] in use), and cells not cached ([[layer+0x40]+0x108], count
+ * +0x110) are generated through the callback. The wrapper keeps the layers it sees (up to 24) and the sweep line
+ * reports each layer's cache use and node counts. */
+typedef void (*TdScatterUpdateFn)(void* a, uint8_t* view, uint32_t c, uint8_t* layer, void* e, void* f, void* g, void* h);
+static TdScatterUpdateFn g_tdScatterUpdate;
+static uint8_t* volatile g_tdScatLayers[24];
+static volatile LONG64 g_tdScatUpdates, g_tdScatNodesMax, g_tdScatMissMax;
+static float g_tdScatView[4]; /* the view at the most nodes: +0x20, +0x24 (its distance), +0x28, +0x278 */
+/* the player's view (any other than the generator's): its last frustum box (+0x274, min xyz then max xyz) and, per
+ * layer slot, the most nodes in view and uncached cells it asked */
+static volatile LONG g_tdScatCellMin[2] = {0x7FFFFFFF, 0x7FFFFFFF}, g_tdScatCellMax[2] = {-0x7FFFFFFF, -0x7FFFFFFF}; /* the player view's node cells, m */
+static volatile LONG64 g_tdScatLayerNodes[24], g_tdScatLayerMiss[24];
+static uintptr_t g_tdScatViewFlags;
+
+static LONG64 g_tdScatSkipped;
+static void TdScatterUpdate(void* a, uint8_t* view, uint32_t c, uint8_t* layer, void* e, void* f, void* g, void* h)
+{
+    /* research A/B (HELLFORGE_XL_SCATTER_SKIP_GLOBAL=1): on a larger world, the generator's top-down view (near 1, far
+     * 1001, aspect 1: the merge camera over the whole world) is left out of the scatter update, so the player's view
+     * fills its own cells */
+    static int skipGlobal = -1;
+    if (skipGlobal < 0) { char t[4] = ""; skipGlobal = GetEnvironmentVariableA("HELLFORGE_XL_SCATTER_SKIP_GLOBAL", t, sizeof t) > 0 && t[0] == '1'; }
+    if (skipGlobal && g_world.current > 1.0)
+    {
+        float v[2] = {0}, aspect = 0;
+        if (!SafeRead((uintptr_t)view + 0x20, v, 8) && !SafeRead((uintptr_t)view + 0x278, &aspect, 4) && v[0] == 1.0f && v[1] == 1001.0f && aspect == 1.0f)
+        {
+            InterlockedIncrement64(&g_tdScatSkipped);
+            return;
+        }
+    }
+    g_tdScatterUpdate(a, view, c, layer, e, f, g, h);
+    InterlockedIncrement64(&g_tdScatUpdates);
+    int slot = 0;
+    for (; slot < 24; slot++)
+    {
+        uint8_t* have = g_tdScatLayers[slot];
+        if (have == layer) break;
+        if (have == NULL && InterlockedCompareExchangePointer((void* volatile*)&g_tdScatLayers[slot], layer, NULL) == NULL) break;
+    }
+    uintptr_t tree = 0; uint64_t nodes = 0, misses = 0;
+    if (!SafeRead((uintptr_t)layer + 0x40, &tree, 8) && tree && !SafeRead(tree + 0x90, &nodes, 8) && !SafeRead(tree + 0x110, &misses, 8))
+    {
+        float aspect = 0;
+        if (slot < 24 && !SafeRead((uintptr_t)view + 0x278, &aspect, 4) && aspect != 1.0f)
+        {
+            uintptr_t list = 0; float cell = 0;
+            SafeRead((uintptr_t)layer + 0x22C, &cell, 4);
+            if (!SafeRead(tree + 0x88, &list, 8) && list && nodes <= 4096 && cell >= 1.0f)
+                for (uint64_t i = 0; i < nodes; i++)
+                {
+                    int32_t xy[2];
+                    if (SafeRead(list + i * 0xE0 + 0x50, xy, 8)) break;
+                    for (int d = 0; d < 2; d++)
+                    {
+                        LONG m = (LONG)(xy[d] * cell);
+                        if (m < g_tdScatCellMin[d]) InterlockedExchange(&g_tdScatCellMin[d], m);
+                        if (m > g_tdScatCellMax[d]) InterlockedExchange(&g_tdScatCellMax[d], m);
+                    }
+                }
+            if ((LONG64)nodes > g_tdScatLayerNodes[slot]) InterlockedExchange64(&g_tdScatLayerNodes[slot], (LONG64)nodes);
+            InterlockedAdd64(&g_tdScatLayerMiss[slot], (LONG64)misses);
+        }
+        if ((LONG64)nodes > g_tdScatNodesMax)
+        {
+            InterlockedExchange64(&g_tdScatNodesMax, (LONG64)nodes);
+            SafeRead((uintptr_t)view + 0x20, g_tdScatView, 12); SafeRead((uintptr_t)view + 0x278, &g_tdScatView[3], 4);
+            g_tdScatViewFlags = (uintptr_t)e;
+        }
+        if ((LONG64)misses > g_tdScatMissMax) InterlockedExchange64(&g_tdScatMissMax, (LONG64)misses);
+    }
+}
+
+/* One summary of the layers' caches: in use / entries (buckets), cell size, the view distance factor [+0x5C]. */
+static int TdScatterLayers(char* out, int len)
+{
+    int n = snprintf(out, len, " | update calls %lld (%lld of the generator's view skipped), most nodes in view %lld (view +0x20 %.4g %.4g %.4g, +0x278 %.4g, flags %llX), most uncached %lld,"
+        " scatter layers ([+0x20]/[+0x8]/[+0x24], reach m [+0x5C]):",
+        (long long)InterlockedExchange64(&g_tdScatUpdates, 0), (long long)InterlockedExchange64(&g_tdScatSkipped, 0),
+        (long long)InterlockedExchange64(&g_tdScatNodesMax, 0), (double)g_tdScatView[0], (double)g_tdScatView[1], (double)g_tdScatView[2], (double)g_tdScatView[3], (unsigned long long)g_tdScatViewFlags,
+        (long long)InterlockedExchange64(&g_tdScatMissMax, 0));
+    /* per layer: reach m, then the player view's most nodes / cells asked; the tables' sizes once */
+    uint32_t tableUsed = 0, tableEntries = 0;
+    n += snprintf(out + n, len - n, " layers (reach m: player view nodes/asked):");
+    for (int k = 0; k < 24 && g_tdScatLayers[k] && n < len - 160; k++)
+    {
+        /* the update also runs for objects that are not scatter layers: kept are those with a 16 m-like cell and a reach */
+        uintptr_t l = (uintptr_t)g_tdScatLayers[k];
+        uint32_t entries = 0, used = 0; float cell = 0, reach = 0;
+        SafeRead(l + 0x8, &entries, 4); SafeRead(l + 0x20, &used, 4);
+        SafeRead(l + 0x22C, &cell, 4); SafeRead(l + 0x5C, &reach, 4);
+        if (!(cell >= 1.0f && cell <= 1024.0f && reach > 0.0f && reach < 100000.0f)) continue;
+        tableUsed = used; tableEntries = entries;
+        n += snprintf(out + n, len - n, " %.0f:%lld/%lld", (double)reach,
+            (long long)InterlockedExchange64(&g_tdScatLayerNodes[k], 0), (long long)InterlockedExchange64(&g_tdScatLayerMiss[k], 0));
+    }
+    float at[2] = {0};
+    int players = WorldStreamFirstPlayer(at);
+    if (n < len - 160)
+        n += snprintf(out + n, len - n, "; tables %u/%u | player view cells x %ld..%ld, y %ld..%ld m; player at (%.0f, %.0f)%s", tableUsed, tableEntries,
+            (long)InterlockedExchange(&g_tdScatCellMin[0], 0x7FFFFFFF), (long)InterlockedExchange(&g_tdScatCellMax[0], -0x7FFFFFFF),
+            (long)InterlockedExchange(&g_tdScatCellMin[1], 0x7FFFFFFF), (long)InterlockedExchange(&g_tdScatCellMax[1], -0x7FFFFFFF),
+            (double)at[0], (double)at[1], players ? "" : " (no player)");
+    return n;
+}
+
+/* The scatter system's world box: exe+0x214310 (rcx = the system) sets every layer's grid bounds (0x954D70) from
+ * [sys+0x378] (min xyz) and [sys+0x384] (max xyz), a union of the boxes registered with it (0x215725). The node
+ * selection clamps each view's cells to those bounds, so a box at vanilla's +-1024 m keeps scatter in the middle of a
+ * larger world. Logged per call, up to 6 a level. */
+typedef void (*TdScatterBoundsFn)(uint8_t* sys, void* b, void* c, void* d);
+static TdScatterBoundsFn g_tdScatterBounds;
+static volatile LONG g_tdScatBoundsNotes, g_tdScatBoundsLevel = -1;
+static void TdScatterBounds(uint8_t* sys, void* b, void* c, void* d)
+{
+    if (g_tdScatBoundsLevel != g_world.levels) { g_tdScatBoundsLevel = g_world.levels; g_tdScatBoundsNotes = 0; }
+    if (InterlockedIncrement(&g_tdScatBoundsNotes) <= 6)
+    {
+        float box[6] = {0};
+        SafeRead((uintptr_t)sys + 0x378, box, sizeof box);
+        Note("terrain diag (level %ld, %.0fx): scatter world box (%.0f, %.0f, %.0f)..(%.0f, %.0f, %.0f) applied to the layers' grids",
+            (long)g_world.levels, (double)g_world.current, (double)box[0], (double)box[1], (double)box[2], (double)box[3], (double)box[4], (double)box[5]);
+    }
+    g_tdScatterBounds(sys, b, c, d);
 }
 
 /* Hook the scatter callback (level >= 1); the bytes are checked first. */
@@ -1188,6 +1337,11 @@ static void TerrainDiagInstall(uintptr_t game)
     if (!TerrainDiagOn() || g_tdScatter != NULL) return;
     if (!ApiCodeMatches(game + 0x137A2A0u, "40 55 53 56 57 41 54 41 56 41 57 48 8D AC 24 E0 FE FF FF")) { Note("terrain diag: the scatter callback is not the reviewed one; no scatter figures"); return; }
     LoaderHook("terrain diag's scatter figures", game + 0x137A2A0u, (void*)TdScatterCell, (void**)&g_tdScatter);
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0x212F10u, "48 89 5C 24 18 55 56 57 41 55 41 56 48 8D AC 24 E0 CB FF")) Note("terrain diag: the engine's scatter update is not the reviewed one; no scatter cache figures");
+    else LoaderHook("terrain diag's scatter cache figures", exe + 0x212F10u, (void*)TdScatterUpdate, (void**)&g_tdScatterUpdate);
+    if (ApiCodeMatches(exe + 0x214310u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57"))
+        LoaderHook("terrain diag's scatter world box", exe + 0x214310u, (void*)TdScatterBounds, (void**)&g_tdScatterBounds);
 }
 
 /* ---- the hooks ------------------------------------------------------------------------------------------------------ */
@@ -1357,12 +1511,9 @@ static void TerrainDiagTick(void)
         if (g_tdScat.level != g_world.levels)
         {
             for (int k = 0; k < TD_SCATTER_SIZES; k++)
-            {
                 g_tdScat.calls[k] = g_tdScat.filled[k] = g_tdScat.instances[k] = g_tdScat.outside[k] = g_tdScat.full[k] = 0;
-                g_tdScat.sumX[k] = g_tdScat.sumY[k] = 0;
-            }
-            for (int t = 0; t < TD_SCATTER_TYPES; t++) g_tdScat.typeInstances[t] = 0;
-            g_tdScat.first = 0; g_tdScat.reports = 0; g_tdScat.firstNoted = 0; g_tdScat.silentNoted = 0;
+            for (int t = 0; t < TD_SCATTER_TYPES; t++) g_tdScat.typeInstances[t] = g_tdScat.typeCells[t] = 0;
+            g_tdScat.first = 0; g_tdScat.last = 0; g_tdScat.sweeps = 0; g_tdScat.firstNoted = 0; g_tdScat.silentNoted = 0; g_tdScat.quietNoted = 0;
             g_tdScat.since = GetTickCount64(); g_tdScat.level = g_world.levels;
         }
         TdScatterReport();
