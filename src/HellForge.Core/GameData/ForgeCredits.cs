@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace HellForge.Core.GameData;
@@ -17,7 +16,6 @@ public static class ForgeCredits
     // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
     // 3: the names. 4: the XAML pages' colours. 5: every copy of each resource, the premium token's colours.
     public const int Version = 6; // 6: the "WARBOND LOCKED" label
-    const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
     // whole chain in the stream part and its small end again in the GPU part.
@@ -65,20 +63,13 @@ public static class ForgeCredits
     // temp/forge-credits/ (the last one kept).
     public static string Prepare(InstallLayout install, Action<string>? log = null)
     {
-        var root = Path.Combine(install.Temp, "forge-credits");
-        var key = $"{Version}:{SupportedBuild.Current.BuildId}";
-        var folder = Path.Combine(root, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant());
-        if (File.Exists(Path.Combine(folder, DoneFile))) return folder;
-        if (Directory.Exists(root))
-            foreach (var old in Directory.GetDirectories(root)) Directory.Delete(old, recursive: true);
-        using (var game = new GameDataReader(Path.Combine(install.Game, "data")))
+        return OwnPatches.Cached(install, "forge-credits", $"{Version}:{SupportedBuild.Current.BuildId}", folder =>
         {
+            using var game = new GameDataReader(Path.Combine(install.Game, "data"));
             var (files, skipped) = Build(game, folder);
             foreach (var what in skipped) log?.Invoke($"Forge Credits: {what} stays as the game has it (its form changed).");
             log?.Invoke($"Forge Credits: {files.Count} patch file(s) built.");
-        }
-        File.WriteAllText(Path.Combine(folder, DoneFile), key + "\n");
-        return folder;
+        });
     }
 
     static byte[] Picture(string name)
@@ -149,19 +140,7 @@ public static class ForgeCredits
             }
             if (changed == 0) skipped.Add($"a colour of XAML page {resource:X16}");
         }
-        var files = new List<string>();
-        foreach (var (archive, resources) in byArchive)
-        {
-            var (main, gpu, stream) = ResourceArchive.Write(resources);
-            var name = archive + ".patch_0";
-            File.WriteAllBytes(Path.Combine(output, name), main);
-            File.WriteAllBytes(Path.Combine(output, name + ".gpu_resources"), gpu);
-            files.AddRange([name, name + ".gpu_resources"]);
-            if (stream.Length == 0) continue;
-            File.WriteAllBytes(Path.Combine(output, name + ".stream"), stream);
-            files.Add(name + ".stream");
-        }
-        return (files, skipped);
+        return (OwnPatches.Write(byArchive, output), skipped);
     }
 
     // A strings resource (u32 magic, version, count, language; u32 ids[count]; u32 offsets[count] into the resource of
