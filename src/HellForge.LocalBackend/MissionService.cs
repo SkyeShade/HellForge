@@ -10,7 +10,11 @@ namespace HellForge.LocalBackend;
 //   POST /Operation/Mission/Start   0xc50b20e7  reply {missionId: string} (parser 0x107d980)
 //   POST /Operation/Mission/end     0x1e555ea6  body from 0x11e9680 (missionSuccess, difficultyType, objectives,
 //                                               lootedItems, heavyLootedItems, ...), reply parsed by 0x105e3e0/0x105e6b0
-//   POST /Operation/Mission/Activity 0x385dc715 reply {rewards: []} (parser 0x105e010)
+//   POST /Operation/Mission/Activity 0x385dc715 builder 0x12c2940 {missionId, activityId32, objectId, participants:[account
+//                                               ids], gmiStr}, sent once every player confirmed a pickup; reply {rewards:[
+//                                               {platformAccountId: string, rewards:[{mixId, amount}] (15 at most)}]} (parsers
+//                                               0x105e010, 0x105e190, 0x1044660). The client adds the local player's entry
+//                                               (0x1370a20) and forwards each other one to that player's game (0xA0823945).
 //   POST /Operation/Mission/SetMaxRewards, POST /Operation/Abandon: no reply fields are read.
 //   POST /Progression/inventory/consume  0xeea479dc  body {consumedItems:[{mixId, amount}]} sent as a mission ends (the
 //                                               dispatcher has no reply case for it): acknowledged, nothing taken.
@@ -30,8 +34,14 @@ public sealed class MissionService
 
     readonly ProfileStore profile;
     readonly ConcurrentDictionary<long, int> operationDifficulty = new();
+    readonly PickupRelay? pickups;
 
-    public MissionService(ProfileStore profile) => this.profile = profile;
+    public MissionService(ProfileStore profile, PickupRelay? pickups = null)
+    {
+        this.profile = profile;
+        this.pickups = pickups;
+        if (pickups != null) pickups.Credit = Credit;
+    }
 
     public static bool Handles(string path) => path is "/Operation/Create" or "/Operation/Abandon" or "/Operation/Mission/Start"
         or "/Operation/Mission/end" or "/Operation/Mission/Activity" or "/Operation/Mission/SetMaxRewards" or "/Progression/inventory/consume";
@@ -41,10 +51,62 @@ public sealed class MissionService
         "/Operation/Create" => (Create(body), "operation_created"),
         "/Operation/Mission/Start" => (new JsonObject { ["missionId"] = Guid.NewGuid().ToString() }, "mission_started"),
         "/Operation/Mission/end" => (End(body), "mission_ended"),
-        "/Operation/Mission/Activity" => (new JsonObject { ["rewards"] = new JsonArray() }, "mission_activity"),
+        "/Operation/Mission/Activity" => (Activity(body), "mission_activity"),
         "/Progression/inventory/consume" => (new JsonObject(), "items_consumed"),
         _ => (new JsonObject(), "acknowledged")
     };
+
+    // The pickups' activities (hash32 of "mission_activity_<type>", set at spawn by 0x593d30): a Super Credits pile (Forge
+    // Credits), medals and requisition slips.
+    public const uint ForgeCreditsActivity = 0x7F8FCE26, MedalsActivity = 0x0A2ECD4E, RequisitionActivity = 0x7549A744;
+    // What a pile pays: the item the profile holds (medals as MedalsMixId), the one the reply names (medals as the reward
+    // item MedalRewardMixId, which the client turns into its medals) and the amount; null for another activity.
+    static (uint Held, uint Shown, long Amount)? PileOf(uint activity, long pile) => activity switch
+    {
+        ForgeCreditsActivity => (PaidContentSet.ForgeCreditsWallet, PaidContentSet.ForgeCreditsWallet, Rewards.ForgeCredits(pile)),
+        MedalsActivity => (MedalsMixId, MedalRewardMixId, Rewards.MedalPickup(pile)),
+        RequisitionActivity => (RequisitionMixId, RequisitionMixId, Rewards.RequisitionPickup(pile)),
+        _ => null
+    };
+
+    // A pickup: every participant gets the same amount, as on the live game. This profile is credited here, once per pile
+    // (ProfileStore.ApplyPickup), and the other participants' backends through multiplayer (PickupRelay); the reply names
+    // what the client adds, and the client forwards the others' entries to their games.
+    JsonObject Activity(JsonElement body)
+    {
+        var rewards = new JsonArray();
+        if (body.ValueKind != JsonValueKind.Object || !TryInt(body, "activityId32", out var activity) || !TryInt(body, "objectId", out var pile))
+            return new JsonObject { ["rewards"] = rewards };
+        var mission = body.TryGetProperty("missionId", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString()! : "";
+        if (PileOf((uint)activity, pile) is not { } paid || !profile.ApplyPickup(mission, pile, paid.Held, paid.Amount))
+            return new JsonObject { ["rewards"] = rewards };
+        var accounts = Participants(body);
+        foreach (var account in accounts)
+            rewards.Add((JsonNode)new JsonObject
+            {
+                ["platformAccountId"] = account.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["rewards"] = new JsonArray((JsonNode)new JsonObject { ["mixId"] = paid.Shown, ["amount"] = paid.Amount })
+            });
+        pickups?.OnPaid(new PickupRelay.Pickup(mission, pile, (uint)activity, accounts));
+        return new JsonObject { ["rewards"] = rewards };
+    }
+
+    // The request's participants: account ids as numbers or decimal strings, each once, 16 at most.
+    static List<ulong> Participants(JsonElement body)
+    {
+        var accounts = new List<ulong>();
+        if (!body.TryGetProperty("participants", out var participants) || participants.ValueKind != JsonValueKind.Array) return accounts;
+        foreach (var participant in participants.EnumerateArray().Take(16))
+            if (participant.ValueKind is JsonValueKind.Number or JsonValueKind.String &&
+                ulong.TryParse(participant.ValueKind == JsonValueKind.String ? participant.GetString() : participant.GetRawText(),
+                    System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var account) && !accounts.Contains(account))
+                accounts.Add(account);
+        return accounts;
+    }
+
+    // A pile a friend's backend paid: this profile gets the same amount, worked out here from the pile, once.
+    bool Credit(PickupRelay.Pickup pickup) =>
+        PileOf(pickup.Activity, pickup.Pile) is { } paid && profile.ApplyPickup(pickup.Mission, pickup.Pile, paid.Held, paid.Amount);
 
     JsonObject Create(JsonElement body)
     {
@@ -118,6 +180,22 @@ public sealed class MissionService
             var base_ = DifficultyExperience[Math.Clamp(difficulty, 0, DifficultyExperience.Length - 1)];
             return (success ? base_ : base_ / 2) + 50L * Math.Clamp(objectives, 0, 20);
         }
+
+        // A Forge Credits pile: the live game's amounts are the server's (the client sends none), so HellForge's own: mostly 10,
+        // sometimes 20, 50 or 100, the same for a pile wherever it is asked (its objectId).
+        public static long ForgeCredits(long pile) => ((uint)(unchecked((ulong)pile * 0x9E3779B97F4A7C15UL) >> 32) % 100) switch
+        {
+            < 75 => 10,
+            < 92 => 20,
+            < 98 => 50,
+            _ => 100
+        };
+
+        // A medal pickup: mostly 1, sometimes 2, now and then 5; requisition slips: 50, 100 or 200 the same way. Per pile, as
+        // ForgeCredits.
+        public static long MedalPickup(long pile) => Bucket(pile) switch { < 75 => 1, < 95 => 2, _ => 5 };
+        public static long RequisitionPickup(long pile) => Bucket(pile) switch { < 75 => 50, < 95 => 100, _ => 200 };
+        static uint Bucket(long pile) => (uint)(unchecked((ulong)pile * 0x9E3779B97F4A7C15UL) >> 32) % 100;
 
         // Level 11 is a mod's (native/mod-loader/difficulty.c, HfDifficulty).
         public static long Requisition(int difficulty) => 200L * Math.Clamp(difficulty, 1, 11);

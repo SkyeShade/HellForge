@@ -119,7 +119,7 @@ public sealed class ProfileStore : IDisposable
                 if (section == "inventory")
                     body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
                 else if (section == "progression" && Ownership != null)
-                    body = Ownership.FilterProgressionResponse(body);
+                    body = Ownership.FilterProgressionResponse(body, JsonSerializer.SerializeToElement(profile["inventory"], BackendJson.Default.JsonNode));
             }
             return true;
         }
@@ -336,6 +336,24 @@ public sealed class ProfileStore : IDisposable
             return true;
         });
 
+    // A pickup (Mission/Activity, or a friend's backend's through multiplayer): the item added once per pile of a mission,
+    // the receipt saved with it (progression.paidPiles, the last PaidPilesKept "mission/pile"), so a retried request or a
+    // relayed copy, also after a restart, adds nothing and returns false.
+    public const int PaidPilesKept = 256;
+
+    public bool ApplyPickup(string missionId, long pile, uint mixId, long amount) =>
+        TryChange((progression, inventory) =>
+        {
+            var receipt = missionId + "/" + pile.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var paid = progression["paidPiles"] as JsonArray ?? [];
+            if (paid.Any(p => p is JsonValue v && v.TryGetValue<string>(out var id) && id == receipt)) return false;
+            paid.Add((JsonNode)receipt);
+            while (paid.Count > PaidPilesKept) paid.RemoveAt(0);
+            progression["paidPiles"] = paid;
+            AddItem(inventory, mixId, amount);
+            return true;
+        });
+
     // A change to progression and inventory together (a purchase, a reward): edit works on copies and returns whether to
     // keep them; false changes nothing. The result is validated and saved before it is served.
     public bool TryChange(Func<JsonObject, JsonArray, bool> edit)
@@ -367,10 +385,10 @@ public sealed class ProfileStore : IDisposable
         inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId) is { } entry ? Number(entry["amount"]!) : 0;
 
     // Adds (or with a negative amount takes) an item in an inventory list, within 0 and the catalogue maxCap. Super Credits
-    // are never added. Returns the change made.
+    // are never added, but for Forge Credits (PaidContentSet.ForgeCreditsWallet). Returns the change made.
     public static long AddItem(JsonArray inventory, uint mixId, long amount)
     {
-        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId)) return 0;
+        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId) && !PaidContentSet.IsForgeCredits(mixId)) return 0;
         var entry = inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId);
         if (entry == null)
         {

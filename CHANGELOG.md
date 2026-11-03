@@ -32,6 +32,15 @@ On `dev`, since 0.3.0-beta.
   (#206).
 - Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
   the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
+- Forge Credits are earned: a pile picked up on a mission pays everyone in the squad the same amount, as Super Credits
+  do in the live game, and the Super Credits on warbond pages pay Forge Credits. Your balance shows where Super Credits
+  did. On every profile but unlock-all, a premium warbond you own in the live game now opens once you buy it with Forge
+  Credits (its Super Credits price); a warbond you don't own still can't be bought. Unlock-all profiles open your owned
+  warbonds as before (#225).
+- Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
+  in the squad. Every player keeps their share, not only the one who picked it up, and a pile pays once, also after a
+  restart. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button
+  (#224, #225).
 
 - Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
@@ -71,6 +80,8 @@ On `dev`, since 0.3.0-beta.
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
   medals and samples a second time. Thanks to diemitze, whose PR #27 found it (#232).
+- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
+  Mobilize at the top (#206).
 - On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
   Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
   Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
@@ -91,8 +102,6 @@ On `dev`, since 0.3.0-beta.
   bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
 - New profiles (Starter) had an empty Ship Module page ("under construction"). Every profile now has the six ship
   module tracks (#233).
-- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
-  Mobilize at the top (#206).
 - On some PCs every session stopped at Launching with "The game could not be prepared for the local backend", while
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
