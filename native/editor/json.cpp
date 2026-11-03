@@ -238,12 +238,25 @@ std::wstring Wide(const std::string& text)
     return out;
 }
 
-bool ReadFile(const std::wstring& path, std::string* text)
+bool ReadFile(const std::wstring& path, std::string* text, std::string* why)
 {
+    std::string ignored;
+    if (why == nullptr) why = &ignored;
     HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return false;
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        DWORD error = GetLastError();
+        *why = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? "is missing" : "could not be opened";
+        return false;
+    }
     LARGE_INTEGER size;
-    bool ok = GetFileSizeEx(file, &size) && size.QuadPart < (64 << 20);
+    bool ok = GetFileSizeEx(file, &size) != 0;
+    if (ok && size.QuadPart >= MAX_FILE_BYTES)
+    {
+        *why = "is " + std::to_string(size.QuadPart >> 20) + " MB, over the " + std::to_string(MAX_FILE_BYTES >> 20) + " MB the editor reads";
+        CloseHandle(file);
+        return false;
+    }
     if (ok)
     {
         text->resize((size_t)size.QuadPart);
@@ -251,6 +264,7 @@ bool ReadFile(const std::wstring& path, std::string* text)
         ok = size.QuadPart == 0 || (::ReadFile(file, &(*text)[0], (DWORD)size.QuadPart, &read, nullptr) && read == size.QuadPart);
     }
     CloseHandle(file);
+    if (!ok) *why = "could not be read";
     return ok;
 }
 

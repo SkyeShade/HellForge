@@ -100,7 +100,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `subscribe`: `int (HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority)`. Listens to one kind of game event (HF_ON_..., see HfEventInfo), on the game thread, highest priority first (equal priorities in subscription order). Call it from hellforge_mod_init. Returns 1, or 0 (the mod's log says why: an unknown kind, or the game thread not hooked). A kind's source is hooked once a mod listens to it; one that does not read as reviewed on this game build delivers nothing, and modloader.log says so.
 - `game_state`: `uint32_t (HfMod* mod)`. The game's state now (HF_STATE_...), or HF_STATE_NONE before the game has one.
-- `content`: `int (HfMod* mod, uint32_t index, HfContent* out)`. The index-th piece of content mods added (stratagems, entities, projectiles, damage; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED).
+- `content`: `int (HfMod* mod, uint32_t index, HfContent* out)`. The index-th piece of content mods added (stratagems, entities, projectiles, damage, then arsenal weapons once registered; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED); the weapons from HF_EVENT_ENTITIES_READY.
 - `add_ability`: `uint32_t (HfMod* mod, const HfAbility* ability)`. Adds a new ability (see HfAbility). Call it from hellforge_mod_init. Returns its id (2868 and up), or 0 (the mod's log says why). An entity naming it never sets it off if HellForge could not install it (modloader.log).
 - `add_stratagem_category`: `uint32_t (HfMod* mod, const HfStratagemCategory* category)`. SDK 8: returns a selection-category handle, or 0 with a logged reason. Re-registering an identical fully qualified definition returns the same handle; a conflicting title/order is refused.
 
@@ -1123,12 +1123,12 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
-| `duration` | +0x1CC | f32 | respawn? | Orbital attack duration (unverified) |
-| `movement_speed` | +0x1D4 | f32 | respawn? | Orbital tracking speed (unverified) |
-| `search_radius` | +0x1D8 | f32 | respawn? | Orbital search radius (unverified) |
-| `tick_interval` | +0x1E0 | f32 | respawn? | Orbital damage tick interval (unverified) |
+| `duration` | +0x1CC | f32 | respawn | Orbital attack duration (unverified) |
+| `movement_speed` | +0x1D4 | f32 | now | Orbital tracking speed (unverified) |
+| `search_radius` | +0x1D8 | f32 | now? | Orbital search radius (unverified) |
+| `tick_interval` | +0x1E0 | f32 | now? | Orbital damage tick interval (unverified) |
 | `fire_delay` | +0x21C | f32 | respawn? | Shot delay (unverified) |
-| `retarget_interval` | +0x220 | f32 | respawn? | Target re-search interval (unverified) |
+| `retarget_interval` | +0x220 | f32 | now? | Target re-search interval (unverified) |
 
 ### HfRotation
 
@@ -1419,10 +1419,10 @@ and statuses without code.
 | `code` | +0x40 | u64 | mission? | pointer to its input's directions (u32: 1 up, 2 right, 3 down, 4 left) |
 | `code_length` | +0x48 | u32 | mission? | how many directions |
 | `uses` | +0x50 | u32 | mission? | uses per mission (0xFFFFFFFF unlimited) |
-| `call_in_time` | +0x54 | f32 | mission? | seconds from the throw to the arrival (unverified) |
+| `call_in_time` | +0x54 | f32 | now | seconds from the throw to the arrival (unverified) |
 | `free_spot_radius` | +0x58 | f32 | mission? | radius searched for a free landing spot (unverified) |
 | `linger` | +0x60 | f32 | mission? | seconds it lingers after activating (unverified) |
-| `cooldown` | +0x68 | f32 | mission? | seconds before it can be called again |
+| `cooldown` | +0x68 | f32 | now | seconds before it can be called again |
 | `origin_type` | +0x70 | u32 | mission? | where it comes from (StratagemOriginType) (unverified) |
 | `call_in_type` | +0x74 | u32 | mission? | throw, exact location, LZ beacon or hellpad (StratagemCallInType) (unverified) |
 | `cooldown_type` | +0x94 | u32 | mission? | individual, shared by the team or by the clan (StratagemCooldownType) (unverified) |

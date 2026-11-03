@@ -67,8 +67,13 @@ public sealed class LobbyService
     public const uint ModlistMismatch = LobbyNotJoinable;
     // The HellForge multiplayer protocol a joiner's backend speaks; a host refuses other versions, since mixed builds fail in
     // confusing ways (second two-PC test: an outdated friend got no missions and could not rejoin). Raise it whenever
-    // backends or stand-ins change behaviour the other side relies on.
-    public const string Protocol = "hellforge-mp-8"; // 8: every player keeps their own stats unless the host shares its ("stats.set" says which), and the lobby's packages are loaded on every machine (AssetShare); 7: a refusal for different gameplay mods carries the host's mod set, and joiners download it (ModSync); 6: mods set up in id order and added entities numbered by resource id (engine 0.1.4: content numbered alike whatever the load order), the editor's mod content values in stats.set; 5: the host's stats, Local Stats left the mod digest
+    // backends or stand-ins change behaviour the other side relies on. WireLevel is the frame and directory contract split
+    // out of the feature version: later protocols that keep it can still meet.
+    public const string Protocol = "hellforge-mp-9"; // 9: per-player mods leave the modlist code, the mod set carries both tiers, bundled mods count by coopLevel, and the directory searches by WireLevel; 8: every player keeps their own stats unless the host shares its ("stats.set" says which), and the lobby's packages are loaded on every machine (AssetShare); 7: a refusal for different gameplay mods carries the host's mod set, and joiners download it (ModSync); 6: mods set up in id order and added entities numbered by resource id (engine 0.1.4: content numbered alike whatever the load order), the editor's mod content values in stats.set; 5: the host's stats, Local Stats left the mod digest
+    public const int WireLevel = 1;
+    // Whether a joiner's protocol can be used: the feature version this build speaks, now; add later protocols here while
+    // they keep this wire level and older features still answer, as lobby.rejoin's "older hosts" note does.
+    public static bool Compatible(string protocol) => protocol == Protocol;
     const int MemberRemovedForcibly = 1, MemberRemovedRemoteLeft = 2, DisconnectingNoLocalMembers = 0, DisconnectingLobbyDeleted = 1;
     static readonly HashSet<string> Requests = ["lobby.create", "lobby.join", "lobby.update", "lobby.leave", "lobby.kick", "lobby.invite"];
     // PlayFab's limits (PFLobby.h: PFLobbyMaxLobbyPropertyCount, ...MemberPropertyCount, ...SearchPropertyCount, 30 each),
@@ -97,6 +102,12 @@ public sealed class LobbyService
     readonly Dictionary<string, HostedLobby> hosted = new(StringComparer.Ordinal);
     // Lobbies on a friend's machine that this machine's DLL joined or is joining: lobby id -> owner node.
     readonly Dictionary<string, ulong> remote = new(StringComparer.Ordinal);
+    // The other members' machines of each friend's lobby this machine is in, as its owner reported them (the join's
+    // snapshot, then lobby.memberAdded and lobby.memberRemoved), at most MaxMates a lobby: lobby id -> machines. They
+    // are this game's co-op peers too (LobbyMates), so a sandboxed game reaches the squad's other joiners, not only
+    // the host.
+    readonly Dictionary<string, HashSet<ulong>> mates = new(StringComparer.Ordinal);
+    const int MaxMates = 8;
     // Forwarded requests awaiting the owner's answer: op -> owner node and lobby.
     readonly Dictionary<string, (ulong Owner, string LobbyId)> forwarded = new(StringComparer.Ordinal);
     // Friends' machines this machine's game last asked to join, and when: a refusal ("lobby.refused") may come before or
@@ -114,6 +125,9 @@ public sealed class LobbyService
     // host's mods first and says whether they may download them (the joiner's game is then told so). Called under this
     // service's lock: it must not call back into it.
     public Func<ulong, string, bool>? ModsRefused { get; set; }
+    // Host: this session's gameplay mods of both tiers in ModSet's wire form, sent as mods.info after a remote joins. The
+    // joiner's backend compares its own per-player mods and notes any difference; nothing downloads (ModSync.Info).
+    public string? ModSetWire { get; set; }
     // Joins this machine asked for in the last minute: lobby id -> owner, kept whatever their answers (a mod offer, a
     // refusal or the failed join's result, in any order).
     readonly Dictionary<string, (ulong Owner, DateTime At)> joins = new(StringComparer.Ordinal);
@@ -128,6 +142,14 @@ public sealed class LobbyService
     // joiner the moment it hears of it (MultiplayerHost.ListPeer). A handler must not take this service's or the Party
     // service's lock.
     public event Action<ulong>? PeerAdmitted;
+    // Another member's machine joined a friend's lobby this machine is in (its owner said so), raised under this
+    // service's lock BEFORE this machine's game hears of the member, as PeerAdmitted is for a host: a sandboxed game
+    // reaches only listed peers, and a squad's games may talk to each other, not only to the host. The same rules for a
+    // handler.
+    public event Action<ulong>? MateAdded;
+    // A mate is gone: the owner reported it left or removed, or this machine is out of that lobby (left it, was removed,
+    // the lobby closed, its owner was lost). Raised under this service's lock; the same rules for a handler.
+    public event Action<ulong>? MateRemoved;
     public Action<Frame>? Find { get; set; }
     public sealed record Hosted(string Id, string ConnectionString, uint MaxMembers, int Members, int Access, bool Locked, bool LocalOwner,
         IReadOnlyDictionary<string, string> SearchProperties, Privacy Privacy = Privacy.FriendsOnly);
@@ -273,6 +295,7 @@ public sealed class LobbyService
             }
             foreach (var (id, owner) in remote.ToList())
                 Send(owner, new Frame("lobby.leave").Add("hellforge-disconnect-" + id).Add(id).Add(""));
+            foreach (var id in mates.Keys.ToList()) DropMates(id);
             remote.Clear();
             forwarded.Clear();
             joining.Clear();
@@ -299,6 +322,18 @@ public sealed class LobbyService
     public IReadOnlyCollection<ulong> Peers()
     {
         lock (gate) return hosted.Values.SelectMany(l => l.Nodes()).Concat(remote.Values).Where(n => n != LocalNode).ToHashSet();
+    }
+
+    // The other members' machines of the friends' lobbies this machine is in (not their owners, not this machine), for
+    // a sandboxed game's Steam P2P peers (MultiplayerHost.WritePeers). Not heartbeat peers: their backends never talk
+    // to this one.
+    public IReadOnlyCollection<ulong> LobbyMates()
+    {
+        lock (gate)
+        {
+            foreach (var gone in mates.Keys.Where(id => !remote.ContainsKey(id)).ToList()) mates.Remove(gone);
+            return mates.SelectMany(m => m.Value.Where(n => n != remote[m.Key])).ToHashSet();
+        }
     }
 
     // The string a friend's game joins a lobby this machine's game is in with (social tab), or null when unknown.
@@ -379,6 +414,7 @@ public sealed class LobbyService
             foreach (var (id, owner) in remote.Where(r => r.Value == peer).ToList())
             {
                 remote.Remove(id);
+                DropMates(id);
                 toLocal(new Frame("lobby.disconnected").Add(id).Add(2)); // ConnectionInterruption
             }
         }
@@ -450,7 +486,7 @@ public sealed class LobbyService
             Answer(LocalNode, op, Kind(frame.Type), frame.Type == "lobby.kick" && remote.ContainsKey(lobbyId) ? AccessDenied : LobbyNotFound);
             return null;
         }
-        if (frame.Type == "lobby.leave") remote.Remove(lobbyId);
+        if (frame.Type == "lobby.leave") { remote.Remove(lobbyId); DropMates(lobbyId); }
         // an invitation to a friend's lobby: its owner records it, then this machine passes it on (RelayEvent)
         if (frame.Type == "lobby.invite" && TryNode(frame.Text(3), out var invitee))
             invitesSent[op] = (invitee, lobbyId, frame.Text(2));
@@ -480,8 +516,9 @@ public sealed class LobbyService
     {
         var op = frame.Text(0);
         if (!forwarded.Remove(op, out var request) || request.Owner != peer) return false;
-        if (frame.Text(1) == "join" && frame.Text(2) != "0") remote.Remove(request.LobbyId);
+        if (frame.Text(1) == "join" && frame.Text(2) != "0") { remote.Remove(request.LobbyId); DropMates(request.LobbyId); }
         if (frame.Text(1) == "join" && frame.Text(2) == "0") joining.Remove(peer); /* in: no refusal to wait for */
+        if (frame.Text(1) == "join" && frame.Text(2) == "0") SnapshotMates(request.LobbyId, frame);
         if (frame.Text(1) == "join" && uint.TryParse(frame.Text(2), NumberStyles.None, CultureInfo.InvariantCulture, out var joinResult))
             afterLock.Add(() => LocalJoinFinished?.Invoke(peer, request.LobbyId, joinResult));
         if (invitesSent.Remove(op, out var invite) && frame.Text(1) == "invite" && frame.Text(2) == "0" && ConnectionStringFor(invite.LobbyId) is { } connection)
@@ -493,7 +530,11 @@ public sealed class LobbyService
     bool OwnersEvent(ulong peer, Frame frame)
     {
         if (!remote.TryGetValue(frame.Text(0), out var owner) || owner != peer) return false;
-        if (frame.Type == "lobby.disconnected") remote.Remove(frame.Text(0));
+        if (frame.Type == "lobby.disconnected") { remote.Remove(frame.Text(0)); DropMates(frame.Text(0)); }
+        if (frame.Type == "lobby.memberAdded") AddMate(frame.Text(0), frame.Text(1));
+        if (frame.Type == "lobby.memberRemoved" && mates.TryGetValue(frame.Text(0), out var others) && TryNode(frame.Text(1), out var gone) &&
+            others.Remove(gone))
+            MateRemoved?.Invoke(gone);
         // the owner removed this machine's player (its own copy goes to this machine only with this reason)
         if (frame.Type == "lobby.memberRemoved" && frame.Text(2) == MemberRemovedForcibly.ToString(CultureInfo.InvariantCulture))
         {
@@ -501,6 +542,47 @@ public sealed class LobbyService
             afterLock.Add(() => KickedByHost?.Invoke(peer));
         }
         return true;
+    }
+
+    // The members of a friend's lobby this machine just joined, from the owner's snapshot (lobby.result [op, "join", 0,
+    // snapshot]: the members after the lobby's fields and its two property maps). A snapshot it cannot read leaves
+    // none: the answer still goes to the game.
+    void SnapshotMates(string lobbyId, Frame frame)
+    {
+        DropMates(lobbyId);
+        if (frame.Count < 11 || frame.Text(3) != lobbyId) return;
+        try
+        {
+            var index = 10;
+            _ = frame.Properties(ref index);
+            _ = frame.Properties(ref index);
+            var count = frame.Int(index++);
+            for (var i = 0; i < count && i < 64; i++)
+            {
+                var member = frame.Text(index++);
+                index++; // type
+                _ = frame.Properties(ref index);
+                AddMate(lobbyId, member);
+            }
+        }
+        catch (InvalidDataException error) { log($"Could not read the members of lobby {lobbyId}: {error.Message}"); }
+    }
+
+    // A lobby's mates are gone (MateRemoved for each).
+    void DropMates(string lobbyId)
+    {
+        if (!mates.Remove(lobbyId, out var gone)) return;
+        foreach (var node in gone) MateRemoved?.Invoke(node);
+    }
+
+    // A member of a friend's lobby this machine is in, as a co-op peer (MateAdded), unless it is this machine or the
+    // owner.
+    void AddMate(string lobbyId, string memberId)
+    {
+        if (!remote.TryGetValue(lobbyId, out var owner) || !TryNode(memberId, out var node) || node == owner || node == LocalId) return;
+        if (!mates.TryGetValue(lobbyId, out var others)) mates[lobbyId] = others = [];
+        if (others.Count >= MaxMates || !others.Add(node)) return;
+        MateAdded?.Invoke(node);
     }
 
     // An invitation goes from the inviting player's backend to the invitee's (lobby.invited); its game shows it.
@@ -559,7 +641,7 @@ public sealed class LobbyService
         var protocol = node == LocalNode ? Protocol : frame.Count > index + 1 ? frame.Text(index + 1) : "an older HellForge";
         if (connection.Length != 3 || !hosted.TryGetValue(connection[1], out var lobby)) { Answer(node, op, "join", LobbyNotFound, connection.ElementAtOrDefault(1)); return; }
         if (!Admits(node, frame, op, lobby, memberId, memberProperties)) return;
-        if (protocol != Protocol)
+        if (!Compatible(protocol))
         {
             Refuse(node, op, lobby.Id, $"different HellForge versions ({protocol} joining, {Protocol} hosting); both players need the same installer.",
                 ["Your HellForge version is not the host's.", "Both players need the same HellForge installer (its version is in the launcher's corner)."],
@@ -632,9 +714,17 @@ public sealed class LobbyService
         Send(node, Snapshot(new Frame("lobby.result").Add(op).Add("join").Add(0), lobby));
         // A friend's backend adopts this war time, so both games see the same war.
         if (node != LocalNode && warClock != null) Send(node, new Frame("war.clock").Add(warClock.Seconds));
+        // After the accept: the host's gameplay mods of both tiers, so the joiner can note the per-player ones it lacks.
+        SendModsInfo(node, lobby.Id);
         var added = new Frame("lobby.memberAdded").Add(lobby.Id).Add(member.Id).Add(member.Type).Add(member.Properties);
         foreach (var other in lobby.Nodes().Where(n => n != node)) Send(other, added);
         HostedChanged?.Invoke();
+    }
+
+    // The host's set after an accepted join (nothing for the local player, or a session without one).
+    void SendModsInfo(ulong node, string lobbyId)
+    {
+        if (node != LocalNode && ModSetWire is { } wire) Send(node, new Frame("mods.info").Add(lobbyId).Add(wire));
     }
 
     // A lobby.update's changes: the lobby's properties, its search properties, and the member's (when MemberUpdate).
@@ -775,7 +865,7 @@ public sealed class LobbyService
         if (asked.Length is 0 or > 100) return;
         if (lobby == null) { Tell("gone", ["The host's lobby has closed."]); return; }
         if (Admission(lobby, node) is { } refusal) { Tell("refused", refusal.JoinerLines); return; }
-        if (protocol != Protocol) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
+        if (!Compatible(protocol)) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
         if (digest != modDigest) { Tell("mods", ["The host's gameplay mods changed after your restart.", "Join them again to see which differ."]); return; }
         if (lobby.Lock == 1) { Tell("locked", ["The host's lobby is locked."]); return; }
         if (lobby.Members.Count(m => m.Node != node) >= lobby.MaxMembers) { Tell("full", ["The host's lobby is full."]); return; }

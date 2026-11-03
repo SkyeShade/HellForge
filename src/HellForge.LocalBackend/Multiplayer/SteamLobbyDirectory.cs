@@ -212,7 +212,7 @@ public sealed unsafe class SteamLobbyDirectory(Action<string> log) : ILobbyDirec
         if (searching || !searches.TryPeek(out var next)) return;
         searching = true;
         var (query, done) = next;
-        Text(DirectoryKeys.Protocol, query.Protocol, Equal);
+        Text(DirectoryKeys.Wire, query.Wire, Equal);
         foreach (var (key, value) in query.Equal)
             if (key.StartsWith("number_key", StringComparison.Ordinal) && int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number))
                 fixed (byte* k = Utf8(key)) numericalFilter(matchmaking, k, number, Equal);

@@ -155,7 +155,8 @@ static class Launch
             throw new InvalidDataException($"{run} is not a session of this installation.");
         if (!SessionRunning() || (SessionFiles.ReadJson(Path.Combine(run, "result.json")) is { } state && Ended.Contains(SessionFiles.Text(state, "status"))))
             throw new InvalidDataException("That session is not running.");
-        SessionRunner.SignalStop(run);
+        // --now yes: the game is ended at once instead of being asked to close first (and save its shader cache)
+        SessionRunner.SignalStop(run, Yes(options, "--now", false));
         Emit(new { @event = "stopping", run });
         return Yes(options, "--wait", false) ? Follow(run, SessionRunning) : 0;
     }
@@ -268,13 +269,13 @@ static class Launch
         var (mods, problems) = ModCatalog.Load(install.Mods);
         problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);
-        var gameplay = active.Count(m => m.Gameplay && m.Id != ModCatalog.LocalStatsId);
+        var gameplay = active.Count(ModCatalog.Counted);
         return new
         {
             mods = mods.Select(m => new
             {
                 m.Id, m.Name, m.Version, m.Description, m.Enabled,
-                group = m.Cosmetic ? "cosmetic" : "gameplay",
+                group = m.Cosmetic ? "cosmetic" : ModCatalog.Tier(m) == CoopTier.PerPlayer ? "per-player" : "gameplay",
                 tags = Tags(m),
                 m.Folder, archive = m.Archive != null ? Path.Combine(install.Mods, m.Archive) : null,
                 removable = Removable(m),
@@ -448,6 +449,15 @@ static class Launch
         if (!options.ContainsKey("--on") && !options.ContainsKey("--variant")) throw new ArgumentException("Missing --on or --variant.");
     }
 
+    // --strangers: yes/no are the player's choice; default removes it, so the sandbox decides.
+    static bool? StrangersChoice(string value) => value switch
+    {
+        "yes" => true,
+        "no" => false,
+        "default" => null,
+        _ => throw new ArgumentException("--strangers takes yes, no or default.")
+    };
+
     // settings: the launcher's saved choices (launcher-settings.json), which play and HellForge.exe's PLAY both start from.
     // Each option given is saved first; all of them are printed. They apply from the next session.
     public static object Settings(Dictionary<string, string> options)
@@ -478,7 +488,16 @@ static class Launch
             ProfileStore.SaveLaunchOptions(paths, typed);
         }
         // Play with strangers is the mods settings' (hellforge-mods.json), which the backend reads, even during a session.
-        if (options.ContainsKey("--strangers")) ModSettings.SetPlayWithStrangers(install.Mods, Yes(options, "--strangers", false));
+        // yes/no stores the player's choice; default removes it, so a sandboxed session turns strangers on.
+        if (options.TryGetValue("--strangers", out var strangers))
+            ModSettings.SetPlayWithStrangers(install.Mods, StrangersChoice(strangers));
+        // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
+        if (options.TryGetValue("--forge-credits", out var forgeCredits))
+            ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
+                : int.TryParse(forgeCredits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent <= 100
+                    ? percent : throw new ArgumentException("--forge-credits takes a percentage from 0 to 100, or default."));
+        var chosenStrangers = ModSettings.PlayWithStrangers(install.Mods);
+        var sandboxed = SessionRunner.SandboxByDefault(paths);
         return new
         {
             profile = ProfileStore.LoadSelected(paths),
@@ -490,7 +509,9 @@ static class Launch
             gameOptions = ProfileStore.LoadLaunchOptions(paths),
             sandbox = ProfileStore.LoadSandbox(paths),
             steamBridge = SessionRunner.HasSteamBridge(paths),
-            playWithStrangers = ModSettings.PlayWithStrangers(install.Mods),
+            playWithStrangers = ModSettings.StrangersEffective(chosenStrangers, sandboxed),
+            playWithStrangersChosen = chosenStrangers,
+            forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
             file = paths.SettingsFile
         };
     }

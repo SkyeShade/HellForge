@@ -144,6 +144,9 @@ int main()
     Check(Read(stats) == realStats && !Exists(modFile), "sandbox: nothing in mods/ was written");
     Check(localstats::Get("weapons", "AR-23 Liberator", "weapon.mag_size", &got) && got == 60 &&
         !localstats::Get("weapons", "AR-23 Liberator", "weapon.fire_rate", &got), "sandbox: the editor shows the saved changes");
+    Check(localstats::Load(mods, &error) && localstats::Get("weapons", "AR-23 Liberator", "weapon.mag_size", &got) && got == 60 &&
+        localstats::Get("mod:you/mod/sentry", "you/mod/sentry", "stratagem.cooldown", &got) && got == 200 &&
+        !localstats::Get("weapons", "AR-23 Liberator", "weapon.fire_rate", &got), "sandbox: read again (the editor opens), the saved changes still show");
     /* A change list that cannot be written: the changes wait for the next save. */
     std::string blocker = journal + ".ingame.tmp";
     CreateDirectoryA(blocker.c_str(), NULL);

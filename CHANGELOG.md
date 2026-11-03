@@ -10,9 +10,37 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- **Medals and spending what you earn.** A won mission now pays medals (2 at Trivial up to 10 at Super Helldive), and
+  the operation's card on the war table shows what its missions pay. Medals unlock warbond pages and items, requisition
+  buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
+  purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
+  from the map. Premium warbonds still need to be owned in the normal game (#232).
+- Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
+  (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
+  while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
+  page. Editing a mod weapon's page never changes the weapon it copies. (#177)
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
+- The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
+  because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
+  gets an "Update profile sync" button beside PLAY for after you buy or unlock something new (#206).
+- Premium warbonds you don't own look locked in Acquisitions: their art is darkened, with a padlock in the middle and
+  lines in from the corners, and their pages show nothing bought (an unlock-all profile showed every item there as
+  bought). Ownership follows your profile's sync, the same as what the game lets you use, so a warbond unlocks there
+  once you buy it in the live game and sync again. HellForge draws this from your own game copy when a session starts
+  (#206).
+- Super Credits become Forge Credits, HellForge's own currency: the pickup on the map shows the Forge Credit card and
+  the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
+- Forge Credits are earned: a pile picked up on a mission pays everyone in the squad the same amount, as Super Credits
+  do in the live game, and the Super Credits on warbond pages pay Forge Credits. Your balance shows where Super Credits
+  did. On every profile but unlock-all, a premium warbond you own in the live game now opens once you buy it with Forge
+  Credits (its Super Credits price); a warbond you don't own still can't be bought. Unlock-all profiles open your owned
+  warbonds as before (#225).
+- Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
+  in the squad. Every player keeps their share, not only the one who picked it up, and a pile pays once, also after a
+  restart. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button
+  (#224, #225).
 
 - Difficulty 11's SEAF Artillery side objective now has only Explosive, High-Yield Explosive and Mini Nuke shells,
   and a quarter of them are nukes. Napalm, Smoke and Static Field shells don't spawn there
@@ -20,30 +48,112 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
-- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
-  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
-  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
-  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
-  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
-  Map when you're sandboxed.
+- The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
+  the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
+  already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
+  them (#234).
+- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
+- The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
+  which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
+- **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
+  - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
+    player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
+    names them. A mod's author can set this with the manifest's new `"coop"` field.
+  - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
+    players.
+  - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
+    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default
+    applies, the launcher shows the stranger warning once.
+  - Players on HellForge versions from before this change can't join you, and you can't join them.
+- A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
+  it: one taken off the list, or one you untrusted, waits for your trust again.
 - Mods on HellForge's verified list download from any host, not just Steam friends.
-- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
-  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
-  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
 - `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
   on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
   ignored.
 - Sessions start a few seconds sooner: the in-game editor's catalogue is built once instead of on every check (#147,
   #149).
+- The in-game editor's catalogue is split into a file per category. As one file it had reached 48 MB of the 64 MB the
+  editor reads, and it grows with every category the editor gains. If a catalogue file can't be read, the editor now
+  names the file and says why (missing, too large, or from another HellForge), instead of always saying it's missing. (#176)
 - Mods together can add 512 weapons and entities, up from 192. Past 2,048 network types, HellForge widens the game's
   network type index from 11 to 12 bits for that session, and only then, so smaller mod sets play exactly as before.
   Weapons still run out sooner (the game keeps 4,096 catalogue items), and an entity whose base uses a small game table
   can still be refused; each refusal is in the mod's log.
+- The game tables weapons and stratagems use grow when mods would fill them: HellForge builds a full table again with
+  twice the slots its rows need and rewrites the game's code that reads it, so large weapon packs are no longer refused
+  for want of rows (the loadout index alone stopped at 193 more weapons; 300 copies of a weapon grow 13 tables). Other
+  tables still refuse what does not fit.
 
 ### Fixed
 
+- In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
+  it again, as if they were gone. They were kept, and they now show as saved (#234).
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
+- A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
+  up empty. Heavy loot is still added to your profile (#232).
+- A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
+  medals and samples a second time. Thanks to diemitze, whose PR #27 found it (#232).
+- Acquisitions lists the warbonds newest first, as the live game does. It listed them oldest first, with Helldivers
+  Mobilize at the top (#206).
+- On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
+  Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
+  Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
+  update to, and can open Windows Update (#14).
+- HD2R Editor (HD2Runtime's own in-game editor) doesn't work on HellForge, but HellForge loaded it anyway, on the same
+  F8 key as its own editor, with nothing to say why. The Mods page now marks it UNSUPPORTED and keeps it switched off,
+  so it can't take F8 or slow the game down, and says to use HellForge's own editor (F8 in game) instead. HD2Runtime
+  and the Lua mods made for it still run.
+- Big frame drops with a Difficulty 11 mod on: HellForge left a developer's diagnostic for the war table's map
+  previews running, which interrupted the game each time it read the map's size. It is off now, so Difficulty 11
+  mods don't need to be switched off any more.
+- A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
+  fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
+  now shows only what the mod owns. (#177)
+- A mod entity with `own_all = 1` (`HfEntity`) refused live edits (`set_live`, the in-game editor's saved values) of
+  any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
+- New profiles (Starter) had difficulty 1 locked: no level-1 missions showed on the war table, and the difficulty
+  bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
+- New profiles (Starter) had an empty Ship Module page ("under construction"). Every profile now has the six ship
+  module tracks (#233).
+- On some PCs every session stopped at Launching with "The game could not be prepared for the local backend", while
+  the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
+  now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
+  listing them.
+- The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
+  running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
+  settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
+  Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
+- Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
+  game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
+  to close and waits up to 30 seconds for it before ending it (#194).
+- The first start of a new installation built the shader cache from nothing even when the normal game already had
+  one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
+- During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
+  closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
+  inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
+  the launcher tells you to close it; your sync is already saved.
 - A modpack with many new weapons lost every mod stratagem, and could lose difficulty 11 or leave a weapon with only
   some of its attachments: the game keeps only 4,096 items, and each weapon brings all of its base's attachments (57 for
   a Liberator copy). Difficulty 11 and stratagems now go in first, then each weapon whole, and what does not fit is left
@@ -73,6 +183,25 @@ On `dev`, since 0.3.0-beta.
 - Small towns on difficulty 11's larger maps lost most of their outer walls: a wall piece is placed only where a town
   edge lies within 25 m, sized for level 10's smaller cells. On larger maps the reach grows with the cells
   (`HELLFORGE_D11_TOWN_WALLS=0` keeps 25 m); the session log counts the wall pieces tried and refused.
+- Mega cities on difficulty 11's larger maps had streets with bare road and lone junction pieces, especially toward the
+  edge. The game dresses a street (the pieces that finish its ends, and its props) only up to 30 m past the playable
+  radius, where level 10 stops building; on difficulty 11 buildings stand all the way to the border, so their streets
+  are now dressed that far too (`HELLFORGE_D11_TOWN_BORDER=0` keeps the old radius). Streets are also 1.5x longer
+  there but kept level 10's number of props per street; they now get 1.5x as many (`HELLFORGE_D11_STREET_PROPS=0`
+  keeps level 10's).
+- Mega cities on difficulty 11 needed more destructible records than the world's map of them holds (about 33,300 of
+  32,768), and the ones registered last were left without one. On larger maps the map now has 65,536; the session log
+  shows how many a mission used.
+- On difficulty 11's larger maps the ICBM silo's lower platform, where you raise the manual locks, could sit under the
+  map's water, and other sunken objectives could too. The game shapes each patch of ground by its distance from the
+  nearest road, reaching its lowest point 64 m out. Larger maps keep level 10's number of patches spread wider, so
+  far more ground reached the bottom, including under objectives. That 64 m now grows with the patches
+  (`HELLFORGE_D11_TERRAIN_RAMP=0` keeps 64 m, for comparing), which also takes away the flat terraces between roads.
+  The ground within an objective's footprint also never goes below 0 m, above every planet's water
+  (`HELLFORGE_D11_DRY_OBJECTIVES=0` turns that off); the session log counts the heights raised.
+- A difficulty 11 mission could crash while loading when its map had more than 512 mines: the game copies every mine
+  into a list of 512 without checking, and the 513th overwrote the list's count. Mines past the 512th are now left out
+  (no mine there), and the session log counts them, as it already did for the enemy director's 128 spawners.
 - The SEAF Artillery side objective's shells fell short of far targets on difficulty 11's larger maps: they reach
   about 710 m, enough for a level-10 map but not for one twice as wide. In difficulty 11 missions the shells now fly
   faster with less drag, so their whole arc grows with the map (about 1,420 m on a 2x map), and the gun aims for it as
@@ -80,6 +209,11 @@ On `dev`, since 0.3.0-beta.
 - A difficulty 11 city map could still crash when the game's 32,768 destruction records were full: a second,
   separate registration wrote through a null slot. It now leaves that destructible without a record, as the first fix
   does, and the session log counts them.
+- With the sandbox on (Settings > Sandbox), a player who joined a squad could reach only the host's game, never the
+  other players who joined: the sandbox let the game's Steam connection through to the host alone. In a squad of three
+  or four, each player's game now reaches every other player in the lobby too. This is a likely cause of the known
+  issue where a third player joining a lobby of two pushed the second player out (#202). Every sandboxed player in the
+  squad needs this version: on 0.3.0-beta, the sandbox still lets that player's game reach only the host.
 
 ### For mod makers
 
@@ -88,8 +222,18 @@ On `dev`, since 0.3.0-beta.
 
 ### For launcher developers
 
-- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
-  `--sandbox yes`.
+- A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
+  (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
+  the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
+  `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
+  `<run>/processes-now.txt`.
+- A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
+  `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
+  to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
+  `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
+  itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
+- `HellForge.Cli mods-stage --sync` loads a synced code or raw-data mod only while it is verified or trusted;
+  `--sandbox yes|no` says whether the session is sandboxed, which a trust marked `"stranger": true` needs.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
   `"stranger": true`.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
