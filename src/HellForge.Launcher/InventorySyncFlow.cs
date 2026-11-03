@@ -22,6 +22,10 @@ public partial class MainWindow
     // A capture that has not listened by then is reported (CaptureProblem.NotReady), and still waited for: its own steps
     // before listening take well under half of this.
     static readonly TimeSpan SyncReadyWarning = TimeSpan.FromSeconds(60);
+    // What the launcher saw of the game since it asked Steam to open it, for a message that says which step stopped.
+    bool syncGameSeen, syncFolderHidden;
+    DateTime syncAskedUtc;
+    string? syncProblem;
 
     // Busy until the capture is taken; after that the proxy only keeps the game connected, and imports may run.
     bool SyncBusy => syncProxy != null && !syncTaken || syncStarting;
@@ -144,6 +148,7 @@ public partial class MainWindow
         }
         (syncProxy, syncProfile, syncDir, syncSnapshotDir, syncGameOpened, syncTaken, syncSlowNoted) =
             (started, profile, folder, snapshot, false, false, false);
+        (syncGameSeen, syncFolderHidden, syncProblem) = (false, false, null);
         syncStartedUtc = DateTime.UtcNow;
         InventorySync.Note(folder, $"sync started for profile {profile.Name}; capture pid {started.Id}; launcher {Environment.ProcessPath}");
         SetSyncStatus("Starting the capture...", Gold);
@@ -178,10 +183,13 @@ public partial class MainWindow
         foreach (var line in InventorySync.CollectGameLogs(folder, syncStartedUtc)) InventorySync.Note(folder, line);
         if (syncTaken) ProxyClosed(exitCode, folder);
         else if (exitCode == 0) TakeCapture(profile, folder, snapshot);
+        // A sync folder this launcher cannot read hides everything the capture wrote, its start failure included.
+        else if (!InventorySync.CanReadSyncFolder(folder)) SyncFailed(InventorySync.UnreadableFolderMessage);
         // A hosts write the capture could not make (CaptureHosts) names its own cause. Before listening it is also the
         // capture's start failure (capture-failure.json holds the same reason), shown once, with the security program to allow.
         else if (syncGameOpened)
-            SyncFailed(CaptureHosts.ReadFailure(folder) ?? $"Nothing was captured within {InventorySync.TimeoutMinutes} minutes. Close the game and sync again.");
+            SyncFailed(CaptureHosts.ReadFailure(folder) ?? InventorySync.NothingCaptured(InventorySync.GameState(true, syncGameSeen, InventorySync.IsGameRunning()),
+                InventorySync.TimeoutMinutes, Path.Combine(folder, "proxy.log")));
         else if (paths.InstallRoot != null)
             _ = ReportStartFailure(folder, CaptureStart.FromExit(exitCode, CaptureStart.Read(folder), ReadProxyLog(folder), CaptureHosts.ReadFailure(folder)),
                 ExpectedProxy(paths.InstallRoot));
@@ -190,18 +198,49 @@ public partial class MainWindow
         UpdateSyncStatus();
     }
 
+    // While the capture waits: the game's process since Steam was asked to open it, and a sync folder this launcher cannot
+    // read (then the capture's listening state never shows, and the game would never be opened), each said as it happens.
+    void WatchSyncProgress(string folder)
+    {
+        if (!syncGameOpened)
+        {
+            if (syncFolderHidden || DateTime.UtcNow - syncStartedUtc < TimeSpan.FromSeconds(15) || InventorySync.CanReadSyncFolder(folder)) return;
+            syncFolderHidden = true;
+            InventorySync.Note(folder, "this launcher cannot read the sync folder; the capture runs as another Windows account");
+            SetSyncStatus(InventorySync.UnreadableFolderMessage, Red);
+            return;
+        }
+        var running = InventorySync.IsGameRunning();
+        if (running && !syncGameSeen) InventorySync.Note(folder, "the game is running");
+        syncGameSeen |= running;
+        var state = InventorySync.GameState(true, syncGameSeen, running);
+        var problem = InventorySync.WaitingProblem(state, DateTime.UtcNow - syncAskedUtc);
+        if (problem == syncProblem) return;
+        syncProblem = problem;
+        if (problem != null)
+        {
+            InventorySync.Note(folder, "waiting: game " + (state == SyncGameState.Closed ? "closed before the capture" : "not started by Steam"));
+            SetSyncStatus(problem, Orange);
+        }
+        else SetSyncStatus(WaitingForLogin, Gold);
+    }
+
+    const string WaitingForLogin = "Log in to HELLDIVERS 2 and pass the title screen. This updates when the capture is done.";
+
     // While the capture runs: the game opened once it listens, a slow start reported once, the capture taken once
-    // sealed, and after that a game it could not close.
+    // sealed, and after that a game it could not close; until then, what the launcher sees of the game and the folder.
     void WatchCapture(LocalProfile profile, string folder, string snapshot)
     {
         if (!syncGameOpened && InventorySync.IsListening(folder)) OpenGameForSync();
-        else if (!syncGameOpened && !syncSlowNoted && DateTime.UtcNow - syncStartedUtc > SyncReadyWarning && paths.InstallRoot != null)
+        // not when the folder is hidden from this launcher: that is said already, and is why it seems not to listen
+        else if (!syncGameOpened && !syncSlowNoted && !syncFolderHidden && DateTime.UtcNow - syncStartedUtc > SyncReadyWarning && paths.InstallRoot != null)
         {
             syncSlowNoted = true;
             _ = ReportStartFailure(folder, new CaptureFailure(CaptureProblem.NotReady, null), ExpectedProxy(paths.InstallRoot));
         }
         else if (!syncTaken && InventorySync.IsSealed(folder)) TakeCapture(profile, folder, snapshot);
         else if (syncTaken) WarnIfGameStillOpen(folder);
+        else WatchSyncProgress(folder);
     }
 
     // The capture closes the sync's game itself; one still open well after the capture was taken is one it could not end.
@@ -291,11 +330,12 @@ public partial class MainWindow
     void OpenGameForSync()
     {
         syncGameOpened = true;
+        syncAskedUtc = DateTime.UtcNow;
         try
         {
             InventorySync.OpenVanillaGame();
             if (syncDir != null) InventorySync.Note(syncDir, "capture listening; asked Steam to open the game (steam://rungameid/553850)");
-            SetSyncStatus("Log in to HELLDIVERS 2 and pass the title screen. This updates when the capture is done.", Gold);
+            SetSyncStatus(WaitingForLogin, Gold);
         }
         catch (System.ComponentModel.Win32Exception error)
         {

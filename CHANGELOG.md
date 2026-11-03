@@ -198,6 +198,11 @@ On `dev`, since 0.3.0-beta.
   It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- On a standard (non-administrator) Windows account, Sync Inventory never opened the game, or said "The capture
+  finished without an inventory" after a capture that worked, until the launcher was run as administrator. The capture
+  runs as the administrator who answers the prompt and kept its folder to that account; it now shares it with yours.
+  A sync that ends without an inventory now also says whether the game never started, closed before logging in, or
+  ran without reaching the title screen, and says so while the sync still waits.
 - Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
   program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
   straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
