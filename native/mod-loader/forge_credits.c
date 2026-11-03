@@ -1,14 +1,44 @@
-/* Build 25480438: the Super Credits HUD colour (A, R, G, B floats: 1, 113, 245, 255 / 255, the game's Super Credits cyan)
- * is a constant at 0x21CAE90 with two readers: the mission loot counters' switch in 0x198B960, whose Super Credits case at
- * 0x198BACE loads it beside the sprite 0x9414AB4F02745820 (redrawn as the Forge Credit by ForgeCredits.cs), and the
- * counter row built in 0x1977230 (0x1977612), the one the HUD shows during a mission. Both loads are pointed at HellForge
- * red; the constant itself is left as it is. Included after damage.c (AllocateNearGame) and packages.c (PinMatches). */
-typedef struct { uint32_t rva; uint8_t pin[7]; } ForgeCreditsLoad;
-static const ForgeCreditsLoad kForgeCreditsLoads[] = {
-    {0x198BACEu, {0x0f,0x28,0x05,0xbb,0xf3,0x83,0x00}},   /* movaps xmm0, [rip + 0x83F3BB] (0x21CAE90) */
-    {0x1977612u, {0x0f,0x28,0x35,0x77,0x38,0x85,0x00}}};  /* movaps xmm6, [rip + 0x853877] (0x21CAE90) */
-/* HellForge red, (229, 57, 43): A, R, G, B as the HUD reads them */
-static const float kForgeCreditsRed[4] = {1.0f, 229.0f / 255.0f, 57.0f / 255.0f, 43.0f / 255.0f};
+/* Build 25480438: Super Credits are drawn in the game's cyan (A, R, G, B floats: 1, 113, 245, 255 / 255); Forge Credits in
+ * HellForge red (research/forge-credits-tint, "UI colours"):
+ * - the code UI's currency colour table (0x21CAE60, one 16-byte colour per currency type: 2 the Super Credits price,
+ *   3 the Premium wallet, 0x21CAE80 and 0x21CAE90; only types 2 to 6 reach them) is written red in place; its readers
+ *   include the price widgets (0x1797A60, 0x19C1DF0) and the icon getter (0x12682A0);
+ * - two direct loads of 0x21CAE90 (the mission loot counters' switch 0x198BACE, beside the sprite 0x9414AB4F02745820,
+ *   and the in-mission counter row 0x1977612) and the premium (warbond) button's colours, set up in 0x1968AC0 and
+ *   refreshed in 0x1969F30 only for its premium variant: border, highlight, its two dark-teal fills, and its star's red
+ *   and green loads and blue immediate. Their constants are shared with other UI, so each load is pointed at HellForge's
+ *   own values instead.
+ * The XAML pages (the pause menu's wallet, popups) are data: ForgeCredits.cs. Included after damage.c (AllocateNearGame)
+ * and packages.c (PinMatches). */
+enum { FC_RED = 0x00, FC_FILL = 0x10, FC_FILL_DARK = 0x20, FC_RED_R = 0x30, FC_RED_G = 0x34 };
+/* HellForge red (229, 57, 43) and the button's fills in red instead of teal (0, 44, 65 and 18, 27, 33) */
+static const float kForgeCreditsColours[] = {
+    1.0f, 229.0f / 255.0f, 57.0f / 255.0f, 43.0f / 255.0f,
+    1.0f, 65.0f / 255.0f, 10.0f / 255.0f, 8.0f / 255.0f,
+    1.0f, 33.0f / 255.0f, 10.0f / 255.0f, 9.0f / 255.0f,
+    229.0f / 255.0f, 57.0f / 255.0f};
+/* A load whose disp32 (at `at` in the instruction) is pointed at one of the colours above (slot), or, with slot < 0, bytes
+ * written at `at` (size bytes of with). */
+typedef struct { uint32_t rva; uint8_t pin[32]; uint8_t length, at; int8_t slot; uint8_t size; uint8_t with[32]; } ForgeCreditsPatch;
+#define FC_ARGB_RED 0x00,0x00,0x80,0x3f, 0xe6,0xe5,0x65,0x3f, 0xe5,0xe4,0x64,0x3e, 0xad,0xac,0x2c,0x3e
+#define FC_CYAN 0x00,0x00,0x80,0x3f, 0xe3,0xe2,0xe2,0x3e, 0xf6,0xf5,0x75,0x3f, 0x00,0x00,0x80,0x3f
+static const ForgeCreditsPatch kForgeCreditsPatches[] = {
+    {0x21CAE80u, {FC_CYAN, FC_CYAN}, 32, 0, -1, 32, {FC_ARGB_RED, FC_ARGB_RED}},            /* currency types 2 and 3 */
+    {0x198BACEu, {0x0f,0x28,0x05,0xbb,0xf3,0x83,0x00}, 7, 3, FC_RED, 0, {0}},               /* loot counter's switch */
+    {0x1977612u, {0x0f,0x28,0x35,0x77,0x38,0x85,0x00}, 7, 3, FC_RED, 0, {0}},               /* in-mission counter row */
+    {0x19690F3u, {0x0f,0x28,0x05,0x86,0x13,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},               /* premium button: border */
+    {0x196912Du, {0x0f,0x28,0x05,0x4c,0x13,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},
+    {0x196931Fu, {0xf3,0x0f,0x10,0x15,0x39,0xd7,0xa5,0x00}, 8, 4, FC_RED_R, 0, {0}},        /* its star */
+    {0x196932Bu, {0xf3,0x0f,0x10,0x0d,0xe5,0xd9,0xa5,0x00}, 8, 4, FC_RED_G, 0, {0}},
+    {0x1969340u, {0xc7,0x45,0xb7,0x00,0x00,0x80,0x3f}, 7, 3, -1, 4, {0xad,0xac,0x2c,0x3e}},
+    {0x196A11Cu, {0xf3,0x0f,0x10,0x15,0x3c,0xc9,0xa5,0x00}, 8, 4, FC_RED_R, 0, {0}},        /* refresh: star */
+    {0x196A129u, {0xf3,0x0f,0x10,0x0d,0xe7,0xcb,0xa5,0x00}, 8, 4, FC_RED_G, 0, {0}},
+    {0x196A144u, {0xc7,0x44,0x24,0x28,0x00,0x00,0x80,0x3f}, 8, 4, -1, 4, {0xad,0xac,0x2c,0x3e}},
+    {0x196A151u, {0x0f,0x28,0x05,0x28,0x03,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},               /* border, two states */
+    {0x196A174u, {0x0f,0x28,0x05,0x05,0x03,0xa6,0x00}, 7, 3, FC_RED, 0, {0}},
+    {0x196A197u, {0x0f,0x28,0x05,0x52,0xf7,0xa5,0x00}, 7, 3, FC_FILL, 0, {0}},              /* fills */
+    {0x196A19Eu, {0x0f,0x28,0x0d,0xdb,0xf4,0xa5,0x00}, 7, 3, FC_FILL_DARK, 0, {0}},
+    {0x196A1B6u, {0x0f,0x28,0x05,0xc3,0x02,0xa6,0x00}, 7, 3, FC_RED, 0, {0}}};              /* highlight */
 static int g_forgeCreditsState;
 
 static void InstallForgeCreditsColour(void)
@@ -17,25 +47,33 @@ static void InstallForgeCreditsColour(void)
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     g_forgeCreditsState = -1;
     if (strcmp(g_build, "25480438") || !game) return;
-    for (size_t i = 0; i < sizeof kForgeCreditsLoads / sizeof *kForgeCreditsLoads; i++)
-        if (!PinMatches(game + kForgeCreditsLoads[i].rva, kForgeCreditsLoads[i].pin, 7))
+    size_t count = sizeof kForgeCreditsPatches / sizeof *kForgeCreditsPatches;
+    for (size_t i = 0; i < count; i++)
+        if (!PinMatches(game + kForgeCreditsPatches[i].rva, kForgeCreditsPatches[i].pin, kForgeCreditsPatches[i].length))
         {
-            Note("forge credits: HUD colour not changed; the code at game.dll+0x%x does not match the reviewed build", kForgeCreditsLoads[i].rva);
+            Note("forge credits: UI colours not changed; the code at game.dll+0x%x does not match the reviewed build", kForgeCreditsPatches[i].rva);
             return;
         }
-    uint8_t* colour = AllocateNearGame(game, 16); /* a page, 16-byte aligned for movaps */
-    if (colour == NULL) { Note("forge credits: HUD colour not changed; no memory near game.dll"); return; }
-    memcpy(colour, kForgeCreditsRed, sizeof kForgeCreditsRed);
+    uint8_t* colours = AllocateNearGame(game, sizeof kForgeCreditsColours); /* a page: 16-byte aligned for movaps */
+    if (colours == NULL) { Note("forge credits: UI colours not changed; no memory near game.dll"); return; }
+    memcpy(colours, kForgeCreditsColours, sizeof kForgeCreditsColours);
     DWORD previous;
-    VirtualProtect(colour, 0x1000, PAGE_READONLY, &previous);
-    for (size_t i = 0; i < sizeof kForgeCreditsLoads / sizeof *kForgeCreditsLoads; i++)
+    VirtualProtect(colours, 0x1000, PAGE_READONLY, &previous);
+    for (size_t i = 0; i < count; i++)
     {
-        uintptr_t at = game + kForgeCreditsLoads[i].rva;
-        int32_t disp = (int32_t)((intptr_t)colour - (intptr_t)(at + 7));
-        if (ApiWrite(at + 3, &disp, sizeof disp)) { Note("forge credits: HUD colour: the load at game.dll+0x%x could not be rewritten", kForgeCreditsLoads[i].rva); return; }
+        const ForgeCreditsPatch* p = &kForgeCreditsPatches[i];
+        uintptr_t at = game + p->rva;
+        int failed;
+        if (p->slot >= 0)
+        {
+            int32_t disp = (int32_t)((intptr_t)(colours + p->slot) - (intptr_t)(at + p->length));
+            failed = ApiWrite(at + p->at, &disp, sizeof disp);
+        }
+        else failed = ApiWrite(at + p->at, p->with, p->size);
+        if (failed) { Note("forge credits: UI colours: game.dll+0x%x could not be rewritten", p->rva); return; }
     }
     g_forgeCreditsState = 1;
-    Note("forge credits: the HUD's Super Credits colour is HellForge red");
+    Note("forge credits: the UI's Super Credits colours are HellForge red (%u places)", (unsigned)count);
 }
 
 /* Forge Credits at points of interest (the plan's forge_credits_chance, ModSettings.ForgeCreditChance; -1: the game's

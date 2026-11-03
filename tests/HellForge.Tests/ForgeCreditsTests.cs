@@ -50,6 +50,10 @@ static class ForgeCreditsTests
                     (0xC8C088ED, "Super Credits may be purchased from the Super Credits tab"), (0x22222222, "{0.0->1.0}Spend your Super Credits"),
                     (0x11111111, "Medals")]), [], []),
                 [new(ResourceTypes.Hash("strings"), 0xDE)] = new(Strings(0xBA39C3EC, [(0x5B043A3F, "ÜBER-CREDITS"), (0x33333333, "Super Credits")]), [], []),
+                // The XAML pages' colours: the wallet's icon, the currency icon template, the premium popups' style.
+                [new(ResourceTypes.Hash("xaml"), 0x04A4245928EA3906)] = new(Xaml("""<Path Fill="#FFFFE900"/><Path Stretch="Fill" Fill="#FF90D5F6"/>"""), [], []),
+                [new(ResourceTypes.Hash("xaml"), 0x7DB31550D264126F)] = new(Xaml("""<Path Fill="#FF90D5F6" /><Path Fill="#FF90D5F6" />"""), [], []),
+                [new(ResourceTypes.Hash("xaml"), 0x633F3353EB3F56F9)] = new(Xaml("""<Color x:Key="LowFunds">#FFD43E4B</Color><Color x:Key="SecondaryCTA">#FF71F5FF</Color>"""), [], []),
             });
             DataBuilderTests.WriteBundles(gameData, new Dictionary<string, byte[]>
             {
@@ -75,6 +79,11 @@ static class ForgeCreditsTests
                 "English names: " + string.Join(" | ", english.Values));
             var german = Texts(names[new(ResourceTypes.Hash("strings"), 0xDE)].Main);
             check(german[0x5B043A3F] == "FORGE CREDITS" && german[0x33333333] == "Super Credits", "German names: " + string.Join(" | ", german.Values));
+            string XamlText(ulong name) => System.Text.Encoding.UTF8.GetString(names[new(ResourceTypes.Hash("xaml"), name)].Main);
+            check(XamlText(0x04A4245928EA3906) == """<Path Fill="#FFFFE900"/><Path Stretch="Fill" Fill="#FFE5392B"/>""" &&
+                XamlText(0x7DB31550D264126F) == """<Path Fill="#FFE5392B" /><Path Fill="#FFE5392B" />""" &&
+                XamlText(0x633F3353EB3F56F9) == """<Color x:Key="LowFunds">#FFD43E4B</Color><Color x:Key="SecondaryCTA">#FFE5392B</Color>""",
+                "XAML colours: " + XamlText(0x04A4245928EA3906) + " | " + XamlText(0x633F3353EB3F56F9));
             var pickup = Patch(Pickups);
             foreach (var (name, gpu) in new[] { (Color, 2744), (Normal, 1392), (Masks, 1392) })
             {
@@ -148,6 +157,8 @@ static class ForgeCreditsTests
         }
         return [.. bytes, .. data];
     }
+
+    static byte[] Xaml(string text) => System.Text.Encoding.UTF8.GetBytes(text);
 
     static Dictionary<uint, string> Texts(byte[] strings)
     {

@@ -15,8 +15,8 @@ namespace HellForge.Core.GameData;
 public static class ForgeCredits
 {
     // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
-    // 3: the names.
-    public const int Version = 3;
+    // 3: the names. 4: the XAML pages' colours.
+    public const int Version = 4;
     const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
@@ -42,6 +42,17 @@ public static class ForgeCredits
     // English texts HellForge says differently: Forge Credits are found, not bought.
     static readonly Dictionary<uint, string> EnglishTexts = new() { [0xC8C088ED] = "Forge Credits are found in supply caches on missions" };
     static readonly HashSet<uint> StoreTexts = [0xECF5FCD6, 0x246CCF47, 0xA1490676, 0x2CE16182, 0x2EFEB825, 0x365A11B5, 0x56D3BD14];
+
+    // The XAML pages' Super Credits colours, HellForge red instead (research/forge-credits-tint, "UI colours, round 2"):
+    // svg_ui_elements.xaml's Icons_Sec (the pause menu's wallet, acquisitions, price widgets: only Super Credits use it)
+    // and currency_icons.xaml's CurrencySupercredits fill #FF90D5F6; color_styles.xaml's SecondaryCTA (#FF71F5FF, only the
+    // premium warbond purchase popups use it). Each colour is the same length, so it is written in place.
+    static readonly (ulong Resource, string From, string To)[] XamlColours =
+    [
+        (0x04A4245928EA3906, """Fill="#FF90D5F6""", """Fill="#FFE5392B"""),
+        (0x7DB31550D264126F, """Fill="#FF90D5F6""", """Fill="#FFE5392B"""),
+        (0x633F3353EB3F56F9, """x:Key="SecondaryCTA">#FF71F5FF<""", """x:Key="SecondaryCTA">#FFE5392B<"""),
+    ];
 
     // Where the Super Credits art sits in the pickup's normal map and masks (256 x 256 texels, inclusive): the barcode, the
     // logo, and the "SUPER CREDIT" text above and below it. Each is filled with what surrounds it.
@@ -112,6 +123,19 @@ public static class ForgeCredits
                 renamed++;
             }
         if (renamed == 0) skipped.Add("the names");
+        var xaml = ResourceTypes.Hash("xaml");
+        var pages = game.Find(XamlColours.Select(c => new ResourceKey(xaml, c.Resource)).Distinct());
+        foreach (var (resource, from, to) in XamlColours)
+        {
+            var key = new ResourceKey(xaml, resource);
+            if (!pages.TryGetValue(key, out var at) || game.Read(at) is not { } page || !Encoding.UTF8.GetString(page.Main).Contains(from, StringComparison.Ordinal))
+            {
+                skipped.Add($"the colours of XAML page {resource:X16}");
+                continue;
+            }
+            if (!byArchive.TryGetValue(at.Archive, out var resources)) byArchive[at.Archive] = resources = [];
+            resources[key] = page with { Main = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(page.Main).Replace(from, to, StringComparison.Ordinal)) };
+        }
         var files = new List<string>();
         foreach (var (archive, resources) in byArchive)
         {
