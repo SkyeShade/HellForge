@@ -184,12 +184,14 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         return null;
     }
 
-    // The profile's progress entry of a package ({id32, level, progress} in progression.packageProgress), made at level 0.
+    // The profile's progress entry of a package (progression.packageProgress), made at level 0 with every field the
+    // client's /Progression parser wants (ProfileStore.CompletePackageEntry).
     static JsonObject PackageEntry(JsonObject progression, long id32)
     {
         if (progression["packageProgress"] is not JsonArray list) progression["packageProgress"] = list = new JsonArray();
         var entry = list.OfType<JsonObject>().FirstOrDefault(e => Whole(e, "id32") == id32);
-        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0, ["progress"] = 0 }));
+        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0 }));
+        ProfileStore.CompletePackageEntry(entry);
         return entry;
     }
 

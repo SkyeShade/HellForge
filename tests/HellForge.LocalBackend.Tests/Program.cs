@@ -274,6 +274,19 @@ try
     var reopenedItems = JsonNode.Parse(File.ReadAllText(unnamedFile))!["inventory"]!["items"]!.AsArray().Select(item => (uint)item!["mixId"]!).ToList();
     Check(reopenedItems.Count(id => id == 1497469599u) == 1 && reopenedItems.Count(id => id == 3787370254u) == 1,
         "A saved profile was not given the two standard stratagems exactly once.");
+    // A package progress entry saved without sortOrder and claimedLevels (a ship module bought before 2026-11-03), which the
+    // client's /Progression parser refuses, is completed when the profile is opened; what it has stays.
+    var partial = JsonNode.Parse(File.ReadAllText(unnamedFile))!.AsObject();
+    partial["progression"]!["packageProgress"]!.AsArray().Add((JsonNode)new JsonObject { ["id32"] = 131213678, ["level"] = 2, ["progress"] = 0 });
+    File.WriteAllText(unnamedFile, partial.ToJsonString());
+    using (var completed = ProfileStore.Open(unnamedDirectory))
+    {
+        Check(completed.TryGetResponse("/Progression", out var served) && served.GetProperty("packageProgress").EnumerateArray().All(entry =>
+            entry.TryGetProperty("sortOrder", out _) && entry.TryGetProperty("claimedLevels", out var claimed) && claimed.ValueKind == JsonValueKind.Array &&
+            entry.TryGetProperty("progress", out _)) && served.GetProperty("packageProgress").EnumerateArray()
+            .Any(entry => entry.GetProperty("id32").GetUInt32() == 131213678 && entry.GetProperty("level").GetInt32() == 2),
+            "A package progress entry without sortOrder or claimedLevels was served as it was.");
+    }
     var unknownTemplate = false;
     try { using var _ = ProfileStore.Open(null, "hellforge-test-unknown"); }
     catch (ArgumentException) { unknownTemplate = true; }
