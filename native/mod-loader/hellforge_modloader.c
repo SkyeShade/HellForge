@@ -764,6 +764,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }

@@ -48,7 +48,7 @@ static class ForgeCreditsTests
                 // unrelated text) and German.
                 [new(ResourceTypes.Hash("strings"), 0xE1)] = new(Strings(0x03F97B57, [(0x5B043A3F, "SUPER CREDITS"), (0x9C524C54, "SUPER CREDITS"),
                     (0xC8C088ED, "Super Credits may be purchased from the Super Credits tab"), (0x22222222, "{0.0->1.0}Spend your Super Credits"),
-                    (0x11111111, "Medals")]), [], []),
+                    (0x11111111, "Medals"), (0xD1CA2FF4, "BUY PREMIUM WARBOND")]), [], []),
                 [new(ResourceTypes.Hash("strings"), 0xDE)] = new(Strings(0xBA39C3EC, [(0x5B043A3F, "ÜBER-CREDITS"), (0x33333333, "Super Credits")]), [], []),
                 // The XAML pages' colours: the wallet's icon, the currency icon template, the premium popups' style.
                 [new(ResourceTypes.Hash("xaml"), 0x04A4245928EA3906)] = new(Xaml("""<Path Fill="#FFFFE900"/><Path Stretch="Fill" Fill="#FF90D5F6"/>"""), [], []),
@@ -75,7 +75,8 @@ static class ForgeCreditsTests
             var names = Patch(Gui);
             var english = Texts(names[new(ResourceTypes.Hash("strings"), 0xE1)].Main);
             check(english[0x5B043A3F] == "FORGE CREDITS" && english[0x9C524C54] == "FORGE CREDITS" && english[0x11111111] == "Medals" &&
-                english[0x22222222] == "{0.0->1.0}Spend your Super Credits" && english[0xC8C088ED] == "Forge Credits are found in supply caches on missions",
+                english[0x22222222] == "{0.0->1.0}Spend your Super Credits" && english[0xC8C088ED] == "Forge Credits are found in supply caches on missions" &&
+                english[ForgeCredits.WarbondLockedLabel] == "WARBOND LOCKED" && english[0xD1CA2FF4] == "BUY PREMIUM WARBOND" && english.Keys.SequenceEqual(english.Keys.Order()),
                 "English names: " + string.Join(" | ", english.Values));
             var german = Texts(names[new(ResourceTypes.Hash("strings"), 0xDE)].Main);
             check(german[0x5B043A3F] == "FORGE CREDITS" && german[0x33333333] == "Super Credits", "German names: " + string.Join(" | ", german.Values));
