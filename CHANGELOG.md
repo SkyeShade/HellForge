@@ -119,6 +119,12 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- Sync Inventory's "The capture could not start: see proxy.log" now says why and what to do: a security program
+  blocking or stopping the capture (named, with the exact file to add to its exclusions), another program on port 443
+  (named), the certificate refused, no internet, or the administrator prompt declined; a hosts file problem (below)
+  also names the security program to allow. A capture slow to start is reported after a minute. An
+  earlier sync's capture still running is stopped by the next sync, so restarting the PC is no longer needed for it
+  (#160).
 - In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
   it again, as if they were gone. They were kept, and they now show as saved (#234).
 - The lobby browser and Quick Play no longer offer a full squad of 4 as joinable ("4 / 8"): the game's lobby has 8

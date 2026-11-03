@@ -195,6 +195,21 @@ Cases HellForge already recognises:
   blocked an unsigned DLL the game loads ..."). See the exit codes under
   [the game could not be prepared](#the-game-could-not-be-prepared-or-connected), and
   [Smart App Control](#smart-app-control) for the second.
+- Sync Inventory's capture, `app\capture\HellForge.CaptureProxy.exe`, does not start. It changes the hosts file and adds
+  a certificate to Windows for the sync, which some security programs block. The launcher says which step was refused
+  and, when Windows Security Center lists a security program other than Microsoft Defender (Kaspersky, Avast, Norton and
+  the like), names it and the exact file to add to its exclusions. In Kaspersky, also tick "Do not restrict application
+  activity" in that exclusion. Other reasons the launcher gives, and what to do:
+
+  | Message | What to do |
+  | --- | --- |
+  | "Another program already uses port 443, which the capture needs (used by ...)" | Close the program it names (a VM host, a local web server), then sync again. |
+  | "... kept the hosts file (...) open, so the sync could not change it" | The program it names keeps the hosts file open; it is usually a security program. Allow the capture in it. |
+  | "The capture has not got ready after a minute; still waiting." | A security program is usually checking or holding the capture. It goes on if it is let through. |
+  | "The capture could not reach HELLDIVERS 2's servers" | Check the internet connection. |
+
+  An earlier sync's capture that was left running (the launcher closed during a sync) is stopped by the next sync
+  itself, along with its hosts line and certificate: restarting the PC is not needed for that.
 
 ## Smart App Control
 
