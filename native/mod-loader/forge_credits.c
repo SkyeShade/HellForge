@@ -218,6 +218,7 @@ static const ForgeCreditsPatch kLockedWarbondPatches[] = {
         {0x49,0x8b,0x07,0x48,0x89,0x43,0x30,0x8b,0x02,0x89,0x43,0x60,0x44,0x8b,0xf8}}};  /* r15d = variant */
 #define FC_LABEL_HOOK 0x196A229u
 #define FC_STATE_HOOK 0x1969E1Du
+#define FC_SET_VISIBLE 0x14508E0u /* (widget, visible) */
 static const uint8_t kStateHookPin[] = {0x80,0x78,0x64,0x00,0x74,0x08,0x41,0xb8,0x04,0x00,0x00,0x00}; /* cmp byte [rax+0x64],0; je; mov r8d,4 */
 static const uint8_t kLabelHookPin[] = {0xc6,0x87,0x84,0x2e,0x00,0x00,0x01};             /* mov byte [rdi+0x2E84], 1 */
 static int g_lockedWarbondsState;
@@ -247,14 +248,14 @@ static void InstallLockedWarbonds(void)
     memcpy(c, kLabelHookPin, sizeof kLabelHookPin); c += sizeof kLabelHookPin;
     static const uint8_t checks[] = {
         0x83,0xbf,0x78,0x2e,0x00,0x00,0x01,     /* cmp dword [rdi+0x2E78], 1 */
-        0x74,0x2d,                              /* je back */
+        0x74,0x3b,                              /* je back */
         0x48,0x8b,0x87,0x58,0x2e,0x00,0x00,     /* mov rax, [rdi+0x2E58] (the warbond's data) */
         0x83,0x78,0x60,0x00,                    /* cmp dword [rax+0x60], 0 (variant: free) */
-        0x74,0x20,                              /* je back */
+        0x74,0x2e,                              /* je back */
         0x80,0x78,0x64,0x00,                    /* cmp byte [rax+0x64], 0 (owned) */
-        0x75,0x1a,                              /* jne back */
+        0x75,0x28,                              /* jne back */
         0x83,0x78,0x68,0x00,                    /* cmp dword [rax+0x68], 0 (its Super Credits offer) */
-        0x75,0x14,                              /* jne back */
+        0x75,0x22,                              /* jne back */
         0xc7,0x87,0x88,0x2e,0x00,0x00};         /* mov dword [rdi+0x2E88], imm32 (the buy label) */
     memcpy(c, checks, sizeof checks); c += sizeof checks;
     uint32_t label = FC_LOCKED_LABEL;
@@ -262,12 +263,17 @@ static void InstallLockedWarbonds(void)
     static const uint8_t unlockedSlot[] = {0xc7,0x87,0x8c,0x2e,0x00,0x00}; /* mov dword [rdi+0x2E8C], imm32 (state 4's) */
     memcpy(c, unlockedSlot, sizeof unlockedSlot); c += sizeof unlockedSlot;
     memcpy(c, &label, 4); c += 4;
+    /* and hide its price (the widget at +0x110, which the refresh shows for a warbond not owned, 0x1969FA5) */
+    static const uint8_t hidePrice[] = {0x48,0x8d,0x8f,0x10,0x01,0x00,0x00, 0x31,0xd2}; /* lea rcx, [rdi+0x110]; xor edx, edx */
+    memcpy(c, hidePrice, sizeof hidePrice); c += sizeof hidePrice;
+    int32_t show = (int32_t)((intptr_t)(game + FC_SET_VISIBLE) - (intptr_t)(c + 5));
+    *c = 0xe8; memcpy(c + 1, &show, 4); c += 5;                                       /* call game+0x14508E0 */
     *c++ = 0xe9;                                /* back: jmp game+0x196A230 */
     int32_t back = (int32_t)((intptr_t)(game + FC_LABEL_HOOK + 7) - (intptr_t)(c + 4));
     memcpy(c, &back, 4); c += 4;
     /* The button's state (0x1969E00): an owned warbond's is 4 (no hover, no press, no price); a locked one's too:
      * if (owned || (+0x2E78 != 1 && variant && !offer)) state 4 */
-    uint8_t* state = cave + 96; /* after the label code (66 bytes) */
+    uint8_t* state = cave + 96; /* after the label code (80 bytes) */
     static const uint8_t stateChecks[] = {
         0x80,0x78,0x64,0x00,                    /* cmp byte [rax+0x64], 0 (owned) */
         0x75,0x15,                              /* jne four */
