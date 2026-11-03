@@ -71,6 +71,14 @@ const Object* Catalog::StratagemObject(uint64_t type) const
     return nullptr;
 }
 
+const Object* Catalog::EntityObject(uint64_t entity) const
+{
+    for (auto& o : objects)
+        for (const Row* r : o->rows)
+            if (r->ref == entity && r->component.find("ComponentData") != std::string::npos && o->id.rfind("mod/", 0) != 0) return o.get();
+    return nullptr;
+}
+
 /* Where a row of like's page points in the copy (its kind's entry in remap); false when it has nothing to point at. */
 static bool Pointed(const Row& r, const Remap& remap, uint64_t* ref)
 {

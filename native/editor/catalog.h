@@ -109,6 +109,9 @@ struct Catalog
     std::vector<Object*> Of(const std::string& nav) const;
     /* The object whose page holds the stratagem's settings row (StratagemDefinition of that type), or nullptr. */
     const Object* StratagemObject(uint64_t type) const;
+    /* The first object whose page holds fields of the entity's records (an arsenal weapon's, in its loadout section), or
+     * nullptr. */
+    const Object* EntityObject(uint64_t entity) const;
     /* A new object with a copy of like's page pointed through remap (a mod's stratagem: its own settings row, entities,
      * projectile and damage): rows with nothing to point at are left out, and so are rows HellForge's catalogue reads
      * another way (stats snapshot reads, choices, arm swaps). Its rows' Local Stats entry is (names.category,

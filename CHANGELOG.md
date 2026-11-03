@@ -10,6 +10,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Added
 
+- Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
+  (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
+  while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
+  page. Editing a mod weapon's page never changes the weapon it copies. (#177)
 - HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
   list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
   taken off between releases.
@@ -47,6 +51,11 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- A mod stratagem's page in the in-game editor could edit the vanilla stratagem's entity or projectile: it showed the
+  fields of records the mod's entity still shared with its base, and of a vanilla projectile the entity fired. The page
+  now shows only what the mod owns. (#177)
+- A mod entity with `own_all = 1` (`HfEntity`) refused live edits (`set_live`, the in-game editor's saved values) of
+  any record it hadn't also named in `own_components`, saying it had no record of its own when it had one. (#177)
 - New profiles (Starter) had difficulty 1 locked: no level-1 missions showed on the war table, and the difficulty
   bar jumped to the highest level when you left a planet. Every profile now has it unlocked (#230).
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
