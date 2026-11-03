@@ -1123,12 +1123,12 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
-| `duration` | +0x1CC | f32 | respawn? | Orbital attack duration (unverified) |
-| `movement_speed` | +0x1D4 | f32 | respawn? | Orbital tracking speed (unverified) |
-| `search_radius` | +0x1D8 | f32 | respawn? | Orbital search radius (unverified) |
-| `tick_interval` | +0x1E0 | f32 | respawn? | Orbital damage tick interval (unverified) |
+| `duration` | +0x1CC | f32 | respawn | Orbital attack duration (unverified) |
+| `movement_speed` | +0x1D4 | f32 | now | Orbital tracking speed (unverified) |
+| `search_radius` | +0x1D8 | f32 | now? | Orbital search radius (unverified) |
+| `tick_interval` | +0x1E0 | f32 | now? | Orbital damage tick interval (unverified) |
 | `fire_delay` | +0x21C | f32 | respawn? | Shot delay (unverified) |
-| `retarget_interval` | +0x220 | f32 | respawn? | Target re-search interval (unverified) |
+| `retarget_interval` | +0x220 | f32 | now? | Target re-search interval (unverified) |
 
 ### HfRotation
 
@@ -1419,10 +1419,10 @@ and statuses without code.
 | `code` | +0x40 | u64 | mission? | pointer to its input's directions (u32: 1 up, 2 right, 3 down, 4 left) |
 | `code_length` | +0x48 | u32 | mission? | how many directions |
 | `uses` | +0x50 | u32 | mission? | uses per mission (0xFFFFFFFF unlimited) |
-| `call_in_time` | +0x54 | f32 | mission? | seconds from the throw to the arrival (unverified) |
+| `call_in_time` | +0x54 | f32 | now | seconds from the throw to the arrival (unverified) |
 | `free_spot_radius` | +0x58 | f32 | mission? | radius searched for a free landing spot (unverified) |
 | `linger` | +0x60 | f32 | mission? | seconds it lingers after activating (unverified) |
-| `cooldown` | +0x68 | f32 | mission? | seconds before it can be called again |
+| `cooldown` | +0x68 | f32 | now | seconds before it can be called again |
 | `origin_type` | +0x70 | u32 | mission? | where it comes from (StratagemOriginType) (unverified) |
 | `call_in_type` | +0x74 | u32 | mission? | throw, exact location, LZ beacon or hellpad (StratagemCallInType) (unverified) |
 | `cooldown_type` | +0x94 | u32 | mission? | individual, shared by the team or by the clan (StratagemCooldownType) (unverified) |

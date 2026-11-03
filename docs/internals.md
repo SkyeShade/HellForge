@@ -682,10 +682,11 @@ Every mapped field has an `applies` timing in `mappings/components.json` (a comp
 shown as a `[tag]` in `hellforge_components.h`:
 
 - `now`: the next time the game reads it (projectile, damage, explosion, arc, beam and status settings, the difficulty
-  director's budgets and patrols);
+  director's budgets and patrols, a stratagem's cooldown and call-in time at its next call, an orbital's tracking);
 - `respawn`: when the entity is next made (component records: weapons, backpacks, vehicles, sentries; the next spawn,
   re-equip or call-in);
-- `mission`: when the next mission loads (stratagem settings, packages, level generation).
+- `mission`: when the next mission loads (packages, level generation, a stratagem's uses: the game copies them into each
+  player's stratagem record at the hellpod launch).
 
 `appliesVerified` marks timings confirmed from game code. The rest are inferred from where the game reads the field,
 and the header marks them with a "?" (`[respawn?]`). Every stats-schema field is a mapped field (the schema's fields were imported into
