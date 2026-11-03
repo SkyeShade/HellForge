@@ -403,8 +403,8 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
  * rendered by the level's own terrain merge a second time:
  *
  * 1. At the level's CleanupTerrains (0x65, after its RenderFinalize 0x64 wrote the two named globals and before 0x66
- *    reads them back and tears the merge down) the drop point is chosen from the level's capture (lg+0xC0, float metres,
- *    row 0 at +y) and the water levels (0x0A), and the job queue [ctx+0x50] is waited empty.
+ *    reads them back and tears the merge down) the drop point is chosen from the level's capture (lg+0xC0, lg = G+0x8758A8
+ *    the merge's state; float metres, row 0 at +y) and the water levels (0x0A), and the job queue [ctx+0x50] is waited empty.
  * 2. Two textures are created as the render config's generated_heightmap (0x2A9E3232) and generated_materials
  *    (0x95E7E3AC) are (format +0x8, size +0x14/+0x18, mips +0x20, flags +0x60/+0x63/+0x64 of the config objects; render
  *    API +0x170) and published under those names (+0x210): a published name takes the config's place for the merge's
@@ -571,8 +571,10 @@ static void NearKeepCaptures(uint64_t context)
 {
     if (g_near.capLevel == g_world.levels) return;
     g_near.capLevel = g_world.levels;
-    uintptr_t lg = 0;
-    if (SafeRead(context + 0x18, &lg, 8) || lg == 0 || SafeRead(lg, g_near.caps, sizeof g_near.caps)) { g_near.capLevel = -1; return; }
+    uintptr_t gen = 0, lg = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) { g_near.capLevel = -1; return; }
+    lg = gen + 0x8758A8u; /* the merge's state (the 0x3C / 0x5E / 0x69 records' lg) */
+    if (SafeRead(lg, g_near.caps, sizeof g_near.caps)) { g_near.capLevel = -1; return; }
     size_t total = 0;
     for (int k = 0; k < 8; k++)
     {
@@ -846,7 +848,7 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
         if (!NearOn()) { Note("difficulty: near terrain: off (HELLFORGE_XL_NEAR=0)"); return 0; }
         uintptr_t gen = 0, lg = 0, settings = 0, data = 0;
         uint32_t dims[2] = {0};
-        if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(context + 0x18, &lg, 8) || lg == 0 || SafeRead(context + 8, &settings, 8) ||
+        if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || (lg = gen + 0x8758A8u, 0) || SafeRead(context + 8, &settings, 8) ||
             settings == 0 || SafeRead(lg + 0xC0, dims, 8) || SafeRead(lg + 0xD0, &data, 8) || data == 0 || dims[0] != 4096 || dims[1] != 4096)
         { Note("difficulty: near terrain: the level's capture is not the reviewed one (%u x %u); no tile", dims[0], dims[1]); return 0; }
         size_t bytes = (size_t)dims[0] * dims[1] * 4;
