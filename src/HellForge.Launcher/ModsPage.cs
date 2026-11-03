@@ -9,8 +9,9 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The Mods page: every mod in <installation>/mods as a row, in two groups: gameplay mods (friends need the same ones;
-// the order is up to them) and cosmetic ones (packs of game patches; only on this PC). Within a group a row is dragged anywhere
+// The Mods page: every mod in <installation>/mods as a row, in three groups: shared gameplay mods (friends need the same
+// ones; the order is up to them), per-player gameplay mods (each player keeps their own) and client-only ones (cosmetic
+// packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
 // on it into order: the bottom mod loads first, so the top one wins where two change the same thing (ModCatalog.
 // LoadOrder). Switches, the order and each pack's options are saved in hellforge-mods.json (ModSettings). A session
 // loads the enabled mods when it starts, so the page is locked while one runs (docs/mods.md). The page follows the
@@ -134,11 +135,11 @@ public partial class MainWindow
             : $"{active.Count} of {mods.Count} mod{(mods.Count == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " +
               "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
         // what friends compare (ModCatalog.Digest)
-        var gameplay = active.Count(m => m.Gameplay);
+        var gameplay = active.Count(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.Shared);
         string compared;
         try
         {
-            compared = gameplay == 0 ? "No gameplay mods to compare: you can play with friends who have none."
+            compared = gameplay == 0 ? "No shared gameplay mods to compare: you can play with friends who have none."
                 : $"Modlist code {ModCatalog.Digest(ModCatalog.LoadOrder(active))[..8]}: friends need the same {gameplay} gameplay mod{(gameplay == 1 ? "" : "s")}; the order is up to you.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -162,10 +163,12 @@ public partial class MainWindow
         if (mods.Count > 0)
         {
             var number = 0;
-            AddModGroup(mods, mods.Where(m => m.Gameplay).ToList(), "GAMEPLAY", "Friends need the same ones; keeping the same order avoids surprises.",
-                "No gameplay mods.", ref number);
-            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "COSMETIC", "Only on your PC: friends need not have the same ones.",
-                "No cosmetic mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) with Add mods...", ref number);
+            AddModGroup(mods, mods.Where(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.Shared).ToList(), "GAMEPLAY",
+                "Friends need the same ones; keeping the same order avoids surprises.", "No gameplay mods.", ref number);
+            AddModGroup(mods, mods.Where(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.PerPlayer).ToList(), "PER PLAYER",
+                "Only on your PC: friends do not need them, and each player plays with their own.", "No per-player gameplay mods.", ref number);
+            AddModGroup(mods, mods.Where(m => m.Cosmetic).ToList(), "CLIENT ONLY", "Only on your PC: friends need not have the same ones.",
+                "No client-only mods. Add a cosmetic pack (its .zip, .rar, .7z or manifest.json) or a Lua mod with Add mods...", ref number);
         }
         AddModSyncCard(paths.ModsFolder);
         SetModsLocked(modsLocked);
@@ -200,7 +203,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get mods that run code or carry unchecked data only if their game is sandboxed and they trust them.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get only mods HellForge checks or has verified: never ones that run code or carry unchecked data.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
@@ -376,7 +379,13 @@ public partial class MainWindow
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod switch: " + error.Message, Red); }
             RefreshMods();
         };
-        modSwitches.Add(toggle);
+        // a mod HellForge never loads (HD2R Editor): its switch stays off, and the page lock never turns it back on
+        if (mod.Unsupported != null)
+        {
+            toggle.IsEnabled = false;
+            ToolTip.SetTip(toggle, mod.Unsupported);
+        }
+        else modSwitches.Add(toggle);
         Grid.SetColumn(toggle, 2);
         grid.Children.Add(toggle);
 
@@ -386,7 +395,7 @@ public partial class MainWindow
 
         // name and one line of description; a click shows the details
         var build = BuildState(mod);
-        var expanded = modsExpanded.Contains(mod.Id) || removeAsked == mod.Id || build?.Colour == Red;
+        var expanded = modsExpanded.Contains(mod.Id) || removeAsked == mod.Id || build?.Colour == Red || mod.Unsupported != null;
         var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new(12, 0, 8, 0), Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
         var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         title.Children.Add(new TextBlock { Text = mod.Name, FontWeight = FontWeight.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
@@ -434,6 +443,7 @@ public partial class MainWindow
     {
         var tags = new List<(string, string)>();
         if (build?.Colour == Red) tags.Add(("DID NOT COMPILE", "#FF6054"));
+        if (mod.Unsupported != null) tags.Add(("UNSUPPORTED", "#FF6054"));
         if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add(("BUNDLED", "#9AA0A8"));
         if (mod.Pack != null) tags.Add(("PACK", "#4FA3FF"));
         if (mod.Lua) tags.Add(("LUA", "#F2A541"));
@@ -540,6 +550,7 @@ public partial class MainWindow
     Control Details(ModManifest mod, (string Text, IBrush Colour)? build)
     {
         var details = new StackPanel { Spacing = 8, Margin = new(12, 10, 0, 2) };
+        if (mod.Unsupported != null) details.Children.Add(new TextBlock { Text = mod.Unsupported, FontSize = 12, Foreground = Red, TextWrapping = TextWrapping.Wrap });
         if (mod.Description.Length > 0) details.Children.Add(new TextBlock { Text = mod.Description, TextWrapping = TextWrapping.Wrap, FontSize = 13, Foreground = Light });
         var changes = ModChanges(mod);
         if (changes.Count > 0) details.Children.Add(new TextBlock { Text = string.Join("\n", changes), FontSize = 12, Foreground = Light, TextWrapping = TextWrapping.Wrap });
@@ -675,12 +686,15 @@ public partial class MainWindow
         return menu;
     }
 
-    // Saves the group's new order (the other group's as it is) and shows it.
+    // The Mods page's groups, top first: shared gameplay mods, per-player gameplay mods, cosmetic ones.
+    static int GroupOf(ModManifest mod) => mod.Cosmetic ? 2 : ModCatalog.Tier(mod) == CoopTier.PerPlayer ? 1 : 0;
+
+    // Saves the group's new order (the other groups' as they are) and shows it.
     void MoveMod(List<(ModManifest Mod, Border Row)> rows, int from, int to, List<ModManifest> all)
     {
         if (paths.ModsFolder == null || modsLocked || from < 0 || from >= rows.Count) return;
         var at = Math.Clamp(to > from ? to - 1 : to, 0, rows.Count - 1);
-        var cosmetic = rows[from].Mod.Cosmetic;
+        var group = GroupOf(rows[from].Mod);
         // the rows move at once, renumbered; the page is loaded again once that is drawn (the modlist code, a pack's place)
         var numbers = rows.Select(r => modNumbers.GetValueOrDefault(r.Row)?.Text).ToList();
         var moved = rows[from];
@@ -692,8 +706,9 @@ public partial class MainWindow
             for (var i = 0; i < rows.Count; i++)
                 if (modNumbers.TryGetValue(rows[i].Row, out var number)) number.Text = numbers[i];
         }
-        var ids = rows.Select(r => r.Mod.Id);
-        var order = cosmetic ? all.Where(m => m.Gameplay).Select(m => m.Id).Concat(ids) : ids.Concat(all.Where(m => m.Cosmetic).Select(m => m.Id));
+        var ids = rows.Select(r => r.Mod.Id).ToList();
+        var order = Enumerable.Range(0, 3).SelectMany(g => g == group ? ids
+            : all.Where(m => GroupOf(m) == g && !ids.Contains(m.Id)).Select(m => m.Id));
         try { ModSettings.SetOrder(paths.ModsFolder, order.ToList()); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod order: " + error.Message, Red); }
         Dispatcher.UIThread.Post(RefreshMods, DispatcherPriority.Background);

@@ -1,6 +1,6 @@
 # The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
-# structure lint (scripts/lint/README.md), the engine version check, the build (warnings are errors) and the checks
-# that need no game, as scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
+# structure lint (scripts/lint/README.md), the engine version check, the nightly build's scripts, the build (warnings are
+# errors) and the checks that need no game, as scripts/Test.ps1 runs them. The engine and the in-game editor build and test on a maintainer's PC: they need the
 # game's files, the Steamworks SDK and a GPU.
 name: CI
 
@@ -62,15 +62,27 @@ jobs:
             python scripts/engine-version/engine_version.py
           fi
 
+  # The nightly build's version and release notes (scripts/nightly/nightly.py, .github/workflows/nightly.yml), which no
+  # pull request runs otherwise.
+  nightly-scripts:
+    name: Nightly scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: scripts/nightly's tests
+        run: python -m unittest discover -s scripts/nightly/tests -v
+
   test:
     name: Build and test
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
+      - uses: ./.github/actions/build-tools   # the .NET SDK, as the native job and the nightly build have it
       - name: scripts/Test.ps1 (build, HellForge.Tests, HellForge.LocalBackend.Tests, the CLI's path checks)
         shell: pwsh
         run: |
@@ -92,28 +104,13 @@ jobs:
     name: Native build and test
     runs-on: windows-latest
     timeout-minutes: 45
-    env:
-      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\artifacts\zig-global-cache
-      ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}\artifacts\zig-local-cache
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      # the .NET SDK, Zig's cache folders and the caches of the pinned downloads and Zig's compiled libraries, as the
+      # nightly build has them (.github/actions/build-tools)
+      - uses: ./.github/actions/build-tools
         with:
-          dotnet-version: 10.0.x
-      # the pinned downloads (Get-BuildTools.ps1, Build-Engine.ps1, Build-Editor.ps1 check every one against its pin)
-      - name: Cache the pinned downloads
-        uses: actions/cache@v4
-        with:
-          path: tools/downloads
-          key: native-downloads-${{ hashFiles('scripts/Get-BuildTools.ps1', 'scripts/Build-Engine.ps1', 'scripts/Build-Editor.ps1') }}
-          restore-keys: native-downloads-
-      # Zig's compiled C runtime and C++ library, which every build would otherwise compile again
-      - name: Cache Zig's compiled libraries
-        uses: actions/cache@v4
-        with:
-          path: artifacts/zig-global-cache
-          key: zig-0.17.0-${{ hashFiles('native/**', 'examples/mods/*/src/**') }}
-          restore-keys: zig-0.17.0-
+          native: 'true'
       - name: scripts/Build-Engine.ps1 -NoSteamApi (the engine's native builds, tests and smokes)
         shell: pwsh
         run: |

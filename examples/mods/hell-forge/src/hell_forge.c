@@ -20,8 +20,10 @@ HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
     hell.patrol_cap = 1.5f;            /* and up to 1.5 times as many living patrol enemies */
     hell.mission_stratagem = HF_STRATAGEM_M102_GUNNER_FRV; /* every mission grants the M-102 Gunner FRV (no loadout slot) */
     hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
-        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+        HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM |
+        HF_DIFFICULTY_HEAVY_ARTILLERY;
     /* two missions in one; no Eradicate, Rapid Acquisition or Blitz missions of its own; a radar station marked from the
-     * start; fortresses and mega nests in the mega cities too, and every city operation opens with a three-silo ICBM launch */
+     * start; fortresses and mega nests in the mega cities too, and every city operation opens with a three-silo ICBM launch;
+     * the SEAF Artillery's shells are Explosive, High-Yield Explosive and Mini Nuke only */
     return api->add_difficulty(mod, &hell) == 11 ? 0 : 1;
 }

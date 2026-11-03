@@ -9,6 +9,9 @@
     <EmbeddedResource Include="../../mappings/functions.json" LogicalName="HellForge.Core.mappings.functions.json" />
     <EmbeddedResource Include="../../mappings/globals.json" LogicalName="HellForge.Core.mappings.globals.json" />
     <EmbeddedResource Include="../../mappings/hud-icons.json" LogicalName="HellForge.Core.mappings.hud-icons.json" />
+    <EmbeddedResource Include="../../mappings/warbond-art.json" LogicalName="HellForge.Core.mappings.warbond-art.json" />
+    <EmbeddedResource Include="../../data/forge-credits/currency-icon.png" LogicalName="HellForge.Core.forge-credits.currency-icon.png" />
+    <EmbeddedResource Include="../../data/forge-credits/pickup-color.png" LogicalName="HellForge.Core.forge-credits.pickup-color.png" />
     <EmbeddedResource Include="../../mappings/boosters.json" LogicalName="HellForge.Core.mappings.boosters.json" />
     <EmbeddedResource Include="../../mappings/passives.json" LogicalName="HellForge.Core.mappings.passives.json" />
     <EmbeddedResource Include="../../mappings/references.json" LogicalName="HellForge.Core.mappings.references.json" />

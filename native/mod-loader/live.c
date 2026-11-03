@@ -19,8 +19,10 @@
  *                     <id> <name> <mod version> <https:// url or -> [stranger]   (stranger: HF_SYNC_FLAG_STRANGER)
  *             syncstate <seq> <version> <none|offer|blocked|downloading|ready|failed> <host name> <bytes> <done> <mods>
  *                       <message>                                      (syncmod, syncstate: SDK 14, mod sync)
+ *             browselobby, browsestate                               (SDK 16, the lobby browser: live_browse.c)
  *   loader:   <seq> ok <now|respawn|mission> [<value hex>]     or     <seq> refused <reason>
  *             syncanswer <version> <accept|decline|restart|block|trust|open> <mod id or ->   (unasked: the player's answer)
+ *             browseask <refresh|join> <lobby id or ->          (unasked: an editor's ask, live_browse.c)
  *             packages <package id hex>,... or -          (unasked: this machine's own packages, sent on connecting and
  *                                                           whenever they change, for friends to load: packages.c)
  * A request names a field as the stats schema does (kind "component" and a component record, or a settings kind and
@@ -377,6 +379,8 @@ static int LiveQueue(const char* line, int length)
     if (queued && g_liveOutEvent != NULL) SetEvent(g_liveOutEvent);
     return queued;
 }
+
+#include "live_browse.c" /* SDK 16, the lobby browser: after LiveQueue */
 
 /* SDK 14, sync_answer: the player's answer to the offer of that version, queued for the backend. 0 when another offer
  * came since, none stands, or no backend is connected. */
@@ -784,6 +788,8 @@ static void LiveRequest(char* line, char* reply, size_t size)
 {
     if (!strncmp(line, "syncmod\t", 8)) { SyncModLine(line, reply, size); return; }
     if (!strncmp(line, "syncstate\t", 10)) { SyncStateLine(line, reply, size); return; }
+    if (!strncmp(line, "browselobby\t", 12)) { BrowseLobbyLine(line, reply, size); return; }
+    if (!strncmp(line, "browsestate\t", 12)) { BrowseStateLine(line, reply, size); return; }
     char* f[12];
     int n = Split(line, f, 12);
     if (n < 2) { snprintf(reply, size, "-\trefused\tmalformed request"); return; }
@@ -913,6 +919,7 @@ static void LiveConnected(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
     ShotsSetRules("-", &none); /* nor whose swaps friends' shots fire */
     RoundsSetLobby("-", &none); /* nor their edited rounds */
     SyncClear();
+    BrowseClear();
 }
 
 /* Connects to the launcher's pipe while the session runs; one connection at a time. The pipe is overlapped: a

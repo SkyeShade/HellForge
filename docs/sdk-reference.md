@@ -15,7 +15,7 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 
 ## Contents
 
-- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size)
+- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size)
 - [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile)
 - [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords)
 - [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole)
@@ -103,7 +103,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `subscribe`: `int (HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority)`. Listens to one kind of game event (HF_ON_..., see HfEventInfo), on the game thread, highest priority first (equal priorities in subscription order). Call it from hellforge_mod_init. Returns 1, or 0 (the mod's log says why: an unknown kind, or the game thread not hooked). A kind's source is hooked once a mod listens to it; one that does not read as reviewed on this game build delivers nothing, and modloader.log says so.
 - `game_state`: `uint32_t (HfMod* mod)`. The game's state now (HF_STATE_...), or HF_STATE_NONE before the game has one.
-- `content`: `int (HfMod* mod, uint32_t index, HfContent* out)`. The index-th piece of content mods added (stratagems, entities, projectiles, damage; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED).
+- `content`: `int (HfMod* mod, uint32_t index, HfContent* out)`. The index-th piece of content mods added (stratagems, entities, projectiles, damage, then arsenal weapons once registered; see HfContent): 1 with *out filled, 0 past the last. Complete once every mod's hellforge_mod_init has run (from HF_EVENT_GAME_LOADED); the weapons from HF_EVENT_ENTITIES_READY.
 - `add_ability`: `uint32_t (HfMod* mod, const HfAbility* ability)`. Adds a new ability (see HfAbility). Call it from hellforge_mod_init. Returns its id (2868 and up), or 0 (the mod's log says why). An entity naming it never sets it off if HellForge could not install it (modloader.log).
 - `add_stratagem_category`: `uint32_t (HfMod* mod, const HfStratagemCategory* category)`. SDK 8: returns a selection-category handle, or 0 with a logged reason. Re-registering an identical fully qualified definition returns the same handle; a conflicting title/order is refused.
 
@@ -153,6 +153,12 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 ### SDK 15
 
 - `stats_source`: `uint32_t (HfMod* mod)`. Whose stats the lobby plays with: HF_STATS_HOST or HF_STATS_OWN (see HF_STATS_OWN). Check hf->size.
+
+### SDK 16: the lobby browser (HfBrowseState; check hf->size before calling)
+
+- `browse_state`: `int (HfMod* mod, HfBrowseState* out)`. The list as the backend last sent it: 1 with *out filled (at most out->size bytes), 0 when no backend is connected (*out is filled all the same: state HF_BROWSE_NONE, and the terminal count).
+- `browse_lobby`: `int (HfMod* mod, uint32_t index, HfBrowseLobby* out)`. The index-th lobby of the list: 1 with *out filled (at most out->size bytes), 0 past the last.
+- `browse_ask`: `int (HfMod* mod, uint32_t ask, const char* lobby_id)`. Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0 not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md.
 
 ### SDK 16: game functions and globals by name (hellforge_functions.h, hellforge_globals.h; check hf->size)
 
@@ -1441,12 +1447,12 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
-| `duration` | +0x1CC | f32 | respawn? | Orbital attack duration (unverified) |
-| `movement_speed` | +0x1D4 | f32 | respawn? | Orbital tracking speed (unverified) |
-| `search_radius` | +0x1D8 | f32 | respawn? | Orbital search radius (unverified) |
-| `tick_interval` | +0x1E0 | f32 | respawn? | Orbital damage tick interval (unverified) |
+| `duration` | +0x1CC | f32 | respawn | Orbital attack duration (unverified) |
+| `movement_speed` | +0x1D4 | f32 | now | Orbital tracking speed (unverified) |
+| `search_radius` | +0x1D8 | f32 | now? | Orbital search radius (unverified) |
+| `tick_interval` | +0x1E0 | f32 | now? | Orbital damage tick interval (unverified) |
 | `fire_delay` | +0x21C | f32 | respawn? | Shot delay (unverified) |
-| `retarget_interval` | +0x220 | f32 | respawn? | Target re-search interval (unverified) |
+| `retarget_interval` | +0x220 | f32 | now? | Target re-search interval (unverified) |
 
 ### HfRotation
 
@@ -1737,10 +1743,10 @@ and statuses without code.
 | `code` | +0x40 | u64 | mission? | pointer to its input's directions (u32: 1 up, 2 right, 3 down, 4 left) |
 | `code_length` | +0x48 | u32 | mission? | how many directions |
 | `uses` | +0x50 | u32 | mission? | uses per mission (0xFFFFFFFF unlimited) |
-| `call_in_time` | +0x54 | f32 | mission? | seconds from the throw to the arrival (unverified) |
+| `call_in_time` | +0x54 | f32 | now | seconds from the throw to the arrival (unverified) |
 | `free_spot_radius` | +0x58 | f32 | mission? | radius searched for a free landing spot (unverified) |
 | `linger` | +0x60 | f32 | mission? | seconds it lingers after activating (unverified) |
-| `cooldown` | +0x68 | f32 | mission? | seconds before it can be called again |
+| `cooldown` | +0x68 | f32 | now | seconds before it can be called again |
 | `origin_type` | +0x70 | u32 | mission? | where it comes from (StratagemOriginType) (unverified) |
 | `call_in_type` | +0x74 | u32 | mission? | throw, exact location, LZ beacon or hellpad (StratagemCallInType) (unverified) |
 | `cooldown_type` | +0x94 | u32 | mission? | individual, shared by the team or by the clan (StratagemCooldownType) (unverified) |

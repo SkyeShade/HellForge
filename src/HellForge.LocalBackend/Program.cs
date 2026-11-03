@@ -94,12 +94,15 @@ try
     {
         var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
         profile.Ownership = OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, HellForge.Core.SteamAccount.Current(), out var refusal);
+        // Every profile but an unlock-all one buys its owned premium warbonds with Forge Credits.
+        profile.Ownership.EarnWarbonds = profileTemplate == null || !profileTemplate.Contains("unlock-all", StringComparison.Ordinal);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }
     var warClock = new WarClock();
     var accountKeys = new AccountKeys();
     var presence = new FriendPresence();
+    var pickups = new PickupRelay();
     // --sandbox: the session's game runs at low integrity, so it writes only into the run's game folder (PlaySession's
     // gameOut), and the pipes it opens carry a low label (PipeServer)
     var sandboxed = options.GetValueOrDefault("--sandbox") == "true";
@@ -136,12 +139,13 @@ try
             lock (liveWarLog) File.AppendAllText(liveWarLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + HellForge.Core.Privacy.Scrub(message) + Environment.NewLine);
         }, cacheOnly: Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1") // Linux: fetched before the namespace
         : null;
+    var browse = new HellForge.LocalBackend.Multiplayer.BrowseApi();
     await using var app = LocalBackend.Create(new BackendSettings(port, evidence, mode)
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
         WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
-        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf
+        DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, Pickups = pickups, Browse = browse
     });
     await app.StartAsync(lifetime.Token);
     var pipeName = options.GetValueOrDefault("--pipe");
@@ -153,9 +157,15 @@ try
         {
             WarClock = warClock, AccountKeys = accountKeys, Presence = presence, ModsFolder = options.GetValueOrDefault("--mods"), ModList = modList,
             ModSetFile = options.GetValueOrDefault("--modset"), DirectoryFolder = options.GetValueOrDefault("--directory"), RejoinFile = options.GetValueOrDefault("--rejoin"),
-            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed
+            SandboxStats = sandboxed ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(evidence))!, "game", "sandbox-stats") : null, Sandboxed = sandboxed,
+            Pickups = pickups
         })
         : null;
+    if (multiplayer != null)
+    {
+        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+        multiplayer.ShowBrowser(browse); // the in-game browser (SDK 16)
+    }
     var ready = new System.Text.Json.Nodes.JsonObject
     {
         ["scope"] = "synthetic-local-backend", ["urls"] = new System.Text.Json.Nodes.JsonArray(app.Urls.Select(u => (System.Text.Json.Nodes.JsonNode?)u).ToArray()),
