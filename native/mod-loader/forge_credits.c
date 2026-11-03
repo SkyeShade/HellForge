@@ -194,3 +194,82 @@ static void InstallForgeCreditsRoll(void)
     g_forgeCreditsRollState = 1;
     Note("forge credits: loot caches will hold Forge Credits at %d %%", g_forgeCreditChance);
 }
+
+/* Locked warbonds (research/forge-credits-tint, "Locked warbonds"). The backend serves a premium warbond's token without a
+ * price when the live account does not own it (OwnershipFilter.FilterCatalogueResponse); the client takes a warbond with
+ * no Super Credits offer for a free one (Helldivers Mobilize) and opens it. These patches make such a warbond, when its
+ * variant is premium or legendary (the built-in table 0x32E0C20: Mobilize is 0), count as not owned: its pages stay
+ * locked as on the live game, and its button reads HellForge's "WARBOND LOCKED" (strings id 0xF8AD8A16, added by
+ * ForgeCredits.cs) instead of "BUY PREMIUM WARBOND":
+ * - the warbond screen's data (0x196CE10): "owned = 1" for no offer becomes "owned = variant is free" (sete), and the
+ *   owned path's jump into those bytes moves past them;
+ * - the warbond list (0x1963860): its count of priced tokens starts at the variant, so a premium one without any goes to
+ *   the ownership check instead of "owned";
+ * - the button's label refresh (0x1969F30's tail, 0x196A229): a jump to code that writes the label when the button is
+ *   the warbond's own (+0x2E78 != 1), its warbond not free, not owned and without an offer. */
+#define FC_LOCKED_LABEL 0xF8AD8A16u
+static const ForgeCreditsPatch kLockedWarbondPatches[] = {
+    {0x196CE81u, {0x49,0x8b,0x44,0x24,0x08,0xc6,0x40,0x64,0x01,0x49,0x8b,0x44,0x24,0x08}, 14, 0, -1, 14,
+        {0x49,0x8b,0x44,0x24,0x08, 0x83,0x78,0x60,0x00, 0x0f,0x94,0x40,0x64, 0x90}},      /* cmp [rax+0x60],0; sete [rax+0x64] */
+    {0x196CFDFu, {0xe9,0xa6,0xfe,0xff,0xff}, 5, 0, -1, 5, {0xe9,0xab,0xfe,0xff,0xff}},  /* to 0x196CE8F */
+    {0x19639E7u, {0x49,0x8b,0x07,0x44,0x8b,0xff,0x48,0x89,0x43,0x30,0x8b,0x02,0x89,0x43,0x60}, 15, 0, -1, 15,
+        {0x49,0x8b,0x07,0x48,0x89,0x43,0x30,0x8b,0x02,0x89,0x43,0x60,0x44,0x8b,0xf8}}};  /* r15d = variant */
+#define FC_LABEL_HOOK 0x196A229u
+static const uint8_t kLabelHookPin[] = {0xc6,0x87,0x84,0x2e,0x00,0x00,0x01};             /* mov byte [rdi+0x2E84], 1 */
+static int g_lockedWarbondsState;
+
+static void InstallLockedWarbonds(void)
+{
+    if (g_lockedWarbondsState) return;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    g_lockedWarbondsState = -1;
+    if (strcmp(g_build, "25480438") || !game) return;
+    size_t count = sizeof kLockedWarbondPatches / sizeof *kLockedWarbondPatches;
+    for (size_t i = 0; i < count; i++)
+        if (!PinMatches(game + kLockedWarbondPatches[i].rva, kLockedWarbondPatches[i].pin, kLockedWarbondPatches[i].length))
+        {
+            Note("forge credits: locked warbonds not applied; the code at game.dll+0x%x does not match the reviewed build", kLockedWarbondPatches[i].rva);
+            return;
+        }
+    if (!PinMatches(game + FC_LABEL_HOOK, kLabelHookPin, sizeof kLabelHookPin))
+    {
+        Note("forge credits: locked warbonds not applied; the button label code does not match the reviewed build");
+        return;
+    }
+    uint8_t* cave = AllocateNearGame(game, 64);
+    if (cave == NULL) { Note("forge credits: locked warbonds not applied; no memory near game.dll"); return; }
+    /* the moved instruction, then: if (+0x2E78 != 1 && w->variant && !w->owned && !w->offer) +0x2E88 = label; back */
+    uint8_t* c = cave;
+    memcpy(c, kLabelHookPin, sizeof kLabelHookPin); c += sizeof kLabelHookPin;
+    static const uint8_t checks[] = {
+        0x83,0xbf,0x78,0x2e,0x00,0x00,0x01,     /* cmp dword [rdi+0x2E78], 1 */
+        0x74,0x23,                              /* je back */
+        0x48,0x8b,0x87,0x58,0x2e,0x00,0x00,     /* mov rax, [rdi+0x2E58] (the warbond's data) */
+        0x83,0x78,0x60,0x00,                    /* cmp dword [rax+0x60], 0 (variant: free) */
+        0x74,0x16,                              /* je back */
+        0x80,0x78,0x64,0x00,                    /* cmp byte [rax+0x64], 0 (owned) */
+        0x75,0x10,                              /* jne back */
+        0x83,0x78,0x68,0x00,                    /* cmp dword [rax+0x68], 0 (its Super Credits offer) */
+        0x75,0x0a,                              /* jne back */
+        0xc7,0x87,0x88,0x2e,0x00,0x00};         /* mov dword [rdi+0x2E88], imm32 */
+    memcpy(c, checks, sizeof checks); c += sizeof checks;
+    uint32_t label = FC_LOCKED_LABEL;
+    memcpy(c, &label, 4); c += 4;
+    *c++ = 0xe9;                                /* back: jmp game+0x196A230 */
+    int32_t back = (int32_t)((intptr_t)(game + FC_LABEL_HOOK + 7) - (intptr_t)(c + 4));
+    memcpy(c, &back, 4); c += 4;
+    DWORD previous;
+    VirtualProtect(cave, 0x1000, PAGE_EXECUTE_READ, &previous);
+    FlushInstructionCache(GetCurrentProcess(), cave, (size_t)(c - cave));
+    for (size_t i = 0; i < count; i++)
+    {
+        const ForgeCreditsPatch* p = &kLockedWarbondPatches[i];
+        if (ApiWrite(game + p->rva, p->with, p->size)) { Note("forge credits: locked warbonds: game.dll+0x%x could not be rewritten", p->rva); return; }
+    }
+    uint8_t jump[7] = {0xe9, 0, 0, 0, 0, 0x90, 0x90};
+    int32_t to = (int32_t)((intptr_t)cave - (intptr_t)(game + FC_LABEL_HOOK + 5));
+    memcpy(jump + 1, &to, 4);
+    if (ApiWrite(game + FC_LABEL_HOOK, jump, sizeof jump)) { Note("forge credits: locked warbonds: the label hook could not be written"); return; }
+    g_lockedWarbondsState = 1;
+    Note("forge credits: premium warbonds the live account does not own stay locked (WARBOND LOCKED)");
+}

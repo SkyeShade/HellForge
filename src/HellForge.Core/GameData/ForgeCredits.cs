@@ -16,7 +16,7 @@ public static class ForgeCredits
 {
     // Part of the cache key: raise it whenever the same game build would build different bytes. 2: the card tinted red.
     // 3: the names. 4: the XAML pages' colours. 5: every copy of each resource, the premium token's colours.
-    public const int Version = 5;
+    public const int Version = 6; // 6: the "WARBOND LOCKED" label
     const string DoneFile = "done";
 
     // The Super Credits pickup's textures (unit 0xBD6F4DE16B9AEDCD, archive 6286516637d5c967): 256 x 256, 9 mips, the
@@ -192,7 +192,37 @@ public static class ForgeCredits
             added.Write(Encoding.UTF8.GetBytes(changed));
             added.WriteByte(0);
         }
-        return added.Length == 0 ? null : parts with { Main = [.. main, .. added.ToArray()] };
+        byte[] result = [.. main, .. added.ToArray()];
+        // The language's warbond buttons get HellForge's "WARBOND LOCKED" beside "BUY PREMIUM WARBOND".
+        var ids = Enumerable.Range(0, (int)count).Select(i => BinaryPrimitives.ReadUInt32LittleEndian(d.AsSpan(16 + 4 * i))).ToHashSet();
+        if (ids.Contains(BuyPremiumWarbond) && !ids.Contains(WarbondLockedLabel)) result = WithText(result, WarbondLockedLabel, "WARBOND LOCKED");
+        return result.Length == d.Length && added.Length == 0 ? null : parts with { Main = result };
+    }
+
+    // "BUY PREMIUM WARBOND", and HellForge's own label for a premium warbond the live account does not own (the mod loader's
+    // locked warbonds, forge_credits.c): EngineHash.Id32("hellforge_warbond_locked").
+    const uint BuyPremiumWarbond = 0xD1CA2FF4;
+    public const uint WarbondLockedLabel = 0xF8AD8A16;
+
+    // A strings resource with one more text: its id in order among the ids (the game looks them up in order), its offset
+    // after them, the old offsets moved by the 8 bytes the two arrays grow, the text added at the end.
+    static byte[] WithText(byte[] strings, uint id, string text)
+    {
+        var count = (int)BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(8));
+        var entries = Enumerable.Range(0, count).Select(i => (Id: BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(16 + 4 * i)),
+            Offset: BinaryPrimitives.ReadUInt32LittleEndian(strings.AsSpan(16 + 4 * count + 4 * i)) + 8)).ToList();
+        entries.Add((id, (uint)(strings.Length + 8)));
+        entries.Sort((a, b) => a.Id.CompareTo(b.Id));
+        var output = new byte[strings.Length + 8];
+        strings.AsSpan(0, 16).CopyTo(output);
+        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(8), (uint)(count + 1));
+        for (var i = 0; i <= count; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(16 + 4 * i), entries[i].Id);
+            BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(16 + 4 * (count + 1) + 4 * i), entries[i].Offset);
+        }
+        strings.AsSpan(16 + 8 * count).CopyTo(output.AsSpan(16 + 8 * (count + 1)));
+        return [.. output, .. Encoding.UTF8.GetBytes(text), 0];
     }
 
     static string? Rename(string text) => text.Contains("Super Credit", StringComparison.OrdinalIgnoreCase)
