@@ -74,7 +74,14 @@ On `dev`, since 0.3.0-beta.
     Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
     (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default
     applies, the launcher shows the stranger warning once.
-  - Players on HellForge versions from before this change can't join you, and you can't join them.
+  - **Players on HellForge 0.3 still play with you.** Their lobbies show on the Galactic Map and in the lobby browser,
+    yours show in theirs, and joins work both ways, MOD SYNC included. A lobby with Hell Forge's difficulty or Vanilla
+    Plus on is not listed for 0.3 players, though 0.3 friends who run the same mod still join it. Versions before 0.3
+    can't join you, and you can't join them.
+  - A mod's author can give it a `"coopLevel"` in its manifest: players whose copies have the same level play together,
+    whatever version of the mod each has, so a fix release no longer splits them.
+  - With more than 50 HellForge lobbies listed (the most Steam returns in one search), lobbies you can join right away,
+    with your mods or after a download, are searched for and shown first.
 - A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
   it: one taken off the list, or one you untrusted, waits for your trust again.
 - Mods on HellForge's verified list download from any host, not just Steam friends.
@@ -236,7 +243,8 @@ On `dev`, since 0.3.0-beta.
   `HF_BROWSE_HIDDEN` keep it on the screen while a browser shows). `HF_BROWSE_QUICK` joins the best lobby, and
   `HfBrowseLobby.fix` names the setting that would let a lobby in (`HF_BROWSE_ALLOW_STRANGERS`,
   `HF_BROWSE_SHOW_EDITED_STATS`, which hold for the session and are never saved; show the player the launcher's warning
-  before turning strangers on).
+  before turning strangers on). A mod that draws a browser of its own asks `HF_BROWSE_CLAIM`, and HellForge's in-game
+  editor then shows none (`HfBrowseState.owner`). How to build one: [docs/lobby-browser.md](docs/lobby-browser.md).
 
 ### For launcher developers
 

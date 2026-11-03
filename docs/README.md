@@ -37,6 +37,8 @@ Reference and related pages:
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
+- [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
+  terminal; the SDK 16 calls, the terminal's visit, what each lobby says and the rules a browser keeps.
 
 ## Contributing and the engine
 

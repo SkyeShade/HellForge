@@ -229,7 +229,7 @@ asking sooner returns the last list. 200 with:
 {"version": 1, "available": true, "searchedUtc": "2026-10-30T20:01:02.0000000Z",
  "lobbies": [{"lobbyId": "<GUID>", "host": "<SteamID64>", "hostName": "Helldiver", "friend": false,
               "source": "directory", "members": 1, "maxMembers": 4, "locked": false, "privacy": 0,
-              "difficulty": 7, "planetId": 168, "race": 2, "inMission": true, "players": ["Helldiver"],
+              "difficulty": 7, "planetId": 168, "race": 2, "inMission": true, "older": false, "players": ["Helldiver"],
               "joinable": false, "verdict": "unjoinable", "reason": "It needs mods installed by hand.",
               "downloadBytes": 0,
               "mods": [{"id": "author.mod", "name": "Mod", "version": "1.0", "tier": "shared", "class": "code",
@@ -248,7 +248,8 @@ asking sooner returns the last list. 200 with:
   does not change settings: point the player at them.
 - `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
   `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
-  `inMission` is whether the host has a mission selected.
+  `inMission` is whether the host has a mission selected. `older` is whether the host runs HellForge 0.3, which this
+  HellForge joins in that version's protocol; its lobbies are joinable as any other's.
 - `mods` lists the host's gameplay mods (at most 64). `tier` is `shared` (must match) or `per-player` (each player's
   own). A shared mod has the `action` a join would take (`have`, `download`, `trust`, `manual`, `blocked`, `update`),
   and `why` when it keeps the lobby out (`share off`, `stranger code, not verified`, `stranger raw data, not
@@ -277,7 +278,8 @@ none removed or changed in meaning. A change that breaks this goes to `/hellforg
 A browser drawn inside the game (a code mod's, as HellForge's in-game editor draws its own) gets the same list and
 joins through the SDK 16 calls `browse_state`, `browse_lobby` and `browse_ask` ([sdk-reference.md](sdk-reference.md)),
 over the session's live-edit pipe, with no HTTP of its own. `browse_state`'s `terminal` count goes up each time the
-ship's information terminal opens the browser.
+ship's information terminal opens the browser. [lobby-browser.md](lobby-browser.md) is the guide to building one, and
+`HF_BROWSE_CLAIM` makes HellForge's own step aside for it.
 
 ### Logs
 

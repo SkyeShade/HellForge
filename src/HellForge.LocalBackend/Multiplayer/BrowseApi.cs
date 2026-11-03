@@ -104,7 +104,7 @@ public sealed class BrowseApi
             ["friend"] = lobby.Friend, ["source"] = lobby.Source, ["members"] = lobby.Members, ["maxMembers"] = lobby.MaxMembers,
             ["locked"] = lobby.Locked, ["privacy"] = Number(record["privacyMode"]) ?? SearchNumber(lobby, "number_key6"),
             ["difficulty"] = Number(record["difficulty"]), ["planetId"] = Number(record["planetId"]), ["race"] = Number(record["race"]),
-            ["inMission"] = record["seed"] is JsonValue,
+            ["inMission"] = record["seed"] is JsonValue, ["older"] = lobby.Older,
             ["players"] = new JsonArray([.. players.Select(p => (JsonNode?)Text(p["playerName"])).Where(n => n != null)]),
             ["joinable"] = join.Joinable && !lobby.Locked && lobby.Members < lobby.MaxMembers,
             ["verdict"] = Verdict(lobby), ["reason"] = Reason(lobby),
