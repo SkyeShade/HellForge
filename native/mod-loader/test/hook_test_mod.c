@@ -4,7 +4,8 @@
  * than the next in its chain. It also hooks hellforge_fake_named by name (SDK 16, the plan maps it as FakeNamed) from
  * its init, before the game is loaded, so that the hook waits for the game, adding 100; and checks that an unknown
  * name and a function only for calling are refused, and that function finds FakeNamed once the game is loaded; and that
- * global finds FakeGlobal's cell, whose object holds 1234, and refuses a name it does not have. */
+ * global finds FakeGlobal's cell, whose object holds 1234, and refuses a name it does not have. Its status (SDK 16) says
+ * the detour is in, and it logs the session's end when it hears it. */
 #define WIN32_LEAN_AND_MEAN
 #include <stddef.h>
 #include <stdio.h>
@@ -54,12 +55,20 @@ static void Loaded(HfMod* mod, HfEvent event, void* user)
         hellforge->log(mod, found ? "global by name found" : "global by name missed");
         hellforge->log(mod, hellforge->global(mod, "NoSuchGlobal") == 0 ? "unknown global refused" : "unknown global taken");
     }
+    if (hellforge->size >= offsetof(HfApi, set_status) + sizeof hellforge->set_status) hellforge->set_status(mod, "detour\tinstalled");
+}
+
+static void Ended(HfMod* mod, HfEvent event, void* user)
+{
+    hellforge->log(mod, "heard the session end");
+    hellforge->set_status(mod, "session over");
 }
 
 HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
 {
     hellforge = api;
     hellforge->log(mod, "hook test for %s (%s)", hellforge->mod_id(mod), hellforge->build_id());
+    if (hellforge->version >= 16 && hellforge->on(mod, HF_EVENT_SESSION_END, Ended, 0)) return 1;
     if (HasFunctions())
     {
         hellforge->log(mod, hellforge->hook_function(mod, "FakeNamed", (void*)NamedDetour, (void**)&namedOriginal, 0) == 0 ?

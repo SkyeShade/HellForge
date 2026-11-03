@@ -25,6 +25,7 @@
 #include "steam_census.h"
 #include "bridge_channel.h"
 #include "../common/hf_privacy.h"
+#include "../common/hf_log_header.h"
 #ifdef HELLFORGE_BRIDGE_BUILD
 #include "bridge_local.h"
 void BridgeContextsChanged(void); // bridge_exports.c
@@ -80,6 +81,7 @@ static BOOL CALLBACK Initialize(PINIT_ONCE once, void *parameter, void **context
     DWORD length = GetEnvironmentVariableW(L"HELLFORGE_CLOUD_LOG", log, MAX_PATH);
     if (length > 0 && length < MAX_PATH)
         g_log = CreateFileW(log, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HfLogHeader(g_log);
     length = GetEnvironmentVariableW(L"HELLFORGE_CLOUD_DIR", g_dir, MAX_PATH - 64);
     DWORD attributes = length > 0 && length < MAX_PATH - 64 ? GetFileAttributesW(g_dir) : INVALID_FILE_ATTRIBUTES;
     g_enabled = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);

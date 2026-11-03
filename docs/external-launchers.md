@@ -173,7 +173,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
-| `--crash-dump` | `no` | a full memory dump if the game crashes (large) |
+| `--crash-dump` | `no` | a full memory dump if the game crashes (large), instead of the small dump every crash leaves |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
@@ -285,13 +285,15 @@ ship's information terminal opens the browser. [lobby-browser.md](lobby-browser.
 ### Logs
 
 Each session has its own folder, `logs\sessions\<runId>\`, and `logs\play-session.json` names the newest one (`"run"`).
-Only the newest ten are kept. These are the files to show a player:
+Only the newest ten are kept, and of the older ones the five newest that ended in a crash. These are the files to show
+a player:
 
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none |
-| `modloader.log` | the mod loader: which mods loaded, and why one did not |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game |
+| `modloader.log` | the mod loader: which mods loaded, with each code mod's version and its DLL's SHA-256, and why one did not |
+| `mod-status.tsv` | each code mod's status for the player (SDK 16 `set_status`), a line `<id>\t<text>` per mod; the launcher shows it on the Mods page |
 | `modlist.txt` | the mods the session ran, in load order |
 | `mod-<id>.log` | a code mod's own log; `mod-lua.<name>.log` is a Lua mod's |
 | `cli-output.txt` | mod builds and staging |

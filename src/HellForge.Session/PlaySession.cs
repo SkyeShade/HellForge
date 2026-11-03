@@ -41,6 +41,7 @@ sealed partial class PlaySession(PlayOptions options)
     string[] erlBefore = [];
     FileStream? lease;
     HostBoundedProcess? job;
+    SessionEndSignal? endSignal; // SDK 16: the mods hear the session's end before a stop takes the game down
     // The backend and the broker end with this runner, however it ends (HelperJob).
     readonly HelperJob helpers = new();
     Process? server, broker;
@@ -102,6 +103,7 @@ sealed partial class PlaySession(PlayOptions options)
         // folder (this runner's files, the backend's evidence and the DLL it loads) stays out of its reach.
         gameOut = options.Sandbox ? LowIntegrityHelper.CreateLowFolder(Path.Combine(run, "game")) : run;
         log = new StreamWriter(Path.Combine(run, "session.log"), append: true, new UTF8Encoding(false));
+        Say(LogHeader.Line(DateTimeOffset.Now, utcTimes: false));
         result["runId"] = runId;
         result["status"] = "preparing";
         result["gameLaunched"] = false;
@@ -898,6 +900,8 @@ sealed partial class PlaySession(PlayOptions options)
         job = Tools.Starting(exe, () => new HostBoundedProcess(exe, $"--bundle-dir \"{bundle}\" --release" + (options.EngineLog ? " --log-to-file" : "") + (gameOptions.Length > 0 ? " " + gameOptions : ""),
             Path.Combine(copy, "bin"), profileFolder, 0, singleProcess: childReason == null, token: lowToken));
         result["gamePid"] = job.Process.Id;
+        // made before the game runs, so the mod loader finds them as it starts (native/mod-loader/mod_status.c)
+        Try("sessionEndSignalError", () => endSignal = SessionEndSignal.Create(job.Process.Id));
         result["gameLaunched"] = true;
         if (options.Sandbox) StartBroker(bridgeSuffix!);
         result["status"] = "patching";

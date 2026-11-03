@@ -56,6 +56,15 @@ static class CrashReportTests
             check(SessionFacts.From(JsonDocument.Parse("[]").RootElement) == null, "An old session's missing facts were read.");
         });
 
+        test("A log's dated line: the local date and time, the offset from UTC and which times follow", () =>
+        {
+            check(LogHeader.Line(new DateTimeOffset(2026, 10, 26, 5, 34, 56, TimeSpan.FromHours(-7)), utcTimes: true) ==
+                "log opened 2026-10-26 05:34:56 local time (UTC-07:00); the times below are UTC", "West of UTC.");
+            check(LogHeader.Line(new DateTimeOffset(2026, 10, 26, 18, 4, 56, new TimeSpan(5, 30, 0)), utcTimes: false) ==
+                "log opened 2026-10-26 18:04:56 local time (UTC+05:30); the times below are local", "East of UTC, local times.");
+            check(LogHeader.Line(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero), utcTimes: true).Contains("(UTC+00:00)"), "UTC itself.");
+        });
+
         test("System facts: Windows 11 by its build, NVIDIA's driver number, and what this PC says", () =>
         {
             check(SystemFacts.Describe(10, 0, 26100, 4652, "24H2") == "Windows 11 24H2 (10.0.26100.4652)" && SystemFacts.Describe(10, 0, 19044, 2364, null) == "Windows 10 (10.0.19044.2364)",
@@ -87,6 +96,7 @@ static class CrashReportTests
         test("A session crashed when the game left a dump, or ended by itself with an error or a crash note; not when it was stopped", () =>
         {
             check(CrashReport.Crashed(Session(new string('1', 32), """{"gameLaunched": true, "gameExitCode": "0xC0000005"}""")), "An access violation exit.");
+            check(CrashReport.ExitText(Path.Combine(sessions, new string('1', 32))) == "0xC0000005 (access violation)", "The launcher's text for the exit.");
             check(!CrashReport.Crashed(Session(new string('2', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""")), "A clean exit.");
             check(!CrashReport.Crashed(Session(new string('3', 32), """{"gameLaunched": true, "observationStoppedBySignal": true, "gameExitCode": "0x00000001"}""")),
                 "A session the launcher stopped.");
@@ -97,10 +107,14 @@ static class CrashReportTests
             var dumped = Session(new string('6', 32), "{}");
             File.WriteAllBytes(Path.Combine(dumped, "crash-42.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(CrashReport.Crashed(dumped), "A session that left a dump.");
+            check(CrashReport.ExitText(dumped) == null, "No exit code kept: no text.");
+            check(CrashReport.ExitText(Session(new string('8', 32), """{"gameLaunched": true, "exitCode": "-1073741515"}""")) ==
+                "0xC0000135 (a DLL the game needs could not be found)", "The runner's own exit code, as a start-up DLL failure.");
             var handled = Session(new string('7', 32), """{"gameLaunched": true, "observationStoppedBySignal": true, "gameExitCode": "0x00000001"}""");
             File.WriteAllBytes(Path.Combine(handled, "crash-43.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(!CrashReport.Crashed(handled), "A session the launcher stopped after a fault the game handled left a dump.");
-            check(CrashReport.Meaning(0xC0000005) == "access violation" && CrashReport.Meaning(0x1) == null, "Exit code meanings.");
+            check(CrashReport.Meaning(0xC0000005) == "access violation" && CrashReport.Meaning(0xC0000094) == "integer divide by zero" &&
+                CrashReport.Meaning(0x1) == null, "Exit code meanings.");
         });
 
         var crashed = Session(new string('c', 32), $$"""

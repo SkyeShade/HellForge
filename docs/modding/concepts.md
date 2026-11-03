@@ -66,6 +66,7 @@ game starts     the loader calls each code mod's hellforge_mod_init, in the orde
                   HF_EVENT_ENTITIES_READY     entity data loaded (again after a reload)
 game running    game events (subscribe), on_game_thread callbacks, every update                 game thread
                 hook detours: whenever the game calls the function                             the caller's thread
+session end     HF_EVENT_SESSION_END (SDK 16): a stop from the launcher, or a normal quit       watch or quitting thread
 ```
 
 `hellforge_mod_init(const HfApi* hf, HfMod* mod)` runs once, while the game is still starting. Register everything

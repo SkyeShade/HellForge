@@ -832,8 +832,6 @@ public static class ModLoaderPlan
     // null to leave the game's loot roll alone.
     public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null)
     {
-        static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
-            ? throw new InvalidDataException("A path in the mod loader plan contains a tab or line break.") : value;
         var lines = new List<string> { "build\t" + buildId, "logs\t" + Field(logs), "network_config\t" + NetworkConfig,
             $"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader.ToLowerInvariant()}" };
         foreach (var (name, c) in profile.Components.OrderBy(c => c.Key, StringComparer.Ordinal))
@@ -845,15 +843,30 @@ public static class ModLoaderPlan
         var mods = codeMods.Where(m => m.Enabled && m.NeedsLoader).ToList();
         if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits)
             throw new InvalidDataException("Mod loader plan exceeds its mod or stats edit capacity.");
-        foreach (var mod in mods)
-        {
-            if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
-            lines.Add($"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}");
-            foreach (var e in StatsData.Edits(mod))
-                lines.Add(FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}"));
-        }
+        foreach (var mod in mods) lines.AddRange(ModLines(mod));
         if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
         return string.Join("\n", lines) + "\n";
+    }
+
+    // A mod's lines of the plan: the mod, a code mod's version, and its stats edits.
+    static IEnumerable<string> ModLines(ModManifest mod)
+    {
+        if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
+        yield return $"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}";
+        // a code mod's version, for modloader.log beside its DLL's SHA-256 (older loaders skip the line)
+        if (mod.HasCode && OneLine(mod.Version) is { Length: > 0 } version) yield return $"mod_version\t{mod.Id}\t{version}";
+        foreach (var e in StatsData.Edits(mod))
+            yield return FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}");
+    }
+
+    static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
+        ? throw new InvalidDataException("A path in the mod loader plan contains a tab or line break.") : value;
+
+    // free text, on one line of at most 63 characters (the loader's room)
+    static string OneLine(string value)
+    {
+        var line = new string([.. value.Select(c => char.IsControl(c) ? ' ' : c)]).Trim();
+        return line.Length > 63 ? line[..63] : line;
     }
 }
 

@@ -39,6 +39,9 @@ sealed partial class PlaySession
         { result[what] = error.Message; }
     }
 
+    // How long a stop waits for the mods to hear the session's end (HF_EVENT_SESSION_END) before it takes the game down.
+    static readonly TimeSpan SessionEndWait = TimeSpan.FromSeconds(2);
+
     // A game still running when the session ends is stopped with its job. Only a stop the player asked for (STOP, closing
     // the launcher, a mod sync's restart) first asks the game to close, so it writes its shader cache (ShaderCache:
     // killed, it never does). The game is ended at once when the session failed (the network block changed), when the
@@ -50,6 +53,10 @@ sealed partial class PlaySession
     // A game that ended by itself keeps its exit code and, for a crash, Windows' record of it (RecordWindowsCrash).
     void StopGameJob()
     {
+        // the game still runs (a stop from the launcher, or this runner failing): its mods hear the end first
+        if (job != null && endSignal != null)
+            Try("sessionEndError", () => { job.Process.Refresh(); if (!job.Process.HasExited) result["sessionEndHeard"] = endSignal.Signal(SessionEndWait); });
+        endSignal?.Dispose();
         if (job != null && !endGameNow && (bool?)result["observationStoppedBySignal"] == true)
             Try("gameCloseError", () =>
             {

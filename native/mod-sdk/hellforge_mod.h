@@ -39,6 +39,13 @@ typedef enum HfEvent
     /* SDK 3: the game's projectile and damage lists are loaded, with every projectile and damage type mods added
      * (add_projectile, add_damage): projectile_row and damage_row return their rows from now on. */
     HF_EVENT_PROJECTILES_READY = 4,
+    /* 5 is not an event yet: on() refuses it. */
+    /* SDK 16: the session is ending, the last moment to save or flush. Either the launcher is stopping it (the session
+     * runner waits up to 2 s for the mods, on the loader's watch thread), or the game is quitting normally (from Windows'
+     * process exit, under its loader lock, the game's other threads gone). Keep it short: load no DLL, wait for no thread,
+     * call nothing of the game's. Once per session; not after a crash, and not when the game crashes as it quits (on build
+     * 25480438 it does: docs/modding/debugging.md). An older loader's `on` refuses it: check hf->version >= 16. */
+    HF_EVENT_SESSION_END = 6,
 } HfEvent;
 
 typedef void (*HfEventCallback)(HfMod* mod, HfEvent event, void* user);
@@ -1329,6 +1336,14 @@ typedef struct HfApi
      * witnesses it is not the reviewed one). Use hf_global_<Name>(mod), which reads the cell and returns the object
      * typed. */
     uintptr_t (*global)(HfMod* mod, const char* name);
+
+    /* ---- SDK 16: the mod's status (check hf->size before calling) ------------------------------------------------ */
+    /* The mod's status for the player: one line (UTF-8, at most 191 bytes; tabs and line breaks read as spaces) of what it
+     * does or why it stopped ("waiting for a mission", "off: this game build is not supported"). The launcher's Mods page
+     * shows it on the mod's row during the session and after it, and the mod's log records each change. NULL or "" clears
+     * it. Set it when it changes: the same text again is only a compare, a new one writes a small file. Any thread. Check
+     * hf->size before calling. */
+    void (*set_status)(HfMod* mod, const char* text);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
