@@ -14,7 +14,7 @@ On `dev`, since 0.3.0-beta.
   the operation's card on the war table shows what its missions pay. Medals unlock warbond pages and items, requisition
   buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
   purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
-  from the map. Premium warbonds still need to be owned in the normal game.
+  from the map. Premium warbonds still need to be owned in the normal game (#232).
 - Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
   (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
   while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
@@ -29,7 +29,7 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
-- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission.
+- Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
 - **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
@@ -58,9 +58,9 @@ On `dev`, since 0.3.0-beta.
 ### Fixed
 
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
-  up empty. Heavy loot is still added to your profile.
+  up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
-  medals and samples a second time. Thanks to diemitze, whose PR #27 found it.
+  medals and samples a second time. Thanks to diemitze, whose PR #27 found it (#232).
 - On Windows 10 21H1 and older or unpatched Windows 10 PCs, HellForge Setup closed without a word, leaving ".NET
   Runtime" and "Application Error" entries (0x80131506) in the event log. On a newer processor HellForge's programs need
   Windows updates from October 2024 or later. Setup now starts on such a PC and says which Windows it has and what to
