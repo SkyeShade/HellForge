@@ -48,6 +48,10 @@ On `dev`, since 0.3.0-beta.
 
 ### Changed
 
+- The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
+  the next call, the Orbital Laser's tracking speed, search radius and re-search interval at once (also on a laser
+  already firing), its duration from the next call-in, and uses from the next mission. It said "next mission" for all of
+  them (#234).
 - Difficulty 11 pays 50% more XP and medals than Super Helldive: 2250 XP (was 1800) and 15 medals per won mission (#232).
 - The Mods page's second group is called CLIENT ONLY instead of COSMETIC: besides cosmetic packs it holds Lua mods,
   which aren't cosmetic. Nothing about these mods changed; friends still don't need the same ones (#180).
@@ -61,16 +65,20 @@ On `dev`, since 0.3.0-beta.
   Steam app's download in the Linux client's `steamrt64` folder. HellForge no longer downloads build patches from
   files.hf-mod.com, so it hosts no game files. When Steam won't allow the download (a game borrowed through Family
   Sharing), when SteamCMD can't be set up, or on Linux, setup shows the Steam console commands (#205).
-- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
-  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
-  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
-  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
-  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
-  Map when you're sandboxed.
+- **Modded co-op is much easier to get into.** Only mods that change what every player's game needs must still match:
+  - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
+    player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
+    names them. A mod's author can set this with the manifest's new `"coop"` field.
+  - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
+    players.
+  - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
+    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default
+    applies, the launcher shows the stranger warning once.
+  - Players on HellForge versions from before this change can't join you, and you can't join them.
+- A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
+  it: one taken off the list, or one you untrusted, waits for your trust again.
 - Mods on HellForge's verified list download from any host, not just Steam friends.
-- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
-  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
-  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
 - `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
   on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
   ignored.
@@ -90,6 +98,12 @@ On `dev`, since 0.3.0-beta.
 
 ### Fixed
 
+- In a sandboxed session the in-game editor dropped the EDITED mark from your saved changes once you closed and opened
+  it again, as if they were gone. They were kept, and they now show as saved (#234).
+- Armory icons that go blank (the FAQ's known issue): with `--toaster_mode` in Settings > Launch options they never
+  appear, because it turns the game's texture streaming off and the game draws its Armory icons only once their
+  textures have loaded. The launcher now says so under the box and when the session starts. For every other case,
+  `modloader.log` now names the icons the game stopped drawing, so a Save logs zip shows what they wait for.
 - A mission whose report listed heavy loot got a reply the game refuses, so that mission's rewards screen could come
   up empty. Heavy loot is still added to your profile (#232).
 - A mission is paid once. If the game sent the end of a mission again (its reply lost), it paid the XP, requisition,
@@ -120,8 +134,32 @@ On `dev`, since 0.3.0-beta.
   the normal game started fine: the game got past the point where HellForge edits it before HellForge froze it. HellForge
   now checks for that point more often and freezes the whole game in one step, rather than one thread at a time after
   listing them.
+- The game sometimes closed its window but kept running, and had to be ended in Task Manager. If the game is still
+  running 30 seconds after its window closes, HellForge now ends it and finishes the session as STOP does, so your
+  settings and saves are still kept. Ending the session runner from Task Manager no longer leaves HellForge's backend or
+  Steam helper behind, and Save logs to Desktop lists which of the session's programs were still running.
+- "The game needs a Microsoft runtime this PC does not have" (the game's MSVCR110.dll, from the Visual C++ 2012
+  Redistributable): setup and PLAY now download Microsoft's installer and install it themselves, after Windows asks for
+  permission. You only get the download link when that fails, with the reason. This also covers installations set up
+  with 0.2, a runtime Windows lists as installed whose DLL is gone (it's repaired), a 32-bit copy of the DLL put in
+  System32 by hand, and the newer runtime's VCRUNTIME140_1.dll, which an older 2015-2019 install doesn't have.
+- Every start sat on a black screen for minutes if you ended your sessions with STOP or by closing the launcher: the
+  game saves its shader cache only when it closes by itself, and STOP ended it without asking. STOP now asks the game
+  to close and waits up to 30 seconds for it before ending it (#194).
+- The first start of a new installation built the shader cache from nothing even when the normal game already had
+  one. A new installation now starts from the normal game's shader cache. While the game builds one, the launcher says
+  "Building the shader cache (first start only, this can take a few minutes)..." instead of "Running" (#194).
+- Premium warbond stratagems could be used without owning their warbond, for example from an unlock-all profile. A
+  stratagem's loadout entry was served on its own, without the warbond's token, and the game took it as the stratagem.
+  It now follows the stratagem, and the same goes for a premium weapon's attachments.
 - Sync Inventory failed with "progression.location.warId must be an integer from 0 to 4294967295" when the ship
   wasn't at a planet in the normal game. The import now takes the ship's name, and the profile keeps its own location.
+- Sync Inventory failed at once when Windows' hosts file was read-only, missing, or held open for a moment by another
+  program such as an antivirus scan (#160). The sync now writes a read-only hosts file and sets it read-only again
+  straight after, so it stays read-only even if the sync crashes; creates a missing one and deletes it afterwards; and
+  waits a few seconds for a file another program holds. When the change still can't be made, the sync says why: which
+  program holds the file, or that security software (Microsoft Defender's SettingsModifier:Win32/HostsFileHijack)
+  blocked or undid it. Clean up says the same instead of asking you to edit the hosts file.
 - During Sync Inventory the normal game showed "Could not connect to Easy Anti Cheat network" after the login and
   closed itself, and you had to close it when it stayed open. HellForge now closes the game itself as soon as your
   inventory is in, says so, and removes the sync's hosts line and certificate right away. If it can't close the game,
@@ -198,8 +236,18 @@ On `dev`, since 0.3.0-beta.
   that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
   `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
   `--steamcmd`, default `<out>-steamcmd`), which asks for the password itself (#205).
-- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
-  `--sandbox yes`.
+- A session's `result.json` can have `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung`
+  (its window stopped responding for 15 s) and `gameAtStop` (STOP on a game without a window or with a hung one): each
+  the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it.
+  `jobActiveAtStop` counts what was still in the game's job when the session ended it. The logs zip has
+  `<run>/processes-now.txt`.
+- A session's `result.json` has `shaderCache` (`atStart` and `atEnd`: files, bytes and the newest write; `written`;
+  `seededFromGame` when a new installation took the normal game's), `firstBackendRequestSeconds` (from the game's start
+  to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
+  `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
+  itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
+- `HellForge.Cli mods-stage --sync` loads a synced code or raw-data mod only while it is verified or trusted;
+  `--sandbox yes|no` says whether the session is sandboxed, which a trust marked `"stranger": true` needs.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
   `"stranger": true`.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a

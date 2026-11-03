@@ -112,9 +112,13 @@ public sealed class SessionRunner
     public static string? LatestRun(ISessionPaths paths) =>
         SessionFiles.ReadJson(paths.SessionFile) is { } session && SessionFiles.Text(session, "run") is { Length: > 0 } run ? run : null;
 
-    // The session runner stops the game and the backend, then exits.
-    public static void SignalStop(string runDirectory) =>
-        File.WriteAllText(Path.Combine(runDirectory, "stop-observation.signal"), "stop");
+    // The stop signal's text that ends the game at once, without asking it to close first.
+    public const string StopNowSignal = "stop-now";
+
+    // The session runner stops the game and the backend, then exits. It first asks the game to close and gives it up to
+    // 30 s, so the game saves its shader cache (ShaderCache); now: true ends the game at once.
+    public static void SignalStop(string runDirectory, bool now = false) =>
+        File.WriteAllText(Path.Combine(runDirectory, "stop-observation.signal"), now ? StopNowSignal : "stop");
 
     // Only before a run directory exists: the session runner has not started the game yet.
     public void Kill()

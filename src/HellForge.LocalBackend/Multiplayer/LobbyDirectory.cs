@@ -16,9 +16,9 @@ namespace HellForge.LocalBackend.Multiplayer;
 // edited stats. Long values are split into parts (DirectoryData).
 public sealed record DirectoryListing(ulong Host, IReadOnlyDictionary<string, string> Data);
 
-// What a search asks the directory for: the protocol always; a value a key must equal (the build, privacy), coarse
+// What a search asks the directory for: the wire level always; a value a key must equal (the build, privacy), coarse
 // filters a directory may apply before the backend evaluates the game's whole filter (LobbyFilter).
-public sealed record DirectoryQuery(string Protocol, IReadOnlyDictionary<string, string> Equal, int Count = 50);
+public sealed record DirectoryQuery(string Wire, IReadOnlyDictionary<string, string> Equal, int Count = 50);
 
 public interface ILobbyDirectory
 {
@@ -32,7 +32,7 @@ public interface ILobbyDirectory
 
 public static class DirectoryKeys
 {
-    public const string Protocol = "hellforge", Connection = "hf.connection", Host = "hf.host", LobbyId = "hf.lobbyId", Members = "hf.members",
+    public const string Protocol = "hellforge", Wire = "hf.wire", Connection = "hf.connection", Host = "hf.host", LobbyId = "hf.lobbyId", Members = "hf.members",
         MaxMembers = "hf.maxMembers", Lock = "hf.lock", Record = "hf.lobby", Live = "hf.live", Mods = "hf.mods", Share = "hf.share",
         Digest = "hf.digest", Stats = "hf.stats", Slots = "hf.slots";
 }
@@ -101,9 +101,10 @@ public static class DirectoryData
         return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
 
-    // Does the listing match the query's coarse filters (what a directory may apply itself)?
+    // Does the listing match the query's coarse filters (what a directory may apply itself)? A listing's feature version
+    // is checked by DirectoryService.Valid; the wire level is what a directory can filter on.
     public static bool Matches(DirectoryListing listing, DirectoryQuery query) =>
-        listing.Data.GetValueOrDefault(DirectoryKeys.Protocol) == query.Protocol && query.Equal.All(e => listing.Data.GetValueOrDefault(e.Key) == e.Value);
+        listing.Data.GetValueOrDefault(DirectoryKeys.Wire) == query.Wire && query.Equal.All(e => listing.Data.GetValueOrDefault(e.Key) == e.Value);
 }
 
 // Backends in one process (tests).

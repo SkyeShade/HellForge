@@ -73,7 +73,7 @@ and only HellForge players can see them (CowboyBingus, PR #17). If you'd rather 
 launcher keeps your Public lobbies off the map.
 
 When you join someone, mod sync downloads the host's mods for that session. You can trust a Steam friend's code mods
-after reading a warning, and a stranger's too while your game is sandboxed (otherwise you install them by hand).
+after reading a warning; a stranger's you install by hand unless HellForge has verified them.
 Downloads run at several MB/s: 38 MB takes about 10 seconds now, where it took about 3 minutes before commit 5fb79fe.
 Mods can also list a web address, which MOD SYNC shows as a GET IT button.
 
