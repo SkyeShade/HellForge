@@ -16,5 +16,7 @@
     <Compile Include="../HellForge.Core/CaptureDiagnostics.cs" Link="CaptureDiagnostics.cs" />
     <Compile Include="../HellForge.Core/CaptureState.cs" Link="CaptureState.cs" />
     <Compile Include="../HellForge.Core/CaptureAccess.cs" Link="CaptureAccess.cs" />
+    <Compile Include="../HellForge.Core/CaptureStart.cs" Link="CaptureStart.cs" />
+    <Compile Include="../HellForge.Core/CaptureGameEnd.cs" Link="CaptureGameEnd.cs" />
   </ItemGroup>
 </Project>

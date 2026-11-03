@@ -1289,7 +1289,10 @@
           "type": "f32",
           "meaning": "seconds from the throw to the arrival",
           "verified": false,
-          "source": "stats-schema stratagem.call_in_time"
+          "source": "stats-schema stratagem.call_in_time",
+          "applies": "now",
+          "appliesVerified": true,
+          "appliesSource": "read from the row at each call (0x879900 from 0xB9ABE8): the next beacon (game.dll 25480438)"
         },
         "free_spot_radius": {
           "offset": 88,
@@ -1310,7 +1313,10 @@
           "type": "f32",
           "meaning": "seconds before it can be called again",
           "verified": true,
-          "source": "native/mod-loader/stratagems.c; HD2Runtime type library (StratagemInfo, 400 bytes); stats-schema stratagem.cooldown"
+          "source": "native/mod-loader/stratagems.c; HD2Runtime type library (StratagemInfo, 400 bytes); stats-schema stratagem.cooldown",
+          "applies": "now",
+          "appliesVerified": true,
+          "appliesSource": "read from the row at each call (GetCooldown 0x8796A0 from 0xB9AAB0): applies from the next call; a running cooldown keeps its end (game.dll 25480438)"
         },
         "origin_type": {
           "offset": 112,
@@ -1420,7 +1426,7 @@
       },
       "applies": "mission",
       "appliesVerified": false,
-      "appliesSource": "a loadout's stratagems are set up when the mission starts"
+      "appliesSource": "the rest is inferred; uses (+80) are copied into each player's stratagem record at the hellpod launch (0xAD9020), so they apply from the next mission (game.dll 25480438)"
     },
     "ExplosionSettings": {
       "component": "ExplosionSettings",
@@ -6415,28 +6421,40 @@
           "type": "f32",
           "meaning": "Orbital attack duration",
           "verified": false,
-          "source": "stats-schema orbital.duration"
+          "source": "stats-schema orbital.duration",
+          "applies": "respawn",
+          "appliesVerified": true,
+          "appliesSource": "read when the strike is made (0x5F07C1): the next call-in (game.dll 25480438)"
         },
         "movement_speed": {
           "offset": 468,
           "type": "f32",
           "meaning": "Orbital tracking speed",
           "verified": false,
-          "source": "stats-schema orbital.movement_speed"
+          "source": "stats-schema orbital.movement_speed",
+          "applies": "now",
+          "appliesVerified": true,
+          "appliesSource": "read every frame (0x5F4229), also by a laser already firing; in game 2026-11-03 (movement speed) (game.dll 25480438)"
         },
         "search_radius": {
           "offset": 472,
           "type": "f32",
           "meaning": "Orbital search radius",
           "verified": false,
-          "source": "stats-schema orbital.search_radius"
+          "source": "stats-schema orbital.search_radius",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "read at each search (0x5F100C), also by a laser already firing; in game 2026-11-03 (movement speed) (game.dll 25480438)"
         },
         "tick_interval": {
           "offset": 480,
           "type": "f32",
           "meaning": "Orbital damage tick interval",
           "verified": false,
-          "source": "stats-schema orbital.tick_interval"
+          "source": "stats-schema orbital.tick_interval",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "read at each damage tick (0x5F4E2C), also by a laser already firing; in game 2026-11-03 (movement speed) (game.dll 25480438)"
         },
         "fire_delay": {
           "offset": 540,
@@ -6450,7 +6468,10 @@
           "type": "f32",
           "meaning": "Target re-search interval",
           "verified": false,
-          "source": "stats-schema orbital.retarget_interval"
+          "source": "stats-schema orbital.retarget_interval",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "read every frame (0x5F3656), also by a laser already firing; in game 2026-11-03 (movement speed) (game.dll 25480438)"
         }
       }
     },

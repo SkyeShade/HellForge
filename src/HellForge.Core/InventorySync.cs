@@ -13,9 +13,10 @@ namespace HellForge.Core;
 // The capture proxy (app/capture/HellForge.CaptureProxy.exe) runs elevated: it maps the live API host to loopback in the
 // hosts file, trusts a per-run CA, terminates TLS for the normal game's login and, with that login's session, reads
 // /api/Progression and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as
-// the inventory is in, keeps forwarding the game's traffic until the game exits, and then removes the hosts line and the
-// CA. The files land in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/
-// once the capture's state (CaptureState) says they are sealed, while the game plays on.
+// the inventory is in, then closes the game the sync opened (CaptureGameEnd: left running, it showed Easy Anti-Cheat's
+// "Could not connect" and closed itself), and once the game has exited removes the hosts line and the CA. The files land
+// in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/ once the
+// capture's state (CaptureState) says they are sealed.
 public static class InventorySync
 {
     public const string SnapshotFolder = "account-snapshot";
@@ -104,9 +105,17 @@ public static class InventorySync
     }
 
     // Starts the proxy elevated (one UAC prompt), sealing what it captures for steamAccount. Blocks until the prompt is
-    // answered, so call it off the UI thread. Returns null when elevation was declined.
-    public static Process? StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount) =>
-        StartElevated(proxyPath, CaptureProxyArguments(syncDir, snapshotDir, steamAccount, CurrentUserSid()));
+    // answered, so call it off the UI thread. Without a process, Refused says why (CaptureStart.FromStartError): the
+    // prompt declined, or Windows refusing the file (a security program, an application control policy).
+    public static (Process? Process, CaptureProblem Refused, string? Detail) StartCaptureProxy(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount)
+    {
+        var arguments = CaptureProxyArguments(syncDir, snapshotDir, steamAccount, CurrentUserSid());
+        // An earlier attempt's failure must not be read as this one's.
+        File.Delete(Path.Combine(syncDir, CaptureStart.FailureFile));
+        var started = TryStartElevated(proxyPath, arguments);
+        return started.Process != null ? (started.Process, CaptureProblem.None, null)
+            : (null, CaptureStart.FromStartError(started.Error), started.Message);
+    }
 
     // The proxy's arguments. launcherSid is this launcher's Windows account: on a standard account the UAC prompt runs the
     // capture as the administrator who answered it, and the capture makes the sync folder private to its own account, so
@@ -121,7 +130,8 @@ public static class InventorySync
             "--progression", Path.Combine(syncDir, ProgressionFile),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
-            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture)];
+            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
+            "--close-game"];
         return launcherSid != null && CaptureAccess.IsSid(launcherSid) ? [.. arguments, "--grant-sid", launcherSid] : arguments;
     }
 
@@ -189,20 +199,31 @@ public static class InventorySync
         "answered the administrator prompt, and it could not share the folder with your account. Sync again; if this repeats, " +
         "sign in to that administrator account and send the newest logs\\sync-... folder's proxy.log.";
 
-    // Removes a leftover hosts line and CA (one UAC prompt). Null when elevation was declined.
-    public static Process? StartCleanup(string proxyPath) => StartElevated(proxyPath, ["--cleanup"]);
+    // How long after the capture is taken the game may still run before the player is asked to close it: the capture
+    // closes it within its grace and end waits (CaptureGameEnd), so a game still open after this one is one it could not end.
+    public static readonly TimeSpan CloseGameWait = TimeSpan.FromSeconds(20);
 
-    static Process? StartElevated(string path, string[] arguments)
+    // Once the capture is taken: what to tell the player about the game the sync opened, or null for nothing (yet).
+    public static string? GameAfterCapture(DateTime takenUtc, DateTime nowUtc, bool gameRunning) =>
+        !gameRunning ? null
+        : nowUtc - takenUtc < CloseGameWait ? null
+        : "HellForge could not close HELLDIVERS 2 after the sync: close it yourself. The sync is already saved; the hosts line and certificate are removed once the game closes.";
+
+    // Removes a leftover hosts line and CA (one UAC prompt), its log and any hosts failure (CaptureHosts.ReadFailure) in
+    // logDir. Null when elevation was declined.
+    public static Process? StartCleanup(string proxyPath, string logDir) => TryStartElevated(proxyPath, ["--cleanup", "--evidence", logDir]).Process;
+
+    static (Process? Process, int Error, string? Message) TryStartElevated(string path, string[] arguments)
     {
         var start = new ProcessStartInfo(path) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         try
         {
-            return Process.Start(start);
+            return (Process.Start(start), 0, null);
         }
-        catch (Win32Exception)
+        catch (Win32Exception error)
         {
-            return null;
+            return (null, error.NativeErrorCode, $"{error.Message} (Windows error {error.NativeErrorCode})");
         }
     }
 

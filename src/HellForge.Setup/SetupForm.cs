@@ -12,12 +12,15 @@ sealed class SetupForm : Form
     const string ProgramName = "HellForge.exe";
     readonly TextBox folder = new() { Dock = DockStyle.Fill };
     readonly Button browse = new() { Text = "Browse...", AutoSize = true };
-    readonly Label note = new() { AutoSize = true, MaximumSize = new(560, 0), ForeColor = Color.DarkOrange };
+    // UseMnemonic off: a note may name "App & browser control", whose & a label would take for a mnemonic
+    readonly Label note = new() { AutoSize = true, MaximumSize = new(560, 0), ForeColor = Color.DarkOrange, UseMnemonic = false };
     readonly ProgressBar progress = new() { Dock = DockStyle.Fill, Maximum = 1000 };
     readonly Label status = new() { AutoSize = true, MaximumSize = new(560, 0) };
     readonly Button install = new() { Text = "Install", AutoSize = true, MinimumSize = new(96, 0) };
     readonly Button cancel = new() { Text = "Cancel", AutoSize = true, MinimumSize = new(96, 0) };
     bool busy;
+    // Smart App Control blocks HellForge's unsigned programs (SmartAppControl): said before installing.
+    readonly SmartAppControlState appControl = SmartAppControl.Current;
 
     public SetupForm()
     {
@@ -38,10 +41,16 @@ sealed class SetupForm : Form
         Row(new Label { Text = "Install HellForge", AutoSize = true, Font = new Font(Font.FontFamily, 14f, FontStyle.Bold), Margin = new(0, 0, 0, 8) });
         Row(new Label
         {
-            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 12),
+            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 8),
             Text = "HellForge runs HELLDIVERS 2 locally against a backend on this PC, with co-op over Steam. Setup unpacks it into the folder below; " +
                 "the launcher then copies the game from your own Steam library (about 24 GB) and finishes setting up. Everything " +
                 "HellForge stores stays inside this folder."
+        });
+        Row(new Label
+        {
+            AutoSize = true, MaximumSize = new(560, 0), Margin = new(0, 0, 0, 12), ForeColor = SystemColors.GrayText,
+            Text = "HellForge is an independent fan project, not affiliated with or endorsed by Arrowhead Game Studios or Sony " +
+                "Interactive Entertainment. HELLDIVERS is a trademark of Sony Interactive Entertainment."
         });
         Row(new Label { Text = "Install folder", AutoSize = true });
         layout.Controls.Add(folder);
@@ -117,11 +126,15 @@ sealed class SetupForm : Form
         {
             error = "Enter a valid folder path.";
         }
-        note.Text = Privacy.Scrub(error.Length > 0 ? error : message);
+        note.Text = Privacy.Scrub(error.Length > 0 ? error : WithAppControlWarning(message));
         note.ForeColor = error.Length > 0 ? Color.Firebrick : Color.DarkOrange;
         install.Enabled = error.Length == 0 && !busy;
         return error.Length == 0;
     }
+
+    // The folder's note, and after it Smart App Control's warning while it would block HellForge
+    string WithAppControlWarning(string message) => SmartAppControl.Warning(appControl) is not { } warning ? message
+        : message.Length > 0 ? message + "\n\n" + warning : warning;
 
     // Outside OneDrive and free of links: an installation refuses linked paths (LocalInstall.NoLinks), and OneDrive's
     // folders are links (cloud files) on most PCs.
@@ -148,6 +161,8 @@ sealed class SetupForm : Form
             MessageBox.Show(this, "Close HellForge (launcher and any session) first.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        if (appControl == SmartAppControlState.On && MessageBox.Show(this, SmartAppControl.Warning(appControl) + "\n\nInstall HellForge anyway?", Text,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         busy = true;
         install.Enabled = browse.Enabled = folder.Enabled = cancel.Enabled = false;
         try
@@ -166,7 +181,11 @@ sealed class SetupForm : Form
         {
             busy = false;
             status.Text = "";
-            MessageBox.Show(this, "Setup could not finish: " + exception.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // HellForge is unpacked, but Windows refused to start its launcher: say who and why rather than Windows' one line
+            var why = exception is System.ComponentModel.Win32Exception blocked && SmartAppControl.IsBlock(blocked.NativeErrorCode)
+                ? "HellForge is unpacked, but its launcher could not start. " + SmartAppControl.BlockedMessage(Path.Combine(target, ProgramName), appControl)
+                : "Setup could not finish: " + exception.Message;
+            MessageBox.Show(this, why, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             browse.Enabled = folder.Enabled = cancel.Enabled = true;
             Check();
         }

@@ -587,12 +587,12 @@ typedef struct HfStratagemSettings
     uint32_t code_length;                        /* +0x48 how many directions [mission?] */
     uint8_t _unknown_4C[4];
     uint32_t uses;                               /* +0x50 uses per mission (0xFFFFFFFF unlimited) [mission?] */
-    float call_in_time;                          /* +0x54 seconds from the throw to the arrival (unverified) [mission?] */
+    float call_in_time;                          /* +0x54 seconds from the throw to the arrival (unverified) [now] */
     float free_spot_radius;                      /* +0x58 radius searched for a free landing spot (unverified) [mission?] */
     uint8_t _unknown_5C[4];
     float linger;                                /* +0x60 seconds it lingers after activating (unverified) [mission?] */
     uint8_t _unknown_64[4];
-    float cooldown;                              /* +0x68 seconds before it can be called again [mission?] */
+    float cooldown;                              /* +0x68 seconds before it can be called again [now] */
     uint8_t _unknown_6C[4];
     uint32_t origin_type;                        /* +0x70 where it comes from (StratagemOriginType) (unverified) [mission?] */
     uint32_t call_in_type;                       /* +0x74 throw, exact location, LZ beacon or hellpad (StratagemCallInType) (unverified) [mission?] */
@@ -3213,15 +3213,15 @@ HF_ASSERT_OFFSET(HfHiveMind, shared_cooldown_duration_secondary_progress_5, 952)
 typedef struct HfOrbitalAbility
 {
     uint8_t _unknown_00[460];
-    float duration;                              /* +0x1CC Orbital attack duration (unverified) [respawn?] */
+    float duration;                              /* +0x1CC Orbital attack duration (unverified) [respawn] */
     uint8_t _unknown_1D0[4];
-    float movement_speed;                        /* +0x1D4 Orbital tracking speed (unverified) [respawn?] */
-    float search_radius;                         /* +0x1D8 Orbital search radius (unverified) [respawn?] */
+    float movement_speed;                        /* +0x1D4 Orbital tracking speed (unverified) [now] */
+    float search_radius;                         /* +0x1D8 Orbital search radius (unverified) [now?] */
     uint8_t _unknown_1DC[4];
-    float tick_interval;                         /* +0x1E0 Orbital damage tick interval (unverified) [respawn?] */
+    float tick_interval;                         /* +0x1E0 Orbital damage tick interval (unverified) [now?] */
     uint8_t _unknown_1E4[56];
     float fire_delay;                            /* +0x21C Shot delay (unverified) [respawn?] */
-    float retarget_interval;                     /* +0x220 Target re-search interval (unverified) [respawn?] */
+    float retarget_interval;                     /* +0x220 Target re-search interval (unverified) [now?] */
     uint8_t _unknown_224[4];
 } HfOrbitalAbility;
 HF_ASSERT_SIZE(HfOrbitalAbility, 552);
