@@ -203,7 +203,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get mods that run code or carry unchecked data only if their game is sandboxed and they trust them.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get only mods HellForge checks or has verified: never ones that run code or carry unchecked data.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",

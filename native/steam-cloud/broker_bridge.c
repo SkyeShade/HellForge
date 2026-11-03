@@ -92,7 +92,8 @@ static size_t StringEnd(const char* json, size_t length, size_t i)
 }
 
 /* A string json[start..end) at depth: -1 when it is not this top-level key or no ':' follows it. A choice value is 1
- * for the string "on" and 0 for anything else the key holds; a legacy value is whether it is true. */
+ * for the string "on" and 0 for anything else the key holds; a legacy value is 1 for true, 0 for false and -1 for
+ * anything else (ModSettings.ReadStrangers). */
 static int StrangersValue(const char* json, size_t length, size_t start, size_t end, int depth, const char* key, int choice)
 {
     size_t keyLength = strlen(key);
@@ -100,7 +101,9 @@ static int StrangersValue(const char* json, size_t length, size_t start, size_t 
     size_t at = SkipSpace(json, length, end + 1);
     if (at >= length || json[at] != ':') return -1;
     at = SkipSpace(json, length, at + 1);
-    if (!choice) return length - at >= 4 && memcmp(json + at, "true", 4) == 0;
+    if (!choice)
+        return length - at >= 4 && memcmp(json + at, "true", 4) == 0 ? 1
+            : length - at >= 5 && memcmp(json + at, "false", 5) == 0 ? 0 : -1;
     if (at >= length || json[at] != '"') return 0;
     size_t text = at + 1, textEnd = StringEnd(json, length, text);
     return textEnd - text == 2 && memcmp(json + text, "on", 2) == 0;
@@ -130,9 +133,12 @@ static int FindTopLevel(const char* json, size_t length, const char* key, int ch
 int BrokerStrangersIn(const char* json, size_t length)
 {
     int choice = FindTopLevel(json, length, "strangers", 1);
-    // The broker only runs for a sandboxed session, where no explicit choice means the sandbox default: on. A legacy
-    // playWithStrangers true also lands here; its false was written for everyone and was not a choice.
-    return choice >= 0 ? choice : 1;
+    if (choice >= 0) return choice;
+    // A legacy playWithStrangers keeps its value, false too: older saves wrote false for players who never chose, but
+    // it cannot tell them from one who turned strangers off, and off cannot let a stranger in unasked.
+    int legacy = FindTopLevel(json, length, "playWithStrangers", 0);
+    // The broker only runs for a sandboxed session, where no choice at all means the sandbox default: on.
+    return legacy >= 0 ? legacy : 1;
 }
 
 /* The settings file as the backend finds it (ModSettings: hellforge-mods.json, else the older bts-mods.json). */

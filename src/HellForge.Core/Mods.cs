@@ -537,37 +537,18 @@ public static partial class ModCatalog
     // bindings, a cache: each player's own); a zip that cannot be read again is compared by its folder. A bundled mod (the
     // in-game editor) by the files HellForge ships for it, not what the player saved beside them. A source mod by its
     // sources: the DLL in its folder (an IDE's build) is not what loads (ModBuilds).
-    // A mod without code cannot read a file by name, so documentation, pictures and licences are not part of it: only what
-    // HellForge or the game opens (data/, the manifests, the stats file, the data spec and its inputs, src/) is counted.
+    // Every other file counts, documentation and pictures too: HellForge 0.3 (hellforge-mp-8) hashes them, and synced
+    // copies and trusted entries are kept by this hash, so leaving them out would split 0.3 players and orphan both.
     internal static IEnumerable<(string Path, string? Sha256)> DigestFiles(ModManifest mod)
     {
         var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
         var shipped = BundledMods.ShippedFiles(mod.Folder);
         var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
-        var specInputs = mod.HasDataSpec ? DataSpecs.Load(mod.Folder)?.Inputs.ToHashSet(StringComparer.OrdinalIgnoreCase) : null;
         return files.Where(f => !IsWorkspaceFile(f))
             .Where(f => shipped == null || shipped.Contains(f))
             .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
-            .Where(f => mod.HasCode || mod.HasSource || !UnloadedFile(f, specInputs))
             .Order(StringComparer.Ordinal)
             .Select(f => (f, zipped?[f]));
-    }
-
-    // Documentation, pictures and licences that HellForge and the game never load. A data spec's own inputs (its PNG and
-    // OBJ files) are read by ModDataBuilder and stay counted, as does everything under data/ and src/ and the files that
-    // make up the mod.
-    static readonly string[] UnloadedExtensions = [".md", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg", ".psd", ".xcf"];
-    static readonly string[] UnloadedNames = ["LICENSE", "COPYING", "README", "CHANGELOG", "NOTICE"];
-
-    static bool UnloadedFile(string relative, IReadOnlySet<string>? specInputs)
-    {
-        if (specInputs?.Contains(relative) == true) return false;
-        if (relative.StartsWith("data/", StringComparison.OrdinalIgnoreCase) || relative.StartsWith("src/", StringComparison.OrdinalIgnoreCase)) return false;
-        var name = Path.GetFileName(relative);
-        if (name.Equals(ManifestName, StringComparison.OrdinalIgnoreCase) || name.Equals(LegacyManifestName, StringComparison.OrdinalIgnoreCase) ||
-            name.Equals(StatsData.FileName, StringComparison.OrdinalIgnoreCase) || name.Equals(DataSpecs.FileName, StringComparison.OrdinalIgnoreCase)) return false;
-        if (UnloadedNames.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) return true;
-        return UnloadedExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
     }
 
     internal static bool SourceBuildOutput(ModManifest mod, string relative) =>
@@ -909,8 +890,8 @@ public static class ModSettings
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
         public bool HostStats { get; set; }
-        // The choice lives under "strangers" ("on"/"off"); a legacy "playWithStrangers" true is a deliberate old choice,
-        // while legacy false was written by every settings save and means never chosen. Null: never chosen.
+        // The choice lives under "strangers" ("on"/"off"); a legacy "playWithStrangers" keeps its value (ReadStrangers).
+        // Null: never chosen.
         public bool? PlayWithStrangers { get; set; }
         // The first session that ran with strangers on by default showed its warning, in the launcher's Play page.
         public bool StrangersWarned { get; set; }
@@ -972,15 +953,18 @@ public static class ModSettings
             percent is >= 0 and <= 100) state.ForgeCreditChance = percent;
     }
 
-    // The stranger choice: "strangers" wins when present; a legacy playWithStrangers true was a deliberate on, while a
-    // legacy false was written for everyone who saved any setting before the choice existed, so it means not chosen.
+    // The stranger choice: "strangers" wins when present. A legacy playWithStrangers keeps its value: true was a deliberate
+    // on, and false stays off. Earlier versions wrote false for everyone who saved any setting, so it cannot tell a player
+    // who turned strangers off from one who never chose, and off is the side that cannot let a stranger in unasked: the
+    // sandboxed default is only for settings without either key.
     static bool? ReadStrangers(JsonElement root)
     {
         if (root.TryGetProperty("strangers", out var current))
             return current.ValueKind == JsonValueKind.String
                 ? current.GetString() switch { "on" => true, "off" => false, _ => null }
                 : null;
-        return root.TryGetProperty("playWithStrangers", out var legacy) && legacy.ValueKind == JsonValueKind.True ? true : null;
+        if (!root.TryGetProperty("playWithStrangers", out var legacy)) return null;
+        return legacy.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null };
     }
 
     static void ReadOrder(JsonElement root, State state)
@@ -1089,7 +1073,7 @@ public static class ModSettings
             ["hostStats"] = state.HostStats
         };
         // Written only when the player chose, so "never chosen" survives a round trip and the sandbox default applies. The
-        // old playWithStrangers key is not written; a legacy true is migrated to "on" by the next save.
+        // old playWithStrangers key is not written; a legacy value is migrated to "on"/"off" by the next save.
         if (state.PlayWithStrangers is { } chosen) root["strangers"] = chosen ? "on" : "off";
         if (state.StrangersWarned) root["strangersWarned"] = true;
         if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;

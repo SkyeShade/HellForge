@@ -203,8 +203,8 @@ static class ModSyncTests
                 !ModSettings.LastWritten.Contains("\"strangers\":") && !ModSettings.LastWritten.Contains("playWithStrangers"),
                 "Use default removes the choice, so the sandbox default applies again.");
 
-            // Older files: the old key was written for everyone, so false means never chosen; a deliberate true still
-            // counts. The new key wins when both exist.
+            // Older files: the old key keeps its value, false too (it may be a player's off, so it never turns into
+            // the sandbox's on). The new key wins when both exist.
             var legacy = Path.Combine(root, "sync-strangers-legacy");
             Directory.CreateDirectory(legacy);
             void Legacy(string json)
@@ -212,7 +212,7 @@ static class ModSyncTests
                 File.WriteAllText(Path.Combine(legacy, ModSettings.FileName), json);
             }
             Legacy("""{"playWithStrangers": false}""");
-            check(ModSettings.PlayWithStrangers(legacy) == null, "A legacy false became a choice.");
+            check(ModSettings.PlayWithStrangers(legacy) == false, "A legacy false (strangers turned off before) lost its choice.");
             Legacy("""{"playWithStrangers": true}""");
             check(ModSettings.PlayWithStrangers(legacy) == true, "A legacy true was lost.");
             Legacy("""{"strangers": "on"}""");
@@ -295,9 +295,9 @@ static class ModSyncTests
             check(wireSet.Mods.Single(m => m.Id == "test.patch").Class == ModClass.Raw && wireSet.Mods.Single(m => m.Id == "test.stats").Tier == CoopTier.PerPlayer &&
                 wireSet.Mods.Single(m => m.Id == "test.ammo").Tier == CoopTier.Shared, "The classes and tiers go over the wire.");
 
-            // The plan: unverified, content downloads and the rest waits for the player's trust (a Steam friend's, or a
-            // stranger's in a sandboxed session) or is theirs to install (a stranger's, unsandboxed); verified, all of it
-            // downloads from anyone. The class is the same for every host.
+            // The plan: unverified, content downloads and the rest waits for the player's trust (a Steam friend's) or is
+            // theirs to install (a stranger's, whatever the sandbox: the host serves those to friends alone); verified, all
+            // of it downloads from anyone. The class is the same for every host.
             var none = new ModSet("none", []);
             var plan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false));
             foreach (var (id, kind) in expected)
@@ -305,9 +305,10 @@ static class ModSyncTests
             var strangerPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false, HostIsFriend: false));
             foreach (var (id, kind) in expected)
                 check(strangerPlan.Items.Single(i => i.Mod.Id == id).Action == (kind == ModClass.Content ? SyncAction.Download : SyncAction.Manual), $"{id}: a stranger's plan, unverified.");
-            var sandboxedPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false, HostIsFriend: false, Sandboxed: true));
+            var strangerTrusted = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => false, HostIsFriend: false, Trusted: (_, _) => true));
             foreach (var (id, kind) in expected)
-                check(sandboxedPlan.Items.Single(i => i.Mod.Id == id).Action == (kind == ModClass.Content ? SyncAction.Download : SyncAction.Trust), $"{id}: a stranger's plan, sandboxed.");
+                check(strangerTrusted.Items.Single(i => i.Mod.Id == id).Action == (kind == ModClass.Content ? SyncAction.Download : SyncAction.Manual),
+                    $"{id}: a stranger's plan, trusted before (in a sandboxed session): still the player's to install.");
             var strangerVerified = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (_, _) => true, HostIsFriend: false));
             check(strangerVerified.Items.All(i => i.Action == SyncAction.Download), "Verified raw data and code download from a stranger too, unsandboxed.");
             var verifiedPlan = ModSyncPlan.Make(set, true, none, (_, _) => null, new HashSet<string>(), new SyncTrust(Verified: (id, hash) => set.Find(id, hash) != null));
@@ -377,7 +378,7 @@ static class ModSyncTests
                 "The plan made a per-player mod a download or an off: " + string.Join(", ", noTiers.Items.Select(i => i.Mod.Id + " " + i.Action)));
         });
 
-        test("Mod sync: a Steam friend's unverified code and raw mods wait for the player's trust, that exact content; a stranger's too in a sandboxed session, else the player installs them", () =>
+        test("Mod sync: a Steam friend's unverified code and raw mods wait for the player's trust, that exact content; a stranger's the player installs", () =>
         {
             var (hostMods, _) = ModCatalog.Load(Mods(root, "sync-trust-host"));
             var host = ModSet.Of(ModCatalog.LoadOrder(hostMods));
@@ -386,8 +387,8 @@ static class ModSyncTests
             var none = new ModSet("none", []);
             var nothing = new HashSet<string>();
             SyncAction A(ModSyncPlan p, string id) => p.Items.Single(i => i.Mod.Id == id).Action;
-            ModSyncPlan Plan(Func<string, string, bool> trusted, bool friend = true, bool shares = true, bool sandboxed = false) =>
-                ModSyncPlan.Make(host, shares, none, (_, _) => null, nothing, new SyncTrust(Verified: (_, _) => false, HostIsFriend: friend, Trusted: trusted, Sandboxed: sandboxed));
+            ModSyncPlan Plan(Func<string, string, bool> trusted, bool friend = true, bool shares = true) =>
+                ModSyncPlan.Make(host, shares, none, (_, _) => null, nothing, new SyncTrust(Verified: (_, _) => false, HostIsFriend: friend, Trusted: trusted));
 
             var untrusted = Plan((_, _) => false);
             check(A(untrusted, "test.prebuilt") == SyncAction.Trust && A(untrusted, "test.texture") == SyncAction.Trust && A(untrusted, "test.ammo") == SyncAction.Download &&
@@ -395,14 +396,9 @@ static class ModSyncTests
                 "A friend's code and raw data wait for trust; content downloads.");
             var stranger = Plan((_, _) => true, friend: false);
             check(A(stranger, "test.prebuilt") == SyncAction.Manual && A(stranger, "test.texture") == SyncAction.Manual && stranger.Verdict == SyncVerdict.Unjoinable,
-                "Unsandboxed, a stranger's code is never offered for trust, even trusted before.");
-            var sandboxed = Plan((_, _) => false, friend: false, sandboxed: true);
-            check(A(sandboxed, "test.prebuilt") == SyncAction.Trust && A(sandboxed, "test.texture") == SyncAction.Trust && A(sandboxed, "test.ammo") == SyncAction.Download &&
-                sandboxed.Verdict == SyncVerdict.Trust, "Sandboxed, a stranger's code and raw data wait for trust.");
-            check(Plan((id, hash) => id == prebuilt.Id && hash == prebuilt.Hash, friend: false, sandboxed: true) is var trustedSandboxed &&
-                A(trustedSandboxed, "test.prebuilt") == SyncAction.Download && A(trustedSandboxed, "test.texture") == SyncAction.Trust, "Sandboxed, a stranger's trusted mod downloads.");
+                "A stranger's code is never offered for trust, even trusted before: the host would not send it.");
+            check(A(Plan((_, _) => false, friend: false), "test.ammo") == SyncAction.Download, "A stranger's content still downloads.");
             check(A(Plan((_, _) => true, shares: false), "test.prebuilt") == SyncAction.Manual, "A host that does not share: nothing to trust.");
-            check(A(Plan((_, _) => true, friend: false, shares: false, sandboxed: true), "test.prebuilt") == SyncAction.Manual, "Nor sandboxed.");
             var one = Plan((id, hash) => id == prebuilt.Id && hash == prebuilt.Hash);
             check(A(one, "test.prebuilt") == SyncAction.Download && A(one, "test.texture") == SyncAction.Trust && one.Verdict == SyncVerdict.Trust, "One trusted, one to go.");
             var otherHash = Plan((id, hash) => id == prebuilt.Id && hash != prebuilt.Hash);
@@ -799,14 +795,20 @@ static class ModSyncTests
             var read = ModSyncSession.Read(file);
             check(read.Digest == host.Digest && read.Mods.Count == 2 && read.HostName == "Host", "The session file round-trips.");
             var (catalog, _) = ModCatalog.Load(install.Mods);
-            var (order, problem) = read.Resolve(install.Mods, catalog);
+            // A stored code or raw mod (the texture is a raw data patch) loads only while it is verified or trusted: taken off
+            // the verified list and never trusted, it is refused, whatever it was stored with.
+            var (revoked, revokedWhy) = read.Resolve(install.Mods, catalog);
+            check(revoked == null && revokedWhy!.Contains("test.texture") && revokedWhy.Contains("no longer on HellForge's verified list"),
+                "A stored raw mod neither verified nor trusted is not played: " + revokedWhy);
+            bool TextureVerified(string id, string hash) => id == texture.Id && hash == texture.Hash;
+            var (order, problem) = read.Resolve(install.Mods, catalog, verified: TextureVerified);
             if (order == null) throw new Exception("Not resolved: " + problem);
             check(order.Select(m => m.Id).SequenceEqual(["test.look", "test.ammo", "test.texture", ModCatalog.LocalStatsId]) && order.All(m => m.Enabled),
                 "Cosmetic first, then the host's in its order (ammo loads before texture there), the player's own gameplay mod left out: " + string.Join(", ", order.Select(m => m.Id)));
             check(ModSet.Of(order).Digest == host.Digest, "The session's digest is the host's.");
 
-            // Trusted from a stranger (in a sandboxed session): the synced copy runs only in a sandboxed one; a friend's trust
-            // of the same content lets it run either way.
+            // Trusted from a stranger (an earlier build's sandboxed session): the synced copy runs only in a sandboxed one; a
+            // friend's trust of the same content lets it run either way.
             ModSettings.SetTrusted(install.Mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Stranger (76561190000000002)", "2026-10-27T10:00:00.0000000Z", Stranger: true));
             var (unsandboxed, sandboxWhy) = read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods);
             check(unsandboxed == null && sandboxWhy!.Contains("sandboxed"), "A stranger's trusted mod is not played unsandboxed: " + sandboxWhy);
@@ -814,6 +816,20 @@ static class ModSyncTests
             ModSettings.SetTrusted(install.Mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Friend (76561190000000001)", "2026-10-27T11:00:00.0000000Z"));
             check(read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods).LoadOrder != null, "Trusted again from a friend, it is played unsandboxed too.");
             ModSettings.Untrust(install.Mods, texture.Id, texture.Hash);
+
+            // The plan agrees with Resolve: the store's copy is here only while it would load.
+            var joiner = new ModSet("none", []);
+            var locator = new ModLocator(install.Mods);
+            SyncAction Planned(Func<string, string, bool>? trusted, Func<string, string, bool> verified) =>
+                ModSyncPlan.Make(host, true, joiner, locator.Find, new HashSet<string>(), new SyncTrust(verified, true, trusted, locator.ClassOf))
+                    .Items.Single(i => i.Mod.Id == texture.Id).Action;
+            check(Planned(null, (_, _) => false) == SyncAction.Trust, "A stored raw mod neither verified nor trusted is not here: it waits for trust.");
+            check(Planned(null, TextureVerified) == SyncAction.Have, "Verified, the stored copy is here.");
+            check(Planned((id, hash) => id == texture.Id && hash == texture.Hash, (_, _) => false) == SyncAction.Have, "Trusted, the stored copy is here.");
+            check(ModSyncPlan.Make(host, true, joiner, locator.Find, new HashSet<string>(), new SyncTrust((_, _) => false, true, null))
+                .Items.Single(i => i.Mod.Id == texture.Id).Action == SyncAction.Trust, "Without a class reader, the plan reads the copy's class itself.");
+            check(ModSyncPlan.Make(host, true, joiner, locator.Find, new HashSet<string>(), new SyncTrust((_, _) => false, true, null, locator.ClassOf))
+                .Items.Single(i => i.Mod.Id == "test.ammo").Action == SyncAction.Have, "An installed mod is the player's own: here whatever the lists say.");
 
             Directory.Delete(SyncedStore.Find(install.Mods, texture.Id, texture.Hash)!, recursive: true);
             var (missing, why) = read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods);

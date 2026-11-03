@@ -55,23 +55,15 @@ On `dev`, since 0.3.0-beta.
   - Stats-only mods, and mods whose patches change only textures, materials, sounds, fonts or text, are now each
     player's own ("PER PLAYER" on the Mods page). Joining a host who runs different ones works, and a short note
     names them. A mod's author can set this with the manifest's new `"coop"` field.
-  - READMEs, licences, pictures and documents in a mod without code no longer split players.
   - HellForge's bundled mods count by their co-op level, not their files, so most HellForge updates no longer split
     players.
   - **Play with strangers is now on by default while your game is sandboxed**, and off otherwise. A choice you make in
-    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. The first time it applies, the launcher
-    shows the stranger warning once.
+    Settings > MULTIPLAYER still wins, and "Use default" goes back to it. A setting an older HellForge saved is kept
+    (they saved off unless you turned it on): "Use default" switches to the new default. The first time the default applies, the launcher shows the stranger warning once.
   - Players on HellForge versions from before this change can't join you, and you can't join them.
-- **Mod sync from players who aren't your Steam friends.** With the sandbox on (Settings > Sandbox), you can TRUST a
-  stranger's mods that run code or carry unchecked data, after a warning that says what the sandbox doesn't stop: the
-  mod can't change your files or reach the internet, but it can read your files and send them to the host through the
-  game. A mod you trusted this way runs only while the sandbox is on, and the Mods page marks it "sandbox only".
-  Without the sandbox, you still install a stranger's mods yourself. Lobbies running such mods now show on the Galactic
-  Map when you're sandboxed.
+- A code or raw-data mod that mod sync downloaded now plays only while HellForge's verified list names it or you trust
+  it: one taken off the list, or one you untrusted, waits for your trust again.
 - Mods on HellForge's verified list download from any host, not just Steam friends.
-- When you host with "Share my gameplay mods" on, mods that run code or carry unchecked data also go to players who
-  aren't your Steam friends, if their game is sandboxed and they trust them. Turn sharing off before hosting a Public
-  lobby with mod sources you haven't released. A host still on 0.3.0-beta shares them with Steam friends only.
 - `.rar` and `.7z` mods work everywhere: HellForge unpacks them itself, where it used Windows' `tar`, which could only
   on Windows 11. A `.rar` or `.7z` dropped straight into the mods folder is unpacked into a folder too, instead of being
   ignored.
@@ -224,8 +216,8 @@ On `dev`, since 0.3.0-beta.
   to its first backend request) and, after a stop asked for, `gameClose` (`outcome`, `windows`, `closedByItself`,
   `seconds`). A stop asked for (`HellForge.Cli stop`, the stop signal) now gives the game up to 30 seconds to close by
   itself, unless it has no window or a hung one; `stop --now yes` (signal text `stop-now`) ends it at once.
-- `HellForge.Cli mods-stage --sandbox yes|no`: with `--sync`, a mod trusted only from a stranger loads only with
-  `--sandbox yes`.
+- `HellForge.Cli mods-stage --sync` loads a synced code or raw-data mod only while it is verified or trusted;
+  `--sandbox yes|no` says whether the session is sandboxed, which a trust marked `"stranger": true` needs.
 - The backend's `mod-sync.json` offer has `"stranger"`, and a trusted entry in `hellforge-mods.json` can have
   `"stranger": true`.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a

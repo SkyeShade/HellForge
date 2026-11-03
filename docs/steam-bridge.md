@@ -236,7 +236,7 @@ lobby's type is the one asked for at creation. The table marks `eLobbyType` for 
 - Every other type is left as asked, and every request is logged: `broker: CreateLobby asks lobby type 2; Steam gets
   1 (Play with strangers off)`.
 - The broker reads the setting as the backend does (`mods/hellforge-mods.json` `"strangers": "on"`/`"off"`, top level
-  only; a legacy `playWithStrangers`: true still counts, and without a choice it is on because the broker runs only in a
+  only; a legacy `playWithStrangers` true or false still counts, and without a choice it is on because the broker runs only in a
   sandboxed session). It looks at the file's time stamp
   every 2 s, in the broker's process. When the setting changes,
   each lobby the game asked to be Public gets `SetLobbyType`, Public or Friends only.

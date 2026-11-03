@@ -142,7 +142,7 @@ To change them for good, use `settings`. It takes the same options as `play` (`-
 ```
 
 `settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
-`"strangers": "on"`/`"off"` (a legacy `playWithStrangers`: true still counts as on; legacy false means never chosen),
+`"strangers": "on"`/`"off"` (a legacy `playWithStrangers` true or false still counts),
 and `default` removes it and lets the sandbox decide (on in a sandboxed session, off otherwise; see
 [multiplayer.md](multiplayer.md#play-with-strangers)). It is saved in `mods\hellforge-mods.json`, not in
 `launcher-settings.json`, and `play` has no option for it. The printed `playWithStrangers` is the effective bool for the

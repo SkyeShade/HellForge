@@ -130,12 +130,13 @@ int wmain(int argc, wchar_t** argv)
     swprintf(suffix, 64, L"bridgetest-%lu", GetCurrentProcessId());
     if (!BrokerChannelCreate(&g_broker, suffix) || !BrokerBridgeOpen(&g_bridge, valve, 1)) { fprintf(stderr, "broker setup failed\n"); return 2; }
     BrokerBridgeSnapshot(&g_bridge, &g_broker);
-    // The keys: the new on/off wins over a legacy key; a legacy true still means on.
+    // The keys: the new on/off wins over a legacy key; a legacy true or false keeps its value.
     EXPECT(BrokerStrangersIn("{\"strangers\":\"on\"}", strlen("{\"strangers\":\"on\"}")) == 1, "The new on key is not on");
     EXPECT(BrokerStrangersIn("{\"strangers\":\"off\",\"playWithStrangers\":true}", strlen("{\"strangers\":\"off\",\"playWithStrangers\":true}")) == 0,
         "The new off key did not win");
     EXPECT(BrokerStrangersIn("{\"playWithStrangers\":true}", strlen("{\"playWithStrangers\":true}")) == 1, "A legacy on key is not on");
-    EXPECT(BrokerStrangersIn("{\"playWithStrangers\":false}", strlen("{\"playWithStrangers\":false}")) == 1, "A legacy off key overrode the sandbox default");
+    EXPECT(BrokerStrangersIn("{\"playWithStrangers\":false}", strlen("{\"playWithStrangers\":false}")) == 0, "A legacy off key lost its choice");
+    EXPECT(BrokerStrangersIn("{\"playWithStrangers\":null}", strlen("{\"playWithStrangers\":null}")) == 1, "A legacy key that is no bool is a choice");
     EXPECT(BrokerStrangersIn("{}", 2) == 1, "No choice is not on in the sandboxed broker");
     // strangers off: a nested "strangers" (a mod's own setting) is not the player's; the top-level off wins.
     wchar_t temp[MAX_PATH];
