@@ -273,10 +273,16 @@ static void NetSwitchFixture(void)
     assert(InstallNetSwitch((uintptr_t)game, 0) == 0 && g_netSwitchState == 0 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
     assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == -1 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
     vanillaTable[100] = kept;
-    /* a co-op session already running: refused, nothing written */
+    /* a co-op session already running (a game launched into a lobby): the same result, written with the threads paused */
     g_netSwitchState = 0;
     g_session.role = HF_SESSION_JOINER;
-    assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == -1 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
+    assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == 1 && g_netSwitchTable != NULL);
+    int32_t paused;
+    memcpy(&paused, game + NET_SWITCH_LOAD + 3, 4);
+    assert((uintptr_t)game + (intptr_t)paused == (uintptr_t)g_netSwitchTable && game[NET_SWITCH_BOUND + 1] == (uint8_t)(NET_VANILLA_TYPES + 1));
+    memcpy(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin);
+    memcpy(game + NET_SWITCH_BOUND, kNetBoundPin, sizeof kNetBoundPin);
+    g_netSwitchTable = NULL;
     g_session.role = HF_SESSION_SOLO;
 
     /* installed: the flak copy takes its base's case, the odd one keeps the exit; displacement then bound */

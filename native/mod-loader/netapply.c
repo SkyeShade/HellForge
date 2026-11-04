@@ -11,8 +11,10 @@
  * its base type's case, as a copy keeps its base's component list and field layout (registry.c copies the base's map
  * row). A type whose component list is not its base's keeps the exit: a migration applies the whole state, and a case
  * would write through a missing component's index -1. Then the displacement, then the bound. Installed from the watch loop
- * once the code is decoded, before any co-op session: the switch runs only for other machines' objects, and the
- * displacement (0xBC2DB6..B9) straddles two qwords, so it is not written while a friend's objects arrive. */
+ * once the code is decoded. The switch runs only for other machines' objects, and the displacement (0xBC2DB6..B9) straddles
+ * two qwords, so once a co-op session has started (a game launched into a lobby, whose session can start before the code
+ * is decoded) it is written with the other threads paused, none inside the two instructions; an index at or below the old
+ * bound reads the same entry from either table. What arrived before that took the exit and keeps its state unset. */
 
 #define NET_SWITCH_BOUND 0xBC2DA1u   /* 3D imm32 0F 87 rel32: cmp eax, count - 1; ja exit */
 #define NET_SWITCH_BASE 0xBC2DACu    /* 48 8D 15 rel32: lea rdx, [image base] */
@@ -23,6 +25,7 @@
 #define NET_CASES_FIRST 0xBC2DBFu    /* every case lies in the switch's own code (the exit too), right after the jmp */
 #define NET_CASES_LAST 0xBD9E0Eu
 #define NET_TABLE_SLOTS (NET_VANILLA_TYPES + REG_MAX_WEAPONS)
+#define NET_SWITCH_PAUSES 20         /* tries when a thread stands inside the two instructions */
 
 static const uint8_t kNetBoundPin[11] = {0x3D, 0x3E, 0x07, 0x00, 0x00, 0x0F, 0x87, 0xAD, 0x3A, 0x00, 0x00};
 static const uint8_t kNetBasePin[7] = {0x48, 0x8D, 0x15, 0x4D, 0xD2, 0x43, 0xFF};
@@ -76,10 +79,6 @@ static const char* NetSwitchRefused(uintptr_t game, uint32_t* vanilla, int* wait
     if (!NetSwitchPinned(game)) return "its code is not the reviewed one";
     *wait = 0;
     if (g_networkVanillaTypes != NET_VANILLA_TYPES) return "the network configuration does not hold the 1,855 vanilla types";
-    AcquireSRWLockShared(&g_sessionLock);
-    uint32_t role = g_session.role;
-    ReleaseSRWLockShared(&g_sessionLock);
-    if (role != HF_SESSION_SOLO) return "a co-op session had already started";
 
     /* The table is in the code section, ~92 KB past the pinned instructions, and the code is decoded in parts after the
      * game loads: every entry must be one of the switch's cases before it is copied (a still-encoded table copied in
@@ -137,6 +136,27 @@ static const char* NetSwitchWrite(uintptr_t game, const uint32_t* table, uint32_
     return NULL;
 }
 
+/* NetSwitchWrite with the other threads paused, for a machine whose co-op session has started. */
+static const char* NetSwitchWritePaused(uintptr_t game, const uint32_t* table, uint32_t newBound)
+{
+    int64_t displacement = (int64_t)((uintptr_t)table - game);
+    if (displacement < 0 || displacement > 0x7FFFFFFFll) return "the table is not within 2 GB above game.dll";
+    GrowthPatch patches[2] = {{game + NET_SWITCH_LOAD, 7, 3, 4, {0}, (uint64_t)displacement}, {game + NET_SWITCH_BOUND, 5, 1, 4, {0}, newBound}};
+    memcpy(patches[0].original, kNetLoadPin, patches[0].length);
+    memcpy(patches[1].original, kNetBoundPin, patches[1].length);
+    int result = 2;
+    for (int attempt = 0; attempt < NET_SWITCH_PAUSES && result == 2; attempt++)
+    {
+        if (attempt) Sleep(5);
+        result = ApplyGrowthPatches(patches, 2, NULL, 0);
+    }
+    if (result == 2) return "a game thread stayed inside its code";
+    if (result != 0) return "its code is not the reviewed one";
+    RecordPatch(game + NET_SWITCH_LOAD + 3, &displacement, 4);
+    RecordPatch(game + NET_SWITCH_BOUND + 1, &newBound, 4);
+    return NULL;
+}
+
 /* Polled from the watch loop until it returns 1. pinsReady: the grace period for code still being decoded is over. */
 static int InstallNetSwitch(uintptr_t game, int pinsReady)
 {
@@ -153,12 +173,15 @@ static int InstallNetSwitch(uintptr_t game, int pinsReady)
     for (uint32_t i = NET_VANILLA_TYPES; i < NET_TABLE_SLOTS; i++) table[i] = NET_SWITCH_EXIT;
     uint32_t highest = NET_VANILLA_TYPES - 1, mapped = 0, kept = NetMapTypes(table, &highest, &mapped);
     uint32_t newBound = highest;
-    why = NetSwitchWrite(game, table, newBound);
+    AcquireSRWLockShared(&g_sessionLock);
+    int started = g_session.role != HF_SESSION_SOLO;
+    ReleaseSRWLockShared(&g_sessionLock);
+    why = started ? NetSwitchWritePaused(game, table, newBound) : NetSwitchWrite(game, table, newBound);
     if (why != NULL) return RefuseNetSwitch(why);
     g_netSwitchTable = table;
     g_netSwitchState = 1;
-    Note("network: the apply switch takes %u added type(s) (bound 0x%x -> 0x%x, table at 0x%llx, %s game.dll)%s", mapped,
+    Note("network: the apply switch takes %u added type(s) (bound 0x%x -> 0x%x, table at 0x%llx, %s game.dll)%s%s", mapped,
         NET_VANILLA_TYPES - 1, newBound, (unsigned long long)(uintptr_t)table, (uintptr_t)table > game ? "above" : "below",
-        kept ? "; some keep the exit, see above" : "");
+        kept ? "; some keep the exit, see above" : "", started ? "; the co-op session had started, so the threads paused for it" : "");
     return 1;
 }
