@@ -1070,7 +1070,7 @@ int main(int argc, char** argv)
             opened ? "yes" : "NO", g_syncOpened, trusted ? "yes" : "NO", g_syncTrusted);
         if (!warned || !unarmed || !noEnter || !back || !opened || !trusted) { puts("FAIL the mod sync TRUST warning or GET IT did not answer as expected"); failures++; }
         /* the lobby browser (SDK 16): the terminal's count going up opens it full screen over the game, asking for a list; J leaves
-         * the joinable lobbies (the stranger's goes), Enter joins the selected one, and the backend's invitation closes it
+         * the joinable lobbies (the stranger's goes), Enter opens the selected one's pop-up and Enter again joins it, and the backend's invitation closes it
          * for the game's. Opened again from the terminal: on the stranger's lobby A shows the warning before Play with
          * strangers goes on, and only Y turns it on; Q asks for Quick Play; Esc closes it without joining. */
         g_browseList[0] = {sizeof(HfBrowseLobby), HF_LOBBY_UNJOINABLE, 0, 1, 4, 7, -1, 2, 0, "steam-1", "Stranger One", "It needs mods installed by hand."};
@@ -1086,6 +1086,8 @@ int main(int argc, char** argv)
         armed();
         if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-lobbies.bmp"); Screenshot(shot, width, height); }
         Key(window, 'J'); frames(4);
+        Key(window, VK_RETURN); frames(4); /* the lobby's pop-up */
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-lobby-popup.bmp"); Screenshot(shot, width, height); }
         Key(window, VK_RETURN); frames(4);
         bool joined = g_browseJoins == 1 && !strcmp(g_browseJoined, "steam-2");
         g_browseNow.state = HF_BROWSE_INVITED; frames(40);

@@ -12,8 +12,6 @@
     {"unit": "HellForge.LocalBackend", "file": "LocalBackend.Requests.cs", "rule": "R10", "function": "LocalBackend.Requests.GameRouteAsync", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/DirectoryService.cs", "rule": "R10", "function": "DirectoryService.BrowseAsync", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/MultiplayerHost.cs", "rule": "R10", "function": "MultiplayerHost.Start", "value": 17},
-    {"unit": "editor", "file": "app_lobbies.cpp", "rule": "R10", "function": "DrawTermDetail", "value": 24},
-    {"unit": "editor", "file": "app_lobbies.cpp", "rule": "R10", "function": "LobbyKeys", "value": 18},
     {"unit": "editor", "file": "app_lobbies.cpp", "rule": "R10", "function": "ReadLobbies", "value": 28},
     {"unit": "editor", "file": "editor.cpp", "rule": "R10", "function": "UpdateHdr", "value": 16},
     {"unit": "mod-loader", "file": "abilities.c", "rule": "R10", "function": "ApiAddAbility", "value": 20},

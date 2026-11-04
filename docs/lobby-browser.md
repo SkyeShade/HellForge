@@ -249,9 +249,12 @@ The SDK has no drawing calls. Your mod draws over the game itself, the way HellF
   alongside your browser.
 - **Threads.** Present runs on the game's render thread and the window procedure on the window thread. The editor
   runs its UI under one lock that both take. The SDK browse calls are safe from any thread.
-- **The look.** The placeholder fills the screen in the terminal's own CONTROL CENTER style: a blue blueprint field
-  with a grid and scanlines, filters on the left, lobbies in the middle, the selected lobby's details on the right, and
-  a power-on and power-off animation (0.55 s and 0.3 s). Its colours are the `TERM_` constants in `app_lobbies.cpp`.
+- **The look.** The editor's browser is laid out like the game's own Social menu, in HellForge red where the game
+  uses yellow: the HellForge mark and MATCHMAKING over a LOBBIES tab, the status, categories and filters on the left,
+  two columns of lobby cards in pages (each with a coloured edge for what joining it takes) in the middle, QUICK PLAY
+  and the colour key on the right, and the game's black hint strip (ESC, R, SPACE, ENTER) along the bottom. A card
+  opens the lobby's pop-up, where Enter joins. It keeps a power-on and power-off animation (0.55 s and 0.3 s). Its
+  colours are the `LB_` constants in `app_lobbies.cpp`.
   None of this is required.
 
 ## A skeleton

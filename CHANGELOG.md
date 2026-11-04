@@ -38,8 +38,12 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - **Quick Play and SOS go to a lobby you can join first.** The game's own search leaves out a stranger's lobby whose
   mods wait for your trust while other lobbies need none, so Quick Play doesn't stop at a TRUST prompt; when it is the
   only one, it is still found. The lobby browser lists them all, as before.
+- **A new look for the lobby browser.** The terminal's lobby browser is now laid out like the game's own Social
+  menu, in HellForge red: lobby cards two by two in pages, each with a coloured edge for what joining it takes, the
+  filters on the left, QUICK PLAY on the right and the game's hint strip along the bottom. Clicking a card (or Enter)
+  opens the lobby's pop-up with its squad, what joining changes and JOIN; Space is Quick Play.
 - **The lobby browser shows what you can join first.** Lobbies you can join are at the top, and lobbies no setting can
-  let you into are hidden while there are others; CAN'T JOIN (or H) shows them. Each row says in a word or two what
+  let you into are hidden while there are others; Show can't join (or H) shows them. Each row says in a word or two what
   keeps you out ("Needs sandbox", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
   list every mod in the way that fits, and say how many more there are instead of cutting names off. When no lobby
   can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
