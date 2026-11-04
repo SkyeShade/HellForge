@@ -920,12 +920,13 @@ public static class ModSettings
     // content values and arm swaps) instead of their own (off by default: everyone keeps their own; StatsShare).
     // Trusted: mods the player trusted on mod sync's prompt (TRUST), each by its exact content (id and content hash), with
     // its name and version, the player who hosted it and when: they download as the verified list's do (ModSyncPlan). One
-    // trusted from a host who is not a Steam friend (Stranger) counts only in a sandboxed session.
+    // trusted from a host who is not a Steam friend (Stranger), or on a sandboxed game's own prompt (Sandboxed), counts
+    // only in a sandboxed session (TrustedMod.SandboxOnly).
     public sealed record State(HashSet<string> Disabled, List<string> Order, Dictionary<string, CosmeticPacks.Choice> Choices)
     {
         public HashSet<string> Blocked { get; } = new(StringComparer.Ordinal);
         public List<TrustedMod> Trusted { get; } = [];
-        public bool Trusts(string id, string hash, bool sandboxed = false) => Trusted.Any(t => t.Id == id && t.Hash == hash && (sandboxed || !t.Stranger));
+        public bool Trusts(string id, string hash, bool sandboxed = false) => Trusted.Any(t => t.Id == id && t.Hash == hash && (sandboxed || !t.SandboxOnly));
         public bool Share { get; set; } = true;
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
@@ -1059,8 +1060,11 @@ public static class ModSettings
 
     // Mod sync's trusted mods: one the player trusted (that exact content) downloads as a verified one does (a stranger's
     // only while sandboxed); untrusted (the Mods page), it is the player's to install again.
+    // A trust of the same content that counts everywhere stays as it is: trusting it again where it would count only
+    // sandboxed (a stranger host, a sandboxed game's prompt) does not narrow it.
     public static void SetTrusted(string modsFolder, TrustedMod mod) => Change(modsFolder, state =>
     {
+        if (mod.SandboxOnly && state.Trusted.Any(t => t.Id == mod.Id && t.Hash == mod.Hash && !t.SandboxOnly)) return;
         state.Trusted.RemoveAll(t => t.Id == mod.Id && t.Hash == mod.Hash);
         state.Trusted.Add(mod);
     });
@@ -1136,14 +1140,21 @@ public static class ModSettings
 
 // A mod the player trusted on mod sync's prompt: its id and content hash (ModSets.ContentHash: that exact content, no
 // other version or bytes), its name and version as the host listed them, the player who hosted it (their name, then their
-// SteamID64), when (UTC, ISO 8601), and whether that host was not a Steam friend (Stranger, "stranger": true: trusted in a
-// sandboxed session, and counted only in one). In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
-public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since, bool Stranger = false)
+// SteamID64), when (UTC, ISO 8601), whether that host was not a Steam friend (Stranger, "stranger": true: trusted in a
+// sandboxed session, and counted only in one), and whether it was trusted on a sandboxed game's own prompt (Sandboxed,
+// "sandboxed": true): code in that game can send the prompt's answer as well as the player, so such a trust counts only
+// where that code could already run, in a sandboxed session; the launcher's prompt, outside the sandbox, gives a whole
+// one. In hellforge-mods.json's "trusted"; an entry that is malformed is left out.
+public sealed record TrustedMod(string Id, string Hash, string Name, string Version, string From, string Since, bool Stranger = false, bool Sandboxed = false)
 {
+    // Counts only in a sandboxed session (ModSettings.State.Trusts).
+    public bool SandboxOnly => Stranger || Sandboxed;
+
     public JsonObject ToJson()
     {
         var json = new JsonObject { ["id"] = Id, ["hash"] = Hash, ["name"] = Name, ["version"] = Version, ["from"] = From, ["since"] = Since };
         if (Stranger) json["stranger"] = true;
+        if (Sandboxed) json["sandboxed"] = true;
         return json;
     }
 
@@ -1153,7 +1164,8 @@ public sealed record TrustedMod(string Id, string Hash, string Name, string Vers
         string Text(string name, int max) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Length <= max &&
             !v.GetString()!.Any(char.IsControl) ? v.GetString()! : "";
         var mod = new TrustedMod(Text("id", 64), Text("hash", 64), Text("name", 80), Text("version", 32), Text("from", 120), Text("since", 40),
-            e.TryGetProperty("stranger", out var stranger) && stranger.ValueKind == JsonValueKind.True);
+            e.TryGetProperty("stranger", out var stranger) && stranger.ValueKind == JsonValueKind.True,
+            e.TryGetProperty("sandboxed", out var sandboxed) && sandboxed.ValueKind == JsonValueKind.True);
         return ModCatalog.IsModId(mod.Id) && ModSets.Hex(mod.Hash, 64) ? mod : null;
     }
 }

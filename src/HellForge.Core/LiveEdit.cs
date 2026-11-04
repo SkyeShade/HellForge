@@ -192,11 +192,13 @@ public sealed class LiveEditServer : IAsyncDisposable
     // Mod sync (HfApi sync_state / sync_mod): an offer's mods, index 0 up, then its state, which publishes them in the
     // game. A progress update is the state alone, with the same version. Words, not numbers, for actions, classes and states.
     // The mod's url: where players get it (ModCatalog.WebAddress, at most 200 characters), or "-"; then "stranger" when the
-    // host is not a Steam friend (HF_SYNC_FLAG_STRANGER).
-    public Task<LiveResult> SyncModAsync(int version, int index, SyncItem item, bool stranger = false) =>
+    // host is not a Steam friend (HF_SYNC_FLAG_STRANGER, and HF_SYNC_FLAG_SANDBOX_ONLY: a stranger's is offered only to a
+    // sandboxed game), else "sandboxonly" when the game is sandboxed (HF_SYNC_FLAG_SANDBOX_ONLY: a trust answered there
+    // counts only in sandboxed sessions). A loader from before "sandboxonly" refuses that line.
+    public Task<LiveResult> SyncModAsync(int version, int index, SyncItem item, bool stranger = false, bool sandboxOnly = false) =>
         SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class),
             Invariant(item.Mod.Bytes), Field(item.Mod.Id), Field(item.Mod.Name), Field(item.Mod.Version), ModCatalog.WebAddress(item.Mod.Url) ?? "-") +
-            (stranger ? "\tstranger" : ""));
+            (stranger ? "\tstranger" : sandboxOnly ? "\tsandboxonly" : ""));
     public Task<LiveResult> SyncStateAsync(SyncStateLine line) =>
         SendAsync("syncstate", string.Join('\t', Invariant(line.Version), line.State, Field(line.Host), Invariant(line.Bytes), Invariant(line.Done),
             Invariant(line.Mods), line.Live ? "1" : "0", Field(line.Message)));

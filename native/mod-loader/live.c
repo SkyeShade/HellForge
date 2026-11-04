@@ -16,7 +16,8 @@
  *             shots <seq> <peer hex>:<weapon resource hex>=<projectile type>,... or -   (each player's projectile
  *                     swaps, which their shots fire on this machine: shots.c)
  *             syncmod <seq> <version> <index> <have|download|manual|blocked|update|off|trust> <content|code|bundled|raw> <bytes>
- *                     <id> <name> <mod version> <https:// url or -> [stranger]   (stranger: HF_SYNC_FLAG_STRANGER)
+ *                     <id> <name> <mod version> <https:// url or -> [stranger|sandboxonly]   (stranger:
+ *                     HF_SYNC_FLAG_STRANGER and HF_SYNC_FLAG_SANDBOX_ONLY; sandboxonly: HF_SYNC_FLAG_SANDBOX_ONLY)
  *             syncstate <seq> <version> <none|offer|blocked|downloading|ready|failed> <host name> <bytes> <done> <mods>
  *                       <flags> <message>                              (syncmod, syncstate: SDK 14, mod sync)
  *             message <seq> <mod id> <from hex> <data hex>                (SDK 16: the mod channel's lines: channel.c)
@@ -271,7 +272,8 @@ static void SyncModLine(char* line, char* reply, size_t size)
     char* f[12];
     int n = SplitAll(line, f, 12);
     uint64_t version = 0, index = 0, bytes = 0;
-    int whole = n == 11 || (n == 12 && !strcmp(f[11], "stranger"));
+    int stranger = n == 12 && !strcmp(f[11], "stranger"), sandboxOnly = n == 12 && !strcmp(f[11], "sandboxonly");
+    int whole = n == 11 || stranger || sandboxOnly;
     int action = whole ? SyncName(f[4], kSyncActions, 7) : -1, kind = whole ? SyncName(f[5], kSyncClasses, 4) : -1;
     if (!whole || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || !SyncNumber(f[6], &bytes) ||
         action < 0 || kind < 0 || !f[7][0])
@@ -288,7 +290,7 @@ static void SyncModLine(char* line, char* reply, size_t size)
     m->size = sizeof *m;
     m->action = (uint32_t)action;
     m->kind = (uint32_t)kind;
-    m->flags = n == 12 ? HF_SYNC_FLAG_STRANGER : 0;
+    m->flags = stranger ? HF_SYNC_FLAG_STRANGER | HF_SYNC_FLAG_SANDBOX_ONLY : sandboxOnly ? HF_SYNC_FLAG_SANDBOX_ONLY : 0;
     m->bytes = bytes;
     SyncCopy(m->id, sizeof m->id, f[7]);
     SyncCopy(m->name, sizeof m->name, f[8]);

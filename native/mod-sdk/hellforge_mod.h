@@ -904,6 +904,10 @@ typedef struct HfSyncState
 #define HF_SYNC_FLAG_STRANGER 1u /* flags: the host is not the player's Steam friend. Warn harder before HF_SYNC_TRUST:
                                   * the sandbox stops the mod's writes and network, not its reads, and the host gets the
                                   * game's traffic. Never set by a backend before it */
+#define HF_SYNC_FLAG_SANDBOX_ONLY 2u /* flags: the game is sandboxed, so HF_SYNC_TRUST answered here counts only while the
+                                      * sandbox is on (any code in the game can send sync_answer; the launcher's prompt,
+                                      * outside the sandbox, gives a trust that counts everywhere). Set with
+                                      * HF_SYNC_FLAG_STRANGER too. Never set by a loader before it */
 #define HF_SYNC_CLASS_CONTENT 0u /* what HellForge checks: data specs, schema stats, network field types */
 #define HF_SYNC_CLASS_CODE 1u    /* a DLL, sources HellForge builds, or Lua */
 #define HF_SYNC_CLASS_BUNDLED 2u /* shipped with HellForge (the in-game editor) */
@@ -913,7 +917,7 @@ typedef struct HfSyncMod
     uint32_t size;      /* sizeof(HfSyncMod): set by the caller */
     uint32_t action;    /* HF_SYNC_MOD_... */
     uint32_t kind;      /* HF_SYNC_CLASS_... */
-    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER */
+    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER, HF_SYNC_FLAG_SANDBOX_ONLY */
     uint64_t bytes;     /* its size */
     char id[65];
     char name[81];      /* UTF-8 */

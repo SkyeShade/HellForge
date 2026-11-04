@@ -25,7 +25,9 @@ namespace HellForge.LocalBackend.Multiplayer;
 //           SYNC view). A code or raw mod HellForge has not verified waits for the player's trust (TRUST on the prompt:
 //           that exact content goes on ModSettings' Trusted list); GET IT opens a mod's web address in the player's browser.
 //           A stranger's can be trusted only in a sandboxed session and counts only in one (Sandboxed); unsandboxed it is
-//           the player's to install.
+//           the player's to install. A trust the sandboxed game answers counts only in sandboxed sessions too, a Steam
+//           friend's included (TrustedMod.Sandboxed): any code in that game can call sync_answer; the launcher's prompt,
+//           outside the sandbox, gives one that counts everywhere.
 //           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
 //           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
 //           stop-observation.signal), which the launcher starts again with them.
@@ -105,7 +107,7 @@ public sealed class ModSync : IAsyncDisposable
             lock (gate) open = offer != null;
             if (!open || ModSyncOffer.TakeAnswer(evidenceDirectory) is not { } parts) continue;
             log($"Mod sync: the launcher answered {parts[2]} to offer {parts[1]}.");
-            Answer(parts);
+            Answer(parts, fromLauncher: true);
         }
     }
 
@@ -346,7 +348,7 @@ public sealed class ModSync : IAsyncDisposable
         };
         var blocking = plan.Items.Where(i => i.Action is SyncAction.Manual or SyncAction.Blocked or SyncAction.Update)
             .Select(i => new JoinBlocker(i.Mod, i.Action, JoinCheck.Reason(i, shares))).ToList();
-        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set };
+        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set, Stranger = !trust.HostIsFriend };
     }
 
     // Why another HellForge keeps a lobby out, and who updates: a bundled mod's version against this machine's (an older
@@ -672,7 +674,10 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     // An answer from the game (HfApi sync_answer): "syncanswer" version accept|decline|restart|block|trust|open [mod id].
-    public void Answer(IReadOnlyList<string> parts)
+    // fromLauncher: the launcher's prompt sent it (its answer file, which a sandboxed game cannot write), not the game. Any
+    // code in the game can call sync_answer, so in a sandboxed session the game's trust counts only in sandboxed sessions
+    // (TrustedMod.Sandboxed): code there cannot open a mod to unsandboxed play, a Steam friend's included.
+    public void Answer(IReadOnlyList<string> parts, bool fromLauncher = false)
     {
         if (parts.Count < 3 || parts[0] != "syncanswer" || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var version)) return;
         Offer? current;
@@ -691,12 +696,7 @@ public sealed class ModSync : IAsyncDisposable
             // TRUST AND DOWNLOAD: that exact content (id and hash), only a mod the plan offers for trust (shared, not
             // verified); the offer is made again, and downloads when nothing else waits
             case "trust" when parts.Count > 3 && current.Plan.Items.FirstOrDefault(i => i.Mod.Id == parts[3] && i.Action == SyncAction.Trust) is { } item:
-                var stranger = !transport.IsFriend(current.Host);
-                ModSettings.SetTrusted(modsFolder, new TrustedMod(item.Mod.Id, item.Mod.Hash, item.Mod.Name, item.Mod.Version,
-                    $"{current.HostName} ({LobbyService.EntityId(current.Host)})", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), stranger));
-                log($"Mod sync: the player trusts {item.Mod.Id} {item.Mod.Version} ({item.Mod.Hash[..16]}) from {current.HostName}" +
-                    (stranger ? ", not a Steam friend (sandboxed sessions only)." : "."));
-                _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares, accept: true));
+                TrustMod(current, item, fromLauncher);
                 break;
             // GET IT: the mod's own web address from the host's set (checked when the set was read, and again before it opens)
             case "open" when parts.Count > 3 && current.Set.Mods.FirstOrDefault(m => m.Id == parts[3])?.Url is { } url:
@@ -714,6 +714,19 @@ public sealed class ModSync : IAsyncDisposable
                 break;
             default: log($"Mod sync: the answer {parts[2]} does not fit the offer's state ({current.State})."); break;
         }
+    }
+
+    // TRUST AND DOWNLOAD's trust: a stranger's counts only sandboxed, and so does any the game answered in a sandboxed
+    // session (Answer); then the offer is made again.
+    void TrustMod(Offer current, SyncItem item, bool fromLauncher)
+    {
+        var stranger = !transport.IsFriend(current.Host);
+        var inSandbox = !stranger && sandboxed && !fromLauncher;
+        ModSettings.SetTrusted(modsFolder, new TrustedMod(item.Mod.Id, item.Mod.Hash, item.Mod.Name, item.Mod.Version,
+            $"{current.HostName} ({LobbyService.EntityId(current.Host)})", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), stranger, inSandbox));
+        var only = stranger ? ", not a Steam friend (sandboxed sessions only)." : inSandbox ? ", on the sandboxed game's prompt (sandboxed sessions only)." : ".";
+        log($"Mod sync: the player trusts {item.Mod.Id} {item.Mod.Version} ({item.Mod.Hash[..16]}) from {current.HostName}{only}");
+        _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares, accept: true));
     }
 
     void Close(Offer current)
@@ -1038,7 +1051,7 @@ public sealed class ModSync : IAsyncDisposable
     {
         SyncView view;
         lock (gate) view = new SyncView(current.Version, current.State, current.HostName, current.Plan.DownloadBytes, current.Done, current.Message, current.Plan.Items)
-            { Live = current.Live, Stranger = !transport.IsFriend(current.Host) };
+            { Live = current.Live, Stranger = !transport.IsFriend(current.Host), SandboxOnly = sandboxed };
         try
         {
             File.WriteAllText(Path.Combine(evidenceDirectory, OfferFile), new JsonObject
@@ -1110,11 +1123,13 @@ public sealed class DownloadWindow
 
 // An offer as the game shows it.
 // Live: answering "restart" changes the running game's mods (HF_SYNC_LIVE). Stranger: the host is not a Steam friend (the
-// prompt warns harder before TRUST).
+// prompt warns harder before TRUST). SandboxOnly: the game is sandboxed, so a TRUST answered there counts only in
+// sandboxed sessions (HF_SYNC_FLAG_SANDBOX_ONLY; ModSync.Answer).
 public sealed record SyncView(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<SyncItem> Items)
 {
     public bool Live { get; init; }
     public bool Stranger { get; init; }
+    public bool SandboxOnly { get; init; }
 }
 
 public interface ISyncDisplay
@@ -1149,7 +1164,7 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
                 for (var i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
-                    if (!(await live.SyncModAsync(view.Version, i, item, view.Stranger)).Ok) return false;
+                    if (!(await live.SyncModAsync(view.Version, i, item, view.Stranger, view.SandboxOnly)).Ok) return false;
                 }
             return (await live.SyncStateAsync(new SyncStateLine(view.Version, view.State, view.Host, view.Bytes, view.Done, items.Count, view.Live, message))).Ok;
         }
@@ -1171,6 +1186,9 @@ public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IRe
 {
     // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
     public ModSet? Set { get; init; }
+
+    // The plan was made for a host who is not a Steam friend (SyncTrust.HostIsFriend false); false when no plan was made.
+    public bool Stranger { get; init; }
 
     // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
     // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null. A stranger's

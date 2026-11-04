@@ -506,6 +506,20 @@ static class ModSyncTests
                 state.Trusts(prebuilt.Id, prebuilt.Hash) && state.Trusts(prebuilt.Id, prebuilt.Hash, sandboxed: true),
                 "A stranger's trust counts only sandboxed; a friend's always.");
             check(JsonNode.Parse(File.ReadAllText(file))!["trusted"]!.AsArray().Count(t => t!["stranger"] != null) == 1, "Only a stranger's entry carries \"stranger\".");
+            // A friend's trusted on a sandboxed game's prompt (code in that game can answer it) counts only sandboxed too, and
+            // is read back as such; trusting a mod again where it would count only sandboxed never narrows a whole trust.
+            ModSettings.SetTrusted(mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Friend (76561190000000001)", "2026-10-27T10:30:00.0000000Z", Sandboxed: true));
+            ModSettings.SetTrusted(mods, new TrustedMod(prebuilt.Id, prebuilt.Hash, "Prebuilt", "1", "Friend (76561190000000001)", "2026-10-27T10:30:00.0000000Z", Sandboxed: true));
+            ModSettings.SetTrusted(mods, new TrustedMod(prebuilt.Id, prebuilt.Hash, "Prebuilt", "1", "Stranger (76561190000000002)", "2026-10-27T10:30:00.0000000Z", Stranger: true));
+            state = ModSettings.Read(mods);
+            check(state.Trusted.Single(t => t.Id == texture.Id) is { Sandboxed: true, Stranger: false, SandboxOnly: true } &&
+                !state.Trusts(texture.Id, texture.Hash) && state.Trusts(texture.Id, texture.Hash, sandboxed: true) &&
+                state.Trusted.Single(t => t.Id == prebuilt.Id) is { SandboxOnly: false, From: var whole } && !whole.Contains("Stranger") &&
+                state.Trusts(prebuilt.Id, prebuilt.Hash),
+                "A sandboxed game's trust counts only sandboxed; a whole trust stays whole: " + string.Join(", ", state.Trusted));
+            check(JsonNode.Parse(File.ReadAllText(file))!["trusted"]!.AsArray().Count(t => t!["sandboxed"] != null) == 1, "Only that entry carries \"sandboxed\".");
+            ModSettings.SetTrusted(mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Friend (76561190000000001)", "2026-10-27T10:40:00.0000000Z"));
+            check(ModSettings.Read(mods).Trusts(texture.Id, texture.Hash), "Trusted again outside the sandbox, it counts everywhere.");
             ModSettings.Untrust(mods, texture.Id, texture.Hash);
             ModSettings.Untrust(mods, prebuilt.Id, prebuilt.Hash);
             state = ModSettings.Read(mods);
@@ -888,6 +902,12 @@ static class ModSyncTests
             var (unsandboxed, sandboxWhy) = read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods);
             check(unsandboxed == null && sandboxWhy!.Contains("sandboxed"), "A stranger's trusted mod is not played unsandboxed: " + sandboxWhy);
             check(read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods, sandboxed: true).LoadOrder != null, "Sandboxed, it is.");
+            // Trusted on a sandboxed game's prompt, a friend's: the same, and the reason says so.
+            ModSettings.Untrust(install.Mods, texture.Id, texture.Hash);
+            ModSettings.SetTrusted(install.Mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Friend (76561190000000001)", "2026-10-27T10:30:00.0000000Z", Sandboxed: true));
+            var (boxedOnly, boxedWhy) = read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods);
+            check(boxedOnly == null && boxedWhy!.Contains("trusted in a sandboxed game"), "A trust from a sandboxed game is not played unsandboxed: " + boxedWhy);
+            check(read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods, sandboxed: true).LoadOrder != null, "Sandboxed, that one is too.");
             ModSettings.SetTrusted(install.Mods, new TrustedMod(texture.Id, texture.Hash, "Texture", "1", "Friend (76561190000000001)", "2026-10-27T11:00:00.0000000Z"));
             check(read.Resolve(install.Mods, ModCatalog.Load(install.Mods).Mods).LoadOrder != null, "Trusted again from a friend, it is played unsandboxed too.");
             ModSettings.Untrust(install.Mods, texture.Id, texture.Hash);

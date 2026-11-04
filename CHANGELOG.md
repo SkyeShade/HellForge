@@ -31,6 +31,13 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   yours to install. HellForge's verified list is now just its own mods, built into each release; nothing is fetched
   for it any more. Hosting, the mods you share reach anyone who joins and trusts them, so turn sharing off before
   hosting with something you haven't released.
+- **A trust given in a sandboxed game holds only in the sandbox, a Steam friend's mod too.** Any mod in the game can
+  answer the MOD SYNC prompt as you would, so a TRUST from inside a sandboxed game no longer lets a mod run unsandboxed
+  later; the warning and the Mods page say so. Trust it again outside the sandbox (unsandboxed, or on the launcher's
+  prompt) to play it there. Trusting a mod again never narrows a trust you already gave it.
+- **Quick Play and SOS go to a lobby you can join first.** The game's own search leaves out a stranger's lobby whose
+  mods wait for your trust while other lobbies need none, so Quick Play doesn't stop at a TRUST prompt; when it is the
+  only one, it is still found. The lobby browser lists them all, as before.
 - **The lobby browser shows what you can join first.** Lobbies you can join are at the top, and lobbies no setting can
   let you into are hidden while there are others; CAN'T JOIN (or H) shows them. Each row says in a word or two what
   keeps you out ("Needs sandbox", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
@@ -375,7 +382,8 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   ([docs/modding/runtime.md](docs/modding/runtime.md#game-events), #179).
 - A renamed game function or global keeps its old name as an alias, so mods written or built with it keep working (#179).
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
-  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`; `HF_SYNC_FLAG_SANDBOX_ONLY` marks every mod of an
+  offer to a sandboxed game, where a trust answered with `sync_answer` counts only in sandboxed sessions.
 - SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge
   lobby with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information
   terminal opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and
