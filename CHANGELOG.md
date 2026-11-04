@@ -14,6 +14,10 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   and code mods that declare `"live": true` switch while the game runs, on the Mods page and when you join a friend
   with other mods (APPLY AND JOIN). Whatever cannot change live waits for a restart, as before. Mod SDK 16:
   `hellforge_mod_unload`, `load_phase`, `unhook` and `HF_EVENT_MODS_CHANGED` ([live mods](docs/modding/live.md)) (#65).
+- **Experimental native Linux launcher and setup.** The launcher runs natively while the game stays under Proton in
+  HellForge's offline network namespace. Setup confirms Steam ownership before copying the game and fetching the
+  mod tools; Settings can remove the HellForge installation and its desktop shortcut without deleting the
+  Proton prefix (#90).
 - The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
   for mods that tell it (SDK 16) (#84).
 
@@ -153,6 +157,26 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Fixed
 
+- With the sandbox on, the game could freeze for 30 seconds as it started, and sometimes crash (0xC0000005 in dbgcore.dll), on
+  a PC with a tablet driver: its Wintab32.dll faults as it loads, and the session's crash dump waited for it (#235).
+- On Linux, Sync Inventory said "Sign in to Steam first" whenever its Steam check failed for any reason, and left no
+  log. It now gives the check's own reason, keeps the last refusal in `logs/sync-refused.txt`, and won't start while a
+  HellForge session that the launcher didn't start itself is still running (#112).
+- On Linux, a session's sandbox check could test a different Steam Linux Runtime layering from the one the session
+  runs, and then said "the self-test ran in host mode" even when only the runtime differed. The check now tests the
+  session's own choice, names both runtimes when they differ, and keeps the self-test's full output in
+  `logs/sandbox-self-test.txt` (the launcher's own output goes to `logs/sandbox-readiness.txt`) (#112).
+- On Linux, a game that crashes as its window opens because Proton's Wine lacks a text-input function the game needs
+  (seen with a Wine 10 Proton) now says so after the crash, and that Proton 11 or Proton Experimental fixes it (#112).
+- Linux: on a new Proton prefix the sandbox self-test failed during setup and was never run again, so sessions ran
+  unsandboxed with "the self-test did not report its runtime mode". It now runs after the prefix is made
+  case-sensitive, a failure says its real reason, and Check and repair tests it again (#112).
+- On Linux, with HellForge Difficulty on, the game crashed when a mission was selected, at the hellpod, or when the
+  ship started moving to another system (#21, #166). A diagnostic of HellForge's own, which watches each new map with
+  the processor's debug registers, did not recognise its own traps under Proton and handed them to the game, which
+  ended. The diagnostic is now off unless it is turned on (`HELLFORGE_DIFFICULTY_FIELDWATCH=1`), which also ends the
+  short freezes at Esc and mission select. When on, it recognises its own traps under Proton, turns itself off once it
+  has what it needs, and stays off on a PC where the self-test it runs first fails (#124, #127, #197).
 - Sync Inventory's "The capture could not start: see proxy.log" now says why and what to do: a security program
   blocking or stopping the capture (named, with the exact file to add to its exclusions), another program on port 443
   (named), the certificate refused, no internet, or the administrator prompt declined; a hosts file problem (below)

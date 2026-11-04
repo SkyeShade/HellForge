@@ -12,7 +12,8 @@ function size, R12 parameters, R13 stack size (C and C++), R14 duplicated code, 
 reported line with `// lint-ok: R<n> <reason>`. The baseline holds the measured values per (unit, file, rule,
 function). `check` fails on a violation of an error rule (R12, R13, R14) that the baseline does not have: new code, or a
 function pushed over a limit for the first time. A new violation of a warning rule (R10, R11, R15), and a known one that
-grew, are warnings. Exit codes: 0 OK (warnings allowed); 1 errors, or a refused update; 2 a configuration or parse
+grew, are warnings; `check --warnings-as-errors` (as CI runs it) fails on them too. Exit codes: 0 OK (warnings
+allowed unless --warnings-as-errors); 1 errors, or a refused update; 2 a configuration or parse
 error.
 """
 from __future__ import annotations
@@ -455,17 +456,18 @@ def command_check(result: Scan, config: Config, args) -> int:
     errors = [c for c in changes if c.kind == 'new' and config.severity[c.key[2]] == 'error']
     warnings = [c for c in changes if c.kind == 'grew' or (c.kind == 'new' and config.severity[c.key[2]] == 'warning')]
     lower = [c for c in changes if c.kind == 'lower']
+    strict = getattr(args, 'warnings_as_errors', False)
     for change in errors:
         report('error', change)
     for change in warnings:
-        report('warning', change)
+        report('error' if strict else 'warning', change)
     for change in lower:
         report_lower(change)
     if errors or warnings:
         print(f'\n{HELP}')
     print(f'lint check: {len(errors)} error(s), {len(warnings)} warning(s), {known} known, {len(lower)} lower or gone '
-          f'in {len(result.units)} unit(s); baseline {args.baseline.name}')
-    return 1 if errors else 0
+          f'in {len(result.units)} unit(s); baseline {args.baseline.name}' + ('; warnings are errors' if strict else ''))
+    return 1 if errors or (strict and warnings) else 0
 
 
 def command_update(result: Scan, config: Config, args) -> int:
@@ -500,6 +502,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--json', action='store_true', help='scan: machine-readable output')
     parser.add_argument('--list', action='store_true', help='scan: print every violation')
     parser.add_argument('--allow-increase', action='store_true', help='update: accept new or higher values')
+    parser.add_argument('--warnings-as-errors', action='store_true',
+                        help='check: fail on warnings too (new warning-rule violations and known ones that grew)')
     parser.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
     parser.add_argument('--baseline', type=Path, default=DEFAULT_BASELINE)
     parser.add_argument('--root', type=Path, default=HERE.parent.parent,

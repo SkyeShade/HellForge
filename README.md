@@ -71,6 +71,9 @@ galactic war can follow the live war read-only from the community mirror
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
+On Linux, use the graphical Linux installer instead of `HellForge-Setup.exe`:
+[docs/linux.md](docs/linux.md#setting-it-up).
+
 HellForge runs one game build (Steam build 25480438). When Steam has another build, setup offers three ways to get
 that build for your account. You can scan a QR code with the Steam app on your phone: setup then downloads the build
 from Steam's own servers, copying whatever your Steam install already has. With no phone, Valve's own SteamCMD can

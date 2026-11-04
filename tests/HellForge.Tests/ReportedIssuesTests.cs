@@ -46,7 +46,11 @@ static class ReportedIssuesTests
             // the check before writing: a drive's free space, with folders on one drive added up
             DiskSpace.Require((root, 1), (root, 1));
             try { DiskSpace.Require((root, long.MaxValue / 4), (root, 1)); check(false, "An impossible amount of space was granted."); }
-            catch (NotEnoughSpaceException error) { check(error.Message.Contains("more is needed", StringComparison.Ordinal), error.Message); }
+            catch (NotEnoughSpaceException error)
+            {
+                check(error.Message.Contains("more is needed", StringComparison.Ordinal) &&
+                    error.Message.Contains(DiskSpace.ForFolder(root).Name, StringComparison.OrdinalIgnoreCase), error.Message);
+            }
         });
 
         test("A spreadsheet open in Excel beside a mod leaves the modlist code and the source hash readable (issue 18)", () =>
@@ -92,8 +96,8 @@ static class ReportedIssuesTests
             try
             {
                 var (ready, problems) = ModBuilds.Prepare(install, sdk, [ModCatalog.Parse(folder, EntityProfile.Current)], "25480438");
-                check(ready.Count == 0 && problems is [var problem] && problem.Contains("hellforge-linux.sh") && !problem.Contains("ziglang.org"),
-                    "Not the namespace's refusal, but how to get the tools: " + string.Join(" | ", problems));
+                check(ready.Count == 0 && problems is [var problem] && problem.Contains("Mods page") && problem.Contains("Install mod tools") &&
+                    !problem.Contains("ziglang.org"), "Not the namespace's refusal, but how to get the tools: " + string.Join(" | ", problems));
                 check(Directory.GetFileSystemEntries(sdk.Tools).Length == 0, "A download was started.");
             }
             finally { Environment.SetEnvironmentVariable(LinuxNetworkBlock.EnvVar, null); }

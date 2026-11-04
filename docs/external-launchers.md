@@ -30,7 +30,9 @@ The interface is the commands and the JSON they print. Other files in an install
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
-game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version.
+game copy, profiles, mods and settings. Compare `status` before and after if your launcher depends on a version. On
+Linux, the player runs a newer `HellForge-Linux-Installer` with the same prefix instead; see
+[linux.md](linux.md#updating).
 
 ## Finding an installation
 
@@ -133,17 +135,22 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--strangers yes|no|default`,
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--strangers yes|no|default`,
 `--game-options`), saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamBridge": true, "playWithStrangers": true,
+ "gameOptions": "", "sandbox": true, "steamUdp": false, "steamBridge": true, "playWithStrangers": true,
  "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
 session starts; the settings JSON says `liveChanges`).
+
+`settings --steam-udp yes|no` saves co-op over Steam relays (off by default). On Linux, `play` sets
+`HELLFORGE_STEAM_UDP=1` for the session when it is on: UDP goes to Valve's Steam relay servers only, and TCP and every
+other destination stay refused. The session refuses before it starts if `passt`'s `pasta` command or `python3` is
+missing ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions.
 
 `settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
 `"strangers": "on"`/`"off"` (a legacy `playWithStrangers` true or false still counts),
@@ -165,8 +172,8 @@ lists and creates profiles; `settings --profile <name>` selects one.
 
 ```
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
-                       [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--game-options "<launch options>"]
-                       [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
+                       [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
+                       [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
 
 | Option | Default (the launcher's setting) | Meaning |
@@ -178,6 +185,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large), instead of the small dump every crash leaves |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
+| `--steam-udp` | the launcher's setting, off by default | on Linux, opens UDP to Valve's Steam relay servers only so Steam networking can carry co-op, with TCP and every other destination refused. Needs `passt`'s `pasta` command and `python3`; the session refuses before it starts without them. Defaults to the saved setting and applies to this session only; `settings --steam-udp` saves it ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |
@@ -295,7 +303,7 @@ a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game; a sandboxed session also records `gameExitCode`, `gameCrashed` and the loader's first crash line as `loaderCrash` |
 | `modloader.log` | the mod loader: which mods loaded, with each code mod's version and its DLL's SHA-256, and why one did not |
 | `mod-status.tsv` | each code mod's status for the player (SDK 16 `set_status`), a line `<id>\t<text>` per mod; the launcher shows it on the Mods page |
 | `modlist.txt` | the mods the session ran, in load order |
@@ -314,7 +322,8 @@ sizes.
 
 `logs --export <file.zip>` makes the zip the launcher's Save logs to Desktop makes, of the newest session or the one
 `--run` names. Text files and file names in it say `%USERPROFILE%` and `PC` instead of the player's user folder and
-computer name, whoever wrote them. Programs are left out, and a crash dump goes in as it is. While a session runs, its
+computer name, whoever wrote them. Programs are left out, links in the run folder are skipped and never followed, and a
+crash dump goes in as it is. While a session runs, its
 logs are read with shared access, and a file it has locked is left out (`skipped` counts them). The zip must not exist
 yet.
 
@@ -340,9 +349,18 @@ place of HellForge.exe, with its arguments:
 PROTON=<proton> STEAM_COMPAT_DATA_PATH=<prefix> app/linux/hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes
 ```
 
-The script returns when the session's programs have ended. `stop` and the other commands also run through Proton
-outside the namespace (`"$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" stop`). None of them goes online except
-`fetch-war`, which is meant to.
+When `PROTON` or `STEAM_COMPAT_CLIENT_INSTALL_PATH` is not set, the wrapper first uses the Proton and Steam folder saved
+in the installation (`proton-selection.json`, `steam-selection.json`), then its own search
+([linux.md](linux.md#sessions)), so a player's choice outside the usual places carries over.
+
+For `play` that starts a session, the script returns when the session's programs have ended, even when `play` itself
+returned as soon as the session started. Every other command, including `play --dry-run yes`, returns as soon as Proton
+returns, with the command's exit code. The command's standard output is passed through unchanged, so `status` prints
+its JSON with nothing from the wrapper on that stream; the wrapper's own messages go to standard error, as do the
+command's own error messages. Only the native launcher sets `HELLFORGE_WRAPPER_LOG=1`, which sends the wrapper's
+output to `logs/linux-session-wrapper.log` instead; do not set it in your own launcher. `stop` and the other commands
+also run through Proton outside the namespace (`"$PROTON" run "$INSTALL/app/cli/HellForge.Cli.exe" stop`). None of
+them goes online except `fetch-war`, which is meant to.
 
 ## Related pages
 

@@ -12,6 +12,7 @@ namespace HellForge.Launcher;
 // on request. Builds wait while a session runs: the game has the mods' DLLs loaded.
 public partial class MainWindow
 {
+    const string NativeZigTip = "The native Linux Zig is missing: install it with the Mods page's Install mod tools (or HellForge.Cli mod-tools), set ZIG, or put zig on PATH.";
     bool modKitBusy;
     string modKitStatus = "";
 
@@ -22,8 +23,8 @@ public partial class MainWindow
         Directory.EnumerateDirectories(paths.ModsFolder).Where(f => !Path.GetFileName(f).StartsWith('.') &&
             File.Exists(Path.Combine(f, ModCatalog.ManifestName)) && Directory.Exists(Path.Combine(f, "src"))).Order(StringComparer.OrdinalIgnoreCase);
 
-    // A card above the mod list: the tools prompt (source mods are built when a session starts, which
-    // fetches the tools too; installing them here lets BUILD show a mod's errors early).
+    // A card above the mod list: the tools prompt (source mods are built before a session starts, which fetches the
+    // tools too; installing them here lets BUILD show a mod's errors early).
     void AddModKitCards(IReadOnlyCollection<string> loadedFolders)
     {
         var sdk = Sdk;
@@ -35,7 +36,9 @@ public partial class MainWindow
             var panel = new StackPanel { Spacing = 4 };
             panel.Children.Add(new TextBlock { Text = "MOD TOOLS", Classes = { "h2" }, Margin = new(0) });
             panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" },
-                Text = "Code mods are compiled by Zig, which HellForge fetches once into the installation's tools folder (about 90 MB from ziglang.org, pinned and checksummed; nothing is installed system-wide). CMake and Ninja come too, for IDEs." });
+                Text = OperatingSystem.IsLinux()
+                    ? "Code mods are compiled by the pinned native Linux Zig, which HellForge fetches once into the installation's tools folder (about 55 MB from ziglang.org, pinned and checksummed; nothing is installed system-wide)."
+                    : "Code mods are compiled by Zig, which HellForge fetches once into the installation's tools folder (about 90 MB from ziglang.org, pinned and checksummed; nothing is installed system-wide). CMake and Ninja come too, for IDEs." });
             if (modKitStatus.Length > 0) panel.Children.Add(new TextBlock { Text = modKitStatus, FontSize = 12, Foreground = Light });
             panel.Children.Add(install);
             ModsList.Children.Add(new Border { Classes = { "card" }, Child = panel });
@@ -44,9 +47,22 @@ public partial class MainWindow
 
     MenuItem BuildItem(ModManifest mod)
     {
-        var build = new MenuItem { Header = "Build now", IsEnabled = !modsLocked && !modKitBusy && Sdk is { } s && ModKit.ToolsReady(s) };
+        var sdk = Sdk;
+        var linux = OperatingSystem.IsLinux();
+        var linuxAgent = paths.InstallRoot == null ? null : Path.Combine(paths.InstallRoot, "app", "cli-linux", "HellForge.Cli");
+        var linuxAgentExists = linux && linuxAgent != null && File.Exists(linuxAgent);
+        var nativeZig = linux && sdk != null ? ModKit.NativeLinuxZig(sdk) : null;
+        var build = new MenuItem
+        {
+            Header = "Build now",
+            IsEnabled = !modsLocked && !modKitBusy && sdk != null &&
+                (linux ? linuxAgentExists && nativeZig != null : ModKit.ToolsReady(sdk))
+        };
         ToolTip.SetShowOnDisabled(build, true);
         ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
+            : linux && !linuxAgentExists ? "The native Linux build agent is missing; reinstall HellForge."
+            : linux && nativeZig == null ? NativeZigTip
+            : linux ? "Compiles src/ with the pinned native Linux Zig, into the build the next session loads."
             : "Compiles src/ with HellForge's pinned Zig now, as a session would (sessions build it anyway; this shows errors early).");
         build.Click += (_, _) => BuildMod(mod);
         return build;
@@ -65,8 +81,40 @@ public partial class MainWindow
         {
             try
             {
-                var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId, line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
-                Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
+                if (OperatingSystem.IsLinux())
+                {
+                    var agent = Path.Combine(install.App, "cli-linux", "HellForge.Cli");
+                    if (!File.Exists(agent)) throw new InvalidDataException("the native Linux build agent is missing; reinstall HellForge.");
+                    var start = new ProcessStartInfo(agent)
+                    {
+                        WorkingDirectory = install.Root,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    start.ArgumentList.Add("build-mod");
+                    start.ArgumentList.Add("--mod");
+                    start.ArgumentList.Add(mod.Folder);
+                    using var process = Process.Start(start) ?? throw new InvalidDataException("the native Linux build agent did not start.");
+                    void ReportLine(object? _, DataReceivedEventArgs e)
+                    {
+                        if (e.Data is { Length: > 0 } line) Dispatcher.UIThread.Post(() => Append(line, LauncherLine));
+                    }
+                    process.OutputDataReceived += ReportLine;
+                    process.ErrorDataReceived += ReportLine;
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    process.WaitForExit();
+                    process.WaitForExit();
+                    if (process.ExitCode != 0) throw new InvalidDataException($"the native Linux build agent exited with code {process.ExitCode}.");
+                    Dispatcher.UIThread.Post(() => Append($"{mod.Id} built with native Linux Zig.", Green));
+                }
+                else
+                {
+                    var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId,
+                        line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
+                    Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
+                }
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
             { Dispatcher.UIThread.Post(() => Append($"{mod.Id} {failure.Message}", Red)); }

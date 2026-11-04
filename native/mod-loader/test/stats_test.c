@@ -6,6 +6,7 @@
 #include "loadout_preview_test.c"
 #include "armory_diag_test.c"
 #include "live_sync_test.c"
+#include "channel_test.c"
 #include "director_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
@@ -3756,10 +3757,35 @@ static void HookChainFixture(void)
     assert(((volatile ChainFn)ChainTarget2)(5) == 2 * 5 + 7 + 110 && !strcmp(g_trail, "ba"));
 }
 
-/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset or anything else,
- * FieldWatch arms no thread (another thread's debug registers stay clear) and records no watched field. */
+/* B.4: which debug exceptions FieldWatchHit claims. Dr6 bits 0-2 name the watchpoint; when bits 0-3 are clear, a system
+ * that does not report Dr6 (Wine) still sends the trap of a thread FieldWatch armed, unless TF is a single step of
+ * someone else's. Every combination of code, Dr6, TF and armed. */
+static void FieldWatchClaimFixture(void)
+{
+    static const DWORD codes[] = {EXCEPTION_SINGLE_STEP, EXCEPTION_BREAKPOINT, EXCEPTION_ACCESS_VIOLATION};
+    static const DWORD64 dr6s[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        0x4000000000000000ull, 0xFFFFFFFFFFFFFFFFull};
+    for (size_t c = 0; c < sizeof codes / sizeof codes[0]; c++)
+        for (size_t d = 0; d < sizeof dr6s / sizeof dr6s[0]; d++)
+            for (int tf = 0; tf < 2; tf++)
+                for (int armed = 0; armed < 2; armed++)
+                {
+                    int expected = FIELD_WATCH_PASS;
+                    if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 7) != 0) expected = FIELD_WATCH_CLAIM;
+                    else if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 0xF) == 0 && armed && !tf) expected = FIELD_WATCH_CLAIM_UNKNOWN;
+                    assert(FieldWatchClaim(codes[c], dr6s[d], tf ? 0x100 : 0, armed) == expected);
+                }
+    /* the exact B.3 context: single step, Dr6=0, TF clear, on an armed thread is ours; unarmed and TF single steps pass */
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 1) == FIELD_WATCH_CLAIM_UNKNOWN);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0x100, 1) == FIELD_WATCH_PASS);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 0) == FIELD_WATCH_PASS);
+    puts("PASS field watch: Dr6 names the watchpoint, Dr6=0 on an armed thread with TF clear is claimed, TF single steps and unarmed threads pass on");
+}
+
+/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset, 0 or anything else,
+ * FieldWatch runs no self-test, arms no thread (another thread's debug registers stay clear) and records no field. */
 static DWORD WINAPI FieldWatchIdle(void* event) { WaitForSingleObject(event, INFINITE); return 0; }
-static void FieldWatchFixture(void)
+static void FieldWatchOffFixture(void)
 {
     static float fields[0x10];
     HANDLE event = CreateEventW(NULL, TRUE, FALSE, NULL);
@@ -3771,7 +3797,7 @@ static void FieldWatchFixture(void)
         SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", offValues[i]);
         assert(!FieldWatchEnabled());
         FieldWatch((uintptr_t)fields);
-        assert(g_fieldWatched == 0);
+        assert(g_fieldWatched == 0 && g_fieldWatchThreadCount == 0);
         CONTEXT context = {0};
         context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         assert(GetThreadContext(thread, &context));
@@ -3784,6 +3810,156 @@ static void FieldWatchFixture(void)
     WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
     CloseHandle(event);
+    puts("PASS field watch off by default: unset, 0 or another value arms no thread; 1 turns it on");
+}
+
+/* B.4 end to end: the real self-test, then FieldWatch arming a helper of this test process; the helper reads and
+ * writes a watched buffer at +0 and +0x10. Nothing here needs game.dll. */
+static volatile LONG g_fieldE2eBuffer[8];
+static volatile LONG g_fieldE2eThreadId;
+static HANDLE g_fieldE2eReady, g_fieldE2eGo;
+
+static DWORD WINAPI FieldWatchE2eThread(void* unused)
+{
+    g_fieldE2eThreadId = (LONG)GetCurrentThreadId();
+    if (g_fieldE2eReady == NULL || !SetEvent(g_fieldE2eReady)) return 0;
+    if (g_fieldE2eGo == NULL || WaitForSingleObject(g_fieldE2eGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldE2eBuffer[0] = 1;
+    LONG first = g_fieldE2eBuffer[0];
+    g_fieldE2eBuffer[4] = 2;
+    LONG second = g_fieldE2eBuffer[4];
+    return (DWORD)(first + second);
+}
+
+static void FieldWatchEndToEndFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG before = g_fieldHitCount;
+    g_fieldE2eReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldE2eGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldE2eReady != NULL && g_fieldE2eGo != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchE2eThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldE2eReady, 5000) == WAIT_OBJECT_0);
+    FieldWatch((uintptr_t)g_fieldE2eBuffer);
+    assert(SetEvent(g_fieldE2eGo));
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); /* alive: no trap reached the default handler */
+    DWORD exit = 0;
+    assert(GetExitCodeThread(thread, &exit) && exit == 3);
+    CloseHandle(thread);
+    CloseHandle(g_fieldE2eReady);
+    CloseHandle(g_fieldE2eGo);
+    g_fieldE2eReady = g_fieldE2eGo = NULL;
+    if (works)
+    {
+        assert(g_fieldHitCount > before);
+        assert(FieldWatchArmed((DWORD)g_fieldE2eThreadId));
+    }
+    else
+    {
+        assert(g_fieldWatchThreadCount == 0);
+        assert(g_fieldHitCount == before);
+    }
+    puts("PASS field watch: the self-test ran for real; an armed helper's watched reads and writes were claimed, and a system without watchpoints arms nothing");
+}
+
+/* B.4b end to end: a helper of this test process touches a watched buffer past the 48 places; then the loader's
+ * FieldWatchTick clears its Dr0-Dr2 and their Dr7 bits, and a later touch traps no more. A preview record is known
+ * first, so Dr2 (L2, Dr7 bit 4) is armed too, as in a game with the war table open. Nothing here needs game.dll. */
+static volatile LONG g_fieldCapBuffer[8];
+static volatile LONG g_fieldCapRecord; /* the preview record's +0x240, never touched */
+static HANDLE g_fieldCapReady, g_fieldCapGo, g_fieldCapFilled, g_fieldCapDone;
+
+#define FIELD_CAP_TOUCH(n) g_fieldCapBuffer[(n) & 4] = (LONG)(n)
+static DWORD WINAPI FieldWatchCapThread(void* unused)
+{
+    if (g_fieldCapReady == NULL || !SetEvent(g_fieldCapReady)) return 0;
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    FIELD_CAP_TOUCH(0); FIELD_CAP_TOUCH(1); FIELD_CAP_TOUCH(2); FIELD_CAP_TOUCH(3);
+    FIELD_CAP_TOUCH(4); FIELD_CAP_TOUCH(5); FIELD_CAP_TOUCH(6); FIELD_CAP_TOUCH(7);
+    FIELD_CAP_TOUCH(8); FIELD_CAP_TOUCH(9); FIELD_CAP_TOUCH(10); FIELD_CAP_TOUCH(11);
+    FIELD_CAP_TOUCH(12); FIELD_CAP_TOUCH(13); FIELD_CAP_TOUCH(14); FIELD_CAP_TOUCH(15);
+    FIELD_CAP_TOUCH(16); FIELD_CAP_TOUCH(17); FIELD_CAP_TOUCH(18); FIELD_CAP_TOUCH(19);
+    FIELD_CAP_TOUCH(20); FIELD_CAP_TOUCH(21); FIELD_CAP_TOUCH(22); FIELD_CAP_TOUCH(23);
+    FIELD_CAP_TOUCH(24); FIELD_CAP_TOUCH(25); FIELD_CAP_TOUCH(26); FIELD_CAP_TOUCH(27);
+    FIELD_CAP_TOUCH(28); FIELD_CAP_TOUCH(29); FIELD_CAP_TOUCH(30); FIELD_CAP_TOUCH(31);
+    FIELD_CAP_TOUCH(32); FIELD_CAP_TOUCH(33); FIELD_CAP_TOUCH(34); FIELD_CAP_TOUCH(35);
+    FIELD_CAP_TOUCH(36); FIELD_CAP_TOUCH(37); FIELD_CAP_TOUCH(38); FIELD_CAP_TOUCH(39);
+    FIELD_CAP_TOUCH(40); FIELD_CAP_TOUCH(41); FIELD_CAP_TOUCH(42); FIELD_CAP_TOUCH(43);
+    FIELD_CAP_TOUCH(44); FIELD_CAP_TOUCH(45); FIELD_CAP_TOUCH(46); FIELD_CAP_TOUCH(47);
+    FIELD_CAP_TOUCH(48); FIELD_CAP_TOUCH(49); FIELD_CAP_TOUCH(50); FIELD_CAP_TOUCH(51);
+    FIELD_CAP_TOUCH(52); FIELD_CAP_TOUCH(53); FIELD_CAP_TOUCH(54); FIELD_CAP_TOUCH(55);
+    if (g_fieldCapFilled != NULL) SetEvent(g_fieldCapFilled);
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldCapBuffer[0] = 99;
+    if (g_fieldCapDone != NULL) SetEvent(g_fieldCapDone);
+    return 7;
+}
+#undef FIELD_CAP_TOUCH
+
+static void FieldWatchCapFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG hitsBefore = g_fieldHitCount, trapsBefore = g_fieldTrapCount;
+    g_fieldCapReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapFilled = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapDone = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldCapReady != NULL && g_fieldCapGo != NULL && g_fieldCapFilled != NULL && g_fieldCapDone != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchCapThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldCapReady, 5000) == WAIT_OBJECT_0);
+    uintptr_t recordBefore = g_previewRecord;
+    g_previewRecord = (uintptr_t)&g_fieldCapRecord - 0x240;
+    FieldWatch((uintptr_t)g_fieldCapBuffer);
+    if (works)
+    {
+        CONTEXT armed = {0};
+        armed.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &armed));
+        assert(ResumeThread(thread) != (DWORD)-1);
+        /* Wine may report zeros here (it does in the exception handler); when it reports them, Dr2 is armed */
+        assert(armed.Dr7 == 0 || (armed.Dr2 == (uintptr_t)&g_fieldCapRecord && (armed.Dr7 & 0x10) != 0));
+    }
+    assert(SetEvent(g_fieldCapGo));
+    assert(WaitForSingleObject(g_fieldCapFilled, 5000) == WAIT_OBJECT_0); /* the helper touched 56 places */
+    if (works)
+    {
+        assert(g_fieldHitCount == FIELD_WATCH_HITS && g_fieldTrapCount > trapsBefore);
+        assert(!g_fieldWatchOff);
+        FieldWatchTick();
+        assert(g_fieldWatchOff);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & FIELD_WATCH_DR7_BITS) == 0);
+        assert(ResumeThread(thread) != (DWORD)-1);
+        LONG trapsCleared = g_fieldTrapCount;
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+        assert(g_fieldTrapCount == trapsCleared && g_fieldHitCount == FIELD_WATCH_HITS); /* the later touch trapped no more */
+    }
+    else
+    {
+        assert(g_fieldHitCount == hitsBefore && g_fieldWatchThreadCount == 0 && !g_fieldWatchOff);
+        FieldWatchTick();
+        assert(!g_fieldWatchOff);
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+    }
+    DWORD exit = 0;
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
+    assert(GetExitCodeThread(thread, &exit) && exit == 7); /* the process and its helper survived */
+    CloseHandle(thread);
+    CloseHandle(g_fieldCapReady);
+    CloseHandle(g_fieldCapGo);
+    CloseHandle(g_fieldCapFilled);
+    CloseHandle(g_fieldCapDone);
+    g_fieldCapReady = g_fieldCapGo = g_fieldCapFilled = g_fieldCapDone = NULL;
+    g_previewRecord = recordBefore;
+    puts("PASS field watch: past the 48 places the loader's thread clears the armed threads' Dr0-Dr2 and all their Dr7 bits (Dr2's L2 too), logs once, and later touches do not trap");
 }
 
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
@@ -3797,7 +3973,6 @@ int main(int argc, char** argv)
     strcpy(g_mods[0].id, "a"); strcpy(g_mods[1].id, "b");
     g_modCount = 2;
     FieldsFixture();
-    FieldWatchFixture();
     LiveFixture();
     LiveSyncFixture();
     LiveModsFixture();
@@ -3810,6 +3985,8 @@ int main(int argc, char** argv)
     ContentInstallFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
+    ChannelGameFixture();
+    ChannelFixture();
     LiveBrowseFixture();
     LuaBridgeFixture();
     ActionsFixture();
@@ -4056,11 +4233,17 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    FieldWatchClaimFixture();
+    FieldWatchOffFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1"); /* the diagnostic's own tests opt in */
+    FieldWatchEndToEndFixture();
+    FieldWatchCapFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     ArmoryDiagFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
-        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
+        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
         "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 167 sites, a table grown, built again on a reload and grown again");
     return 0;

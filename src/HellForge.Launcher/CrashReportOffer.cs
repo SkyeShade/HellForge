@@ -24,6 +24,7 @@ public partial class MainWindow
         Append("The game crashed" + (crashEnding != null ? " (exit code " + crashEnding + ")" : "") + ". Save logs to Desktop keeps this " +
             "session's logs for whoever helps you; Save crash report (on the Play page) puts them, scrubbed for a public bug report, in one " +
             "zip on your Desktop to attach to a GitHub issue.", Orange);
+        if (CrashReport.KnownCause(run) is { } cause) Append("Known cause: " + cause, Orange);
     }
 
     // The Play page's status after the session that crashed: true when it is the one shown (the next session clears it).

@@ -16,7 +16,17 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var paths = LauncherPaths.Find();
-            desktop.MainWindow = paths != null ? new MainWindow(paths) : new Window
+            var installerPayload = OperatingSystem.IsLinux()
+                ? Environment.GetEnvironmentVariable("HELLFORGE_INSTALLER_PAYLOAD") ??
+                    (File.Exists(Path.Combine(AppContext.BaseDirectory, "HellForge-Linux.zip"))
+                        ? Path.Combine(AppContext.BaseDirectory, "HellForge-Linux.zip") : null)
+                : null;
+            if (OperatingSystem.IsLinux() && installerPayload != null)
+                desktop.MainWindow = new LinuxInstallerWindow(installerPayload);
+            else if (paths != null)
+                desktop.MainWindow = new MainWindow(paths);
+            else
+                desktop.MainWindow = new Window
             {
                 Title = "HellForge Launcher",
                 Width = 480,
