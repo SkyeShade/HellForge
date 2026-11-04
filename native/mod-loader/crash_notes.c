@@ -238,7 +238,7 @@ static void CrashLocations(uintptr_t block, uint32_t locations, uint32_t total, 
     LocationKind kinds[64];
     static LocationType types[512];
     int nk = 0, nt = 0;
-    for (uint32_t i = 0; i < total && i < 8192; i++)
+    for (uint32_t i = 0; i < total && i < 65536; i++)
     {
         uint8_t record[0xE0];
         if (SafeRead(block + locations + (uintptr_t)i * 0xE0, record, sizeof record)) break;

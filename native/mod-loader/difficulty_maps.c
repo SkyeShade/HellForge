@@ -36,15 +36,33 @@ static const uint8_t kSpacingPin[5] = {0xF3, 0x0F, 0x10, 0x50, 0x04};
 static const uint8_t kSpacingPin2[5] = {0xF3, 0x0F, 0x5C, 0x70, 0x04};
 /* The generator's stamp index (0xC04B80: placed stamps, locations and roads by area, for overlap tests) has 10757
  * slots (0x2A05) after a bitset; level 10 uses 4892, and the 17 inserters (0xC04EF0) write through a full index's null
- * (PlaceStampWithWeightRule crashed at 0xF3516C). Larger maps get 16383 slots: the same 14 index bits, so the key
- * layout is unchanged. The size (0xC048E0), the layout check (0xC04AB0) and the index (0xC04B80) agree. Every index is
- * sized at creation; levels are generated well after the loader installs this. */
-static const struct { uint32_t rva; uint8_t length; uint8_t pin[7], bytes[7]; } kStampIndex[5] = {
-    {0xC0498Bu, 5, {0x05, 0x1F, 0xA8, 0x00, 0x00}, {0x05, 0x07, 0x00, 0x01, 0x00}},                     /* add eax, slots x 4 + 7 */
-    {0xC04AEAu, 5, {0xB8, 0x05, 0x2A, 0x00, 0x00}, {0xB8, 0xFF, 0x3F, 0x00, 0x00}},                     /* mov eax, slots */
-    {0xC04C1Au, 6, {0x41, 0xBD, 0x05, 0x2A, 0x00, 0x00}, {0x41, 0xBD, 0xFF, 0x3F, 0x00, 0x00}},         /* mov r13d, slots */
-    {0xC04CB2u, 7, {0x48, 0x8D, 0x81, 0x18, 0xA8, 0x00, 0x00}, {0x48, 0x8D, 0x81, 0x00, 0x00, 0x01, 0x00}}, /* lea rax, [rcx + (slots + 1) x 4] */
-    {0xC04CCCu, 7, {0xC7, 0x47, 0x1C, 0x06, 0x2A, 0x00, 0x00}, {0xC7, 0x47, 0x1C, 0x00, 0x40, 0x00, 0x00}}}; /* mov [rdi+0x1c], slots + 1 */
+ * (0xC04F1C; PlaceStampWithWeightRule crashed at 0xF3516C). One slot per location (s74g: 2798 and 8192 used at 2798
+ * and 8192 locations), so larger maps get 32767 slots (DIF_LOCATIONS 16384 and room): the slot bits follow the count
+ * (bsr + 1 at 0xC04C30, mask +0x20), a handle widens to 64 bits past 32 (0xC04CEA). Each grid cell's bitset holds the
+ * slots too: 0xA9 qwords (10816 bits) in vanilla (+0x28 at 0xC04CDA, 0x548 bytes a cell in the size 0xC0497D), 0x200
+ * now; with 16383 slots and the old width a slot past 10815 set a bit in the next cell (past the memory from the last).
+ * The size (0xC048E0), the layout check (0xC04AB0) and the index (0xC04B80) agree. Every index is sized at creation;
+ * levels are generated well after the loader installs this. */
+static const struct { uint32_t rva; uint8_t length; uint8_t pin[7], bytes[7]; } kStampIndex[7] = {
+    {0xC0498Bu, 5, {0x05, 0x1F, 0xA8, 0x00, 0x00}, {0x05, 0x07, 0x00, 0x02, 0x00}},                     /* add eax, slots x 4 + 0xB */
+    {0xC04AEAu, 5, {0xB8, 0x05, 0x2A, 0x00, 0x00}, {0xB8, 0xFF, 0x7F, 0x00, 0x00}},                     /* mov eax, slots */
+    {0xC04C1Au, 6, {0x41, 0xBD, 0x05, 0x2A, 0x00, 0x00}, {0x41, 0xBD, 0xFF, 0x7F, 0x00, 0x00}},         /* mov r13d, slots */
+    {0xC04CB2u, 7, {0x48, 0x8D, 0x81, 0x18, 0xA8, 0x00, 0x00}, {0x48, 0x8D, 0x81, 0x00, 0x00, 0x02, 0x00}}, /* lea rax, [rcx + (slots + 1) x 4] */
+    {0xC04CCCu, 7, {0xC7, 0x47, 0x1C, 0x06, 0x2A, 0x00, 0x00}, {0xC7, 0x47, 0x1C, 0x00, 0x80, 0x00, 0x00}}, /* mov [rdi+0x1c], slots + 1 */
+    {0xC04CDAu, 7, {0xC7, 0x47, 0x28, 0xA9, 0x00, 0x00, 0x00}, {0xC7, 0x47, 0x28, 0x00, 0x02, 0x00, 0x00}}, /* mov [rdi+0x28], qwords a cell */
+    {0xC0497Du, 6, {0x69, 0xC3, 0x48, 0x05, 0x00, 0x00}, {0x69, 0xC3, 0x00, 0x10, 0x00, 0x00}}};       /* imul eax, ebx, bytes a cell */
+/* The index query (0xC05360: rcx index, edx key, r8d, r9 buffer, [rsp+0x28] its places) writes at most its places
+ * (0xC05446) but returns every hit (ebx); three callers clamp (0xFA85AE, 0xFCB273, 0xFCCE3F), four loop over the
+ * returned count with their fixed buffers (0xF30C99 / 0xFCC4B4 / 0xFCC791: 0x400, 0xFCCB5C: 0x80): a dense city cell
+ * past 0x80 read the stack cookie as an entry (s74g, 0xFCCBF4). The query returns at most its places. */
+typedef uint32_t (*IndexQueryFn)(uint64_t, uint32_t, uint32_t, uint64_t, uint32_t);
+static IndexQueryFn g_indexQuery;
+static void WeldResearchInstall(uintptr_t game); /* difficulty_status.c */
+static uint32_t IndexQueryClamped(uint64_t index, uint32_t key, uint32_t mode, uint64_t buffer, uint32_t places)
+{
+    uint32_t hits = g_indexQuery(index, key, mode, buffer, places);
+    return hits < places ? hits : places;
+}
 static const uint8_t kFinalizeSpacingPin[9] = {0xF3, 0x41, 0x0F, 0x10, 0x95, 0x8C, 0x01, 0x00, 0x00};
 static const uint8_t kFinalizeSpacingStub[57] = {
     0xF3, 0x41, 0x0F, 0x10, 0x95, 0x8C, 0x01, 0x00, 0x00,             /*  0 movss xmm2, [r13+0x18c] */
@@ -460,7 +478,7 @@ static const char* PreviewFailed(uintptr_t game)
     if (SafeRead(game + DIF_PREVIEW_RECT_SITE, zone, 8) || memcmp(zone, kPreviewRectPin, 8) != 0 ||
         SafeRead(game + DIF_CONVOY_SITE, zone, 12) || memcmp(zone, kConvoyPin, 12) != 0)
         return "the war-table preview's view or convoy route is not the reviewed one (a map_scale above 1 needs it)";
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 7; i++)
         if (SafeRead(game + kStampIndex[i].rva, pin, kStampIndex[i].length) || memcmp(pin, kStampIndex[i].pin, kStampIndex[i].length) != 0)
             return "the map generator's stamp index is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
@@ -668,9 +686,13 @@ static const char* JumpToMapStubs(DifficultyInstall* d)
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + mapSites[i].rva, jump, mapSites[i].length)) return "the map generator could not be given the larger map";
     }
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 7; i++)
         if (ApiWrite(game + kStampIndex[i].rva, kStampIndex[i].bytes, kStampIndex[i].length))
             return "the map generator's stamp index could not be enlarged";
+    if (ApiCodeMatches(game + 0xC05360u, "4C 89 4C 24 20 48 89 4C 24"))
+        LoaderHook("the stamp index query's count (at most its places)", game + 0xC05360u, (void*)IndexQueryClamped, (void**)&g_indexQuery);
+    else Note("difficulty: the stamp index query is not the reviewed one: its four unclamped callers keep the game's count");
+    WeldResearchInstall(game);
     return NULL;
 }
 

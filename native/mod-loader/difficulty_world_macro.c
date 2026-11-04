@@ -272,14 +272,14 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     for (uint32_t r = 0; r < routes; r++)
     {
         uint8_t rec[0x48];
-        if (SafeRead(gen + 0x937348u + 0x48ull * r, rec, sizeof rec)) break;
+        if (SafeRead(gen + g_routeEdges + 0x48ull * r, rec, sizeof rec)) break;
         uint32_t first, end; float width; uint16_t flags;
         memcpy(&first, rec + 0x38, 4); memcpy(&end, rec + 0x3C, 4); memcpy(&width, rec + 0x30, 4); memcpy(&flags, rec + 0x44, 2);
         if (rec[0x34] == 2 || (flags & 0x103) || end <= first + 1 || end > points || !(width >= 0 && width < 200)) continue;
         for (uint32_t p = first; p < end; p += 8)
         {
             float xy[2];
-            if (SafeRead(gen + 0x9568E4u + 8ull * p, xy, 8)) break;
+            if (SafeRead(gen + g_routePoints + 8ull * p, xy, 8)) break;
             MACRO_FOR_NODES(xy[0], xy[1], width / 2 + MACRO_STEP, { if (g_macro.slope[n_] > sRoad) { g_macro.slope[n_] = sRoad; roadNodes++; } });
         }
     }
@@ -417,7 +417,7 @@ static void MacroStamps(void)
     g_macro.stampsLevel = g_world.levels;
     uintptr_t gen = 0; uint32_t count = 0;
     if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen + 0x11A7108u, &count, 4)) return;
-    if (count > 8192) count = 8192;
+    if (count > DIF_LOCATIONS) count = DIF_LOCATIONS;
     uint32_t raised = 0; float most = 0;
     for (uint32_t k = 0; k < count; k++)
     {

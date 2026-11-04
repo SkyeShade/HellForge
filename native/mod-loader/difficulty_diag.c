@@ -708,6 +708,7 @@ static void DifficultyWatch(void)
     static int logged;
     WatchZones();
     WatchHashFull();
+    if (g_difficultyGame != 0) StatusWatch(g_difficultyGame);
     if (g_restartWatch == NULL) return;
     WatchMixes();
     WatchOutposts();

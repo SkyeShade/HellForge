@@ -67,6 +67,14 @@ static const uint32_t kWeightReaders[6][2] = {{0x94C1E9u, 5}, {0x94C26Fu, 6}, {0
 #define DIF_MAP_SCALE_MAX 20.0f /* the largest map_scale (difficulty_maps.c: what a larger map changes; past 2,
                                  * difficulty_world.c: the world grows, to 16384 m at 20) */
 
+/* The level's locations (difficulty_block.c moves them to the end of a larger block): A G+0x758E20 (0xE0 each) and B
+ * G+0x7EEBA0 (0x40) in vanilla, 2740 places. 16384 places since 2026-11-04 (an operation's three cities: 0xAB + 0xA7
+ * filled 8192 before 0x2B, s74f/s74g); indices are u32 everywhere, the stamp index's payload u16 (scratch locs16k). */
+#define DIF_LOCATIONS 16384u
+#define DIF_LOCATIONS_A 0x758E20u
+#define DIF_LOCATIONS_B 0x7EEBA0u
+#define DIF_LOCATIONS_A_NEW 0x11A7280u
+#define DIF_LOCATIONS_B_NEW (DIF_LOCATIONS_A_NEW + DIF_LOCATIONS * 0xE0u)
 #define DIF_OBJECTIVES_MAX 30u        /* the moved objective list */
 #define DIF_OBJECTIVES_OTHER 12u      /* a mission's own objectives beside optional and major ones (up to 5 mandatory,
                                        * the live event's, a partner mission's up to 6) */

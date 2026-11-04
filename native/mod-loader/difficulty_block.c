@@ -9,11 +9,7 @@
  * instruction addressing them (location_sites.h, from location_sites.py) and the builders' capacities. Blocks are made
  * with a world (0xAB8B70 -> 0xF6E710), after the loader installs this; one made before keeps the old layout, so the
  * move is skipped then. */
-#define DIF_LOCATIONS 8192u
-#define DIF_LOCATIONS_A 0x758E20u
-#define DIF_LOCATIONS_B 0x7EEBA0u
-#define DIF_LOCATIONS_A_NEW 0x11A7280u
-#define DIF_LOCATIONS_B_NEW (DIF_LOCATIONS_A_NEW + DIF_LOCATIONS * 0xE0u)
+/* DIF_LOCATIONS, DIF_LOCATIONS_A/_B and their new places: difficulty.c (the loader's readers use them too). */
 /* The level's location types (C: G+0x756C20, 0x10 each: name hash and resource; 96 places, level 10 uses ~44, 2 x maps
  * 73..81, and more bases bring more) move with them, after B, with DIF_LOCATION_TYPES places. */
 #define DIF_LOCATION_TYPES 512u
@@ -27,10 +23,13 @@
 #define DIF_MINIMAP_S 0x8498A0u
 #define DIF_MINIMAP_U 0x118BEFCu
 #define DIF_MINIMAP_V 0x118FEFCu
+/* x DIF_MINIMAP_SCALE (8 since 2026-11-04: op 0x55 0xF59D30 appends every location's proxies without a check,
+ * 0xF59E01, and op 0x58 0xF5C3F0 one unit each; 16384 locations) */
+#define DIF_MINIMAP_SCALE 8u
 #define DIF_MINIMAP_P_NEW (DIF_LOCATION_TYPES_C_NEW + DIF_LOCATION_TYPES * 0x10u)
-#define DIF_MINIMAP_S_NEW (DIF_MINIMAP_P_NEW + 0x4000u * 0x30u)
-#define DIF_MINIMAP_U_NEW (DIF_MINIMAP_S_NEW + 0x2000u * 0x58u)
-#define DIF_MINIMAP_V_NEW (DIF_MINIMAP_U_NEW + 0x4000u * 4u)
+#define DIF_MINIMAP_S_NEW (DIF_MINIMAP_P_NEW + 0x1000u * DIF_MINIMAP_SCALE * 0x30u)
+#define DIF_MINIMAP_U_NEW (DIF_MINIMAP_S_NEW + 0x800u * DIF_MINIMAP_SCALE * 0x58u)
+#define DIF_MINIMAP_V_NEW (DIF_MINIMAP_U_NEW + 0x1000u * DIF_MINIMAP_SCALE * 4u)
 /* The mission stamp list (G+0x8BBD70, 128 x 0x10: set, group, item, objective id), filled by GenerateMissionStampList
  * (0xF8E530) without a check (its pass records' capacity, 0x80, is never read): stamps are made per objective, and
  * level 11's 13 objectives made more than 128, the 129th over the objective list right after it (G+0x8BC570: +0 the
@@ -38,7 +37,7 @@
  * instructions address it (lea [r12 + 0x8BBD70] in the op 0x15 pass records). */
 #define DIF_STAMPS 1024u
 #define DIF_STAMPS_OLD 0x8BBD70u
-#define DIF_STAMPS_NEW (DIF_MINIMAP_V_NEW + 0x10000u * 4u)
+#define DIF_STAMPS_NEW (DIF_MINIMAP_V_NEW + 0x4000u * DIF_MINIMAP_SCALE * 4u)
 /* The objective list S (G+0x8BC570: +0 row, +4 ids, +0x44 used flags, +0x54 stamp starts, +0x94 stamp counts, all 16,
  * +0xD4 count, +0xD8.. tag lists), filled from the mission's descriptor (up to 32 ids) without a check, moves after the
  * stamps with 30 places (research-objective-capacity, layout L30: counts S'-0xF0, starts S'-0x78, row +0, ids +4, used
@@ -87,7 +86,32 @@ _Static_assert(DIF_IMPORTANT_NEW % 16u == 0, "the important locations' new place
 #define DIF_LINKED 1024u
 #define DIF_LINKED_OLD 0x8AB6C0u
 #define DIF_LINKED_NEW (DIF_IMPORTANT_NEW + DIF_IMPORTANT * 0x108u)
-#define DIF_BLOCK_NEW (DIF_LINKED_NEW + DIF_LINKED * 0x18u)
+/* The route graph (GenerateRoutes 0xFD03E0 and its builders): nodes G+0x8C4E40 (975 x 0x98, count G+0x11A71B4), edges
+ * G+0x937348 (1621 x 0x48, count G+0x11A71CC), the edges' class bytes G+0x11A1F98 (op 0xAE, count G+0x11A7250) and the
+ * road points G+0x9568E4 (9936 x 8, count G+0x11A71D4) are appended without a check; a larger map's route cells
+ * (rebuilt type 1 maps, an operation's three cities: ~507 cells, ~1015 nodes) ran the nodes into the next list (the
+ * s70 crashes at 0xF6481C). They move after the linked locations with room for 1024 route cells' Voronoi graph (nodes
+ * <= 2n, edges <= 3n): every instruction addressing them (route_sites.h: the builders' leas, the generator and the
+ * mission-time readers, all G = [lg+0x2C8]) and the pass records' capacities, which GenerateRoutes clears by and
+ * sizes its hash tables from (arena chunks grow to fit, 0x173B98C). Limits kept: RouteNav's 3072 node ids, the road
+ * entries' 14-bit edge and u16 point ids. */
+#include "route_sites.h"
+#define DIF_ROUTE_NODES 2304u
+#define DIF_ROUTE_EDGES 3456u
+#define DIF_ROUTE_POINTS 24576u
+#define DIF_ROUTE_NODES_OLD 0x8C4E40u
+#define DIF_ROUTE_EDGES_OLD 0x937348u
+#define DIF_ROUTE_CLASSES_OLD 0x11A1F98u
+#define DIF_ROUTE_POINTS_OLD 0x9568E4u
+/* each array keeps its old place's phase modulo 16 (nodes 0, edges 8, class bytes 8, points 4) */
+#define DIF_PHASE16(at, phase) ((((at) + 0xFu) & ~0xFu) + (phase))
+#define DIF_ROUTE_NODES_NEW DIF_PHASE16(DIF_LINKED_NEW + DIF_LINKED * 0x18u, 0u)
+#define DIF_ROUTE_EDGES_NEW DIF_PHASE16(DIF_ROUTE_NODES_NEW + DIF_ROUTE_NODES * 0x98u, 8u)
+#define DIF_ROUTE_CLASSES_NEW DIF_PHASE16(DIF_ROUTE_EDGES_NEW + DIF_ROUTE_EDGES * 0x48u, 8u)
+#define DIF_ROUTE_POINTS_NEW DIF_PHASE16(DIF_ROUTE_CLASSES_NEW + DIF_ROUTE_EDGES, 4u)
+_Static_assert(DIF_ROUTE_NODES_NEW % 16u == DIF_ROUTE_NODES_OLD % 16u && DIF_ROUTE_EDGES_NEW % 16u == DIF_ROUTE_EDGES_OLD % 16u &&
+    DIF_ROUTE_CLASSES_NEW % 16u == DIF_ROUTE_CLASSES_OLD % 16u && DIF_ROUTE_POINTS_NEW % 16u == DIF_ROUTE_POINTS_OLD % 16u, "the route arrays keep their phase");
+#define DIF_BLOCK_NEW DIF_PHASE16(DIF_ROUTE_POINTS_NEW + DIF_ROUTE_POINTS * 8u, 0u)
 static const LocationSite kPlaceListRefs[29] = {
     {0xC1AF77u, 0, 0x8ABCC0u}, {0xC1B60Fu, 0, 0x8ABCC0u}, {0xC1B887u, 0, 0x8ABCC0u}, {0xC1BB62u, 0, 0x8ABCC0u},
     {0xC1C201u, 0, 0x8ABCC0u}, {0xC1C49Eu, 0, 0x8ABCC0u}, {0xC1CA53u, 0, 0x8ABCC0u}, {0xC1CCF1u, 0, 0x8ABCC0u},
@@ -330,7 +354,7 @@ static const char* MoveMinimapAndStamps(uintptr_t game)
     }
     for (size_t i = 0; i < sizeof kMinimapCaps / sizeof kMinimapCaps[0]; i++)
     {
-        uint32_t places = kMinimapCaps[i].value * 4u;
+        uint32_t places = kMinimapCaps[i].value * DIF_MINIMAP_SCALE;
         if (ApiWrite(game + kMinimapCaps[i].rva + kMinimapCaps[i].at, &places, 4)) return "a minimap capacity could not be raised";
     }
     uint32_t stamps = DIF_STAMPS_NEW;
@@ -453,6 +477,45 @@ static const char* MoveLinkedLocations(uintptr_t game)
     return NULL;
 }
 
+/* The route graph's references and capacities (route_sites.h), all checked against the dump's values first. */
+static const char* MoveRouteGraph(uintptr_t game)
+{
+    static const struct { const RouteSite* refs; size_t count; const RouteSite* caps; size_t capCount; uint32_t old, moved, places; } arrays[4] = {
+        {kRouteNodeRefs, sizeof kRouteNodeRefs / sizeof kRouteNodeRefs[0], kRouteNodeCaps, sizeof kRouteNodeCaps / sizeof kRouteNodeCaps[0], DIF_ROUTE_NODES_OLD, DIF_ROUTE_NODES_NEW, DIF_ROUTE_NODES},
+        {kRouteEdgeRefs, sizeof kRouteEdgeRefs / sizeof kRouteEdgeRefs[0], kRouteEdgeCaps, sizeof kRouteEdgeCaps / sizeof kRouteEdgeCaps[0], DIF_ROUTE_EDGES_OLD, DIF_ROUTE_EDGES_NEW, DIF_ROUTE_EDGES},
+        {kRouteClassRefs, sizeof kRouteClassRefs / sizeof kRouteClassRefs[0], kRouteClassCaps, sizeof kRouteClassCaps / sizeof kRouteClassCaps[0], DIF_ROUTE_CLASSES_OLD, DIF_ROUTE_CLASSES_NEW, DIF_ROUTE_EDGES},
+        {kRoutePointRefs, sizeof kRoutePointRefs / sizeof kRoutePointRefs[0], kRoutePointCaps, sizeof kRoutePointCaps / sizeof kRoutePointCaps[0], DIF_ROUTE_POINTS_OLD, DIF_ROUTE_POINTS_NEW, DIF_ROUTE_POINTS}};
+    for (int a = 0; a < 4; a++)
+    {
+        for (size_t i = 0; i < arrays[a].count; i++)
+        {
+            uint32_t value = 0;
+            if (SafeRead(game + arrays[a].refs[i].rva + arrays[a].refs[i].at, &value, 4) || value != arrays[a].refs[i].value)
+                return "a route graph reference is not the reviewed one (larger maps' cities need it moved)";
+        }
+        for (size_t i = 0; i < arrays[a].capCount; i++)
+        {
+            uint32_t value = 0;
+            if (SafeRead(game + arrays[a].caps[i].rva + arrays[a].caps[i].at, &value, 4) || value != arrays[a].caps[i].value)
+                return "a route graph capacity is not the reviewed one (larger maps' cities need it raised)";
+        }
+    }
+    size_t refs = 0, caps = 0;
+    for (int a = 0; a < 4; a++)
+    {
+        for (size_t i = 0; i < arrays[a].count; i++, refs++)
+        {
+            uint32_t moved = arrays[a].moved + (arrays[a].refs[i].value - arrays[a].old);
+            if (ApiWrite(game + arrays[a].refs[i].rva + arrays[a].refs[i].at, &moved, 4)) return "a route graph reference could not be moved";
+        }
+        for (size_t i = 0; i < arrays[a].capCount; i++, caps++)
+            if (ApiWrite(game + arrays[a].caps[i].rva + arrays[a].caps[i].at, &arrays[a].places, 4)) return "a route graph capacity could not be raised";
+    }
+    g_routeNodes = DIF_ROUTE_NODES_NEW; g_routeEdges = DIF_ROUTE_EDGES_NEW; g_routePoints = DIF_ROUTE_POINTS_NEW;
+    Note("difficulty: the route graph has %u nodes, %u edges and %u road points (%zu instructions, %zu capacities)", DIF_ROUTE_NODES, DIF_ROUTE_EDGES, DIF_ROUTE_POINTS, refs, caps);
+    return NULL;
+}
+
 /* The generation block a level generator has now, or 0. */
 static uintptr_t GenerationBlock(uintptr_t game)
 {
@@ -474,7 +537,7 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
         return NULL;
     }
     static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts,
-        MoveImportantLocations, MoveLinkedLocations};
+        MoveImportantLocations, MoveLinkedLocations, MoveRouteGraph};
     for (size_t i = 0; i < sizeof moves / sizeof moves[0]; i++)
     {
         const char* why = moves[i](d->game);

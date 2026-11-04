@@ -41,18 +41,78 @@ static const struct { uint32_t site; uint8_t length; const uint8_t* pin; const u
     {0xFD0EF1u, 8, kReVoronoiSizePin, kReVoronoiSizeStub, 48, 15, 25, 39, 44},
     {0xFD11A5u, 11, kReVoronoiGapPin, kReVoronoiGapStub, 48, 15, 25, 39, 44},
     {0xF361B4u, 9, kStructuredGridPin, kStructuredGridStub, 49, 16, 26, 40, 45}};
-/* FinalizeVoronoi on structured maps (0xFBBB20) welds vertices through a 24 x 24 bucket grid whose blocks come from a
- * pool of 512 (+0xBA60, 0xA08 each, count +0x14CA60), unchecked; a larger map can reach ~530 buckets. The pool gets all
- * 576 in place (its allocation, clears and the count's displacement). {rva, length, value at, pin, value}. */
+/* FinalizeVoronoi on structured maps (0xFBBB20) welds vertices through a 24 x 24 bucket grid over the world (+0x1238 = W,
+ * 0xFBBC22; a bucket W/24 wide) whose blocks come from a pool of 512 (+0xBA60, count of blocks +0x14CA60), unchecked;
+ * a larger map can reach ~530 buckets. A block is {u32 count, 16 vertices of 0x98 at +8, 16 output pointers at +0x988}
+ * (0xA08; the pointers: 0xFBAFF0 at 0xFBB080/0xFBB0AF/0xFBB12F, index (p - block - 8) / 0x98 < 16 at 0xFBB074). A full
+ * bucket (0xFB9C19 / 0xFB9F9D, cmp 0x10) fails the weld and the level starts over (0xF6811C): on a 16 km world a
+ * bucket is 683 m and a vanilla city's ~340 vertices in 1.46 km^2 put ~108 in one, so city maps restarted without end
+ * (s73u/s73v). The pool gets all 576 blocks in place with DIF_WELD_PER vertices each: its allocation, clears, the
+ * count's displacement, the two block strides (0xFB9B9A, 0xFB9E88), the pointers' displacement and the three index
+ * checks (imm8 compares, through stubs at structured + 0x180 / + 0x1A0 / + 0x1C0). {rva, length, value at, pin, value}. */
+#define DIF_WELD_PER 256u
+#define DIF_WELD_POINTERS (8u + DIF_WELD_PER * 0x98u)
+#define DIF_WELD_BLOCK (DIF_WELD_POINTERS + DIF_WELD_PER * 8u)
+#define DIF_WELD_COUNT (0xBA60u + 576u * DIF_WELD_BLOCK)
+static const struct { uint32_t site; uint8_t length; uint8_t pin[10]; uint8_t cmp[3], cmpLength; uint32_t taken, fallthrough; uint8_t jcc; } kWeldFull[3] = {
+    {0xFB9C19u, 6, {0x41, 0x83, 0xF8, 0x10, 0x72, 0x2E}, {0x41, 0x81, 0xF8}, 3, 0xFB9C4Du, 0xFB9C1Fu, 0x82},                          /* jb: room */
+    {0xFB9F9Du, 10, {0x41, 0x83, 0xF8, 0x10, 0x0F, 0x83, 0x14, 0x01, 0x00, 0x00}, {0x41, 0x81, 0xF8}, 3, 0xFBA0BBu, 0xFB9FA7u, 0x83}, /* jae: full */
+    {0xFBB074u, 9, {0x83, 0xFA, 0x10, 0x0F, 0x83, 0xC0, 0x00, 0x00, 0x00}, {0x81, 0xFA, 0}, 2, 0xFBB13Du, 0xFBB07Du, 0x83}};       /* jae: not a bucket's */
+static const struct { uint32_t site; uint8_t pin[8]; } kWeldPointers[3] = { /* [r8 + r10 * 8 + 0x988] (disp32 at +4) */
+    {0xFBB080u, {0x4B, 0x8B, 0x84, 0xD0, 0x88, 0x09, 0x00, 0x00}}, {0xFBB0AFu, {0x4B, 0x89, 0x8C, 0xD0, 0x88, 0x09, 0x00, 0x00}},
+    {0xFBB12Fu, {0x4B, 0x8B, 0x84, 0xD0, 0x88, 0x09, 0x00, 0x00}}};
+static const uint32_t kWeldStrides[2] = {0xFB9B9Au, 0xFB9E88u}; /* imul rcx, rcx, 0xA08 (value at +3) */
+/* An edge endpoint's node (0xFBAFF0, from 0xFBB180: rcx weld, rdx the endpoint vertex, r8 the nodes {u32 count, u32 cap,
+ * ptr at +8}, r9 out) finds the endpoint's block by the bucket of the vertex's position, but 0xFB9D90 files a new
+ * endpoint by its position and then stores it snapped down to 1/8 m (floorf(8 v) / 8: 0xFBA018..0xFBA057, floorf at
+ * 0x2108F28): a vertex less than 1/8 m above a bucket line k W / 23 then looks in bucket k - 1's block, its index
+ * (p - block - 8) / 0x98 is out of range and the weld fails (0xFBB074; s74j: four of ~50 terrain tiles, 39 m buckets).
+ * The blocks are one pool (weld + 0xBA60, DIF_WELD_BLOCK each), so the block holding the vertex is its pool offset's:
+ * the same node as the game's lookup whenever that one is right. A pointer outside the pool keeps the game's lookup. */
+typedef uint64_t (*WeldEndpointFn)(uint64_t, uint64_t, uint64_t, uint64_t);
+static WeldEndpointFn g_weldEndpoint;
+static volatile LONG g_weldEndpointMoved;
+static uint64_t WeldEndpoint(uint64_t weldAt, uint64_t vertexAt, uint64_t nodesAt, uint64_t outAt)
+{
+    uint8_t* weld = (uint8_t*)(uintptr_t)weldAt; uint8_t* p = (uint8_t*)(uintptr_t)vertexAt;
+    uint32_t* nodes = (uint32_t*)(uintptr_t)nodesAt; uint8_t** out = (uint8_t**)(uintptr_t)outAt;
+    uint8_t* pool = weld + 0xBA60u;
+    uint32_t used = *(volatile uint32_t*)(weld + DIF_WELD_COUNT);
+    if (used > 576u) used = 576u;
+    if (p < pool || p >= pool + (size_t)used * DIF_WELD_BLOCK) return g_weldEndpoint(weldAt, vertexAt, nodesAt, outAt);
+    uint8_t* block = pool + (size_t)(p - pool) / DIF_WELD_BLOCK * DIF_WELD_BLOCK;
+    size_t in = (size_t)(p - block);
+    if (in < 8u || (in - 8u) % 0x98u != 0 || (in - 8u) / 0x98u >= *(uint32_t*)block) return g_weldEndpoint(weldAt, vertexAt, nodesAt, outAt);
+    uint32_t i = (uint32_t)((in - 8u) / 0x98u);
+    { /* the game's bucket, for the notes */
+        float w = *(float*)(weld + 0x1238u), xy[2]; memcpy(xy, p, 8);
+        if (w > 0.0f)
+        {
+            int64_t bx = (int64_t)(xy[0] / w * 23.0f), by = (int64_t)(xy[1] / w * 23.0f);
+            uint32_t ux = (uint32_t)bx > 23u ? 23u : (uint32_t)bx, uy = (uint32_t)by > 23u ? 23u : (uint32_t)by;
+            if (*(uint8_t**)(weld + 8u * (uy * 24u + ux)) != block && InterlockedIncrement(&g_weldEndpointMoved) <= 8)
+                Note("difficulty: weld: an endpoint at %.3f, %.3f (snapped across a bucket line, side %.0f m) found in its own block", (double)xy[0], (double)xy[1], (double)w);
+        }
+    }
+    uint8_t** slot = (uint8_t**)(block + DIF_WELD_POINTERS) + i;
+    if (*slot != NULL) { *out = *slot; return 1; }
+    if (nodes[0] >= nodes[1]) { *out = NULL; return 0; }
+    uint8_t* to = *(uint8_t**)(nodes + 2) + (size_t)nodes[0] * 0x98u;
+    nodes[0]++;
+    *slot = to;
+    memcpy(to, block + 8u + (size_t)i * 0x98u, 0x98u);
+    *out = to;
+    return 1;
+}
 static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[7]; uint32_t value; } kBucketPool[8] = {
-    {0xFBBB58u, 5, 1, {0xBA, 0x68, 0xCA, 0x14, 0x00}, 0x174C68u},                    /* allocation */
-    {0xFBBB6Fu, 6, 2, {0x41, 0xB8, 0x20, 0xB8, 0x14, 0x00}, 0x173A20u},              /* clear from +0x1248 */
-    {0xFBBBEFu, 6, 2, {0x41, 0xB8, 0x00, 0x10, 0x14, 0x00}, 0x169200u},              /* the pool's clear */
-    {0xFBBC10u, 6, 2, {0x89, 0xB3, 0x60, 0xCA, 0x14, 0x00}, 0x174C60u},              /* the count */
-    {0xFB9E72u, 6, 2, {0x8B, 0x8E, 0x60, 0xCA, 0x14, 0x00}, 0x174C60u},
-    {0xFB9E82u, 6, 2, {0x89, 0x86, 0x60, 0xCA, 0x14, 0x00}, 0x174C60u},
-    {0xFB9B82u, 7, 3, {0x41, 0x8B, 0x88, 0x60, 0xCA, 0x14, 0x00}, 0x174C60u},
-    {0xFB9B93u, 7, 3, {0x41, 0x89, 0x80, 0x60, 0xCA, 0x14, 0x00}, 0x174C60u}};
+    {0xFBBB58u, 5, 1, {0xBA, 0x68, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT + 8u},           /* allocation */
+    {0xFBBB6Fu, 6, 2, {0x41, 0xB8, 0x20, 0xB8, 0x14, 0x00}, DIF_WELD_COUNT + 8u - 0x1248u}, /* clear from +0x1248 */
+    {0xFBBBEFu, 6, 2, {0x41, 0xB8, 0x00, 0x10, 0x14, 0x00}, 576u * DIF_WELD_BLOCK},   /* the pool's clear */
+    {0xFBBC10u, 6, 2, {0x89, 0xB3, 0x60, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT},          /* the count */
+    {0xFB9E72u, 6, 2, {0x8B, 0x8E, 0x60, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT},
+    {0xFB9E82u, 6, 2, {0x89, 0x86, 0x60, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT},
+    {0xFB9B82u, 7, 3, {0x41, 0x8B, 0x88, 0x60, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT},
+    {0xFB9B93u, 7, 3, {0x41, 0x89, 0x80, 0x60, 0xCA, 0x14, 0x00}, DIF_WELD_COUNT}};
 /* SpreadLocations_Cities (op 0x8C, 0xFB41B0) flags each important location (G+0x11A715C of 256) in a 128-byte stack
  * array (rbp-0x80) and fails fast past 128 (0xFB43DF / 0xFB4415 -> 0x2088C0C): Hell Forge's objectives and outposts
  * on a larger city map pass it. The array moves to the generation arena (0x400 bytes; its pointer in the old array's
@@ -330,6 +390,12 @@ static const char* StructuredFailed(uintptr_t game)
     for (int i = 0; i < 8; i++)
         if (SafeRead(game + kBucketPool[i].rva, zone, kBucketPool[i].length) || memcmp(zone, kBucketPool[i].pin, kBucketPool[i].length) != 0)
             return "the structured map generator is not the reviewed one (a map_scale above 1 needs it)";
+    static const uint8_t stride[7] = {0x48, 0x69, 0xC9, 0x08, 0x0A, 0x00, 0x00};
+    for (int i = 0; i < 3; i++)
+        if (SafeRead(game + kWeldFull[i].site, zone, kWeldFull[i].length) || memcmp(zone, kWeldFull[i].pin, kWeldFull[i].length) != 0 ||
+            (i < 2 && (SafeRead(game + kWeldStrides[i], zone, 7) || memcmp(zone, stride, 7) != 0)) ||
+            SafeRead(game + kWeldPointers[i].site, zone, 8) || memcmp(zone, kWeldPointers[i].pin, 8) != 0)
+            return "the structured map generator is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
 
@@ -392,6 +458,17 @@ static const char* PrepareStructuredStubs(DifficultyInstall* d)
         rel = (int32_t)((uint8_t*)&d->cellFactor[1] - (stub + kReVoronoiStubs[i].quarterAt + 4)); memcpy(stub + kReVoronoiStubs[i].quarterAt, &rel, 4);
         rel = (int32_t)(game + kReVoronoiStubs[i].site + kReVoronoiStubs[i].length - (uintptr_t)(stub + kReVoronoiStubs[i].backAt + 4));
         memcpy(stub + kReVoronoiStubs[i].backAt, &rel, 4);
+    }
+    /* the weld's full checks: cmp r8d, DIF_WELD_PER; jcc taken; jmp fallthrough */
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t* stub = structured + 0x180 + 0x20 * i, at = kWeldFull[i].cmpLength;
+        uint32_t per = DIF_WELD_PER;
+        memcpy(stub, kWeldFull[i].cmp, at); memcpy(stub + at, &per, 4); at += 4;
+        stub[at] = 0x0F; stub[at + 1] = kWeldFull[i].jcc;
+        rel = (int32_t)(game + kWeldFull[i].taken - (uintptr_t)(stub + at + 6)); memcpy(stub + at + 2, &rel, 4);
+        stub[at + 6] = 0xE9;
+        rel = (int32_t)(game + kWeldFull[i].fallthrough - (uintptr_t)(stub + at + 11)); memcpy(stub + at + 7, &rel, 4);
     }
     return NULL;
 }
@@ -479,6 +556,34 @@ static const char* JumpToStructured(DifficultyInstall* d)
     for (int i = 0; i < 8; i++)
         if (ApiWrite(game + kBucketPool[i].rva + kBucketPool[i].at, &kBucketPool[i].value, 4))
             return "the structured maps' vertex buckets could not be enlarged";
+    uint32_t block = DIF_WELD_BLOCK, pointers = DIF_WELD_POINTERS;
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t jump[10];
+        memset(jump, 0x90, sizeof jump);
+        jump[0] = 0xE9;
+        rel = DifficultyJumpRel(game + kWeldFull[i].site, (uintptr_t)(d->structured + 0x180 + 0x20 * i)); memcpy(jump + 1, &rel, 4);
+        if ((i < 2 && ApiWrite(game + kWeldStrides[i] + 3, &block, 4)) || ApiWrite(game + kWeldPointers[i].site + 4, &pointers, 4) ||
+            ApiWrite(game + kWeldFull[i].site, jump, kWeldFull[i].length))
+            return "the structured maps' vertex buckets could not be enlarged";
+    }
+    /* 0xFBB180 keeps r9 across its second call (0xFBB1DF lea r9, [rdi+0x18]; call; 0xFBB202 mov rax, [r9]): the game's
+     * whole-program register use knows 0xFBAFF0 leaves it, a C function need not (s74k crashed at 0xFBB202, r9 = 0).
+     * The detour is a thunk that keeps r9: push r9; sub rsp, 0x20; mov rax, WeldEndpoint; call rax; add rsp, 0x20;
+     * pop r9; ret. Its other caller (0xFBB1CE) and the result (al, [r9]) need nothing else kept. */
+    static uint8_t* thunk;
+    if (thunk == NULL && (thunk = AllocateNearGame(game, 0x40)) != NULL)
+    {
+        static const uint8_t head[] = {0x41, 0x51, 0x48, 0x83, 0xEC, 0x20, 0x48, 0xB8}, tail[] = {0xFF, 0xD0, 0x48, 0x83, 0xC4, 0x20, 0x41, 0x59, 0xC3};
+        uint64_t to = (uint64_t)(uintptr_t)WeldEndpoint;
+        memcpy(thunk, head, sizeof head); memcpy(thunk + sizeof head, &to, 8); memcpy(thunk + sizeof head + 8, tail, sizeof tail);
+        DWORD thunkProtect = 0;
+        if (!VirtualProtect(thunk, 0x40, PAGE_EXECUTE_READ, &thunkProtect)) thunk = NULL;
+        else FlushInstructionCache(GetCurrentProcess(), thunk, 0x40);
+    }
+    if (thunk != NULL && ApiCodeMatches(game + 0xFBAFF0u, "F3 0F 10 91 38 12 00 00 4C 8B D1"))
+        LoaderHook("the structured weld's endpoints (their own block, not their snapped position's)", game + 0xFBAFF0u, (void*)thunk, (void**)&g_weldEndpoint);
+    else Note("difficulty: the structured weld's endpoint lookup is not the reviewed one: a vertex snapped across a bucket line still fails the weld");
     uint8_t flagsJump[32];
     memset(flagsJump, 0x90, sizeof flagsJump);
     flagsJump[0] = 0xE9;

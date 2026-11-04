@@ -322,6 +322,7 @@ static LONG g_worldIndexFullSeen;
 typedef uint64_t (*WorldPassFn)(uint64_t, uint64_t, uint64_t, uint64_t);
 static uintptr_t g_worldLevel;
 static uint32_t g_importantList = 0x8996B0u; /* G + this: the important locations (difficulty_block.c moves them) */
+static uint32_t g_routeNodes = 0x8C4E40u, g_routeEdges = 0x937348u, g_routePoints = 0x9568E4u; /* G + these: the route graph (difficulty_block.c moves it) */
 static void WorldPassNote(const char* name, uint32_t before[2], uint64_t start)
 {
     uintptr_t block = 0;
@@ -812,6 +813,10 @@ static void WorldTileListCheck(const uint8_t* block, uintptr_t base, uint32_t si
  * generator block only, so the level's data is untouched; the tile is abandoned and the level goes on. */
 static CONTEXT g_tileGuardContext;
 static volatile DWORD g_tileGuardThread;
+/* A tile's FinalizeVoronoi weld that failed on the tile's thread (difficulty_status.c's WeldFinal): the op returns as done
+ * instead of asking for the level to be generated again (0xF68118: [lg+0xF954]++, [[ctx+0x58]+0x19B0EA] = 1, read by the
+ * game's own loops, 0xF2606F and the level tick 0xF73FA6), and the tile's runner abandons the tile. */
+static volatile LONG g_tileWeldFailed;
 static volatile LONG g_tileFault;
 static volatile uintptr_t g_tileFaultAt, g_tileFaultData;
 
@@ -839,6 +844,7 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
     RtlCaptureContext(&g_tileGuardContext);
     if (g_tileFault != 0) return g_tileFault; /* resumed here from WorldTileFault */
     g_tileGuardThread = GetCurrentThreadId();
+    g_tileWeldFailed = 0;
     while (*index == 0 && *calls < limit)
     {
         g_worldDispatch((uint64_t)record, context, (uint64_t)index, 1, (uint64_t)phase, 0, g, h);
@@ -907,6 +913,7 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
             TerrainDiagTileFault(op, g_tileFaultAt, g_tileFaultData);
             return 0;
         }
+        if (g_tileWeldFailed) { Note("difficulty: terrain tile: op 0x%02X's weld failed: the tile is abandoned, the level goes on", op); return 0; }
         QueryPerformanceCounter(&t1);
         ran++;
         { /* research: route cell 0's first edge pointer and the route cell counts after each op (a vertex written over it
@@ -1777,40 +1784,370 @@ static void CityFrameFilter(uint64_t points, uint32_t* count, float cx, float cy
     }
     *count = kept;
 }
+/* An operation's three cities on a larger world: three city frames about seed-placed centres at half the playable radius,
+ * 120 degrees apart, and open land between them (sites on a jittered grid, clear of the cities). The route graph's
+ * nodes and edges (moved by difficulty_block.c: 2304 and 3456, ~2 and ~3 per cell) hold the Voronoi of up to 1024 cells, the
+ * route cells' own room; the open land gets what ~CITY_CELLS cells leave. The level's centres stay for its zone layout (WorldCityZones). */
+#define CITY_COUNT 3
+#define CITY_CELLS 900
+static struct { LONG level; int count; float x[CITY_COUNT], y[CITY_COUNT], radius; uint32_t sites, rings, open; float spacing; } g_cities = {-1};
+static float g_citySites[2 * 1024];
+static void CityCentres(float cx, float cy)
+{
+    uint32_t seed = 0; float s50 = 0.0f; uint32_t W = 0;
+    SafeRead(g_worldLevel + 0x8, &seed, 4); SafeRead(g_worldLevel + 0x2D20 + 0x50, &s50, 4); SafeRead(g_worldLevel + 0x2D20 + 0x2C, &W, 4);
+    uint32_t h = seed * 0x9E3779B1u; h ^= h >> 15; h *= 0x85EBCA6Bu; h ^= h >> 13;
+    float a0 = (float)(h & 0xFFFFFF) / 16777216.0f * 6.2831853f, ring = 0.5f * s50 * 0.5f * (float)W;
+    g_cities.level = g_world.levels; g_cities.count = CITY_COUNT; g_cities.radius = CITY_FRAME_K * CITY_VANILLA_KEEP;
+    for (int i = 0; i < CITY_COUNT; i++)
+    {
+        float a = a0 + 6.2831853f * (float)i / (float)CITY_COUNT;
+        g_cities.x[i] = cx + ring * cosf(a); g_cities.y[i] = cy + ring * sinf(a);
+    }
+}
+/* The city sites gathered so far, each city's transition rings, then the open land, into g_citySites; returns the count.
+ * A route cell has 16 edge slots (+0x8..+0x80), filled without a check, and SpreadLocations_Cities walks them to a null
+ * (0xFB4365..0xFB4370): an open-land cell ~660 m wide next to a city's ~100-200 m fringe cells had more than 16
+ * neighbours, its 17th edge overwrote the cell's box (+0x88) and op 0x8C read that box as an edge (0xFB4320; s73w,
+ * s74d). Between the fringe (vanilla's 0.2 fade ring, ~210 m apart) and the open land, two rings of sites ~1.6x and
+ * ~2.6x the fringe spacing keep neighbouring cells within ~2x of each other in size. The open land takes what CITY_CELLS
+ * leaves, on a jittered grid clear of the rings. */
+#define CITY_FRINGE 210.0f
+static uint32_t CityRing(uint32_t n, float x, float y, float r, float spacing, uint32_t salt)
+{
+    int k = (int)(6.2831853f * r / spacing + 0.5f);
+    float a0 = (float)((salt * 0x9E3779B1u) >> 8) / 16777216.0f * 6.2831853f;
+    for (int i = 0; i < k && n < 1024; i++, n++)
+    {
+        float a = a0 + 6.2831853f * (float)i / (float)k;
+        g_citySites[2 * n] = x + r * cosf(a); g_citySites[2 * n + 1] = y + r * sinf(a);
+    }
+    return n;
+}
+static uint32_t CityOpenLand(uint32_t n, float cx, float cy)
+{
+    float keep = 0.0f, fade = 0.0f, W = 0.0f; uint32_t w = 0, seed = 0;
+    SafeRead(g_worldLevel + 0x2D20 + 0x6C, &keep, 4); SafeRead(g_worldLevel + 0x2D20 + 0x54, &fade, 4); SafeRead(g_worldLevel + 0x2D20 + 0x2C, &w, 4);
+    SafeRead(g_worldLevel + 0x8, &seed, 4);
+    W = (float)w; fade *= 0.5f * W;
+    if (fade > keep) fade = keep;
+    const float outer = fade - 20.0f;
+    /* the rings: spacing s1, s2 at radii half a spacing past the previous edge */
+    const float s1 = 1.6f * CITY_FRINGE, s2 = 2.6f * CITY_FRINGE;
+    const float r1 = g_cities.radius + 0.5f * (CITY_FRINGE + s1), r2 = r1 + 0.5f * (s1 + s2);
+    uint32_t cities = n;
+    for (int k = 0; k < g_cities.count; k++)
+    {
+        n = CityRing(n, g_cities.x[k], g_cities.y[k], r1, s1, seed + 2u * (uint32_t)k);
+        n = CityRing(n, g_cities.x[k], g_cities.y[k], r2, s2, seed + 2u * (uint32_t)k + 1u);
+    }
+    g_cities.rings = n - cities;
+    uint32_t want = n < CITY_CELLS ? CITY_CELLS - n : 0;
+    g_cities.open = 0;
+    if (want < 8 || outer < 1000.0f) return n;
+    const float clear = r2 + 0.5f * s2;
+    float area = 3.14159265f * outer * outer - (float)g_cities.count * 3.14159265f * clear * clear;
+    float sp = sqrtf(area / (float)want);
+    if (sp < s2) sp = s2;
+    g_cities.spacing = sp;
+    uint32_t added = 0;
+    int cells = (int)(outer / sp) + 1;
+    for (int j = -cells; j <= cells && n < CITY_CELLS + 64u; j++)
+        for (int i = -cells; i <= cells && n < CITY_CELLS + 64u; i++)
+        {
+            uint32_t hash = ((uint32_t)(i + 4096) * 0x9E3779B1u) ^ ((uint32_t)(j + 4096) * 0x85EBCA6Bu) ^ (seed * 0xC2B2AE35u);
+            hash ^= hash >> 15; hash *= 0xC2B2AE35u; hash ^= hash >> 13;
+            float jx = ((float)(hash & 0xFFFF) / 65536.0f - 0.5f) * 0.6f, jy = ((float)(hash >> 16) / 65536.0f - 0.5f) * 0.6f;
+            float x = cx + ((float)i + jx) * sp, y = cy + ((float)j + jy) * sp;
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > outer * outer) continue;
+            int close = 0;
+            for (int k = 0; k < g_cities.count && !close; k++)
+            {
+                float d = clear + 0.5f * sp;
+                close = (x - g_cities.x[k]) * (x - g_cities.x[k]) + (y - g_cities.y[k]) * (y - g_cities.y[k]) < d * d;
+            }
+            if (close) continue;
+            g_citySites[2 * n] = x; g_citySites[2 * n + 1] = y; n++; added++;
+        }
+    g_cities.open = added;
+    return n;
+}
+/* one city's sites, from the maker's array, in its frame's disk, appended */
+static uint32_t CityAppend(uint32_t n, uint64_t points, uint32_t* count, float cx, float cy)
+{
+    SiteNote("a city's frame", points, count, "as made");
+    CityFrameFilter(points, count, cx, cy);
+    uint32_t m = 0;
+    if (SafeRead((uint64_t)(uintptr_t)count, &m, 4)) return n;
+    for (uint32_t i = 0; i < m && n < 1024; i++) if (!SafeRead(points + 8ull * i, &g_citySites[2 * n], 8)) n++;
+    return n;
+}
+/* A terrain tile's route sites on a city map: the tile is the plan's nature terrain (kTileOps), so it takes the sites
+ * an open map's tile gets, GenerateRoutes' non-structured maker 0xC126C0 (rcx = map type 1: 0 here, its random path
+ * 0xC12974; rdx arena, xmm2 the spacing [[[lg+0x2D0]+0x68]+4], r9 the rect, then rng and the count; the call 0xF36125..
+ * 0xF36152), not a city template per 896 m tile: one tile's FinalizeVoronoi failing restarts the whole level (the tile
+ * shares the level's context: [lg+0xF954]++, [[ctx+0x58]+0x19B0EA] = 1 at 0xF6811C; s74h). */
+typedef uint64_t (*SiteNatureFn)(uint64_t, uint64_t, float, uint64_t, uint64_t, uint32_t*);
+static uint64_t CityTileSites(uint64_t arena, uint64_t box, uint64_t rng, uint32_t* count, int grid, uint64_t template, float scale, uint64_t kind, uint64_t region)
+{
+    static int nature = -1;
+    if (nature < 0) nature = ApiCodeMatches(g_world.game + 0xC126C0u, "48 8B C4 53 55 56 48 81 EC 90 00 00 00 48 8B 9C");
+    uint64_t holder = 0, zone = 0; float spacing = 0.0f;
+    if (g_world.current > 1.0f && nature == 1 && !SafeRead(g_worldLevel + 0x2D0, &holder, 8) && holder != 0 && !SafeRead(holder + 0x68, &zone, 8) && zone != 0 &&
+        !SafeRead(zone + 4, &spacing, 4) && spacing > 1.0f && spacing < 1000.0f)
+    {
+        static LONG noted = -1;
+        if (noted != g_world.levels) { noted = g_world.levels; Note("difficulty: extra large maps: a city map's terrain tiles take nature route sites (0xC126C0, %.1f m apart)", (double)spacing); }
+        return ((SiteNatureFn)(g_world.game + 0xC126C0u))(0, arena, spacing, box, rng, count);
+    }
+    if (grid) return 0;
+    return ((SiteTemplateFn)(uintptr_t)template)(arena, scale, kind, region, box, rng, count);
+}
+/* The level's own world (2048 m x the larger maps' factor, 16384 m at 8x) and rect (GenerateRoutes over it: S+0x64..
+ * S+0x68), not a terrain tile's: a tile runs the level's records with its own settings (world 896 m, rect 0..896; s74e),
+ * where three city frames overran its weld buckets (FinalizeVoronoi failed, the level restarted). Only the level gets
+ * the cities; a tile keeps the game's maker. */
+static int CityLevelRect(uint64_t box)
+{
+    float given[4] = {0, 0, 0, 0}; uint32_t w = 0;
+    if (SafeRead(box, given, 16) || SafeRead(g_worldLevel + 0x2D20 + 0x2C, &w, 4)) return 0;
+    if ((float)w < 0.99f * 2048.0f * g_world.current) return 0;
+    return given[2] - given[0] >= 0.5f * (float)w && given[3] - given[1] >= 0.5f * (float)w;
+}
+static void CityDone(uint32_t n, uint32_t cities, uint32_t* count, const char* maker)
+{
+    *count = n;
+    g_cities.sites = cities;
+    Note("difficulty: extra large maps: %d cities (%s) at (%.0f, %.0f) (%.0f, %.0f) (%.0f, %.0f), %u city sites, %u ring sites, %u open-land sites %.0f m apart; %u route sites",
+        g_cities.count, maker, (double)g_cities.x[0], (double)g_cities.y[0], (double)g_cities.x[1], (double)g_cities.y[1], (double)g_cities.x[2], (double)g_cities.y[2],
+        cities, g_cities.rings, g_cities.open, (double)g_cities.spacing, n);
+}
 static uint64_t WorldSiteTemplate(uint64_t arena, float scale, uint64_t kind, uint64_t region, uint64_t box, uint64_t rng, uint32_t* count)
 {
     if (g_world.current <= 1.0f) return g_siteTemplate(arena, scale, kind, region, box, rng, count);
-    /* the template in template space (0..2048 about 1024, x rect width / 2048): a vanilla rect about the given one's centre */
+    if (!CityLevelRect(box)) return CityTileSites(arena, box, rng, count, 0, (uint64_t)(uintptr_t)g_siteTemplate, scale, kind, region);
+    /* the template in template space (0..2048 about 1024, x rect width / 2048): a vanilla rect about each city's centre */
     float given[4] = {0, 0, 0, 0};
     SafeRead(box, given, 16);
     const float cx = 0.5f * (given[0] + given[2]), cy = 0.5f * (given[1] + given[3]), r = CITY_FRAME_K * CITY_VANILLA_KEEP;
-    float frame[4] = {cx - r, cy - r, cx + r, cy + r};
-    uint64_t points = g_siteTemplate(arena, scale, kind, region, (uint64_t)(uintptr_t)frame, rng, count);
-    char how[96];
-    snprintf(how, sizeof how, "scale %.3f, kind %u, frame (%.0f, %.0f)..(%.0f, %.0f)", (double)scale, (unsigned)(kind & 0xFF), (double)frame[0], (double)frame[1], (double)frame[2], (double)frame[3]);
-    SiteNote("template 0xFB9610", points, count, how);
-    CityFrameFilter(points, count, cx, cy);
-    SiteNote("template 0xFB9610 in the frame's disk", points, count, how);
-    return points;
+    CityCentres(cx, cy);
+    uint32_t n = 0;
+    for (int k = 0; k < g_cities.count; k++)
+    {
+        float frame[4] = {g_cities.x[k] - r, g_cities.y[k] - r, g_cities.x[k] + r, g_cities.y[k] + r};
+        uint64_t points = g_siteTemplate(arena, scale, kind, region, (uint64_t)(uintptr_t)frame, rng, count);
+        if (points == 0) return points;
+        n = CityAppend(n, points, count, g_cities.x[k], g_cities.y[k]);
+    }
+    uint32_t cities = n;
+    n = CityOpenLand(n, cx, cy);
+    CityDone(n, cities, count, "template 0xFB9610");
+    return (uint64_t)(uintptr_t)g_citySites;
 }
 static uint64_t WorldSiteGrid(float a, int32_t b, float c, int32_t d, float e, uint64_t arena, float spacing, uint64_t box, uint64_t rng, uint32_t* count)
 {
     if (g_world.current <= 1.0f) return g_siteGrid(a, b, c, d, e, arena, spacing, box, rng, count);
-    /* the grid at the structured type's own spacing (Z+0x67C, Z = [S+0xB0]: not the larger maps' cell factor) over the frame */
+    if (!CityLevelRect(box)) { uint64_t sites = CityTileSites(arena, box, rng, count, 1, 0, 0, 0, 0); return sites != 0 ? sites : g_siteGrid(a, b, c, d, e, arena, spacing, box, rng, count); }
+    /* the grid at the structured type's own spacing (Z+0x67C, Z = [S+0xB0]: not the larger maps' cell factor) over each frame */
     float given[4] = {0, 0, 0, 0}, own = 0.0f;
     uint64_t Z = 0;
     SafeRead(box, given, 16);
     if (!SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) && Z != 0 && !SafeRead(Z + 0x67C, &own, 4) && own > 1.0f && own < 1000.0f) spacing = own * CITY_FRAME_K;
     const float cx = 0.5f * (given[0] + given[2]), cy = 0.5f * (given[1] + given[3]), r = CITY_FRAME_K * CITY_VANILLA_KEEP;
-    float frame[4] = {cx - r, cy - r, cx + r, cy + r};
-    uint64_t points = g_siteGrid(a, b, c, d, e, arena, spacing, (uint64_t)(uintptr_t)frame, rng, count);
-    char how[128];
-    snprintf(how, sizeof how, "spacing %.1f, %g %d %g %d %g, frame (%.0f, %.0f)..(%.0f, %.0f)", (double)spacing, (double)a, b, (double)c, d, (double)e,
-        (double)frame[0], (double)frame[1], (double)frame[2], (double)frame[3]);
-    SiteNote("grid 0xC129B0", points, count, how);
-    CityFrameFilter(points, count, cx, cy);
-    SiteNote("grid 0xC129B0 in the frame's disk", points, count, how);
-    return points;
+    CityCentres(cx, cy);
+    uint32_t n = 0;
+    for (int k = 0; k < g_cities.count; k++)
+    {
+        float frame[4] = {g_cities.x[k] - r, g_cities.y[k] - r, g_cities.x[k] + r, g_cities.y[k] + r};
+        uint64_t points = g_siteGrid(a, b, c, d, e, arena, spacing, (uint64_t)(uintptr_t)frame, rng, count);
+        if (points == 0) return points;
+        n = CityAppend(n, points, count, g_cities.x[k], g_cities.y[k]);
+    }
+    uint32_t cities = n;
+    n = CityOpenLand(n, cx, cy);
+    CityDone(n, cities, count, "grid 0xC129B0");
+    return (uint64_t)(uintptr_t)g_citySites;
+}
+
+/* The cities' zones (op 0xB9 when Z+0x684 bit 0 is set: 0xFB8DD0 maps each route cell's site, +0, through the zone
+ * template about the world's centre, 0xFB901B): each city's cells are moved into the centre for the op and back after;
+ * the open land's cells, outside every city, get an open zone (WorldCityOpenZones). */
+/* The route cells' edge slots (16 at +0x8, unchecked): the largest count and the cells that filled all 16, once per
+ * level after the route graph is made (op 0x07) and after FinalizeVoronoi (0xA4). */
+static void WorldCellEdges(uintptr_t gen, uint32_t op)
+{
+    uint32_t cells = 0, most = 0, full = 0;
+    if (SafeRead(gen + 0x11A71C0u, &cells, 4) || cells > 1024) return;
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        uint64_t slots[16];
+        if (SafeRead(gen + 0x8EB328u + 0x110ull * i + 8, slots, sizeof slots)) break;
+        uint32_t k = 0;
+        while (k < 16 && slots[k] != 0) k++;
+        if (k > most) most = k;
+        if (k == 16) full++;
+    }
+    Note("difficulty: extra large maps: route cells' edges after op 0x%X: at most %u of 16 slots, %u cells full (%u cells)", op, most, full, cells);
+}
+/* The location budget on a city map, after the ops that fill it (0xAB road stamps, 0xA7 buildings, 0x2B weight rules):
+ * the count, how many lie in each city (their box corner +0xB0/+0xB4 within 1.5 x the frame), and the stamp index's
+ * free slots ([level+0x2C0] + 8: free head +0x2C, -1 = full; entry stride u16 +0x24, entries +0x30, a free entry's
+ * first u32 the next; the inserter returns a null handle when full, 0xC04F1C, and its callers write through it). */
+static void WorldCityBudget(uintptr_t gen, uint32_t op)
+{
+    if (g_cities.level != g_world.levels) return;
+    uint32_t count = 0, inCity[CITY_COUNT] = {0}, free = 0;
+    SafeRead(gen + 0x11A7108u, &count, 4);
+    for (uint32_t i = 0; i < count && i < 65536; i++)
+    {
+        float p[2];
+        if (SafeRead(gen + 0x11A7280u + 0xE0ull * i + 0xB0, p, 8)) break;
+        for (int k = 0; k < g_cities.count; k++)
+        {
+            float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k], r = 1.5f * g_cities.radius;
+            if (dx * dx + dy * dy <= r * r) { inCity[k]++; break; }
+        }
+    }
+    uint64_t holder = 0, base = 0; uint32_t head = 0xFFFFFFFFu; uint16_t stride = 0;
+    if (!SafeRead(g_worldLevel + 0x2C0, &holder, 8) && holder != 0 && !SafeRead(holder + 8 + 0x2C, &head, 4) &&
+        !SafeRead(holder + 8 + 0x24, &stride, 2) && !SafeRead(holder + 8 + 0x30, &base, 8) && base != 0 && stride != 0)
+        for (uint32_t at = head; at != 0xFFFFFFFFu && free < 70000; free++)
+            if (SafeRead(base + (uint64_t)stride * at, &at, 4)) break;
+    Note("difficulty: extra large maps: locations after op 0x%X: %u (cities %u / %u / %u), stamp index %u free slots%s", op, count, inCity[0], inCity[1], inCity[2], free,
+        head == 0xFFFFFFFFu ? " (full)" : "");
+}
+static int g_cityShifted;
+static uint32_t g_cityShiftCells;
+static float g_cityShiftSaved[1024][2];
+static void WorldCityShift(uintptr_t gen, int back)
+{
+    if (back)
+    {
+        /* the sites as they were, bit for bit */
+        for (uint32_t i = 0; g_cityShifted && i < g_cityShiftCells; i++)
+            memcpy((void*)(uintptr_t)(gen + 0x8EB328u + 0x110ull * i), g_cityShiftSaved[i], 8);
+        g_cityShifted = 0;
+        return;
+    }
+    uint32_t cells = 0, w = 0;
+    g_cityShifted = 0;
+    if (g_cities.level != g_world.levels || SafeRead(gen + 0x11A71C0u, &cells, 4) || cells > 1024 || SafeRead(g_worldLevel + 0x2D20 + 0x2C, &w, 4)) return;
+    const float c = 0.5f * (float)w;
+    uint32_t moved = 0;
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        float* p = (float*)(uintptr_t)(gen + 0x8EB328u + 0x110ull * i);
+        memcpy(g_cityShiftSaved[i], p, 8);
+        for (int k = 0; k < g_cities.count; k++)
+        {
+            float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k];
+            if (dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f) { p[0] = c + dx; p[1] = c + dy; moved++; break; }
+        }
+    }
+    g_cityShiftCells = cells;
+    g_cityShifted = 1;
+    static LONG noted = -1;
+    if (noted != g_world.levels) { noted = g_world.levels; Note("difficulty: extra large maps: the city zones: %u of %u route cells moved into the zone template's square for op 0xB9", moved, cells); }
+}
+
+/* The open land's zones: the level's zone list (Z+0x238, 0x44 each to an id of 0: +0 id, +4 type index, +0xC weight,
+ * +0x10 height group or -1; Z = [S+0xB0]) gives the non-city zones (the type's +0x170 bits 0..1 clear: not city, not
+ * structured; types from 0xB9's record +0x38). Each open-land cell (outside every city, +8 == -1: no special) takes
+ * one by weight, from those of its height group (+4) or any group, as 0x78 would (0xF3794F..0xF37CBD; scratch
+ * cities/zones.md), picked by a hash of its site and the level seed (the same on every peer). Before 0x78 (every city
+ * layout) the zone id and group: 0x78 keeps a set +0 (0xF37A80) and 0x11 derives the type. After 0xB9 (template
+ * layouts) the type too, as 0x11 does (0xF288E0(ctx, id) ? [r+0xC] : entry +4, 0xC1500D), for 0xA3 reads it first. */
+typedef uint64_t (*ZoneTypeFn)(uint64_t, uint32_t);
+static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen, int withType)
+{
+    if (g_cities.level != g_world.levels) return;
+    uint64_t Z = 0, table = 0;
+    for (uint32_t i = 0; i < end && i < 512 && table == 0; i++)
+    {
+        uint32_t op = 0;
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0xB9) SafeRead(records + (uint64_t)i * 0x19B0u + 0x38, &table, 8);
+    }
+    if (table == 0 || SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) || Z == 0) return;
+    uint8_t zoned = 0;
+    if (withType && (SafeRead(Z + 0x684, &zoned, 1) || !(zoned & 1))) return; /* 0xB9 zoned nothing (0xFB92A7) */
+    static int typeFn = -1;
+    if (typeFn < 0) typeFn = ApiCodeMatches(g_world.game + 0xF288E0u, "4C 8B DC 49 89 5B 10 49 89 73 18 57 48 81 EC A0 00 00 00");
+    struct { uint32_t id; int32_t group, type; float weight; } open[16];
+    uint32_t n = 0; float total = 0.0f;
+    char seen[512]; int seenAt = 0;
+    struct { uint32_t id; int32_t group, type; float weight; } zero[16];
+    uint32_t n0 = 0;
+    for (uint32_t k = 0; k < 16; k++)
+    {
+        uint32_t e[5] = {0}; float weight = 0.0f; uint64_t type = 0; uint32_t flags = 0;
+        if (SafeRead(Z + 0x238 + 0x44ull * k, e, 20) || e[0] == 0) break;
+        memcpy(&weight, &e[3], 4);
+        int32_t t = (int32_t)e[1];
+        if (typeFn == 1)
+        {
+            uint64_t r = ((ZoneTypeFn)(g_world.game + 0xF288E0u))(context, e[0]);
+            if (r != 0) SafeRead(r + 0xC, &t, 4);
+        }
+        int typed = !(t < 0 || t >= 256 || SafeRead(table + 8ull * (uint32_t)t, &type, 8) || type == 0 || SafeRead(type + 0x170, &flags, 4));
+        if (seenAt < (int)sizeof seen - 48) seenAt += snprintf(seen + seenAt, sizeof seen - seenAt, " {%u: type %d%s flags %X weight %.3g}", e[0], t, typed ? "" : " (none)", flags & 0xFF, (double)weight);
+        if (!typed || (flags & 3u) != 0) continue;
+        if (!(weight > 0.0f))
+        {
+            /* a list whose open zones all weigh 0 (the megacity layouts: 0x78 rolls only the city's): the traversable
+             * ones (type bit 5) evenly, kept apart from the weighted until none is weighted */
+            if (!(flags & 0x20u) || n0 >= 16) continue;
+            zero[n0].id = e[0]; zero[n0].group = (int32_t)e[4]; zero[n0].type = t; zero[n0].weight = 1.0f; n0++;
+            continue;
+        }
+        open[n].id = e[0]; open[n].group = (int32_t)e[4]; open[n].type = t; open[n].weight = weight; total += weight; n++;
+    }
+    int even = n == 0 && n0 > 0;
+    if (even) { memcpy(open, zero, sizeof zero); n = n0; total = (float)n0; }
+    uint32_t cells = 0, seed = 0, written = 0;
+    SafeRead(gen + 0x11A71C4u, &cells, 4); SafeRead(g_worldLevel + 0x8, &seed, 4);
+    if (n == 0 || cells > 1024)
+    {
+        Note("difficulty: extra large maps: the open land: no non-city zone in the level's list (%u of:%s), its cells keep the city's", n, seen);
+        return;
+    }
+    uint32_t perZone[16] = {0};
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        uintptr_t sub = gen + 0x92F328u + 0x20ull * i;
+        uint64_t route = 0; float p[2]; int32_t group = 0, special = 0;
+        if (SafeRead(sub + 0x18, &route, 8) || route == 0 || SafeRead(route, p, 8) || SafeRead(sub + 4, &group, 4) || SafeRead(sub + 8, &special, 4)) continue;
+        if (special != -1) continue;
+        int inCity = 0;
+        for (int k = 0; k < g_cities.count && !inCity; k++)
+        {
+            float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k];
+            inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f;
+        }
+        if (inCity) continue;
+        float sum = 0.0f;
+        for (uint32_t k = 0; k < n; k++) if (open[k].group == -1 || open[k].group == group) sum += open[k].weight;
+        int any = !(sum > 0.0f);
+        if (any) sum = total;
+        uint32_t bits[2]; memcpy(bits, p, 8);
+        uint32_t h = (bits[0] * 0x9E3779B1u) ^ (bits[1] * 0x85EBCA6Bu) ^ (seed * 0xC2B2AE35u);
+        h ^= h >> 16; h *= 0x7FEB352Du; h ^= h >> 15; h *= 0x846CA68Bu; h ^= h >> 16;
+        float roll = (float)(h >> 8) / 16777216.0f * sum;
+        uint32_t pick = n - 1;
+        for (uint32_t k = 0; k < n; k++)
+        {
+            if (!any && open[k].group != -1 && open[k].group != group) continue;
+            if (roll < open[k].weight) { pick = k; break; }
+            roll -= open[k].weight;
+        }
+        *(volatile uint32_t*)sub = open[pick].id;
+        if (withType || (open[pick].group != -1 && open[pick].group != group)) *(volatile int32_t*)(sub + 4) = open[pick].group;
+        if (withType) *(volatile int32_t*)(sub + 0xC) = open[pick].type;
+        perZone[pick]++; written++;
+    }
+    char text[256]; int m = 0;
+    for (uint32_t k = 0; k < n && m < (int)sizeof text - 32; k++) m += snprintf(text + m, sizeof text - m, " %u (type %d, group %d): %u;", open[k].id, open[k].type, open[k].group, perZone[k]);
+    Note("difficulty: extra large maps: the open land (%s%s): %u of %u cells, zones%s", withType ? "after 0xB9" : "before 0x78", even ? ", unweighted list: traversable zones evenly" : "",
+        written, cells, text);
 }
 
 /* RevoronoiNatureRoutes (op 0xA3, 0xF691E0; structured maps only) rebuilds the route cells and their subregions: its
@@ -2078,10 +2415,13 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     /* the stamp rings (difficulty_world_terrain.c) rerun 0x26 / 0x4E on tiles from their records as they were before */
     if (watch && g_world.current == 8.0f && (op == 0x26 || op == 0x4E)) TerrainStampsRecord(records + (uint64_t)at * 0x19B0u, op);
     if (watch && op == 0x2B) TownsArm(records, at, b, block);
+    if (watch && op == 0xB9 && !g_cityShifted) WorldCityShift(block, 0); /* each city's cells into the zone template's square */
+    if (watch && op == 0x78) WorldCityOpenZones(records, (uint32_t)d, b, block, 0); /* the open land's zones before 0x78 picks the rest */
     if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (matPatch) TerrainMatPatch(0);
     if (watch && op == 0x2B) TownsAfter(records, at, index, b, g, h, block); /* before TerrainStamps: it saves below[] */
+    if (g_cityShifted) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) { WorldCityShift(block, 1); WorldCityOpenZones(records, (uint32_t)d, b, block, 1); } }
     if (watch && g_world.current == 8.0f && op == 0x2B)
     {
         uint32_t now = at;
@@ -2126,6 +2466,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     }
     if (!watch) return r;
     if (op == 0xB9) WorldZoneProbe(records, (uint32_t)d, block);
+    if (op == 0x07 || op == 0xA4) WorldCellEdges(block, op);
+    if (op == 0xAB || op == 0xA7 || op == 0x2B) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) WorldCityBudget(block, op); }
     if (op == 0xA3)
     {
         uint32_t now = at;
@@ -2164,10 +2506,10 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     QueryPerformanceFrequency(&frequency);
     double ms = (double)(now.QuadPart - start.QuadPart) * 1000.0 / (double)frequency.QuadPart;
     SafeRead(block + 0x11A7108, &after, 4);
-    uint32_t route[3] = {0, 0, 0}; /* vertices of 975, cells of 1024, edges of 1621 */
+    uint32_t route[3] = {0, 0, 0}; /* vertices of 2304, cells of 1024, edges of 3456 (difficulty_block.c moves them) */
     SafeRead(block + 0x11A71B4, &route[0], 4); SafeRead(block + 0x11A71C0, &route[1], 4); SafeRead(block + 0x11A71CC, &route[2], 4);
-    if (after != before || ms > 100.0 || route[0] > 975 || route[1] > 1024 || route[2] > 1621 || op == 0x3 || op == 0xB3 ||
-        op == 0x07 || op == 0x12 || op == 0x75 || op == 0x79 || op == 0xB9 || op == 0xA3)
+    if (after != before || ms > 100.0 || route[0] > 2304 || route[1] > 1024 || route[2] > 3456 || op == 0x3 || op == 0xB3 ||
+        op == 0x07 || op == 0x12 || op == 0x75 || op == 0x79 || op == 0xB9 || op == 0xA3 || op == 0xA4 || op == 0x78)
         Note("difficulty: extra large maps: op 0x%X (record %u) at %.0fx: locations %u -> %u, route vertices %u, cells %u, edges %u, %.1f ms",
             op, at, (double)g_world.current, before, after, route[0], route[1], route[2], ms);
     return r;

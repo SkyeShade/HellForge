@@ -367,10 +367,10 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         volatile int calls = 0;
         uint8_t phase = 0;
         LONG fault = WorldTileGuarded(one, context, &index, &phase, g, h, 10000, &calls);
-        if (fault || index == 0)
+        if (fault || index == 0 || g_tileWeldFailed)
         {
-            Note("difficulty: terrain: tile %d (%.0f, %.0f) %s in op 0x%02X%s", tile, (double)ox, (double)oy, fault ? "faulted" : "did not finish", op,
-                fault ? "; the level's own cells stay there" : "");
+            Note("difficulty: terrain: tile %d (%.0f, %.0f) %s in op 0x%02X%s", tile, (double)ox, (double)oy,
+                fault ? "faulted" : g_tileWeldFailed ? "failed its weld" : "did not finish", op, fault || g_tileWeldFailed ? "; the level's own cells stay there" : "");
             ok = 0;
             break;
         }
@@ -3140,7 +3140,7 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
  * Locations: 0xE0 at G+11A7280 (xy +0, box +0xB0..+0xBC: moved to level metres), extras 0x40 at G+1367280 (read by no op
  * after record 91; +0x10 = the record, +0x38 the vertex list's length: cleared), count G+11A7108 and G+11A710C. */
 #define STAMP_TILE_CELLS_VANILLA 430.0f /* a vanilla map's route-cell items: 434 (planet 70) and 425 (planet 259), measured */
-#define STAMP_LOCATION_LIMIT 8000u      /* of the table's 8192 (0x1C0000 / 0xE0) */
+#define STAMP_LOCATION_LIMIT (DIF_LOCATIONS - 192u) /* of the table's DIF_LOCATIONS */
 typedef struct { uint8_t loc[0xE0]; uint8_t extra[0x40]; float side, prio; uint32_t ring, hash; } StampCandidate;
 static struct
 {
@@ -3458,7 +3458,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
             if (g_stamps.count >= g_stamps.capacity) { why[4]++; continue; }
             StampCandidate* c = &g_stamps.cand[g_stamps.count++];
             memcpy(c->loc, loc, 0xE0);
-            memcpy(c->extra, T + 0x1367280 + (size_t)i * 0x40, 0x40);
+            memcpy(c->extra, T + DIF_LOCATIONS_B_NEW + (size_t)i * 0x40, 0x40);
             float w2[2] = {gx, gy}, b4[4] = {box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy};
             memcpy(c->loc, w2, 8); memcpy(c->loc + 0xB0, b4, 16);
             memcpy(c->extra + 0x10, &rec91, 8); memset(c->extra + 0x38, 0, 4);
@@ -3474,7 +3474,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     uint32_t n0 = 0; SafeRead(gen + 0x11A7108u, &n0, 4);
     uint32_t n = n0, added[3] = {0}, blocked[2] = {0};
     uint64_t roads = 0, points = 0; SafeRead(P + 0x2058, &roads, 8); SafeRead(P + 0x2060, &points, 8);
-    int roadsAreRoutes = roads == gen + 0x937348u && points == gen + 0x9568E4u;
+    int roadsAreRoutes = roads == gen + g_routeEdges && points == gen + g_routePoints;
     StampKeyFn key = (StampKeyFn)(g_world.game + 0xC04860u);
     StampQueryFn query = (StampQueryFn)(g_world.game + 0xC05360u);
     StampInsertFn insert = (StampInsertFn)(g_world.game + 0xC04EF0u);
@@ -3508,7 +3508,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         }
         if (clash) continue;
         memcpy((void*)(uintptr_t)(gen + 0x11A7280u + 0xE0ull * n), c->loc, 0xE0);
-        memcpy((void*)(uintptr_t)(gen + 0x1367280u + 0x40ull * n), c->extra, 0x40);
+        memcpy((void*)(uintptr_t)(gen + DIF_LOCATIONS_B_NEW + 0x40ull * n), c->extra, 0x40);
         uint8_t scratch[16];
         uint32_t* slot = insert(P + 8, lo[0], lo[1], hi[0], hi[1], scratch);
         if (slot != NULL) { *slot = n; (*(volatile uint32_t*)(uintptr_t)(P + 4))++; }

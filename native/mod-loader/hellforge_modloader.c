@@ -602,6 +602,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_towns.c" /* after difficulty_world_terrain.c: towns at a vanilla town's shape, x3 (g_world, WorldTileGuarded) */
 #include "difficulty_world_macro.c" /* after difficulty_world_terrain.c: the extra large map's km-scale relief */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
+#include "difficulty_status.c" /* after difficulty_maps.c: the status-effect volumes' unit registry on larger maps */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
 #include "difficulty_install.c" /* after every difficulty file: the checks and the install, in their order */

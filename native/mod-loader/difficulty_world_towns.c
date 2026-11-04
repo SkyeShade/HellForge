@@ -156,6 +156,15 @@ static void TownsWidenLevels(uint64_t record)
 static void TownsArm(uint64_t records, uint32_t at, uint64_t context, uintptr_t gen)
 {
     if (g_towns.block == NULL || g_world.below == NULL) return;
+    /* towns are the open maps' (types 0/1: weight-rule stamps on zone cells); a city map's buildings come from op 0xA7,
+     * which on three cities fills the location table before 0x2B (s74f: 8192 at 0x2B, which appends without a check) */
+    uint64_t settings0 = 0, info = 0; uint8_t mapType = 0xFF;
+    if (SafeRead(context + 8, &settings0, 8) || settings0 == 0 || SafeRead(settings0 + 0xC0, &info, 8) || info == 0 || SafeRead(info + 0x1D, &mapType, 1) || mapType > 1)
+    {
+        static LONG noted = -1;
+        if (noted != g_world.levels) { noted = g_world.levels; Note("difficulty: towns: map type %u keeps its op 0x2B as it is (towns are map types 0 and 1)", mapType); }
+        return;
+    }
     uint64_t record = records + (uint64_t)at * 0x19B0u;
     TownsWidenLevels(record);
     if (g_towns.level != g_world.levels)
@@ -197,7 +206,7 @@ static void TownsAfter(uint64_t records, uint32_t at, uint64_t index, uint64_t c
     for (int k = 1; k < TOWN_RUNS; k++)
     {
         uint32_t last = counts[k] - counts[k - 1];
-        if (counts[k] + last + last / 2 >= 8192u) { stop = "the location table would fill"; break; }
+        if (counts[k] + last + last / 2 >= DIF_LOCATIONS) { stop = "the location table would fill"; break; }
         uint64_t arena = 0;
         if (!SafeRead(context, &arena, 8) && arena != 0) ((void (*)(uint64_t))(g_world.game + 0x173BAB0u))(arena);
         const float rho = g_towns.rho, angle = 2.0943951f * (float)k;
