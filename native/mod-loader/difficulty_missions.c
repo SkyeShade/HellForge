@@ -1051,6 +1051,155 @@ static const char* JumpToSpawners(DifficultyInstall* d)
     return NULL;
 }
 
+/* More map markers (scratch markers/markers.md, 2026-11-04). The map object (HUD + 0x1A0E28, built by 0x18A5580 at
+ * each mission HUD build, updated by 0x18A7C60, destroyed by 0x18A7940; one caller each) holds 16 objective marker slots
+ * (+0xF958, 0x2B8 each: two widgets built in place by 0x18AA200, a highlight index, an edge flag), their ids (+0x124D8,
+ * u32[16]) and 10 trackers (+0x12518, 0x158 each); the per-frame updater 0x18B42F0 hands them out to objective
+ * instances, then objective-linked entities, then the route marker, and leaves the instance pass at 16 slots or 10
+ * trackers. Every access is the map register plus a 32-bit displacement (or the counts 16 / 10 as immediates), so
+ * the three arrays move to a loader buffer within 2 GB of the map object by rewriting those values in place: the
+ * game's own builder, updater, hover pick, highlight pass and destructor then build, use and destroy
+ * DIF_MARKERS slots and DIF_MARKER_TRACKERS trackers. It happens at the builder's entry (rcx = the map object, nothing
+ * built yet), again if the map object is ever somewhere else; the loader's guards (DIF_MARKER_SLOTS) follow. */
+#define DIF_MARKERS 64u
+#define DIF_MARKER_TRACKERS 32u
+#define DIF_MARKER_BUILDER 0x18A5580u
+typedef struct { uint32_t site; uint8_t length, at, kind; uint8_t pin[10]; } MarkerSite;
+enum { MK_SLOT, MK_ID, MK_TRACKER, MK_N, MK_NT, MK_N8, MK_NT8, MK_N1, MK_NT1, MK_LAST_SLOT, MK_LAST_TRACKER };
+static const MarkerSite kMarkerSites[] = {
+    {0x18A60BBu, 7, 3, MK_SLOT, {0x49, 0x8D, 0x96, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18AAE1Du, 7, 3, MK_SLOT, {0x4D, 0x8D, 0x88, 0xB4, 0xFA, 0x00, 0x00}},
+    {0x18B455Cu, 6, 2, MK_SLOT, {0x48, 0x05, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B46B9u, 9, 4, MK_SLOT, {0x42, 0xC6, 0x84, 0x2E, 0x0C, 0xFC, 0x00, 0x00, 0x00}},
+    {0x18B46F1u, 7, 3, MK_SLOT, {0x48, 0x8D, 0xBE, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B470Fu, 7, 3, MK_SLOT, {0x4C, 0x8D, 0xA6, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B48C6u, 10, 6, MK_SLOT, {0xF3, 0x42, 0x0F, 0x10, 0x8C, 0x2E, 0x9C, 0xF9, 0x00, 0x00}},
+    {0x18B49EBu, 8, 4, MK_SLOT, {0x42, 0x88, 0x84, 0x2E, 0x0C, 0xFC, 0x00, 0x00}},
+    {0x18B49F3u, 7, 3, MK_SLOT, {0x4C, 0x8D, 0xA6, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B4B1Fu, 7, 3, MK_SLOT, {0x48, 0x81, 0xC1, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B4B5Bu, 6, 2, MK_SLOT, {0x48, 0x05, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B52C2u, 7, 3, MK_SLOT, {0x4C, 0x8D, 0xA7, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B52CCu, 7, 3, MK_SLOT, {0x88, 0x84, 0x3B, 0x0C, 0xFC, 0x00, 0x00}},
+    {0x18B59BBu, 7, 3, MK_SLOT, {0x48, 0x81, 0xC2, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B5EEFu, 8, 4, MK_SLOT, {0x49, 0x8D, 0x9C, 0x24, 0xA0, 0xFB, 0x00, 0x00}},
+    {0x18B5F10u, 7, 3, MK_SLOT, {0x48, 0x8D, 0x97, 0x08, 0xFC, 0x00, 0x00}},
+    {0x18B5F22u, 7, 3, MK_SLOT, {0x48, 0x8D, 0x8F, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B5F35u, 7, 3, MK_SLOT, {0x48, 0x8D, 0x8F, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B6114u, 8, 4, MK_SLOT, {0x42, 0x88, 0x84, 0x37, 0x0C, 0xFC, 0x00, 0x00}},
+    {0x18B6167u, 7, 3, MK_SLOT, {0x49, 0x81, 0xC6, 0xB0, 0xFA, 0x00, 0x00}},
+    {0x18B61C0u, 7, 3, MK_SLOT, {0x48, 0x81, 0xC7, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B7732u, 7, 3, MK_SLOT, {0x48, 0x8D, 0x93, 0x58, 0xF9, 0x00, 0x00}},
+    {0x18B471Du, 7, 3, MK_ID, {0x89, 0x84, 0x9E, 0xD8, 0x24, 0x01, 0x00}},
+    {0x18B4CF8u, 7, 3, MK_ID, {0x89, 0xB4, 0x97, 0xD8, 0x24, 0x01, 0x00}},
+    {0x18B6137u, 8, 4, MK_ID, {0x43, 0x89, 0x84, 0xBE, 0xD8, 0x24, 0x01, 0x00}},
+    {0x18AAFC7u, 8, 4, MK_ID, {0x41, 0x8B, 0x8C, 0x88, 0xD8, 0x24, 0x01, 0x00}},
+    {0x18A7783u, 7, 3, MK_ID, {0x0F, 0x11, 0x87, 0xD8, 0x24, 0x01, 0x00}},
+    {0x18A778Au, 7, 3, MK_ID, {0x0F, 0x11, 0x87, 0xE8, 0x24, 0x01, 0x00}},
+    {0x18A7791u, 7, 3, MK_ID, {0x0F, 0x11, 0x87, 0xF8, 0x24, 0x01, 0x00}},
+    {0x18A7798u, 7, 3, MK_ID, {0x0F, 0x11, 0x87, 0x08, 0x25, 0x01, 0x00}},
+    {0x18A6177u, 7, 3, MK_TRACKER, {0x49, 0x8D, 0x96, 0x18, 0x25, 0x01, 0x00}},
+    {0x18B50C3u, 7, 3, MK_TRACKER, {0x48, 0x81, 0xC2, 0x18, 0x25, 0x01, 0x00}},
+    {0x18B5E89u, 7, 3, MK_TRACKER, {0x48, 0x81, 0xC3, 0x08, 0x26, 0x01, 0x00}},
+    {0x18B5EA0u, 7, 3, MK_TRACKER, {0x48, 0x81, 0xC1, 0x18, 0x25, 0x01, 0x00}},
+    {0x18B7DCAu, 7, 3, MK_TRACKER, {0x49, 0x8D, 0x9D, 0x18, 0x25, 0x01, 0x00}},
+    {0x18A60D7u, 6, 2, MK_N, {0x41, 0xB8, 0x10, 0x00, 0x00, 0x00}},         /* the builder's count */
+    {0x18A6195u, 6, 2, MK_NT, {0x41, 0xB8, 0x0A, 0x00, 0x00, 0x00}},        /* the trackers' builder count */
+    {0x18B773Cu, 4, 3, MK_N8, {0x45, 0x8D, 0x46, 0x10}},                     /* the highlight pass: lea r8d, [r14+16] (r14 = 0) */
+    {0x18B44A3u, 3, 2, MK_N8, {0x83, 0xFB, 0x10}},                           /* the instance pass: cmp ebx, 16 */
+    {0x18B5322u, 5, 4, MK_N8, {0x83, 0x7C, 0x24, 0x40, 0x10}},               /* cmp [rsp+0x40], 16 */
+    {0x18B44ACu, 3, 2, MK_NT8, {0x83, 0xFF, 0x0A}},                          /* cmp edi, 10 */
+    {0x18B532Du, 5, 4, MK_NT8, {0x83, 0x7C, 0x24, 0x6C, 0x0A}},              /* cmp [rsp+0x6c], 10 */
+    {0x18A7A9Du, 9, 0, MK_LAST_SLOT, {0x8B, 0xF5, 0x48, 0x8D, 0x9F, 0x78, 0x23, 0x01, 0x00}}, /* destructor: esi = 15, rbx = the last B */
+    {0x18A7AD0u, 5, 1, MK_NT1, {0xBB, 0x09, 0x00, 0x00, 0x00}},              /* destructor: ebx = 9 */
+    {0x18A7AD5u, 7, 3, MK_LAST_TRACKER, {0x48, 0x8D, 0xB7, 0x30, 0x31, 0x01, 0x00}}};
+#define MARKER_SITES (sizeof kMarkerSites / sizeof kMarkerSites[0])
+static const uint8_t kMarkerPadding[10] = {0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}; /* 0x18A7AA6, before the loop head */
+typedef uint64_t (*MarkerBuildFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+static MarkerBuildFn g_markerBuild;
+static uintptr_t g_markerMap;
+static uint8_t* g_markerBuffer;
+static uint8_t* g_markerGuards; /* the loader's two guard stubs (their limit byte at +4 and +0x24) */
+static SRWLOCK g_markerLock = SRWLOCK_INIT;
+static const char* MarkerSitesFailed(uintptr_t game)
+{
+    for (size_t i = 0; i < MARKER_SITES; i++)
+    {
+        uint8_t bytes[10];
+        if (SafeRead(game + kMarkerSites[i].site, bytes, kMarkerSites[i].length) || memcmp(bytes, kMarkerSites[i].pin, kMarkerSites[i].length) != 0)
+            return "the map's marker slots are not the reviewed ones; the map keeps 16 markers";
+    }
+    uint8_t pad[10];
+    if (SafeRead(game + 0x18A7AA6u, pad, 10) || memcmp(pad, kMarkerPadding, 10) != 0) return "the map's marker destructor is not the reviewed one; the map keeps 16 markers";
+    return NULL;
+}
+/* The slots, ids and trackers at their new place for this map object: 0 when done. */
+static int MarkerMove(uintptr_t game, uintptr_t map)
+{
+    const size_t slots = DIF_MARKERS * 0x2B8u, ids = DIF_MARKERS * 4u, trackers = DIF_MARKER_TRACKERS * 0x158u, bytes = slots + ids + trackers;
+    int64_t r = g_markerBuffer != NULL ? (int64_t)((uintptr_t)g_markerBuffer - map) : 0;
+    if (g_markerBuffer == NULL || r < -0x7F000000ll || r > 0x7F000000ll)
+    {
+        g_markerBuffer = FindNearGame(map, bytes, MEM_COMMIT | MEM_RESERVE);
+        if (g_markerBuffer == NULL) return 1;
+        r = (int64_t)((uintptr_t)g_markerBuffer - map);
+        if (r < -0x7F000000ll || r > 0x7F000000ll) return 1;
+    }
+    const int32_t R = (int32_t)r, Rid = (int32_t)(r + (int64_t)slots), Rt = (int32_t)(r + (int64_t)(slots + ids));
+    for (size_t i = 0; i < MARKER_SITES; i++)
+    {
+        const MarkerSite* m = &kMarkerSites[i];
+        uint8_t code[10];
+        memcpy(code, m->pin, m->length);
+        int32_t old;
+        memcpy(&old, m->pin + m->at, 4);
+        int32_t v = 0;
+        switch (m->kind)
+        {
+        case MK_SLOT: v = R + (old - 0xF958); break;
+        case MK_ID: v = Rid + (old - 0x124D8); break;
+        case MK_TRACKER: v = Rt + (old - 0x12518); break;
+        case MK_N: v = DIF_MARKERS; break;
+        case MK_NT: v = DIF_MARKER_TRACKERS; break;
+        case MK_NT1: v = DIF_MARKER_TRACKERS - 1; break;
+        case MK_LAST_TRACKER: v = Rt + (int32_t)((DIF_MARKER_TRACKERS - 1) * 0x158u); break;
+        }
+        if (m->kind == MK_N8 || m->kind == MK_NT8) code[m->at] = (uint8_t)(m->kind == MK_N8 ? DIF_MARKERS : DIF_MARKER_TRACKERS);
+        else if (m->kind == MK_LAST_SLOT) continue; /* below, with the padding */
+        else memcpy(code + m->at, &v, 4);
+        if (ApiWrite(game + m->site, code, m->length)) return 1;
+    }
+    /* the destructor's slot loop: mov esi, N-1; lea rbx, [rdi + last B]; a 7-byte nop to the loop head 0x18A7AB0 */
+    uint8_t destroy[19] = {0xBE, 0, 0, 0, 0, 0x48, 0x8D, 0x9F, 0, 0, 0, 0, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00};
+    int32_t last = DIF_MARKERS - 1, lastB = R + (int32_t)((DIF_MARKERS - 1) * 0x2B8u + 0x158u);
+    memcpy(destroy + 1, &last, 4); memcpy(destroy + 8, &lastB, 4);
+    if (ApiWrite(game + 0x18A7A9Du, destroy, sizeof destroy)) return 1;
+    if (g_markerGuards != NULL)
+    {
+        DWORD protect;
+        VirtualProtect(g_markerGuards, 0x40, PAGE_EXECUTE_READWRITE, &protect);
+        g_markerGuards[4] = (uint8_t)DIF_MARKERS; g_markerGuards[0x24] = (uint8_t)DIF_MARKERS;
+        VirtualProtect(g_markerGuards, 0x40, protect, &protect);
+        FlushInstructionCache(GetCurrentProcess(), g_markerGuards, 0x40);
+    }
+    return 0;
+}
+static uint64_t MarkerBuild(uint64_t map, uint64_t b, uint64_t c, uint64_t d, uint64_t e)
+{
+    AcquireSRWLockExclusive(&g_markerLock);
+    if ((uintptr_t)map != g_markerMap && g_difficultyGame != 0)
+    {
+        uintptr_t was = g_markerMap;
+        g_markerMap = (uintptr_t)map;
+        if (MarkerMove(g_difficultyGame, (uintptr_t)map))
+            Note("difficulty: the map's markers could not move near the map object at 0x%llx; it keeps %s", (unsigned long long)map, was ? "the last place's" : "16");
+        else
+            Note("difficulty: the map shows up to %u objective markers and %u trackers (moved to 0x%llx, the map object at 0x%llx)", DIF_MARKERS,
+                DIF_MARKER_TRACKERS, (unsigned long long)(uintptr_t)g_markerBuffer, (unsigned long long)map);
+    }
+    ReleaseSRWLockExclusive(&g_markerLock);
+    return g_markerBuild(map, b, c, d, e);
+}
+
 static const char* JumpToMarkerStubs(DifficultyInstall* d)
 {
     const uint32_t markerSites[2] = {DIF_MARKER_LOOP_SITE, DIF_MARKER_ROUTE_SITE};
@@ -1064,6 +1213,10 @@ static const char* JumpToMarkerStubs(DifficultyInstall* d)
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + markerSites[i], jump, markerLengths[i])) return "the map's marker slots could not be guarded";
     }
+    const char* more = MarkerSitesFailed(d->game);
+    if (more != NULL) { Note("difficulty: %s", more); return NULL; }
+    g_markerGuards = d->markerStubs;
+    LoaderHook("the map's markers", d->game + DIF_MARKER_BUILDER, (void*)MarkerBuild, (void**)&g_markerBuild);
     return NULL;
 }
 

@@ -880,9 +880,11 @@ static void WorldStreamObjectivesNote(void)
         if (!(cls >= 2 && cls <= 4)) { waited++; if (state != 2 && state != 3) open++; }
         if (n < (int)sizeof list - 16) n += snprintf(list + n, sizeof list - n, " %u/%u", cls, state);
     }
-    Note("difficulty: extra large maps: objectives: %u instance(s), %u waited for (%u not done); class/state:%s; physics stream swaps under the world's lock so far: %lld; convoy escort spawns stopped at 8 so far: %ld; units past their mission list:%s; patrol spawners without a garrison place: %ld; alarms without one: %ld; spawner positions past a group's 16: %ld",
+    Note("difficulty: extra large maps: objectives: %u instance(s), %u waited for (%u not done); class/state:%s; physics stream swaps under the world's lock so far: %lld; convoy escort spawns stopped at 8 so far: %ld; units past their mission list:%s; patrol spawners without a garrison place: %ld; alarms without one: %ld; spawner positions past a group's 16: %ld; sample owners past 256: %ld, samples past an owner's 256: %ld; AI tasks %u of 2048 (guard points left out at load: %ld)",
         count, waited, open, n ? list : " none", (long long)g_sceneSwapsLocked, g_convoyFull != NULL ? (long)*g_convoyFull : -1L, full[0] ? full : " none", g_garrisonSkipped != NULL ? (long)*g_garrisonSkipped : -1L,
-        g_alarmSkipped != NULL ? (long)*g_alarmSkipped : -1L, g_spawnerPlacesFull != NULL ? (long)*g_spawnerPlacesFull : -1L);
+        g_alarmSkipped != NULL ? (long)*g_alarmSkipped : -1L, g_spawnerPlacesFull != NULL ? (long)*g_spawnerPlacesFull : -1L,
+        g_sampleGroupsFull != NULL ? (long)g_sampleGroupsFull[0] : -1L, g_sampleGroupsFull != NULL ? (long)g_sampleGroupsFull[1] : -1L,
+        TasksUsed(), g_tasksLeftOut != NULL ? (long)*g_tasksLeftOut : -1L);
 }
 
 /* Every 10 s while streaming: what is spawned now, what is due, removals and respawns so far, the players and time,

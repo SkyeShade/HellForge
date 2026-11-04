@@ -43,6 +43,12 @@
  * +0xD4 count, +0xD8.. tag lists), filled from the mission's descriptor (up to 32 ids) without a check, moves after the
  * stamps with 30 places (research-objective-capacity, layout L30: counts S'-0xF0, starts S'-0x78, row +0, ids +4, used
  * +0x7C, count and tag lists where they were; every consumer's displacement is patched, disp8s included). */
+/* Layout L48 (2026-11-04, scratch obj48/obj48.md; 48 places, for an operation's missions on one map): starts S'-0xF0,
+ * used S'-0x30, row +0, ids +4 (+0xC4..+0xD4 free), count +0xD4 and tag lists +0xD8..+0x100 where they were, counts
+ * +0x100..+0x1C0. The 61 G-relative values are L30's (S' did not move); nine S-relative values changed; the four starts
+ * reads that held a disp8 (0xF8E64E, 0xF8E7F5, 0xF8F68D, 0xF8FB67: width 0 in the table) go through stubs with disp32
+ * (kObjectiveStartStubs). 0xF8F623 (r10 = 4) and 0xF9007B ([rax+r9-4]) rely on ids at +4. */
+#define DIF_OBJLIST_PLACES 48u
 #define DIF_OBJLIST_REGION (DIF_STAMPS_NEW + DIF_STAMPS * 0x10u)
 #define DIF_OBJLIST_NEW (DIF_OBJLIST_REGION + 0xF0u)
 /* The objective and extraction places (G+0x8ABCC0: 16 pointers, count G+0x11A7170; GenerateObjectiveLocations 0xF8F1D0
@@ -52,7 +58,7 @@
  * objectives crashed in GenerateWaterStart spawning its water unit, #ID[0], research-crash-quarry). Both move after the
  * objective list: 512 places and 256 (29 and 25 instructions: the pass builders' leas and two readers). */
 #define DIF_PLACES 512u
-#define DIF_PLACES_NEW (DIF_OBJLIST_REGION + 0x280u)
+#define DIF_PLACES_NEW (DIF_OBJLIST_REGION + 0x2B0u)
 #define DIF_PLACE_SET 256u
 #define DIF_PLACE_SET_NEW (DIF_PLACES_NEW + DIF_PLACES * 8u)
 /* The location clusters (GenerateLocationClusters, op 0x18: G+0x896FB0, 8 x 0xE0, 24 members each, count G+0x11A7154)
@@ -208,19 +214,26 @@ static const struct { uint32_t rva; uint8_t length, at, width; uint32_t old, val
     {0xF71063u, 7, 3, 4, 0x8BC663u, 0x15AD463u, {0x88, 0x84, 0x0A, 0x63, 0xC6, 0x8B, 0x00}}, /* filler */
     {0xF7107Fu, 7, 3, 4, 0x8BC668u, 0x15AD468u, {0x44, 0x89, 0x90, 0x68, 0xC6, 0x8B, 0x00}}, /* filler */
     {0xF7108Du, 6, 2, 4, 0x8BC66Cu, 0x15AD46Cu, {0x89, 0x88, 0x6C, 0xC6, 0x8B, 0x00}}, /* filler */
-    {0xF8E64Eu, 5, 4, 1, 0x54u, 0x88u, {0x47, 0x89, 0x64, 0x91, 0x54}}, /* stamps */
-    {0xF8E7F5u, 5, 4, 1, 0x54u, 0x88u, {0x41, 0x8B, 0x4C, 0xB9, 0x54}}, /* stamps */
-    {0xF8E806u, 8, 4, 4, 0x94u, 0xFFFFFF10u, {0x41, 0x89, 0x84, 0xB9, 0x94, 0x00, 0x00, 0x00}}, /* stamps */
-    {0xF8F626u, 7, 3, 4, 0xFFFFFF6Cu, 0xF0u, {0x49, 0xC7, 0xC5, 0x6C, 0xFF, 0xFF, 0xFF}}, /* place */
-    {0xF8F63Bu, 8, 4, 4, 0x94u, 0xFFFFFF10u, {0x4D, 0x8D, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00}}, /* place */
-    {0xF8F68Du, 4, 3, 1, 0xC0u, 0x78u, {0x45, 0x8B, 0x67, 0xC0}}, /* place */
-    {0xF8F696u, 8, 4, 4, 0xFFFFFF6Cu, 0xF0u, {0x43, 0x8B, 0x94, 0x3A, 0x6C, 0xFF, 0xFF, 0xFF}}, /* place */
-    {0xF8FB60u, 7, 3, 4, 0x90u, 0xFFFFFF0Cu, {0x44, 0x8B, 0xA0, 0x90, 0x00, 0x00, 0x00}}, /* place */
-    {0xF8FB67u, 3, 2, 1, 0x50u, 0x84u, {0x8B, 0x58, 0x50}}, /* place */
-    {0xF46CC9u, 4, 3, 1, 0x44u, 0x7Cu, {0x48, 0x8D, 0x4E, 0x44}}, /* layers */
-    {0xF46E13u, 5, 3, 1, 0x44u, 0x7Cu, {0xC6, 0x44, 0x30, 0x44, 0x01}}, /* layers */
-    {0xF46EAFu, 5, 4, 1, 0x44u, 0x7Cu, {0x44, 0x38, 0x7C, 0x31, 0x44}}, /* layers */
-    {0xF46EE3u, 5, 3, 1, 0x44u, 0x7Cu, {0xC6, 0x44, 0x31, 0x44, 0x01}}, /* layers */};
+    {0xF8E64Eu, 5, 4, 0, 0x54u, 0u, {0x47, 0x89, 0x64, 0x91, 0x54}}, /* stamps */
+    {0xF8E7F5u, 5, 4, 0, 0x54u, 0u, {0x41, 0x8B, 0x4C, 0xB9, 0x54}}, /* stamps */
+    {0xF8E806u, 8, 4, 4, 0x94u, 0x100u, {0x41, 0x89, 0x84, 0xB9, 0x94, 0x00, 0x00, 0x00}}, /* stamps */
+    {0xF8F626u, 7, 3, 4, 0xFFFFFF6Cu, 0xFFFFFF00u, {0x49, 0xC7, 0xC5, 0x6C, 0xFF, 0xFF, 0xFF}}, /* place */
+    {0xF8F63Bu, 8, 4, 4, 0x94u, 0x100u, {0x4D, 0x8D, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00}}, /* place */
+    {0xF8F68Du, 4, 3, 0, 0xC0u, 0u, {0x45, 0x8B, 0x67, 0xC0}}, /* place */
+    {0xF8F696u, 8, 4, 4, 0xFFFFFF6Cu, 0xFFFFFF00u, {0x43, 0x8B, 0x94, 0x3A, 0x6C, 0xFF, 0xFF, 0xFF}}, /* place */
+    {0xF8FB60u, 7, 3, 4, 0x90u, 0xFCu, {0x44, 0x8B, 0xA0, 0x90, 0x00, 0x00, 0x00}}, /* place */
+    {0xF8FB67u, 3, 2, 0, 0x50u, 0u, {0x8B, 0x58, 0x50}}, /* place */
+    {0xF46CC9u, 4, 3, 1, 0x44u, 0xD0u, {0x48, 0x8D, 0x4E, 0x44}}, /* layers */
+    {0xF46E13u, 5, 3, 1, 0x44u, 0xD0u, {0xC6, 0x44, 0x30, 0x44, 0x01}}, /* layers */
+    {0xF46EAFu, 5, 4, 1, 0x44u, 0xD0u, {0x44, 0x38, 0x7C, 0x31, 0x44}}, /* layers */
+    {0xF46EE3u, 5, 3, 1, 0x44u, 0xD0u, {0xC6, 0x44, 0x31, 0x44, 0x01}}, /* layers */};
+/* The four starts reads L48 moves out of disp8 reach: {site, replaced bytes, back, body}. Each body is the replaced code
+ * with the starts displacement as a disp32 (no register or flag used beyond the original's). */
+static const struct { uint32_t site; uint8_t length; uint8_t pin[7]; uint8_t size; uint8_t body[12]; } kObjectiveStartStubs[4] = {
+    {0xF8E64Eu, 5, {0x47, 0x89, 0x64, 0x91, 0x54}, 8, {0x47, 0x89, 0xA4, 0x91, 0x10, 0xFF, 0xFF, 0xFF}},            /* mov [r9+r10*4-0xF0], r12d */
+    {0xF8E7F5u, 5, {0x41, 0x8B, 0x4C, 0xB9, 0x54}, 8, {0x41, 0x8B, 0x8C, 0xB9, 0x10, 0xFF, 0xFF, 0xFF}},            /* mov ecx, [r9+rdi*4-0xF0] */
+    {0xF8F68Au, 7, {0x45, 0x8B, 0x37, 0x45, 0x8B, 0x67, 0xC0}, 10, {0x45, 0x8B, 0x37, 0x45, 0x8B, 0xA7, 0x10, 0xFE, 0xFF, 0xFF}}, /* mov r14d, [r15]; mov r12d, [r15-0x1F0] */
+    {0xF8FB67u, 5, {0x8B, 0x58, 0x50, 0x8B, 0x10}, 8, {0x8B, 0x98, 0x0C, 0xFF, 0xFF, 0xFF, 0x8B, 0x10}}};          /* mov ebx, [rax-0xF4]; mov edx, [rax] */
 static const LocationSite kStampRefs[21] = {
     {0xC1AD5Bu, 4, 0x8BBD70u}, {0xC1B673u, 4, 0x8BBD70u}, {0xC1B946u, 4, 0x8BBD70u}, {0xC1C282u, 4, 0x8BBD70u},
     {0xC1C83Fu, 4, 0x8BBD70u}, {0xC1CAD5u, 4, 0x8BBD70u}, {0xC1D24Du, 4, 0x8BBD70u}, {0xC27B21u, 4, 0x8BBD70u},
@@ -268,6 +281,13 @@ static const char* ObjectiveListFailed(uintptr_t game)
         uint8_t bytes[8];
         if (SafeRead(game + kObjectiveListSites[i].rva, bytes, kObjectiveListSites[i].length) ||
             memcmp(bytes, kObjectiveListSites[i].pin, kObjectiveListSites[i].length) != 0)
+            return "the map generator's objective list is not the reviewed one (more objectives need it)";
+    }
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t bytes[7];
+        if (SafeRead(game + kObjectiveStartStubs[i].site, bytes, kObjectiveStartStubs[i].length) ||
+            memcmp(bytes, kObjectiveStartStubs[i].pin, kObjectiveStartStubs[i].length) != 0)
             return "the map generator's objective list is not the reviewed one (more objectives need it)";
     }
     return NULL;
@@ -322,10 +342,31 @@ static const char* MoveMinimapAndStamps(uintptr_t game)
 /* The objective list (30 places from now on), the objective and extraction places, the place set and the clusters. */
 static const char* MoveObjectivePlaces(uintptr_t game)
 {
+    uint8_t* starts = AllocateNearGame(game, 0x80);
+    if (starts == NULL) return "no memory within 2 GB of game.dll for the objective list's starts reads";
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t* stub = starts + 0x20 * i;
+        memcpy(stub, kObjectiveStartStubs[i].body, kObjectiveStartStubs[i].size);
+        stub[kObjectiveStartStubs[i].size] = 0xE9;
+        int32_t back = (int32_t)(game + kObjectiveStartStubs[i].site + kObjectiveStartStubs[i].length - (uintptr_t)(stub + kObjectiveStartStubs[i].size + 5));
+        memcpy(stub + kObjectiveStartStubs[i].size + 1, &back, 4);
+    }
+    DWORD startsProtect;
+    VirtualProtect(starts, 0x80, PAGE_EXECUTE_READ, &startsProtect);
+    FlushInstructionCache(GetCurrentProcess(), starts, 0x80);
     for (int i = 0; i < 74; i++)
-        if (ApiWrite(game + kObjectiveListSites[i].rva + kObjectiveListSites[i].at, &kObjectiveListSites[i].value, kObjectiveListSites[i].width))
+        if (kObjectiveListSites[i].width != 0 &&
+            ApiWrite(game + kObjectiveListSites[i].rva + kObjectiveListSites[i].at, &kObjectiveListSites[i].value, kObjectiveListSites[i].width))
             return "an objective list reference could not be moved";
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+        int32_t to = DifficultyJumpRel(game + kObjectiveStartStubs[i].site, (uintptr_t)(starts + 0x20 * i)); memcpy(jump + 1, &to, 4);
+        if (ApiWrite(game + kObjectiveStartStubs[i].site, jump, kObjectiveStartStubs[i].length)) return "an objective list reference could not be moved";
+    }
     g_objectivePlaces = DIF_OBJECTIVES_MAX;
+    g_objectiveListPlaces = DIF_OBJLIST_PLACES;
     uint32_t placeList = DIF_PLACES_NEW, placeSet = DIF_PLACE_SET_NEW;
     for (size_t i = 0; i < sizeof kPlaceListRefs / sizeof kPlaceListRefs[0]; i++)
         if (ApiWrite(game + kPlaceListRefs[i].rva + kPlaceListRefs[i].at, &placeList, 4)) return "an objective place reference could not be moved";

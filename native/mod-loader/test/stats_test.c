@@ -577,14 +577,24 @@ static void DifficultyFixture(void)
             memcpy(&rel, capture + 49, 4); assert(capture + 53 + rel == (uint8_t*)g_restartWatch + 0x34);
             memcpy(&rel, capture + 67, 4); assert(capture + 71 + rel == game + DIF_CAPTURE_SITE + 11);
         }
-        /* The director's spawners stop at 128: the add goes through the stub, which counts what it leaves out. */
+        /* The director's spawners go to the loader's list of DIF_SPAWNERS: the add goes through the stub (which counts what it
+         * leaves out), GuardForce's loop reads the list, and the group positions stop at 16. */
         {
             memcpy(&rel, game + DIF_SPAWNER_SITE + 1, 4);
             uint8_t* spawner = game + DIF_SPAWNER_SITE + 5 + rel;
-            assert(game[DIF_SPAWNER_SITE] == 0xE9 && game[DIF_SPAWNER_SITE + 5] == 0x90 && !memcmp(spawner, kSpawnerStub, 14));
-            memcpy(&rel, spawner + 14, 4); assert(spawner + 18 + rel == game + DIF_SPAWNER_ADD);
-            memcpy(&rel, spawner + 21, 4); assert(spawner + 25 + rel == (uint8_t*)g_restartWatch + 0x3C);
-            memcpy(&rel, spawner + 26, 4); assert(spawner + 30 + rel == game + DIF_SPAWNER_DONE);
+            assert(game[DIF_SPAWNER_SITE] == 0xE9 && game[DIF_SPAWNER_SITE + 5] == 0x90 && !memcmp(spawner, kSpawnerStub, 19));
+            memcpy(&rel, spawner + 90, 4); assert(spawner + 94 + rel == game + DIF_SPAWNER_DONE);
+            memcpy(&rel, spawner + 97, 4); assert(spawner + 101 + rel == (uint8_t*)g_restartWatch + 0x3C);
+            memcpy(&rel, spawner + 102, 4); assert(spawner + 106 + rel == game + DIF_SPAWNER_DONE);
+            const uint32_t loops[3] = {DIF_SPAWNER_LOOP_FIRST, DIF_SPAWNER_LOOP_NEXT, DIF_SPAWNER_PLACES_SITE};
+            const uint32_t at[3] = {0x70, 0xA0, 0xE0};
+            for (int i = 0; i < 3; i++)
+            {
+                memcpy(&rel, game + loops[i] + 1, 4);
+                assert(game[loops[i]] == 0xE9 && game + loops[i] + 5 + rel == spawner + at[i]);
+            }
+            memcpy(&rel, spawner + 0x70 + 31, 4); assert(spawner + 0x70 + 35 + rel == game + DIF_SPAWNER_LOOP);
+            memcpy(&rel, spawner + 0xA0 + 32, 4); assert(spawner + 0xA0 + 36 + rel == game + DIF_SPAWNER_LOOP_DONE);
         }
         /* The map's marker slots: the entity loop and the route marker leave once 16 are taken. */
         {
@@ -821,15 +831,24 @@ static void DifficultyFixture(void)
             assert(*(uint32_t*)(game + kLocationTypeRefs[i].rva + kLocationTypeRefs[i].at) == 0x13E7280u);
         for (size_t i = 0; i < sizeof kLocationTypeCaps / sizeof kLocationTypeCaps[0]; i++)
             assert(*(uint32_t*)(game + kLocationTypeCaps[i].rva + kLocationTypeCaps[i].at) == 512u);
-        assert(DIF_LOCATIONS_B_NEW == 0x1367280u && DIF_LOCATION_TYPES_C_NEW == 0x13E7280u && DIF_STAMPS_NEW == 0x15A9280u && DIF_OBJLIST_NEW == 0x15AD370u && DIF_PLACES_NEW == 0x15AD500u && DIF_PLACE_SET_NEW == 0x15AE500u && DIF_CLUSTERS_NEW == 0x15AF500u &&
-            DIF_BLOCK_NEW == 0x15B1100u);
+        assert(DIF_LOCATIONS_B_NEW == 0x1367280u && DIF_LOCATION_TYPES_C_NEW == 0x13E7280u && DIF_STAMPS_NEW == 0x15A9280u && DIF_OBJLIST_NEW == 0x15AD370u && DIF_PLACES_NEW == 0x15AD530u && DIF_PLACE_SET_NEW == 0x15AE530u && DIF_CLUSTERS_NEW == 0x15AF530u &&
+            DIF_IMPORTANT_NEW == 0x15B1130u && DIF_LINKED_NEW == 0x15F3130u && DIF_BLOCK_NEW == 0x15F9130u);
         /* The objective list moved (every field displacement); the telemetry and selection go through their stubs. */
         for (int i = 0; i < 74; i++)
         {
+            if (kObjectiveListSites[i].width == 0) continue; /* through kObjectiveStartStubs */
             uint32_t v = 0; memcpy(&v, game + kObjectiveListSites[i].rva + kObjectiveListSites[i].at, kObjectiveListSites[i].width);
             assert(v == kObjectiveListSites[i].value);
         }
-        assert(g_objectivePlaces == 30);
+        for (int i = 0; i < 4; i++)
+        {
+            int32_t to = 0;
+            assert(game[kObjectiveStartStubs[i].site] == 0xE9);
+            memcpy(&to, game + kObjectiveStartStubs[i].site + 1, 4);
+            const uint8_t* stub = game + kObjectiveStartStubs[i].site + 5 + to;
+            assert(memcmp(stub, kObjectiveStartStubs[i].body, kObjectiveStartStubs[i].size) == 0 && stub[kObjectiveStartStubs[i].size] == 0xE9);
+        }
+        assert(g_objectivePlaces == 30 && g_objectiveListPlaces == 48);
         {
             uint32_t sites[3] = {DIF_TELEMETRY_COUNT_SITE, DIF_TELEMETRY_LOOP_SITE, DIF_SELECTION_END};
             uint32_t backs[3] = {DIF_TELEMETRY_COUNT_SITE + 10, DIF_TELEMETRY_DONE, DIF_SELECTION_BACK};

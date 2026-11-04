@@ -561,12 +561,16 @@ static const char* PrepareCellStubs(DifficultyInstall* d)
     uintptr_t game = d->game;
     int32_t rel;
     float* cellFactor = (float*)(d->code + 0x5C0); /* the disk's factor x 4, 0.25, the site square's factor x 4 */
-    uint8_t* cellStub = d->code + 0xF70; /* 82 bytes, after the objective stubs (0xEE0 + 0x40 + 78) */
+    /* 82 bytes in a block of its own: at d->code + 0xF70 it lay over the HUD objective list's and the badges' stubs
+     * (objective stubs + 0xA0..0xDF = 0xF80..0xFBF), so the map's per-frame updater, which runs only while the map is
+     * open, jumped into the middle of it (run s73m: c0000005 at code + 0xFB7 from 0x18B42F0). */
+    uint8_t* cellStub = LargerMaps() ? AllocateNearGame(game, 0x100) : NULL;
     uint8_t* finalizeStub = d->code + 0x610;
     d->cellFactor = cellFactor;
     d->cellStub = cellStub;
     d->finalizeStub = finalizeStub;
     if (!LargerMaps()) return NULL;
+    if (cellStub == NULL) return "no memory within 2 GB of game.dll for the route cells' spacing";
     cellFactor[0] = (d->disk + 1.0f) / 681.0f * 1.04f * 4.0f;
     cellFactor[1] = 0.25f;
     cellFactor[2] = cellFactor[0] * sqrtf(4.0f / 3.14159265f);
@@ -577,6 +581,9 @@ static const char* PrepareCellStubs(DifficultyInstall* d)
     rel = (int32_t)((uint8_t*)&cellFactor[2] - (cellStub + 57)); memcpy(cellStub + 53, &rel, 4);
     rel = (int32_t)((uint8_t*)&cellFactor[1] - (cellStub + 71)); memcpy(cellStub + 67, &rel, 4);
     rel = (int32_t)(game + DIF_CELL_SPACING_SITE + 7 - (uintptr_t)(cellStub + 79)); memcpy(cellStub + 75, &rel, 4);
+    DWORD cellProtect;
+    VirtualProtect(cellStub, 0x100, PAGE_EXECUTE_READ, &cellProtect);
+    FlushInstructionCache(GetCurrentProcess(), cellStub, 0x100);
     memcpy(finalizeStub, kFinalizeSpacingStub, sizeof kFinalizeSpacingStub);
     memcpy(finalizeStub + 24, &diskBits, 4);
     /* 0xF68273 is on FinalizeVoronoi's rebuild path only (after the map type 1 gate; the other paths jump to 0xF691BE /

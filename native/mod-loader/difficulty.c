@@ -153,7 +153,8 @@ static ULONGLONG g_difficultySeen; /* when game.dll was first seen: the decode w
 static int g_difficultyAttempts;   /* InstallDifficulty's polls, for the decode wait's line */
 static uint8_t* g_difficultyTable;
 static uintptr_t g_difficultyGame;
-static uint32_t g_objectivePlaces = 16;  /* the objective list's places: 30 once moved */
+static uint32_t g_objectivePlaces = 16;  /* the selection's places (its callers' buffers hold 32): 30 once the list moved */
+static uint32_t g_objectiveListPlaces = 16; /* the map's objective list S: 48 once moved (difficulty_block.c, layout L48) */
 static uint32_t g_operationOptional;     /* an operation's missions on one map: the optional objectives wanted (each mission's x missions) */
 static volatile LONG g_secondPrimaries, g_secondPrimaryMisses;
 

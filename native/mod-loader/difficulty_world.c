@@ -431,7 +431,7 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
     uint8_t difficulty = 0;
     uint16_t r = (uint16_t)row;
     if (g_difficulty.missions > 1 && g_operationOptional != 0 && g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS &&
-        g_objectivePlaces > n && g_objectivePlaces <= 64 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1 &&
+        g_objectiveListPlaces > n && g_objectiveListPlaces <= 64 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1 &&
         !SafeRead(ids, list, 4ull * n))
     {
         uintptr_t base = g_difficultyGame + DIF_MISSIONS + (uintptr_t)r * DIF_MISSION_ROW;
@@ -439,13 +439,13 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
         for (uint32_t i = 0; i < n; i++)
             if (RowClass(base, list[i]) == 3) optional[k++] = list[i];
         uint32_t have = k;
-        for (uint32_t i = 0; k > 0 && have < g_operationOptional && total < g_objectivePlaces; i++, have++) list[total++] = optional[i % k];
+        for (uint32_t i = 0; k > 0 && have < g_operationOptional && total < g_objectiveListPlaces; i++, have++) list[total++] = optional[i % k];
         if (total > n)
         {
             static LONG noted;
             if (InterlockedIncrement(&noted) <= 4)
                 Note("difficulty: an operation's %u missions on one map: optional objectives %u -> %u of %u on the map's objective list (%u -> %u of %u places)",
-                    g_difficulty.missions, k, k + (total - n), g_operationOptional, n, total, g_objectivePlaces);
+                    g_difficulty.missions, k, k + (total - n), g_operationOptional, n, total, g_objectiveListPlaces);
             return g_objectiveFill(level, b, row, (uint64_t)(uintptr_t)list, total, a6, a7, a8, a9, a10, a11, a12, a13, a14);
         }
     }
@@ -2468,6 +2468,115 @@ static const char* InstallAlarmGuard(uintptr_t game)
     return NULL;
 }
 
+/* The samples' groups: a component init (0x79CCA0, from entity spawn 0x581A50 -> 0x79C756) groups the HiveMind
+ * manager's samples (+0x5790, 0x58 each, count +0x5D748) by their owner key into a temporary block of 128 groups
+ * (0x810 each: key, 256 {sample, type}, count +0x808; group count +0x40800; size 0x40808 at 0x79CDE4 / 0x79CDFD),
+ * unchecked: an operation's 39 objectives brought more owners and the 129th group overwrote the count (run s73l,
+ * game+0x79CEDD). The block grows to 256 groups (the reader 0x79FD60 copies the matching groups into a 256-entry stack
+ * list, so no more), and a 257th owner or a group's 257th sample is left out (counted at stub +0x60 / +0x64). */
+static const struct { uint32_t site; uint8_t length, at; uint8_t pin[7]; uint32_t value; } kSampleGroupSites[6] = {
+    {0x79CDE4u, 5, 1, {0xBA, 0x08, 0x08, 0x04, 0x00}, 0x81008u},
+    {0x79CDFDu, 6, 2, {0x41, 0xB8, 0x08, 0x08, 0x04, 0x00}, 0x81008u},
+    {0x79CE77u, 7, 3, {0x45, 0x8B, 0x86, 0x00, 0x08, 0x04, 0x00}, 0x81000u},
+    {0x79CEC0u, 7, 3, {0x41, 0x8B, 0x96, 0x00, 0x08, 0x04, 0x00}, 0x81000u},
+    {0x79CECAu, 7, 3, {0x41, 0x89, 0x86, 0x00, 0x08, 0x04, 0x00}, 0x81000u},
+    {0x79FD88u, 7, 3, {0x41, 0x8B, 0x80, 0x00, 0x08, 0x04, 0x00}, 0x81000u}};
+static const uint8_t kSampleGroupPin[8] = {0x4B, 0x8B, 0x84, 0x3B, 0x90, 0x57, 0x00, 0x00};      /* 0x79CEAD mov rax, [r11+r15+0x5790] */
+static const uint8_t kSampleEntryPin[10] = {0x8B, 0x82, 0x08, 0x08, 0x00, 0x00, 0x89, 0x7C, 0xC2, 0x08}; /* 0x79CEDD */
+static const uint8_t kSampleStubs[0x44] = {
+    0x41, 0x81, 0xF8, 0x00, 0x01, 0x00, 0x00,                         /*  0 cmp r8d, 256 (the groups) */
+    0x73, 0x0D,                                                       /*  7 jae 0x16 */
+    0x4B, 0x8B, 0x84, 0x3B, 0x90, 0x57, 0x00, 0x00,                   /*  9 mov rax, [r11+r15+0x5790] */
+    0xE9, 0, 0, 0, 0,                                                 /* 0x11 jmp 0x79CEB5 (rel32 at 0x12) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 0x16 lock inc [rip -> +0x60] (rel32 at 0x19) */
+    0xE9, 0, 0, 0, 0,                                                 /* 0x1D jmp 0x79CEFF (the next sample; rel32 at 0x1E) */
+    0x8B, 0x82, 0x08, 0x08, 0x00, 0x00,                               /* 0x22 mov eax, [rdx+0x808] (the group's samples) */
+    0x3D, 0x00, 0x01, 0x00, 0x00,                                     /* 0x28 cmp eax, 256 */
+    0x73, 0x09,                                                       /* 0x2D jae 0x38 */
+    0x89, 0x7C, 0xC2, 0x08,                                           /* 0x2F mov [rdx+rax*8+8], edi */
+    0xE9, 0, 0, 0, 0,                                                 /* 0x33 jmp 0x79CEE7 (rel32 at 0x34) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 0x38 lock inc [rip -> +0x64] (rel32 at 0x3B) */
+    0xE9, 0, 0, 0, 0};                                                /* 0x3F jmp 0x79CEFF (rel32 at 0x40) */
+static volatile LONG* g_sampleGroupsFull; /* [0] owners past 256 groups, [1] samples past a group's 256 */
+static const char* InstallSampleGroups(uintptr_t game)
+{
+    uint8_t bytes[10];
+    for (int i = 0; i < 6; i++)
+        if (SafeRead(game + kSampleGroupSites[i].site, bytes, kSampleGroupSites[i].length) || memcmp(bytes, kSampleGroupSites[i].pin, kSampleGroupSites[i].length) != 0)
+            return "the samples' groups are not the reviewed ones; they stay at 128, unchecked";
+    if (SafeRead(game + 0x79CEADu, bytes, 8) || memcmp(bytes, kSampleGroupPin, 8) != 0 || SafeRead(game + 0x79CEDDu, bytes, 10) ||
+        memcmp(bytes, kSampleEntryPin, 10) != 0)
+        return "the samples' groups are not the reviewed ones; they stay at 128, unchecked";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the samples' groups";
+    memcpy(stub, kSampleStubs, sizeof kSampleStubs);
+    g_sampleGroupsFull = (volatile LONG*)(stub + 0x60);
+    int32_t rel;
+    rel = (int32_t)(game + 0x79CEB5u - (uintptr_t)(stub + 0x16)); memcpy(stub + 0x12, &rel, 4);
+    rel = (int32_t)((stub + 0x60) - (stub + 0x1D)); memcpy(stub + 0x19, &rel, 4);
+    rel = (int32_t)(game + 0x79CEFFu - (uintptr_t)(stub + 0x22)); memcpy(stub + 0x1E, &rel, 4);
+    rel = (int32_t)(game + 0x79CEE7u - (uintptr_t)(stub + 0x38)); memcpy(stub + 0x34, &rel, 4);
+    rel = (int32_t)((stub + 0x64) - (stub + 0x3F)); memcpy(stub + 0x3B, &rel, 4);
+    rel = (int32_t)(game + 0x79CEFFu - (uintptr_t)(stub + 0x44)); memcpy(stub + 0x40, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    for (int i = 0; i < 6; i++)
+    {
+        uint8_t code[7];
+        memcpy(code, kSampleGroupSites[i].pin, kSampleGroupSites[i].length);
+        memcpy(code + kSampleGroupSites[i].at, &kSampleGroupSites[i].value, 4);
+        if (ApiWrite(game + kSampleGroupSites[i].site, code, kSampleGroupSites[i].length)) return "the samples' groups could not grow";
+    }
+    uint8_t group[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90}, entry[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + 0x79CEADu, (uintptr_t)stub); memcpy(group + 1, &rel, 4);
+    rel = DifficultyJumpRel(game + 0x79CEDDu, (uintptr_t)(stub + 0x22)); memcpy(entry + 1, &rel, 4);
+    if (ApiWrite(game + 0x79CEADu, group, 8) || ApiWrite(game + 0x79CEDDu, entry, 10)) return "the samples' groups could not be guarded";
+    return NULL;
+}
+
+/* The AI's tasks: [game+0x346D5C0] holds 2048 x 0x58 (count +0x2C000), appended by 0x126FAC0 without a check. Mission
+ * load adds one per guard-point unit (0xAD25DF, its result unused); the running mission adds more (0xADD5CC, which
+ * keeps the entry). Three missions' guard points filled it at load (run s73n: game+0x126FB81, r9 = 2048). The load's
+ * call goes through a stub that leaves a guard point out once 1792 are used (the rest stays for the running mission's
+ * own), counted at stub +0x40. */
+static const uint8_t kTaskStub[0x20] = {
+    0x48, 0x8B, 0x05, 0, 0, 0, 0,                                     /*  0 mov rax, [rip -> game+0x346D5C0] (rel32 at 3) */
+    0x81, 0xB8, 0x00, 0xC0, 0x02, 0x00, 0x00, 0x07, 0x00, 0x00,       /*  7 cmp dword [rax+0x2C000], 1792 */
+    0x73, 0x05,                                                       /* 0x11 jae 0x18 */
+    0xE9, 0, 0, 0, 0,                                                 /* 0x13 jmp 0x126FAC0 (rel32 at 0x14; returns to the caller) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 0x18 lock inc [rip -> +0x40] (rel32 at 0x1B) */
+    0xC3};                                                            /* 0x1F ret */
+static volatile LONG* g_tasksLeftOut;
+static uintptr_t g_taskGame;
+static const char* InstallTaskGuard(uintptr_t game)
+{
+    if (!ApiCodeMatches(game + 0xAD25DFu, "E8 DC D4 79 00") || !ApiCodeMatches(game + 0x126FB60u, "41 8B 86 00 C0 02 00 48 8D 4D B0 4C 6B F8 58"))
+        return "the AI's task list is not the reviewed one; it stays unchecked";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the AI's task guard";
+    memcpy(stub, kTaskStub, sizeof kTaskStub);
+    g_tasksLeftOut = (volatile LONG*)(stub + 0x40);
+    g_taskGame = game;
+    int32_t rel = (int32_t)(game + 0x346D5C0u - (uintptr_t)(stub + 7)); memcpy(stub + 3, &rel, 4);
+    rel = (int32_t)(game + 0x126FAC0u - (uintptr_t)(stub + 0x18)); memcpy(stub + 0x14, &rel, 4);
+    rel = (int32_t)((stub + 0x40) - (stub + 0x1F)); memcpy(stub + 0x1B, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    uint8_t call[5] = {0xE8, 0, 0, 0, 0};
+    rel = DifficultyJumpRel(game + 0xAD25DFu, (uintptr_t)stub); memcpy(call + 1, &rel, 4);
+    if (ApiWrite(game + 0xAD25DFu, call, 5)) return "the AI's task guard could not be written";
+    return NULL;
+}
+static uint32_t TasksUsed(void)
+{
+    uint64_t list = 0;
+    uint32_t n = 0;
+    if (g_taskGame == 0 || SafeRead(g_taskGame + 0x346D5C0u, &list, 8) || list == 0 || SafeRead(list + 0x2C000, &n, 4)) return 0xFFFFFFFFu;
+    return n;
+}
+
 /* The lists that left units out so far, as "name n" pairs (empty when none). */
 static void MissionListsFull(char* out, size_t size)
 {
@@ -2611,6 +2720,10 @@ static const char* InstallWorld(DifficultyInstall* d)
         Note("difficulty: extra large maps: the map's objective list fill is not the reviewed one; an operation keeps the selection's objectives");
     const char* garrison = InstallGarrisonGuard(game);
     if (garrison != NULL) Note("difficulty: extra large maps: %s", garrison);
+    const char* tasks = InstallTaskGuard(game);
+    if (tasks != NULL) Note("difficulty: extra large maps: %s", tasks);
+    const char* samples = InstallSampleGroups(game);
+    if (samples != NULL) Note("difficulty: extra large maps: %s", samples);
     const char* alarms = InstallAlarmGuard(game);
     if (alarms != NULL) Note("difficulty: extra large maps: %s", alarms);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
