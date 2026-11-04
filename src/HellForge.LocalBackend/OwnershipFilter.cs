@@ -20,9 +20,13 @@ namespace HellForge.LocalBackend;
 public sealed class OwnershipFilter
 {
     readonly Dictionary<uint, JsonObject> owned = [];
+    // Each premium warbond token's warbond's tokens: one priced in Super Credits, and most have one priced in another item.
+    // An account holds the warbond with either (PremiumContent's rule too), and the client buys only the first.
+    readonly Dictionary<uint, uint[]> warbondTokens = [];
 
-    // Whether the verified snapshot holds this paid item (a premium warbond's token: bought on live).
-    public bool Owns(uint mixId) => owned.ContainsKey(mixId);
+    // Whether the verified snapshot holds this paid item; a premium warbond's token, whether it holds the warbond: bought on
+    // live, with any of its tokens.
+    public bool Owns(uint mixId) => warbondTokens.TryGetValue(mixId, out var tokens) ? tokens.Any(owned.ContainsKey) : owned.ContainsKey(mixId);
 
     public OwnershipFilter(PaidContentSet paid, IEnumerable<JsonObject>? snapshotItems)
     {
@@ -30,6 +34,8 @@ public sealed class OwnershipFilter
         HasRealInventory = snapshotItems != null;
         foreach (var item in snapshotItems ?? [])
             if (MixId(item) is { } id && paid.IsPaid(id)) owned[id] = (JsonObject)item.DeepClone();
+        foreach (var warbond in paid.Warbonds)
+            foreach (var token in warbond.Tokens) warbondTokens[token] = warbond.Tokens;
     }
 
     public PaidContentSet Paid { get; }
@@ -45,7 +51,8 @@ public sealed class OwnershipFilter
 
     // A premium warbond's token that opens it: owned on the live game and, on a profile that earns its warbonds, bought here
     // too (held: the tokens the profile holds).
-    bool Unlocked(uint token, IReadOnlySet<uint> held) => owned.ContainsKey(token) && (!EarnWarbonds || held.Contains(token));
+    bool Unlocked(uint token, IReadOnlySet<uint> held) =>
+        Owns(token) && (!EarnWarbonds || (warbondTokens.TryGetValue(token, out var tokens) ? tokens.Any(held.Contains) : held.Contains(token)));
 
     public bool IsAllowed(uint mixId) => IsAllowed(mixId, owned.Keys.ToHashSet());
 
@@ -99,7 +106,7 @@ public sealed class OwnershipFilter
         if (catalogue.ValueKind != JsonValueKind.Array) return catalogue;
         var node = JsonNode.Parse(catalogue.GetRawText())!.AsArray();
         foreach (var item in node.OfType<JsonObject>())
-            if (MixId(item) is { } id && Paid.WarbondTokens.Contains(id) && !owned.ContainsKey(id) && item["buyPrice"] is JsonArray { Count: > 0 })
+            if (MixId(item) is { } id && Paid.WarbondTokens.Contains(id) && !Owns(id) && item["buyPrice"] is JsonArray { Count: > 0 })
                 item["buyPrice"] = new JsonArray();
         return JsonSerializer.SerializeToElement(node, BackendJson.Default.JsonNode);
     }
