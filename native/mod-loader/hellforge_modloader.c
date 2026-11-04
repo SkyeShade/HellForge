@@ -619,6 +619,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "passives.c"
 #include "perks.c"
 #include "actions.c" /* after refs.c (packages) and events.c (the readers) */
+#include "difficulty_world_probe.c" /* after actions.c and fields.c: the extra large maps' test tooling (probe, no enemies) */
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "difficulty_stream.c" /* after rounds.c: the players (event_polls.c, actions.c) and the extra large world */

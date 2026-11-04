@@ -638,6 +638,26 @@ static void InstallHangWatch(void)
     CloseHandle(thread);
 }
 
+/* The memory the crash's registers point at (0x60 bytes each, as u64 words; registers that are small numbers, in a
+ * module or unreadable are left out): the objects the faulting code was walking, for offline analysis against the
+ * game's dumps (a null field at +0xA4 of what?). */
+static void CrashRegisterMemory(const CONTEXT* c)
+{
+    const struct { const char* name; DWORD64 value; } regs[] = {{"rax", c->Rax}, {"rbx", c->Rbx}, {"rcx", c->Rcx}, {"rdx", c->Rdx},
+        {"rsi", c->Rsi}, {"rdi", c->Rdi}, {"rbp", c->Rbp}, {"r8", c->R8}, {"r9", c->R9}, {"r10", c->R10}, {"r11", c->R11},
+        {"r12", c->R12}, {"r13", c->R13}, {"r14", c->R14}, {"r15", c->R15}};
+    char where[MAX_PATH];
+    for (size_t k = 0; k < sizeof regs / sizeof regs[0]; k++)
+    {
+        uint64_t words[12];
+        uintptr_t at = (uintptr_t)regs[k].value;
+        if (at < 0x10000 || (at & 7) != 0 || ModuleAt(at, where, sizeof where) || SafeRead(at, words, sizeof words)) continue;
+        char line[400]; int n = 0;
+        for (int w = 0; w < 12; w++) n += snprintf(line + n, sizeof line - n, " %llx", (unsigned long long)words[w]);
+        Note("crash: memory at %s (0x%llx):%s", regs[k].name, (unsigned long long)at, line);
+    }
+}
+
 static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
 {
     static volatile LONG reported;
@@ -674,6 +694,7 @@ static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
         (unsigned long long)c->Dr6, (unsigned long long)c->Dr7, trail);
     CrashModules(at, c, &g, stack, sizeof stack);
     CrashCallStack(c, &g);
+    CrashRegisterMemory(c);
     CrashMarker("noted", code, at, &g);
     if (module[0] == 'g' && offset == 0xF8F670) CrashObjectiveList(c);
     if (module[0] == 'g' && offset == 0xC176B8) CrashLocationRecords(c, g.game);

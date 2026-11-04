@@ -1502,8 +1502,12 @@ static void TerrainDiagInstall(uintptr_t game);
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
 static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context, uint64_t g, uint64_t h);
+static void NearOneMipLevel(void);
+static void NearOneMipDrop(void);
+static int TerrainOn(void);
 static int TerrainMatDispatch(uint32_t op, uint64_t context);
 static void TerrainMatPatch(int on);
+static void TerrainNearPads(uint64_t record, uint64_t context);
 static void TerrainNearWater(uint64_t record);
 static void TerrainStampsRecord(uint64_t record, uint32_t op);
 static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen);
@@ -1538,6 +1542,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             uintptr_t genAt = 0; uint32_t subs = 0;
             if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0 && !SafeRead(genAt + 0x11A71C4u, &subs, 4)) WorldSuggestDrop(genAt, subs);
         }
+        /* the level's heightmap at one mip before anything writes it (difficulty_world_terrain.c, NearOneMipLevel) */
+        if (o == 0x38 && g_world.current == 8.0f && TerrainOn()) NearOneMipLevel();
         if (o == 0x38 && g_world.current == 8.0f && WorldTileStep(records, (uint32_t)d, i, b, e, f, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
         /* the map's terrain at vanilla density: the level waits at its SmoothHeightmap while the tiles are drawn */
         if (o == 0x40 && TerrainStep(records, (uint32_t)d, i, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
@@ -1654,6 +1660,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         vanillaOp != 0xFFFFFFFFu && !SafeRead(g_worldLevel + 0x2C8, &vanillaBlock, 8) && vanillaBlock != 0 && !SafeRead(vanillaBlock + 0x11A7108, &vanillaBefore, 4);
     { uint32_t ia = 0, oa = 0; if (!SafeRead(index, &ia, 4) && !SafeRead(records + (uint64_t)ia * 0x19B0u, &oa, 4) && oa == 0x74) { g_pass74 = records + (uint64_t)ia * 0x19B0u + 8; g_ctx74 = b; } if (oa == 0x76) g_pass76 = records + (uint64_t)ia * 0x19B0u + 8; }
     if (matPatch) TerrainMatPatch(1);
+    if (watch && g_world.current == 8.0f && op == 0x3F) TerrainNearPads(records + (uint64_t)at * 0x19B0u, b); /* the level's pads (its first 0x3F) */
     /* the stamp rings (difficulty_world_terrain.c) rerun 0x26 / 0x4E on tiles from their records as they were before */
     if (watch && g_world.current == 8.0f && (op == 0x26 || op == 0x4E)) TerrainStampsRecord(records + (uint64_t)at * 0x19B0u, op);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
@@ -1940,6 +1947,7 @@ static uint64_t WorldObject(uint64_t world, uint64_t handle, uint64_t c, uint64_
 /* Level init, before it stores the level's size: the world for this level (level 11's scale, else vanilla). */
 static void WorldLevel(uintptr_t level)
 {
+    NearOneMipDrop(); /* the previous extra large level's one-mip heightmap is not this level's */
     uint8_t difficulty = 0;
     float scale = 1.0f;
     if (g_world.scale > 1 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1) scale = (float)g_world.scale;
@@ -1961,6 +1969,7 @@ static void WorldLevel(uintptr_t level)
 /* The ship's navigation setup: the world back to vanilla (the ship's own systems read the same constants). */
 static void WorldShip(void)
 {
+    NearOneMipDrop();
     if (g_world.values != NULL && g_world.current != 1.0f) WorldWrite(1.0f);
 }
 
