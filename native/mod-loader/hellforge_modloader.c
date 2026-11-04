@@ -113,65 +113,11 @@ static HfApi g_api;
 
 /* ---- logging ---------------------------------------------------------------------------------------------------- */
 
-static void WriteLog(HANDLE file, const char* prefix, const char* format, va_list arguments)
-{
-    if (file == INVALID_HANDLE_VALUE) return;
-    char line[1024];
-    SYSTEMTIME now;
-    GetSystemTime(&now);
-    int length = snprintf(line, sizeof line, "%02u:%02u:%02u.%03u %s", now.wHour, now.wMinute, now.wSecond, now.wMilliseconds, prefix);
-    int more = vsnprintf(line + length, sizeof line - (size_t)length - 2, format, arguments);
-    if (more < 0) more = 0;
-    length += more > (int)sizeof line - length - 2 ? (int)sizeof line - length - 2 : more;
-    length = (int)HfPrivacyScrub(line, (size_t)length, sizeof line - 1);
-    line[length++] = '\n';
-    DWORD written;
-    WriteFile(file, line, (DWORD)length, &written, NULL);
-}
+#include "logging.c" /* Note, NoteDiagnostic, OpenLog and ApiLog */
 
-static void Note(const char* format, ...)
-{
-    va_list arguments;
-    va_start(arguments, format);
-    WriteLog(g_log, "", format, arguments);
-    va_end(arguments);
-}
+/* ---- patch sites (the difficulty diagnostics) ------------------------------------------------------------------- */
 
-/* A log of the session's folder, opened to append, its dated line first (hf_log_header.h: the lines carry UTC times). */
-static HANDLE OpenLog(const wchar_t* name)
-{
-    wchar_t path[MAX_PATH];
-    if (!g_logs[0] || swprintf(path, MAX_PATH, L"%ls\\%ls", g_logs, name) < 0) return INVALID_HANDLE_VALUE;
-    HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    HfLogHeader(file);
-    return file;
-}
-
-/* While the live editor's request runs, its mod's last message is kept: the reason a refusal gives (live.c). */
-static HfMod* g_reasonMod;
-static char g_liveReason[256];
-
-static void ApiLog(HfMod* mod, const char* format, ...)
-{
-    va_list arguments;
-    va_start(arguments, format);
-    WriteLog(mod != NULL ? mod->log : g_log, "", format, arguments);
-    va_end(arguments);
-    if (mod != NULL)
-    {
-        va_start(arguments, format);
-        vsnprintf(mod->last, sizeof mod->last, format, arguments);
-        va_end(arguments);
-        HfPrivacyScrubString(mod->last, sizeof mod->last);
-    }
-    if (mod != NULL && mod == g_reasonMod)
-    {
-        va_start(arguments, format);
-        vsnprintf(g_liveReason, sizeof g_liveReason, format, arguments);
-        va_end(arguments);
-        HfPrivacyScrubString(g_liveReason, sizeof g_liveReason);
-    }
-}
+#include "patch_registry.c" /* B.2: the writes the difficulty install makes, for the site audit */
 
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
@@ -216,6 +162,7 @@ static int ApiWrite(uintptr_t address, const void* data, size_t size)
     VirtualProtect((void*)address, size, previous, &previous);
     FlushInstructionCache(GetCurrentProcess(), (void*)address, size);
     NoteRewrite(address, size);
+    RecordPatch(address, data, size);
     return 0;
 }
 
@@ -247,6 +194,8 @@ static uintptr_t ApiModuleBase(const char* module, size_t* size)
     }
     return (uintptr_t)handle;
 }
+
+#include "patch_audit.c" /* B.2: the difficulty install's recorded sites and their byte audit */
 
 static int Hex(char c)
 {
@@ -567,6 +516,8 @@ static int g_reapState;
 static int InstallReaper(int pinsReady);
 /* SDK 7 events (events.c, after abilities.c: the silo countdowns listen for a mission's end). */
 static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* user, int32_t priority);
+/* SDK 16's mod channel (channel.c, after live.c): its game functions, once they read as reviewed. */
+static void ChannelInstall(uintptr_t game);
 #include "registry.c"
 #include "table_growth.c" /* the component tables the registry grows */
 #include "registry_load.c" /* the registry at work when the entity data loads */
@@ -768,7 +719,7 @@ static void WatchDifficulty(void)
     static ULONGLONG difficultySeen;
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     if (game == 0) return;
-    if (difficultySeen == 0) difficultySeen = GetTickCount64();
+    if (difficultySeen == 0) { difficultySeen = GetTickCount64(); g_difficultySeen = difficultySeen; }
     if (g_game == 0) g_game = game;
     InstallDifficulty(game, GetTickCount64() - difficultySeen >= 20000);
 }
@@ -791,6 +742,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
 }
@@ -882,9 +834,11 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
     if (g_difficultyState == 1) DifficultyWatch();
+    FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1) DifficultyArtillery();
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
+    AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }
 
@@ -1065,6 +1019,7 @@ static int ReadPlan(const wchar_t* path)
 }
 
 #include "live.c"
+#include "channel.c" /* after live.c: its queued lines and the session's role */
 #include "lua_bridge.c"
 #include "netapply.c" /* after live.c: the co-op role */
 #include "netreap.c"
@@ -1146,7 +1101,8 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
         ApiOnGameThread, ApiLoadPackage, ApiLastLog, ApiLogsFolder, ApiGetStat, ApiSession, ApiSubscribe, ApiGameState, ApiContent, ApiAddAbility, ApiAddStratagemCategory, ApiSetStat, ApiCopyRow, ApiMods,
         ApiHeal, ApiHealLimb, ApiInjure, ActLimbState, ApiApplyStatus, ApiAddVelocity, ApiResupply, ApiSpawnExplosion, ApiSpawnProjectile,
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
-        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus};
+        ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
+        ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow};
     int setupOrder[MAX_MODS];
     SetupOrder(setupOrder);
     if (g_modCount > 1) Note("code mods are set up in the order of their ids (the same on every machine); their edits apply in load order");

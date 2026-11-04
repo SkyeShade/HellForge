@@ -55,9 +55,18 @@ if (args is ["profile", var templateCommand and ("apply-template" or "add-templa
     }
 }
 if (args is ["profile", var accountCommand and ("import-preview" or "import"), var accountDirectory, .. var accountTemplate] && accountTemplate.Length <= 1)
+{
+    ulong? account;
+    try { account = AccountCommands.SignedInAccount(accountDirectory); }
+    catch (InvalidOperationException error)
+    {
+        Console.Error.WriteLine("HellForge local backend: " + error.Message);
+        return 1;
+    }
     return accountCommand == "import"
-        ? AccountCommands.Import(accountDirectory, accountTemplate.FirstOrDefault(), HellForge.Core.SteamAccount.Current(), Console.Out, Console.Error)
-        : AccountCommands.Preview(accountDirectory, accountTemplate.FirstOrDefault(), HellForge.Core.SteamAccount.Current(), Console.Out, Console.Error);
+        ? AccountCommands.Import(accountDirectory, accountTemplate.FirstOrDefault(), account, Console.Out, Console.Error)
+        : AccountCommands.Preview(accountDirectory, accountTemplate.FirstOrDefault(), account, Console.Out, Console.Error);
+}
 if (args is ["profile", "restore", var restoreDirectory, var backupFile])
     return AccountCommands.Restore(restoreDirectory, backupFile, Console.Out, Console.Error);
 if (args is ["fetch-live-war", var fetchCache])

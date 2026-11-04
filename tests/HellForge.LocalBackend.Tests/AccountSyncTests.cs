@@ -22,6 +22,10 @@ static class AccountSyncTests
 
     public static void Run(string root, Action<bool, string> check)
     {
+        // The Linux snapshot seal uses this synthetic machine id; the real /etc/machine-id is never read.
+        var machineId = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-id")).FullName, "seal-test");
+        File.WriteAllText(machineId, "0123456789abcdef0123456789abcdef\n");
+        SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
         var paid = PaidContentSet.Load();
         var ids = FindIds(paid);
         PremiumRules(paid, ids, check);

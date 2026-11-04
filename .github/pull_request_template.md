@@ -6,7 +6,7 @@
 ## Tested
 
 - [ ] `scripts/Test.ps1` passes (CI runs it too)
-- [ ] `py -3 scripts/lint/lint.py check` passes: no errors, warnings read (CI runs it too; `scripts/lint/README.md`)
+- [ ] `py -3 scripts/lint/lint.py check --warnings-as-errors` passes: no errors or warnings (CI runs it too; `scripts/lint/README.md`)
 - [ ] Engine or editor changes: `scripts/Build-Engine.ps1` / `scripts/Build-Editor.ps1 -Test` pass
 - [ ] In game, if it changes what players see or do: what was tried, solo or co-op
 

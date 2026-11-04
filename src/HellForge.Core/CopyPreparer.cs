@@ -16,8 +16,8 @@ public static class CopyPreparer
     {
         var report = LocalInstall.Inspect(manifestPath);
         if (report.Pin != expected) throw new InvalidDataException("Build pin mismatch. Inspect and review the installed build first.");
-        destination = LocalInstall.FullPath(destination);
-        LocalInstall.NoLinks(destination);
+        // The destination is the protected folder: a link above it is resolved, a link at or below it would copy elsewhere.
+        destination = LocalInstall.NoLinks(destination, destination);
         if (LocalInstall.Within(destination, report.Source) || LocalInstall.Within(report.Source, destination))
             throw new InvalidDataException("Source and destination must not overlap.");
         // Keep research copies outside this Steam library, including its update-managed folders.
@@ -27,8 +27,8 @@ public static class CopyPreparer
         if (Directory.Exists(destination) || File.Exists(destination))
             throw new InvalidDataException("Destination must not already exist. A failed copy must be reviewed separately.");
         var files = LocalInstall.Inventory(report.Source);
-        var drive = new DriveInfo(Path.GetPathRoot(destination)!);
-        if (drive.AvailableFreeSpace < files.Sum(x => x.Length) + 64L * 1024 * 1024)
+        // An unreadable file system is unknown, not full: let the copy try and fail on the first write if it is.
+        if (DiskSpace.ForFolder(destination).FreeBytes is { } free && free < files.Sum(x => x.Length) + 64L * 1024 * 1024)
             throw new IOException("Insufficient free space for a full copy and its receipt.");
 
         Directory.CreateDirectory(destination);
@@ -58,10 +58,8 @@ public static class CopyPreparer
     // One file into the copy, hashed from the source and verified in the copy.
     static CopiedFile CopyFile(string sourceRoot, string content, InventoryFile file)
     {
-        var source = Path.Combine(sourceRoot, file.RelativePath);
-        var target = Path.Combine(content, file.RelativePath);
-        LocalInstall.NoLinks(source);
-        LocalInstall.NoLinks(target);
+        var source = LocalInstall.NoLinks(Path.Combine(sourceRoot, file.RelativePath), sourceRoot);
+        var target = LocalInstall.NoLinks(Path.Combine(content, file.RelativePath), content);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         CopiedFile copied;
         using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))

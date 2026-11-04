@@ -9,7 +9,9 @@ For players: how to add, order and remove mods in HellForge, and what friends ne
 Mods live in `<installation>/mods`, each as a folder or a `.zip` of one. HellForge takes:
 
 - HellForge mods: a `hellforge-mod.json` with code (sources HellForge builds for you), data, stats, or several of them.
-- Cosmetic packs in the community's format (a `manifest.json` with options), as other mod managers install them.
+- Cosmetic packs in the community's format (a `manifest.json` with options), as other mod managers install them. The
+  folders and images a manifest names are matched as Windows matches them, on Linux too: whatever their case, and with
+  trailing dots or spaces left off (a pack's `PGO-7V3.` is the folder `PGO-7V3`).
 - Lua mods: HD2Runtime, Bingus Shared Loader and the mods made for them ([lua-bridge.md](lua-bridge.md)).
 
 A code mod runs inside the game with your permissions, so only enable code mods from people you trust. The Mods page
