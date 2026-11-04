@@ -186,6 +186,10 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Fixed
 
+- **Linux: after MOD SYNC's Restart, a sandboxed game starts again.** The game closed and the launcher never started it
+  with the host's mods: the sandbox stopped the game before the session noted why it stopped, so the launcher did not
+  know to restart it. The session now notes it either way. The game ending because HellForge stopped it (STOP, or a mod
+  sync) is no longer reported as a crash.
 - **Linux: joining a host whose mods include a source mod no longer loops.** After MOD SYNC downloaded the host's mods
   and restarted the session, a source mod among them was never compiled (Linux builds source mods before the session,
   and only the player's own were built), so the session left it off, the host refused the join again, and MOD SYNC
