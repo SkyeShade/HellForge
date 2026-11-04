@@ -445,7 +445,14 @@ static void ContentInstallFixture(void)
     g_liveSetup = r;
     assert(ApiAddStratagem(r, &rs) == STR_VANILLA && g_stratagemCount == 1 && g_textCount > texts);
     g_liveSetup = NULL;
+    /* staged: not served (the engine is not answered with a change that is not made), and the refusal never frees it */
+    uint32_t stagedId = g_texts[texts].id;
+    const char* staged = g_texts[texts].text;
+    char stagedCopy[64];
+    snprintf(stagedCopy, sizeof stagedCopy, "%s", staged);
+    assert((int)g_textsServed == texts && g_textsHeld && TextDetour(stagedId, NULL, NULL, NULL) != staged);
     assert(!ContentCommit() && g_stratagemCount == 0 && g_textCount == texts && !g_lcOpen);
+    assert((int)g_textsServed == texts && !g_textsHeld && TextDetour(stagedId, NULL, NULL, NULL) != staged && !strcmp(staged, stagedCopy));
     r->loaded = 0;
     r->removed = 1;
     g_stratagemState = 1;
@@ -460,7 +467,12 @@ static void ContentInstallFixture(void)
     uint32_t projectile = ApiAddProjectile(m, &pp);
     g_liveSetup = NULL;
     uint32_t type = ContentStratagem(m, "s", 5);
+    int textsBefore = g_textCount;
+    uint32_t madeId = AddText("Made", "test.m#text", 0x31); /* a set-up's text: held while the change is staged */
+    assert(madeId != 0 && (int)g_textsServed == textsBefore && TextDetour(madeId, NULL, NULL, NULL) != g_texts[textsBefore].text);
     assert(damage == DMG_VANILLA && projectile == PRJ_VANILLA && type == STR_VANILLA && ContentCommit());
+    /* made: its texts are served */
+    assert((int)g_textsServed == g_textCount && !g_textsHeld && TextDetour(madeId, NULL, NULL, NULL) == g_texts[textsBefore].text);
     uintptr_t table = (uintptr_t)g_stratagemTable;
     Stratagem* s = &g_stratagems[0];
     assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && !memcmp(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad));

@@ -281,6 +281,7 @@ static const char* LiveContentBegin(char* why, size_t size)
     g_lcCategoriesBefore = g_stratagemCategoryCount;
     g_lcRefused[0] = 0;
     g_lcOpen = 1;
+    g_textsHeld = 1; /* the set-ups' texts wait for the change to be made (registry.c TextDetour) */
     return NULL;
 }
 
@@ -296,7 +297,9 @@ static void LiveContentUnstage(void)
     g_weaponCount = g_lcWeaponsBefore;
     g_stratagemCategoryCount = g_lcCategoriesBefore;
     if (g_difficultyLive) { g_difficultyLive = g_difficultyAdded = 0; memset(&g_difficulty, 0, sizeof g_difficulty); }
-    while (g_textCount > g_lcTextsBefore) { g_textCount--; free(g_texts[g_textCount].text); }
+    /* the set-ups' texts go unserved; never freed (ApiContent may have handed one out), their slots taken again */
+    g_textCount = g_lcTextsBefore;
+    g_textsHeld = 0;
     g_lcOpen = 0;
 }
 
@@ -861,7 +864,7 @@ static int LiveSteps(LivePlan* plan)
 static const char* LiveContentMake(char* why, size_t size, int* failed)
 {
     *failed = 0;
-    if (!LiveContentAny()) { g_lcOpen = 0; return NULL; }
+    if (!LiveContentAny()) { g_lcOpen = 0; TextsPublish(); return NULL; }
     static LivePlan plan;
     memset(&plan, 0, sizeof plan);
     size_t image = g_lcFixtureGameSize;
@@ -874,6 +877,7 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     const char* refused = LivePrepare(&plan, why, size);
     if (refused != NULL) return refused;
     g_lcOpen = 0; /* made from here on: the set-ups' content stays */
+    TextsPublish();
     if (plan.items.count > 0 && !OwnProve()) Note("items: the game's catalogue functions are not the reviewed ones; new items are not owned until the next session");
     LiveRegistryCarry(&plan);
     LiveRetire(&plan);
