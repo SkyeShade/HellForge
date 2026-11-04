@@ -54,6 +54,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
     readonly Func<bool> editedStats;
     readonly Func<bool>? listPublic;
     bool unlistedLogged;
+    // Co-op over Steam relays (CoopRelays.Open): while it is off on Linux nobody could join this machine's lobby, so it is
+    // not listed (said once each time it turns off).
+    readonly Func<bool>? relaysOpen;
+    bool relaysOffLogged;
     readonly Func<bool>? strangersAllowed;
     readonly object gate = new();
     bool loggedOff;
@@ -71,6 +75,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     {
         listPublic = settings.ListPublic;
         strangersAllowed = settings.StrangersAllowed;
+        relaysOpen = settings.RelaysOpen;
         this.directory = directory;
         this.lobby = lobby;
         this.presence = presence;
@@ -146,6 +151,13 @@ public sealed partial class DirectoryService : IAsyncDisposable
             if (!allowed) log("Directory: this player's public lobbies are not listed (Mods page: \"List my Public lobbies\" is off).");
         }
         if (!allowed) return null;
+        var reachable = relaysOpen?.Invoke() != false;
+        if (reachable == relaysOffLogged)
+        {
+            relaysOffLogged = !reachable;
+            if (!reachable) log("Directory: this machine's public lobby is not listed: co-op over Steam relays is off, so nobody could join it.");
+        }
+        if (!reachable) return null;
         var data = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [DirectoryKeys.Protocol] = LobbyService.Protocol,
@@ -549,7 +561,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
 // change; tests call Publish), and the player's switches, read as a listing is looked at: "List my Public lobbies"
 // (ListPublic) and Play with strangers (StrangersAllowed), each on when null.
 public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bool AutoPublish = true, Func<bool>? ListPublic = null,
-    Func<bool>? StrangersAllowed = null);
+    Func<bool>? StrangersAllowed = null, Func<bool>? RelaysOpen = null);
 
 // One lobby the browse API lists: from the directory, or a friend's lobby heard through presence (Source "friend": no
 // listing, so no mod set until a join; Join is then an empty check). Record is the lobby record as the schema rebuilt it.

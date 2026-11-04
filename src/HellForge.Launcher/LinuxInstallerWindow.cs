@@ -353,6 +353,8 @@ sealed class LinuxInstallerWindow : Window
             "app/linux/hf-steam.sh",
             "app/linux/hf-container.sh",
             "app/linux/hf-wineserver.sh",
+            "app/linux/hf-relays.sh",
+            "app/linux/hf-coop-relays.sh",
             "app/linux/hf-sandbox-probe",
             "app/linux/allow-capture.sh",
             "app/linux/capture-helper.sh",

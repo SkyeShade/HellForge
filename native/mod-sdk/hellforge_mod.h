@@ -1002,6 +1002,8 @@ typedef struct HfBrowseLobby
 #define HF_LOBBY_FIX_NONE 0u
 #define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
 #define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
+#define HF_LOBBY_FIX_RELAYS 3u       /* Linux: co-op over Steam relays is off, so no join reaches a host (every lobby has it):
+                                      * HF_BROWSE_TURN_ON_RELAYS */
 
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
@@ -1018,6 +1020,10 @@ typedef struct HfBrowseLobby
 #define HF_BROWSE_CLAIM 8u   /* this mod draws the lobby browser: HellForge's editor's own steps aside (browse_state's owner).
                               * 1 when this mod holds it, 0 when another mod claimed it first; this machine only */
 #define HF_BROWSE_RELEASE 9u /* gives the browser back to HellForge's editor; 1 when this mod held it */
+#define HF_BROWSE_TURN_ON_RELAYS 10u /* Linux: turn co-op over Steam relays on (HF_LOBBY_FIX_RELAYS), the launcher's setting,
+                                      * which it keeps: UDP to Valve's Steam relays only, opened while the session runs when
+                                      * it can (browse_state SEARCHING, then a new list), else from the next session
+                                      * (FAILED, the message says why). Ask only after telling the player what it opens */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1381,7 +1387,8 @@ typedef struct HfApi
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
      * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
      * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this
-     * session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
+     * session only, never saved (lobby_id NULL); HF_BROWSE_TURN_ON_RELAYS turns co-op over Steam relays on, saved by the
+     * launcher (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
      * terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and
      * setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);

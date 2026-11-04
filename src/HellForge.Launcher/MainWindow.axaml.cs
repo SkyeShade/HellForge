@@ -119,7 +119,8 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
-        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): off by default, and passed to a session only.
+        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): on by default, and passed to a session only. The
+        // game's lobby browser can turn it on while a session runs (ServeCoopRelays).
         SteamUdpOptions.IsVisible = OperatingSystem.IsLinux();
         SteamUdpBox.IsChecked = ProfileStore.LoadSteamUdp(paths);
         SteamUdpBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSteamUdp(paths, SteamUdpBox.IsChecked == true);
@@ -300,6 +301,7 @@ public partial class MainWindow : Window
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
         if (LocalPlayFabBox.IsChecked != true) Append("Local PlayFab is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
         if (SdkShimsBox.IsChecked != true) Append("Lobby and session through Steam friends is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
+        AppendCoopRelaysLine();
         List<string> gameOptions;
         try { gameOptions = HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
         catch (InvalidDataException error)
@@ -427,11 +429,52 @@ public partial class MainWindow : Window
         }
         else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
         if (runner.IsRunning) ShowModSync(runDirectory!);
+        if (runner.IsRunning) ServeCoopRelays(runDirectory!);
         else ModSyncCard.IsVisible = false;
         FollowModStatuses();
         // Once the result has completedUtc and the runner is gone the run cannot change again. A request backlog larger
         // than one poll's chunk is still shown first.
         if (resultFile.Finished && requests.AtEnd) runFinished = true;
+    }
+
+    // Linux: co-op over Steam relays, when it is off or cannot open (the session then plays without it, and its lobby
+    // browser says so and offers to turn it on).
+    void AppendCoopRelaysLine()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        if (SteamUdpBox.IsChecked != true)
+            Append("Co-op over Steam relays is off (Settings > Multiplayer): other players' lobbies show but can't be joined; the lobby browser can turn it on.", Orange);
+        else if (SessionRunner.SteamUdpProblem() is { } problem)
+            Append(problem + " Until then this session plays without co-op.", Orange);
+    }
+
+    // Linux: the game's lobby browser asked to turn co-op over Steam relays on (the session's backend wrote the ask in its
+    // folder; CoopRelaysSwitch). The launcher, outside the session's network namespace, opens it (hf-coop-relays.sh),
+    // keeps the switch on (the player chose it in the game), and answers. One at a time.
+    bool coopRelaysBusy;
+    void ServeCoopRelays(string run)
+    {
+        if (!OperatingSystem.IsLinux() || coopRelaysBusy || paths.InstallRoot is not { } install) return;
+        var backend = Path.Combine(run, "backend");
+        if (!CoopRelaysSwitch.TakeRequest(backend)) return;
+        coopRelaysBusy = true;
+        Append("The game's lobby browser asked to turn co-op over Steam relays on; opening it for this session...", LauncherLine);
+        ProfileStore.SaveSteamUdp(paths, true);
+        SteamUdpBox.IsChecked = true;
+        _ = Task.Run(() =>
+        {
+            var (open, message, log) = CoopRelaysSwitch.TurnOn(install, TimeSpan.FromSeconds(50));
+            var answer = open ? "" : message + ". It is on from the next session: STOP, then PLAY, to join";
+            try { CoopRelaysSwitch.WriteAnswer(backend, open, answer); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { log += "\nCould not answer the session: " + error.Message; }
+            Dispatcher.UIThread.Post(() =>
+            {
+                coopRelaysBusy = false;
+                foreach (var line in log.Split('\n', StringSplitOptions.RemoveEmptyEntries)) Append(line, LauncherLine);
+                Append(open ? "Co-op over Steam relays is on for this session (UDP to Valve's relays only) and stays on (Settings > Multiplayer)."
+                    : "Co-op over Steam relays could not open in this session: " + message + ". It is on from the next session.", open ? LauncherLine : Orange);
+            });
+        });
     }
 
     // The backend stopped the session so the launcher starts again with the host's mods it downloaded; true when it restarted.
