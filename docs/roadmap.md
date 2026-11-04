@@ -1,6 +1,6 @@
 # HellForge roadmap
 
-What HellForge can do today, what is being tested, and what comes after. Updated 2026-10-26 for HellForge 0.3.0-beta.
+What HellForge can do today, what is being tested, and what comes after. Updated 2026-11-04 for HellForge 0.4.0-beta.
 Nothing here has a date, and stability comes first. What each release changed is in the
 [changelog](../CHANGELOG.md).
 
@@ -15,13 +15,14 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Open source | Done | GPL-3 |
 | In-game editor | Mostly done | Player's kit mostly ported; enemies and structures built; missions left |
 | Difficulty 11 (Hell Forge) | Mostly done | Needs its own enemy mix |
-| Linux | Experimental | Runs under Proton; co-op and Steam Deck untested |
+| Linux | Experimental | Native launcher and setup, the game under Proton; co-op and Steam Deck untested |
+| Change mods without restarting | Experimental | New in 0.4, off by default (Settings > Experimental) |
 | Public lobbies, privacy, invites, kicking | Testing | Built for 0.3.0; needs two-PC tests |
 | Faster mod sync | Testing | Built for 0.3.0 |
 | Lockdown: strangers off by default, narrowed network block, mods held read-only | Testing | Built for 0.3.0-dev.5 (PR 24); needs in-game tests |
 | Sandbox (the game at low integrity, Steam through a broker) | Testing | On by default since the 0.3.0 beta (Settings > Sandbox), Windows only; old installations get the WFP block on their first sandboxed session |
 | Host-leaves fix | Next | Planned |
-| Co-op tools for mods | Next | Planned |
+| Co-op tools for mods | Mostly done | SDK 16's `is_authority` and mod channel; the countdown laser and turret target still move onto them |
 | Cyberstan, Meridia and 5 more planets | Testing | Built for 0.3.0-dev.4 (All planets open); the six planets without missions and difficulty 11 on Cyberstan added, untested |
 | Super Earth missions | Later | Research done (research/cyberstan sketches it) |
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
@@ -43,7 +44,7 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
 (session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 16.
+Versions: HellForge 0.4.0-beta, engine 0.1.42, mod SDK 16.
 
 ## Done in 0.2.0-beta
 
@@ -98,6 +99,12 @@ mod sync with its restart and rejoin; a public lobby on the map; and each player
 ([multiplayer.md, step 10](multiplayer.md#step-10-every-players-own-stats-and-the-lobbys-assets-2026-10-23)). The editor's overlay test also needs one run with
 RivaTuner closed.
 
+## 0.4.0-beta (release candidate)
+
+What changed is in the [changelog](../CHANGELOG.md), under Unreleased until the release. The release candidate is
+tested in game by the maintainer and the admins before it goes out (the checklist in
+`.github/PULL_REQUEST_TEMPLATE/release.md`).
+
 ## Next: stability and co-op
 
 Vehicle weapons' projectile swaps are next: in co-op they should fire as their shooter's on every screen, as hand-held
@@ -107,9 +114,9 @@ When the host goes back to the ship in the middle of a mission, everyone else ge
 will keep the lobby and network alive and hand ownership to another player. If the host quits HellForge entirely, the
 session will still end, because fixing that means handing the session over to another player's backend.
 
-Mods need a way to tell which machine is in charge of an entity (`is_authority`) and a channel for sending messages
-between players (`send`). That covers state the game itself has nowhere to keep, such as the point a laser has marked or
-the target a custom turret has picked. The Pelican's facing and aim height will move onto it
+Mods can tell which machine is in charge of an entity (`is_authority`) and send messages between players (`send`)
+since SDK 16. That covers state the game itself has nowhere to keep, such as the point a laser has marked or the
+target a custom turret has picked. The Pelican's facing and aim height will move onto it
 ([SDK roadmap, phase 6](sdk-roadmap.md#co-op-sync-phase-6)).
 
 More events for mods: a player joining or leaving, an objective being completed, and a level being generated
@@ -285,4 +292,4 @@ swap the files and restart. Pre-releases would only show to players who opt in.
 | Smart App Control blocks HellForge's unsigned programs and DLLs ("An Application Control policy has blocked this file"). Setup and the launcher warn, and name the blocked file; signing is being decided ([code-signing.md](code-signing.md)) | Turn Smart App Control off. Windows may not let you turn it back on without a reset ([troubleshooting.md](troubleshooting.md#smart-app-control)) |
 | HellForge's editor and the HD2R Editor clash | Use one at a time |
 | Antivirus programs can quarantine HellForge's files | Add an exclusion for the install folder ([troubleshooting.md](troubleshooting.md#antivirus)) |
-| A crash at `helldivers2.exe+0x626296` when the game closes | Nothing to fix: it's the game's own crash on quitting |
+| A crash at `helldivers2.exe+0x626296` | When the game closes it's the game's own crash on quitting, nothing to fix. It was also seen once while a mission loaded (#228), which is still being looked at: please attach the crash report |
