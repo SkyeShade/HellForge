@@ -27,5 +27,7 @@ HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
     xl.patrol_cap = 1.5f;
     xl.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_RAPID_ACQUISITION | HF_DIFFICULTY_RADAR |
         HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS | HF_DIFFICULTY_CITY_ICBM;
+    xl.operation_missions = 3;       /* an operation's three missions on the one map: their outposts, objectives and points of
+                                        interest, and a primary of each */
     return api->add_difficulty(mod, &xl) == 11 ? 0 : 1;
 }
