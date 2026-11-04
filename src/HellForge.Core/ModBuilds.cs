@@ -86,6 +86,29 @@ public static class ModBuilds
         catch (Exception error) when (error is JsonException or IOException) { return null; }
     }
 
+    // What a build before the session (the Linux wrapper's build-source-mods) builds: the player's enabled mods and, when
+    // the session follows a mod sync (sync: the launcher's --mod-sync), the host's mods it plays from the synced store,
+    // resolved as the session's mods-stage resolves them (ModSyncSession.Resolve; sandboxed: whether the session is, so a
+    // stranger's trusted mod is built only for a sandboxed one). Without them a host's source mod would stay off in that
+    // session and the host refuse the join again. Why the host's are not built goes to log.
+    public static List<ModManifest> ForSession(InstallLayout install, IReadOnlyList<ModManifest> catalog, bool sync, bool sandboxed, Action<string> log,
+        Func<string, string, bool>? verified = null)
+    {
+        var active = ModCatalog.Active(catalog);
+        if (!sync) return active;
+        try
+        {
+            var (synced, problem) = ModSyncSession.Read(ModSyncSession.PathIn(install)).Resolve(install.Mods, catalog, sandboxed: sandboxed, verified: verified);
+            if (synced == null) { log("Mod sync: the host's mods are not built, because " + problem); return active; }
+            return [.. active.Concat(synced.Where(m => active.All(a => !string.Equals(Path.GetFullPath(a.Folder), Path.GetFullPath(m.Folder), StringComparison.Ordinal))))];
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or JsonException)
+        {
+            log("Mod sync: the host's mods are not built, because the sync file could not be read (" + error.Message + ").");
+            return active;
+        }
+    }
+
     // Every enabled source mod built (or its build reused) for this session: the mods to load, with the DLL each loads,
     // and the problems (a mod that did not compile is left out). tools: on Windows, installs the SDK's pinned compiler
     // when missing; Linux installs the native compiler in the wrapper before the session.

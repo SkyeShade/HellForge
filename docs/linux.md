@@ -837,7 +837,9 @@ before the session and runs the native build agent, which calls the same `ModBui
 app/cli-linux/HellForge.Cli build-source-mods --install <installation>
 ```
 
-That builds every enabled source mod into `temp/mod-builds` with the cache key and `record.json` a session checks. The
+That builds every enabled source mod into `temp/mod-builds` with the cache key and `record.json` a session checks; for a
+session after a mod sync the wrapper adds `--sync yes --sandbox yes|no`, which builds the host's mods that session plays
+too (a host's source mod would otherwise stay off and the host refuse the join again). The
 session then finds the DLLs ready and does not compile. The key names the compiler (`zig 0.17.0 /
 x86_64-windows-gnu`) rather than its archive, so a Windows session and a native Linux build of the same sources share
 it. A mod that does not compile is recorded with its compiler message and stays off for that session, as before.

@@ -851,6 +851,41 @@ static class ModSyncTests
             }
         });
 
+        test("Mod sync: the build before a synced session (Linux's build-source-mods) builds the host's source mods it plays, as the session resolves them", () =>
+        {
+            var (hostMods, _) = ModCatalog.Load(Mods(root, "sync-build-host"));
+            var host = ModSet.Of(ModCatalog.LoadOrder(hostMods.Where(m => m.Id == "test.source").ToList()));
+            var install = new InstallLayout(Path.Combine(root, "sync-build-install"));
+            install.Create(SupportedBuild.Current.BuildId);
+            // the joiner's own: one enabled source mod of its own (built either way), nothing else
+            Write(Path.Combine(install.Mods, "own"), ModCatalog.ManifestName, Manifest("test.own", "1", ",\"code\":{\"dll\":\"mod.dll\",\"sdk\":1}"));
+            Write(Path.Combine(install.Mods, "own"), "src/mod.c", "int y;");
+            // the host's source mod, downloaded into the store from a stranger and trusted for sandboxed games
+            var source = host.Mods.Single(m => m.Id == "test.source");
+            var partial = SyncedStore.Partial(install.Mods, source.Id, source.Hash);
+            CopyFiles(source, partial);
+            SyncedStore.Install(install.Mods, source, partial, verified: (id, hash) => id == source.Id && hash == source.Hash);
+            ModSettings.SetTrusted(install.Mods, new TrustedMod(source.Id, source.Hash, "Source", "1", "Stranger (76561190000000002)", "2026-11-04T20:16:11.0000000Z", Stranger: true));
+            var log = new List<string>();
+            var (catalog, _) = ModCatalog.Load(install.Mods);
+            string Ids(List<ModManifest> mods) => string.Join(", ", mods.Select(m => m.Id).Order(StringComparer.Ordinal));
+
+            check(Ids(ModBuilds.ForSession(install, catalog, sync: true, sandboxed: true, log.Add)) == "test.own" &&
+                log.SingleOrDefault()?.Contains("the sync file could not be read") == true, "Without a sync file only the player's own: " + string.Join(" | ", log));
+            new ModSyncSession("76561190000000002", "Stranger", "hellforge1-lobby;x;76561190000000002", host.Digest,
+                [.. host.Mods.Select(m => new ModSyncSession.Mod(m.Id, m.Hash, m.Order))]).Write(ModSyncSession.PathIn(install));
+            log.Clear();
+            check(Ids(ModBuilds.ForSession(install, catalog, sync: false, sandboxed: true, log.Add)) == "test.own" && log.Count == 0,
+                "A session that does not follow a mod sync builds only the player's own.");
+            var synced = ModBuilds.ForSession(install, catalog, sync: true, sandboxed: true, log.Add);
+            check(Ids(synced) == "test.own, test.source" && synced.Single(m => m.Id == "test.source").Folder.StartsWith(SyncedStore.Root(install.Mods), StringComparison.Ordinal) &&
+                synced.Single(m => m.Id == "test.source").HasSource && log.Count == 0,
+                "After a mod sync, the host's source mod from the store is built too: " + Ids(synced) + " " + string.Join(" | ", log));
+            check(Ids(ModBuilds.ForSession(install, catalog, sync: true, sandboxed: false, log.Add)) == "test.own" &&
+                log.LastOrDefault()?.Contains("runs only in a sandboxed game") == true,
+                "A stranger's mod trusted for sandboxed games is not built for an unsandboxed session, and the log says why: " + string.Join(" | ", log));
+        });
+
         test("Mod sync: the next session plays the host's mods in the host's order with the player's cosmetic mods and Local Stats, or the player's own when one is missing", () =>
         {
             var (hostMods, _) = ModCatalog.Load(Mods(root, "sync-session-host"));

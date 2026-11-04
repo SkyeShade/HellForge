@@ -26,7 +26,7 @@ try
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
             mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--sandbox yes|no] [--session-mods <file>]
             mods-live --install <folder> --session-mods <file> --target <file of mod folders, in load order> --seed <text>
-            build-source-mods --install <folder> [--progress <file>]
+            build-source-mods --install <folder> [--progress <file>] [--sync yes|no] [--sandbox yes|no]
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
             sdk-headers --repo <HellForge source folder> [--mode write | check]
@@ -71,7 +71,8 @@ try
             installed) or in --out. build-mod compiles a code mod with the SDK's pinned Zig: in an installation's mods
             folder into the build a session loads (temp/mod-builds; sessions build source mods themselves), elsewhere into
             the DLL its manifest names. build-source-mods builds every enabled source mod into temp/mod-builds before a
-            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine.
+            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine;
+            --sync yes also builds the host's mods a session after a mod sync plays (--sandbox: whether it is sandboxed).
             package-mod compiles a source mod, then zips it to share (the installation's exports
             folder, or --out): sources and files, no DLL a player's HellForge would rebuild, no IDE leftovers.
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
@@ -129,7 +130,7 @@ try
         "migrate" => ["--install", "--from", "--appdata"],
         "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
-        "build-source-mods" => ["--install", "--progress"],
+        "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
@@ -425,11 +426,19 @@ try
         {
             // The Linux wrapper's native agent: every enabled source mod built into temp/mod-builds before the session,
             // with the same key and record the session checks. A mod that fails is reported, and the session leaves it off.
+            // --sync yes: the session after a mod sync (the launcher's --mod-sync) plays the host's mods from the synced store:
+            // those are built too (ModBuilds.ForSession, with the session's --sandbox).
             var buildInstall = new InstallLayout(Path.GetFullPath(Required("--install")));
             if (!buildInstall.Exists) throw new InvalidDataException($"{buildInstall.Root} is not a HellForge installation.");
             var (mods, loadProblems) = ModCatalog.Load(buildInstall.Mods);
             foreach (var problem in loadProblems) Console.Error.WriteLine(problem);
-            var activeMods = ModCatalog.Active(mods);
+            bool Flag(string key) => options.GetValueOrDefault(key) switch
+            {
+                null or "no" => false,
+                "yes" => true,
+                _ => throw new ArgumentException($"{key} takes yes or no.")
+            };
+            var activeMods = ModBuilds.ForSession(buildInstall, mods, Flag("--sync"), Flag("--sandbox"), Console.Error.WriteLine);
             var sourceMods = activeMods.Count(m => m.HasSource);
             var progressFile = options.GetValueOrDefault("--progress");
             var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
