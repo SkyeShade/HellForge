@@ -74,7 +74,7 @@ static void StatusFixture(void)
     assert(end != NULL && ended != NULL);
     OpenSessionEnd();
     assert(g_sessionEnd != NULL && g_sessionEnded != NULL);
-    assert(ApiOn(&g_mods[0], (HfEvent)5, SessionEndHeard, NULL) == 1); /* 5 is not an event */
+    _Static_assert(HF_EVENT_MODS_CHANGED == 5 && HF_EVENT_SESSION_END == 6, "SDK 16's events keep their numbers");
     assert(ApiOn(&g_mods[0], HF_EVENT_SESSION_END, SessionEndHeard, NULL) == 0 && g_sessionEndsHeard == 0);
     assert(ApiOn(&g_mods[0], (HfEvent)(HF_EVENT_SESSION_END + 1), SessionEndHeard, NULL) == 1); /* past the last event */
     WatchPause(1);

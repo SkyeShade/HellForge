@@ -161,6 +161,24 @@ public sealed class MultiplayerHost : IAsyncDisposable
         return host;
     }
 
+    // The session's mods changed while it runs (LiveMods): joins are checked against the new digest, and mod sync's offers
+    // and the directory's listing carry the new set.
+    public void ModsChanged(ModSet set)
+    {
+        Sync?.SetOwn(set);
+        if (Sync != null) Lobby.ModSetWire = Sync.OwnWire; // the mods.info joiners take from now on
+        Lobby.SetMods(set.Digest, ModlistDiff.Encode(set.Fingerprints()));
+        Log($"The session's mods changed live; their digest is now {set.Digest}.");
+    }
+
+    // A live change of the session's mods is being made (true), or ended without changing them (false): friends' joins
+    // wait for it (LobbyService.ModsChanging).
+    public void ModsChanging(bool changing)
+    {
+        Lobby.ModsChanging(changing);
+        Log(changing ? "The session's mods are changing live; friends' joins wait until the game reports the change." : "The live change left the session's mods as they were.");
+    }
+
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
     void StartSync(string modsFolder, string? modSetFile, string evidenceDirectory, bool sandboxed)
     {
@@ -204,14 +222,33 @@ public sealed class MultiplayerHost : IAsyncDisposable
     {
         var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow, Sync?.Own);
         if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
+        StartRejoin(target, modDigest);
+    }
+
+    // After the running game took a host's mods without a restart (LiveMods, mod sync's APPLY AND JOIN): the host is asked
+    // at once when the game is on the ship (it has its own lobby), else once it gets there (a change on the title screen,
+    // a Steam invitation's join that failed there, say). digest: this session's modlist digest now, the host's.
+    public void RejoinAfterLiveSync(ModSyncSession session, string digest)
+    {
+        if (transport == null) return;
+        var (target, reason) = AutoRejoin.From(session, transport.LocalId, digest, Sync?.Own);
+        if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
+        StartRejoin(target, digest);
+    }
+
+    void StartRejoin(AutoRejoin.Target target, string modDigest)
+    {
         if (target.Legacy) Sync?.Rejoining(target.Host, target.Digest);
-        var rejoin = Rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
+        var rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport!.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
             (kind, title, lines) =>
             {
                 if (Stats != null) Stats.Notice(kind, title, lines);
                 else Log($"Notice not shown, no live-edit pipe: {title}");
             }, Log);
+        Rejoin?.Dispose(); /* a rejoin from an earlier sync of this session ends: this one is the player's latest */
+        Rejoin = rejoin;
         rejoin.Attach(Lobby);
+        if (Lobby.HostedLobbies().Any(l => l.LocalOwner)) rejoin.GameReady(); /* on the ship already; else its lobby's creation */
         rejoin.Start();
     }
 

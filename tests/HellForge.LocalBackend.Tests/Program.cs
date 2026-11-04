@@ -738,6 +738,9 @@ try
     await RejoinTests.Run(root, Check);
     results.Add(new { mode = "rejoin", outcome = "passed" });
     Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; the live pipe");
+    await LiveModsTests.Run(root, Check);
+    results.Add(new { mode = "live-mods", outcome = "passed" });
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");

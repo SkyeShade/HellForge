@@ -323,7 +323,7 @@ static void TickInstall(void)
 /* SDK 6: a callback every game update, on the game thread. */
 static int ApiOnGameThread(HfMod* mod, HfTickCallback callback, void* user)
 {
-    if (mod == NULL || callback == NULL) return 0;
+    if (mod == NULL || callback == NULL || ModGone(mod)) return 0;
     if (g_tickState < 0) { ApiLog(mod, "on_game_thread: the game thread's update is not hooked (modloader.log says why)"); return 0; }
     AcquireSRWLockExclusive(&g_lock);
     TickTable* ticks = g_ticks;

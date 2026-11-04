@@ -51,8 +51,13 @@ public sealed class ModSync : IAsyncDisposable
 
     readonly IPeerTransport transport;
     readonly string modsFolder;
-    readonly ModSet? own;
-    readonly string? ownWire, legacyWire;
+    // This session's mod set (what joiners may download) and its wire forms (a 0.3 joiner's too), swapped whole when a live
+    // change of the session's mods replaces it (SetOwn).
+    sealed record Owned(ModSet? Set, string? Wire, string? LegacyWire);
+    volatile Owned owned;
+    ModSet? own => owned.Set;
+    static Owned OwnedOf(ModSet? set) =>
+        new(set, set?.ToJson(local: false).ToJsonString(), set?.Legacy()?.ToJson(local: false).ToJsonString());
     readonly string runDirectory, evidenceDirectory, sessionFile;
     readonly Func<ulong, string> nameOf;
     readonly Action<string> log;
@@ -70,9 +75,7 @@ public sealed class ModSync : IAsyncDisposable
         this.sandboxed = sandboxed;
         this.transport = transport;
         modsFolder = paths.ModsFolder;
-        this.own = own;
-        ownWire = own?.ToJson(local: false).ToJsonString();
-        legacyWire = own?.Legacy()?.ToJson(local: false).ToJsonString();
+        owned = OwnedOf(own);
         runDirectory = paths.RunDirectory;
         evidenceDirectory = paths.EvidenceDirectory;
         sessionFile = paths.SessionFile;
@@ -86,7 +89,7 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     // This session's mods of both tiers as a host sends them in mods.info (null when the session gave no set).
-    public string? OwnWire => ownWire;
+    public string? OwnWire => owned.Wire;
     // A brief note for the game (MultiplayerHost shows it in the corner): here, the host's per-player mods this joiner lacks.
     public event Action<string>? Notice;
 
@@ -179,7 +182,8 @@ public sealed class ModSync : IAsyncDisposable
     // there is one; with a shared bundled mod on there is none, and it sees another HellForge version.
     public bool OfferMods(ulong joiner, string lobbyId, bool legacy = false)
     {
-        var wire = legacy ? legacyWire ?? ownWire : ownWire;
+        var current = owned;
+        var wire = legacy ? current.LegacyWire ?? current.Wire : current.Wire;
         if (wire == null) return false;
         var share = Shares();
         var now = DateTime.UtcNow;
@@ -201,16 +205,19 @@ public sealed class ModSync : IAsyncDisposable
     // ---- The lobby directory (DirectoryService) --------------------------------------------------------------------
 
     // This session's mod set as a lobby listing carries it (the wire form), its digest, and whether this player shares it.
-    public string? OwnSetWire => ownWire;
+    public string? OwnSetWire => owned.Wire;
     // Lobbies whose host shares edited stats show for this session (the lobby browser's ask), whatever the Mods page says;
     // never saved.
     public bool ShowEditedStatsThisSession { get => Volatile.Read(ref showEditedStats); set => Volatile.Write(ref showEditedStats, value); }
     bool showEditedStats;
+
+    // The session's mods changed while it runs (LiveMods): joiners are offered, and may download, the new set.
+    public void SetOwn(ModSet set) => owned = OwnedOf(set);
     public string OwnDigest => own?.Digest ?? "none";
     public bool Sharing => Shares();
     public ModSet? Own => own;
     // The set as HellForge 0.3 reads it, for its listing and offers (ModSet.Legacy); null when a shared bundled mod is on.
-    public string? LegacySetWire => legacyWire;
+    public string? LegacySetWire => owned.LegacyWire;
 
     // Whether any HellForge player could join after a download, without trust or installing by hand: this player shares,
     // and every shared mod is content or verified (the directory's hf.open, a search's second pass).
@@ -485,6 +492,7 @@ public sealed class ModSync : IAsyncDisposable
         public ModSyncPlan Plan { get; } = plan;
         public string State = "offer", Message = "";
         public long Done;
+        public bool Live; // the running game can take the host's mods: "restart" changes them without a restart
     }
 
     Offer? offer;
@@ -496,6 +504,29 @@ public sealed class ModSync : IAsyncDisposable
     // Whether this machine asked that host to join that lobby lately (LobbyService.JoinedRecently): only then is its mod
     // offer taken.
     public Func<ulong, string, bool>? Expected { get; set; }
+
+    // The running game taking the host's mods without a restart (LiveMods, set by the backend): whether it can, and doing it
+    // (null when done, else why not; the session then restarts as before).
+    public Func<ModSyncSession, bool>? CanApplyLive { get; set; }
+    public Func<ModSyncSession, Task<string?>>? ApplyLive { get; set; }
+
+    // The session that plays a host's mods: the next one (a restart), or this one changed live. Its shared mods as this
+    // machine has them: a copy matched by coop level (or an older HellForge's bundled mod) has its own hash.
+    static ModSyncSession SessionOf(ulong host, string hostName, string connection, ModSet set, ModSyncPlan plan, bool legacy) =>
+        new(LobbyService.EntityId(host), hostName, connection, set.Digest,
+            [.. plan.Items.Where(i => i.Action == SyncAction.Have && i.Mod.Tier == CoopTier.Shared).Select(i => new ModSyncSession.Mod(i.Mod.Id, i.LocalHash ?? i.Mod.Hash, i.Mod.Order))])
+            { Legacy = legacy };
+
+    bool LiveFor(ulong host, string hostName, string connection, ModSet set, ModSyncPlan plan, bool legacy)
+    {
+        if (plan.Verdict != SyncVerdict.Ready) return false;
+        try { return CanApplyLive?.Invoke(SessionOf(host, hostName, connection, set, plan, legacy)) == true; }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            log("Mod sync: whether the running game can take the host's mods could not be worked out: " + error.Message);
+            return false;
+        }
+    }
 
     // A host about to refuse this machine's join sent its mod set: an offer (worked out off the transport's thread: it may
     // hash installed mods).
@@ -574,12 +605,14 @@ public sealed class ModSync : IAsyncDisposable
     void MakeOffer(ulong host, string connection, ModSet set, bool shares, bool accept = false)
     {
         var plan = Plan(set, shares, host);
+        var legacy = IsLegacy(host);
+        var live = LiveFor(host, nameOf(host), connection, set, plan, legacy);
         Offer made;
         lock (gate)
         {
             downloading?.Cancel();
             downloading = null;
-            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, IsLegacy(host));
+            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, legacy) { Live = live };
             (made.State, made.Message) = Describe(made);
         }
         log($"Mod sync: {made.HostName}'s lobby: {plan.Verdict}, " + string.Join(", ", plan.Items.Select(i => $"{i.Mod.Id} {ModSyncPlan.ActionName(i.Action)}")) + ".");
@@ -617,7 +650,8 @@ public sealed class ModSync : IAsyncDisposable
             SyncVerdict.Unjoinable => ("blocked", $"Install these mods yourself to join: {Names(SyncAction.Manual)}."),
             SyncVerdict.Trust => ("blocked", $"HellForge has not checked these mods. TRUST one to download it from {o.HostName}, or install it yourself: {Names(SyncAction.Trust)}."),
             SyncVerdict.Download => ("offer", $"{o.HostName} plays with {plan.Items.Count(i => i.Action == SyncAction.Download)} mod(s) you don't have ({Megabytes(plan.DownloadBytes)}). Download them and restart with {o.HostName}'s mods to join."),
-            _ => ("offer", $"You have all of {o.HostName}'s mods. Restart with them to join.")
+            _ => ("offer", o.Live ? $"You have all of {o.HostName}'s mods. Play with them now, without a restart, to join."
+                : $"You have all of {o.HostName}'s mods. Restart with them to join.")
         };
     }
 
@@ -646,7 +680,7 @@ public sealed class ModSync : IAsyncDisposable
         {
             case "decline": Close(current); break;
             case "accept" when current.State == "offer": Accept(current); break;
-            case "restart" when current.State is "ready" || current.State == "offer" && current.Plan.Verdict == SyncVerdict.Ready: _ = Task.Run(() => Restart(current)); break;
+            case "restart" when current.State is "ready" || current.State == "offer" && current.Plan.Verdict == SyncVerdict.Ready: _ = Task.Run(() => RestartAsync(current)); break;
             case "block" when parts.Count > 3 && current.Set.Mods.Any(m => m.Id == parts[3]):
                 ModSettings.SetBlocked(modsFolder, parts[3], true);
                 log($"Mod sync: {parts[3]} is blocked; lobbies running it are not offered again.");
@@ -697,7 +731,7 @@ public sealed class ModSync : IAsyncDisposable
 
     void Accept(Offer current)
     {
-        if (current.Plan.Verdict == SyncVerdict.Ready) { _ = Task.Run(() => Restart(current)); return; }
+        if (current.Plan.Verdict == SyncVerdict.Ready) { _ = Task.Run(() => RestartAsync(current)); return; }
         if (current.Plan.Verdict != SyncVerdict.Download) return;
         // the prompt showed the total; the drive must hold it, with some to spare
         if (FreeSpace(modsFolder) is { } free && free < current.Plan.DownloadBytes + SpareDisk)
@@ -727,7 +761,9 @@ public sealed class ModSync : IAsyncDisposable
         {
             var window = new DownloadWindow();
             foreach (var item in current.Plan.Items.Where(i => i.Action == SyncAction.Download)) await DownloadModAsync(current, item.Mod, window, token);
-            Update(current, "ready", $"Everything is here. Restart with {current.HostName}'s mods to join.");
+            current.Live = LiveFor(current.Host, current.HostName, current.Connection, current.Set, Plan(current.Set, current.Shares, current.Host), current.Legacy);
+            Update(current, "ready", current.Live ? $"Everything is here. Play with {current.HostName}'s mods now, without a restart, to join."
+                : $"Everything is here. Restart with {current.HostName}'s mods to join.");
             log($"Mod sync: every mod is here ({Megabytes(current.Done)}).");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { log("Mod sync: the download was cancelled."); }
@@ -955,10 +991,24 @@ public sealed class ModSync : IAsyncDisposable
         _ = PublishAsync(current, withMods: false);
     }
 
-    // Everything is here: the next session's mods, and this session stops for the launcher to start it with them. Off the
-    // pipe's thread: it hashes the mods it finds again.
-    void Restart(Offer current)
+    // Everything is here: the running game takes the host's mods when it can (LiveMods), else the next session's mods are
+    // written and this session stops for the launcher to start it with them. Off the pipe's thread: it hashes the mods it
+    // finds again.
+    async Task RestartAsync(Offer current)
     {
+        var plan = Plan(current.Set, current.Shares, current.Host);
+        if (current.Live && ApplyLive != null && plan.Verdict == SyncVerdict.Ready)
+        {
+            Update(current, "ready", $"Changing to {current.HostName}'s mods...");
+            var why = await ApplyLive(SessionOf(current.Host, current.HostName, current.Connection, current.Set, plan, current.Legacy));
+            if (why == null)
+            {
+                log($"Mod sync: the running game plays {current.HostName}'s mods now; join their lobby again.");
+                Close(current);
+                return;
+            }
+            log($"Mod sync: the running game could not take {current.HostName}'s mods ({why}); the session restarts with them instead.");
+        }
         try { WriteRestart(current); }
         catch (Exception error)
         {
@@ -975,10 +1025,7 @@ public sealed class ModSync : IAsyncDisposable
             Update(current, "failed", "Some of the host's mods are no longer here: " + string.Join(", ", plan.Items.Where(i => i.Action != SyncAction.Have && i.Action != SyncAction.Off).Select(i => i.Mod.Name)) + ".");
             return;
         }
-        // each mod as this machine has it: a copy matched by coop level (or an older HellForge's bundled mod) has its own hash
-        new ModSyncSession(LobbyService.EntityId(current.Host), current.HostName, current.Connection, current.Set.Digest,
-            [.. plan.Items.Where(i => i.Action == SyncAction.Have && i.Mod.Tier == CoopTier.Shared).Select(i => new ModSyncSession.Mod(i.Mod.Id, i.LocalHash ?? i.Mod.Hash, i.Mod.Order))])
-            { Legacy = current.Legacy }.Write(sessionFile);
+        SessionOf(current.Host, current.HostName, current.Connection, current.Set, plan, current.Legacy).Write(sessionFile);
         Update(current, "ready", $"Restarting with {current.HostName}'s mods...");
         File.WriteAllText(Path.Combine(runDirectory, StopSignal), StopReason);
         log($"Mod sync: the next session plays {current.HostName}'s mods ({sessionFile}); this session stops for the launcher to restart it.");
@@ -989,13 +1036,13 @@ public sealed class ModSync : IAsyncDisposable
     {
         SyncView view;
         lock (gate) view = new SyncView(current.Version, current.State, current.HostName, current.Plan.DownloadBytes, current.Done, current.Message, current.Plan.Items)
-            { Stranger = !transport.IsFriend(current.Host) };
+            { Live = current.Live, Stranger = !transport.IsFriend(current.Host) };
         try
         {
             File.WriteAllText(Path.Combine(evidenceDirectory, OfferFile), new JsonObject
             {
                 ["version"] = view.Version, ["state"] = view.State, ["host"] = view.Host, ["connection"] = current.Connection, ["bytes"] = view.Bytes, ["done"] = view.Done,
-                ["message"] = view.Message, ["stranger"] = view.Stranger,
+                ["message"] = view.Message, ["live"] = view.Live, ["stranger"] = view.Stranger,
                 ["mods"] = new JsonArray([.. view.Items.Select(i => (JsonNode?)new JsonObject
                 {
                     ["id"] = i.Mod.Id, ["name"] = i.Mod.Name, ["version"] = i.Mod.Version, ["class"] = ModSets.ClassName(i.Mod.Class),
@@ -1060,9 +1107,11 @@ public sealed class DownloadWindow
 }
 
 // An offer as the game shows it.
-// Stranger: the host is not a Steam friend (the prompt warns harder before TRUST).
+// Live: answering "restart" changes the running game's mods (HF_SYNC_LIVE). Stranger: the host is not a Steam friend (the
+// prompt warns harder before TRUST).
 public sealed record SyncView(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<SyncItem> Items)
 {
+    public bool Live { get; init; }
     public bool Stranger { get; init; }
 }
 
@@ -1100,7 +1149,7 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
                     var item = items[i];
                     if (!(await live.SyncModAsync(view.Version, i, item, view.Stranger)).Ok) return false;
                 }
-            return (await live.SyncStateAsync(view.Version, view.State, view.Host, view.Bytes, view.Done, items.Count, message)).Ok;
+            return (await live.SyncStateAsync(new SyncStateLine(view.Version, view.State, view.Host, view.Bytes, view.Done, items.Count, view.Live, message))).Ok;
         }
         finally { order.Release(); }
     }

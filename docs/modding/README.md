@@ -48,6 +48,7 @@ friends compare in co-op.
 | react to kills, damage or missions | [Logic at run time](runtime.md) |
 | change something the SDK does not cover yet | [Hooks and game memory](hooks.md) |
 | find out why a mod does not load or crashes | [Debugging](debugging.md) |
+| let your mod change while the game runs (mod sync without a restart) | [Mods that change while the game runs](live.md) |
 
 ## The learning path
 

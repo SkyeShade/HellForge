@@ -29,6 +29,7 @@ public static partial class LocalBackend
         public required StartupBodies Startup { get; init; }
         public required Multiplayer.BrowseApi? Browse { get; init; }
         public required string AuditPath { get; init; }
+        public LiveModsHub? LiveMods { get; init; }
         // Issued session IDs, used only to classify the Authorization header in the audit.
         readonly ConcurrentDictionary<string, byte> sessions = new(StringComparer.Ordinal);
         readonly object auditLock = new();
@@ -95,6 +96,7 @@ public static partial class LocalBackend
             if (!FromLocalProgram(request)) return new(StatusCodes.Status403Forbidden, "web_page_rejected", Error("HELLFORGE_NOT_FROM_THIS_PC"));
             if (request.Path == "/config/locator.json") return Locator(context);
             if (request.Path == "/Account/Login") return await LoginAsync(context);
+            if (request.Path == "/hellforge/live-mods") return await LiveModsAsync(context);
             if (request.Path.StartsWithSegments("/lobby", out var lobbyPath)) return await LobbyAsync(context, lobbyPath.Value ?? "");
             if (request.Path == "/Account/Keys") return await AccountKeysAsync(context);
             if (request.Path.StartsWithSegments("/hellforge/v1/lobbies", out var browsePath)) return await BrowseAsync(context, browsePath.Value ?? "");
@@ -133,6 +135,24 @@ public static partial class LocalBackend
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, served);
             }
             return Unsupported();
+        }
+
+        // The launcher's Mods page while the session runs: what a change would do (GET), or make it (POST)
+        // (LiveMods; HellForge-Open docs/mods.md "Changing mods while you play").
+        async Task<Reply> LiveModsAsync(HttpContext context)
+        {
+            var request = context.Request;
+            if (OtherMethod(context, method => HttpMethods.IsGet(method) || HttpMethods.IsPost(method), "GET, POST") is { } rejected) return rejected;
+            if (LiveMods?.Service is not { } service)
+                return new(StatusCodes.Status409Conflict, "live_mods_unavailable", Error("HELLFORGE_LIVE_MODS_UNAVAILABLE"));
+            var result = HttpMethods.IsGet(request.Method) ? service.Preview() : await service.ApplyAsync(null, false, "", context.RequestAborted);
+            static JsonArray Texts(IEnumerable<string> texts) => [.. texts.Select(t => (JsonNode?)t)];
+            var outcome = result.Applied ? "live_mods_applied" : HttpMethods.IsGet(request.Method) ? "live_mods_previewed" : "live_mods_not_applied";
+            return new(StatusCodes.Status200OK, outcome, new JsonObject
+            {
+                ["live"] = result.Live, ["applied"] = result.Applied, ["changes"] = Texts(result.Changes), ["blocking"] = Texts(result.Blocking),
+                ["detail"] = result.Detail, ["digest"] = result.Digest
+            });
         }
 
         static Reply Locator(HttpContext context)

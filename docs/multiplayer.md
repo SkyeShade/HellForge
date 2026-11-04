@@ -16,9 +16,10 @@ reaches PlayFab, Arrowhead's services or vanilla players' sessions.
 2. Compare modlist codes. Friends need the same gameplay mods, in the same versions with the same files; the order is
    up to each player, and cosmetic mods, packs and Lua mods are each player's own. The Mods page shows the code.
    [mods.md](mods.md#playing-with-friends) describes what each player sees when a join is refused. When the host shares
-   their mods, the joiner can download them and restart with them instead
-   ([mods.md](mods.md#playing-with-other-mods)). Once the restarted game is on the ship, the host's invitation to their
-   lobby waits in game: accept it to join.
+   their mods, the joiner can download them and play with them instead
+   ([mods.md](mods.md#playing-with-other-mods)): the running game takes them without a restart when it can (APPLY AND
+   JOIN), and the host's invitation comes at once; otherwise the game restarts, and once it is on the ship the invitation
+   waits in game. Accept it to join.
 3. Start a session. In the game's social menu, the friends list shows Steam friends who are playing HELLDIVERS 2 with
    HellForge running, and you join their game from there. Steam sign-in, Steam friends and Steam lobbies are the real
    ones.
@@ -268,8 +269,10 @@ host sends its mod set (`mods.offer`); the joiner's backend plans the difference
 which ignores per-player entries (they never download and are never an off), and the in-game editor shows the MOD SYNC
 prompt (SDK 14 `sync_state`, `sync_mod`, `sync_answer`). On accept the joiner
 downloads each mod's counted files from the host over the Steam link (`mods.files`, `mods.get`; speeds in
-[Mod sync speed](#mod-sync-speed)), checks every file and the whole mod (`SyncedStore.Install`), keeps it in `mods/.synced/<id>@<hash>/`, and the
-launcher restarts the session with the host's mods (`--mod-sync`). Each mod's class comes from the bytes received,
+[Mod sync speed](#mod-sync-speed)), checks every file and the whole mod (`SyncedStore.Install`), keeps it in `mods/.synced/<id>@<hash>/`, and then either
+the running game takes the host's set (`LiveMods.ApplySyncAsync`: one live change of the session's mods, docs/mods.md
+"Changing mods while you play", and a rejoin as soon as the game is on the ship, `MultiplayerHost.RejoinAfterLiveSync`)
+or the launcher restarts the session with the host's mods (`--mod-sync`). Each mod's class comes from the bytes received,
 with one rule for every host, Steam friends included (`ModSets.ClassOf`). Content (data specs HellForge checks all of,
 `DataSpecs.Unchecked`; schema stats; network field types) downloads from any host. Code and raw data (binary data
 patches, data specs with `"replace"` or unreviewed resource types such as `lua`, raw stats lines, `componentWrites`)

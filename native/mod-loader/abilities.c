@@ -155,6 +155,7 @@ static int g_looseGuard;       /* the missile pre-destroy's guard (0x64270B) is 
 
 static Ability g_abilities[ABL_MAX];
 static uint32_t g_abilityCount;
+static uint8_t* g_ablCountAt; /* the stub's COUNT, once built (a live change raises it: live_content.c) */
 static int g_abilityState; /* 0 waiting, 1 installed, -1 refused */
 static uintptr_t g_ablGame;
 static ULONGLONG g_abilityFirstTry;
@@ -166,17 +167,21 @@ static uint32_t ApiAddAbility(HfMod* mod, const HfAbility* def)
         ApiLog(mod, "add_ability: no ability, or its size is not set (HfAbility a = {sizeof a})");
         return 0;
     }
-    if (g_fired[HF_EVENT_GAME_LOADED] || g_abilityState != 0) { ApiLog(mod, "add_ability: too late; call it from hellforge_mod_init"); return 0; }
-    if (g_abilityCount >= ABL_MAX) { ApiLog(mod, "add_ability: mods added %u abilities already", ABL_MAX); return 0; }
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_content.c) */
+    if (!live && (g_fired[HF_EVENT_GAME_LOADED] || g_abilityState != 0)) { ApiLog(mod, "add_ability: too late; call it from hellforge_mod_init"); return 0; }
+    if (!live && g_abilityCount >= ABL_MAX) { ApiLog(mod, "add_ability: mods added %u abilities already", ABL_MAX); return 0; }
     if (def->base > ABL_VANILLA) { ApiLog(mod, "add_ability: base %u is not a vanilla ability (1 .. %u, or 0 for none)", def->base, ABL_VANILLA); return 0; }
     if (!(def->hold_seconds >= 0.0f && def->hold_seconds <= 600.0f)) { ApiLog(mod, "add_ability: hold_seconds must be 0 to 600"); return 0; }
     uint32_t flags = def->size >= offsetof(HfAbility, flags) + sizeof def->flags ? def->flags : 0;
     if (flags & ~HF_ABILITY_HOLDS_LINKED_LAUNCH) { ApiLog(mod, "add_ability: unknown flags %x", flags & ~HF_ABILITY_HOLDS_LINKED_LAUNCH); return 0; }
     if ((flags & HF_ABILITY_HOLDS_LINKED_LAUNCH) && def->base != 0) { ApiLog(mod, "add_ability: a silo countdown has no base"); return 0; }
-    Ability* a = &g_abilities[g_abilityCount];
-    *a = (Ability){mod, ABL_FIRST + g_abilityCount, def->base, NULL, (uint32_t)(def->hold_seconds * ABL_TICKS + 0.5f),
+    uint32_t index = g_abilityCount;
+    Ability* a = live ? (Ability*)LiveEntry(LC_ABILITY, mod, NULL, &index) : &g_abilities[index];
+    if (a == NULL) return 0;
+    *a = (Ability){mod, ABL_FIRST + index, def->base, NULL, (uint32_t)(def->hold_seconds * ABL_TICKS + 0.5f),
         def->start_event, def->second_event, def->final_event, def->package, (flags & HF_ABILITY_HOLDS_LINKED_LAUNCH) != 0};
-    g_abilityCount++;
+    MemoryBarrier(); /* the entry is whole before the count shows it */
+    if (index == g_abilityCount) g_abilityCount++;
     if (a->holdsLaunch)
         ApiLog(mod, "adding ability %u: a silo countdown, %.1f s before the missile launches (sounds %08x, %08x each second, %08x)",
             a->id, (double)def->hold_seconds, a->startEvent, a->secondEvent, a->finalEvent);
@@ -742,6 +747,21 @@ static uint8_t AbilityTick(void* ctx, uint32_t id, uint32_t tick)
     return a->baseFn != NULL ? a->baseFn(ctx, tick - a->holdTicks) : 1;
 }
 
+/* An ability's base function, from its case in the dispatcher: `mov edx, r8d; call <ability>; movzx r9d, al`. 0 when the
+ * case is not that shape. */
+static int AbilityBase(Ability* a, uintptr_t game)
+{
+    if (a->base == 0) return 1; /* none: it is done when its hold ends */
+    int32_t rva = 0, rel;
+    uint8_t code[12];
+    if (SafeRead(game + ABL_TABLE + (uintptr_t)(a->base - 1) * 4, &rva, 4) || SafeRead(game + (uintptr_t)rva, code, sizeof code) ||
+        (memcmp(code, "\x41\x8B\xD0\xE8", 4) != 0 && memcmp(code, "\x44\x89\xC2\xE8", 4) != 0) || memcmp(code + 8, "\x44\x0F\xB6\xC8", 4) != 0)
+        return 0;
+    memcpy(&rel, code + 4, 4);
+    a->baseFn = (AbilityFn)(game + (uintptr_t)rva + 8 + rel);
+    return 1;
+}
+
 static int RefuseAbilities(const char* why, uint32_t at)
 {
     Note("abilities: %s (0x%x); %u ability(s) not added: entities given one never set it off", why, at, g_abilityCount);
@@ -789,23 +809,11 @@ static int CheckLaunchFunctions(uintptr_t game, int graceOver)
     return 1;
 }
 
-/* Each base's function, from its case: `mov edx, r8d; call <ability>; movzx r9d, al`. 0 with *base the first whose case
- * is not that shape. */
+/* Each base's function, from its case (AbilityBase). 0 with *base the first whose case is not that shape. */
 static int FindBaseFunctions(uintptr_t game, uint32_t* base)
 {
     for (uint32_t i = 0; i < g_abilityCount; i++)
-    {
-        Ability* a = &g_abilities[i];
-        if (a->base == 0) continue; /* none: it is done when its hold ends */
-        int32_t rva = 0;
-        uint8_t code[12];
-        if (SafeRead(game + ABL_TABLE + (uintptr_t)(a->base - 1) * 4, &rva, 4) || SafeRead(game + (uintptr_t)rva, code, sizeof code) ||
-            (memcmp(code, "\x41\x8B\xD0\xE8", 4) != 0 && memcmp(code, "\x44\x89\xC2\xE8", 4) != 0) || memcmp(code + 8, "\x44\x0F\xB6\xC8", 4) != 0)
-        { *base = a->base; return 0; }
-        int32_t rel;
-        memcpy(&rel, code + 4, 4);
-        a->baseFn = (AbilityFn)(game + (uintptr_t)rva + 8 + rel);
-    }
+        if (!AbilityBase(&g_abilities[i], game)) { *base = g_abilities[i].base; return 0; }
     return 1;
 }
 
@@ -821,7 +829,7 @@ static uint8_t* BuildAbilityStub(uintptr_t game, int guard, uint8_t** blockOut, 
     /* edx = id - 1, rcx = ctx, r8d = tick, r9b = 0 (the default returns it) */
     uint8_t* stub = e.at;
     Put8(&e, 0x8D); Put8(&e, 0x82); Put32(&e, (uint32_t)(1 - (int32_t)ABL_FIRST)); /* lea eax, [rdx + 1 - FIRST] */
-    Put8(&e, 0x3D); Put32(&e, g_abilityCount);                                       /* cmp eax, COUNT */
+    Put8(&e, 0x3D); g_ablCountAt = e.at; Put32(&e, g_abilityCount);                 /* cmp eax, COUNT */
     Put8(&e, 0x73); Put8(&e, 0);                                                      /* jae default */
     uint8_t* jae = e.at - 1;
     Put8(&e, 0x8D); Put8(&e, 0x90); Put32(&e, ABL_FIRST);                            /* lea edx, [rax + FIRST] */

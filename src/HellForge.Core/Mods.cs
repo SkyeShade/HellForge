@@ -40,8 +40,12 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public bool HasSource { get; init; }
     public string? BuiltDll { get; init; }
     public string? DllPath => BuiltDll ?? (CodeDll != null && !HasSource ? Path.Combine(Folder, CodeDll) : null);
+    // Its code may be set up and taken out while the game runs (the manifest's "code": {"live": true}, SDK 16): a live
+    // change of the session's mods takes it without a restart (LiveModPlan).
+    public bool Live { get; init; }
     public IReadOnlyList<StatsEdit> Stats { get; init; } = [];
-    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0;
+    // The in-game loader applies its code, stats and component writes, and its network field types (its nettype lines).
+    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0;
     // Off in the installation's hellforge-mods.json (the launcher's Mods page): listed, but not loaded.
     public bool Enabled { get; init; } = true;
     // The zip in the mods folder this mod was unpacked from (its Folder is then under mods/.unpacked), or null.
@@ -257,7 +261,7 @@ public static partial class ModCatalog
         var gameplay = !root.TryGetProperty("gameplay", out var flag) || flag.ValueKind != JsonValueKind.False;
 
         var (types, writes) = ReadNative(root, profile);
-        var (code, source) = ReadCode(root, folder);
+        var (code, source, live) = ReadCode(root, folder);
         var (data, lua) = ReadDataFiles(folder);
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
         var dataSpec = DataSpecs.Load(folder);
@@ -271,7 +275,7 @@ public static partial class ModCatalog
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
+            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
               CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root) };
         return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
     }
@@ -443,12 +447,15 @@ public static partial class ModCatalog
         return new ComponentWrite(component, resource, fields);
     }
 
-    // The manifest's code DLL, and whether HellForge builds it from the mod's sources; (null, false) without one.
-    static (string? Code, bool Source) ReadCode(JsonElement root, string folder)
+    // The manifest's code DLL, whether HellForge builds it from the mod's sources, and whether it may change while the game
+    // runs ("live"); (null, false, false) without one.
+    static (string? Code, bool Source, bool Live) ReadCode(JsonElement root, string folder)
     {
-        if (!root.TryGetProperty("code", out var codeElement)) return (null, false);
+        if (!root.TryGetProperty("code", out var codeElement)) return (null, false, false);
         var dll = Text(codeElement, "dll");
         var sdk = Integer(codeElement, "sdk");
+        // "live": true says the mod may be set up and taken out while the game runs, which SDK 16 defines
+        var live = sdk >= 16 && codeElement.TryGetProperty("live", out var liveElement) && liveElement.ValueKind == JsonValueKind.True;
         if (sdk < 1 || sdk > SdkVersion) throw new InvalidDataException($"needs HellForge mod SDK {sdk}; this HellForge provides SDK {SdkVersion}.");
         if (!DllName().IsMatch(dll)) throw new InvalidDataException("code.dll must be a DLL file name in the mod folder.");
         // A mod with its sources is built by HellForge (ModBuilds); "prebuilt": true keeps a shipped DLL instead.
@@ -461,7 +468,7 @@ public static partial class ModCatalog
             if (codeElement.TryGetProperty("game", out var game) && game.ValueKind == JsonValueKind.String && game.GetString() != SupportedBuild.Current.BuildId)
                 throw new InvalidDataException($"{dll} was built for game build {game.GetString()}; HellForge runs build {SupportedBuild.Current.BuildId}. Ask its author for a new build.");
         }
-        return (dll, source);
+        return (dll, source, live);
     }
 
     // The mod's data/ patch files, in order, and whether one of them holds Lua.
@@ -848,15 +855,36 @@ public static class ModLoaderPlan
         return string.Join("\n", lines) + "\n";
     }
 
-    // A mod's lines of the plan: the mod, a code mod's version, and its stats edits.
+    // A network field type edit's fields after "nettype" in the plan (and after a live change's "modnet"), the mod id first:
+    // the type's name, the kind and width it must have now, its minimum, and the width the mod asks.
+    public static string[] NetFields(ModManifest mod, NetworkFieldTypeEdit t)
+    {
+        var invariant = CultureInfo.InvariantCulture;
+        if (t.Name.Contains('\t') || t.Name.Contains('\n') || t.Name.Contains('\r')) throw new InvalidDataException("A network field type's name contains a tab or line break.");
+        return [mod.Id, t.Name, t.ExpectKind.ToString(invariant), t.ExpectBits.ToString(invariant), t.ExpectMin.ToString(invariant), t.Bits.ToString(invariant)];
+    }
+
+    // A stats edit's fields after "stat" in the plan (and after a live change's "modstat"), the mod id first.
+    public static string[] StatFields(ModManifest mod, StatsEdit e)
+    {
+        static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
+            ? throw new InvalidDataException("A stats label contains a tab or line break.") : value;
+        var invariant = CultureInfo.InvariantCulture;
+        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant), e.Record.ToString(invariant),
+            e.Offset.ToString(invariant), e.Storage, e.Value.ToString("X8", invariant), e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
+            e.Own ? "1" : "0", e.Shared ? "1" : "0", e.Unverified ? "1" : "0", Field(e.Label)];
+    }
+
+    // A mod's lines of the plan: the mod ("live": SDK 16, it may be taken out while the game runs), a code mod's version,
+    // its stats edits and its network field types.
     static IEnumerable<string> ModLines(ModManifest mod)
     {
         if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
-        yield return $"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}";
+        yield return $"mod\t{mod.Id}\t{Field(mod.Folder)}\t{(mod.HasCode ? Field(mod.DllPath!) : "-")}{(mod.HasCode && mod.Live ? "\tlive" : "")}";
         // a code mod's version, for modloader.log beside its DLL's SHA-256 (older loaders skip the line)
         if (mod.HasCode && OneLine(mod.Version) is { Length: > 0 } version) yield return $"mod_version\t{mod.Id}\t{version}";
-        foreach (var e in StatsData.Edits(mod))
-            yield return FormattableString.Invariant($"stat\t{mod.Id}\t{e.Kind}\t{(e.Component.Length == 0 ? "-" : e.Component)}\t{e.Resource:X16}\t{e.Record}\t{e.Offset}\t{e.Storage}\t{e.Value:X8}\t{(e.Expect.HasValue ? e.Expect.Value.ToString("X8", CultureInfo.InvariantCulture) : "-")}\t{(e.Own ? 1 : 0)}\t{(e.Shared ? 1 : 0)}\t{(e.Unverified ? 1 : 0)}\t{Field(e.Label)}");
+        foreach (var e in StatsData.Edits(mod)) yield return "stat\t" + string.Join('\t', StatFields(mod, e));
+        foreach (var t in mod.NetworkFieldTypes) yield return "nettype\t" + string.Join('\t', NetFields(mod, t));
     }
 
     static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
@@ -902,6 +930,8 @@ public static class ModSettings
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
         public bool HostStats { get; set; }
+        // Experimental: a session's mods may change while the game runs (LiveMods). Off, every change waits for a restart.
+        public bool LiveChanges { get; set; }
         // The choice lives under "strangers" ("on"/"off"); a legacy "playWithStrangers" keeps its value (ReadStrangers).
         // Null: never chosen.
         public bool? PlayWithStrangers { get; set; }
@@ -959,6 +989,7 @@ public static class ModSettings
         if (root.TryGetProperty("showEditedStats", out var edited) && edited.ValueKind == JsonValueKind.True) state.ShowEditedStats = true;
         if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
         if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
+        if (root.TryGetProperty("liveChanges", out var liveChanges) && liveChanges.ValueKind == JsonValueKind.True) state.LiveChanges = true;
         state.PlayWithStrangers = ReadStrangers(root);
         if (root.TryGetProperty("strangersWarned", out var warned) && warned.ValueKind == JsonValueKind.True) state.StrangersWarned = true;
         if (root.TryGetProperty("forgeCreditChance", out var chance) && chance.ValueKind == JsonValueKind.Number && chance.TryGetInt32(out var percent) &&
@@ -1053,6 +1084,11 @@ public static class ModSettings
     // The first session with strangers on by default showed the warning; later ones do not.
     public static void SetStrangersWarned(string modsFolder) => Change(modsFolder, state => state.StrangersWarned = true);
 
+    // Experimental: whether the next session's mods may change while the game runs, on the Mods page and with a host's
+    // mods (APPLY AND JOIN). Read when a session starts.
+    public static void SetLiveChanges(string modsFolder, bool live) => Change(modsFolder, state => state.LiveChanges = live);
+    public static bool LiveChanges(string modsFolder) => Read(modsFolder).LiveChanges;
+
     // Hosting: whether friends play with this player's editor changes instead of their own.
     public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
 
@@ -1087,6 +1123,7 @@ public static class ModSettings
         // Written only when the player chose, so "never chosen" survives a round trip and the sandbox default applies. The
         // old playWithStrangers key is not written; a legacy value is migrated to "on"/"off" by the next save.
         if (state.PlayWithStrangers is { } chosen) root["strangers"] = chosen ? "on" : "off";
+        if (state.LiveChanges) root["liveChanges"] = true;
         if (state.StrangersWarned) root["strangersWarned"] = true;
         if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";

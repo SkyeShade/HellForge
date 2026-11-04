@@ -745,6 +745,7 @@ SandboxCopyBackTests.Register(Test, Check, Reject, root);
 SandboxWireTests.Register(Test, Check, Reject, root);
 SandboxPipeRelayTests.Register(Test, Check);
 ModSyncTests.Register(Test, Check, Reject, root);
+LiveModsTests.Register(Test, Check, Reject, root);
 SteamAccountTests.Register(Test, Check, Reject, root);
 SteamPathTests.Register(Test, Check, Reject, root);
 SteamRuntimeTests.Register(Test, Check, Reject, root);

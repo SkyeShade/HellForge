@@ -214,8 +214,8 @@ static void ChannelQueueShare(HfMod* mod, uint64_t key, const uint8_t* value, ui
     char hex[HF_SHARE_VALUE_MAX * 2 + 1];
     if (bytes > 0) ChannelHex(value, bytes, hex); else hex[0] = 0;
     char line[128 + sizeof hex];
-    int length = snprintf(line, sizeof line, "share\t%s\t%016llx\t%s\n", mod->id, (unsigned long long)key, bytes > 0 ? hex : "-");
-    if (length <= 0 || (size_t)length >= sizeof line || !LiveQueue(line, length)) ChannelLineDropped(mod);
+    int length = snprintf(line, sizeof line, "share\t%s\t%016llx\t%s", mod->id, (unsigned long long)key, bytes > 0 ? hex : "-");
+    if (length <= 0 || (size_t)length >= sizeof line || !LiveQueue(line)) ChannelLineDropped(mod);
 }
 
 /* A message this mod sends, for the backend. 0 queued, 1 refused (the backend is gone). */
@@ -225,10 +225,10 @@ static int ChannelQueueSend(HfMod* mod, uint64_t to, const uint8_t* data, uint32
     ChannelHex(data, bytes, hex);
     char line[160 + sizeof hex];
     int length;
-    if (to == HF_TO_ALL) length = snprintf(line, sizeof line, "send\t%s\tall\t%s\n", mod->id, hex);
-    else if (to == HF_TO_HOST) length = snprintf(line, sizeof line, "send\t%s\thost\t%s\n", mod->id, hex);
-    else length = snprintf(line, sizeof line, "send\t%s\t%016llx\t%s\n", mod->id, (unsigned long long)to, hex);
-    if (length <= 0 || (size_t)length >= sizeof line || !LiveQueue(line, length)) { ChannelLineDropped(mod); return 1; }
+    if (to == HF_TO_ALL) length = snprintf(line, sizeof line, "send\t%s\tall\t%s", mod->id, hex);
+    else if (to == HF_TO_HOST) length = snprintf(line, sizeof line, "send\t%s\thost\t%s", mod->id, hex);
+    else length = snprintf(line, sizeof line, "send\t%s\t%016llx\t%s", mod->id, (unsigned long long)to, hex);
+    if (length <= 0 || (size_t)length >= sizeof line || !LiveQueue(line)) { ChannelLineDropped(mod); return 1; }
     return 0;
 }
 

@@ -229,8 +229,8 @@ static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
     if ((ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS) && !BrowseMay(mod)) return 0;
     const char* what = ask == HF_BROWSE_JOIN ? lobbyId : ask == HF_BROWSE_ALLOW_STRANGERS ? "strangers" : ask == HF_BROWSE_SHOW_EDITED_STATS ? "editedstats" : "-";
     char line[128];
-    int length = snprintf(line, sizeof line, "browseask\t%s\t%s\n", verb, what);
-    int queued = LiveQueue(line, length);
+    snprintf(line, sizeof line, "browseask\t%s\t%s", verb, what);
+    int queued = LiveQueue(line);
     if (ask != HF_BROWSE_REFRESH || !queued) Note("lobby browser: %s%s%s%s", ask == HF_BROWSE_REFRESH ? "a new list asked for" : verb,
         ask == HF_BROWSE_REFRESH || ask == HF_BROWSE_QUICK ? "" : " ", ask == HF_BROWSE_REFRESH || ask == HF_BROWSE_QUICK ? "" : what,
         queued ? "" : " (not sent: no backend connected)");

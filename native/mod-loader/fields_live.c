@@ -259,6 +259,7 @@ static int PlaceLiveEdit(HfMod* mod, FieldEdit* e, int index)
 static int ApiSetLive(HfMod* mod, HfRef target, const HfField* field, const HfValue* value, uint32_t flags)
 {
     const SdkComponent* c = NULL;
+    if (value != NULL && ModGone(mod)) return 0;
     const SdkField* f = mod != NULL ? ResolveField(mod, "set_live", field, &c) : NULL;
     if (f == NULL) return 0;
     AcquireSRWLockExclusive(&g_fieldsLock);

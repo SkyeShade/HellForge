@@ -219,11 +219,20 @@ if($SteamExports){
 # The mod loader's test DLLs and two example code mods, then its end-to-end smoke test.
 $testOut=Join-Path $project 'artifacts/sdk-shims/test'
 New-Item -ItemType Directory $testOut -Force|Out-Null
+# The fake game and the test mods first: the stats fixture loads the live one (SDK 16) beside the fake game.
+& $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $project 'native/mod-loader/test/fake_game.c') -o (Join-Path $testOut 'fake_game.dll')
+if($LASTEXITCODE){throw 'Compiling the fake game failed.'}
+& $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `
+    (Join-Path $project 'native/mod-loader/test/hook_test_mod.c') -o (Join-Path $testOut 'hook_test_mod.dll')
+if($LASTEXITCODE){throw 'Compiling the hook test mod failed.'}
+& $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `
+    (Join-Path $project 'native/mod-loader/test/live_test_mod.c') -o (Join-Path $testOut 'live_test_mod.dll')
+if($LASTEXITCODE){throw 'Compiling the live test mod failed.'}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -I $sdk -I (Join-Path $minHook 'include') -I (Join-Path $minHook 'src') `
     (Join-Path $project 'native/mod-loader/test/stats_test.c') (Join-Path $minHook 'src/buffer.c') (Join-Path $minHook 'src/hook.c') `
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $testOut 'stats_test.exe')
 if($LASTEXITCODE){throw 'Compiling the stats fixture failed.'}
-if(-not $SkipSmoke){& (Join-Path $testOut 'stats_test.exe');if($LASTEXITCODE){throw 'Stats fixture failed.'}}
+if(-not $SkipSmoke){Push-Location $testOut;try{& (Join-Path $testOut 'stats_test.exe')}finally{Pop-Location};if($LASTEXITCODE){throw 'Stats fixture failed.'}}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -municode -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/steam-cloud/test/net_gate_test.c') -lws2_32 -ladvapi32 `
     -o (Join-Path $testOut 'net_gate_test.exe')
 if($LASTEXITCODE){throw 'Compiling the network gate test failed.'}
@@ -292,11 +301,6 @@ if(-not $SkipSmoke){& (Join-Path $testOut 'lobby_test.exe');if($LASTEXITCODE){th
     (Join-Path $steamCloud 'broker_input.c') -o (Join-Path $testOut 'input_test.exe')
 if($LASTEXITCODE){throw 'Compiling the broker''s Steam Input test failed.'}
 if(-not $SkipSmoke){& (Join-Path $testOut 'input_test.exe');if($LASTEXITCODE){throw 'The broker''s Steam Input test failed.'}}
-& $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -s (Join-Path $project 'native/mod-loader/test/fake_game.c') -o (Join-Path $testOut 'fake_game.dll')
-if($LASTEXITCODE){throw 'Compiling the fake game failed.'}
-& $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `
-    (Join-Path $project 'native/mod-loader/test/hook_test_mod.c') -o (Join-Path $testOut 'hook_test_mod.dll')
-if($LASTEXITCODE){throw 'Compiling the hook test mod failed.'}
 Get-ChildItem -LiteralPath $testOut -Filter '*.lib'|Remove-Item
 $machineGun=Join-Path $open 'examples/mods/machine-gun-10k-code'
 & (Join-Path $open 'scripts/Build-Mod.ps1') $machineGun|Out-Null

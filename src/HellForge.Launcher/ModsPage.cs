@@ -14,8 +14,9 @@ namespace HellForge.Launcher;
 // packs, Lua mods; only on this PC). Within a group a row is dragged anywhere
 // on it into order: the bottom mod loads first, so the top one wins where two change the same thing (ModCatalog.
 // LoadOrder). Switches, the order and each pack's options are saved in hellforge-mods.json (ModSettings). A session
-// loads the enabled mods when it starts, so the page is locked while one runs (docs/mods.md). The page follows the
-// mods folder: a mod dropped into it (or removed) shows at once.
+// loads the enabled mods when it starts; while one runs, a switch the game can take goes to it at once (ModsLive.cs) and
+// the rest of the page is locked (docs/mods.md). The page follows the mods folder: a mod dropped into it (or removed)
+// shows at once, and a running game takes a stats mod's edited files.
 public partial class MainWindow
 {
     readonly List<Control> modSwitches = [];
@@ -70,6 +71,7 @@ public partial class MainWindow
             {
                 if (modDrag != null) return; // after the drag, at the next tick
                 modsChanged.Stop();
+                if (LiveSwitches) ApplyLive(); /* a mod's files changed while the game runs: it takes what it can */
                 if (ModsPage.IsVisible) RefreshMods(); // else showing the page refreshes it
             };
             void Changed(string path)
@@ -121,6 +123,17 @@ public partial class MainWindow
         RefreshMods();
     }
 
+    // The Mods page's first line: how many mods are on, how the order works, and when a change applies.
+    string ModsSummaryText(int mods, int on, int problems)
+    {
+        if (mods == 0 && problems == 0)
+            return "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder.";
+        var applies = LiveSwitches ? "While the game runs, switching a mod or changing its settings applies to it at once when the game can take it; anything else applies to the next session."
+            : "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
+        return $"{on} of {mods} mod{(mods == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " + applies +
+            (LiveSwitches && liveStatus.Length > 0 ? "\n" + liveStatus : "");
+    }
+
     void RefreshMods()
     {
         modDrag = null;
@@ -151,10 +164,7 @@ public partial class MainWindow
         // friends must match it
         mods = mods.Where(m => m.Id != ModCatalog.LocalStatsId).ToList();
         var active = ModCatalog.Active(mods);
-        ModsSummary.Text = mods.Count == 0 && problems.Count == 0
-            ? "No mods yet. Add mods... takes HellForge mods (their .zip, .rar or .7z, or a folder mod's hellforge-mod.json) and cosmetic packs (.zip, .rar, .7z or the pack's manifest.json), and copies them into the mods folder."
-            : $"{active.Count} of {mods.Count} mod{(mods.Count == 1 ? "" : "s")} on. Drag a mod to change the order: the bottom one loads first, the top one wins. " +
-              "Changes apply to the next session" + (modsLocked ? "; the running session keeps the mods it started with." : ".");
+        ModsSummary.Text = ModsSummaryText(mods.Count, active.Count, problems.Count);
         // what friends compare (ModCatalog.Digest)
         var gameplay = active.Count(m => m.Gameplay && ModCatalog.Tier(m) == CoopTier.Shared);
         string compared;
@@ -395,9 +405,10 @@ public partial class MainWindow
         var toggle = new ToggleSwitch { IsChecked = mod.Enabled, OnContent = null, OffContent = null, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 4, 0) };
         toggle.IsCheckedChanged += (_, _) =>
         {
-            if (paths.ModsFolder == null || modsLocked) return;
+            if (paths.ModsFolder == null || (modsLocked && !LiveSwitches)) return;
             try { ModSettings.SetEnabled(paths.ModsFolder, mod.Id, toggle.IsChecked == true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Append("Could not save the mod switch: " + error.Message, Red); }
+            if (LiveSwitches) ApplyLive();
             RefreshMods();
         };
         // a mod HellForge never loads (HD2R Editor): its switch stays off, and the page lock never turns it back on
@@ -823,12 +834,13 @@ public partial class MainWindow
         }
     }
 
-    // Called with the session state every second; a running session keeps the mods it started with.
+    // Called with the session state every second; a running session keeps the mods it started with, but for the switches'
+    // changes it can take (ModsLive.cs).
     void SetModsLocked(bool locked)
     {
         var changed = modsLocked != locked;
         modsLocked = locked;
-        foreach (var toggle in modSwitches) toggle.IsEnabled = !locked;
+        foreach (var toggle in modSwitches) toggle.IsEnabled = !locked || liveBackend != null;
         if (changed && ModsPage.IsVisible) RefreshMods();
     }
 }

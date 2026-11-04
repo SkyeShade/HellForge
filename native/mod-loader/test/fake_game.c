@@ -16,6 +16,9 @@ __declspec(dllexport) __attribute__((noinline)) int hellforge_fake_target(int x)
     return y;
 }
 
+/* A cell a live test mod writes through the API, and the loader puts back when it takes the mod out (live_mods_test.c). */
+__declspec(dllexport) volatile uint32_t hellforge_fake_cell = 5;
+
 /* Functions by name (SDK 16): the smoke plan's `function` lines map these two, the first to hook, the second only to
  * call. */
 __declspec(dllexport) __attribute__((noinline)) int hellforge_fake_named(int x)

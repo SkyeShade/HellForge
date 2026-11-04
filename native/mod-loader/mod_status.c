@@ -34,7 +34,8 @@ static void StatusLine(const char* text, char line[STATUS_MAX])
     HfPrivacyScrubString(line, STATUS_MAX);
 }
 
-/* mod-status.tsv as the statuses are now. Under g_statusLock. */
+/* mod-status.tsv as the statuses are now: every mod's but those a live change took out (live_mods.c). Under
+ * g_statusLock. */
 static void StatusFileWrite(void)
 {
     wchar_t path[MAX_PATH], partial[MAX_PATH];
@@ -45,7 +46,7 @@ static void StatusFileWrite(void)
     int ok = 1;
     for (int i = 0; i < g_modCount && ok; i++)
     {
-        if (!g_mods[i].status[0]) continue;
+        if (!g_mods[i].status[0] || g_mods[i].removed) continue;
         char line[sizeof g_mods[i].id + STATUS_MAX + 2];
         int length = snprintf(line, sizeof line, "%s\t%s\n", g_mods[i].id, g_mods[i].status);
         DWORD written;
@@ -57,6 +58,14 @@ static void StatusFileWrite(void)
         Note("status: %ls not written (%lu)", STATUS_FILE, GetLastError());
         DeleteFileW(partial);
     }
+}
+
+/* After a live change (live_mods.c): the mods it took out leave the file. */
+static void StatusRefresh(void)
+{
+    AcquireSRWLockExclusive(&g_statusLock);
+    StatusFileWrite();
+    ReleaseSRWLockExclusive(&g_statusLock);
 }
 
 /* SDK 16, set_status. */
@@ -123,6 +132,10 @@ static void WatchPause(DWORD milliseconds)
 /* A normal quit (ExitProcess): the last chance to tell the mods. Under the loader lock, the other threads gone. */
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
-    if (reason == DLL_PROCESS_DETACH && reserved != NULL && g_modCount > 0) SessionEnd("the game is quitting");
+    if (reason == DLL_PROCESS_DETACH && reserved != NULL && g_modCount > 0)
+    {
+        InterlockedExchange(&g_exiting, 1); /* the other threads are gone: no lock of theirs is waited for */
+        SessionEnd("the game is quitting");
+    }
     return TRUE;
 }

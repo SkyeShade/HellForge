@@ -714,6 +714,9 @@ public static class SyncedStore
 public sealed record ModSyncOffer(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<ModSyncOffer.Mod> Mods,
     bool Stranger = false)
 {
+    // The running game can take the host's mods (HF_SYNC_LIVE): "restart" changes them without a restart.
+    public bool Live { get; init; }
+
     public sealed record Mod(string Id, string Name, string Version, string Class, string Action, long Bytes, string? Url = null);
 
     public const string FileName = "mod-sync.json", AnswerFileName = "mod-sync-answer.json";
@@ -734,7 +737,10 @@ public sealed record ModSyncOffer(int Version, string State, string Host, long B
                     ModCatalog.WebAddress(Text(m["url"]) is { Length: > 0 } url ? url : null))).ToList()
                 : [];
             return new ModSyncOffer((int)Number(root["version"]), Text(root["state"]), Text(root["host"]), Number(root["bytes"]), Number(root["done"]), Text(root["message"]), mods,
-                root["stranger"] is JsonValue stranger && stranger.TryGetValue<bool>(out var notFriend) && notFriend);
+                root["stranger"] is JsonValue stranger && stranger.TryGetValue<bool>(out var notFriend) && notFriend)
+            {
+                Live = root["live"] is JsonValue live && live.TryGetValue<bool>(out var canLive) && canLive
+            };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }

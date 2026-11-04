@@ -27,6 +27,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // The launcher's Mods page while the session runs (/hellforge/live-mods), once the session's LiveMods is set up.
+    public LiveModsHub? LiveMods { get; init; }
     // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
     public PickupRelay? Pickups { get; init; }
     // The lobby browser's API (null: the routes answer that there is none); its multiplayer services are attached later.
@@ -167,7 +169,8 @@ public static partial class LocalBackend
         {
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
+            LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);
         return app;

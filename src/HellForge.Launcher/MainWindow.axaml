@@ -469,6 +469,15 @@
 
             <Border Classes="card">
               <StackPanel Spacing="8">
+                <TextBlock Text="EXPERIMENTAL" Classes="h2" />
+                <CheckBox x:Name="LiveChangesBox" Content="Change mods without restarting" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Takes effect from the next session. Stats mods, data mods and code mods that declare they can change live switch while the game runs, on the Mods page and when you join a friend with other mods. Everything else still restarts, and a mod that adds weapons often will. Off: every change waits for a restart." />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+              <StackPanel Spacing="8">
                 <TextBlock Text="GALACTIC WAR" Classes="h2" />
                 <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="Follow the live galactic war" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"

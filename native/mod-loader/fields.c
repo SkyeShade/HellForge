@@ -33,6 +33,7 @@ typedef struct SdkContent { uint32_t kind; const char* name; uint64_t id; } SdkC
 
 #define FIELD_MAX_EDITS (1 << 20) /* a sanity bound: the list grows as mods and editors add edits */
 #define FIELD_MAX_DEFS 64
+#define FIELD_BEFORE 64
 
 enum { EDIT_COPY, EDIT_SET, EDIT_TAG };
 
@@ -53,6 +54,10 @@ typedef struct FieldEdit
     int waiting;            /* its table is not loaded yet */
     int hasOriginal;        /* live: the bytes from before it, for a reset */
     uint8_t original[8];
+    /* deferred (not live): the bytes the field held under it when it applied, so a live change can take it out again
+     * (live_code.c FieldRestack); fields of at most FIELD_BEFORE bytes */
+    int hasBefore;
+    uint8_t before[FIELD_BEFORE];
     int failed;             /* refused on the last load (logged once per load) */
     int refNoted;           /* a reference's wait for its packages is logged */
     uintptr_t address;      /* where its bytes were when it last applied (get_stat names a live edit's holder by it) */
@@ -476,11 +481,26 @@ static int EditRoom(void)
     return 1;
 }
 
+static void FieldRestack(const FieldEdit* field, const uint8_t* bottom); /* live_code.c */
+
 static int QueueEdit(FieldEdit edit)
 {
+    if (ModGone(edit.mod)) { ApiLog(edit.mod, "deferred edit refused: the mod is being taken out"); return 1; }
     AcquireSRWLockExclusive(&g_fieldsLock);
     int refused = !EditRoom();
     if (refused) ApiLog(edit.mod, "deferred edits: mods queued %d already", FIELD_MAX_EDITS);
+    else if (g_liveSetup != NULL && edit.mod == g_liveSetup)
+    {
+        /* a mod set up while the game runs (live_code.c): in load order among the edits, and the field's deferred edits
+         * applied again over what was under them, so a later mod's value stays on top */
+        int at = g_editCount;
+        while (at > 0 && ModLoadIndex(g_edits[at - 1].mod) > ModLoadIndex(edit.mod)) at--;
+        memmove(&g_edits[at + 1], &g_edits[at], (size_t)(g_editCount - at) * sizeof g_edits[0]);
+        g_edits[at] = edit;
+        g_editCount++;
+        ReportConflicts(&g_edits[at], at);
+        if (edit.table || g_fired[HF_EVENT_ENTITIES_READY]) FieldRestack(&g_edits[at], NULL);
+    }
     else if (g_modsSettingUp)
     {
         /* while the mods set up (in id order): in load order among the queued edits; reported and applied once all have
@@ -722,6 +742,7 @@ static void ApplyEdit(FieldEdit* e)
     /* under a value Local Stats saved (not written; its original is taken when it does apply) */
     if (e->live && ModRank(e->mod) < RANK_EDITOR && SavedEditorValue((uintptr_t)at, e->field->size)) { e->failed = 0; return; }
     if (e->live && !e->hasOriginal && e->field->size <= sizeof e->original) { memcpy(e->original, at, e->field->size); e->hasOriginal = 1; }
+    if (!e->live && !e->hasBefore && e->field->size <= sizeof e->before) { memcpy(e->before, at, e->field->size); e->hasBefore = 1; }
     if (EditBytes(e, at, bytes)) return;
     /* the spawn director's rows: a composition's squad within the queue's capacity, its ranges in order (director.c) */
     const char* refused = e->table ? DirectorRefuses(e->component->component, (uintptr_t)record, e->field->offset, bytes, e->field->size) : NULL;
@@ -792,7 +813,7 @@ static void ApplyFieldEdits(void)
 {
     AcquireSRWLockExclusive(&g_fieldsLock);
     g_packagesInferred = 0;
-    for (int i = 0; i < g_editCount; i++) { g_edits[i].failed = 0; if (!g_edits[i].table) g_edits[i].hasOriginal = 0; }
+    for (int i = 0; i < g_editCount; i++) { g_edits[i].failed = 0; if (!g_edits[i].table) g_edits[i].hasOriginal = g_edits[i].hasBefore = 0; }
     for (int i = 0; i < g_editCount; i++) ApplyEdit(&g_edits[i]);
     if (g_editCount > 0)
     {
@@ -1042,6 +1063,15 @@ static HfContent EntityContent(const Weapon* w, uint32_t size)
         w->title[0] ? w->title : NULL, NULL, 0, NULL, w->designation[0] ? w->designation : NULL};
 }
 
+/* The entry of a kind's list that is the index-th one a mod taken out did not leave (live_content.c), or count when
+ * there is none; *index is then what is left of it for the next kind. */
+static uint32_t ContentAt(int kind, uint32_t count, uint32_t* index)
+{
+    for (uint32_t i = 0; i < count; i++)
+        if (!LiveTomb(kind, i) && (*index)-- == 0) return i;
+    return count;
+}
+
 /* An arsenal weapon a mod added, registered: its loadout ids, entities and text of its own. */
 static HfContent WeaponContent(const Weapon* w, uint32_t size)
 {
@@ -1053,44 +1083,44 @@ static HfContent WeaponContent(const Weapon* w, uint32_t size)
 }
 
 /* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage and (HellForge 2026-10-31,
- * last so the others keep their indexes) registered arsenal weapons, in the order added. A stratagem without editor
- * entities of its own lists each payload entity a mod added, for the entity it copies. */
+ * last so the others keep their indexes) registered arsenal weapons, in the order added (what a mod taken out added is
+ * left out). A stratagem without editor entities of its own lists each payload entity a mod
+ * added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
 {
     if (out == NULL || out->size < offsetof(HfContent, editor_entities) + sizeof out->editor_entities) return 0;
     uint32_t size = out->size;
     HfContent c = {0};
     #define GIVE() (memcpy(out, &c, size < sizeof c ? size : sizeof c), 1) /* no more than the caller's struct holds */
-    if (index < g_stratagemCount)
+    uint32_t at = ContentAt(LC_STRATAGEM, g_stratagemCount, &index);
+    if (at < g_stratagemCount)
     {
-        Stratagem* s = &g_stratagems[index];
+        Stratagem* s = &g_stratagems[at];
         FillEditorEntities(s);
         c = StratagemContent(s, size);
         return GIVE();
     }
-    index -= g_stratagemCount;
     for (int i = 0; i < g_weaponCount; i++)
-        if (g_weapons[i].plain && g_weapons[i].state != -1 && index-- == 0)
+        if (g_weapons[i].plain && g_weapons[i].state != -1 && g_weapons[i].state != 2 && !LiveTomb(LC_WEAPON, (uint32_t)i) && index-- == 0)
         {
             c = EntityContent(&g_weapons[i], size);
             return GIVE();
         }
-    if (index < g_projectileCount)
+    if ((at = ContentAt(LC_PROJECTILE, g_projectileCount, &index)) < g_projectileCount)
     {
-        Projectile* p = &g_projectiles[index];
+        Projectile* p = &g_projectiles[at];
         c = (HfContent){size, HF_KIND_PROJECTILE, p->type, p->base, p->damage, p->mod->id, p->mod->folder, p->name, NULL, NULL, 0, NULL};
         return GIVE();
     }
-    index -= g_projectileCount;
-    if (index < g_damageCount)
+    if ((at = ContentAt(LC_DAMAGE, g_damageCount, &index)) < g_damageCount)
     {
-        Damage* d = &g_damages[index];
+        Damage* d = &g_damages[at];
         c = (HfContent){size, HF_KIND_DAMAGE, d->id, d->base, 0, d->mod->id, d->mod->folder, d->name, NULL, NULL, 0, NULL};
         return GIVE();
     }
-    index -= g_damageCount;
+    /* ContentAt has taken each kind's entries off index already */
     for (int i = 0; i < g_weaponCount; i++)
-        if (!g_weapons[i].plain && g_weapons[i].state == 1 && index-- == 0)
+        if (!g_weapons[i].plain && g_weapons[i].state == 1 && !LiveTomb(LC_WEAPON, (uint32_t)i) && index-- == 0)
         {
             c = WeaponContent(&g_weapons[i], size);
             return GIVE();
@@ -1107,30 +1137,33 @@ static int CatalogContent(uint32_t kind, const char* name, uint64_t* id)
     return 0;
 }
 
-/* An entity (or, items, a weapon's loadout id) a mod added under this name, not refused; 0 if none. */
+/* An entity (or, items, a weapon's loadout id) a mod added under this name, not refused, nor left by a mod taken out
+ * (live_content.c); 0 if none. */
 static uint64_t ModEntityNamed(const char* name, int item)
 {
     for (int i = 0; i < g_weaponCount; i++)
-        if ((!item || !g_weapons[i].plain) && g_weapons[i].state != -1 && !strcmp(g_weapons[i].name, name)) return item ? g_weapons[i].id : g_weapons[i].entity;
+        if ((!item || !g_weapons[i].plain) && g_weapons[i].state != -1 && !LiveTomb(LC_WEAPON, (uint32_t)i) && !strcmp(g_weapons[i].name, name))
+            return item ? g_weapons[i].id : g_weapons[i].entity;
     return 0;
 }
 
-/* The stratagem type, projectile type or damage id a mod added under this name; 0 if none. */
+/* The stratagem type, projectile type or damage id a mod added under this name (not one a mod taken out left); 0 if
+ * none. */
 static uint64_t StratagemNamed(const char* name)
 {
-    for (uint32_t i = 0; i < g_stratagemCount; i++) if (!strcmp(g_stratagems[i].name, name)) return g_stratagems[i].type;
+    for (uint32_t i = 0; i < g_stratagemCount; i++) if (!LiveTomb(LC_STRATAGEM, i) && !strcmp(g_stratagems[i].name, name)) return g_stratagems[i].type;
     return 0;
 }
 
 static uint64_t ProjectileTypeNamed(const char* name)
 {
-    const Projectile* added = ProjectileNamed(name); /* projectiles.c */
-    return added != NULL ? added->type : 0;
+    for (uint32_t i = 0; i < g_projectileCount; i++) if (!LiveTomb(LC_PROJECTILE, i) && !strcmp(g_projectiles[i].name, name)) return g_projectiles[i].type;
+    return 0;
 }
 
 static uint64_t DamageNamed(const char* name)
 {
-    for (uint32_t i = 0; i < g_damageCount; i++) if (!strcmp(g_damages[i].name, name)) return g_damages[i].id;
+    for (uint32_t i = 0; i < g_damageCount; i++) if (!LiveTomb(LC_DAMAGE, i) && !strcmp(g_damages[i].name, name)) return g_damages[i].id;
     return 0;
 }
 

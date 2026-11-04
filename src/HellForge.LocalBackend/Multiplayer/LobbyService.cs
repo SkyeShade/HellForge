@@ -100,9 +100,11 @@ public sealed class LobbyService
     readonly IPeerTransport? transport;
     readonly Action<Frame> toLocal;
     readonly Action<string> log;
-    readonly string modDigest;
-    // The digest's mods one by one (ModlistDiff's form), or null when the session did not give them.
-    readonly string? modList;
+    // The session's modlist digest and its mods one by one (ModlistDiff's form, null when the session did not give them),
+    // swapped whole when a live change of the session's mods changes them (SetMods); Changing while one is being made
+    // (ModsChanging), when the game's mods are not known.
+    sealed record ModsNow(string Digest, string? List, bool Changing = false);
+    volatile ModsNow mods;
     readonly WarClock? warClock;
     readonly Dictionary<string, HostedLobby> hosted = new(StringComparer.Ordinal);
     // Lobbies on a friend's machine that this machine's DLL joined or is joining: lobby id -> owner node.
@@ -173,9 +175,15 @@ public sealed class LobbyService
         this.transport = transport;
         this.toLocal = toLocal;
         this.log = log;
-        this.modDigest = modDigest;
-        this.modList = modList;
+        mods = new ModsNow(modDigest, modList);
     }
+
+    // The session's mods changed while it runs (LiveMods): joins are checked against the new digest from now on.
+    public void SetMods(string digest, string? list) => mods = new ModsNow(digest, list);
+
+    // A live change of the session's mods is being made (true) or ended without changing them (false): meanwhile a
+    // friend's join is refused for now, never checked against a digest the game may no longer play.
+    public void ModsChanging(bool changing) => mods = mods with { Changing = changing };
 
     // A friend's lobby refused this machine's join (the host's machine, and lines saying why for this player), and this
     // host refused a friend's (their machine, and lines for this host); the game is told (MultiplayerHost). Raised under
@@ -484,11 +492,12 @@ public sealed class LobbyService
         joins[lobbyId] = (owner, DateTime.UtcNow);
         var (joinOwner, joinLobby) = (owner, lobbyId);
         afterLock.Add(() => LocalJoinStarted?.Invoke(joinOwner, joinLobby));
-        var (digest, protocol) = JoinAs?.Invoke(owner) ?? (modDigest, Protocol);
+        var own = mods;
+        var (digest, protocol) = JoinAs?.Invoke(owner) ?? (own.Digest, Protocol);
         if (protocol != Protocol) log($"Joining {EntityId(owner)}, whose HellForge is older, as {protocol}.");
         frame.Add(digest);
         frame.Add(protocol);
-        if (modList != null) frame.Add(modList);
+        if (own.List != null) frame.Add(own.List);
         return (owner, lobbyId);
     }
 
@@ -655,7 +664,8 @@ public sealed class LobbyService
         var connection = frame.Text(3).Split(';');
         var index = 4;
         var memberProperties = frame.Properties(ref index);
-        var digest = node == LocalNode ? modDigest : frame.Count > index ? frame.Text(index) : "";
+        var hosting = mods;
+        var digest = node == LocalNode ? hosting.Digest : frame.Count > index ? frame.Text(index) : "";
         var protocol = node == LocalNode ? Protocol : frame.Count > index + 1 ? frame.Text(index + 1) : "an older HellForge";
         if (connection.Length != 3 || !hosted.TryGetValue(connection[1], out var lobby)) { Answer(node, op, "join", LobbyNotFound, connection.ElementAtOrDefault(1)); return; }
         if (!Admits(node, frame, op, lobby, memberId, memberProperties)) return;
@@ -666,10 +676,16 @@ public sealed class LobbyService
                 ["Their HellForge version is not yours: both players need the same HellForge installer."]);
             return;
         }
-        var legacy = protocol == LegacyProtocol;
-        if (!SameMods(digest, protocol, Theirs(node, frame, index)))
+        if (hosting.Changing && node != LocalNode)
         {
-            RefuseForMods(node, frame, op, lobby, index, legacy);
+            Refuse(node, op, lobby.Id, "the host's gameplay mods are changing; try again in a moment.",
+                ["The host's gameplay mods are changing.", "Join them again in a moment."], ["A friend tried to join while your mods were changing."]);
+            return;
+        }
+        var legacy = protocol == LegacyProtocol;
+        if (!SameMods(hosting.Digest, digest, protocol, Theirs(node, frame, index)))
+        {
+            RefuseForMods(node, frame, op, lobby, index, hosting.List, legacy);
             return;
         }
         if (legacy) log($"{EntityId(node)} joins with HellForge 0.3 ({protocol}): its mods are this host's.");
@@ -693,8 +709,9 @@ public sealed class LobbyService
         return true;
     }
 
-    // A join with other gameplay mods than this host's (index: the frame's field after the member properties).
-    void RefuseForMods(ulong node, Frame frame, string op, HostedLobby lobby, int index, bool legacy)
+    // A join with other gameplay mods than this host's (index: the frame's field after the member properties; modList:
+    // this host's mods one by one as the join was checked, or null; legacy: the joiner's HellForge is 0.3).
+    void RefuseForMods(ulong node, Frame frame, string op, HostedLobby lobby, int index, string? modList, bool legacy)
     {
         var theirs = Theirs(node, frame, index);
         var mine = modList != null ? ModlistDiff.Decode(modList) : null;
@@ -709,10 +726,10 @@ public sealed class LobbyService
             ["Their gameplay mods don't match yours.", .. Differences(mine, theirs, asHost: true)]);
     }
 
-    // Whether a joiner plays this host's shared gameplay mods: its digest is this host's, or, for 0.3's protocol, its mods
-    // one by one (theirs, when it sent them) are (LegacyAdmits).
-    bool SameMods(string digest, string protocol, IReadOnlyList<ModFingerprint>? theirs) =>
-        digest == modDigest || protocol == LegacyProtocol && LegacyAdmits?.Invoke(digest, theirs) == true;
+    // Whether a joiner plays this host's shared gameplay mods: its digest is this host's now (hostDigest, ModsNow), or, for
+    // 0.3's protocol, its mods one by one (theirs, when it sent them) are (LegacyAdmits).
+    bool SameMods(string hostDigest, string digest, string protocol, IReadOnlyList<ModFingerprint>? theirs) =>
+        digest == hostDigest || protocol == LegacyProtocol && LegacyAdmits?.Invoke(digest, theirs) == true;
 
     // A joiner's mods one by one (after its digest and protocol; a joiner from before sends none).
     static List<ModFingerprint>? Theirs(ulong node, Frame frame, int index) =>
@@ -894,7 +911,9 @@ public sealed class LobbyService
         if (lobby == null) { Tell("gone", ["The host's lobby has closed."]); return; }
         if (Admission(lobby, node) is { } refusal) { Tell("refused", refusal.JoinerLines); return; }
         if (!Compatible(protocol)) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
-        if (!SameMods(digest, protocol, null)) { Tell("mods", ["The host's gameplay mods changed after your restart.", "Join them again to see which differ."]); return; }
+        var hosting = mods;
+        if (hosting.Changing) { Tell("mods", ["The host's gameplay mods are changing.", "Join them again in a moment."]); return; }
+        if (!SameMods(hosting.Digest, digest, protocol, null)) { Tell("mods", ["The host's gameplay mods changed since you were refused.", "Join them again to see which differ."]); return; }
         if (lobby.Lock == 1) { Tell("locked", ["The host's lobby is locked."]); return; }
         if (lobby.Members.Count(m => m.Node != node) >= lobby.MaxMembers) { Tell("full", ["The host's lobby is full."]); return; }
         Expect(lobby, node, RejoinGrace);

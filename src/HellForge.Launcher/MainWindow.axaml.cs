@@ -127,6 +127,7 @@ public partial class MainWindow : Window
         // follows it.
         InitializeSandboxSettings();
         InitializeStrangers();
+        InitializeLiveChanges();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
@@ -513,6 +514,7 @@ public partial class MainWindow : Window
     void ShowState(JsonElement state)
     {
         var stopped = !runner.IsRunning;
+        SetLiveBackend(stopped ? null : SessionFiles.Text(state, "backendOrigin"));
         var status = SessionFiles.Text(state, "status");
         ShowModProblems(state);
         ShowSteamInput(state);
@@ -836,6 +838,7 @@ public partial class MainWindow : Window
         ProfileCombo.IsEnabled = NewProfileButton.IsEnabled = !running;
         CreateProfileButton.IsEnabled = !running && TemplateCombo.SelectedItem != null;
         if (running && NewProfileForm.IsVisible) ShowNewProfileForm(false);
+        if (!running) SetLiveBackend(null);
         SetModsLocked(running);
         SetWeaponLevelsLocked(running);
         UpdateSettingsImport();

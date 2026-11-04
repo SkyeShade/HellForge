@@ -146,6 +146,7 @@ typedef struct Difficulty
 } Difficulty;
 static Difficulty g_difficulty;
 static int g_difficultyAdded;
+static int g_difficultyLive; /* added by a live set-up: installed once the change is made (live_content.c) */
 static int g_difficultyState; /* 0 waiting, 1 installed (or none added), -1 refused */
 static ULONGLONG g_difficultySeen; /* when game.dll was first seen: the decode wait's start */
 static int g_difficultyAttempts;   /* InstallDifficulty's polls, for the decode wait's line */
@@ -206,10 +207,10 @@ typedef struct DifficultyInstall
 
 /* Whether a difficulty can be added now (one level, from hellforge_mod_init, with a name, a title and its points in
  * range); logged when not. */
-static int DifficultyAddable(HfMod* mod, const HfDifficulty* def, const char* name)
+static int DifficultyAddable(HfMod* mod, const HfDifficulty* def, const char* name, int live)
 {
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_difficulty.name) { ApiLog(mod, "add_difficulty: it needs a name (under 192 bytes)"); return 0; }
-    if (g_difficultyState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "add_difficulty(%s): too late; call it from hellforge_mod_init", name); return 0; }
+    if (!live && (g_difficultyState != 0 || g_fired[HF_EVENT_GAME_LOADED])) { ApiLog(mod, "add_difficulty(%s): too late; call it from hellforge_mod_init", name); return 0; }
     if (g_difficultyAdded) { ApiLog(mod, "add_difficulty(%s): %s added level 11 already; the game has room for one more level", name, g_difficulty.mod->id); return 0; }
     if (def->title == NULL || def->title[0] == 0) { ApiLog(mod, "add_difficulty(%s): it needs a title", name); return 0; }
     if (!(def->encounter_points >= 0.0f && def->encounter_points <= 100000.0f) || !(def->guardforce_points >= 0.0f && def->guardforce_points <= 100000.0f) ||
@@ -300,6 +301,8 @@ static int DifficultyGrant(HfMod* mod, const char* name, const HfDifficulty* def
     return 0;
 }
 
+static int DifficultyNeedsBlockOf(const Difficulty* d);
+
 static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfDifficulty, spawner_cooldown) + sizeof def->spawner_cooldown)
@@ -309,7 +312,8 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
     }
     char identity[256];
     const char* name = Identity(mod, def->name, identity, sizeof identity);
-    if (!DifficultyAddable(mod, def, name)) return 0;
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_content.c) */
+    if (!DifficultyAddable(mod, def, name, live)) return 0;
     Difficulty d = {0};
     d.mod = mod;
     snprintf(d.name, sizeof d.name, "%s", name);
@@ -331,11 +335,89 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
     if (DifficultyMap(mod, name, def, &d) || DifficultyMinutes(mod, name, def, &d) || DifficultyFlags(mod, name, def, &d) ||
         DifficultyPatrols(mod, name, def, &d) || DifficultyGrant(mod, name, def, &d))
         return 0;
+    if (live && DifficultyNeedsBlockOf(&d))
+    {
+        LiveRefuse(mod, "difficulty", name, "its larger maps or extra objectives need buffers the game makes once, as it starts");
+        return 0;
+    }
     g_difficulty = d;
     g_difficultyAdded = 1;
+    g_difficultyLive = live;
     ApiLog(mod, "adding difficulty %s (\"%s\") as level 11 (unlock item %08x): a copy of level 10", d.name, def->title, d.item);
-    WriteRegisteredItems();
+    if (!live) WriteRegisteredItems(); /* a live change writes it once made */
     return DIF_VANILLA + 1;
+}
+
+/* The highest level a live level 11 needs (KB hellforge-live-mod-sync-re-content, M7): 0x11EBB40 returns
+ * min(its 10 (11 once installed), the online override "0xAF218CAC 0xFAABBEA9"), and the backend serves the override as
+ * 10 at login unless a difficulty was registered then. The loader finds the override as 0x11EBB40 does (0x12E7990(cfg, 1,
+ * hash): two open-addressing tables of 48-byte entries in [game + 0x347CDF8], at +0x12078 then +0xC050, each {entries,
+ * capacity +8, empty key +0xC, multiplier +0x10}; an entry's type at +0x14, its value at +0x18) and stores 11 there, on the
+ * game thread, while no menu is open: a war table bar built with 10 widgets would run its update into the 11th widget,
+ * which only a bar built after the change has (difficulty.c header; when the bar's screens go is not proven). */
+#define DIF_CONFIG 0x347CDF8u
+#define DIF_CAP_LOOKUP 0x12E7990u
+#define DIF_CAP_SITE 0x11EBBA7u
+#define DIF_UI 0x347CE28u
+static const uint8_t kCapLookupPin[48] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C,
+    0x24, 0x20, 0x41, 0x56, 0x85, 0xD2, 0x4C, 0x8B, 0xD1, 0xB9, 0x78, 0x20, 0x01, 0x00, 0xB8, 0x28, 0x60, 0x00, 0x00, 0x0F, 0x45, 0xC1, 0x44, 0x8B,
+    0xF2, 0x49, 0x03, 0xC2, 0x33, 0xD2};
+static const uint8_t kCapSitePin[36] = {0x48, 0x8B, 0x0D, 0x4A, 0x12, 0x29, 0x02, 0xBA, 0x01, 0x00, 0x00, 0x00, 0xE8, 0xD8, 0xBD, 0x0F, 0x00, 0x48,
+    0x85, 0xC0, 0x74, 0x09, 0x83, 0x78, 0x0C, 0x06, 0x75, 0x03, 0x8B, 0x78, 0x10, 0x3B, 0xFB, 0x0F, 0x42, 0xDF};
+static volatile LONG g_difficultyCapPending; /* a live level 11 waits for the override (DifficultyCapTick) */
+
+static int PinMatches(uintptr_t at, const uint8_t* pin, size_t size); /* packages.c */
+
+static int DifficultyCapPins(uintptr_t game)
+{
+    return PinMatches(game + DIF_CAP_LOOKUP, kCapLookupPin, sizeof kCapLookupPin) && PinMatches(game + DIF_CAP_SITE, kCapSitePin, sizeof kCapSitePin);
+}
+
+/* One of the config's override tables: the entry of key, or 0. */
+static uintptr_t DifficultyCapIn(uintptr_t table, uint32_t key)
+{
+    uintptr_t entries = 0;
+    uint32_t capacity = 0, empty = 0, multiplier = 0, found = 0;
+    if (SafeRead(table, &entries, 8) || SafeRead(table + 8, &capacity, 4) || SafeRead(table + 0xC, &empty, 4) || SafeRead(table + 0x10, &multiplier, 4)) return 0;
+    for (uint32_t i = 0; i < capacity && entries != 0; i++)
+    {
+        uintptr_t entry = entries + 48 * (uintptr_t)((capacity - 1) & (i + key * multiplier));
+        if (SafeRead(entry, &found, 4) || found == empty) return 0;
+        if (found == key) return entry;
+    }
+    return 0;
+}
+
+/* The override's value (type 6, a u32), or NULL. */
+static uint32_t* DifficultyCapValue(uintptr_t game)
+{
+    const uint32_t parts[2] = {0xAF218CACu, 0xFAABBEA9u}, m = 0x5BD1E995u;
+    uint32_t key = parts[0], k = parts[1] * m, type = 0;
+    key = (k ^ (k >> 24)) * m ^ key * m;
+    uintptr_t config = 0;
+    if (SafeRead(game + DIF_CONFIG, &config, 8) || config == 0) return NULL;
+    uintptr_t entry = DifficultyCapIn(config + 0x12078, key);
+    if (entry == 0) entry = DifficultyCapIn(config + 0xC050, key);
+    return entry != 0 && !SafeRead(entry + 0x14, &type, 4) && type == 6 ? (uint32_t*)(entry + 0x18) : NULL;
+}
+
+/* On the game thread: the override raised to 11 (when it says 10). */
+static void DifficultyCapStep(void* arg)
+{
+    uint32_t* value = DifficultyCapValue((uintptr_t)arg);
+    if (value != NULL && *value == DIF_VANILLA) *value = DIF_VANILLA + 1;
+    Note("difficulty: the online highest level %s", value == NULL ? "is not set: the game's own (11) applies" : *value == DIF_VANILLA + 1 ? "is 11" : "is left as the backend set it");
+}
+
+static int (*g_difficultyOnGameThread)(void (*fn)(void*), void* arg); /* live_code.c's step (set by live_content.c) */
+
+/* Polled from the watch loop while a live level 11 waits: once no menu is open, the override on the game thread. */
+static void DifficultyCapTick(uintptr_t game)
+{
+    uintptr_t ui = 0;
+    uint32_t menu = 0;
+    if (game == 0 || SafeRead(game + DIF_UI, &ui, 8) || ui == 0 || SafeRead(ui + 0x4288 + 12, &menu, 4) || menu != 0 || g_difficultyOnGameThread == NULL) return;
+    if (g_difficultyOnGameThread(DifficultyCapStep, (void*)game)) InterlockedExchange(&g_difficultyCapPending, 0);
 }
 
 /* The difficulty's entry in registered-items.json: its unlock item, a copy of level 10's (RegisteredItems.cs adds it to
@@ -355,12 +437,13 @@ static uintptr_t ApiDifficultyRow(uint32_t level)
         (uintptr_t)(g_difficultyTable + (level - 1) * DIF_ROW) : 0;
 }
 
-/* The generation block grows (locations, minimap, stamps) for larger maps and for more objectives. */
-static int DifficultyNeedsBlock(void)
+/* The generation block grows (locations, minimap, stamps) for larger maps and for more objectives: buffers the world's
+ * init allocates once per process (KB hellforge-live-mod-sync-re-content, M7), so such a level needs a restart to add. */
+static int DifficultyNeedsBlockOf(const Difficulty* d)
 {
-    return g_difficulty.mapScale > 1.0f || g_difficulty.optional != 0 || g_difficulty.major != 0 ||
-        (g_difficulty.flags & (HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_RADAR));
+    return d->mapScale > 1.0f || d->optional != 0 || d->major != 0 || (d->flags & (HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_RADAR));
 }
+static int DifficultyNeedsBlock(void) { return DifficultyNeedsBlockOf(&g_difficulty); }
 
 static int32_t DifficultyDisplacement(uintptr_t table, uintptr_t game, const DifficultySite* s)
 {

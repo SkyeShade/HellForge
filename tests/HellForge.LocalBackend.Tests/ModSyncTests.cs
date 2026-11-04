@@ -185,7 +185,7 @@ static partial class ModSyncTests
         check(again.Bytes == 0 && again.Items.All(i => i.Action == SyncAction.Have) && again.Message.Contains("Restart"), "Ready: " + again.Message);
         var written = ModSyncOffer.Read(Path.Combine(guest.Run, "backend"));
         check(written != null && written.Version == again.Version && written.State == "offer" && written.Mods.Count == again.Items.Count &&
-            written.Mods.All(m => m.Action == "have"), "The launcher reads the offer the backend wrote.");
+            written.Mods.All(m => m.Action == "have") && written.Live == again.Live, "The launcher reads the offer the backend wrote, live or not.");
         ModSyncOffer.Answer(Path.Combine(guest.Run, "backend"), again.Version, "decline");
         check(guest.Shown.Next(check, "none").Items.Count == 0 && !File.Exists(Path.Combine(guest.Run, "backend", ModSyncOffer.AnswerFileName)),
             "Declined from the launcher: the offer closes and the answer is taken.");
@@ -689,7 +689,7 @@ static partial class ModSyncTests
         check(await new LiveSyncDisplay(live).ShowAsync(view, withMods: true), "The game took the offer.");
         await game;
         check(lines.SequenceEqual(["syncmod\t7\t0\tdownload\tcode\t1234\ttest.tab\tNamewith a tab\t1\t-", "syncmod\t7\t1\ttrust\traw\t10\ttest.raw\tRaw\t2\thttps://example.com/raw",
-                "syncstate\t7\toffer\tHostName\t1244\t0\t2\tMessage"]),
+                "syncstate\t7\toffer\tHostName\t1244\t0\t2\t0\tMessage"]),
             "The lines: " + string.Join(" | ", lines));
         await writer.WriteLineAsync("syncanswer\t7\tblock\ttest.tab");
         check(answers.TryTake(out var answer, TimeSpan.FromSeconds(5)) && answer!.SequenceEqual(["syncanswer", "7", "block", "test.tab"]), "The game's answer arrives.");

@@ -9,7 +9,8 @@ namespace HellForge.Session;
 
 using HellForge.Core;
 
-// Applies network field type edits to the running copied game until it exits (docs/modding/data.md, "Native edits in the manifest").
+// Applied network field type edits to the running copied game until it exited (docs/modding/data.md, "Native edits in the
+// manifest"). Sessions no longer run it: the in-game loader applies them (its plan's nettype lines, and live changes').
 // Component writes now run only in the native loader's entity-load pass. The component helpers below remain
 // available for existing diagnostic fixtures; Run never invokes them or periodically restores component fields.
 public static class NativeModApplier

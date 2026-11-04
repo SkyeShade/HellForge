@@ -614,6 +614,12 @@ static bool AddStratagemPage(const HfContent& s, const std::vector<HfContent>& a
     return true;
 }
 
+/* The stratagems that have a page (by name): a live change's AddModContent adds the others. */
+static std::set<std::string> g_contentPages;
+static volatile LONG g_modsChanged;
+
+void ModsChanged() { InterlockedExchange(&g_modsChanged, 1); }
+
 /* A mod's arsenal weapon's page: a copy of its base weapon's page in the same section, pointed at the weapon's own
  * entity and at the projectile and damage it fires where a mod added them. Only the records it owns: HfWeapon.own_all
  * gives it all of them, else own_components and its own projectile's ProjectileWeapon record. False (logged why) when
@@ -648,9 +654,7 @@ static bool AddWeaponPage(const HfContent& w, const std::vector<HfContent>& all)
 
 void AddModContent()
 {
-    static bool done;
-    if (done || !g_catalogOk) return;
-    done = true;
+    if (!g_catalogOk) return;
     const HfApi* api = g_host.api;
     if (api->size < offsetof(HfApi, content) + sizeof(void*) || api->content == nullptr) return;
     LONGLONG started = QpcNow();
@@ -658,8 +662,8 @@ void AddModContent()
     int pages = 0, weapons = 0;
     for (const HfContent& s : all)
     {
-        if (s.kind == HF_KIND_STRATAGEM && AddStratagemPage(s, all)) pages++;
-        if (s.kind == HF_KIND_ITEM && AddWeaponPage(s, all)) weapons++;
+        if (s.kind == HF_KIND_STRATAGEM && g_contentPages.insert(s.name).second && AddStratagemPage(s, all)) pages++;
+        if (s.kind == HF_KIND_ITEM && g_contentPages.insert(std::string("item:") + s.name).second && AddWeaponPage(s, all)) weapons++;
     }
     /* their saved values, to the game: the stats pass does not know them (joined to a friend, Tick swaps in the host's) */
     int applied = ApplyModValues(localstats::OwnEntries(), "this machine's", "HellForge refused its saved value");
@@ -672,6 +676,7 @@ void AddModContent()
 
 void Tick()
 {
+    if (InterlockedExchange(&g_modsChanged, 0)) AddModContent();
     ReadSync();
     ReadLobbies();
     static ULONGLONG next, nextNotice;

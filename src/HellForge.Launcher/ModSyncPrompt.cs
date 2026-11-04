@@ -74,12 +74,14 @@ public partial class MainWindow
             button.Click += (_, _) => AnswerModSync(runDirectory, offer, answer);
             buttons.Children.Add(button);
         }
+        // the running game takes the host's mods without a restart when it can (live mods), as the in-game prompt says
+        var join = offer.Live ? "APPLY AND JOIN" : "RESTART TO JOIN";
         switch (offer.State)
         {
-            case "offer" when offer.Bytes == 0: Add("RESTART TO JOIN", "restart", true); Add("CANCEL", "decline", false); break;
+            case "offer" when offer.Bytes == 0: Add(join, "restart", true); Add("CANCEL", "decline", false); break;
             case "offer": Add("DOWNLOAD AND RESTART", "accept", true); Add("CANCEL", "decline", false); break;
             case "downloading": Add("CANCEL", "decline", false); break;
-            case "ready": Add("RESTART TO JOIN", "restart", true); Add("CANCEL", "decline", false); break;
+            case "ready": Add(join, "restart", true); Add("CANCEL", "decline", false); break;
             default: Add("OK", "decline", false); break; // blocked or failed: nothing to do but close it
         }
         ModSyncPanel.Children.Add(buttons);

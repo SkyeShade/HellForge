@@ -18,7 +18,6 @@ sealed partial class PlaySession
             Try("sandboxPipeRelayStopError", StopSandboxPipeRelay);
             CopyEngineLogs();
             StopBrokerAndBackend();
-            FinishApplier();
             RecordBackendRequests();
             if (gameStarted != null)
                 Try("networkCensusError", () =>
@@ -264,16 +263,6 @@ sealed partial class PlaySession
             try { if (!server.HasExited) { server.Kill(); server.WaitForExit(5000); } result["backendStopped"] = server.HasExited; }
             catch (InvalidOperationException) { }
             finally { server.Dispose(); }
-    }
-
-    // The applier ends with the game.
-    void FinishApplier()
-    {
-        if (applier != null)
-        {
-            applier.Join(5000);
-            if (Tools.ReadJson(Path.Combine(run, "native-mods.json")) is { } status) result["nativeMods"] = status;
-        }
     }
 
     void RecordBackendRequests()

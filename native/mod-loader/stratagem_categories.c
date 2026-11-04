@@ -39,7 +39,7 @@ static uint32_t ApiAddStratagemCategory(HfMod* mod, const HfStratagemCategory* d
 {
     if (!mod || !def || def->size < offsetof(HfStratagemCategory, sort_order) + sizeof def->sort_order)
     { ApiLog(mod, "add_stratagem_category: set size to sizeof(HfStratagemCategory)"); return 0; }
-    if (g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED])
+    if ((g_stratagemState != 0 || g_fired[HF_EVENT_GAME_LOADED]) && (g_liveSetup == NULL || g_liveSetup != mod)) /* or a live set-up's */
     { ApiLog(mod, "add_stratagem_category: call from hellforge_mod_init"); return 0; }
     char buffer[256];
     const char* name = Identity(mod, def->name, buffer, sizeof buffer);

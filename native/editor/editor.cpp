@@ -1141,6 +1141,8 @@ static bool FindMethods11(void** present, void** present1, void** resize)
     return found;
 }
 
+static void ModsChanged(HfMod* mod, HfEvent event, void* user) { editorapp::ModsChanged(); }
+
 /* The hooked methods kept first, should an overlay hook their code over the editor's later (Watchdog). */
 static void WatchHooks(void* present, void* present1, void* resize)
 {
@@ -1203,6 +1205,8 @@ extern "C" HF_MOD_EXPORT int hellforge_mod_init(const HfApi* hf, HfMod* mod)
     InitializeCriticalSection(&g_lock);
     editorapp::Host host = {hf, mod, folder, g_modsFolder, CloseEditor, SaveSoon, ShowModal};
     editorapp::Init(host);
+    /* SDK 16: a live change of the session's mods brings content of its own */
+    if (hf->version >= 16 && hf->on(mod, HF_EVENT_MODS_CHANGED, ModsChanged, NULL)) hf->log(mod, "editor: live mod changes are not followed");
     /* Once the game runs and has its device: entity data loads after the renderer is up. */
     return hf->on(mod, HF_EVENT_ENTITIES_READY, Start, NULL);
 }

@@ -11,6 +11,55 @@ namespace HellForge.Core;
 public static class ModStaging
 {
     const string RecordName = "staged-mods.json";
+    const string LiveRecordName = "live-packages.json";
+
+    // A mod's patches as Stage stages them, each a patch's main file: its data/ folder's, then its generated data's.
+    public static List<string> Patches(ModManifest mod)
+    {
+        var patches = mod.DataFiles.Where(f => ModCatalog.PatchFile().Match(f).Groups[2].Length == 0).Select(f => Path.Combine(mod.Folder, "data", f)).ToList();
+        if (mod.GeneratedData != null)
+            patches.AddRange(Directory.GetFiles(mod.GeneratedData).Where(f => ModCatalog.PatchFile().Match(Path.GetFileName(f)) is { Success: true } m && m.Groups[2].Length == 0)
+                .Order(StringComparer.Ordinal));
+        return patches;
+    }
+
+    // A live change's hot packages (GameData.LiveData) in game/data: recorded, so the next session's staging removes them.
+    public static void RecordLive(InstallLayout install, IEnumerable<string> files)
+    {
+        Directory.CreateDirectory(install.Temp);
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        var names = LivePackages(install);
+        names.AddRange(files.Select(Path.GetFileName).OfType<string>());
+        File.WriteAllText(record, JsonSerializer.Serialize(names.Distinct(StringComparer.Ordinal).ToList()));
+    }
+
+    static List<string> LivePackages(InstallLayout install)
+    {
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        try { return File.Exists(record) ? JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? [] : []; }
+        catch (JsonException) { return []; }
+    }
+
+    static bool IsLivePackage(string name)
+    {
+        var stem = name.EndsWith(".gpu_resources", StringComparison.Ordinal) ? name[..^14] : name.EndsWith(".stream", StringComparison.Ordinal) ? name[..^7] : name;
+        return stem.Length == 16 && stem.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    }
+
+    // The last sessions' hot packages removed (a name of 16 hex digits and its sidecars only); those still held stay listed.
+    static void RemoveLive(InstallLayout install, string data)
+    {
+        var left = new List<string>();
+        foreach (var name in LivePackages(install).Where(IsLivePackage))
+        {
+            var path = Path.Combine(data, name);
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { left.Add(name); }
+        }
+        var record = Path.Combine(install.Temp, LiveRecordName);
+        if (left.Count > 0) File.WriteAllText(record, JsonSerializer.Serialize(left));
+        else if (File.Exists(record)) File.Delete(record);
+    }
 
     // What the last Stage did: files copied, and files kept from the session before (the same source, unchanged).
     public static (int Copied, int Kept) LastCounts { get; private set; }
@@ -24,6 +73,7 @@ public static class ModStaging
     public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods, IReadOnlyList<string>? own = null)
     {
         var data = Path.Combine(install.Game, "data");
+        RemoveLive(install, data);
         var previous = Previous(install);
         var plan = Plan(mods, own ?? [], data, previous);
         var wanted = plan.Select(p => p.Target).ToHashSet(StringComparer.Ordinal);

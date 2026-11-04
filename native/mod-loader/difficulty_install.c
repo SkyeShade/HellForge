@@ -62,11 +62,11 @@ static const char* RunInstallStep(DifficultyInstall* d, size_t i)
     return why;
 }
 
-/* Polled after GAME_LOADED until it returns 1: moves the table and adds level 11. pinsReady: the grace period for code
- * still being decoded is over. */
+/* Moves the table and adds level 11. pinsReady: the grace period for code still being decoded is over. A live change
+ * calls it too (live_content.c LiveDifficulty, on its own thread with the boot's check done: the state stays as the
+ * Watch thread saw it, so the Watch thread never installs the level a second time). */
 static int InstallDifficulty(uintptr_t game, int pinsReady)
 {
-    if (g_difficultyState != 0) return 1;
     if (!g_difficultyAdded) { g_difficultyState = 1; return 1; }
     g_difficultyAttempts++;
     int waiting;
@@ -109,4 +109,12 @@ static int InstallDifficulty(uintptr_t game, int pinsReady)
     HookText();
     NoteDifficulty(&d);
     return 1;
+}
+
+/* Polled by the Watch thread after GAME_LOADED until it returns 1, while the state is 0 (the difficulties not checked
+ * yet). */
+static int InstallDifficultyPolled(uintptr_t game, int pinsReady)
+{
+    if (g_difficultyState != 0) return 1;
+    return InstallDifficulty(game, pinsReady);
 }

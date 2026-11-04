@@ -186,6 +186,12 @@ static class ModSyncTests
             ModSettings.SetShare(mods, true);
             state = ModSettings.Read(mods);
             check(state.Blocked.Count == 0 && state.Share && state.Disabled.Count == 1, "Unblocked and sharing again.");
+            check(!ModSettings.LiveChanges(mods), "Changing mods without a restart was on before the player chose it.");
+            ModSettings.SetLiveChanges(mods, true);
+            ModSettings.SetPlayWithStrangers(mods, null); /* another setting's save keeps it */
+            check(ModSettings.LiveChanges(mods), "Changing mods without a restart was not saved.");
+            ModSettings.SetLiveChanges(mods, false);
+            check(!ModSettings.LiveChanges(mods), "Changing mods without a restart stayed on.");
             check(ModSettings.PlayWithStrangers(mods) == null && ModSettings.StrangersEffective(null, true) &&
                 !ModSettings.StrangersEffective(null, false), "Play with strangers is never chosen by default; the sandbox decides.");
             ModSettings.SetPlayWithStrangers(mods, true);
@@ -706,13 +712,13 @@ static class ModSyncTests
             check(ModSyncOffer.Read(folder) == null && ModSyncOffer.TakeAnswer(folder) == null, "Nothing there yet.");
             File.WriteAllText(Path.Combine(folder, ModSyncOffer.FileName), new JsonObject
             {
-                ["version"] = 3, ["state"] = "offer", ["host"] = "Host", ["bytes"] = 2048, ["done"] = 0, ["message"] = "m",
+                ["version"] = 3, ["state"] = "offer", ["host"] = "Host", ["bytes"] = 2048, ["done"] = 0, ["message"] = "m", ["live"] = true,
                 ["mods"] = new JsonArray(new JsonObject { ["id"] = "test.a", ["name"] = "A", ["version"] = "1", ["class"] = "raw", ["action"] = "manual", ["bytes"] = 10, ["url"] = "https://example.com/a" },
                     new JsonObject { ["id"] = "test.b", ["name"] = "B", ["version"] = "1", ["class"] = "code", ["action"] = "trust", ["bytes"] = 5, ["url"] = "javascript:alert(1)" })
             }.ToJsonString());
             var offer = ModSyncOffer.Read(folder);
-            check(offer is { Version: 3, State: "offer", Host: "Host", Bytes: 2048 } && offer.Mods[0] is { Id: "test.a", Class: "raw", Action: "manual", Url: "https://example.com/a" } &&
-                offer.Mods[1] is { Action: "trust", Url: null }, "The offer reads; only an https:// address is kept.");
+            check(offer is { Version: 3, State: "offer", Host: "Host", Bytes: 2048, Live: true } && offer.Mods[0] is { Id: "test.a", Class: "raw", Action: "manual", Url: "https://example.com/a" } &&
+                offer.Mods[1] is { Action: "trust", Url: null }, "The offer reads, live; only an https:// address is kept.");
             File.WriteAllText(Path.Combine(folder, ModSyncOffer.FileName), "{\"version\":");
             check(ModSyncOffer.Read(folder) == null, "A half-written offer reads as none.");
             ModSyncOffer.Answer(folder, 3, "accept");

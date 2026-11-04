@@ -144,6 +144,9 @@ To change them for good, use `settings`. It takes the same options as `play` (`-
  "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
+`settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
+session starts; the settings JSON says `liveChanges`).
+
 `settings --steam-udp yes|no` saves co-op over Steam relays (off by default). On Linux, `play` sets
 `HELLFORGE_STEAM_UDP=1` for the session when it is on: UDP goes to Valve's Steam relay servers only, and TCP and every
 other destination stay refused. The session refuses before it starts if `passt`'s `pasta` command or `python3` is

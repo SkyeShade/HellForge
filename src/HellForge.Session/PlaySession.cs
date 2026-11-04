@@ -49,7 +49,6 @@ sealed partial class PlaySession(PlayOptions options)
     // the list result.json has.
     IReadOnlyList<int>? steamInput, steamInputRecorded;
     nint lowToken;
-    Thread? applier;
     DateTime? gameStarted;
     WindowsCrash.Record? windowsCrash;
     TextWriter? log;
@@ -340,12 +339,13 @@ sealed partial class PlaySession(PlayOptions options)
     void StageMods(string profileDirectory)
     {
         var loaderPlan = Path.Combine(run, "modloader-plan.txt");
-        // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --sync: after a mod sync, the
-        // host's mods instead of the player's own (ModSyncSession).
+        // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --session-mods: the mods the
+        // session runs, which the backend can change without a restart (LiveMods); --sync: after a mod sync, the host's mods
+        // instead of the player's own (ModSyncSession).
         // --premium-snapshot, --premium-locked: mods built on premium content follow the profile's account snapshot
         // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
-            "--modset", ModSetFile, .. PremiumStageArguments(profileDirectory)];
+            "--modset", ModSetFile, "--session-mods", SessionModsFile, .. PremiumStageArguments(profileDirectory)];
         if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync), "--sandbox", options.Sandbox ? "yes" : "no"];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
@@ -363,8 +363,6 @@ sealed partial class PlaySession(PlayOptions options)
         }
         modDigest = (string?)plan["digest"] ?? "none";
         modList = (string?)plan["modlist"];
-        modNative = (bool?)plan["native"] == true;
-        nativeFolders = (plan["nativeFolders"] as JsonArray)?.Select(f => (string?)f).OfType<string>().ToList();
         var loadedMods = (plan["mods"] as JsonArray ?? []).Select(m => $"{(string?)m!["id"]} {(string?)m["version"]}").ToList();
         result["mods"] = new JsonObject
         {
@@ -490,6 +488,7 @@ sealed partial class PlaySession(PlayOptions options)
     string? rejoinFile;
     // The session's mod set (mods-stage --modset), for the backend's mod sync.
     string ModSetFile => Path.Combine(run, "modset.json");
+    string SessionModsFile => Path.Combine(run, "session-mods.json");
 
     // The mods whose items stay locked for this player (mods-stage --premium-locked), for the backend.
     string PremiumLockedFile => Path.Combine(run, "premium-locked.json");
@@ -505,8 +504,6 @@ sealed partial class PlaySession(PlayOptions options)
         try { return File.ReadAllText(Path.Combine(run, "stop-observation.signal")).Trim(); }
         catch (IOException) { return ""; }
     }
-    bool modNative;
-    List<string>? nativeFolders; // mods-stage's mods with network type edits (null: a mods-stage from before it)
 
     // HellForge's own programs (the installation's app folder: the launcher, this runner, the backend, the stand-ins the
     // copy loads, the scripts) are held read-only for the session like the game's files, so nothing the game runs can
@@ -1027,24 +1024,15 @@ sealed partial class PlaySession(PlayOptions options)
         job.Resume();
     }
 
-    // The memory-only launch edits on the running game: the PlayFab redirect, the native mod applier, the early
-    // constructor edit and the backend routing edit. Returns the PlayFab redirect state, which Observe records.
+    // The memory-only launch edits on the running game: the PlayFab redirect, the early constructor edit and the backend
+    // routing edit. Returns the PlayFab redirect state, which Observe records.
     HellForgeLocalRoutingPatch.PlayFabRedirect? ApplyLaunchEdits()
     {
         // Opt-in: the engine's PlayFab web API base URL is redirected (heap data only) to the backend's local PlayFab
         // stand-in; started before the slow edits so the URL is replaced right after the engine formats it, however long
         // the game takes to get there.
         var playFab = options.LocalPlayFab ? HellForgeLocalRoutingPatch.StartPlayFabRedirect(job!.Process.Id, exe, (string)result["backendOrigin"]! + "/playfab", -1) : null;
-        if (modNative)
-        {
-            var pid = job!.Process.Id;
-            applier = new Thread(() =>
-            {
-                try { NativeModApplier.Run(install, nativeFolders, pid, exe, Path.Combine(run, "native-mods.log"), Path.Combine(run, "native-mods.json")); }
-                catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException) { }
-            }) { IsBackground = true, Name = "native mods" };
-            applier.Start();
-        }
+        // Network field type edits are the in-game loader's (the plan's nettype lines, applied at HF_EVENT_NETWORK_READY).
         result["localPlayFab"] = options.LocalPlayFab;
         ApplyEarlyConstructor();
         ApplyRouting();
@@ -1150,6 +1138,17 @@ sealed partial class PlaySession(PlayOptions options)
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         WarArguments(start);
+        // --modset: joiners lacking this session's mods may download them (ModSync); --mods: co-op plays with the host's
+        // Local Stats (StatsShare).
+        foreach (var argument in new[] { "--mods", install.Mods, "--modset", ModSetFile }) start.ArgumentList.Add(argument);
+        // Experimental, the player's choice (Settings > Experimental): the game's live pipe and the session's mods, which the
+        // Mods page and mod sync can change without a restart (LiveMods; a multiplayer session's pipe comes with stats
+        // sharing). Without them the backend has no LiveMods, and every change waits for a restart.
+        var liveChanges = ModSettings.LiveChanges(install.Mods);
+        result["liveChanges"] = liveChanges;
+        if (liveChanges)
+            foreach (var argument in new[] { "--live-run", (string)result["runId"]!, "--session-mods", SessionModsFile, "--cli", Cli })
+                start.ArgumentList.Add(argument);
         if (options.Multiplayer) MultiplayerArguments(start, realSteamApi);
         // The block permits only this port, so the backend has no other: say so when another program holds it.
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))
@@ -1186,15 +1185,13 @@ sealed partial class PlaySession(PlayOptions options)
         File.Copy(realSteamApi, link);
         if (Tools.Sha256(link) != shimPins[CloudName]) throw new SessionFailure("Could not copy steam_api64.dll for the peer link.");
         var pipe = "hellforge-" + (string)result["runId"]!;
-        // --mods: co-op plays with the host's Local Stats (StatsShare): the host's backend reads it, a joiner's restores it
-        // --modset: joiners lacking this session's mods may download them (ModSync)
         // Several installations on one PC (GameProcesses.MultiInstance): the backends reach each other over loopback
         // (HELLFORGE_PEER_LINK, a udp: link) and share a folder as the lobby directory (HELLFORGE_DIRECTORY_FOLDER);
         // the backend logs the game in as that link's id (HELLFORGE_IDENTITY, which it reads itself).
         var peerLink = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_PEER_LINK") : null;
         var directoryFolder = GameProcesses.MultiInstance ? Environment.GetEnvironmentVariable("HELLFORGE_DIRECTORY_FOLDER") : null;
         if (peerLink != null && !peerLink.StartsWith("udp:", StringComparison.Ordinal)) throw new SessionFailure("HELLFORGE_PEER_LINK must be a udp: link.");
-        foreach (var argument in new[] { "--pipe", pipe, "--link", peerLink ?? "steam:" + link, "--mod-digest", modDigest, "--mods", install.Mods, "--modset", ModSetFile })
+        foreach (var argument in new[] { "--pipe", pipe, "--link", peerLink ?? "steam:" + link, "--mod-digest", modDigest })
             start.ArgumentList.Add(argument);
         if (directoryFolder != null) { start.ArgumentList.Add("--directory"); start.ArgumentList.Add(Path.GetFullPath(directoryFolder)); }
         if (peerLink != null) result["peerLink"] = peerLink;
