@@ -443,13 +443,23 @@ static int CrashHandOff(EXCEPTION_POINTERS* info, int note, int dump)
     return 1;
 }
 
+/* Whether this thread holds the loader lock: it runs a DLL's DllMain. The dump needs that lock (dbghelp loads and walks
+ * modules), so a dump asked from here waits for it until the hand-off gives up; the game then runs on while the dump is
+ * written, and the dump can crash it. */
+static int HoldsLoaderLock(void)
+{
+    RTL_CRITICAL_SECTION* lock = *(RTL_CRITICAL_SECTION**)(__readgsqword(0x60) + 0x110); /* PEB.LoaderLock */
+    return lock != NULL && (DWORD)(ULONG_PTR)lock->OwningThread == GetCurrentThreadId();
+}
+
 /* Every fault of the codes above, as it is raised (before the game's own handlers), is noted and then left to the
- * game's own handling. */
+ * game's own handling. A fault inside a DllMain is noted without its dump (a tablet driver's Wintab32.dll faults on
+ * purpose as it loads, and handles it): the session's first dump stays for a later crash. */
 static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
 {
     int kind = CrashCodeIndex(info->ExceptionRecord->ExceptionCode);
     if (kind < 0 || InterlockedIncrement(&g_crashNoted[kind]) > CRASH_NOTES_PER_CODE) return EXCEPTION_CONTINUE_SEARCH;
-    int dump = InterlockedExchange(&g_crashDumped, 1) == 0;
+    int dump = !HoldsLoaderLock() && InterlockedExchange(&g_crashDumped, 1) == 0;
     if (kCrashCodes[kind] == EXCEPTION_STACK_OVERFLOW && CrashHandOff(info, 1, dump)) return EXCEPTION_CONTINUE_SEARCH;
     CrashNoteOf(info, GetCurrentThreadId());
     if (dump && !CrashHandOff(info, 0, 1)) CrashDumpOf(info, GetCurrentThreadId());
