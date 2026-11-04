@@ -144,7 +144,7 @@ typedef struct Difficulty
     uint32_t grant;
     uint64_t icon;
     float mapScale, outpostScale, minutes;
-    uint32_t optional, major, flags;
+    uint32_t optional, major, flags, missions;
 } Difficulty;
 static Difficulty g_difficulty;
 static int g_difficultyAdded;
@@ -302,6 +302,20 @@ static int DifficultyGrant(HfMod* mod, const char* name, const HfDifficulty* def
     return 0;
 }
 
+/* An operation's missions on one map, when the mod's HfDifficulty has the field; 1 if refused (logged). */
+static int DifficultyOperation(HfMod* mod, const char* name, const HfDifficulty* def, Difficulty* d)
+{
+    d->missions = 1;
+    if (def->size < offsetof(HfDifficulty, operation_missions) + sizeof def->operation_missions) return 0;
+    if (def->operation_missions > 3)
+    {
+        ApiLog(mod, "add_difficulty(%s): operation_missions is 0 to 3 (0 or 1: one mission)", name);
+        return 1;
+    }
+    if (def->operation_missions > 1) d->missions = def->operation_missions;
+    return 0;
+}
+
 static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfDifficulty, spawner_cooldown) + sizeof def->spawner_cooldown)
@@ -330,7 +344,7 @@ static uint32_t ApiAddDifficulty(HfMod* mod, const HfDifficulty* def)
     d.cooldown = def->spawner_cooldown;
     if (def->size >= offsetof(HfDifficulty, icon) + sizeof def->icon && def->icon != NULL && def->icon[0])
         d.icon = Murmur64A(def->icon, strlen(def->icon));
-    if (DifficultyMap(mod, name, def, &d) || DifficultyMinutes(mod, name, def, &d) || DifficultyFlags(mod, name, def, &d) ||
+    if (DifficultyMap(mod, name, def, &d) || DifficultyOperation(mod, name, def, &d) || DifficultyMinutes(mod, name, def, &d) || DifficultyFlags(mod, name, def, &d) ||
         DifficultyPatrols(mod, name, def, &d) || DifficultyGrant(mod, name, def, &d))
         return 0;
     g_difficulty = d;
@@ -672,6 +686,30 @@ static const char* MakeLevelRow(DifficultyInstall* d)
         memcpy(&count, row + 0x34 + 4 * k, 4);
         count = (uint32_t)(count * g_difficulty.outpostScale + 0.5f);
         memcpy(row + 0x34 + 4 * k, &count, 4);
+    }
+    /* An operation's missions on one map: each per-mission count times the missions. Outposts come from two lists of
+     * u32[5 factions][4 sizes]: +0x34, placed with the objectives (GenerateOutpostLocations 0xF7E250 direct mode, read at
+     * 0xF7EB5A..83), and +0x84, placed later by SpreadLocations (deferred mode). The objectives' budgets +0x28/+0x2C are
+     * bounded by the objective list (DIF_OBJECTIVES_MAX places, DIF_OBJECTIVES_OTHER of them kept for the missions' own):
+     * past it they are held at its room, noted. */
+    if (g_difficulty.missions > 1)
+    {
+        uint32_t m = g_difficulty.missions, optional = 0, major = 0;
+        for (int k = 0; k < 40; k++)
+        {
+            uint32_t count;
+            memcpy(&count, row + 0x34 + 4 * k, 4);
+            count *= m;
+            memcpy(row + 0x34 + 4 * k, &count, 4);
+        }
+        memcpy(&optional, row + 0x28, 4); memcpy(&major, row + 0x2C, 4);
+        uint32_t room = DIF_OBJECTIVES_MAX - DIF_OBJECTIVES_OTHER, wantOptional = optional * m, wantMajor = major * m;
+        uint32_t newMajor = wantMajor <= room ? wantMajor : room;
+        uint32_t newOptional = wantOptional <= room - newMajor ? wantOptional : room - newMajor;
+        memcpy(row + 0x28, &newOptional, 4); memcpy(row + 0x2C, &newMajor, 4);
+        Note("difficulty: an operation's %u missions on one map: outposts x%u (both lists), optional objectives %u -> %u, major %u -> %u%s", m, m,
+            optional, newOptional, major, newMajor,
+            newOptional + newMajor < wantOptional + wantMajor ? " (held at the objective list's room)" : "");
     }
     /* The radii are fractions of half the world (the generator multiplies them by [settings+0x2C] / 2: e.g. the outer
      * subregion ring of GenerateSubregionSpecial, 0xF66156, and some 70 more readers): on an extra large world, whose

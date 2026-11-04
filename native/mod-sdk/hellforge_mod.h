@@ -330,6 +330,10 @@ typedef struct HfDifficulty
     uint32_t mission_stratagem;  /* a stratagem type every mission at the level grants every player, in the mission group
                                     with Reinforce and Resupply (no loadout slot; the type's own uses and cooldown), e.g.
                                     105, the M-102 Fast Recon Vehicle; 0 none */
+    uint32_t operation_missions; /* an operation's missions on one map: 2 or 3 multiply the level's per-mission content
+                                    (outposts of both kinds, optional and major objectives, points of interest) and mix
+                                    in more partner missions' main objectives (with HF_DIFFICULTY_SECOND_PRIMARY, one
+                                    partner per extra mission); 0 or 1 is one mission. Meant for extra large maps */
 } HfDifficulty;
 /* Every mission at the level is two missions in one: its own plus a partner mission of the same faction that the game
  * offers alongside it, with the partner's main objectives and their steps as the game selects them (chosen with the

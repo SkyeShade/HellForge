@@ -311,6 +311,7 @@ static LONG g_worldIndexFullSeen;
  * level's locations (G+0x11A7108) and important ones (G+0x11A715C) before and after, and its time. */
 typedef uint64_t (*WorldPassFn)(uint64_t, uint64_t, uint64_t, uint64_t);
 static uintptr_t g_worldLevel;
+static uint32_t g_importantList = 0x8996B0u; /* G + this: the important locations (difficulty_block.c moves them) */
 static void WorldPassNote(const char* name, uint32_t before[2], uint64_t start)
 {
     uintptr_t block = 0;
@@ -346,7 +347,73 @@ WORLD_PASS(Spread, 0xF7C310u, "SpreadLocations")
 WORLD_PASS(Satellite, 0xF86DC0u, "AddSatelliteLocations")
 WORLD_PASS(Scatter, 0xF40F80u, "InitializeScatter")
 WORLD_PASS(Edge, 0xF82710u, "SpreadEdgeOfMapLocations")
-WORLD_PASS(Exploration, 0xF95900u, "GenerateExplorationLocations")
+WORLD_PASS(ExplorationTimed, 0xF95900u, "GenerateExplorationLocations")
+/* Points of interest for an operation's missions on one map (operation_missions): GenerateExplorationLocations (op 0xA0,
+ * 0xF95900; mandatory and optional runs) takes its counts from the region's settings R = [[[ctx+0x18]+0x2D0]+0x68]: the
+ * quota list R+0x70 (0x14 each, count R+0x78; min +4, max +8; the slot builder 0xF95310 adds min slots per entry in the
+ * mandatory run and rand % (max - min + 1) in the optional run, its buffer sized from the maxima) and the category caps
+ * R+0x80 ({id, max} 8 bytes, count R+0x88, copied per run at 0xF95B70). Both are multiplied for the pass and put back
+ * after it (they are shared region data). The per-item limit item+0x15C stays. */
+#define EXPLORATION_SAVE 256
+/* Whether [at, at + bytes) is committed, writable heap data (the region's settings are written in place). */
+static int WorldDataWritable(uint64_t at, size_t bytes)
+{
+    uintptr_t p = (uintptr_t)at, end = p + bytes;
+    while (p < end)
+    {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery((void*)p, &mbi, sizeof mbi) != sizeof mbi || mbi.State != MEM_COMMIT || (mbi.Protect & PAGE_GUARD) != 0) return 0;
+        DWORD protect = mbi.Protect & 0xFF;
+        if (protect != PAGE_READWRITE && protect != PAGE_EXECUTE_READWRITE) return 0;
+        uintptr_t next = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+        if (next <= p) return 0;
+        p = next;
+    }
+    return 1;
+}
+static SRWLOCK g_explorationLock = SRWLOCK_INIT; /* every run of the pass, one at a time: previews generate on other threads */
+static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_t e)
+{
+    AcquireSRWLockExclusive(&g_explorationLock);
+    uint64_t lg = 0, T = 0, R = 0, quotas = 0, caps = 0;
+    uint32_t nq = 0, nc = 0, m = g_difficulty.missions;
+    uint8_t level = 0;
+    static uint32_t saveQ[EXPLORATION_SAVE][2], saveC[EXPLORATION_SAVE];
+    int scaled = 0;
+    if (m > 1 && g_world.current > 1.0f && !SafeRead(c + 0x18, &lg, 8) && lg != 0 && !SafeRead(lg + 0xF9, &level, 1) && level == DIF_VANILLA + 1 &&
+        !SafeRead(lg + 0x2D0, &T, 8) && T != 0 && !SafeRead(T + 0x68, &R, 8) && R != 0 && !SafeRead(R + 0x70, &quotas, 8) && !SafeRead(R + 0x78, &nq, 4) &&
+        !SafeRead(R + 0x80, &caps, 8) && !SafeRead(R + 0x88, &nc, 4) && nq <= EXPLORATION_SAVE && nc <= EXPLORATION_SAVE && (nq == 0 || quotas != 0) &&
+        (nc == 0 || caps != 0))
+    {
+        scaled = (nq == 0 || WorldDataWritable(quotas, 0x14ull * nq)) && (nc == 0 || WorldDataWritable(caps, 8ull * nc));
+        for (uint32_t i = 0; i < nq && scaled; i++)
+            if (SafeRead(quotas + 0x14ull * i + 4, saveQ[i], 8)) scaled = 0;
+        for (uint32_t i = 0; i < nc && scaled; i++)
+            if (SafeRead(caps + 8ull * i + 4, &saveC[i], 4)) scaled = 0;
+        for (uint32_t i = 0; i < nq && scaled; i++)
+        {
+            uint32_t v[2] = {saveQ[i][0] * m, saveQ[i][1] * m};
+            memcpy((void*)(uintptr_t)(quotas + 0x14ull * i + 4), v, 8);
+        }
+        for (uint32_t i = 0; i < nc && scaled; i++)
+        {
+            uint32_t v = saveC[i] * m;
+            memcpy((void*)(uintptr_t)(caps + 8ull * i + 4), &v, 4);
+        }
+        static LONG noted;
+        if (InterlockedExchange(&noted, 1) == 0)
+            Note("difficulty: an operation's %u missions on one map: points of interest x%u (%u quota entries, %u category caps)%s", m, m, nq, nc,
+                scaled ? "" : "; the region's settings could not be written, so its counts stay");
+    }
+    uint64_t r = WorldPassExplorationTimed(a, b, c, e);
+    if (scaled)
+    {
+        for (uint32_t i = 0; i < nq; i++) memcpy((void*)(uintptr_t)(quotas + 0x14ull * i + 4), saveQ[i], 8);
+        for (uint32_t i = 0; i < nc; i++) memcpy((void*)(uintptr_t)(caps + 8ull * i + 4), &saveC[i], 4);
+    }
+    ReleaseSRWLockExclusive(&g_explorationLock);
+    return r;
+}
 WORLD_PASS(Voronoi, 0xF3F8E0u, "GenerateVoronoi")
 /* The step dispatcher (0xC14950: rcx the pass records, 0x19B0 each, op at +0; r8 the current index; two stack arguments):
  * every op of an extra large level that adds locations or takes over 100 ms. */
@@ -1757,7 +1824,7 @@ static const struct { uint32_t rva; void* detour; WorldPassFn* original; } kWorl
     {0xF84380u, (void*)WorldPassSmall, &g_passSmall}, {0xF77F30u, (void*)WorldPassBorder, &g_passBorder},
     {0xF82A80u, (void*)WorldPassCrossing, &g_passCrossing}, {0xF7C310u, (void*)WorldPassSpread, &g_passSpread},
     {0xF86DC0u, (void*)WorldPassSatellite, &g_passSatellite}, {0xF40F80u, (void*)WorldPassScatter, &g_passScatter},
-    {0xF82710u, (void*)WorldPassEdge, &g_passEdge}, {0xF95900u, (void*)WorldPassExploration, &g_passExploration},
+    {0xF82710u, (void*)WorldPassEdge, &g_passEdge}, {0xF95900u, (void*)WorldPassExploration, &g_passExplorationTimed},
     {0xF3F8E0u, (void*)WorldPassVoronoi, &g_passVoronoi}};
 
 /* Streaming research: who spawns units into which world. Three engine spawners (rcx the world each): exe 0x338840 and
@@ -2096,6 +2163,146 @@ static const char* InstallConvoyGuard(uintptr_t game)
     return NULL;
 }
 
+/* The mission's per-name lists: at mission load 0xACF710 hands every level unit to 0xAD2010, which compares its name
+ * and appends it to a list in the HiveMind manager (world+0x1FA08; a few in other managers), each with its count right
+ * after its last entry and no check (only the director's spawners are guarded, difficulty_missions.c). Three missions'
+ * content spawned with the level overran the mine list (run s73d, game+0xAD36C0) and can overrun the others (static
+ * survey, scratch ml/ml.md: 2026-11-04). Each append starts with a 6-byte "mov eax, [reg + count]" (only eax written, no
+ * flags read before the next flag write): it jumps to a stub that copies it, compares the count with the list's places
+ * and, when full, counts the unit and continues where the walk goes after the append (0xAD3DBD; the invasion sites
+ * 0xAD390B and the alarms 0xAD394C as the vanilla code does; the guard points still make the call 0xAD3670 does after
+ * theirs). The readers either take any count or rely on these capacities (the cache loot, shell and collect-resource
+ * lists' 256/320/128-entry stack copies), so a full list is what keeps them safe. */
+typedef struct { const char* name; uint32_t pin, places, skip; uint8_t bytes[6]; } MissionList;
+static const MissionList kMissionLists[] = {
+    {"exploration reward", 0xAD272Au, 64, 0xAD3DBDu, {0x8B, 0x83, 0xD0, 0xD8, 0x07, 0x00}},
+    {"cache loot marker", 0xAD279Bu, 256, 0xAD3DBDu, {0x8B, 0x83, 0xCC, 0xC4, 0x07, 0x00}},
+    {"sample", 0xAD2B96u, 4096, 0xAD3DBDu, {0x8B, 0x83, 0x48, 0xD7, 0x05, 0x00}},
+    {"intel", 0xAD2C7Au, 128, 0xAD3DBDu, {0x8B, 0x83, 0x50, 0x03, 0x06, 0x00}},
+    {"pickup", 0xAD2DACu, 512, 0xAD3DBDu, {0x8B, 0x83, 0x58, 0xA3, 0x06, 0x00}},
+    {"weapon spawn", 0xAD30D4u, 196, 0xAD3DBDu, {0x8B, 0x83, 0xC0, 0x66, 0x07, 0x00}},
+    {"weapon spawn (flag)", 0xAD3085u, 64, 0xAD3DBDu, {0x8B, 0x83, 0xC8, 0x7C, 0x07, 0x00}},
+    {"hellpod spawn (flag)", 0xAD3319u, 32, 0xAD3DBDu, {0x8B, 0x83, 0x40, 0x27, 0x08, 0x00}},
+    {"hellpod spawn", 0xAD3352u, 196, 0xAD3DBDu, {0x8B, 0x83, 0x38, 0x1C, 0x08, 0x00}},
+    {"vehicle spawn (flag)", 0xAD34DCu, 4, 0xAD3DBDu, {0x8B, 0x83, 0x90, 0x2D, 0x08, 0x00}},
+    {"vehicle spawn", 0xAD351Cu, 16, 0xAD3DBDu, {0x8B, 0x83, 0x48, 0x2C, 0x08, 0x00}},
+    {"enemy guard point", 0xAD364Cu, 128, 0, {0x8B, 0x86, 0x00, 0x06, 0x00, 0x00}}, /* skip: the call after it */
+    {"mine", 0xAD36A3u, 512, 0xAD3DBDu, {0x8B, 0x83, 0x5C, 0x23, 0x07, 0x00}},
+    {"invasion site", 0xAD3888u, 64, 0xAD390Bu, {0x8B, 0x83, 0xA0, 0x6F, 0x08, 0x00}},
+    {"alarm effect", 0xAD3929u, 128, 0xAD394Cu, {0x8B, 0x83, 0xA8, 0x77, 0x08, 0x00}},
+    {"outpost patrol spawner", 0xAD3981u, 64, 0xAD3DBDu, {0x8B, 0x83, 0x30, 0x07, 0x00, 0x00}},
+    {"enemy encounter", 0xAD39BCu, 128, 0xAD3DBDu, {0x8B, 0x83, 0xAC, 0x97, 0x08, 0x00}},
+    {"tutorial dropship (flag)", 0xAD3AD1u, 16, 0xAD3DBDu, {0x8B, 0x81, 0x70, 0x02, 0x00, 0x00}},
+    {"tutorial dropship", 0xAD3AF8u, 8, 0xAD3DBDu, {0x8B, 0x81, 0x4C, 0x01, 0x00, 0x00}},
+    {"objective shell", 0xAD3B5Fu, 128, 0xAD3DBDu, {0x8B, 0x83, 0x38, 0x2F, 0x00, 0x00}},
+    {"objective collect resource", 0xAD3C01u, 128, 0xAD3DBDu, {0x8B, 0x83, 0x40, 0x57, 0x00, 0x00}},
+};
+#define MISSION_LISTS (sizeof kMissionLists / sizeof kMissionLists[0])
+#define MISSION_LIST_STUB 0x40u
+static volatile LONG* g_missionListFull; /* per list: units left out */
+static const char* InstallMissionListGuards(uintptr_t game)
+{
+    for (size_t i = 0; i < MISSION_LISTS; i++)
+    {
+        uint8_t pin[6];
+        if (SafeRead(game + kMissionLists[i].pin, pin, 6) || memcmp(pin, kMissionLists[i].bytes, 6) != 0)
+            return "the mission's per-name lists are not the reviewed ones; they stay unchecked";
+    }
+    if (!ApiCodeMatches(game + 0xAD3652u, "49 8B CD") || !ApiCodeMatches(game + 0xAD3670u, "48 8B 50 50 FF 52 10 E9"))
+        return "the mission's guard point list is not the reviewed one; the lists stay unchecked";
+    uint8_t* block = AllocateNearGame(game, MISSION_LISTS * MISSION_LIST_STUB + 0x100);
+    if (block == NULL) return "no memory within 2 GB of game.dll for the mission lists' guards";
+    g_missionListFull = (volatile LONG*)(block + MISSION_LISTS * MISSION_LIST_STUB);
+    for (size_t i = 0; i < MISSION_LISTS; i++)
+    {
+        const MissionList* l = &kMissionLists[i];
+        uint8_t* s = block + i * MISSION_LIST_STUB;
+        int n = 0;
+        int32_t rel;
+        memcpy(s, l->bytes, 6); n = 6;                                        /* mov eax, [reg + count] */
+        s[n++] = 0x3D; memcpy(s + n, &l->places, 4); n += 4;                  /* cmp eax, places */
+        s[n++] = 0x73; s[n++] = 0x05;                                         /* jae full */
+        s[n++] = 0xE9; rel = (int32_t)(game + l->pin + 6 - (uintptr_t)(s + n + 4)); memcpy(s + n, &rel, 4); n += 4; /* jmp back */
+        s[n++] = 0xF0; s[n++] = 0xFF; s[n++] = 0x05;                          /* full: lock inc [counter i] */
+        rel = (int32_t)((uint8_t*)(g_missionListFull + i) - (s + n + 4)); memcpy(s + n, &rel, 4); n += 4;
+        if (l->skip != 0)
+        {
+            s[n++] = 0xE9; rel = (int32_t)(game + l->skip - (uintptr_t)(s + n + 4)); memcpy(s + n, &rel, 4); n += 4; /* jmp skip */
+        }
+        else
+        {
+            s[n++] = 0x49; s[n++] = 0x8B; s[n++] = 0xCD;                      /* mov rcx, r13 (as the game encodes it) */
+            s[n++] = 0x48; s[n++] = 0x8B; s[n++] = 0x05;                      /* mov rax, [game+0x3326308] */
+            rel = (int32_t)(game + 0x3326308u - (uintptr_t)(s + n + 4)); memcpy(s + n, &rel, 4); n += 4;
+            s[n++] = 0xE9; rel = (int32_t)(game + 0xAD3670u - (uintptr_t)(s + n + 4)); memcpy(s + n, &rel, 4); n += 4; /* the call, then on */
+        }
+    }
+    DWORD protect;
+    VirtualProtect(block, MISSION_LISTS * MISSION_LIST_STUB + 0x100, PAGE_EXECUTE_READWRITE, &protect); /* the counters are written */
+    FlushInstructionCache(GetCurrentProcess(), block, MISSION_LISTS * MISSION_LIST_STUB);
+    for (size_t i = 0; i < MISSION_LISTS; i++)
+    {
+        uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
+        int32_t rel = DifficultyJumpRel(game + kMissionLists[i].pin, (uintptr_t)(block + i * MISSION_LIST_STUB)); memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + kMissionLists[i].pin, jump, 6)) return "a mission list's guard could not be written";
+    }
+    return NULL;
+}
+
+/* GuardForce's patrol spawners: the builder (0x94A270, from mission load 0xAD1FD5 -> 0x94DC20) walks the outpost patrol
+ * spawners (HiveMind manager +0x730 count, entries from +0x338), finds each one's location (its stamp unit, through the
+ * linked locations), looks for the GuardForce record (0x300 each) whose key is that unit, and appends the spawner's id to
+ * the record's one place at +0x2D4 (count +0x2D8 right after) without checking either: a spawner whose location has no
+ * record gives index -1 and a read 0x300 x 0xFFFFFFFF past the records (run s73f, game+0x94B32B; three missions'
+ * outposts), a second spawner in one record would overwrite its count. Both are left out here (counted at stub +0x40):
+ * 0x94B317..0x94B32B rebuilt in the stub with the two checks, the skip continues at the loop's test 0x94B33E. */
+static const uint8_t kGarrisonPin[20] = {0x8B, 0xC2, 0xFF, 0xC3, 0x48, 0x8D, 0x14, 0x40, 0x43, 0x8B, 0x44, 0xD5, 0x00, 0x48, 0xC1, 0xE2, 0x08, 0x48, 0x03, 0xD7};
+static const uint8_t kGarrisonStub[53] = {
+    0x83, 0xFA, 0xFF,                                                 /*  0 cmp edx, -1 (no record) */
+    0x74, 0x22,                                                       /*  3 je 39 */
+    0x8B, 0xC2,                                                       /*  5 mov eax, edx */
+    0x48, 0x8D, 0x14, 0x40,                                           /*  7 lea rdx, [rax+rax*2] */
+    0x48, 0xC1, 0xE2, 0x08,                                           /* 11 shl rdx, 8 */
+    0x48, 0x03, 0xD7,                                                 /* 15 add rdx, rdi (the record) */
+    0x83, 0xBA, 0xD8, 0x02, 0x00, 0x00, 0x01,                         /* 18 cmp dword [rdx+0x2d8], 1 (its one place taken) */
+    0x73, 0x0C,                                                       /* 25 jae 39 */
+    0xFF, 0xC3,                                                       /* 27 inc ebx */
+    0x43, 0x8B, 0x44, 0xD5, 0x00,                                     /* 29 mov eax, [r13+r10*8] (the spawner's id) */
+    0xE9, 0, 0, 0, 0,                                                 /* 34 jmp 0x94B32B (the append; rel32 at 35) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 39 lock inc dword [rip -> stub+0x40] (rel32 at 42) */
+    0xFF, 0xC3,                                                       /* 46 inc ebx */
+    0xE9, 0, 0, 0, 0};                                                /* 48 jmp 0x94B33E (the loop's test; rel32 at 49) */
+static volatile LONG* g_garrisonSkipped;
+static const char* InstallGarrisonGuard(uintptr_t game)
+{
+    uint8_t pin[20];
+    if (SafeRead(game + 0x94B317u, pin, 20) || memcmp(pin, kGarrisonPin, 20) != 0 || !ApiCodeMatches(game + 0x94B32Bu, "8B 8A D8 02 00 00") ||
+        !ApiCodeMatches(game + 0x94B33Eu, "41 3B 9D 30 07 00 00 0F 82"))
+        return "GuardForce's patrol spawner lookup is not the reviewed one; it stays unchecked";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for GuardForce's patrol spawner guard";
+    memcpy(stub, kGarrisonStub, sizeof kGarrisonStub);
+    g_garrisonSkipped = (volatile LONG*)(stub + 0x40);
+    int32_t rel = (int32_t)(game + 0x94B32Bu - (uintptr_t)(stub + 39)); memcpy(stub + 35, &rel, 4);
+    rel = (int32_t)((stub + 0x40) - (stub + 46)); memcpy(stub + 42, &rel, 4);
+    rel = (int32_t)(game + 0x94B33Eu - (uintptr_t)(stub + 53)); memcpy(stub + 49, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + 0x94B317u, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0x94B317u, jump, 8)) return "GuardForce's patrol spawner guard could not be written";
+    return NULL;
+}
+
+/* The lists that left units out so far, as "name n" pairs (empty when none). */
+static void MissionListsFull(char* out, size_t size)
+{
+    size_t n = 0; out[0] = 0;
+    for (size_t i = 0; g_missionListFull != NULL && i < MISSION_LISTS && n + 48 < size; i++)
+        if (g_missionListFull[i] > 0) n += (size_t)snprintf(out + n, size - n, " %s %ld;", kMissionLists[i].name, (long)g_missionListFull[i]);
+}
+
 /* An extra large map's world: the block (stub +0, values +0x1000), the readers pointed at it, the size store through
  * the stub. */
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
@@ -2223,6 +2430,10 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (poisson != NULL) Note("difficulty: extra large maps: the tiled Poisson-disk sampler is not used: %s", poisson);
     const char* convoy = InstallConvoyGuard(game);
     if (convoy != NULL) Note("difficulty: extra large maps: %s", convoy);
+    const char* lists = InstallMissionListGuards(game);
+    if (lists != NULL) Note("difficulty: extra large maps: %s", lists);
+    const char* garrison = InstallGarrisonGuard(game);
+    if (garrison != NULL) Note("difficulty: extra large maps: %s", garrison);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);

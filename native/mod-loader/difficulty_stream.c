@@ -415,7 +415,7 @@ static uint32_t WorldStreamMissionLocked(const uint8_t* array, uint32_t count)
     for (uint32_t l = 0; l < locations; l++)
     {
         uint64_t P = 0;
-        if (SafeRead(block + 0x8996B0u + 0x108ull * l + 0x98, &P, 8) || P == 0) continue;
+        if (SafeRead(block + g_importantList + 0x108ull * l + 0x98, &P, 8) || P == 0) continue;
         if (P < first || P >= end || (P - first) % kStreamRecord != 0) { outside++; continue; }
         uint32_t i = (uint32_t)((P - first) / kStreamRecord);
         if (!g_streamMission[i]) { g_streamMission[i] = 1; marked++; }
@@ -870,8 +870,9 @@ static void WorldStreamObjectivesNote(void)
         Note("difficulty: extra large maps: objectives: the objective manager does not read");
         return;
     }
-    char list[512]; int n = 0;
+    char list[512], full[512]; int n = 0;
     uint32_t waited = 0, open = 0;
+    MissionListsFull(full, sizeof full);
     for (uint32_t i = 0; i < count && i < 64 && data != 0; i++)
     {
         uint32_t state = 0, cls = 0;
@@ -879,8 +880,8 @@ static void WorldStreamObjectivesNote(void)
         if (!(cls >= 2 && cls <= 4)) { waited++; if (state != 2 && state != 3) open++; }
         if (n < (int)sizeof list - 16) n += snprintf(list + n, sizeof list - n, " %u/%u", cls, state);
     }
-    Note("difficulty: extra large maps: objectives: %u instance(s), %u waited for (%u not done); class/state:%s; physics stream swaps under the world's lock so far: %lld; convoy escort spawns stopped at 8 so far: %ld",
-        count, waited, open, n ? list : " none", (long long)g_sceneSwapsLocked, g_convoyFull != NULL ? (long)*g_convoyFull : -1L);
+    Note("difficulty: extra large maps: objectives: %u instance(s), %u waited for (%u not done); class/state:%s; physics stream swaps under the world's lock so far: %lld; convoy escort spawns stopped at 8 so far: %ld; units past their mission list:%s; patrol spawners without a garrison place: %ld",
+        count, waited, open, n ? list : " none", (long long)g_sceneSwapsLocked, g_convoyFull != NULL ? (long)*g_convoyFull : -1L, full[0] ? full : " none", g_garrisonSkipped != NULL ? (long)*g_garrisonSkipped : -1L);
 }
 
 /* Every 10 s while streaming: what is spawned now, what is due, removals and respawns so far, the players and time,

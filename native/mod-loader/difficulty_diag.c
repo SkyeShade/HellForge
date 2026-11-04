@@ -611,8 +611,8 @@ static void NoteMissionMap(void)
     uint32_t objects[2] = {0};
     if (!SafeRead(world + 0x10E8, &render, 8) && render && !SafeRead(render + 0x2301F8, &store, 8) && store && !SafeRead(store + 0x38, objects, 8))
         Note("difficulty: the mission's render objects: %u in use of %u", objects[0], objects[1]);
-    Note("difficulty: the mission's map (type %u): important locations %u of 256 (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
-        type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
+    Note("difficulty: the mission's map (type %u): important locations %u of %u (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
+        type, counts[0], g_importantList == 0x8996B0u ? 256u : 1024u, counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
 }
 
 static int WatchLaunch(void)

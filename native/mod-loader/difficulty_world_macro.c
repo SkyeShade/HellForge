@@ -193,7 +193,7 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     for (uint32_t l = 0; l < locs; l++)
     {
         locAbs[l] = 0; locXY[l][0] = locXY[l][1] = -1.0f;
-        if (SafeRead(gen + 0x8996B0u + 0x108ull * l + 0xA4, locXY[l], 8) || !isfinite(locXY[l][0]) || !isfinite(locXY[l][1])) { locXY[l][0] = -1.0f; continue; }
+        if (SafeRead(gen + g_importantList + 0x108ull * l + 0xA4, locXY[l], 8) || !isfinite(locXY[l][0]) || !isfinite(locXY[l][1])) { locXY[l][0] = -1.0f; continue; }
         int32_t c = MacroNearestCorner(gen, corners, locXY[l][0], locXY[l][1]), t = -1;
         float pad = 3.4e38f;
         if (c >= 0 && (uint32_t)c < typeCount && !SafeRead(gen + 0x21AE88u + 4ull * (uint32_t)c, &t, 4))

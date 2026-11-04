@@ -584,15 +584,15 @@ static void MixLog(uint32_t base, uint32_t partner, uint32_t layout, const uint3
 }
 
 /* Called at the end of objective selection at the added level. The nested call (marked) only reports its layout. */
-static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32_t* classes, uint32_t layout, uint32_t* mixedWith);
+static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32_t* classes, uint32_t layout, uint32_t* mixedWith, uint32_t* mixed);
 static uint32_t MixMission(uint8_t* inputs, uint32_t count, uint32_t* ids, int32_t* classes, uint32_t layout)
 {
     if (inputs[0x14] == DIF_MIX_MARK) { inputs[0x15] = (uint8_t)layout; inputs[0x16] = 1; return count; }
-    uint32_t partner = UINT32_MAX, base;
+    uint32_t partners[DIF_MIX_PARTNERS], mixed = 0, base;
     memcpy(&base, inputs + 8, 4);
-    count = MixPartner(inputs, count, ids, classes, layout, &partner);
+    count = MixPartner(inputs, count, ids, classes, layout, partners, &mixed);
     count = RadarKeep(inputs, count, ids, classes, layout);
-    if (partner != UINT32_MAX) MixLog(base, partner, layout, ids, classes, count);
+    for (uint32_t p = 0; p < mixed; p++) MixLog(base, partners[p], layout, ids, classes, count);
     return count;
 }
 
@@ -706,7 +706,9 @@ static uint32_t MixWithPartner(MixCall* call, uint32_t partner)
     return MIX_NEXT_PARTNER;
 }
 
-static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32_t* classes, uint32_t layout, uint32_t* mixedWith)
+/* One partner per extra mission: two missions in one mixes one, an operation's missions on one map (operation_missions)
+ * one per mission past the first, each a different partner (mixedWith, *mixed). */
+static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32_t* classes, uint32_t layout, uint32_t* mixedWith, uint32_t* mixed)
 {
     uintptr_t game = g_difficultyGame;
     uint32_t in[4];
@@ -720,14 +722,15 @@ static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32
     for (uint32_t p = 0; p < g_mixPartnerCount[base]; p++)
         if (RowHasLayout(game + DIF_MISSIONS + g_mixPartners[base][p] * DIF_MISSION_ROW, layout)) candidates[n++] = g_mixPartners[base][p];
     if (n == 0) { InterlockedIncrement(&g_secondPrimaryMisses); return count; }
+    uint32_t wanted = g_difficulty.missions > 1 ? g_difficulty.missions - 1 : 1;
     uint32_t start = (uint32_t)(MixHash(in[0], base, in[3]) >> 32) % n;
-    for (uint32_t t = 0; t < n; t++)
+    for (uint32_t t = 0; t < n && *mixed < wanted; t++)
     {
         uint32_t partner = candidates[(start + t) % n];
         uint32_t result = MixWithPartner(&call, partner);
-        if (result != MIX_NEXT_PARTNER) { *mixedWith = partner; return result; }
+        if (result != MIX_NEXT_PARTNER) mixedWith[(*mixed)++] = partner;
     }
-    InterlockedIncrement(&g_secondPrimaryMisses);
+    if (*mixed < wanted) InterlockedIncrement(&g_secondPrimaryMisses);
     return call.count;
 }
 

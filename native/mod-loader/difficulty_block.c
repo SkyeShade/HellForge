@@ -61,7 +61,27 @@
  * their capacities), and the pass makes at least one cluster per 24 locations of a kind (kClusterCountSites). */
 #define DIF_CLUSTERS 32u
 #define DIF_CLUSTERS_NEW (DIF_PLACE_SET_NEW + DIF_PLACE_SET * 0x10u)
-#define DIF_BLOCK_NEW (DIF_CLUSTERS_NEW + DIF_CLUSTERS * 0xE0u)
+/* The important locations (G+0x8996B0: 256 x 0x108, count G+0x11A715C; objectives, extraction, outposts, points of
+ * interest, satellites, crossings) are appended by every location pass without a check (their pass records' 0x100 is
+ * never read), and the game reads them all mission long (objective, extraction, marker and garrison links through
+ * +0x98). A level 11 mission on an extra large map made 99; three missions' content passes 256. They move after the
+ * clusters with DIF_IMPORTANT places: the 124 instructions whose displacement falls in the list (important_sites.h,
+ * generated from the dump: generator, builders and the mission-time readers), field offsets kept. SpreadLocations_Cities'
+ * flags hold 1024 already (difficulty_cities.c). The loader's own readers use g_importantList. */
+#include "important_sites.h"
+#define DIF_IMPORTANT 1024u
+#define DIF_IMPORTANT_OLD 0x8996B0u
+#define DIF_IMPORTANT_NEW (DIF_CLUSTERS_NEW + DIF_CLUSTERS * 0xE0u)
+_Static_assert(DIF_IMPORTANT_NEW % 16u == 0, "the important locations' new place is aligned");
+/* The linked locations (G+0x8AB6C0: 64 x 0x18, +8 a location, +0x10 its satellite; count G+0x11A716C), appended by
+ * AddSatelliteLocations (0xF86DC0, its write 0xF88416) without a check: three missions' satellites pass 64, and past the
+ * list (and the old places, now unused) lies the planet's generation settings G+0x8ABD40. They move after the important
+ * locations with DIF_LINKED places (7 instructions, kLinkedRefs; the objective init reads them through an add at
+ * 0x5D120F). */
+#define DIF_LINKED 1024u
+#define DIF_LINKED_OLD 0x8AB6C0u
+#define DIF_LINKED_NEW (DIF_IMPORTANT_NEW + DIF_IMPORTANT * 0x108u)
+#define DIF_BLOCK_NEW (DIF_LINKED_NEW + DIF_LINKED * 0x18u)
 static const LocationSite kPlaceListRefs[29] = {
     {0xC1AF77u, 0, 0x8ABCC0u}, {0xC1B60Fu, 0, 0x8ABCC0u}, {0xC1B887u, 0, 0x8ABCC0u}, {0xC1BB62u, 0, 0x8ABCC0u},
     {0xC1C201u, 0, 0x8ABCC0u}, {0xC1C49Eu, 0, 0x8ABCC0u}, {0xC1CA53u, 0, 0x8ABCC0u}, {0xC1CCF1u, 0, 0x8ABCC0u},
@@ -338,6 +358,43 @@ static const char* RaiseClusterCounts(uintptr_t game)
     return NULL;
 }
 
+/* The important locations' references (DIF_IMPORTANT places from now on), each checked against the dump's value first. */
+static const char* MoveImportantLocations(uintptr_t game)
+{
+    for (size_t i = 0; i < sizeof kImportantRefs / sizeof kImportantRefs[0]; i++)
+    {
+        uint32_t value = 0;
+        if (SafeRead(game + kImportantRefs[i].rva + kImportantRefs[i].at, &value, 4) || value != kImportantRefs[i].value)
+            return "an important location reference is not the reviewed one (larger operations need them moved)";
+    }
+    for (size_t i = 0; i < sizeof kImportantRefs / sizeof kImportantRefs[0]; i++)
+    {
+        uint32_t moved = DIF_IMPORTANT_NEW + (kImportantRefs[i].value - DIF_IMPORTANT_OLD);
+        if (ApiWrite(game + kImportantRefs[i].rva + kImportantRefs[i].at, &moved, 4)) return "an important location reference could not be moved";
+    }
+    g_importantList = DIF_IMPORTANT_NEW;
+    Note("difficulty: the important locations have %u places (%zu instructions)", DIF_IMPORTANT, sizeof kImportantRefs / sizeof kImportantRefs[0]);
+    return NULL;
+}
+
+/* The linked locations' references (DIF_LINKED places from now on), checked first. */
+static const char* MoveLinkedLocations(uintptr_t game)
+{
+    for (size_t i = 0; i < sizeof kLinkedRefs / sizeof kLinkedRefs[0]; i++)
+    {
+        uint32_t value = 0;
+        if (SafeRead(game + kLinkedRefs[i].rva + kLinkedRefs[i].at, &value, 4) || value != kLinkedRefs[i].value)
+            return "a linked location reference is not the reviewed one (larger operations need them moved)";
+    }
+    for (size_t i = 0; i < sizeof kLinkedRefs / sizeof kLinkedRefs[0]; i++)
+    {
+        uint32_t moved = DIF_LINKED_NEW + (kLinkedRefs[i].value - DIF_LINKED_OLD);
+        if (ApiWrite(game + kLinkedRefs[i].rva + kLinkedRefs[i].at, &moved, 4)) return "a linked location reference could not be moved";
+    }
+    Note("difficulty: the linked (satellite) locations have %u places (%zu instructions)", DIF_LINKED, sizeof kLinkedRefs / sizeof kLinkedRefs[0]);
+    return NULL;
+}
+
 /* The generation block a level generator has now, or 0. */
 static uintptr_t GenerationBlock(uintptr_t game)
 {
@@ -358,7 +415,8 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
         Note("difficulty: a generation block exists already (0x%llx): the locations keep 2740 places and the mission stamps 128; larger maps and more objectives may overrun them", (unsigned long long)block);
         return NULL;
     }
-    static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts};
+    static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts,
+        MoveImportantLocations, MoveLinkedLocations};
     for (size_t i = 0; i < sizeof moves / sizeof moves[0]; i++)
     {
         const char* why = moves[i](d->game);
