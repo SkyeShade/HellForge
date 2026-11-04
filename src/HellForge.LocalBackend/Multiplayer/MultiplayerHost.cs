@@ -111,14 +111,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type is "mods.msg" or "mods.share" or "mods.sharesnap") Channel?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("pickup.", StringComparison.Ordinal)) Pickups?.FromPeer(peer, frame);
-                else if (frame.Type == "war.clock" && warClock != null && Lobby.HostsJoinedLobby(peer) && long.TryParse(frame.Text(0), out var seconds))
-                {
-                    // Any host, a stranger's too, only within a war's possible time: from its start to MaxWarSeconds.
-                    if (seconds is < 0 or > MaxWarSeconds) { Log($"Ignored the host's war time ({seconds} s): out of range."); return; }
-                    warClock.Set(seconds);
-                    Log($"War time set to the host's ({seconds} s).");
-                }
+                else if (frame.Type == "war.clock") FromPeerWarClock(peer, frame);
             };
+    }
+
+    // The host's war time, from the host of the lobby this machine joined: any host, a stranger's too, only within a war's
+    // possible time (from its start to MaxWarSeconds).
+    void FromPeerWarClock(ulong peer, Frame frame)
+    {
+        if (warClock == null || !Lobby.HostsJoinedLobby(peer) || !long.TryParse(frame.Text(0), out var seconds)) return;
+        if (seconds is < 0 or > MaxWarSeconds) { Log($"Ignored the host's war time ({seconds} s): out of range."); return; }
+        warClock.Set(seconds);
+        Log($"War time set to the host's ({seconds} s).");
     }
 
     public static MultiplayerHost Start(MultiplayerSettings settings)

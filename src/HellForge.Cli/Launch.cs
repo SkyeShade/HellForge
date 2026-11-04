@@ -503,6 +503,23 @@ static class Launch
         _ => throw new ArgumentException("--strangers takes yes, no or default.")
     };
 
+    // The settings' yes/no options, each saved when given; Bare is what the option alone (no value) means.
+    static readonly (string Option, bool Bare, Action<ISessionPaths, bool> Save)[] Switches =
+    [
+        ("--local-playfab", true, ProfileStore.SaveLocalPlayFab),
+        ("--multiplayer", true, ProfileStore.SaveSdkShims),
+        ("--engine-log", true, ProfileStore.SaveEngineLog),
+        ("--crash-dump", false, ProfileStore.SaveCrashDump),
+        ("--sandbox", false, ProfileStore.SaveSandbox),
+        ("--steam-udp", false, ProfileStore.SaveSteamUdp),
+    ];
+
+    static void SaveSwitches(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        foreach (var (option, bare, save) in Switches)
+            if (options.ContainsKey(option)) save(paths, Yes(options, option, bare));
+    }
+
     // settings: the launcher's saved choices (launcher-settings.json), which play and HellForge.exe's PLAY both start from.
     // Each option given is saved first; all of them are printed. They apply from the next session.
     public static object Settings(Dictionary<string, string> options)
@@ -522,12 +539,7 @@ static class Launch
                 throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
             ProfileStore.SaveWar(paths, war);
         }
-        if (options.ContainsKey("--local-playfab")) ProfileStore.SaveLocalPlayFab(paths, Yes(options, "--local-playfab", true));
-        if (options.ContainsKey("--multiplayer")) ProfileStore.SaveSdkShims(paths, Yes(options, "--multiplayer", true));
-        if (options.ContainsKey("--engine-log")) ProfileStore.SaveEngineLog(paths, Yes(options, "--engine-log", true));
-        if (options.ContainsKey("--crash-dump")) ProfileStore.SaveCrashDump(paths, Yes(options, "--crash-dump", false));
-        if (options.ContainsKey("--sandbox")) ProfileStore.SaveSandbox(paths, Yes(options, "--sandbox", false));
-        if (options.ContainsKey("--steam-udp")) ProfileStore.SaveSteamUdp(paths, Yes(options, "--steam-udp", false));
+        SaveSwitches(options, paths);
         if (options.TryGetValue("--game-options", out var typed))
         {
             _ = GameLaunchOptions.Parse(typed); // refused as play refuses it: never a switch the session sets itself

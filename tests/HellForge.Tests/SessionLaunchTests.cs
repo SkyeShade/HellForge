@@ -113,8 +113,9 @@ static class SessionLaunchTests
                 "The CLI command lines do not accept --steam-udp for play and settings.");
             check(launch.Contains("SteamUdp: Yes(options, \"--steam-udp\", ProfileStore.LoadSteamUdp(paths))", StringComparison.Ordinal),
                 "play does not validate --steam-udp or default it to the saved setting.");
-            check(launch.Contains("if (options.ContainsKey(\"--steam-udp\")) ProfileStore.SaveSteamUdp(paths, Yes(options, \"--steam-udp\", false));",
-                    StringComparison.Ordinal), "settings does not validate and save --steam-udp.");
+            check(launch.Contains("(\"--steam-udp\", false, ProfileStore.SaveSteamUdp)", StringComparison.Ordinal) &&
+                launch.Contains("if (options.ContainsKey(option)) save(paths, Yes(options, option, bare));", StringComparison.Ordinal),
+                "settings does not validate and save --steam-udp.");
         });
 
         test("A co-op session refuses before it starts when pasta is missing", () =>

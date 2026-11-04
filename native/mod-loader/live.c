@@ -797,14 +797,29 @@ static void ListLine(const char* seq, const char* list, int (*set)(const char* l
     else snprintf(reply, size, "%s\trefused\t%s", seq, why);
 }
 
+/* The requests that read their whole line themselves, by the line's first word (with its tab); 1 when it was one. */
+static int WholeLineRequest(char* line, char* reply, size_t size)
+{
+    static const struct { const char* word; void (*answer)(char* line, char* reply, size_t size); } requests[] = {
+        {"syncmod\t", SyncModLine},
+        {"syncstate\t", SyncStateLine},
+        {"browselobby\t", BrowseLobbyLine},
+        {"browsestate\t", BrowseStateLine},
+    };
+    if (ChannelRequest(line, reply, size)) return 1;
+    for (size_t i = 0; i < sizeof requests / sizeof requests[0]; i++)
+        if (!strncmp(line, requests[i].word, strlen(requests[i].word)))
+        {
+            requests[i].answer(line, reply, size);
+            return 1;
+        }
+    return 0;
+}
+
 /* One request; the reply goes to `reply`. Also the native fixture's entry point. */
 static void LiveRequest(char* line, char* reply, size_t size)
 {
-    if (ChannelRequest(line, reply, size)) return;
-    if (!strncmp(line, "syncmod\t", 8)) { SyncModLine(line, reply, size); return; }
-    if (!strncmp(line, "syncstate\t", 10)) { SyncStateLine(line, reply, size); return; }
-    if (!strncmp(line, "browselobby\t", 12)) { BrowseLobbyLine(line, reply, size); return; }
-    if (!strncmp(line, "browsestate\t", 12)) { BrowseStateLine(line, reply, size); return; }
+    if (WholeLineRequest(line, reply, size)) return;
     char* f[12];
     int n = Split(line, f, 12);
     if (n < 2) { snprintf(reply, size, "-\trefused\tmalformed request"); return; }
