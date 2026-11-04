@@ -99,7 +99,8 @@ starts automatically while the game copy is incomplete. The installer checks the
 prepares the prefix,
 and refuses a package that is missing `app/app-build.json`, `app/engine-package.zip`, the native launcher,
 `app/capture-linux/HellForge.CaptureProxy`, `app/backend-linux/HellForge.LocalBackend`, `app/linux/hellforge-linux.sh`,
-`app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox`,
+`app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-wineserver.sh`, `app/linux/hf-sandbox-probe`,
+`app/linux/hf-sandbox`,
 `app/linux/allow-capture.sh`, `app/linux/capture-helper.sh` or `app/linux/capture-relay`.
 
 On Ubuntu 24.04 and later, and other systems where `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is 1, only
