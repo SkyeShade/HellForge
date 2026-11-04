@@ -57,7 +57,16 @@ static void CrashNotesFixture(void)
     record.NumberParameters = 2;
     record.ExceptionInformation[1] = 0x10;
     EXCEPTION_POINTERS info = {&record, &context};
-    CrashRaise(&info, EXCEPTION_ACCESS_VIOLATION, 6);      /* four noted */
+    /* a fault inside a DllMain (a tablet driver's Wintab32.dll): noted, its dump left for a later crash, or the dump and
+     * the faulting thread wait for each other over the loader lock */
+    RTL_CRITICAL_SECTION* loaderLock = *(RTL_CRITICAL_SECTION**)(__readgsqword(0x60) + 0x110);
+    assert(!HoldsLoaderLock());
+    EnterCriticalSection(loaderLock);
+    assert(HoldsLoaderLock());
+    CrashRaise(&info, EXCEPTION_ACCESS_VIOLATION, 1);
+    LeaveCriticalSection(loaderLock);
+    assert(g_crashDumped == 0 && GetFileAttributesW(dump) == INVALID_FILE_ATTRIBUTES);
+    CrashRaise(&info, EXCEPTION_ACCESS_VIOLATION, 5);      /* four noted, the first of them above */
     record.NumberParameters = 0;
     CrashRaise(&info, CRASH_HEAP_CORRUPTION, 1);           /* the access violations left the other codes their notes */
     CrashRaise(&info, EXCEPTION_INT_DIVIDE_BY_ZERO, 1);
