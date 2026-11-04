@@ -10,6 +10,8 @@ namespace HellForge.LocalBackend;
 //   POST /SeasonPass/item/buy  0x15c6d819  builder 0x12bcc94  {expectedCost:[{mixId, amount}], seasonPassItemId, warId}
 //                              reply {items:[{mixId, amount}]} (parser 0x105a470), which the client adds; it takes the
 //                              medals itself. The warbond's medalsSpent item is in the reply too: it is what opens pages.
+//                              The parser leaves a missing packageProgress unset on the caller's stack, and 0x103e1e0
+//                              walks that garbage (crash at 0x103e2b9, in game 2026-11-04), so the empty list is sent.
 //   POST /Progression/buy/v2   0xb04e1beb  builder 0x12c1f65  {mixId, amount, warId, expectedCost:[{mixId, amount}]}
 //                              reply [{mixId, amount}] (an array, parser 0x107eb20): the client adds the positive amounts
 //                              and takes the negative ones (0x12c9170), so the price comes back negative.
@@ -76,7 +78,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         });
         if (!saved) return null;
         granted.Add((JsonNode)new JsonObject { ["mixId"] = spent, ["amount"] = cost });
-        return new JsonObject { ["items"] = granted };
+        return new JsonObject { ["items"] = granted, ["packageProgress"] = new JsonArray() };
     }
 
     // An item the game sells for requisition or samples (stratagems, the requisition and samples stores): its catalogue
@@ -100,7 +102,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     }
 
     // StoreItem's reply ([{mixId, amount}], the price negative) as /StoreFront/buy's: {items:[...]}.
-    public static JsonObject StoreFrontReply(JsonArray sold) => new() { ["items"] = sold.DeepClone() };
+    public static JsonObject StoreFrontReply(JsonArray sold) => new() { ["items"] = sold.DeepClone(), ["packageProgress"] = new JsonArray() };
 
     static uint ListedItem(JsonElement body)
     {
