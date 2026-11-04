@@ -735,6 +735,7 @@ CrashDumpTests.Register(Test, Check);
 SessionJobTests.Register(Test, Check, Reject, root);
 SandboxSessionTests.Register(Test, Check, Reject, root);
 LaunchFailureTests.Register(Test, Check, Reject, root);
+SessionEndTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 LinuxInstallerTests.Register(Test, Check, Reject, root);

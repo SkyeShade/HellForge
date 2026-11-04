@@ -310,6 +310,9 @@ sealed partial class PlaySession
                 throw new SessionFailure("The Linux sandbox host failed: " + (current.Failure ?? "no reason was recorded"));
             if (current.State is "exited" or "stopped")
             {
+                // The supervisor stops the domain on the same stop signal, polling it every 250 ms, so the domain is
+                // usually stopped before this loop reads the signal: still record what it asked for (a mod sync's restart).
+                StopRequested();
                 RecordSandboxEnd(current, clock);
                 break;
             }
@@ -352,7 +355,7 @@ sealed partial class PlaySession
         result["gamePid"] = status.GamePid;
         result["sandboxDomainPid"] = status.DomainPid;
         var crashLine = CrashReport.FirstCrashLine(run);
-        var crashed = status.ExitCode is { } exited && exited != 0 || crashLine is { Length: > 0 } || CrashReport.Dump(run) != null;
+        var crashed = SessionEnd.Crashed(status.ExitCode, crashLine is { Length: > 0 }, CrashReport.Dump(run) != null);
         result["gameCrashed"] = crashed;
         if (status.ExitCode is { } code)
         {
