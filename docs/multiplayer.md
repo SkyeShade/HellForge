@@ -571,7 +571,7 @@ other shows (CAN'T JOIN or H shows them) and names each row by what keeps it out
 
 A host whose shared mods include code or raw data HellForge hasn't verified sends those to Steam friends only
 (`ModSync.Serve`), so strangers can join only with them installed by hand. The first time the session's lobby is
-listed, the backend logs those mods and the game shows a note: "Strangers can't join your lobby", naming them
+listed, the backend logs those mods and the game shows a note for 12 s: "Strangers can't join your lobby", naming them
 (`MultiplayerHost.WarnFriendsOnly`, `ModSync.FriendsOnlyMods`; nothing when the host doesn't share).
 
 **The ship's information terminal opens the lobby browser** (`native/mod-loader/terminal.c`, build 25480438). The

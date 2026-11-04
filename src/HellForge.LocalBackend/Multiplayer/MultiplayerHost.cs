@@ -309,7 +309,9 @@ public sealed class MultiplayerHost : IAsyncDisposable
         var start = $"{(mods.Count == 1 ? "1 of your mods isn't" : $"{mods.Count} of your mods aren't")} on HellForge's verified list, so only your Steam friends can download {(mods.Count == 1 ? "it" : "them")}: ";
         // a notice line holds 200 characters (LiveEditServer.NoticeAsync): the names that fit, then how many more
         var names = LiveBrowse.Fit([.. mods.Select(m => m.Name)], NoticeLine - System.Text.Encoding.UTF8.GetByteCount(start) - 1).Replace("; ", ", ");
-        stats.Notice("brief", "Strangers can't join your lobby", [start + names + ".", "Friends can still join. Turn those mods off to let strangers in."]);
+        // an info notice (12 s, every line, wrapped): a brief one shows the title and its first line cut to one row, which
+        // lost the names and what to do about them (in game, 2026-11-03)
+        stats.Notice("info", "Strangers can't join your lobby", [start + names + ".", "Friends can still join. Turn those mods off to let strangers in."]);
     }
 
     // A machine this one deals with: in a lobby hosted here, hosting one joined (or being joined) from here, a mod download,
