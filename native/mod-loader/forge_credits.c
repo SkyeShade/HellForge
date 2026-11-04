@@ -3,8 +3,8 @@
  * - the code UI's currency colour table (0x21CAE60, one 16-byte colour per currency type: 2 the Super Credits price,
  *   3 the Premium wallet, 0x21CAE80 and 0x21CAE90; only types 2 to 6 reach them) is written red in place; its readers
  *   include the price widgets (0x1797A60, 0x19C1DF0) and the icon getter (0x12682A0); so is its premium warbond token
- *   entry (0x21CAEF0, light blue), which the Acquisition Center's wallet draws the currency in: warbonds are bought with
- *   Forge Credits;
+ *   entry (0x21CAEF0, light blue), which the Acquisition Center's wallet draws the currency in: it shows Forge
+ *   Credits;
  * - two direct loads of 0x21CAE90 (the mission loot counters' switch 0x198BACE, beside the sprite 0x9414AB4F02745820,
  *   and the in-mission counter row 0x1977612) and the premium (warbond) button's colours, set up in 0x1968AC0 and
  *   refreshed in 0x1969F30 only for its premium variant: border, highlight, its two dark-teal fills, and its star's red

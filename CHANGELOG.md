@@ -108,9 +108,10 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   the currency icon is the Forge Credit's. HellForge draws them from your own game copy when a session starts (#224).
 - Forge Credits are earned: a pile picked up on a mission pays everyone in the squad the same amount, as Super Credits
   do in the live game, and the Super Credits on warbond pages pay Forge Credits. Your balance shows where Super Credits
-  did. On every profile but unlock-all, a premium warbond you own in the live game now opens once you buy it with Forge
-  Credits (its Super Credits price); a warbond you don't own still can't be bought. Unlock-all profiles open your owned
-  warbonds as before (#225).
+  did (#225).
+- Premium warbonds can't be bought at all, with Forge Credits or anything else. A warbond you own in the live game is
+  open on every profile, and one you don't own shows WARBOND LOCKED. Before, every profile but unlock-all asked you to
+  buy the warbonds you already own (#252).
 - Medals and requisition slips picked up on a mission now pay out the same way, with the card on the right, for everyone
   in the squad. Every player keeps their share, not only the one who picked it up, and a pile pays once, also after a
   restart. Premium warbonds your profile's sync shows you don't own show WARBOND LOCKED instead of a buy button

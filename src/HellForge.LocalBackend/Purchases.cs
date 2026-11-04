@@ -19,10 +19,9 @@ namespace HellForge.LocalBackend;
 //   POST /Progression/ProgressionPackage/AcquireUnlockableItem  0x1b13fab5  {packageId32, targetLevel, itemMixId,
 //                              expectedCost} (weapon attachments). Neither reply is parsed (0xb64d30, 0xb666a0).
 // Super Credits are never spent or granted, and nothing paid (OwnershipFilter's rules) is sold: a premium warbond's items
-// only to a player who owns one of its tokens. Forge Credits (PaidContentSet.ForgeCreditsWallet) buy a premium warbond's
-// token at its Super Credits price, only one the player owns on the live game (the verified snapshot): the client's
-// unlock (0x136c3a0) is /Progression/buy/v2 {mixId: token, amount: 1, expectedCost: [{mixId: 0xCF875032, amount}]}, and
-// the reply takes the price from the wallet the client shows (a negative amount on 0xCF875032 would change nothing).
+// only to a player who owns one of its tokens. A premium warbond itself is never sold, for any currency: the client's
+// unlock (0x136c3a0, /Progression/buy/v2 {mixId: token, amount: 1, expectedCost: [{mixId: 0xCF875032, amount}]}) is
+// refused. A warbond is open only when the player owns it on the live game (OwnershipFilter).
 public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> catalogue)
 {
     public static bool Handles(string path) => path is "/SeasonPass/item/buy" or "/Progression/buy/v2" or "/StoreFront/buy"
@@ -115,7 +114,6 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
 
     JsonNode? StoreItem(uint mixId, long count)
     {
-        if (Paid.WarbondTokens.Contains(mixId)) return WarbondToken(mixId);
         if (count is < 1 or > 100 || Paid.IsPaid(mixId) || catalogue(mixId) is not { } item) return null;
         if (!item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || price.GetArrayLength() == 0) return null;
         var cost = Costs(price, count);
@@ -126,23 +124,6 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             if (cost.Any(c => ProfileStore.Held(inventory, c.Key) < c.Value)) return false;
             foreach (var (currency, amount) in cost) reply.Add((JsonNode)new JsonObject { ["mixId"] = currency, ["amount"] = ProfileStore.AddItem(inventory, currency, -amount) });
             reply.Insert(0, (JsonNode)new JsonObject { ["mixId"] = mixId, ["amount"] = ProfileStore.AddItem(inventory, mixId, count) });
-            return true;
-        });
-        return saved ? reply : null;
-    }
-
-    // A premium warbond's token for Forge Credits: owned on the live game, not held yet, its Super Credits price in the wallet.
-    JsonNode? WarbondToken(uint token)
-    {
-        if (profile.Ownership is not { } ownership || !ownership.Owns(token) || catalogue(token) is not { } item ||
-            !item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || Costs(price, 1) is not { } cost ||
-            !cost.TryGetValue(PaidContentSet.SuperCreditPrice, out var credits) || cost.Count != 1 || credits <= 0) return null;
-        var reply = new JsonArray();
-        var saved = profile.TryChange((_, inventory) =>
-        {
-            if (ProfileStore.Held(inventory, token) > 0 || ProfileStore.Held(inventory, PaidContentSet.ForgeCreditsWallet) < credits) return false;
-            reply.Add((JsonNode)new JsonObject { ["mixId"] = token, ["amount"] = ProfileStore.AddItem(inventory, token, 1) });
-            reply.Add((JsonNode)new JsonObject { ["mixId"] = PaidContentSet.ForgeCreditsWallet, ["amount"] = ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, -credits) });
             return true;
         });
         return saved ? reply : null;
