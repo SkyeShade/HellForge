@@ -1705,7 +1705,8 @@ static int NearCalStep(uint64_t records, uint32_t end, uint64_t context, uint64_
 #define NEAR_BATCH 16384
 #define NEAR_SHIFT_RADIUS 128 /* the shift's box passes: 257 texels (~129 m), three of them */
 #define NEAR_GRID 1025 /* grid lines: texel -0.5, 4, 8, ..., 4092, 4095.5 */
-static struct { int phase; uint32_t id, polls, next, waits; uint16_t* coarse; float* low; float* delta; float* ring; double ms; int seq[4], seqN, seqI; } g_conform;
+static struct { int phase; uint32_t id, polls, next, waits; uint16_t* coarse; float* low; float* delta; float* ring; double ms; int seq[4], seqN, seqI;
+    volatile LONG planDone, planRunning; int planOk; ULONGLONG planSince; } g_conform;
 
 /* Metres outside the hidden square (negative inside), max norm. */
 static float NearOutside(float wx, float wy)
@@ -2018,6 +2019,7 @@ static void NearDumpPre(void)
     VirtualFree(u, 0, MEM_RELEASE);
 }
 
+static double g_conformPlanMean, g_conformPlanWorst;
 static int NearConformPlan(void)
 {
     LARGE_INTEGER t0, t1, hz; QueryPerformanceCounter(&t0); QueryPerformanceFrequency(&hz);
@@ -2068,9 +2070,19 @@ static int NearConformPlan(void)
         }
     QueryPerformanceCounter(&t1);
     g_conform.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
-    Note("difficulty: near terrain: conform: planned in %.0f ms; the change to draw is mean |d| %.2f m, max %.2f m", g_conform.ms,
-        sum / ((double)NEAR_GRID * NEAR_GRID), worst);
+    g_conformPlanMean = sum / ((double)NEAR_GRID * NEAR_GRID); g_conformPlanWorst = worst;
     return 1;
+}
+
+/* The plan on a thread of its own (s72m: 679 ms, which on the game thread was one frame that long). It reads and writes
+ * only the conform's buffers, g_near's heights and centre and the level's pads, which nothing touches while the conform
+ * waits for it (phase 9). */
+static DWORD WINAPI NearConformPlanThread(LPVOID unused)
+{
+    g_conform.planOk = NearConformPlan();
+    InterlockedExchange(&g_conform.planDone, 1);
+    InterlockedExchange(&g_conform.planRunning, 0);
+    return 0;
 }
 
 /* A job on the generator's queue that draws its gui (the triangles put there since the last one) into the merge's
@@ -2677,10 +2689,17 @@ static void NearMatDrop(void)
     g_matband.pixels = NULL;
 }
 
+static void NearMatTexture(ULONGLONG t0);
 static void NearMatBuild(const uint32_t* coarse)
 {
     ULONGLONG t0 = GetTickCount64();
     g_matband.taken = NearMatBand(g_matband.pixels, coarse);
+    NearMatTexture(t0);
+}
+
+/* The band's texture from g_matband.pixels (the render API: the game thread). */
+static void NearMatTexture(ULONGLONG t0)
+{
     typedef uint64_t (*CreateFn)(uint32_t w, uint32_t h, uint32_t format, void* pixels);
     CreateFn create = (CreateFn)NearApi(0x10, 0x6A8);
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
@@ -2837,6 +2856,15 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
         g_conform.id = readback(g_oneMip.level == g_world.levels && g_oneMip.tex != 0 ? g_oneMip.tex : g_near.config[0]); g_conform.polls = 0; g_conform.phase = 1;
         return 1;
     }
+    if (g_conform.phase == 9) /* the plan's thread */
+    {
+        if (!g_conform.planDone) return 1; /* bounded work on the loader's own buffers: it finishes */
+        Note("difficulty: near terrain: conform: planned in %.0f ms (on its own thread, %.1f s to the game's frame); the change to draw is mean |d| %.2f m, max %.2f m",
+            g_conform.ms, (double)(GetTickCount64() - g_conform.planSince) / 1000.0, g_conformPlanMean, g_conformPlanWorst);
+        if (!g_conform.planOk) return 0;
+        g_conform.next = 0; g_conform.waits = 0; g_conform.phase = 2;
+        return 1;
+    }
     if (g_conform.phase == 1 || g_conform.phase == 5)
     {
         if (!ready(g_conform.id)) { if (++g_conform.polls < 2000) return 1; Note("difficulty: near terrain: conform: a readback did not come"); return 0; }
@@ -2849,11 +2877,16 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
         { Note("difficulty: near terrain: conform: a readback is %u x %u format %u; the tile stays as rendered", w, hgt, format); return 0; }
         if (g_conform.phase == 1)
         {
+            if (g_conform.planRunning) return 1; /* a plan of a build that failed is still using the buffers */
             if (g_conform.coarse == NULL) g_conform.coarse = (uint16_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (g_conform.coarse == NULL || SafeRead(data, g_conform.coarse, (size_t)4096 * 4096 * 2)) return 0;
             NearRingRestore("the conform's readback of the level's heightmap", NearFetchU16, NearStoreU16, g_conform.coarse);
-            if (!NearConformPlan()) return 0;
-            g_conform.next = 0; g_conform.waits = 0; g_conform.phase = 2;
+            g_conform.planDone = 0; g_conform.planOk = 0; g_conform.planSince = GetTickCount64();
+            InterlockedExchange(&g_conform.planRunning, 1);
+            HANDLE th = CreateThread(NULL, 0, NearConformPlanThread, NULL, 0, NULL);
+            if (th == NULL) NearConformPlanThread(NULL); /* no thread: here, as before */
+            else CloseHandle(th);
+            g_conform.phase = 9;
             return 1;
         }
         /* phase 5: the result; compare with the target at the grid's vertices (exact there) */

@@ -626,7 +626,14 @@ static void MoveTick(uint64_t level)
                 if (MoveCellDistance(g_tiles[k].cell[0], g_tiles[k].cell[1], g_move.player[p][0], g_move.player[p][1]) <= MOVE_KEEP) { g_tiles[k].seen = now; break; }
         }
         for (int k = 1; k < NEAR_TILES_MAX; k++) /* the drop tile (slot 0) stays */
-            if (g_tiles[k].live && g_tiles[k].level == g_world.levels && now - g_tiles[k].seen > MOVE_KEEP_MS) { MoveRelease(k); return; }
+            if (g_tiles[k].live && g_tiles[k].level == g_world.levels && now - g_tiles[k].seen > MOVE_KEEP_MS)
+            {
+                LARGE_INTEGER t0, t1, hz; QueryPerformanceCounter(&t0);
+                MoveRelease(k);
+                QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+                Note("difficulty: moving tiles: the release took %.1f ms on the game thread", (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart);
+                return;
+            }
         if (NearTilesLive() >= MOVE_CAP) return;
         float best = 1e9f; int ba = 0, bb = 0, bp = -1;
         for (int p = 0; p < g_move.players; p++)
@@ -775,10 +782,43 @@ static void MoveTick(uint64_t level)
     }
 }
 
+/* What a build costs the game thread: MoveTick's time in each frame of a build, the six longest with the build's state,
+ * the replay's step and the conform's phase at the frame's start; noted once the build is over (the frame after the tile
+ * is in, or after a failure). */
+static struct { double ms[6]; int mv[6], ns[6], step[6], conf[6], bld[6]; double sum; uint32_t frames; int pending; } g_moveCost;
+
+static void MoveCostAdd(double ms, int mv, int ns, int step, int conf, int bld)
+{
+    g_moveCost.sum += ms; g_moveCost.frames++;
+    int at = 6;
+    while (at > 0 && ms > g_moveCost.ms[at - 1]) at--;
+    if (at >= 6) return;
+    for (int k = 5; k > at; k--)
+    { g_moveCost.ms[k] = g_moveCost.ms[k - 1]; g_moveCost.mv[k] = g_moveCost.mv[k - 1]; g_moveCost.ns[k] = g_moveCost.ns[k - 1]; g_moveCost.step[k] = g_moveCost.step[k - 1]; g_moveCost.conf[k] = g_moveCost.conf[k - 1]; g_moveCost.bld[k] = g_moveCost.bld[k - 1]; }
+    g_moveCost.ms[at] = ms; g_moveCost.mv[at] = mv; g_moveCost.ns[at] = ns; g_moveCost.step[at] = step; g_moveCost.conf[at] = conf; g_moveCost.bld[at] = bld;
+}
+
+static void MoveCostNote(void)
+{
+    static const char* const mv[] = {"idle", "package", "stamps", "kick", "setup", "lookup", "replay", "teardown", "unstamp", "spawn", "ready"};
+    char line[640]; int n = 0;
+    for (int k = 0; k < 6 && g_moveCost.ms[k] > 0 && n < 600; k++)
+        n += snprintf(line + n, sizeof line - n, " %.0f ms (%s, near state %d, step %d, building %d, conform phase %d);", g_moveCost.ms[k],
+            g_moveCost.mv[k] >= 0 && g_moveCost.mv[k] <= MV_READY ? mv[g_moveCost.mv[k]] : "?", g_moveCost.ns[k], g_moveCost.step[k], g_moveCost.bld[k], g_moveCost.conf[k]);
+    Note("difficulty: moving tiles: the build's cost on the game thread: %.0f ms over %u frames; the longest:%s", g_moveCost.sum, g_moveCost.frames, line);
+    memset(&g_moveCost, 0, sizeof g_moveCost);
+}
+
 static void MoveLevelUpdate(uint64_t level)
 {
     g_moveUpdate(level);
+    int mv = g_move.state, ns = g_near.state, step = g_near.step, conf = g_conform.phase, bld = g_near.building;
+    LARGE_INTEGER t0, t1, hz;
+    QueryPerformanceCounter(&t0);
     MoveTick(level);
+    QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+    if (mv != MV_IDLE || g_move.state != MV_IDLE) { MoveCostAdd((double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, mv, ns, step, conf, bld); g_moveCost.pending = 1; }
+    else if (g_moveCost.pending) MoveCostNote();
 }
 
 static void MoveInstall(uintptr_t game)
