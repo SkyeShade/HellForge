@@ -605,7 +605,7 @@ It is a placeholder for Echelon's browser, which can use the same calls or the H
 released; `browse_state`'s `owner` names it): the editor then opens no browser, from the terminal or Ctrl+L, closes
 one that shows, and only the owner's `HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN` move the terminal's camera.
 
-**Quick Play and the hidden lobbies.** `browseask quick -` (Q or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
+**Quick Play and the hidden lobbies.** `browseask quick -` (Space or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
 lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invited` with the host's name, or `failed`
 when nothing can be joined. The browse API lists what a map search leaves out: a stranger's lobby with Play with
 strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
