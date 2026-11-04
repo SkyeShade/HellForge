@@ -40,32 +40,31 @@ static class AccountSyncTests
         WarbondsOtherToken(paid, check);
     }
 
-    // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
-    // served, and a profile that earns its warbonds buys an owned premium warbond's token with them, never one not owned.
-    // A warbond the account owns through its other token, not the one priced in Super Credits: it is as owned. It keeps the
-    // price the client's BUY looks for (with none it reads WARBOND LOCKED), sells for Forge Credits, and that opens it.
+    // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), and the wallet is
+    // served. A premium warbond is never sold for them, or for anything: one the account owns is open on every profile.
+    // A warbond the account owns through its other token, not the one priced in Super Credits: it is as owned, open on a
+    // starter profile with nothing bought, and keeps the price the client looks for (with none it reads WARBOND LOCKED).
     static void WarbondsOtherToken(PaidContentSet paid, Action<bool, string> check)
     {
         using var store = ProfileStore.Open(null, "starter");
         var exo = paid.Warbonds.Single(w => w.Id == 4228295283);
         var ownedOther = exo.Tokens[1];
-        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = ownedOther, ["amount"] = 1, ["isDiscovered"] = true }]) { EarnWarbonds = true };
-        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, exo.Items[0].MixId, 1) > 0); // kept for when the warbond is open
+        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = ownedOther, ["amount"] = 1, ["isDiscovered"] = true }]);
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, exo.Items[0].MixId, 1) > 0);
         var fixture = LocalBackend.LoadStartupFixtures()["/Progression/items"];
         var catalogue = fixture.EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _))
             .GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
         var offered = store.Ownership.FilterCatalogueResponse(fixture).EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _))
             .GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
         check(offered[exo.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1, "A warbond owned through its other token lost its Super Credits price.");
-        check(!Served(store).Contains(exo.Tokens[0]) && !Served(store).Contains(exo.Items[0].MixId), "A warbond owned through its other token was open before it was bought.");
+        check(Served(store).Contains(ownedOther) && Served(store).Contains(exo.Items[0].MixId), "A warbond owned through its other token is not open.");
         var price = catalogue[exo.Tokens[0]].GetProperty("buyPrice").EnumerateArray().Single().GetProperty("amount").GetInt64();
         store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, price) > 0);
         var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null);
         using var body = JsonDocument.Parse("{\"mixId\":" + exo.Tokens[0] + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice +
             ",\"amount\":" + price + "}]}");
-        var (status, reply, _) = purchases.Handle("/Progression/buy/v2", body.RootElement);
-        check(status == 200, "A warbond owned through its other token could not be bought: " + reply?.ToJsonString());
-        check(Served(store).Contains(exo.Tokens[0]) && Served(store).Contains(exo.Items[0].MixId), "A warbond owned through its other token did not open once bought.");
+        check(purchases.Handle("/Progression/buy/v2", body.RootElement).Status == 400 && Items(store.Current())[PaidContentSet.ForgeCreditsWallet] == price,
+            "A warbond's token was sold.");
     }
 
     static void ForgeCredits(PaidContentSet paid, Action<bool, string> check)
@@ -74,7 +73,7 @@ static class AccountSyncTests
         using var store = ProfileStore.Open(null, "starter");
         var steeled = paid.Warbonds.Single(w => w.Id == 610512218);
         var other = paid.Warbonds.First(w => w.Tokens.Length > 0 && w.Id != steeled.Id);
-        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]) { EarnWarbonds = true };
+        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
         var missions = new MissionService(store);
         JsonArray Activity(uint activity, long pile)
         {
@@ -111,35 +110,31 @@ static class AccountSyncTests
         check(amounts.All(a => a is 10 or 20 or 50 or 100) && amounts.Count(a => a == 10) > 600 && amounts.Contains(100),
             "Pile amounts: " + string.Join(",", amounts.Distinct().Order()));
 
-        // The owned warbond waits for its token; its price comes out of the wallet once there is enough.
+        // The owned warbond is open with nothing bought; no warbond is sold, owned or not, whatever the wallet holds.
         var catalogue = LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray()
             .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32())
             .ToDictionary(g => g.Key, g => g.First());
         var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null);
         var price = catalogue[steeled.Tokens[0]].GetProperty("buyPrice").EnumerateArray().Single().GetProperty("amount").GetInt64();
-        (int Status, JsonNode Reply) Buy(uint token)
+        (int Status, JsonNode Reply) Buy(uint token, uint currency)
         {
-            using var body = JsonDocument.Parse("{\"mixId\":" + token + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice +
+            using var body = JsonDocument.Parse("{\"mixId\":" + token + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + currency +
                 ",\"amount\":" + price + "}]}");
             var (status, reply, _) = purchases.Handle("/Progression/buy/v2", body.RootElement);
             return (status, reply);
         }
-        check(!Served(store).Contains(steeled.Tokens[0]) && !Served(store).Contains(steeled.Items[0].MixId), "A profile that earns its warbonds was handed an owned one.");
+        check(Served(store).Contains(steeled.Tokens[0]), "A starter profile's owned warbond is not open.");
         // The catalogue offers no purchase of a warbond the live account does not own; the owned one keeps its price.
         var offered = store.Ownership!.FilterCatalogueResponse(LocalBackend.LoadStartupFixtures()["/Progression/items"]).EnumerateArray()
             .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
-        check(offered[other.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 0 && offered[steeled.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1,
-            "A warbond not owned on the live game is offered, or the owned one is not.");
-        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold without the Forge Credits for it.");
+        check(other.Tokens.All(t => offered[t].GetProperty("buyPrice").GetArrayLength() == 0) && offered[steeled.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1,
+            "A warbond not owned on the live game is offered, or the owned one lost its price.");
         store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, Wallet, price) > 0);
         var before = Items(store.Current())[Wallet];
-        check(Buy(other.Tokens[0]).Status == 400, "A warbond not owned on the live game was sold for Forge Credits.");
-        var (status, reply) = Buy(steeled.Tokens[0]);
-        check(status == 200 && reply is JsonArray bought && bought.Count == 2 && (uint)Whole(bought[0]!["mixId"]) == steeled.Tokens[0] && Whole(bought[0]!["amount"]) == 1 &&
-            (uint)Whole(bought[1]!["mixId"]) == Wallet && Whole(bought[1]!["amount"]) == -price, "The warbond purchase replied " + reply.ToJsonString());
-        check(Items(store.Current())[Wallet] == before - price && Served(store).Contains(steeled.Tokens[0]),
-            "The bought warbond is not open, or its price was not taken.");
-        check(Buy(steeled.Tokens[0]).Status == 400, "A warbond was sold twice.");
+        check(steeled.Tokens.Concat(other.Tokens).All(token =>
+                Buy(token, PaidContentSet.SuperCreditPrice).Status == 400 && Buy(token, Wallet).Status == 400 && Buy(token, Requisition).Status == 400),
+            "A premium warbond's token was sold.");
+        check(Items(store.Current())[Wallet] == before && !Served(store).Contains(other.Tokens[0]), "A refused warbond purchase changed the profile.");
 
         // An unlock-all profile is handed it, as before.
         using var dev = ProfileStore.Open(null, "unlock-all");

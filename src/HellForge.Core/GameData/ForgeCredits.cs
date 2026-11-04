@@ -45,7 +45,7 @@ public static class ForgeCredits
     // svg_ui_elements.xaml's Icons_Sec (the pause menu's wallet, acquisitions, price widgets: only Super Credits use it)
     // and currency_icons.xaml's CurrencySupercredits fill #FF90D5F6; color_styles.xaml's SecondaryCTA (#FF71F5FF, only the
     // premium warbond purchase popups use it); currency_icons.xaml's CurrencyWarbondtokenPremium (light blue #FF82DFFB on
-    // dark teal #FF003145: warbonds are bought with Forge Credits). Each colour is the same length, so it is written in place.
+    // dark teal #FF003145: the Acquisitions wallet shows Forge Credits in it). Each colour is the same length, so it is written in place.
     static readonly (ulong Resource, string From, string To)[] XamlColours =
     [
         (0x04A4245928EA3906, """Fill="#FF90D5F6""", """Fill="#FFE5392B"""),
