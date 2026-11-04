@@ -99,8 +99,8 @@ public sealed class SessionRunner
     public static bool SandboxByDefault(ISessionPaths paths) => CanSandbox(paths) && ProfileStore.LoadSandbox(paths);
 
     // What #62's HELLFORGE_STEAM_UDP=1 path runs: pasta (the passt package) and python3 (Valve's relay list). Null when
-    // both are on PATH; otherwise the refusal, with the install command for this system's package manager. onPath is
-    // injectable for tests.
+    // both are on PATH; otherwise what is missing, with the install command for this system's package manager (the
+    // launcher says it before a session, which then plays without co-op). onPath is injectable for tests.
     public static string? SteamUdpProblem(Func<string, bool>? onPath = null)
     {
         onPath ??= OnPath;
@@ -132,18 +132,19 @@ public sealed class SessionRunner
             .Any(folder => File.Exists(Path.Combine(folder, program)));
 
     // HELLFORGE_STEAM_UDP=1 goes to the wrapper for a Linux session only when the switch is on. When it is off, remove
-    // any inherited value too: starting the launcher from a shell that set it must not open UDP by accident.
+    // any inherited value too: starting the launcher from a shell that set it must not open UDP by accident. A session
+    // whose switch is on but which cannot open it (no pasta, no python3, no relay list) starts without it:
+    // hellforge-offline.sh sets HELLFORGE_STEAM_UDP_PROBLEM, so an inherited one goes.
     public static void ConfigureLinuxSteamUdp(ProcessStartInfo start, SessionOptions options)
     {
         if (OperatingSystem.IsLinux() && options.SteamUdp) start.Environment["HELLFORGE_STEAM_UDP"] = "1";
         else start.Environment.Remove("HELLFORGE_STEAM_UDP");
+        start.Environment.Remove("HELLFORGE_STEAM_UDP_PROBLEM");
     }
 
-    // Refuse before the wrapper starts: #62 cannot open UDP without pasta, and its relay list needs python3.
-    static void CheckLinuxSteamUdp(bool linux, SessionOptions options)
-    {
-        if (linux && options.SteamUdp && SteamUdpProblem() is { } problem) throw new InvalidOperationException(problem);
-    }
+    // Where a Linux session's namespace keeper is noted (HELLFORGE_NETNS_KEEPER, hellforge-offline.sh): the process that
+    // lets hf-coop-relays.sh turn co-op over Steam relays on while the session runs (CoopRelaysSwitch).
+    public static string NetnsKeeperFile(string installRoot) => Path.Combine(installRoot, "temp", "linux-netns-keeper");
 
     // HELLFORGE_DIFFICULTY_FIELDWATCH (=1 turns the diagnostic on) goes to the game: the wrapper and the session
     // runner inherit it, and HostBoundedProcess gives the game a copy of the session runner's environment.
@@ -165,7 +166,6 @@ public sealed class SessionRunner
         if (linux && options.Sandbox && LinuxSandboxProgramProblem(paths) is { } sandboxProblem)
             throw new InvalidOperationException("The Linux sandbox could not start: " + sandboxProblem +
                 ". The game was not started. To run without the sandbox, turn off Settings > Sandbox.");
-        CheckLinuxSteamUdp(linux, options);
         // The Windows programs in the session cannot read the Linux client's account. Use only a fresh result the
         // launcher already has: probing here would start Proton a second time, and its wineserver would hold up the
         // session wrapper. On a cache miss PlaySession's own ownership probe gets the account under Wine.
@@ -206,6 +206,7 @@ public sealed class SessionRunner
     static void ConfigureLinuxStart(ProcessStartInfo start, ISessionPaths paths, SessionOptions options, string prefix, ulong? steamAccount)
     {
         ConfigureLinuxSteamUdp(start, options);
+        start.Environment["HELLFORGE_NETNS_KEEPER"] = NetnsKeeperFile(paths.InstallRoot!);
         start.Environment["INSTALL"] = paths.InstallRoot!;
         start.Environment["STEAM_COMPAT_DATA_PATH"] = prefix;
         start.Environment["HELLFORGE_LINUX_INSTALL"] = paths.InstallRoot!;

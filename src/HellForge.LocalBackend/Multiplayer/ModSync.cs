@@ -1191,10 +1191,11 @@ public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IRe
     public bool Stranger { get; init; }
 
     // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
-    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null. A stranger's
-    // unchecked mods have none: they take a sandboxed session, which cannot change once it runs.
+    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), FixRelays (co-op over
+    // Steam relays is off on Linux, CoopRelays), or null. A stranger's unchecked mods have none: they take a sandboxed
+    // session, which cannot change once it runs.
     public string? Fix { get; init; }
-    public const string FixStrangers = "strangers", FixEditedStats = "editedStats";
+    public const string FixStrangers = "strangers", FixEditedStats = "editedStats", FixRelays = "relays";
 
     // Why one item stands in the way: the host does not share, a stranger's unchecked mod (HellForge has not verified it,
     // and this session is not sandboxed), a different bundled mod (another HellForge), or the player's blocklist.

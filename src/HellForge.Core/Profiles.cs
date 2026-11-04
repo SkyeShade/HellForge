@@ -173,10 +173,12 @@ public static partial class ProfileStore
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), Sandbox: enabled));
 
-    // Co-op over Steam relays: open UDP to Valve's relays only (HELLFORGE_STEAM_UDP=1, #62). Off unless chosen: a session
-    // then has no route out at all.
-    public static bool LoadSteamUdp(ISessionPaths paths) =>
-        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "steamUdp") == "true";
+    // Co-op over Steam relays on Linux: UDP to Valve's relays only (HELLFORGE_STEAM_UDP=1, #62), so a session can play with
+    // others; TCP and every other address stay refused. On unless turned off (since the 0.4.0 beta). Kept as "coopRelays":
+    // the launchers before wrote "steamUdp": false for everyone who never chose, so that key is not read and every
+    // installation starts with co-op once. Off, a session has no route out at all, and its lobby browser offers to turn
+    // it on (CoopRelaysSwitch).
+    public static bool LoadSteamUdp(ISessionPaths paths) => LoadFlag(paths, "coopRelays");
     public static void SaveSteamUdp(ISessionPaths paths, bool enabled) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), SteamUdp: enabled));
@@ -227,7 +229,7 @@ public static partial class ProfileStore
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, steamUdp
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

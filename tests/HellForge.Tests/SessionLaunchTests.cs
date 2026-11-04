@@ -21,12 +21,18 @@ static class SessionLaunchTests
             check(ProfileStore.LoadWar(paths) == ProfileStore.WarLive && ProfileStore.LoadLocalPlayFab(paths) && ProfileStore.LoadSdkShims(paths) &&
                 ProfileStore.LoadEngineLog(paths) && !ProfileStore.LoadCrashDump(paths) && ProfileStore.LoadLaunchOptions(paths) == "",
                 "Defaults without a settings file.");
-            check(!ProfileStore.LoadSteamUdp(paths), "Co-op over Steam relays is off without a settings file.");
+            check(ProfileStore.LoadSteamUdp(paths), "Co-op over Steam relays is on without a settings file.");
             ProfileStore.SaveSteamUdp(paths, true);
             ProfileStore.SaveCrashDump(paths, true);
             check(ProfileStore.LoadSteamUdp(paths) && ProfileStore.LoadCrashDump(paths), "The co-op switch round-trips and another save keeps it.");
             ProfileStore.SaveSteamUdp(paths, false);
             check(!ProfileStore.LoadSteamUdp(paths), "The co-op switch turns off again.");
+            check(File.ReadAllText(paths.SettingsFile).Contains("\"coopRelays\": false", StringComparison.Ordinal), "The switch is saved as coopRelays.");
+            // the launchers before wrote "steamUdp": false for everyone who never chose: that key is not read, so co-op is on
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "steamUdp": false}""");
+            check(ProfileStore.LoadSteamUdp(paths), "An older settings file's steamUdp: false is not read: co-op over Steam relays is on.");
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "steamUdp": true, "coopRelays": false}""");
+            check(!ProfileStore.LoadSteamUdp(paths), "The player's own choice (coopRelays) is kept.");
             ProfileStore.SaveWar(paths, ProfileStore.WarOpen);
             ProfileStore.SaveCrashDump(paths, true);
             check(ProfileStore.LoadWar(paths) == ProfileStore.WarOpen && ProfileStore.LoadCrashDump(paths), "Saved choices are read back.");
@@ -77,13 +83,15 @@ static class SessionLaunchTests
             var options = new SessionOptions(false, false, ProfileStore.WarFrozen, false, false, []);
             var start = new System.Diagnostics.ProcessStartInfo();
             start.Environment["HELLFORGE_STEAM_UDP"] = "1";
+            start.Environment["HELLFORGE_STEAM_UDP_PROBLEM"] = "inherited";
             SessionRunner.ConfigureLinuxSteamUdp(start, options);
             check(!start.Environment.ContainsKey("HELLFORGE_STEAM_UDP"), "An inherited switch reached the wrapper with the setting off.");
+            check(!start.Environment.ContainsKey("HELLFORGE_STEAM_UDP_PROBLEM"), "An inherited problem reached the wrapper (only hellforge-offline.sh sets it).");
             SessionRunner.ConfigureLinuxSteamUdp(start, options with { SteamUdp = true });
             check(start.Environment["HELLFORGE_STEAM_UDP"] == "1", "The wrapper was not given HELLFORGE_STEAM_UDP=1.");
         });
 
-        test("Co-op over Steam relays refuses to start without pasta or python3 and names the package-manager command", () =>
+        test("Co-op over Steam relays names what is missing (pasta or python3) with the package-manager command", () =>
         {
             foreach (var (manager, command) in new[]
                      {
@@ -118,33 +126,38 @@ static class SessionLaunchTests
                 "settings does not validate and save --steam-udp.");
         });
 
-        test("A co-op session refuses before it starts when pasta is missing", () =>
+        test("A co-op session without pasta starts anyway (the wrapper plays it without co-op), with its network keeper's file", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux wrapper)"); return; }
             var paths = Install(Path.Combine("co-op-missing", "pfx", "drive_c", "HellForge"));
             var wrapper = Path.Combine(paths.Install.App, "linux", "hellforge-linux.sh");
+            var seen = Path.Combine(paths.Install.Root, "wrapper-environment");
             Directory.CreateDirectory(Path.GetDirectoryName(wrapper)!);
-            File.WriteAllText(wrapper, "#!/usr/bin/env bash\nexit 0\n");
+            // bash's own declare: the folder on PATH holds bash and nothing else
+            File.WriteAllText(wrapper, $"#!/usr/bin/env bash\ndeclare -px > '{seen}'\nexit 0\n");
             Directory.CreateDirectory(Path.GetDirectoryName(paths.Install.NetworkBlockMarker)!);
             File.WriteAllText(paths.Install.NetworkBlockMarker, """{"emulated": "linux-netns"}""");
             var profile = ProfileStore.List(paths)[0];
-            var emptyPath = Directory.CreateDirectory(Path.Combine(root, "no-programs")).FullName;
+            var bashOnly = Directory.CreateDirectory(Path.Combine(root, "bash-only")).FullName;
+            var bash = new[] { "/usr/bin/bash", "/bin/bash" }.First(File.Exists);
+            if (!File.Exists(Path.Combine(bashOnly, "bash"))) File.CreateSymbolicLink(Path.Combine(bashOnly, "bash"), bash);
             var previousPath = Environment.GetEnvironmentVariable("PATH");
+            var runner = new SessionRunner();
             try
             {
-                Environment.SetEnvironmentVariable("PATH", emptyPath);
-                try
-                {
-                    new SessionRunner().Start(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], SteamUdp: true));
-                    check(false, "A session without pasta was started.");
-                }
-                catch (InvalidOperationException error)
-                {
-                    check(error.Message.Contains("pasta", StringComparison.Ordinal) && error.Message.Contains("python3", StringComparison.Ordinal),
-                        "The refusal does not name what is missing: " + error.Message);
-                }
+                Environment.SetEnvironmentVariable("PATH", bashOnly);
+                check(SessionRunner.SteamUdpProblem() != null, "This PATH has no pasta.");
+                runner.Start(paths, profile, new(false, false, ProfileStore.WarFrozen, false, false, [], SteamUdp: true));
             }
             finally { Environment.SetEnvironmentVariable("PATH", previousPath); }
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (runner.IsRunning && waited.Elapsed < TimeSpan.FromSeconds(10)) Thread.Sleep(50);
+            var environment = File.Exists(seen) ? File.ReadAllText(seen) : "";
+            check(environment.Contains("HELLFORGE_STEAM_UDP=\"1\"", StringComparison.Ordinal),
+                "The wrapper gets the switch and decides (hellforge-offline.sh plays without co-op when it cannot open): " + environment.Length);
+            check(environment.Contains($"HELLFORGE_NETNS_KEEPER=\"{SessionRunner.NetnsKeeperFile(paths.Install.Root)}\"", StringComparison.Ordinal) &&
+                SessionRunner.NetnsKeeperFile(paths.Install.Root) == Path.Combine(paths.Install.Root, "temp", "linux-netns-keeper"),
+                "The wrapper is told where the session's network keeper goes.");
         });
 
         test("The Linux wrapper runs the Windows .NET programs under Wine with NLS globalization, not Proton's ICU", () =>

@@ -28,16 +28,18 @@ public sealed class BrowseApi
     DirectoryService? directory;
     LobbyService? lobby;
     FriendPresence? presence;
+    CoopRelays? relays;
     (DateTime At, Task<JsonObject> List)? last;
     IReadOnlyList<BrowseLobby> latest = []; // the last list's lobbies (Quick Play picks from them)
     readonly Dictionary<string, (BrowseLobby Lobby, DateTime At)> listed = new(StringComparer.Ordinal);
 
     public BrowseApi(Func<DateTime>? clock = null) => now = clock ?? (() => DateTime.UtcNow);
 
-    // The multiplayer services, once they run (directory null: a session without the lobby directory).
-    public void Attach(DirectoryService? directory, LobbyService lobby, FriendPresence presence)
+    // The multiplayer services, once they run (directory null: a session without the lobby directory; relays null: joins
+    // always reach other machines).
+    public void Attach(DirectoryService? directory, LobbyService lobby, FriendPresence presence, CoopRelays? relays = null)
     {
-        lock (gate) (this.directory, this.lobby, this.presence) = (directory, lobby, presence);
+        lock (gate) (this.directory, this.lobby, this.presence, this.relays) = (directory, lobby, presence, relays);
     }
 
     // GET /hellforge/v1/lobbies: the list, searched again only after MinInterval.
@@ -63,7 +65,8 @@ public sealed class BrowseApi
     {
         DirectoryService? directory;
         FriendPresence? presence;
-        lock (gate) (directory, presence) = (this.directory, this.presence);
+        CoopRelays? relays;
+        lock (gate) (directory, presence, relays) = (this.directory, this.presence, this.relays);
         if (presence == null) return Unavailable("Multiplayer is off for this session.");
         var lobbies = directory != null ? [.. await directory.BrowseAsync()] : new List<BrowseLobby>();
         // friends' lobbies the directory does not list (Friends only, or not listed), from their presence
@@ -74,6 +77,8 @@ public sealed class BrowseApi
             lobbies.Add(new BrowseLobby(lobbyId, connection, friend, true, "friend", members, 4, false,
                 new Dictionary<string, string>(StringComparer.Ordinal), body, new JoinCheck(true, "", null, [])));
         }
+        // co-op over Steam relays off (Linux): no join could reach a host, so each lobby waits for it (CoopRelays.Check)
+        if (relays is { Open: false }) lobbies = [.. lobbies.Select(l => l with { Join = relays.Check(l.Join) })];
         lobbies = [.. lobbies.OrderBy(Rank)]; // stable: the directory's order within each rank
         var at = now();
         lock (gate)
@@ -86,7 +91,8 @@ public sealed class BrowseApi
         {
             ["version"] = Version, ["available"] = true, ["searchedUtc"] = at.ToString("O", CultureInfo.InvariantCulture),
             ["lobbies"] = new JsonArray([.. lobbies.Select(l => (JsonNode?)Describe(l, presence))]),
-            ["needed"] = Needed(lobbies)
+            ["needed"] = Needed(lobbies),
+            ["coopRelays"] = relays is { Open: false } ? new JsonObject { ["on"] = false, ["why"] = relays.Why } : new JsonObject { ["on"] = true }
         };
     }
 
@@ -159,6 +165,7 @@ public sealed class BrowseApi
     {
         if (lobby.Locked) return "locked";
         if (lobby.Members >= lobby.MaxMembers) return "full";
+        if (lobby.Join.Fix == JoinCheck.FixRelays) return "unjoinable"; // whatever its mods need, nothing reaches it yet
         if (lobby.Join.Plan is { } plan) return plan.Verdict.ToString().ToLowerInvariant();
         if (!lobby.Join.Joinable) return "unjoinable";
         return lobby.Source == "friend" ? "unknown" : "ready";
@@ -220,6 +227,10 @@ public sealed class BrowseApi
     // POST /hellforge/v1/lobbies/quick: Quick Play, an invitation to the best lobby of a list at most MinInterval old.
     public async Task<(int Status, string Outcome, JsonObject Body)> QuickJoinAsync()
     {
+        CoopRelays? relays;
+        lock (gate) relays = this.relays;
+        if (relays is { Open: false })
+            return (409, "browse_quick_relays_off", Error("HELLFORGE_COOP_RELAYS_OFF", char.ToUpperInvariant(relays.Why[0]) + relays.Why[1..] + ": no lobby can be joined."));
         await ListAsync();
         BrowseLobby? best;
         lock (gate) best = Best(latest);
@@ -253,7 +264,7 @@ public sealed class BrowseApi
 }
 
 // The lobby browser in the game (HfApi browse_state, browse_lobby and browse_ask, SDK 16): an editor's asks over the
-// session's live-edit pipe ("browseask refresh|join <lobby id>|quick|allow strangers|editedstats",
+// session's live-edit pipe ("browseask refresh|join <lobby id>|quick|allow strangers|editedstats|relays",
 // native/mod-loader/live_browse.c), answered with the API's own list (BrowseApi.ListAsync) as one "browselobby" line a
 // lobby and then "browsestate", which publishes them, and a join through the API's (BrowseApi.Join, QuickJoinAsync).
 // "allow" turns on, for this session only, the setting a listed lobby's fix names, once the editor showed what it means:
@@ -268,20 +279,22 @@ public sealed class LiveBrowse
     readonly LiveEditServer live;
     readonly Action<string> log;
     readonly Func<string, bool>? allow;
+    readonly Func<Task<string?>>? turnOnRelays;
     readonly SemaphoreSlim order = new(1, 1);
     int attempts;
     // the list the game shows: its version and how many lobbies (0, 0: none yet)
     (int Version, int Lobbies) shown;
 
     // allow: turns "strangers" or "editedstats" on for this session, false when it cannot (null: "allow" is refused).
-    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log, Func<string, bool>? allow = null)
+    // turnOnRelays: turns co-op over Steam relays on (CoopRelays.TurnOnAsync), null once on, else why not (null: refused).
+    public LiveBrowse(BrowseApi api, LiveEditServer live, Action<string> log, Func<string, bool>? allow = null, Func<Task<string?>>? turnOnRelays = null)
     {
-        (this.api, this.live, this.log, this.allow) = (api, live, log, allow);
+        (this.api, this.live, this.log, this.allow, this.turnOnRelays) = (api, live, log, allow, turnOnRelays);
         live.Received += parts => { if (parts[0] == "browseask") _ = AskAsync(parts); };
         live.StateChanged += () => { if (!live.Connected) shown = (0, 0); }; // the loader forgets the list with the pipe
     }
 
-    // "browseask" refresh - | join <lobby id> | quick - | allow strangers|editedstats. Every ask ends in a state that is not
+    // "browseask" refresh - | join <lobby id> | quick - | allow strangers|editedstats|relays. Every ask ends in a state that is not
     // "searching": an ask that throws (a search that failed or timed out) is answered "failed", so neither the browser's
     // SEARCHING nor a join's wait outlives it.
     public async Task AskAsync(IReadOnlyList<string> parts)
@@ -294,6 +307,7 @@ public sealed class LiveBrowse
             else if (parts[1] == "join" && parts[2] != "-") await JoinAsync(parts[2]);
             else if (parts[1] == "quick") await QuickAsync();
             else if (parts[1] == "allow" && parts[2] is "strangers" or "editedstats") await AllowAsync(parts[2]);
+            else if (parts[1] == "allow" && parts[2] == "relays") await RelaysAsync();
         }
         catch (Exception error)
         {
@@ -347,6 +361,7 @@ public sealed class LiveBrowse
     {
         var more = notListed > 0 ? $"({notListed} more lobbies are not listed.)" : "";
         var lobbies = (list["lobbies"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+        if (RelaysOff(list, lobbies.Count, more) is { } off) return off;
         if (lobbies.Count == 0 || lobbies.Any(l => l["joinable"]?.GetValueKind() == JsonValueKind.True || l["fix"] != null)) return more;
         var names = (list["needed"] as JsonArray)?.OfType<JsonObject>().Select(m => m["name"]?.GetValue<string>()).OfType<string>().ToList() ?? [];
         const string start = "No lobby you can join right now.", end = " Or host a Public lobby yourself.";
@@ -361,6 +376,15 @@ public sealed class LiveBrowse
         text += end;
         if (more.Length > 0 && Bytes(text + " " + more) <= MessageBytes) text += " " + more;
         return text;
+    }
+
+    // Co-op over Steam relays off (Linux): what keeps every lobby out, and the key that turns it on; null while it is on.
+    static string? RelaysOff(JsonObject list, int lobbies, string more)
+    {
+        if (list["coopRelays"] is not JsonObject relays || relays["on"]?.GetValueKind() != JsonValueKind.False) return null;
+        var off = lobbies > 0 ? "Co-op over Steam relays is off, so no lobby can be joined: select one and press A to turn it on."
+            : "Co-op over Steam relays is off: no lobby could be joined, and yours is not listed.";
+        return more.Length > 0 && Bytes(off + " " + more) <= MessageBytes ? off + " " + more : off;
     }
 
     static int Bytes(string text) => System.Text.Encoding.UTF8.GetByteCount(text);
@@ -398,6 +422,40 @@ public sealed class LiveBrowse
         await RefreshAsync();
     }
 
+    // The player turned co-op over Steam relays on from the browser (Linux), after it said what that opens: the launcher
+    // opens it while the session runs (CoopRelays.TurnOnAsync), and a new list follows; if it could not, why, and that the
+    // next session starts with it (the launcher saved the switch). Unlike "allow", it is the launcher's setting: the
+    // browser's question is the player's choice of it.
+    async Task RelaysAsync()
+    {
+        if (turnOnRelays == null)
+        {
+            log("Lobby browser: the game asked to turn co-op over Steam relays on, but this session cannot.");
+            await live.BrowseStateAsync(shown.Version, "failed", shown.Lobbies, "This session cannot change that setting.");
+            return;
+        }
+        if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "searching", shown.Lobbies, "Turning on co-op over Steam relays...");
+        var why = await turnOnRelays();
+        if (why != null)
+        {
+            log("Lobby browser: co-op over Steam relays could not be turned on: " + why);
+            var message = "Co-op over Steam relays could not open now: " + why;
+            await FailedAsync(Bytes(message) <= MessageBytes ? message : Cut(message, MessageBytes));
+            return;
+        }
+        log("Lobby browser: co-op over Steam relays is on (asked from the game; the launcher keeps it on).");
+        api.Forget();
+        await RefreshAsync();
+    }
+
+    // Text cut to whole characters within bytes UTF-8 bytes, ending in "...".
+    static string Cut(string text, int bytes)
+    {
+        var cut = text;
+        while (cut.Length > 0 && Bytes(cut + "...") > bytes) cut = cut[..^1];
+        return cut + "...";
+    }
+
     // A lobby of the API's list as the loader reads it; null for one it could not take (a lobby id it refuses).
     public static LiveLobby? Line(JsonObject lobby)
     {
@@ -415,7 +473,7 @@ public sealed class LiveBrowse
         return new LiveLobby(verdict, flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
             Optional("planetId", 100000), sharedMods.Count, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
             lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), ModList(sharedMods, verdict),
-            lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", _ => "" });
+            lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", JoinCheck.FixRelays => "relays", _ => "" });
     }
 
     // HfBrowseLobby.mod_list holds 256 bytes and LiveEdit sends at most 250 characters of it: a list fitted to this many

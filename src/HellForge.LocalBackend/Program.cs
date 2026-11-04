@@ -213,7 +213,7 @@ try
     }
     if (multiplayer != null)
     {
-        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence, multiplayer.Relays);
         multiplayer.ShowBrowser(browse); // the in-game browser (SDK 16)
     }
     var ready = new System.Text.Json.Nodes.JsonObject

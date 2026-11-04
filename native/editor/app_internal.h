@@ -368,6 +368,9 @@ struct LobbyDialog
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
     bool camera = false;      /* the terminal's camera glides to its screen: the browser waits, drawing nothing */
     bool confirmStrangers = false; /* the warning before turning Play with strangers on shows, waiting for TURN ON */
+    bool confirmRelays = false; /* the question before turning co-op over Steam relays on shows, waiting for TURN ON */
+    bool relaysAsked = false;   /* co-op over Steam relays was asked for: the backend's next ready or failed state answers */
+    std::string afterRelays;    /* what the player tried while it was off (a lobby id, or QUICK_JOIN), done once it is on */
     std::string owner;        /* the mod that claimed the browser (browse_state's owner), or "": then this one never shows */
 };
 extern LobbyDialog g_lobbies;

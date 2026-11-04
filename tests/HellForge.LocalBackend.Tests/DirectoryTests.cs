@@ -26,7 +26,7 @@ static class DirectoryTests
         public readonly string Mods;
         public readonly List<string> Log = [];
         public bool Edited;
-        public bool ListPublic = true, Strangers = true;
+        public bool ListPublic = true, Strangers = true, Relays = true;
 
         public Node(InMemoryNetwork network, MemoryLobbyDirectory listings, ulong id, string folder, ModSet own, ILobbyDirectory? directory = null, bool sandboxed = false)
         {
@@ -37,7 +37,7 @@ static class DirectoryTests
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
             Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false, sandboxed);
             Directory = new DirectoryService(directory ?? listings.For(id), Lobby, Presence, id, Inbox.Add, Note, new DirectorySettings(Sync, () => Edited, AutoPublish: false,
-                ListPublic: () => ListPublic, StrangersAllowed: () => Strangers));
+                ListPublic: () => ListPublic, StrangersAllowed: () => Strangers, RelaysOpen: () => Relays));
             transport.Received += (peer, bytes) =>
             {
                 var frame = Frame.Decode(bytes);
@@ -362,6 +362,15 @@ static class DirectoryTests
         host.ListPublic = true;
         host.Directory.Publish(now + TimeSpan.FromSeconds(18.7));
         check(listings.All.Count == 1 && host.Directory.Listing, "Switched on again, it is listed.");
+        // Co-op over Steam relays off (Linux): nobody could join it, so it is not listed; on (turned on live), it is again.
+        host.Relays = false;
+        host.Directory.Publish(now + TimeSpan.FromSeconds(18.8));
+        lock (host.Log) check(listings.All.Count == 0 && !host.Directory.Listing &&
+            host.Log.Contains("Directory: this machine's public lobby is not listed: co-op over Steam relays is off, so nobody could join it."),
+            "With co-op over Steam relays off a Public lobby is not listed, and the log says why.");
+        host.Relays = true;
+        host.Directory.Publish(now + TimeSpan.FromSeconds(18.9));
+        check(listings.All.Count == 1 && host.Directory.Listing, "Co-op over Steam relays on again: it is listed.");
 
         // A lobby that turns private, locks or fills is no longer listed, at once.
         host.Lobby.FromLocal(SearchChange("u", lobbyId, HostId, "number_key6", "1"));
@@ -395,7 +404,8 @@ static class DirectoryTests
             else editedStats = true;
             return true;
         }
-        var browser = new LiveBrowse(browse, live, logged.Enqueue, Allow);
+        Func<Task<string?>> turnOn = () => Task.FromResult<string?>("not set up");
+        var browser = new LiveBrowse(browse, live, logged.Enqueue, Allow, () => turnOn());
         live.Start();
         using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", LiveEditServer.PipeName(runId), System.IO.Pipes.PipeDirection.InOut,
             System.IO.Pipes.PipeOptions.Asynchronous);
@@ -455,7 +465,9 @@ static class DirectoryTests
         refuseLobbies = false;
         check(failed.Last() == "browsestate\t5\tfailed\t2\tThe list could not be shown. REFRESH to try again." && logged.Any(l => l.Contains("the game refused a lobby")),
             "A list the game refuses ends in a failed state: " + string.Join(" | ", failed));
-        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
+        await Relays(browse, guest, lobbyId, otherLobby, logged, f => turnOn = f, Game, check);
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixRelays }) is { Fix: "relays" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixEditedStats }) is { Fix: "editedstats" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "sandbox" }) is { Fix: "" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "vip" }) is { Fix: "" }, "A lobby's fix goes to the game by its word.");
@@ -464,6 +476,91 @@ static class DirectoryTests
             "A lobby id the loader refuses is left out; counts are kept in range.");
         GC.KeepAlive(browser);
         Directory.Delete(modsFolder, true);
+    }
+
+    // Co-op over Steam relays off (Linux, CoopRelays): every lobby that could be joined waits for it (the fix "relays"),
+    // one with mods in the way keeps its own reason; Quick Play and joins say why. The game's browser asks the launcher
+    // (the request and answer files of CoopRelaysSwitch, here answered by a stand-in) and lists again once it is on.
+    static async Task Relays(BrowseApi browse, Node guest, string lobbyId, string otherLobby, ConcurrentQueue<string> logged,
+        Action<Func<Task<string?>>> setTurnOn, Func<string, string[], Task<List<string>>> game, Action<bool, string> check)
+    {
+        var folder = Directory.CreateTempSubdirectory("hf-relays-").FullName;
+        var relays = new CoopRelays(namespaced: true, open: false, problem: null, folder, logged.Enqueue);
+        var opened = 0;
+        relays.Opened += () => Interlocked.Increment(ref opened);
+        check(!relays.Open && relays.Why == "co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER)", "Off, it says where it is turned on: " + relays.Why);
+        var unchanged = new JoinCheck(false, "its host's unchecked mods need a sandboxed game", null, []);
+        check(relays.Check(unchanged) == unchanged && relays.Check(new JoinCheck(true, "", null, [])) is { Joinable: false, Fix: JoinCheck.FixRelays } &&
+            relays.Check(new JoinCheck(false, "x", null, []) { Fix = JoinCheck.FixStrangers }) is { Fix: JoinCheck.FixRelays },
+            "A lobby that could be joined, or that a setting lets in, waits for co-op; one with mods in the way keeps its reason.");
+        browse.Attach(guest.Directory, guest.Lobby, guest.Presence, relays);
+        browse.Forget();
+        var list = await browse.ListAsync();
+        var lobbies = list["lobbies"]!.AsArray().OfType<JsonObject>().ToList();
+        var open = lobbies.SingleOrDefault(l => (string?)l["lobbyId"] == lobbyId);
+        var closed = lobbies.SingleOrDefault(l => (string?)l["lobbyId"] == otherLobby);
+        check(list["coopRelays"]?["on"]?.GetValue<bool>() == false && (string?)list["coopRelays"]?["why"] == relays.Why &&
+            open?["joinable"]?.GetValue<bool>() == false && (string?)open["verdict"] == "unjoinable" && (string?)open["fix"] == JoinCheck.FixRelays &&
+            (string?)open["reason"] == "Co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER)." &&
+            closed != null && closed["fix"] == null && (string?)closed["reason"] == "Its host's unchecked mods need a sandboxed game.",
+            "The API lists every lobby with what keeps it out: " + list.ToJsonString());
+        check(browse.Join(lobbyId).Status == 409, "A join is refused while co-op over Steam relays is off.");
+        var quick = await browse.QuickJoinAsync();
+        check(quick.Status == 409 && (string?)quick.Body["errorCode"] == "HELLFORGE_COOP_RELAYS_OFF" &&
+            (string?)quick.Body["message"] == "Co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER): no lobby can be joined.",
+            "Quick Play says why it joins nothing: " + quick.Body.ToJsonString());
+
+        // the game's list: each lobby with its fix, and the header that says what keeps them out
+        var shown = await game("browseask\trefresh\t-", []);
+        var line = shown.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"))?.Split('\t');
+        check(line is [.., "relays"] && line[3] == "unjoinable" && shown.Last().EndsWith("\tready\t2\tCo-op over Steam relays is off, so no lobby can be joined: select one and press A to turn it on.", StringComparison.Ordinal),
+            "The game lists the lobbies with the fix and the header: " + string.Join(" | ", shown));
+        check(LiveBrowse.Message(new JsonObject { ["lobbies"] = new JsonArray(), ["coopRelays"] = new JsonObject { ["on"] = false } }, 0) ==
+            "Co-op over Steam relays is off: no lobby could be joined, and yours is not listed.", "With no lobby the header says the player's own is not listed either.");
+
+        // the launcher stand-in: answers the next ask
+        async Task Launcher(bool turned, string message)
+        {
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (!CoopRelaysSwitch.TakeRequest(folder))
+            {
+                if (DateTime.UtcNow > until) return;
+                await Task.Delay(20);
+            }
+            CoopRelaysSwitch.WriteAnswer(folder, turned, message);
+        }
+        setTurnOn(relays.TurnOnAsync);
+        var launcher = Launcher(false, "pasta could not attach to the session's network: no message. It is on from the next session: STOP, then PLAY, to join");
+        var failed = await game("browseask\tallow\trelays", []);
+        await launcher;
+        check(failed.First().EndsWith("\tsearching\t2\tTurning on co-op over Steam relays...", StringComparison.Ordinal) &&
+            failed.Last().Contains("\tfailed\t2\tCo-op over Steam relays could not open now: pasta could not attach", StringComparison.Ordinal) &&
+            System.Text.Encoding.UTF8.GetByteCount(failed.Last().Split('\t')[^1]) <= LiveBrowse.MessageBytes && !relays.Open && opened == 0,
+            "The launcher's refusal reaches the game, cut to the header: " + string.Join(" | ", failed));
+        launcher = Launcher(true, "");
+        var turnedOn = await game("browseask\tallow\trelays", []);
+        await launcher;
+        var after = turnedOn.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"))?.Split('\t');
+        check(relays.Open && opened == 1 && after is [.., "-"] && after[4].Contains("joinable") && turnedOn.Last().Contains("\tready\t2\t", StringComparison.Ordinal) &&
+            logged.Any(l => l.StartsWith("Co-op over Steam relays: on for the rest of this session", StringComparison.Ordinal)),
+            "Turned on from the game: the lobby is joinable again: " + string.Join(" | ", turnedOn));
+        check(await relays.TurnOnAsync() == null && !File.Exists(Path.Combine(folder, CoopRelaysSwitch.RequestFile)), "Once on, nothing more is asked.");
+
+        // elsewhere (not in a namespace) it is always open; a session that could not open it says why; no folder, no ask
+        var windows = new CoopRelays(namespaced: false, open: false, problem: null, null, _ => { });
+        check(windows.Open && windows.Check(new JoinCheck(true, "", null, [])).Joinable && await windows.TurnOnAsync() == null, "Outside a namespace it is always open.");
+        var broken = new CoopRelays(namespaced: true, open: false, problem: " pasta (the passt package) is not installed\n", null, _ => { });
+        check(broken.Why == "co-op over Steam relays could not open for this session: pasta (the passt package) is not installed" &&
+            await broken.TurnOnAsync() == "this session has no backend folder to ask the launcher through", "A session that could not open it says why: " + broken.Why);
+        check(CoopRelaysSwitch.TakeAnswer(folder) == null, "No answer is left over.");
+        CoopRelaysSwitch.WriteAnswer(folder, true, "");
+        CoopRelaysSwitch.Ask(folder);
+        check(CoopRelaysSwitch.TakeAnswer(folder) == null && CoopRelaysSwitch.TakeRequest(folder) && !CoopRelaysSwitch.TakeRequest(folder),
+            "An ask clears an old answer first, and the launcher takes each ask once.");
+
+        browse.Attach(guest.Directory, guest.Lobby, guest.Presence);
+        browse.Forget();
+        Directory.Delete(folder, true);
     }
 
     // Another HellForge: whose bundled mod is older says who updates.
