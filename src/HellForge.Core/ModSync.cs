@@ -24,7 +24,8 @@ namespace HellForge.Core;
 // them to anyone its lobby offers them to: the risk is the joiner's to take, by the mod's exact content. From a stranger
 // that takes a sandboxed session, and such a trust counts only in one (TrustedMod.Stranger): the sandbox stops the mod's
 // writes and network, not its reads, and the stranger is on the other end of the game's traffic, which the prompt's
-// warning says. Unsandboxed, a stranger's unverified code and raw mods are the player's to install. A synced code or raw mod
+// warning says. A trust answered in a sandboxed game counts only in one as well, a Steam friend's too
+// (TrustedMod.Sandboxed): any code in that game can send the answer, and must not open a mod to unsandboxed play. Unsandboxed, a stranger's unverified code and raw mods are the player's to install. A synced code or raw mod
 // counts as here, and loads, only while it is verified or trusted for the session (ModSyncPlan.Make, ModSyncSession.Resolve):
 // a mod taken off the verified list, or a trust taken back, stops it. Trust changes only which list lets a hash through:
 // every byte is checked against it as before.
@@ -861,8 +862,11 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
     {
         var kind = ModSets.ClassOf(found);
         if (!ModSets.NeedsVerified(kind) || verified(found.Id, hash) || settings.Trusts(found.Id, hash, sandboxed)) return null;
-        return !sandboxed && settings.Trusts(found.Id, hash, sandboxed: true)
+        var boxed = sandboxed ? null : settings.Trusted.FirstOrDefault(t => t.Id == found.Id && t.Hash == hash && t.SandboxOnly);
+        return boxed is { Stranger: true }
             ? $"{found.Id} came from a player who is not your Steam friend, so it runs only in a sandboxed game (Settings > Sandbox)."
+            : boxed != null
+            ? $"{found.Id} was trusted in a sandboxed game, so it runs only in one (Settings > Sandbox); trust it again outside the sandbox to play it here."
             : $"{found.Id} {ModSets.Unchecked(kind)} and is no longer on HellForge's verified list or trusted: join its host again to trust it.";
     }
 

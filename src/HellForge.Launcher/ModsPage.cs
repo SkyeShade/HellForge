@@ -254,7 +254,7 @@ public partial class MainWindow
         panel.Children.Add(Section(settings.Trusted.Count == 0 ? "Trusted mods" : $"Trusted mods ({settings.Trusted.Count})"));
         panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Classes = { "muted" }, Text = settings.Trusted.Count == 0
             ? "None. TRUST on the in-game MOD SYNC prompt lets a mod download that HellForge has not verified: a Steam friend's, or with the sandbox on, anyone's."
-            : "These exact versions download without HellForge's check. They run their own code on your PC; those from players who are not your Steam friends run only while the sandbox is on." });
+            : "These exact versions download without HellForge's check. They run their own code on your PC; those from players who are not your Steam friends, or trusted in a sandboxed game, run only while the sandbox is on." });
         foreach (var trusted in settings.Trusted)
         {
             var row = new DockPanel();
@@ -278,7 +278,7 @@ public partial class MainWindow
             var from = System.Text.RegularExpressions.Regex.Replace(trusted.From, @"\s*\([0-9A-Fa-f]{6,}\)$", "");
             var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = $"{trusted.Name} {trusted.Version}", TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(new TextBlock { Text = $"from {from}{(trusted.Stranger ? " (not a Steam friend; sandbox only)" : "")}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            text.Children.Add(new TextBlock { Text = $"from {from}{(trusted.Stranger ? " (not a Steam friend; sandbox only)" : trusted.Sandboxed ? " (trusted in a sandboxed game; sandbox only)" : "")}{since}", Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
             ToolTip.SetTip(text, $"{trusted.Id}, from {trusted.From}. Content hash {trusted.Hash}");
             row.Children.Add(text);
             panel.Children.Add(row);
