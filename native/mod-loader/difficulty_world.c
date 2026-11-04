@@ -414,6 +414,94 @@ static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_
     ReleaseSRWLockExclusive(&g_explorationLock);
     return r;
 }
+/* GenerateLocationClusters (op 0x18, 0xF79520; rcx = its context: clusters [+0x20] (0xE0 each, centre xy at +0/+4,
+ * class byte +0xD8), count [[+0x38]]; r8 = the pass: S = [+8], world size u32 S+0x2C, playable fraction S+0x50) puts
+ * every cluster on one ring: radius lerp(R+0x14, R+0x18, one draw) x the playable radius W/2 x S+0x50 (0xF799B1..
+ * 0xF79A27), slots 2pi/n apart from a random start (0xF79D36..0xF79E5E), and at most one at the exact centre. Every
+ * objective, outpost and extraction is later placed at the nearest free point to its cluster's centre (SpreadLocations
+ * 0xF7C310 reads only loc+0xE0 -> the centre), so on a 16 km map an operation's content sat in blobs on a ring 4.7-6.2 km
+ * out with the middle and the rim empty. On an extra large map each ring cluster keeps its direction from the centre
+ * and takes its own distance instead: ordered by direction, the k-th gets the (k * step mod n)-th of n equal-area
+ * bands between 10 % and 88 % of the playable radius (step coprime to n, near n x 0.618, so neighbours differ). No new
+ * draws and no trigonometry: every peer gets the same centres. The centre cluster stays. */
+WORLD_PASS(ClustersTimed, 0xF79520u, "GenerateLocationClusters")
+/* The pass also makes at least ceil(locations of a kind / N) clusters (difficulty_block.c's count stubs read {N - 1,
+ * shift}): 24 per cluster elsewhere, 6 on an extra large level, so an operation's content is many small groups rather
+ * than four large ones (s73i: 64 locations in 4 clusters). The lock keeps a level's N for its whole pass. */
+static volatile uint32_t* g_clusterPer;
+static SRWLOCK g_clusterLock = SRWLOCK_INIT;
+static float ClusterDirection(float dx, float dy) /* a monotonic stand-in for the angle, 0..4 */
+{
+    float d = fabsf(dx) + fabsf(dy);
+    float p = dy / d;
+    return dx >= 0 ? (dy >= 0 ? p : 4.0f + p) : 2.0f - p;
+}
+static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e)
+{
+    AcquireSRWLockExclusive(&g_clusterLock);
+    int small = g_clusterPer != NULL && g_world.current > 1.0f;
+    if (small) { g_clusterPer[0] = 5; g_clusterPer[1] = 34; }
+    uint64_t r = WorldPassClustersTimed(a, b, c, e);
+    if (small) { g_clusterPer[0] = 23; g_clusterPer[1] = 36; }
+    ReleaseSRWLockExclusive(&g_clusterLock);
+    uint64_t clusters = 0, countAt = 0, S = 0;
+    uint32_t n = 0, W = 0;
+    float fraction = 0;
+    if (!(g_world.current > 1.0f) || SafeRead(a + 0x20, &clusters, 8) || clusters == 0 || SafeRead(a + 0x38, &countAt, 8) || countAt == 0 ||
+        SafeRead(countAt, &n, 4) || n < 2 || n > 64 || SafeRead(c + 8, &S, 8) || S == 0 || SafeRead(S + 0x2C, &W, 4) || SafeRead(S + 0x50, &fraction, 4) ||
+        !(fraction > 0.0f && fraction <= 1.0f) || W < 4096)
+        return r;
+    const float centre = 0.5f * (float)W, play = centre * fraction;
+    uint32_t ring[64], m = 0;
+    float dir[64], dist[64];
+    for (uint32_t i = 0; i < n; i++)
+    {
+        float xy[2];
+        if (SafeRead(clusters + 0xE0ull * i, xy, 8) || !isfinite(xy[0]) || !isfinite(xy[1])) return r;
+        float dx = xy[0] - centre, dy = xy[1] - centre, d = sqrtf(dx * dx + dy * dy);
+        if (d < 1.0f) continue; /* the centre cluster */
+        uint32_t k = m++;
+        dir[k] = ClusterDirection(dx, dy); dist[k] = d; ring[k] = i;
+        while (k > 0 && dir[k - 1] > dir[k]) /* insertion sort by direction */
+        {
+            float t = dir[k]; dir[k] = dir[k - 1]; dir[k - 1] = t;
+            t = dist[k]; dist[k] = dist[k - 1]; dist[k - 1] = t;
+            uint32_t u = ring[k]; ring[k] = ring[k - 1]; ring[k - 1] = u;
+            k--;
+        }
+    }
+    if (m < 2) return r;
+    uint32_t step = (uint32_t)((float)m * 0.618034f + 0.5f);
+    if (step < 1) step = 1;
+    for (;;) /* coprime to m */
+    {
+        uint32_t x = step, y = m;
+        while (y) { uint32_t t = x % y; x = y; y = t; }
+        if (x == 1) break;
+        step++;
+    }
+    const float lo = 0.10f, hi = 0.88f;
+    char list[64 * 12 + 1];
+    int at = 0;
+    for (uint32_t k = 0; k < m; k++)
+    {
+        float band = ((float)((k * step) % m) + 0.5f) / (float)m;
+        float want = play * sqrtf(lo * lo + (hi * hi - lo * lo) * band);
+        float xy[2];
+        uint64_t centreAt = clusters + 0xE0ull * ring[k];
+        if (SafeRead(centreAt, xy, 8)) return r;
+        float scale = want / dist[k];
+        xy[0] = centre + (xy[0] - centre) * scale;
+        xy[1] = centre + (xy[1] - centre) * scale;
+        memcpy((void*)(uintptr_t)centreAt, xy, 8);
+        if (at < (int)sizeof list - 12) at += snprintf(list + at, sizeof list - at, " %.0f", (double)want);
+    }
+    static LONG noted;
+    if (InterlockedIncrement(&noted) <= 4)
+        Note("difficulty: extra large maps: %u location clusters spread over the map (%u on the ring at %.0f m; playable %.0f m), their distances:%s",
+            n, m, (double)dist[0], (double)play, list);
+    return r;
+}
 WORLD_PASS(Voronoi, 0xF3F8E0u, "GenerateVoronoi")
 /* The step dispatcher (0xC14950: rcx the pass records, 0x19B0 each, op at +0; r8 the current index; two stack arguments):
  * every op of an extra large level that adds locations or takes over 100 ms. */
@@ -1825,7 +1913,7 @@ static const struct { uint32_t rva; void* detour; WorldPassFn* original; } kWorl
     {0xF82A80u, (void*)WorldPassCrossing, &g_passCrossing}, {0xF7C310u, (void*)WorldPassSpread, &g_passSpread},
     {0xF86DC0u, (void*)WorldPassSatellite, &g_passSatellite}, {0xF40F80u, (void*)WorldPassScatter, &g_passScatter},
     {0xF82710u, (void*)WorldPassEdge, &g_passEdge}, {0xF95900u, (void*)WorldPassExploration, &g_passExplorationTimed},
-    {0xF3F8E0u, (void*)WorldPassVoronoi, &g_passVoronoi}};
+    {0xF3F8E0u, (void*)WorldPassVoronoi, &g_passVoronoi}, {0xF79520u, (void*)WorldPassClusters, &g_passClustersTimed}};
 
 /* Streaming research: who spawns units into which world. Three engine spawners (rcx the world each): exe 0x338840 and
  * 0x338720 (the world interface's +0x380 and +0x378) and 0x1B4380 (no direct callers). Each (spawner, world, caller) is

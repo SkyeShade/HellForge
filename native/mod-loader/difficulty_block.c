@@ -107,27 +107,36 @@ static const LocationSite kClusterCaps[16] = {
  * cap follows). {site, length, pin, stub, size, back rel32 at, back}. */
 static const uint8_t kClusterCountPinA[9] = {0x44, 0x3B, 0xD2, 0x41, 0x0F, 0x42, 0xD2, 0xEB, 0x35};
 static const uint8_t kClusterCountPinB[7] = {0x41, 0x3B, 0xCA, 0x44, 0x0F, 0x42, 0xD1};
-static const uint8_t kClusterCountStubA[45] = {
-    0x44, 0x3B, 0xD2, 0x41, 0x0F, 0x42, 0xD2,                         /*  0 cmp r10d, edx; cmovb edx, r10d (as before) */
-    0x41, 0x8D, 0x42, 0x17,                                           /*  7 lea eax, [r10+23] */
-    0xB9, 0xAB, 0xAA, 0xAA, 0xAA, 0x48, 0x0F, 0xAF, 0xC1,             /* 11 mov ecx, 0xAAAAAAAB; imul rax, rcx */
-    0x48, 0xC1, 0xE8, 0x24,                                           /* 20 shr rax, 36 (eax = ceil(r10d / 24)) */
-    0x44, 0x89, 0xC9, 0x44, 0x29, 0xF9,                               /* 24 mov ecx, r9d; sub ecx, r15d (places left) */
-    0x39, 0xC8, 0x0F, 0x47, 0xC1,                                     /* 30 cmp eax, ecx; cmova eax, ecx */
-    0x39, 0xD0, 0x0F, 0x47, 0xD0,                                     /* 35 cmp eax, edx; cmova edx, eax */
-    0xE9, 0, 0, 0, 0};                                                /* 40 jmp 0xF7995D (rel32 at 41) */
-static const uint8_t kClusterCountStubB[37] = {
-    0x50,                                                             /*  0 push rax (r9d, the capacity) */
-    0x41, 0x8D, 0x42, 0x17,                                           /*  1 lea eax, [r10+23] */
-    0x41, 0xB8, 0xAB, 0xAA, 0xAA, 0xAA, 0x49, 0x0F, 0xAF, 0xC0,       /*  5 mov r8d, 0xAAAAAAAB; imul rax, r8 */
-    0x48, 0xC1, 0xE8, 0x24,                                           /* 15 shr rax, 36 */
-    0x39, 0xC1, 0x0F, 0x42, 0xC8,                                     /* 19 cmp ecx, eax; cmovb ecx, eax (the cap, at least that) */
-    0x58,                                                             /* 24 pop rax */
-    0x41, 0x3B, 0xCA, 0x44, 0x0F, 0x42, 0xD1,                         /* 25 cmp ecx, r10d; cmovb r10d, ecx (as before) */
-    0xE9, 0, 0, 0, 0};                                                /* 32 jmp 0xF7994E (rel32 at 33) */
+/* The per-cluster number is read at run time from the stub block (+0x80 the divisor - 1, +0x84 the shift after the
+ * multiply by 0xAAAAAAAB: 23 / 36 = 24 per cluster, 5 / 34 = 6), so an extra large level can ask for smaller clusters
+ * (difficulty_world.c, WorldPassClusters) while the others keep 24. rip-relative reads: {at, rel32 at, end}. */
+static const uint8_t kClusterCountStubA[55] = {
+    0x41, 0x39, 0xD2, 0x41, 0x0F, 0x42, 0xD2,                         /*  0 cmp r10d, edx; cmovb edx, r10d (as before) */
+    0x44, 0x89, 0xD0,                                                 /*  7 mov eax, r10d */
+    0x03, 0x05, 0, 0, 0, 0,                                           /* 10 add eax, [rip -> +0x80] (rel32 at 12) */
+    0xB9, 0xAB, 0xAA, 0xAA, 0xAA, 0x48, 0x0F, 0xAF, 0xC1,             /* 16 mov ecx, 0xAAAAAAAB; imul rax, rcx */
+    0x8B, 0x0D, 0, 0, 0, 0,                                           /* 25 mov ecx, [rip -> +0x84] (rel32 at 27) */
+    0x48, 0xD3, 0xE8,                                                 /* 31 shr rax, cl (eax = ceil(r10d / per cluster)) */
+    0x44, 0x89, 0xC9, 0x44, 0x29, 0xF9,                               /* 34 mov ecx, r9d; sub ecx, r15d (places left) */
+    0x39, 0xC8, 0x0F, 0x47, 0xC1,                                     /* 40 cmp eax, ecx; cmova eax, ecx */
+    0x39, 0xD0, 0x0F, 0x47, 0xD0,                                     /* 45 cmp eax, edx; cmova edx, eax */
+    0xE9, 0, 0, 0, 0};                                                /* 50 jmp 0xF7995D (rel32 at 51) */
+static const uint8_t kClusterCountStubB[54] = {
+    0x50, 0x51,                                                       /*  0 push rax (r9d, the capacity); push rcx (the cap) */
+    0x44, 0x89, 0xD0,                                                 /*  2 mov eax, r10d */
+    0x03, 0x05, 0, 0, 0, 0,                                           /*  5 add eax, [rip -> +0x80] (rel32 at 7) */
+    0x41, 0xB8, 0xAB, 0xAA, 0xAA, 0xAA, 0x49, 0x0F, 0xAF, 0xC0,       /* 11 mov r8d, 0xAAAAAAAB; imul rax, r8 */
+    0x8B, 0x0D, 0, 0, 0, 0,                                           /* 21 mov ecx, [rip -> +0x84] (rel32 at 23) */
+    0x48, 0xD3, 0xE8,                                                 /* 27 shr rax, cl */
+    0x41, 0x89, 0xC0, 0x59,                                           /* 30 mov r8d, eax; pop rcx */
+    0x44, 0x39, 0xC1, 0x41, 0x0F, 0x42, 0xC8,                         /* 34 cmp ecx, r8d; cmovb ecx, r8d (the cap, at least that) */
+    0x58,                                                             /* 41 pop rax */
+    0x44, 0x39, 0xD1, 0x44, 0x0F, 0x42, 0xD1,                         /* 42 cmp ecx, r10d; cmovb r10d, ecx (as before) */
+    0xE9, 0, 0, 0, 0};                                                /* 49 jmp 0xF7994E (rel32 at 50) */
+static const uint8_t kClusterCountReads[2][2][3] = {{{12, 16, 0x80}, {27, 31, 0x84}}, {{7, 11, 0x80}, {23, 27, 0x84}}};
 static const struct { uint32_t site; uint8_t length; const uint8_t* pin; const uint8_t* stub; uint8_t size, backAt; uint32_t back; } kClusterCountSites[2] = {
-    {0xF7991Fu, 9, kClusterCountPinA, kClusterCountStubA, 45, 41, 0xF7995Du},
-    {0xF79947u, 7, kClusterCountPinB, kClusterCountStubB, 37, 33, 0xF7994Eu}};
+    {0xF7991Fu, 9, kClusterCountPinA, kClusterCountStubA, 55, 51, 0xF7995Du},
+    {0xF79947u, 7, kClusterCountPinB, kClusterCountStubB, 54, 50, 0xF7994Eu}};
 static const LocationSite kPlaceSetRefs[25] = {
     {0xC1AF98u, 0, 0x8C4A38u}, {0xC1B8B1u, 0, 0x8C4A38u}, {0xC1BB83u, 0, 0x8C4A38u}, {0xC1C4BFu, 0, 0x8C4A38u},
     {0xC1CA89u, 0, 0x8C4A38u}, {0xC1CD12u, 0, 0x8C4A38u}, {0xC1D48Au, 0, 0x8C4A38u}, {0xC25D0Bu, 0, 0x8C4A38u},
@@ -346,9 +355,17 @@ static const char* RaiseClusterCounts(uintptr_t game)
         memcpy(stub, kClusterCountSites[i].stub, kClusterCountSites[i].size);
         int32_t back = (int32_t)(game + kClusterCountSites[i].back - (uintptr_t)(stub + kClusterCountSites[i].backAt + 4));
         memcpy(stub + kClusterCountSites[i].backAt, &back, 4);
+        for (int k = 0; k < 2; k++)
+        {
+            int32_t rel = (int32_t)((counts + kClusterCountReads[i][k][2]) - (stub + kClusterCountReads[i][k][1]));
+            memcpy(stub + kClusterCountReads[i][k][0], &rel, 4);
+        }
     }
+    uint32_t per24[2] = {23, 36};
+    memcpy(counts + 0x80, per24, 8);
+    g_clusterPer = (volatile uint32_t*)(counts + 0x80);
     DWORD countProtect;
-    VirtualProtect(counts, 0x100, PAGE_EXECUTE_READ, &countProtect);
+    VirtualProtect(counts, 0x100, PAGE_EXECUTE_READWRITE, &countProtect); /* +0x80: the per-cluster number, set per level */
     for (int i = 0; i < 2; i++)
     {
         uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
