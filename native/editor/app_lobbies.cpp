@@ -116,20 +116,20 @@ static bool OutOfReach(const HfBrowseLobby& l)
 /* The lobbies the filters leave; the selection kept on the lobby whose id is selected where it can be. Lobbies out of
  * reach are hidden while any other is left (unless showUnreachable): a list of lobbies that can't be joined hid the ones
  * that can. The backend lists those last (BrowseApi.Rank). */
+static bool Passes(const HfBrowseLobby& l)
+{
+    if (g_lobbies.joinableOnly && !(l.flags & HF_LOBBY_FLAG_JOINABLE)) return false;
+    if (g_lobbies.friendsOnly && !(l.flags & HF_LOBBY_FLAG_FRIEND)) return false;
+    return g_lobbies.difficulty <= 0 || l.difficulty >= g_lobbies.difficulty;
+}
+
 static void Filter(const std::string& selected)
 {
     g_lobbies.shown.clear();
     std::vector<int> left;
-    int reachable = 0;
     for (int i = 0; i < (int)g_lobbies.lobbies.size(); i++)
-    {
-        const HfBrowseLobby& l = g_lobbies.lobbies[i];
-        if (g_lobbies.joinableOnly && !(l.flags & HF_LOBBY_FLAG_JOINABLE)) continue;
-        if (g_lobbies.friendsOnly && !(l.flags & HF_LOBBY_FLAG_FRIEND)) continue;
-        if (g_lobbies.difficulty > 0 && l.difficulty < g_lobbies.difficulty) continue;
-        left.push_back(i);
-        if (!OutOfReach(l)) reachable++;
-    }
+        if (Passes(g_lobbies.lobbies[i])) left.push_back(i);
+    int reachable = (int)std::count_if(left.begin(), left.end(), [](int i) { return !OutOfReach(g_lobbies.lobbies[i]); });
     g_lobbies.unreachable = (int)left.size() - reachable;
     bool hide = !g_lobbies.showUnreachable && reachable > 0;
     g_lobbies.hidden = hide ? g_lobbies.unreachable : 0;
@@ -334,13 +334,11 @@ void LobbyKeys()
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { PowerOff(); return; }
     if (!LobbiesArmed()) return;
     if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) Join(Selected());
-    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) Refresh();
-    if (ImGui::IsKeyPressed(ImGuiKey_J, false)) ToggleJoinable();
-    if (ImGui::IsKeyPressed(ImGuiKey_F, false)) ToggleFriends();
-    if (ImGui::IsKeyPressed(ImGuiKey_H, false)) ToggleUnreachable();
-    if (ImGui::IsKeyPressed(ImGuiKey_D, false)) NextDifficulty();
-    if (ImGui::IsKeyPressed(ImGuiKey_Q, false)) Quick();
-    if (ImGui::IsKeyPressed(ImGuiKey_A, false)) Fix(Selected());
+    static const struct { ImGuiKey key; void (*action)(); } keys[] = {
+        {ImGuiKey_R, Refresh}, {ImGuiKey_J, ToggleJoinable}, {ImGuiKey_F, ToggleFriends}, {ImGuiKey_H, ToggleUnreachable},
+        {ImGuiKey_D, NextDifficulty}, {ImGuiKey_Q, Quick}, {ImGuiKey_A, [] { Fix(Selected()); }}};
+    for (const auto& k : keys)
+        if (ImGui::IsKeyPressed(k.key, false)) k.action();
 }
 
 static std::string Megabytes(uint64_t bytes)
@@ -541,6 +539,38 @@ static std::vector<std::string> Items(const char* text, const char* separator, s
     return items;
 }
 
+/* A column of the details panel: wrapped lines from `y` down (it ends under them). */
+struct TermColumn
+{
+    float x, y, w, alpha;
+    void Lines(const std::string& text, int size, int step, ImU32 colour)
+    {
+        for (std::string& line : Wrapped(text, w, size)) { g_cv.Text(line, x, y, T(size, Alpha(colour, alpha), ui::BODY, ui::LEFT, w, 12)); y += (float)step; }
+    }
+};
+
+/* The lobby's mod_list from ly down to limit: every item it holds (BrowseApi fits whole names into it), as many as fit,
+ * then the rest and the backend's "+N more" as one count. */
+static void TermMods(const HfBrowseLobby& l, float x, float ly, float w, float limit, float alpha)
+{
+    bool inTheWay = l.verdict == HF_LOBBY_UNJOINABLE || l.verdict == HF_LOBBY_BLOCKED;
+    g_cv.Text(inTheWay ? "MODS IN THE WAY" : "MODS A JOIN WOULD CHANGE", x, ly, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
+    ly += 22;
+    std::vector<std::string> items = Items(l.mod_list, "; ", 64);
+    int more = items.empty() ? 0 : std::max(0, MoreCount(items.back()));
+    if (more > 0) items.pop_back();
+    size_t drawn = 0;
+    for (; drawn < items.size(); drawn++)
+    {
+        bool countAfter = more > 0 || drawn + 1 < items.size(); /* a line kept for the count, should one follow */
+        if (ly + 20 + (countAfter ? 20 : 0) > limit) break;
+        g_cv.Text(items[drawn], x + 8, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 8, 12));
+        ly += 20;
+    }
+    more += (int)(items.size() - drawn);
+    if (more > 0) g_cv.Text("+" + std::to_string(more) + " more", x + 8, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 8, 12));
+}
+
 /* The selected lobby: its host, players and what joining takes, mod by mod, and JOIN. */
 static void DrawTermDetail(float x, float y, float w, float h, float alpha)
 {
@@ -559,40 +589,16 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
     if (l->players[0]) { g_cv.Text(l->players, x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 22; }
     ly += 12;
     ImU32 colour;
-    std::string verdict = TermVerdict(*l, &colour);
-    for (std::string& line : Wrapped(verdict, w - 40, SZ_LABEL))
-    { g_cv.Text(line, x + 20, ly, T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 24; }
-    if (l->reason[0] && l->verdict != HF_LOBBY_UNJOINABLE && l->verdict != HF_LOBBY_BLOCKED)
-        for (std::string& line : Wrapped(l->reason, w - 40, SZ_SMALL)) { g_cv.Text(line, x + 20, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 20; }
+    TermColumn column{x + 20, ly, w - 40, alpha};
+    column.Lines(TermVerdict(*l, &colour), SZ_LABEL, 24, colour);
+    if (l->reason[0] && l->verdict != HF_LOBBY_UNJOINABLE && l->verdict != HF_LOBBY_BLOCKED) column.Lines(l->reason, SZ_SMALL, 20, TERM_DIM);
     if (l->verdict == HF_LOBBY_UNJOINABLE && Starts(l->reason, FRIENDS_ONLY_REASON))
     {
-        ly += 6;
-        for (std::string& line : Wrapped("To join, install these mods yourself (the launcher's Mods page), or play with the host as a Steam friend.", w - 40, SZ_SMALL))
-        { g_cv.Text(line, x + 20, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 40, 12)); ly += 20; }
+        column.y += 6;
+        column.Lines("To join, install these mods yourself (the launcher's Mods page), or play with the host as a Steam friend.", SZ_SMALL, 20, TERM_DIM);
     }
-    ly += 14;
-    if (l->mod_list[0])
-    {
-        bool inTheWay = l->verdict == HF_LOBBY_UNJOINABLE || l->verdict == HF_LOBBY_BLOCKED;
-        g_cv.Text(inTheWay ? "MODS IN THE WAY" : "MODS A JOIN WOULD CHANGE", x + 20, ly, T(SZ_TINY, Alpha(TERM_FAINT, alpha), ui::TITLE, ui::LEFT, 0, 12));
-        ly += 22;
-        /* every item the list holds (BrowseApi fits whole names into it), as many as the panel has room for above its
-         * buttons; the rest, and the backend's "+N more", as one count */
-        std::vector<std::string> items = Items(l->mod_list, "; ", 64);
-        int more = !items.empty() ? MoreCount(items.back()) : -1;
-        if (more > 0) items.pop_back(); else more = 0;
-        float limit = y + h - (l->fix != HF_LOBBY_FIX_NONE ? 140 : 90);
-        size_t drawn = 0;
-        for (; drawn < items.size(); drawn++)
-        {
-            bool countAfter = more > 0 || drawn + 1 < items.size(); /* a line kept for the count, should one follow */
-            if (ly + 20 + (countAfter ? 20 : 0) > limit) break;
-            g_cv.Text(items[drawn], x + 28, ly, T(SZ_SMALL, Alpha(TERM_DIM, alpha), ui::BODY, ui::LEFT, w - 48, 12));
-            ly += 20;
-        }
-        more += (int)(items.size() - drawn);
-        if (more > 0) g_cv.Text("+" + std::to_string(more) + " more", x + 28, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 48, 12));
-    }
+    ly = column.y + 14;
+    if (l->mod_list[0]) TermMods(*l, x + 20, ly, w - 40, y + h - (l->fix != HF_LOBBY_FIX_NONE ? 140 : 90), alpha);
     else if (l->mods > 0)
         g_cv.Text(std::to_string(l->mods) + " shared mod(s), all the same as yours", x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12));
     if (l->fix != HF_LOBBY_FIX_NONE)

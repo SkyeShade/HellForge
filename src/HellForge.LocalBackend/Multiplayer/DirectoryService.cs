@@ -100,19 +100,8 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // Lists the lobby when its data changed (not more often than PublishInterval), or removes the listing.
     public void Publish(DateTime now)
     {
-        var desired = Desired();
-        var appeared = false;
-        if (desired != null && strangersAllowed?.Invoke() == false)
-        {
-            desired = null;
-            lock (gate)
-                if (!loggedOff)
-                {
-                    loggedOff = true;
-                    log("Directory: this machine's public lobby is not listed: Play with strangers is off (the launcher's Multiplayer settings).");
-                }
-        }
-        else if (desired != null) lock (gate) loggedOff = false;
+        var desired = UnlessStrangersOff(Desired());
+        bool appeared;
         lock (gate)
         {
             if (desired == null && published == null) return;
@@ -127,6 +116,20 @@ public sealed partial class DirectoryService : IAsyncDisposable
         // friends get it with the lobby (outside this lock: the presence's lock calls into this service's)
         presence.SetLocalListing(desired == null ? null : DirectoryData.Digest(desired));
         if (appeared) Listed?.Invoke();
+    }
+
+    // The listing, or null while Play with strangers is off (said once each time it turns off).
+    Dictionary<string, string>? UnlessStrangersOff(Dictionary<string, string>? desired)
+    {
+        if (desired == null) return null;
+        var off = strangersAllowed?.Invoke() == false;
+        lock (gate)
+        {
+            if (off && !loggedOff)
+                log("Directory: this machine's public lobby is not listed: Play with strangers is off (the launcher's Multiplayer settings).");
+            loggedOff = off;
+        }
+        return off ? null : desired;
     }
 
     // This machine's lobby was listed for other HellForge players (each time it appears; outside this service's lock).
