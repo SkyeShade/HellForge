@@ -16,21 +16,72 @@ static const uint8_t kTelemetryStub[20] = {
     0x44, 0x8B, 0xE0,                                                 /* 10 mov r12d, eax */
     0x85, 0xC0,                                                       /* 13 test eax, eax */
     0xE9, 0, 0, 0, 0};                                                /* 15 jmp 0x148F71C (rel32 at 16) */
-/* The enemy director's spawners (HiveMind manager +0x82D98, 128 x 0x58, count +0x85998 right after them) are added
- * at mission load from the map's 'spawner' locations (0xAD3778) without a check: a 2 x map with 5 x outposts had more,
- * the 129th overwrote the count and the next write crashed (0xAD37AB). Past the 128th they are left out (counted in
- * the watch, +0x3C): their outposts stay, the director can't spawn from them. */
+/* The enemy director's spawners: at mission load the map's 'spawner' locations are appended (0xAD3778) to a 128 x 0x58
+ * list in the HiveMind manager (world+0x1FA08, entries +0x82D98, count +0x85998 right after them) without a check: a 2 x
+ * map with 5 x outposts had more, the 129th overwrote the count and the next write crashed (0xAD37AB). The list's only
+ * reader is GuardForce's builder (0x94A270, its loop 0x94A52D..0x94ABDD; 22 instructions in game.dll use the list, all in
+ * the two): for each entry it spawns the AI spawner entity (0xFDC140 at 0x94A96D, host only; that component grows past its
+ * 128, 0x534FD1 -> 0x7FB4D0) and adds its position to the GuardForce group of its stamp, so an entry left out is an
+ * outpost without its fabricators and, when they were its only members, without a garrison (an operation's three
+ * missions on an extra large map: 197 spawners, 27 patrol spawners without a group). The entries go to a list of the
+ * loader instead (DIF_SPAWNERS x 0x58; the count stays in the manager, which mission load clears): the append is rebuilt
+ * in a stub (key r13, the pose at r14, the type rdi, the unit r15d: the layout 0xAD373F..0xAD37EC stages), and the
+ * builder's loop runs with r13 based on that list (its only r13 uses in the loop are the entries and the count; the
+ * manager is kept in the stub block and restored for each count check and on leaving). Past DIF_SPAWNERS they are left
+ * out (counted in the watch, +0x3C). */
+#define DIF_SPAWNERS 1024u
 #define DIF_SPAWNER_SITE 0xAD3778u
-#define DIF_SPAWNER_ADD 0xAD377Eu
 #define DIF_SPAWNER_DONE 0xAD390Bu
+#define DIF_SPAWNER_LOOP_FIRST 0x94A52Du /* cmp [r13+0x85998], r12d; jbe 0x94ABE7 */
+#define DIF_SPAWNER_LOOP_NEXT 0x94ABD0u  /* cmp r10d, [r13+0x85998]; jb 0x94A540 */
+#define DIF_SPAWNER_LOOP 0x94A540u
+#define DIF_SPAWNER_LOOP_EMPTY 0x94ABE7u
+#define DIF_SPAWNER_LOOP_DONE 0x94ABDDu
 static const uint8_t kSpawnerPin[6] = {0x8B, 0x83, 0x98, 0x59, 0x08, 0x00};
-static const uint8_t kSpawnerStub[30] = {
-    0x8B, 0x83, 0x98, 0x59, 0x08, 0x00,                               /*  0 mov eax, [rbx+0x85998] (the count) */
-    0x3D, 0x80, 0x00, 0x00, 0x00,                                     /*  6 cmp eax, 128 */
-    0x73, 0x05,                                                       /* 11 jae 18 */
-    0xE9, 0, 0, 0, 0,                                                 /* 13 jmp 0xAD377E (the add; rel32 at 14) */
-    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 18 lock inc dword [rip+watch+0x3c] (rel32 at 21) */
-    0xE9, 0, 0, 0, 0};                                                /* 25 jmp 0xAD390B (after the add; rel32 at 26) */
+static const uint8_t kSpawnerFirstPin[13] = {0x45, 0x39, 0xA5, 0x98, 0x59, 0x08, 0x00, 0x0F, 0x86, 0xAD, 0x06, 0x00, 0x00};
+static const uint8_t kSpawnerNextPin[13] = {0x45, 0x3B, 0x95, 0x98, 0x59, 0x08, 0x00, 0x0F, 0x82, 0x63, 0xF9, 0xFF, 0xFF};
+static const uint8_t kSpawnerStub[106] = {
+    0x8B, 0x83, 0x98, 0x59, 0x08, 0x00,                               /*   0 mov eax, [rbx+0x85998] (the count) */
+    0x3D, 0x00, 0x04, 0x00, 0x00,                                     /*   6 cmp eax, DIF_SPAWNERS */
+    0x73, 0x51,                                                       /*  11 jae 94 */
+    0x48, 0x6B, 0xC8, 0x58,                                           /*  13 imul rcx, rax, 0x58 */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /*  17 mov rax, list (imm64 at 19) */
+    0x48, 0x01, 0xC1,                                                 /*  27 add rcx, rax */
+    0x4C, 0x89, 0x29,                                                 /*  30 mov [rcx], r13 (the key) */
+    0x41, 0x0F, 0x10, 0x06, 0x0F, 0x11, 0x41, 0x08,                   /*  33 the pose: [r14..+0x40] -> [rcx+8..+0x48] */
+    0x41, 0x0F, 0x10, 0x46, 0x10, 0x0F, 0x11, 0x41, 0x18,
+    0x41, 0x0F, 0x10, 0x46, 0x20, 0x0F, 0x11, 0x41, 0x28,
+    0x41, 0x0F, 0x10, 0x46, 0x30, 0x0F, 0x11, 0x41, 0x38,
+    0x48, 0x89, 0x79, 0x48,                                           /*  68 mov [rcx+0x48], rdi (the type) */
+    0x44, 0x89, 0x79, 0x50,                                           /*  72 mov [rcx+0x50], r15d (the unit) */
+    0xC7, 0x41, 0x54, 0x00, 0x00, 0x00, 0x00,                         /*  76 mov dword [rcx+0x54], 0 */
+    0xFF, 0x83, 0x98, 0x59, 0x08, 0x00,                               /*  83 inc dword [rbx+0x85998] */
+    0xE9, 0, 0, 0, 0,                                                 /*  89 jmp 0xAD390B (rel32 at 90) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /*  94 full: lock inc dword [rip+watch+0x3c] (rel32 at 97) */
+    0xE9, 0, 0, 0, 0};                                                /* 101 jmp 0xAD390B (rel32 at 102) */
+/* In the same block, after kSpawnerStub: at 0x70 the loop's first check, at 0xA0 every next one, the manager at 0xD0. */
+/* At 0xE0: each spawner's position goes to its GuardForce group's 16 places (+0x18C, 12 bytes each, count +0x24C right
+ * before the alarms' places) without a check (0x94ABAF..0x94ABD0); with every spawner in the list more reach a group, so
+ * past 16 the position is left out (counted at 0x120; the spawner entity is still spawned, the record only links the AI
+ * spawners within 1 m of its positions). */
+#define DIF_SPAWNER_PLACES_SITE 0x94ABAFu
+static const uint8_t kSpawnerPlacesPin[33] = {0x41, 0x8B, 0x80, 0x4C, 0x02, 0x00, 0x00, 0x48, 0x83, 0xC0, 0x21, 0x48, 0x8D, 0x0C, 0x40,
+                                              0xF2, 0x41, 0x0F, 0x11, 0x24, 0x88, 0x41, 0x89, 0x54, 0x88, 0x08, 0x41, 0xFF, 0x80, 0x4C,
+                                              0x02, 0x00, 0x00};
+static volatile LONG* g_spawnerPlacesFull;
+static const uint8_t kSpawnerFirstStub[35] = {
+    0x45, 0x39, 0xA5, 0x98, 0x59, 0x08, 0x00,                         /*   0 cmp [r13+0x85998], r12d */
+    0x0F, 0x86, 0, 0, 0, 0,                                           /*   7 jbe 0x94ABE7 (rel32 at 9) */
+    0x4C, 0x89, 0x2D, 0, 0, 0, 0,                                     /*  13 mov [rip -> manager], r13 (rel32 at 16) */
+    0x49, 0xBD, 0, 0, 0, 0, 0, 0, 0, 0,                               /*  20 mov r13, list - 0x82D98 (imm64 at 22) */
+    0xE9, 0, 0, 0, 0};                                                /*  30 jmp 0x94A540 (rel32 at 31) */
+static const uint8_t kSpawnerNextStub[36] = {
+    0x4C, 0x8B, 0x2D, 0, 0, 0, 0,                                     /*   0 mov r13, [rip -> manager] (rel32 at 3) */
+    0x45, 0x3B, 0x95, 0x98, 0x59, 0x08, 0x00,                         /*   7 cmp r10d, [r13+0x85998] */
+    0x73, 0x0F,                                                       /*  14 jae 31 */
+    0x49, 0xBD, 0, 0, 0, 0, 0, 0, 0, 0,                               /*  16 mov r13, list - 0x82D98 (imm64 at 18) */
+    0xE9, 0, 0, 0, 0,                                                 /*  26 jmp 0x94A540 (rel32 at 27) */
+    0xE9, 0, 0, 0, 0};                                                /*  31 jmp 0x94ABDD (rel32 at 32) */
 /* The mission-end telemetry (0x1347A10: [0x347CE18]+0x31820) keeps 16 objective instances (count +0x319A0) and its reader
  * (0x13462C0) two 16-place stack arrays: the count and the loop stop at 16. */
 #define DIF_TELEMETRY_COUNT_SITE 0x1347D77u
@@ -760,6 +811,13 @@ static const char* MissionSitesFailed(uintptr_t game)
     uint8_t pin[11];
     if (SafeRead(game + DIF_TELEMETRY_SITE, pin, 5) || memcmp(pin, kTelemetryPin, 5) != 0) return "the selected mission's telemetry is not the reviewed one";
     if (SafeRead(game + DIF_SPAWNER_SITE, pin, 6) || memcmp(pin, kSpawnerPin, 6) != 0) return "the director's spawner list is not the reviewed one";
+    uint8_t loop[13];
+    if (SafeRead(game + DIF_SPAWNER_LOOP_FIRST, loop, 13) || memcmp(loop, kSpawnerFirstPin, 13) != 0 ||
+        SafeRead(game + DIF_SPAWNER_LOOP_NEXT, loop, 13) || memcmp(loop, kSpawnerNextPin, 13) != 0)
+        return "GuardForce's spawner loop is not the reviewed one";
+    uint8_t places[33];
+    if (SafeRead(game + DIF_SPAWNER_PLACES_SITE, places, 33) || memcmp(places, kSpawnerPlacesPin, 33) != 0)
+        return "GuardForce's spawner positions are not the reviewed ones";
     if (SafeRead(game + DIF_MARKER_LOOP_SITE, pin, 8) || memcmp(pin, kMarkerLoopPin, 8) != 0 ||
         SafeRead(game + DIF_MARKER_ROUTE_SITE, pin, 6) || memcmp(pin, kMarkerRoutePin, 6) != 0)
         return "the map's marker slots are not the reviewed ones";
@@ -829,12 +887,42 @@ static const char* PrepareMarkerStubs(DifficultyInstall* d)
 
 static const char* PrepareSpawnerStub(DifficultyInstall* d)
 {
-    uint8_t* spawnerStub = d->code + 0x730;
-    d->spawnerStub = spawnerStub;
-    memcpy(spawnerStub, kSpawnerStub, sizeof kSpawnerStub);
-    int32_t rel = (int32_t)(d->game + DIF_SPAWNER_ADD - (uintptr_t)(spawnerStub + 18)); memcpy(spawnerStub + 14, &rel, 4);
-    rel = (int32_t)(d->watch + 0x3C - (spawnerStub + 25)); memcpy(spawnerStub + 21, &rel, 4);
-    rel = (int32_t)(d->game + DIF_SPAWNER_DONE - (uintptr_t)(spawnerStub + 30)); memcpy(spawnerStub + 26, &rel, 4);
+    uint8_t* list = (uint8_t*)VirtualAlloc(NULL, DIF_SPAWNERS * 0x58u, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* stub = list != NULL ? AllocateNearGame(d->game, 0x180) : NULL;
+    if (stub == NULL) return "no memory for the director's spawner list";
+    memset(stub, 0xCC, 0x180);
+    d->spawnerStub = stub;
+    memcpy(stub, kSpawnerStub, sizeof kSpawnerStub);
+    uint64_t at = (uint64_t)(uintptr_t)list; memcpy(stub + 19, &at, 8);
+    int32_t rel = (int32_t)(d->game + DIF_SPAWNER_DONE - (uintptr_t)(stub + 94)); memcpy(stub + 90, &rel, 4);
+    rel = (int32_t)(d->watch + 0x3C - (stub + 101)); memcpy(stub + 97, &rel, 4);
+    rel = (int32_t)(d->game + DIF_SPAWNER_DONE - (uintptr_t)(stub + 106)); memcpy(stub + 102, &rel, 4);
+    uint8_t* first = stub + 0x70, *next = stub + 0xA0, *manager = stub + 0xD0;
+    uint64_t based = (uint64_t)(uintptr_t)list - 0x82D98u;
+    memcpy(first, kSpawnerFirstStub, sizeof kSpawnerFirstStub);
+    rel = (int32_t)(d->game + DIF_SPAWNER_LOOP_EMPTY - (uintptr_t)(first + 13)); memcpy(first + 9, &rel, 4);
+    rel = (int32_t)(manager - (first + 20)); memcpy(first + 16, &rel, 4);
+    memcpy(first + 22, &based, 8);
+    rel = (int32_t)(d->game + DIF_SPAWNER_LOOP - (uintptr_t)(first + 35)); memcpy(first + 31, &rel, 4);
+    memcpy(next, kSpawnerNextStub, sizeof kSpawnerNextStub);
+    rel = (int32_t)(manager - (next + 7)); memcpy(next + 3, &rel, 4);
+    memcpy(next + 18, &based, 8);
+    rel = (int32_t)(d->game + DIF_SPAWNER_LOOP - (uintptr_t)(next + 31)); memcpy(next + 27, &rel, 4);
+    rel = (int32_t)(d->game + DIF_SPAWNER_LOOP_DONE - (uintptr_t)(next + 36)); memcpy(next + 32, &rel, 4);
+    uint8_t* places = stub + 0xE0; /* the pin with "cmp eax, 16; jae full" after its first instruction */
+    g_spawnerPlacesFull = (volatile LONG*)(stub + 0x120);
+    *g_spawnerPlacesFull = 0;
+    memcpy(places, kSpawnerPlacesPin, 7);
+    static const uint8_t check[5] = {0x83, 0xF8, 0x10, 0x73, 0x1F};
+    memcpy(places + 7, check, 5);
+    memcpy(places + 12, kSpawnerPlacesPin + 7, 26);
+    places[38] = 0xE9; rel = (int32_t)(d->game + DIF_SPAWNER_LOOP_NEXT - (uintptr_t)(places + 43)); memcpy(places + 39, &rel, 4);
+    places[43] = 0xF0; places[44] = 0xFF; places[45] = 0x05;      /* full: lock inc dword [rip -> 0x120] */
+    rel = (int32_t)((uint8_t*)g_spawnerPlacesFull - (places + 50)); memcpy(places + 46, &rel, 4);
+    places[50] = 0xE9; rel = (int32_t)(d->game + DIF_SPAWNER_LOOP_NEXT - (uintptr_t)(places + 55)); memcpy(places + 51, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x180, PAGE_EXECUTE_READWRITE, &protect); /* the manager is written at 0xD0, the count at 0x120 */
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x180);
     return NULL;
 }
 
@@ -937,7 +1025,29 @@ static const char* JumpToSpawners(DifficultyInstall* d)
     uint8_t spawners[6] = {0xE9, 0, 0, 0, 0, 0x90};
     int32_t rel = DifficultyJumpRel(d->game + DIF_SPAWNER_SITE, (uintptr_t)d->spawnerStub);
     memcpy(spawners + 1, &rel, 4);
-    if (ApiWrite(d->game + DIF_SPAWNER_SITE, spawners, sizeof spawners)) return "the director's spawner list could not be limited";
+    uint8_t first[13] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90}, next[13];
+    memcpy(next, first, 13);
+    rel = DifficultyJumpRel(d->game + DIF_SPAWNER_LOOP_FIRST, (uintptr_t)(d->spawnerStub + 0x70)); memcpy(first + 1, &rel, 4);
+    rel = DifficultyJumpRel(d->game + DIF_SPAWNER_LOOP_NEXT, (uintptr_t)(d->spawnerStub + 0xA0)); memcpy(next + 1, &rel, 4);
+    /* The append and the builder's loop move together (both before any mission loads); a failed write puts back what
+     * was written, so both keep the manager's list. */
+    if (ApiWrite(d->game + DIF_SPAWNER_LOOP_FIRST, first, 13)) return "GuardForce's spawner loop could not be moved";
+    if (ApiWrite(d->game + DIF_SPAWNER_LOOP_NEXT, next, 13))
+    {
+        ApiWrite(d->game + DIF_SPAWNER_LOOP_FIRST, kSpawnerFirstPin, 13);
+        return "GuardForce's spawner loop could not be moved";
+    }
+    if (ApiWrite(d->game + DIF_SPAWNER_SITE, spawners, sizeof spawners))
+    {
+        ApiWrite(d->game + DIF_SPAWNER_LOOP_FIRST, kSpawnerFirstPin, 13);
+        ApiWrite(d->game + DIF_SPAWNER_LOOP_NEXT, kSpawnerNextPin, 13);
+        return "the director's spawner list could not be moved";
+    }
+    uint8_t places[33];
+    memset(places, 0x90, sizeof places);
+    places[0] = 0xE9;
+    rel = DifficultyJumpRel(d->game + DIF_SPAWNER_PLACES_SITE, (uintptr_t)(d->spawnerStub + 0xE0)); memcpy(places + 1, &rel, 4);
+    if (ApiWrite(d->game + DIF_SPAWNER_PLACES_SITE, places, sizeof places)) return "GuardForce's spawner positions could not be limited";
     return NULL;
 }
 

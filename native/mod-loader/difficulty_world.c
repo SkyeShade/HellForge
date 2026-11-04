@@ -2295,6 +2295,53 @@ static const char* InstallGarrisonGuard(uintptr_t game)
     return NULL;
 }
 
+/* GuardForce's alarms: the same builder walks the alarm effects (HiveMind manager +0x86FA8, 0x10 each, count +0x877A8),
+ * maps each one's stamp unit through the linked locations and appends its id to the group's 32 places at +0x250 (count
+ * +0x2D0), with the same unchecked index (-1 when no group has that key, 0x94B247) and no check of the 32. Both are left
+ * out (counted at stub +0x40): 0x94B247..0x94B25E rebuilt with the two checks, the skip continues at the loop's test
+ * 0x94B271. */
+static const uint8_t kAlarmPin[23] = {0x8B, 0xC2, 0xFF, 0xC3, 0x48, 0x8D, 0x14, 0x40, 0x43, 0x8B, 0x84, 0xDD, 0xA8, 0x6F, 0x08, 0x00,
+                                      0x48, 0xC1, 0xE2, 0x08, 0x48, 0x03, 0xD7};
+static const uint8_t kAlarmStub[56] = {
+    0x83, 0xFA, 0xFF,                                                 /*  0 cmp edx, -1 (no group) */
+    0x74, 0x25,                                                       /*  3 je 42 */
+    0x89, 0xD0,                                                       /*  5 mov eax, edx */
+    0x48, 0x8D, 0x14, 0x40,                                           /*  7 lea rdx, [rax+rax*2] */
+    0x48, 0xC1, 0xE2, 0x08,                                           /* 11 shl rdx, 8 */
+    0x48, 0x01, 0xFA,                                                 /* 15 add rdx, rdi (the group) */
+    0x83, 0xBA, 0xD0, 0x02, 0x00, 0x00, 0x20,                         /* 18 cmp dword [rdx+0x2d0], 32 (its places full) */
+    0x73, 0x0F,                                                       /* 25 jae 42 */
+    0xFF, 0xC3,                                                       /* 27 inc ebx */
+    0x43, 0x8B, 0x84, 0xDD, 0xA8, 0x6F, 0x08, 0x00,                   /* 29 mov eax, [r13+r11*8+0x86fa8] (the alarm's id) */
+    0xE9, 0, 0, 0, 0,                                                 /* 37 jmp 0x94B25E (the append; rel32 at 38) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 42 lock inc dword [rip -> stub+0x40] (rel32 at 45) */
+    0xFF, 0xC3,                                                       /* 49 inc ebx */
+    0xE9, 0, 0, 0, 0};                                                /* 51 jmp 0x94B271 (the loop's test; rel32 at 52) */
+static volatile LONG* g_alarmSkipped;
+static const char* InstallAlarmGuard(uintptr_t game)
+{
+    uint8_t pin[23];
+    if (SafeRead(game + 0x94B247u, pin, 23) || memcmp(pin, kAlarmPin, 23) != 0 || !ApiCodeMatches(game + 0x94B25Eu, "8B 8A D0 02 00 00") ||
+        !ApiCodeMatches(game + 0x94B271u, "41 3B 9D A8 77 08 00 0F 82"))
+        return "GuardForce's alarm lookup is not the reviewed one; it stays unchecked";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for GuardForce's alarm guard";
+    memcpy(stub, kAlarmStub, sizeof kAlarmStub);
+    g_alarmSkipped = (volatile LONG*)(stub + 0x40);
+    int32_t rel = (int32_t)(game + 0x94B25Eu - (uintptr_t)(stub + 42)); memcpy(stub + 38, &rel, 4);
+    rel = (int32_t)((stub + 0x40) - (stub + 49)); memcpy(stub + 45, &rel, 4);
+    rel = (int32_t)(game + 0x94B271u - (uintptr_t)(stub + 56)); memcpy(stub + 52, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    uint8_t jump[23];
+    memset(jump, 0x90, sizeof jump);
+    jump[0] = 0xE9;
+    rel = DifficultyJumpRel(game + 0x94B247u, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0x94B247u, jump, 23)) return "GuardForce's alarm guard could not be written";
+    return NULL;
+}
+
 /* The lists that left units out so far, as "name n" pairs (empty when none). */
 static void MissionListsFull(char* out, size_t size)
 {
@@ -2434,6 +2481,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (lists != NULL) Note("difficulty: extra large maps: %s", lists);
     const char* garrison = InstallGarrisonGuard(game);
     if (garrison != NULL) Note("difficulty: extra large maps: %s", garrison);
+    const char* alarms = InstallAlarmGuard(game);
+    if (alarms != NULL) Note("difficulty: extra large maps: %s", alarms);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);

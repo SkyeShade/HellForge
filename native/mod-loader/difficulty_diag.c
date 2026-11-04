@@ -613,6 +613,29 @@ static void NoteMissionMap(void)
         Note("difficulty: the mission's render objects: %u in use of %u", objects[0], objects[1]);
     Note("difficulty: the mission's map (type %u): important locations %u of %u (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
         type, counts[0], g_importantList == 0x8996B0u ? 256u : 1024u, counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
+    /* Where the important locations are: xy at +0xA4, generator metres from the map's corner (0..L, L = 2048 x scale;
+     * difficulty_world_macro.c reads the same), as an 8 x 8 grid of counts, north row first. */
+    const float L = 2048.0f * (float)(g_world.scale > 1 ? g_world.scale : 1);
+    uint32_t grid[8][8] = {{0}}, placed = 0;
+    double distance = 0;
+    for (uint32_t l = 0; l < counts[0] && l < 1024; l++)
+    {
+        float xy[2];
+        if (SafeRead(block + g_importantList + 0x108ull * l + 0xA4, xy, 8) || !isfinite(xy[0]) || !isfinite(xy[1])) continue;
+        int i = (int)(xy[0] / L * 8.0f), j = (int)(xy[1] / L * 8.0f);
+        if (i < 0 || i > 7 || j < 0 || j > 7) continue;
+        grid[j][i]++; placed++;
+        double dx = xy[0] - L * 0.5, dy = xy[1] - L * 0.5;
+        distance += sqrt(dx * dx + dy * dy);
+    }
+    char rows[8 * 8 * 5 + 16];
+    int n = 0;
+    for (int j = 7; j >= 0; j--)
+    {
+        for (int i = 0; i < 8; i++) n += snprintf(rows + n, sizeof rows - n, "%s%u", i ? "," : (j < 7 ? " | " : ""), grid[j][i]);
+    }
+    Note("difficulty: the mission's important locations on the map (%u placed, mean %.0f m from the centre; 8 x 8 cells of %.0f m, north row first): %s",
+        placed, placed ? distance / placed : 0.0, (double)(L / 8.0f), rows);
 }
 
 static int WatchLaunch(void)
@@ -633,7 +656,7 @@ static int WatchSpawners(void)
     uint32_t spawnersLeft = *(volatile uint32_t*)(g_restartWatch + 0x3C);
     if (spawnersLeft == dropped) return 0;
     dropped = spawnersLeft;
-    Note("difficulty: the enemy director's 128 spawners are full: %u more left out so far (their outposts stay)", spawnersLeft);
+    Note("difficulty: the enemy director's 1024 spawners are full: %u more left out so far (no AI spawner and no garrison for them)", spawnersLeft);
     return 1;
 }
 

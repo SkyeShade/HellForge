@@ -99,6 +99,11 @@ static const WorldSite kWorldSites[] = {
      * spawned again every frame (difficulty_world.c, InstallConvoyGuard). */
     {0x62932Eu, 8, WORLD_NEG_FULL},
     {0x629350u, 8, WORLD_FULL},
+    /* By hand: the same request's A* context {G, world size, height scale} (0x6288FA -> 0xFC6D60 -> 0xFC5EF0) takes 2048.0
+     * as the world size; the search drops every road edge with an end outside [32, size - 32] in corner coordinates
+     * (0xFC63B1..0xFC643B), so on an extra large world only a corner of the map had roads and a convoy's route always
+     * failed (its escorts' spawner retried every frame). The generator's own A* calls take settings+0x2C. */
+    {0x6288FAu, 8, WORLD_FULL},
     {0xF551A6u, 9, WORLD_HALF},
     {0xF56716u, 9, WORLD_HALF},
     {0xF5729Du, 9, WORLD_HALF},
