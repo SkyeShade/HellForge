@@ -449,6 +449,7 @@ static void TerrainProbeTick(void)
     uintptr_t game = g_world.game;
     if (game == 0) return;
     NoEnemiesTick(game);
+    { static ULONGLONG at; ULONGLONG now = GetTickCount64(); if (now - at >= 5000) { at = now; ScatterOwnerNote(); } }
     if (g_probe.on == 0)
     {
         char t[4] = "";

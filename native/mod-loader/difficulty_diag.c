@@ -116,6 +116,221 @@ static const char* PrepareUnreachableStub(DifficultyInstall* d)
     return NULL;
 }
 
+/* A larger map's FixUnreachableAreas: a pocket made of location cells only is joined to the main area like any other
+ * (static, scratch unreach/, KB missions/xl-fix-unreachable-areas). The pass (0xF67980) flood-fills the unblocked
+ * subregion cells into components (list of 32 {u8 has-location, u32 cells} entries, 0x100 bytes from the generation
+ * arena at 0xF679C9 / 0xF67A0C) and joins each pocket to the main component by a path of at most 7 blocked cells
+ * (0xF67210 -> 0xF66F70), but never starts that search from a pocket cell whose route cell holds a location
+ * (cmp [rbp+0x98], 0 at 0xF67356, rbp = the cell's route cell): a pocket with a location and no location-free cell
+ * fails on every try and restarts the level. Location zones are metres (6-36 m pads), so at 16 km (651 m route cells,
+ * vanilla 40 m) a location's zone is about its own cell: such pockets are common (inferred: the cell types are game
+ * data). On a larger level (lg+0x2D7C == the disk bits, as the stub above tests; lg = [ctx+0x18], ctx = r15 in
+ * 0xF67210) location cells start searches too: path cells are only blocked cells, never the location's own, so the
+ * location is untouched. The component list holds 512 entries instead of 32 (arena scratch; more than 32 components
+ * overflowed into the id array that follows it). */
+/* A larger level's pocket that FixUnreachableAreas could not join (its path search, 0xF67210 -> 0xF66F70, stops at 7
+ * blocked cells and never steps on a blocked cell holding a location) is joined here before the pass would restart the
+ * level: at the restart (0xF67FD6..0xF67FDB, still inside 0xF67980's frame: rsp and rbp are the pass's, r12 = ctx, ebx
+ * = the pocket's component, edi = the main component, r13 = the subregion type objects) a breadth-first search from
+ * every pocket cell over blocked cells that lie in the playable disk (0xF66A90(ctx, subregion)) and hold no location
+ * (route cell +0x98) to an unblocked cell of the main component. Cells: route cells [record+8] (0x110 each; their 16
+ * routes at +8, each route's two cells at +0x20 / +0x28, as the flood fill 0xF67540 walks them), subregions [rsp+0x78]
+ * (0x20 each, cell i's; type +0, type object index +0xC), ids [rbp-0x70] (u32), cell count [rbp-0x40], the record
+ * [rbp-0x68], the planet flag [rsp+0x64]. A cell is blocked as the pass tests it (0xF67BD8): type 1..6, outside the
+ * disk, or with the planet flag a type object without bit 5 of +0x170. The path is applied as the pass applies its own
+ * (0xF67E81..0xF67EF8): the pocket's cells (type not 1..6) take the main's id, each path cell takes +0..+0xF of the
+ * pocket's last such cell, and its id too. 1 when joined (the pass goes on at 0xF67FB7). */
+static volatile LONG g_reconnectJoined, g_reconnectFailed, g_reconnectLongest;
+static uintptr_t g_reconnectGame;
+static char DifUnreachableReconnect(uint8_t* frameRsp, uint8_t* frameRbp, uint64_t ctx, uint32_t pocket, uint64_t types, uint32_t mainId)
+{
+    uint64_t record = 0, rcBase = 0, subs = 0, idsAt = 0, cells = 0;
+    uint8_t planet = 0;
+    if (mainId == 0xFFFFFFFFu || SafeRead((uintptr_t)(frameRbp - 0x68), &record, 8) || record == 0 || SafeRead(record + 8, &rcBase, 8) || rcBase == 0 ||
+        SafeRead((uintptr_t)(frameRsp + 0x78), &subs, 8) || subs == 0 || SafeRead((uintptr_t)(frameRbp - 0x70), &idsAt, 8) || idsAt == 0 ||
+        SafeRead((uintptr_t)(frameRbp - 0x40), &cells, 8) || cells == 0 || cells > 65536 || SafeRead((uintptr_t)(frameRsp + 0x64), &planet, 1))
+    { InterlockedIncrement(&g_reconnectFailed); return 0; }
+    uint32_t n = (uint32_t)cells;
+    uint32_t* ids = (uint32_t*)(uintptr_t)idsAt;
+    typedef char (*InDiskFn)(uint64_t ctx, uint64_t subregion);
+    InDiskFn inDisk = (InDiskFn)(g_reconnectGame + 0xF66A90u);
+    int32_t* from = (int32_t*)VirtualAlloc(NULL, (size_t)n * 8 + n, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (from == NULL) { InterlockedIncrement(&g_reconnectFailed); return 0; }
+    uint32_t* queue = (uint32_t*)(from + n);
+    uint8_t* blockedOf = (uint8_t*)(queue + n); /* 0 unknown, 1 open, 2 blocked and passable, 3 blocked and not */
+    for (uint32_t i = 0; i < n; i++) from[i] = -2;
+    uint32_t head = 0, tail = 0, last = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < n; i++)
+        if (ids[i] == pocket)
+        {
+            uint32_t type = *(uint32_t*)(uintptr_t)(subs + (uint64_t)i * 0x20);
+            if (type - 1u <= 5u) continue;
+            from[i] = -1; queue[tail++] = i; last = i;
+        }
+    /* As the game walks it (0xF67C37..0xF67CF1): a subregion's route cell is [sub+0x18]; a neighbour is a route's
+     * other cell (route +0x20 / +0x28), and its subregion index is (cell - [P+0]) / 0x110 (the game's [rbp-0x58]).
+     * Every read is guarded, and a neighbour whose subregion does not name that cell back is left out (run s72g: a
+     * walk from rcBase + i x 0x110 reached memory that was no subregion and 0xF66A90 faulted on it). */
+    int32_t found = -1;
+    uint32_t mismatched = 0;
+    while (head < tail && found < 0)
+    {
+        uint32_t i = queue[head++];
+        uint64_t rc = 0;
+        if (SafeRead(subs + (uint64_t)i * 0x20 + 0x18, &rc, 8) || rc == 0) continue;
+        for (int k = 0; k < 16 && found < 0; k++)
+        {
+            uint64_t route = 0;
+            if (SafeRead(rc + 8 + 8 * (uint64_t)k, &route, 8) || route == 0) break;
+            for (int e = 0; e < 2 && found < 0; e++)
+            {
+                uint64_t other = 0;
+                if (SafeRead(route + 0x20 + 8 * (uint64_t)e, &other, 8) || other == 0 || other == rc || other < rcBase) continue;
+                uint64_t j64 = (other - rcBase) / 0x110;
+                if (j64 >= n || (other - rcBase) % 0x110 != 0) continue;
+                uint32_t j = (uint32_t)j64;
+                if (from[j] != -2) continue;
+                if (blockedOf[j] == 0)
+                {
+                    uint64_t sub = subs + (uint64_t)j * 0x20, back = 0;
+                    uint32_t type = 0;
+                    if (SafeRead(sub + 0x18, &back, 8) || back != other || SafeRead(sub, &type, 4))
+                    {
+                        if (++mismatched <= 3)
+                            Note("difficulty: FixUnreachableAreas: subregion %u (0x%llX) names route cell 0x%llX, not 0x%llX (cells from 0x%llX, subregions from 0x%llX, %u); left out",
+                                j, (unsigned long long)sub, (unsigned long long)back, (unsigned long long)other, (unsigned long long)rcBase, (unsigned long long)subs, n);
+                        blockedOf[j] = 3;
+                        continue;
+                    }
+                    int disk = inDisk(ctx, sub) != 0;
+                    int blocked = type - 1u <= 5u || !disk;
+                    if (!blocked && planet)
+                    {
+                        int32_t t = 0; uint64_t obj = 0; uint8_t flags = 0;
+                        blocked = SafeRead(sub + 0xC, &t, 4) || SafeRead(types + (uint64_t)(int64_t)t * 8, &obj, 8) || obj == 0 ||
+                            SafeRead(obj + 0x170, &flags, 1) || !((flags >> 5) & 1);
+                    }
+                    uint64_t location = 0;
+                    if (SafeRead(other + 0x98, &location, 8)) location = 1;
+                    blockedOf[j] = !blocked ? 1 : disk && location == 0 ? 2 : 3;
+                }
+                if (blockedOf[j] == 1 && ids[j] == mainId) { from[j] = (int32_t)i; found = (int32_t)j; break; }
+                if (blockedOf[j] != 2) continue;
+                from[j] = (int32_t)i; queue[tail++] = j;
+            }
+        }
+    }
+    if (found < 0 || last == 0xFFFFFFFFu)
+    {
+        VirtualFree(from, 0, MEM_RELEASE);
+        LONG failed = InterlockedIncrement(&g_reconnectFailed);
+        if (failed <= 20) Note("difficulty: FixUnreachableAreas: pocket %u has no path to the main area %u over passable blocked cells (%u cells searched); the level restarts", pocket, mainId, tail);
+        return 0;
+    }
+    uint8_t source[16];
+    memcpy(source, (void*)(uintptr_t)(subs + (uint64_t)last * 0x20), 16);
+    LONG length = 0;
+    for (int32_t j = from[found]; j >= 0 && from[j] != -1; j = from[j])
+    {
+        memcpy((void*)(uintptr_t)(subs + (uint64_t)j * 0x20), source, 16);
+        ids[j] = mainId; length++;
+    }
+    for (uint32_t i = 0; i < n; i++)
+        if (ids[i] == pocket && (*(uint32_t*)(uintptr_t)(subs + (uint64_t)i * 0x20)) - 1u > 5u) ids[i] = mainId;
+    VirtualFree(from, 0, MEM_RELEASE);
+    LONG joined = InterlockedIncrement(&g_reconnectJoined);
+    if (joined <= 20)
+        Note("difficulty: FixUnreachableAreas: pocket %u joined to the main area %u by %ld blocked cells (breadth-first; %u cells searched); joins %ld, not joined %ld",
+            pocket, mainId, (long)length, tail, (long)joined, (long)g_reconnectFailed);
+    LONG longest = g_reconnectLongest;
+    while (length > longest && InterlockedCompareExchange(&g_reconnectLongest, length, longest) != longest) longest = g_reconnectLongest;
+    return 1;
+}
+
+/* The restart site 0xF67FDB jumps here (before the try counter, d->unreachableStub). */
+static const char* InstallPocketReconnect(DifficultyInstall* d, uint8_t* stub)
+{
+    if (d->unreachableStub == NULL) return NULL;
+    g_reconnectGame = d->game;
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale));
+    uint8_t code[96] = {
+        0x81, 0xB9, 0x7C, 0x2D, 0x00, 0x00, 0, 0, 0, 0,   /*  0 cmp dword [rcx+0x2d7c], disk bits (at 6) */
+        0x75, 0x3A,                                     /* 10 jne old (70) */
+        0x48, 0x89, 0xE0,                               /* 12 mov rax, rsp */
+        0x51,                                           /* 15 push rcx */
+        0x48, 0x83, 0xEC, 0x38,                         /* 16 sub rsp, 0x38 */
+        0x4C, 0x89, 0x6C, 0x24, 0x20,                   /* 20 mov [rsp+0x20], r13 (types) */
+        0x89, 0x7C, 0x24, 0x28,                         /* 25 mov [rsp+0x28], edi (main) */
+        0x48, 0x89, 0xC1,                               /* 29 mov rcx, rax (the pass's rsp) */
+        0x48, 0x89, 0xEA,                               /* 32 mov rdx, rbp */
+        0x4D, 0x89, 0xE0,                               /* 35 mov r8, r12 (ctx) */
+        0x41, 0x89, 0xD9,                               /* 38 mov r9d, ebx (pocket) */
+        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,             /* 41 mov rax, DifUnreachableReconnect (at 43) */
+        0xFF, 0xD0,                                     /* 51 call rax */
+        0x48, 0x83, 0xC4, 0x38,                         /* 53 add rsp, 0x38 */
+        0x59,                                           /* 57 pop rcx */
+        0x84, 0xC0,                                     /* 58 test al, al */
+        0x74, 0x0A,                                     /* 60 je old (72) */
+        0xE9, 0, 0, 0, 0,                               /* 62 jmp go on 0xF67FB7 (rel32 at 63) */
+        0x90, 0x90, 0x90, 0x90, 0x90,                   /* 67 */
+        0xE9, 0, 0, 0, 0};                              /* 72 old: jmp the try counter (rel32 at 73) */
+    /* 10: jne +0x3A lands at 72 */
+    code[11] = (uint8_t)(72 - 12);
+    memcpy(code + 6, &diskBits, 4);
+    uint64_t fn = (uint64_t)(uintptr_t)DifUnreachableReconnect;
+    memcpy(code + 43, &fn, 8);
+    int32_t rel = (int32_t)(d->game + DIF_UNREACHABLE_GO_ON - (uintptr_t)(stub + 67)); memcpy(code + 63, &rel, 4);
+    rel = (int32_t)((uintptr_t)d->unreachableStub - (uintptr_t)(stub + 77)); memcpy(code + 73, &rel, 4);
+    memcpy(stub, code, 77);
+    return NULL;
+}
+
+#define DIF_POCKET_SITE 0xF67356u
+#define DIF_POCKET_SKIP 0xF67445u
+#define DIF_POCKET_GO 0xF67364u
+static const char* InstallPocketSearch(DifficultyInstall* d)
+{
+    if (!LargerMaps()) return NULL;
+    uintptr_t game = d->game;
+    if (ApiCodeMatches(game + DIF_POCKET_SITE, "E9")) return NULL; /* installed before */
+    if (!ApiCodeMatches(game + DIF_POCKET_SITE, "48 83 BD 98 00 00 00 00 0F 85 E1 00 00 00") || !ApiCodeMatches(game + 0xF67224u, "4C 8B F9") ||
+        !ApiCodeMatches(game + 0xF679C9u, "BA 00 01 00 00") || !ApiCodeMatches(game + 0xF67A0Cu, "41 B8 00 01 00 00"))
+    { Note("difficulty: FixUnreachableAreas is not the reviewed code; location pockets keep vanilla's search"); return NULL; }
+    uint8_t* stub = AllocateNearGame(game, 0x1000);
+    if (stub == NULL) return "no room near game.dll for the location-pocket stub";
+    float diskBits = d->disk / (1024.0f * (float)WorldScaleFor(g_difficulty.mapScale));
+    uint8_t code[44] = {
+        0x48, 0x83, 0xBD, 0x98, 0x00, 0x00, 0x00, 0x00, /*  0 cmp qword [rbp+0x98], 0 */
+        0x74, 0x16,                                     /*  8 je go (32) */
+        0x50,                                           /* 10 push rax */
+        0x49, 0x8B, 0x47, 0x18,                         /* 11 mov rax, [r15+0x18] (lg) */
+        0x81, 0xB8, 0x7C, 0x2D, 0x00, 0x00, 0, 0, 0, 0, /* 15 cmp dword [rax+0x2d7c], disk bits (at 21) */
+        0x58,                                           /* 25 pop rax */
+        0x0F, 0x85, 0, 0, 0, 0,                         /* 26 jne skip (rel32 at 28) */
+        0xE9, 0, 0, 0, 0};                              /* 32 go: jmp back (rel32 at 33) */
+    memcpy(code + 21, &diskBits, 4);
+    int32_t rel = (int32_t)(game + DIF_POCKET_SKIP - (uintptr_t)(stub + 32)); memcpy(code + 28, &rel, 4);
+    rel = (int32_t)(game + DIF_POCKET_GO - (uintptr_t)(stub + 37)); memcpy(code + 33, &rel, 4);
+    memcpy(stub, code, sizeof code);
+    InstallPocketReconnect(d, stub + 0x100);
+    DWORD old = 0;
+    if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &old)) return "the location-pocket stub could not be made executable";
+    uint8_t jump[14] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + DIF_POCKET_SITE, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    static const uint8_t list1[5] = {0xBA, 0x00, 0x10, 0x00, 0x00}, list2[6] = {0x41, 0xB8, 0x00, 0x10, 0x00, 0x00};
+    if (ApiWrite(game + 0xF679C9u, list1, 5) || ApiWrite(game + 0xF67A0Cu, list2, 6)) return "the unreachable-areas component list could not be enlarged";
+    if (ApiWrite(game + DIF_POCKET_SITE, jump, 14)) return "the location-pocket search could not be installed";
+    if (d->unreachableStub != NULL)
+    {
+        uint8_t site[6] = {0xE9, 0, 0, 0, 0, 0x90};
+        rel = DifficultyJumpRel(game + kRestartSites[0], (uintptr_t)(stub + 0x100)); memcpy(site + 1, &rel, 4);
+        if (ApiWrite(game + kRestartSites[0], site, 6)) return "the unreachable-areas reconnect could not be installed";
+    }
+    Note("difficulty: FixUnreachableAreas: on a larger level location cells start the search for a path to the main area; 512 components; %s",
+        d->unreachableStub != NULL ? "a pocket it cannot join is joined by a breadth-first path over blocked cells before a restart" : "no reconnect (no try counter)");
+    return NULL;
+}
+
 static const char* JumpToRestartStubs(DifficultyInstall* d)
 {
     for (int i = 0; i < 4; i++)

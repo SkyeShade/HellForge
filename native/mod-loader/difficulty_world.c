@@ -1501,6 +1501,7 @@ static void TerrainDiagInstall(uintptr_t game);
 /* difficulty_world_terrain.c: the map at vanilla density, as tiles drawn into the level's merge */
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
+static void MacroStamps(void); /* difficulty_world_macro.c */
 static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t op, uint64_t context, uint64_t g, uint64_t h);
 static void NearOneMipLevel(void);
 static void NearOneMipDrop(void);
@@ -1548,6 +1549,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* the map's terrain at vanilla density: the level waits at its SmoothHeightmap while the tiles are drawn */
         if (o == 0x40 && TerrainStep(records, (uint32_t)d, i, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
         if (o == 0x0A && g_world.current == 8.0f) TerrainNearWater(records + (uint64_t)i * 0x19B0u);
+        if (o == 0x6C && g_world.current == 8.0f) MacroStamps(); /* once a level, before its first call */
         if (g_world.current == 8.0f && TerrainNearStep(records, (uint32_t)d, i, o, b, g, h)) { TerrainDiagAfter(records, index, diagAt, diagOp); return 0; }
     }
     uint32_t at = 0, op = 0xFFFFFFFFu, before = 0, after = 0;

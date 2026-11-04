@@ -599,6 +599,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_poisson.c" /* after difficulty_world.c: Poisson-disk sets from a periodic tile (g_world) */
 #include "difficulty_world_diag.c" /* after difficulty_world.c: terrain diagnostics (its dispatcher hooks, the layer heightfield copy) */
 #include "difficulty_world_terrain.c" /* after difficulty_world.c: the extra large map's terrain as tiles at vanilla density */
+#include "difficulty_world_macro.c" /* after difficulty_world_terrain.c: the extra large map's km-scale relief */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
@@ -623,6 +624,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "difficulty_stream.c" /* after rounds.c: the players (event_polls.c, actions.c) and the extra large world */
+#include "difficulty_world_move.c" /* after difficulty_stream.c: the extra large map's detailed terrain follows the players */
 
 static void Deliver(HfEvent event)
 {

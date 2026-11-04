@@ -1,0 +1,784 @@
+/* Extra large maps: the detailed terrain follows the players. The drop tile (difficulty_world_terrain.c) is built while
+ * the level generates; this file builds more of them while the mission runs, on a grid of cells 512 coarse samples
+ * (2048.4 m) wide anchored at the drop tile's square (the ring of every cell is dipped at load, NearRingGrid), and
+ * releases them when no player comes near.
+ *
+ * Where: after the level update (game 0xF73F10, rcx = level, called once a frame from 0xAB519E), in state 3
+ * ([level+0x1E4]), on the game thread: the place the level's own main-thread generation records run from in state 1
+ * (0xF73F10 -> 0xF26140 -> the dispatcher 0xC14950). The level's records and its context stay valid all mission
+ * ([level+0x2A8], freed only by the level's destructor); the job queue [ctx+0x50] = game+0xAC570 is drained every frame
+ * by the render callback (0xAB7680 -> 0xAB0590), and the merge's request ring level+0xB20 by the level update (0xFCE9A0).
+ *
+ * One tile at a time:
+ *  1. the merge package 0x5157EF2020B48DCD: [api+0x10]+0x310 (resident) and, when not, +0x2F0 (acquire), polled until
+ *     resident (as op 0x43 does, 0xF61E8B..0xF61EA9; released by the level's 0x67 at 0xC17CF7);
+ *  2. a copy of the context (0xE8 bytes) whose settings (+8) point at a copy of the level's settings (0xD0 bytes, level
+ *     +0x2D20 up to the context's next field level+0x2DF0): the replay's composite tiles rewrite the world size and
+ *     scatter radii there (TerrainBuild), which gameplay reads through the level's own context;
+ *  3a. the stamp terrains of the locations within reach of the tile: op 0x2F (0xF44380) on a staging copy of their
+ *     records (pass+8 the records, [pass+0x28] the count, +0x48 the resume index; it waits for its own spawns through
+ *     [api+8]+0x48 before it moves on), so 0x63 draws them; 0x65 (0xF53D20) takes them away after the replay on the
+ *     same staging (mode 0: the records' +0xA8 units; mode 1: the unit list pass+0x10, [pass+0x38], packed: its loop
+ *     does not test for NULL), units the content streamer removed meanwhile left out;
+ *  3. op 0x37 (0xFCEB80(ring, R): the merge's textures, generators and gui re-created, the flags R+0xE8.. having been
+ *     reset by the level's 0x66/0x67), then 0x38 (0xF48DA0: cameras, shading environment slot 5; phase 1 waits for the
+ *     ring to drain), each through the dispatcher on a copy of the level's record, the generation arena (ctx+0)
+ *     reset after each (0x173BAB0, as 0xF26140 does after a finished op);
+ *  4. the drop tile's replay (TerrainNearReplay from NEAR_START, its plan made again for the cell) with craters held
+ *     (the deformation renders into whatever is published under the two heightmap names, which hold the tile's
+ *     textures while it is replayed, and pushes its readback into the coarse collision): the deformation's update
+ *     (0x1384BE0) and render (0x1385C30) are skipped while held; their records wait in their queue;
+ *  5. the merge torn down as the level's 0x66 / 0x67 do it (0xC17B34.., 0xC17CC2..): the cameras ([api+8]+0x60 on R+8,
+ *     R+0x18), R+0x108 ([api+8]+0x478), 0x94's lookup, 0xFCF2F0(R, world), 0x1009890(ctx+0x98, 5), the four textures
+ *     and names of 0x67, the package ([api+0x10]+0x300) when it was acquired here;
+ *  6. the spawn (InitSpawnTerrain on the level's kept 0x69 record), the finalize, the coarse collision lowered and the
+ *     coarse drawing hidden over the union of the live tiles (NearHideUnion).
+ * A tile goes when no player has been within MOVE_KEEP of its square for MOVE_KEEP_MS: removed from the ground
+ * queries, the coarse collision raised back from the level's CPU copy (lg+0xD8), the hidden nodes shown again, the
+ * terrain destroyed ([api+8]+0x1E0 -> exe 0x1ADEA0) and its textures released a few frames later. The drop tile stays.
+ *
+ * Players: every Helldiver (as the content streamer reads them), the streamer's research observer, and the test eye
+ * (HELLFORGE_XL_EYE) while it is on and within 30 m of the ground. HELLFORGE_XL_MOVE=0 turns this off. */
+
+#define MOVE_LEVEL_UPDATE 0xF73F10u
+#define MOVE_CRATER_UPDATE 0x1384BE0u
+#define MOVE_CRATER_RENDER 0x1385C30u
+static const char kMoveUpdatePin[] = "40 55 53 56 57 41 54 48 8D AC 24 40 FC FF FF 48 81 EC C0 04 00 00";
+static const char kMoveCraterUpdatePin[] = "4C 8B DC 55 41 55 49 8D AB 78 F6 FF FF 48 81 EC 78 0A 00 00";
+static const char kMoveCraterRenderPin[] = "40 55 56 41 56 41 57 48 8D AC 24 38 FF FF FF 48 81 EC C8 01 00 00";
+#define MOVE_PACKAGE 0x5157EF2020B48DCDull
+#define MOVE_WANT 600.0f      /* a cell is wanted when a player is this close to its square */
+#define MOVE_KEEP 1300.0f     /* a tile is kept while a player is this close to its square ... */
+#define MOVE_KEEP_MS 30000u   /* ... or was, this long ago */
+#define MOVE_CAP 6            /* tiles at most (the drop tile counted); ~128 MiB GPU and ~150 MiB CPU each */
+#define MOVE_HOLD_MS 60000u   /* craters are never held longer than this */
+#define MOVE_SKIP_MS 120000u  /* a cell whose build failed waits this long */
+
+enum { MV_IDLE, MV_PACKAGE, MV_STAMPS, MV_KICK, MV_SETUP, MV_LOOKUP, MV_REPLAY, MV_TEARDOWN, MV_UNSTAMP, MV_SPAWN, MV_READY };
+#define MOVE_STAMPS_MAX 4096u
+#define MOVE_STAMP_MARGIN 512.0f /* locations this far past the tile's texels: a stamp's terrain reaches ~256 m from it */
+
+typedef void (*MoveUpdateFn)(uint64_t level);
+typedef void (*MoveCraterUpdateFn)(void* system, float dt, uint64_t r8, uint64_t r9);
+typedef void (*MoveCraterRenderFn)(void* system, uint64_t rdx, uint64_t r8, uint64_t r9);
+static MoveUpdateFn g_moveUpdate;
+static MoveCraterUpdateFn g_moveCraterUpdate;
+static MoveCraterRenderFn g_moveCraterRender;
+static volatile LONG g_moveInstalled;
+static volatile LONG64 g_moveHoldSince; /* craters wait while non-zero and younger than MOVE_HOLD_MS */
+static volatile LONG64 g_moveHeldUpdates, g_moveHeldRenders;
+
+static struct
+{
+    LONG level; int on, state, slot, cell[2], acquired, merge;
+    uintptr_t levelPtr;
+    float origin[2], centre[2];
+    uint32_t at2F, at37, at38, at4C, at66, frames, waits, calls;
+    /* the stamp terrains of the tile's locations (0x2F spawns them for 0x63 to draw, 0x65 takes them away): staging
+     * copies of their records, the real indices, their units, the counts the two ops read through pointers */
+    uint8_t* stLoc; uint32_t* stIndex; uint64_t* stUnit; uint32_t stCount, stUnits; int stamped;
+    ULONGLONG since, started;
+    uint8_t ctx[0xE8];
+    uint8_t settings[0xD0];
+    uint8_t one[0x19B0];
+    uint8_t phase;
+    /* the drop tile's maps and handle while a tile builds (g_near / g_matband hold the new tile's) */
+    int stashed; float dropCentre[2]; uint64_t dropHandle, dropTex[2], dropBand; uint32_t* dropBandPixels; int dropBandServed;
+    int built, failed, released;
+    struct { int a, b; ULONGLONG until; } skip[16];
+    struct { int used; uint64_t tex[2], band; uint32_t* pixels; uint32_t frames; } freeing[NEAR_TILES_MAX * 2];
+    float player[EVT_MAX_PLAYERS + 2][2];
+    int players;
+} g_move = {.level = -1};
+
+static void MoveCraterUpdate(void* system, float dt, uint64_t r8, uint64_t r9)
+{
+    LONG64 since = g_moveHoldSince;
+    if (since != 0 && GetTickCount64() - (ULONGLONG)since < MOVE_HOLD_MS) { InterlockedIncrement64(&g_moveHeldUpdates); return; }
+    g_moveCraterUpdate(system, dt, r8, r9);
+}
+
+static void MoveCraterRender(void* system, uint64_t rdx, uint64_t r8, uint64_t r9)
+{
+    LONG64 since = g_moveHoldSince;
+    if (since != 0 && GetTickCount64() - (ULONGLONG)since < MOVE_HOLD_MS) { InterlockedIncrement64(&g_moveHeldRenders); return; }
+    g_moveCraterRender(system, rdx, r8, r9);
+}
+
+static void MoveHold(int on)
+{
+    InterlockedExchange64(&g_moveHoldSince, on ? (LONG64)GetTickCount64() : 0);
+}
+
+/* The textures of a tile that went, released once the frames that may still draw it are past. */
+static void MoveFreeLater(uint64_t tex0, uint64_t tex1, uint64_t band, uint32_t* pixels)
+{
+    for (int k = 0; k < NEAR_TILES_MAX * 2; k++)
+        if (!g_move.freeing[k].used)
+        {
+            g_move.freeing[k].used = 1; g_move.freeing[k].tex[0] = tex0; g_move.freeing[k].tex[1] = tex1; g_move.freeing[k].band = band;
+            g_move.freeing[k].pixels = pixels; g_move.freeing[k].frames = 0;
+            return;
+        }
+    Note("difficulty: moving tiles: no room to release a tile's textures; they stay allocated");
+}
+
+static void MoveFreeNow(uint64_t tex0, uint64_t tex1, uint64_t band, uint32_t* pixels)
+{
+    NearReleaseFn release = (NearReleaseFn)NearApi(0x10, 0x198);
+    typedef void (*DestroyFn)(uint64_t tex);
+    DestroyFn destroy = (DestroyFn)NearApi(0x10, 0x6B0);
+    if (release != NULL) { if (tex0 != 0) release(tex0); if (tex1 != 0) release(tex1); }
+    if (band != 0 && destroy != NULL) destroy(band);
+    if (pixels != NULL && (band == 0 || destroy != NULL)) VirtualFree(pixels, 0, MEM_RELEASE);
+}
+
+static void MoveFreeTick(int all)
+{
+    for (int k = 0; k < NEAR_TILES_MAX * 2; k++)
+        if (g_move.freeing[k].used && (all || ++g_move.freeing[k].frames >= 4))
+        {
+            MoveFreeNow(g_move.freeing[k].tex[0], g_move.freeing[k].tex[1], g_move.freeing[k].band, g_move.freeing[k].pixels);
+            g_move.freeing[k].used = 0;
+        }
+}
+
+/* The drop tile's maps back in g_near / g_matband, the build's flags off. */
+static void MoveRestoreDrop(void)
+{
+    if (g_move.stashed)
+    {
+        g_near.tex[0] = g_move.dropTex[0]; g_near.tex[1] = g_move.dropTex[1]; g_near.handle = g_move.dropHandle;
+        g_near.centre[0] = g_move.dropCentre[0]; g_near.centre[1] = g_move.dropCentre[1];
+        g_matband.tex = g_move.dropBand; g_matband.pixels = g_move.dropBandPixels; g_matband.served = g_move.dropBandServed;
+        g_move.stashed = 0;
+    }
+    g_near.state = NEAR_IN;
+    InterlockedExchange(&g_moveBuilding, 0);
+    MoveHold(0);
+}
+
+/* A new level starts (TerrainNearReplay's first call): the last level's world is gone with every tile in it. */
+static void MoveLevelGone(void)
+{
+    if (g_move.state != MV_IDLE && g_move.stashed)
+        MoveFreeNow(g_move.dropTex[0] == g_near.tex[0] ? 0 : g_move.dropTex[0], g_move.dropTex[1] == g_near.tex[1] ? 0 : g_move.dropTex[1],
+            g_move.dropBand == g_matband.tex ? 0 : g_move.dropBand, g_move.dropBand == g_matband.tex ? NULL : g_move.dropBandPixels);
+    g_move.stashed = 0;
+    MoveFreeTick(1);
+    for (int k = 0; k < NEAR_TILES_MAX; k++)
+        if (g_tiles[k].tex[0] != 0 || g_tiles[k].tex[1] != 0 || g_tiles[k].band != 0)
+        {
+            MoveFreeNow(g_tiles[k].tex[0], g_tiles[k].tex[1], g_tiles[k].band, g_tiles[k].bandPixels);
+            g_tiles[k].tex[0] = g_tiles[k].tex[1] = g_tiles[k].band = 0; g_tiles[k].bandPixels = NULL;
+        }
+    g_move.state = MV_IDLE; g_move.level = -1; g_move.on = 0;
+    InterlockedExchange(&g_moveBuilding, 0);
+    MoveHold(0);
+}
+
+static int MoveOn(void)
+{
+    static int on = -1;
+    if (on < 0) { char t[4] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_MOVE", t, sizeof t) > 0 && t[0] == '0'); }
+    return on;
+}
+
+static void MovePlayers(void)
+{
+    g_move.players = 0;
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    int count = EvpPlayers(g_world.game, players);
+    for (int i = 0; count > 0 && i < count && g_move.players < EVT_MAX_PLAYERS; i++)
+    {
+        if (players[i].avatar == 0) continue;
+        ActHealth h;
+        float at[3] = {0.0f, 0.0f, 0.0f};
+        if (!ActHealthOf(g_world.game, players[i].avatar, &h) || h.unit == 0 || !EvpUnitPosition(h.unit, at) || !isfinite(at[0]) || !isfinite(at[1])) continue;
+        g_move.player[g_move.players][0] = at[0]; g_move.player[g_move.players][1] = at[1]; g_move.players++;
+    }
+    if (g_streamObserverOn) { g_move.player[g_move.players][0] = g_streamObserverAt[0]; g_move.player[g_move.players][1] = g_streamObserverAt[1]; g_move.players++; }
+    if (g_eye.on) /* the test eye walks like a player: not when it looks from high above (elevated views) */
+    {
+        float ground = NearEyeGround(g_eye.pos[0], g_eye.pos[1]);
+        if (ground < -9000.0f || g_eye.pos[2] - ground < 30.0f)
+        { g_move.player[g_move.players][0] = g_eye.pos[0]; g_move.player[g_move.players][1] = g_eye.pos[1]; g_move.players++; }
+    }
+}
+
+static void MoveCellCentre(int a, int b, float* c)
+{
+    c[0] = g_move.origin[0] + (float)a * NEAR_HIDE; c[1] = g_move.origin[1] + (float)b * NEAR_HIDE;
+}
+
+/* Metres from (x, y) to the square of cell (a, b) (0 inside). */
+static float MoveCellDistance(int a, int b, float x, float y)
+{
+    float c[2];
+    MoveCellCentre(a, b, c);
+    float dx = fmaxf(0.0f, fabsf(x - c[0]) - NEAR_HIDE / 2), dy = fmaxf(0.0f, fabsf(y - c[1]) - NEAR_HIDE / 2);
+    return sqrtf(dx * dx + dy * dy);
+}
+
+static int MoveCellValid(int a, int b) { return a >= g_ring.a0 && a <= g_ring.a1 && b >= g_ring.b0 && b <= g_ring.b1; }
+
+static int MoveCellLive(int a, int b)
+{
+    for (int k = 0; k < NEAR_TILES_MAX; k++)
+        if (g_tiles[k].live && g_tiles[k].level == g_world.levels && g_tiles[k].cell[0] == a && g_tiles[k].cell[1] == b) return 1;
+    return 0;
+}
+
+static int MoveCellSkipped(int a, int b, ULONGLONG now)
+{
+    for (int k = 0; k < 16; k++) if (g_move.skip[k].until > now && g_move.skip[k].a == a && g_move.skip[k].b == b) return 1;
+    return 0;
+}
+
+static void MoveCellSkip(int a, int b, ULONGLONG now)
+{
+    int at = 0;
+    for (int k = 1; k < 16; k++) if (g_move.skip[k].until < g_move.skip[at].until) at = k;
+    g_move.skip[at].a = a; g_move.skip[at].b = b; g_move.skip[at].until = now + MOVE_SKIP_MS;
+}
+
+/* The locations whose stamps reach the cell's tile (their record xy +0 in generator metres, world + half; a stamp unit
+ * at +0xA8, which the content streamer may have taken away: then there is nothing to draw), copied for 0x2F. */
+static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
+{
+    g_move.stCount = 0; g_move.stUnits = 0;
+    if (g_move.stLoc == NULL)
+    {
+        g_move.stLoc = (uint8_t*)VirtualAlloc(NULL, (size_t)MOVE_STAMPS_MAX * 0xE0, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        g_move.stIndex = (uint32_t*)VirtualAlloc(NULL, (size_t)MOVE_STAMPS_MAX * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        g_move.stUnit = (uint64_t*)VirtualAlloc(NULL, (size_t)MOVE_STAMPS_MAX * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (g_move.stLoc == NULL || g_move.stIndex == NULL || g_move.stUnit == NULL) return 0;
+    }
+    const float reach = NEAR_SIDE / 2 + MOVE_STAMP_MARGIN;
+    uint8_t rec[0xE0];
+    for (uint32_t i = 0; i < count && g_move.stCount < MOVE_STAMPS_MAX; i++)
+    {
+        if (SafeRead(locs + (uint64_t)i * 0xE0, rec, sizeof rec)) continue;
+        float at[2]; uint64_t unit = 0;
+        memcpy(at, rec, 8); memcpy(&unit, rec + 0xA8, 8);
+        if (unit == 0 || !isfinite(at[0]) || !isfinite(at[1])) continue;
+        if (fabsf(at[0] - half - g_move.centre[0]) > reach || fabsf(at[1] - half - g_move.centre[1]) > reach) continue;
+        memcpy(g_move.stLoc + (size_t)g_move.stCount * 0xE0, rec, sizeof rec);
+        g_move.stIndex[g_move.stCount] = i; g_move.stUnit[g_move.stUnits++] = unit;
+        g_move.stCount++;
+    }
+    return g_move.stCount;
+}
+
+/* Before 0x65: a staged location whose real record no longer holds the unit 0x2F saw (the streamer removed it, and the
+ * stamp terrain went with the unit) is left out; the unit list is packed (0x65's unit loop does not test for NULL). */
+static void MoveStampsRecheck(uint64_t locs)
+{
+    uint32_t n = 0, dropped = 0;
+    for (uint32_t k = 0; k < g_move.stCount; k++)
+    {
+        uint64_t seen = 0, now = 0;
+        memcpy(&seen, g_move.stLoc + (size_t)k * 0xE0 + 0xA8, 8);
+        if (seen == 0) continue;
+        if (SafeRead(locs + (uint64_t)g_move.stIndex[k] * 0xE0 + 0xA8, &now, 8) || now != seen)
+        {
+            uint64_t zero = 0; memcpy(g_move.stLoc + (size_t)k * 0xE0 + 0xA8, &zero, 8); dropped++;
+            continue;
+        }
+        g_move.stUnit[n++] = seen;
+    }
+    g_move.stUnits = n;
+    if (dropped) Note("difficulty: moving tiles: %u of the tile's stamp units went while it was built (their terrains went with them)", dropped);
+}
+
+/* The level's 0x2F (op = 0x2F) or 0x65 record on the staging lists: locations pass+8 / count [pass+0x28] for both, units
+ * pass+0x10 / count [pass+0x38] for 0x65's unit mode, the resume index (0x2F +0x48, 0x65 +0x4C) from 0. */
+static int MoveStampsRecord(uint32_t at, int op)
+{
+    if (SafeRead(g_near.records + (uint64_t)at * 0x19B0u, g_move.one, sizeof g_move.one)) return 0;
+    uint8_t* pass = g_move.one + 8;
+    uint64_t locs = (uint64_t)(uintptr_t)g_move.stLoc, cnt = (uint64_t)(uintptr_t)&g_move.stCount;
+    memcpy(pass + 8, &locs, 8); memcpy(pass + 0x28, &cnt, 8);
+    uint32_t zero = 0;
+    if (op == 0x2F) memcpy(pass + 0x48, &zero, 4);
+    else
+    {
+        uint64_t units = (uint64_t)(uintptr_t)g_move.stUnit, ucnt = (uint64_t)(uintptr_t)&g_move.stUnits;
+        memcpy(pass + 0x10, &units, 8); memcpy(pass + 0x38, &ucnt, 8); memcpy(pass + 0x4C, &zero, 4);
+    }
+    g_move.phase = 0;
+    return 1;
+}
+
+/* One record of the level's through the dispatcher on the context copy, a call; 1 when it moved on, 0 not yet, -1 on a
+ * fault. The generation arena is reset after a finished op (0xF26140 at 0xF261FE). */
+static int MoveRunRecord(void)
+{
+    volatile uint32_t index = 0;
+    volatile int calls = 0;
+    LONG fault = WorldTileGuarded(g_move.one, (uint64_t)(uintptr_t)g_move.ctx, &index, &g_move.phase, 0, 0, 1, &calls);
+    if (fault)
+    {
+        Note("difficulty: moving tiles: op 0x%02X faulted (%08lX at game.dll+0x%llX)", g_move.one[0], (unsigned long)fault, (unsigned long long)(g_tileFaultAt - g_world.game));
+        return -1;
+    }
+    if (index == 0) return 0;
+    uint64_t arena = 0;
+    memcpy(&arena, g_move.ctx, 8);
+    typedef void (*ArenaFn)(uint64_t arena);
+    if (arena != 0) ((ArenaFn)(g_world.game + 0x173BAB0u))(arena);
+    return 1;
+}
+
+static uint64_t MoveWorld(void)
+{
+    uint64_t world = 0;
+    memcpy(&world, g_move.ctx + 0x40, 8);
+    return world;
+}
+
+/* The merge as the level's 0x66 and 0x67 leave it (the parts this build re-created). */
+static void MoveTeardown(void)
+{
+    if (!g_move.merge) return;
+    g_move.merge = 0;
+    uintptr_t gen = 0, R = 0, api = 0, t8 = 0, t10 = 0;
+    uint64_t world = MoveWorld(), env = 0;
+    memcpy(&env, g_move.ctx + 0x98, 8);
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen, &R, 8) || R == 0 || SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 ||
+        SafeRead(api + 8, &t8, 8) || t8 == 0 || SafeRead(api + 0x10, &t10, 8) || t10 == 0 || world == 0)
+    { Note("difficulty: moving tiles: the merge could not be torn down (no merge object or engine tables)"); return; }
+    typedef void (*NodeFn)(uint64_t world, uint32_t node);
+    typedef void (*UnitFn)(uint64_t world, uint64_t unit);
+    typedef void (*PtrFn)(uint64_t p);
+    typedef void (*NameFn)(uint32_t name);
+    typedef void (*PkgFn)(uint64_t hash);
+    NodeFn destroyNode = NULL; UnitFn destroyUnit = NULL; PtrFn releaseRead = NULL, release = NULL; NameFn unpublish = NULL; PkgFn pkgRelease = NULL;
+    SafeRead(t8 + 0x60, &destroyNode, 8); SafeRead(t8 + 0x478, &destroyUnit, 8); SafeRead(t10 + 0x1E0, &releaseRead, 8); SafeRead(t10 + 0x190, &release, 8);
+    SafeRead(t10 + 0x218, &unpublish, 8); SafeRead(t10 + 0x300, &pkgRelease, 8);
+    if (destroyNode == NULL || destroyUnit == NULL || releaseRead == NULL || release == NULL || unpublish == NULL || pkgRelease == NULL) return;
+    /* 0x66: the cameras, R+0x108 */
+    uint32_t n0 = 0, n1 = 0; uint64_t r108 = 0;
+    SafeRead(R + 8, &n0, 4); SafeRead(R + 0x18, &n1, 4); SafeRead(R + 0x108, &r108, 8);
+    if (n0 != 0) destroyNode(world, n0);
+    if (n1 != 0) destroyNode(world, n1);
+    if (r108 != 0) destroyUnit(world, r108);
+    *(volatile uint32_t*)(R + 8) = 0; *(volatile uint64_t*)(R + 0x108) = 0;
+    /* 0x66: 0x94's lookup ([record+0x18]: its readback +0x10, its texture +0x18 under 0xDBCD240D) */
+    uint64_t lookup = 0, rd = 0, tex = 0;
+    if (!SafeRead(g_near.records + (uint64_t)g_move.at66 * 0x19B0u + 0x18, &lookup, 8) && lookup != 0)
+    {
+        if (!SafeRead(lookup + 0x10, &rd, 8) && rd != 0) releaseRead(lookup);
+        if (!SafeRead(lookup + 0x18, &tex, 8) && tex != 0) { unpublish(0xDBCD240Du); release(tex); *(volatile uint64_t*)(lookup + 0x18) = 0; }
+    }
+    typedef void (*MergeFn)(uint64_t R, uint64_t world);
+    typedef void (*EnvFn)(uint64_t manager, uint32_t slot);
+    ((MergeFn)(g_world.game + 0xFCF2F0u))(R, world);
+    if (env != 0) ((EnvFn)(g_world.game + 0x1009890u))(env, 5);
+    /* 0x67: the four textures and their names */
+    static const struct { uint32_t name, at, flag; } kFree[4] = {{0xA2003184u, 0x98, 0xE8}, {0x1BB41B90u, 0xA0, 0xE9}, {0x2FFE957Du, 0xB8, 0xEC}, {0xEBD2B190u, 0xD8, 0xF0}};
+    for (int k = 0; k < 4; k++)
+    {
+        uint64_t t = 0;
+        SafeRead(R + kFree[k].at, &t, 8);
+        if (t != 0) { unpublish(kFree[k].name); release(t); }
+        *(volatile uint64_t*)(R + kFree[k].at) = 0; *(volatile uint8_t*)(R + kFree[k].flag) = 0;
+    }
+    if (g_move.acquired) { pkgRelease(MOVE_PACKAGE); g_move.acquired = 0; }
+    uint64_t arena = 0;
+    memcpy(&arena, g_move.ctx, 8);
+    typedef void (*ArenaFn)(uint64_t arena);
+    if (arena != 0) ((ArenaFn)(g_world.game + 0x173BAB0u))(arena);
+}
+
+/* A build that did not finish: the merge torn down, the new tile's maps and terrain gone, the drop tile's back. */
+static void MoveFail(const char* why)
+{
+    Note("difficulty: moving tiles: the tile of cell (%d, %d) is not built: %s", g_move.cell[0], g_move.cell[1], why);
+    if (g_nearActive) NearReplayEnd(0);
+    if (g_move.stamped)
+    {
+        /* the stamp terrains away (0x65 needs no frames to pass: a few calls) */
+        uint64_t locs = 0;
+        SafeRead(g_near.records + (uint64_t)g_move.at2F * 0x19B0u + 8 + 8, &locs, 8);
+        MoveStampsRecheck(locs);
+        int r = 0;
+        if (MoveStampsRecord(g_near.at65, 0x65)) for (int k = 0; k < 64 && r == 0; k++) r = MoveRunRecord();
+        if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
+        g_move.stamped = 0;
+    }
+    MoveTeardown();
+    if (g_move.state >= MV_SPAWN && g_near.handle != 0 && g_near.handle != g_move.dropHandle)
+    {
+        typedef void (*DestroyFn)(uint64_t world, uint64_t handle);
+        DestroyFn destroy = (DestroyFn)NearApi(0x08, 0x1E0);
+        if (destroy != NULL) destroy(MoveWorld(), g_near.handle);
+    }
+    if (g_move.stashed)
+    {
+        MoveFreeLater(g_near.tex[0] != g_move.dropTex[0] ? g_near.tex[0] : 0, g_near.tex[1] != g_move.dropTex[1] ? g_near.tex[1] : 0,
+            g_matband.tex != g_move.dropBand ? g_matband.tex : 0, g_matband.pixels != g_move.dropBandPixels ? g_matband.pixels : NULL);
+    }
+    if (g_move.acquired)
+    {
+        typedef void (*PkgFn)(uint64_t hash);
+        PkgFn pkgRelease = (PkgFn)NearApi(0x10, 0x300);
+        if (pkgRelease != NULL) pkgRelease(MOVE_PACKAGE);
+        g_move.acquired = 0;
+    }
+    MoveCellSkip(g_move.cell[0], g_move.cell[1], GetTickCount64());
+    MoveRestoreDrop();
+    g_move.failed++;
+    g_move.state = MV_IDLE;
+}
+
+static void MoveRelease(int slot)
+{
+    NearTile t = g_tiles[slot];
+    uint64_t world = MoveWorld();
+    NearTileRemove(slot);
+    g_tiles[slot].tex[0] = g_tiles[slot].tex[1] = g_tiles[slot].band = 0; g_tiles[slot].bandPixels = NULL;
+    int raised = NearRaiseCoarse(world, &g_tileHidden[slot]);
+    g_tileHidden[slot].lowered = 0;
+    NearHideUnion("a tile released");
+    typedef void (*DestroyFn)(uint64_t world, uint64_t handle);
+    DestroyFn destroy = (DestroyFn)NearApi(0x08, 0x1E0);
+    if (destroy != NULL && t.handle != 0) destroy(world, t.handle);
+    MoveFreeLater(t.tex[0], t.tex[1], t.band, t.bandPixels);
+    g_move.released++;
+    Note("difficulty: moving tiles: the tile of cell (%d, %d) released (no player within %.0f m for %u s); the coarse collision %s; %d tiles live",
+        t.cell[0], t.cell[1], (double)MOVE_KEEP, MOVE_KEEP_MS / 1000, raised ? "raised back" : "NOT raised back (the level's copy did not read)", NearTilesLive());
+}
+
+/* The context's arena ([ctx+0]): the generation thread's arena is destroyed when the level is done (0x173BB80: its
+ * chunks freed, its head zeroed; the allocator 0x173B8D0 then reads [0] at 0x173B936, run s72d's 0x2F fault). The
+ * build gets its own, laid out as 0x173B700 makes one: arena {head chunk +0, lock +8 (0), owner thread index +0xC (-1:
+ * the allocator skips the index call), growth size +0x10 (0x100000)}; chunk {used +0, data +8, capacity +0x10, next
+ * +0x18}. The reset (0x173BAB0) frees the chunks the allocator grew (engine memory, put in front of ours) and sets the
+ * last one's used to 0: ours is the last and is never freed. */
+#define MOVE_ARENA_BYTES (64u << 20)
+static struct { uint64_t head; LONG lock; int32_t owner; uint64_t growth; } g_moveArena;
+static struct { uint64_t used, data, capacity, next; } g_moveChunk;
+
+static int MoveArena(void)
+{
+    if (g_moveChunk.data == 0)
+    {
+        void* p = VirtualAlloc(NULL, MOVE_ARENA_BYTES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (p == NULL) { Note("difficulty: moving tiles: no memory for the build's arena"); return 0; }
+        g_moveChunk.data = (uint64_t)(uintptr_t)p; g_moveChunk.capacity = MOVE_ARENA_BYTES;
+    }
+    g_moveChunk.used = 0; g_moveChunk.next = 0;
+    g_moveArena.head = (uint64_t)(uintptr_t)&g_moveChunk; g_moveArena.lock = 0; g_moveArena.owner = -1; g_moveArena.growth = 0x100000;
+    return 1;
+}
+
+static int MoveStart(void)
+{
+    uint64_t block = 0;
+    if (SafeRead(g_worldLevel + 0x2A8, &block, 8) || block == 0 || block != g_near.records) return 0;
+    memcpy(g_move.ctx, (void*)(uintptr_t)(block + 0x19B008u), sizeof g_move.ctx);
+    uint64_t settings = 0;
+    memcpy(&settings, g_move.ctx + 8, 8);
+    if (settings == 0 || SafeRead(settings, g_move.settings, sizeof g_move.settings)) return 0;
+    uint64_t mine = (uint64_t)(uintptr_t)g_move.settings;
+    memcpy(g_move.ctx + 8, &mine, 8);
+    g_move.ctx[0xE1] = 0; g_move.ctx[0xE2] = 0; /* abort, restart */
+    if (!MoveArena()) return 0;
+    { uint64_t arena = (uint64_t)(uintptr_t)&g_moveArena; memcpy(g_move.ctx, &arena, 8); }
+    /* the drop tile's maps aside: the replay creates the new tile's in g_near / g_matband */
+    g_move.dropTex[0] = g_near.tex[0]; g_move.dropTex[1] = g_near.tex[1]; g_move.dropHandle = g_near.handle;
+    g_move.dropCentre[0] = g_near.centre[0]; g_move.dropCentre[1] = g_near.centre[1];
+    g_move.dropBand = g_matband.tex; g_move.dropBandPixels = g_matband.pixels; g_move.dropBandServed = g_matband.served;
+    g_move.stashed = 1;
+    g_near.tex[0] = g_near.tex[1] = 0; g_matband.tex = 0; g_matband.pixels = NULL;
+    InterlockedExchange(&g_moveBuilding, 1);
+    g_move.acquired = 0; g_move.merge = 0; g_move.waits = 0; g_move.frames = 0; g_move.started = GetTickCount64();
+    g_move.state = MV_PACKAGE;
+    Note("difficulty: moving tiles: building cell (%d, %d) at (%.0f, %.0f) for a player %.0f m from it; %d tiles live", g_move.cell[0], g_move.cell[1],
+        (double)g_move.centre[0], (double)g_move.centre[1], (double)MoveCellDistance(g_move.cell[0], g_move.cell[1], g_move.player[0][0], g_move.player[0][1]),
+        NearTilesLive());
+    return 1;
+}
+
+/* The replay's merge state for the cell (as TerrainNearReplay's first call sets it up at load). */
+static int MoveReplayBegin(void)
+{
+    uintptr_t gen = 0, lg = 0;
+    uint64_t settings = 0;
+    uint32_t size = 0, tiles = 0;
+    memcpy(&settings, g_move.ctx + 8, 8);
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return 0;
+    lg = gen + 0x8758A8u;
+    g_near.lg = lg; g_near.settings = settings;
+    if (SafeRead(gen, &g_near.R, 8) || g_near.R == 0 || SafeRead(g_near.R + 0x110, &g_near.gui, 8) || SafeRead(g_near.R, &g_near.cam[0], 8) ||
+        SafeRead(g_near.R + 8, &g_near.node[0], 4) || SafeRead(g_near.R + 0x10, &g_near.cam[1], 8) || SafeRead(g_near.R + 0x18, &g_near.node[1], 4) ||
+        SafeRead(settings + 0x2C, &size, 4) || SafeRead(lg + 0x120, &g_near.samples, 4) || SafeRead(lg + 0x124, &tiles, 4) || g_near.cam[0] == 0 ||
+        g_near.cam[1] == 0 || g_near.gui == 0)
+    { Note("difficulty: moving tiles: the merge was not re-created (R 0x%llX)", (unsigned long long)g_near.R); return 0; }
+    g_near.world = MoveWorld();
+    if (size != 16384u || tiles != 1 || !(g_near.samples >= 1024.0f && g_near.samples <= 8192.0f) || g_near.world == 0)
+    { Note("difficulty: moving tiles: the merge is not the reviewed one (size %u, %u tiles, %.0f samples)", size, tiles, (double)g_near.samples); return 0; }
+    g_near.centre[0] = g_move.centre[0]; g_near.centre[1] = g_move.centre[1];
+    g_near.world_size = (float)size;
+    g_near.scale = g_near.world_size / NEAR_SIDE;
+    for (int k = 0; k < 2; k++) g_near.offset[k] = -(g_near.centre[k] + g_near.world_size / 2 - NEAR_SIDE / 2) * g_near.samples / NEAR_SIDE;
+    if (!NearPlan(g_near.records, g_near.at65)) { Note("difficulty: moving tiles: the level's merge records are not all there"); return 0; }
+    g_near.step = 0; g_near.calls = 0; g_near.building = 0; g_near.tilesDrawn = 0; g_near.tilesFailed = 0; g_near.waits = 0; g_near.frames = 0;
+    g_near.matLeave = 0; g_near.handle = 0;
+    g_near.started = GetTickCount64();
+    g_stepDump.phase = 0;
+    g_near.state = NEAR_START; g_near.loggedStep = 0;
+    MoveHold(1);
+    return 1;
+}
+
+/* After the finalize: the coarse terrain under the tile, its ground, the tile in the list. */
+static void MoveTileIn(uint64_t world)
+{
+    int slot = g_move.slot, x0 = 0, y0 = 0;
+    NearCellSquare(g_move.cell[0], g_move.cell[1], g_move.centre[0], g_move.centre[1], &x0, &y0);
+    NearHideCoarse(world, x0, y0, &g_tileHidden[slot]);
+    NearGround ground;
+    NearGroundOf(world, g_near.handle, NEAR_SPAN, g_move.centre[0], g_move.centre[1], &ground, &g_groundBuf[slot]);
+    NearTileAdd(slot, g_move.centre[0], g_move.centre[1], g_near.handle, &ground);
+    g_tiles[slot].cell[0] = g_move.cell[0]; g_tiles[slot].cell[1] = g_move.cell[1];
+    g_tiles[slot].tex[0] = g_near.tex[0]; g_tiles[slot].tex[1] = g_near.tex[1];
+    g_tiles[slot].band = g_matband.tex; g_tiles[slot].bandPixels = g_matband.pixels;
+    NearHideUnion("a tile built in mission");
+    g_move.built++;
+    Note("difficulty: moving tiles: the tile of cell (%d, %d) is in after %.1f s (%u frames): ground %s, centre %.2f m (coarse %.2f m); %d tiles live; craters held %lld updates",
+        g_move.cell[0], g_move.cell[1], (double)(GetTickCount64() - g_move.started) / 1000.0, g_move.frames, ground.v != NULL ? "read" : "NOT read",
+        (double)NearGroundAt(&ground, g_move.centre[0], g_move.centre[1]), (double)NearGroundAt(&g_nearCoarseGround, g_move.centre[0], g_move.centre[1]),
+        NearTilesLive(), (long long)g_moveHeldUpdates);
+    MoveRestoreDrop(); /* g_near.tex / g_matband: the drop tile's again (the new tile's are in its entry) */
+}
+
+static void MoveTick(uint64_t level)
+{
+    if (!g_moveInstalled || level == 0 || level != g_worldLevel || g_world.current != 8.0f || !TerrainOn() || !NearOn() || !MoveOn()) return;
+    uint32_t state = 0;
+    if (SafeRead(level + 0x1E4, &state, 4) || state != 3) return;
+    if (g_near.level != g_world.levels || (g_move.state == MV_IDLE && g_near.state != NEAR_IN)) return;
+    ULONGLONG now = GetTickCount64();
+    if (g_move.level != g_world.levels)
+    {
+        g_move.level = g_world.levels; g_move.levelPtr = level; g_move.state = MV_IDLE; g_move.on = 0;
+        g_move.built = g_move.failed = g_move.released = 0;
+        memset(g_move.skip, 0, sizeof g_move.skip);
+        if (!(g_ring.level == g_world.levels && g_ring.applied)) { Note("difficulty: moving tiles: off for this level (no grid ring at load)"); return; }
+        if (!g_tiles[0].live || g_tiles[0].level != g_world.levels) { Note("difficulty: moving tiles: off for this level (no drop tile)"); return; }
+        g_move.at2F = g_move.at37 = g_move.at38 = g_move.at66 = 0;
+        for (uint32_t i = g_near.at65; i > 0; i--)
+        {
+            uint32_t op = 0;
+            if (SafeRead(g_near.records + (uint64_t)(i - 1) * 0x19B0u, &op, 4)) break;
+            if (op == 0x38 && g_move.at38 == 0) g_move.at38 = i - 1;
+            if (op == 0x37 && g_move.at37 == 0) g_move.at37 = i - 1;
+            if (op == 0x2F && g_move.at2F == 0) g_move.at2F = i - 1; /* after 0x38 in the list (s72c: 0x37 67, 0x38 78, 0x2F 102) */
+            if (g_move.at2F != 0 && g_move.at37 != 0 && g_move.at38 != 0) break;
+        }
+        /* 0x4C between 0x38 and 0x65: it makes R+0xB8 (0x2FFE957D), which 0x67 releases and the replay's 0x64 binds */
+        g_move.at4C = 0;
+        for (uint32_t i = g_move.at38 + 1; i < g_near.at65; i++)
+        {
+            uint32_t op = 0;
+            if (!SafeRead(g_near.records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x4C) { g_move.at4C = i; break; }
+        }
+        for (uint32_t i = g_near.at65 + 1; i < g_near.end; i++)
+        {
+            uint32_t op = 0;
+            if (!SafeRead(g_near.records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x66) { g_move.at66 = i; break; }
+        }
+        if (g_move.at2F == 0 || g_move.at37 == 0 || g_move.at38 == 0 || g_move.at4C == 0 || g_move.at66 == 0)
+        { Note("difficulty: moving tiles: off for this level (records 0x2F %u, 0x37 %u, 0x38 %u, 0x4C %u, 0x66 %u)", g_move.at2F, g_move.at37, g_move.at38, g_move.at4C, g_move.at66); return; }
+        g_move.origin[0] = g_tiles[0].centre[0]; g_move.origin[1] = g_tiles[0].centre[1];
+        g_move.on = 1;
+        Note("difficulty: moving tiles: on: cells %d..%d east, %d..%d north of the drop tile's at (%.0f, %.0f), %.1f m each; wanted within %.0f m, kept within %.0f m "
+            "for %u s, %d at most; records 0x2F %u, 0x37 %u, 0x38 %u, 0x65 %u, 0x66 %u", g_ring.a0, g_ring.a1, g_ring.b0, g_ring.b1, (double)g_move.origin[0],
+            (double)g_move.origin[1], (double)NEAR_HIDE, (double)MOVE_WANT, (double)MOVE_KEEP, MOVE_KEEP_MS / 1000, MOVE_CAP, g_move.at2F, g_move.at37, g_move.at38,
+            g_near.at65, g_move.at66);
+    }
+    if (!g_move.on) return;
+    MoveFreeTick(0);
+    MovePlayers();
+    if (g_move.state == MV_IDLE)
+    {
+        if (g_move.players == 0) return;
+        for (int k = 0; k < NEAR_TILES_MAX; k++)
+        {
+            if (!g_tiles[k].live || g_tiles[k].level != g_world.levels) continue;
+            for (int p = 0; p < g_move.players; p++)
+                if (MoveCellDistance(g_tiles[k].cell[0], g_tiles[k].cell[1], g_move.player[p][0], g_move.player[p][1]) <= MOVE_KEEP) { g_tiles[k].seen = now; break; }
+        }
+        for (int k = 1; k < NEAR_TILES_MAX; k++) /* the drop tile (slot 0) stays */
+            if (g_tiles[k].live && g_tiles[k].level == g_world.levels && now - g_tiles[k].seen > MOVE_KEEP_MS) { MoveRelease(k); return; }
+        if (NearTilesLive() >= MOVE_CAP) return;
+        float best = 1e9f; int ba = 0, bb = 0, bp = -1;
+        for (int p = 0; p < g_move.players; p++)
+        {
+            int pa = (int)floorf((g_move.player[p][0] - g_move.origin[0]) / NEAR_HIDE + 0.5f), pb = (int)floorf((g_move.player[p][1] - g_move.origin[1]) / NEAR_HIDE + 0.5f);
+            for (int a = pa - 1; a <= pa + 1; a++)
+                for (int b = pb - 1; b <= pb + 1; b++)
+                {
+                    if (!MoveCellValid(a, b) || MoveCellLive(a, b) || MoveCellSkipped(a, b, now)) continue;
+                    float d = MoveCellDistance(a, b, g_move.player[p][0], g_move.player[p][1]);
+                    if (d <= MOVE_WANT && d < best) { best = d; ba = a; bb = b; bp = p; }
+                }
+        }
+        if (bp < 0) return;
+        g_move.slot = NearTileFree();
+        if (g_move.slot < 0) return;
+        g_move.cell[0] = ba; g_move.cell[1] = bb;
+        MoveCellCentre(ba, bb, g_move.centre);
+        if (bp != 0) { float t0 = g_move.player[0][0], t1 = g_move.player[0][1]; g_move.player[0][0] = g_move.player[bp][0]; g_move.player[0][1] = g_move.player[bp][1]; g_move.player[bp][0] = t0; g_move.player[bp][1] = t1; }
+        if (!MoveStart()) { Note("difficulty: moving tiles: the level's context did not read; no tile"); MoveCellSkip(ba, bb, now); return; }
+    }
+    g_move.frames++;
+    if (g_move.state == MV_PACKAGE)
+    {
+        typedef int (*HasFn)(uint64_t hash);
+        typedef void (*PkgFn)(uint64_t hash);
+        HasFn has = (HasFn)NearApi(0x10, 0x310);
+        PkgFn acquire = (PkgFn)NearApi(0x10, 0x2F0);
+        if (has == NULL || acquire == NULL) { MoveFail("the package interface is not there"); return; }
+        if (has(MOVE_PACKAGE) == 0)
+        {
+            if (!g_move.acquired) { acquire(MOVE_PACKAGE); g_move.acquired = 1; Note("difficulty: moving tiles: the merge package asked for"); }
+            if (++g_move.waits > 3600) MoveFail("the merge package did not load");
+            return;
+        }
+        g_move.waits = 0; g_move.stamped = 0; g_move.stCount = g_move.stUnits = 0;
+        uint64_t locs = 0, countAt = 0; uint32_t count = 0;
+        uint64_t rec = g_near.records + (uint64_t)g_move.at2F * 0x19B0u;
+        if (SafeRead(rec + 8 + 8, &locs, 8) || SafeRead(rec + 8 + 0x28, &countAt, 8) || locs == 0 || countAt == 0 || SafeRead(countAt, &count, 4))
+        { MoveFail("the 0x2F record's locations did not read"); return; }
+        static int stamps = -1; /* HELLFORGE_XL_MOVE_STAMPS=0: no stamp terrains for the tile (0x63 draws none) */
+        if (stamps < 0) { char t[4] = ""; stamps = !(GetEnvironmentVariableA("HELLFORGE_XL_MOVE_STAMPS", t, sizeof t) > 0 && t[0] == '0'); }
+        if (stamps) MoveStampsSelect(locs, count, g_near.world_size > 0 ? g_near.world_size / 2 : 8192.0f);
+        if (g_move.stCount != 0 && !MoveStampsRecord(g_move.at2F, 0x2F)) { MoveFail("record 0x2F did not read"); return; }
+        g_move.state = g_move.stCount != 0 ? MV_STAMPS : MV_KICK;
+        if (g_move.state == MV_KICK && SafeRead(g_near.records + (uint64_t)g_move.at37 * 0x19B0u, g_move.one, sizeof g_move.one)) { MoveFail("record 0x37 did not read"); return; }
+        g_move.phase = g_move.state == MV_KICK ? 0 : g_move.phase;
+        return;
+    }
+    if (g_move.state == MV_STAMPS)
+    {
+        g_move.stamped = 1; /* from the first call some of the terrains may be spawned */
+        int r = MoveRunRecord();
+        if (r < 0) { MoveFail("0x2F faulted"); return; }
+        if (r == 0) { if (++g_move.waits > 1200) MoveFail("0x2F did not finish (the spawns did not come)"); return; }
+        Note("difficulty: moving tiles: the stamp terrains of %u locations spawned for the tile (%.1f s)", g_move.stCount, (double)(GetTickCount64() - g_move.started) / 1000.0);
+        if (SafeRead(g_near.records + (uint64_t)g_move.at37 * 0x19B0u, g_move.one, sizeof g_move.one)) { MoveFail("record 0x37 did not read"); return; }
+        g_move.phase = 0; g_move.waits = 0; g_move.state = MV_KICK;
+        return;
+    }
+    if (g_move.state == MV_KICK)
+    {
+        g_move.merge = 1; /* from here the merge's resources may exist */
+        int r = MoveRunRecord();
+        if (r < 0) { MoveFail("0x37 faulted"); return; }
+        if (r == 0) { if (++g_move.waits > 60) MoveFail("0x37 did not finish"); return; }
+        if (SafeRead(g_near.records + (uint64_t)g_move.at38 * 0x19B0u, g_move.one, sizeof g_move.one)) { MoveFail("record 0x38 did not read"); return; }
+        /* the merge in one tile, as the level's own 0x38 ran it (WorldDispatch sets the record's T, pass+0xA8, to 1 for
+         * the step: the records of an extra large level give 2); this copy goes to the dispatcher directly */
+        { uint32_t t = 0; memcpy(&t, g_move.one + 8 + 0xA8, 4); if (t > 1 && t <= 16) { t = 1; memcpy(g_move.one + 8 + 0xA8, &t, 4); } }
+        g_move.phase = 0; g_move.waits = 0; g_move.state = MV_SETUP;
+        return;
+    }
+    if (g_move.state == MV_SETUP)
+    {
+        int r = MoveRunRecord();
+        if (r < 0) { MoveFail("0x38 faulted"); return; }
+        if (r == 0) { if (++g_move.waits > 1200) MoveFail("0x38 did not finish (the ring did not drain)"); return; }
+        /* 0x4C (case 0xC16B85): phase 0 creates R+0xB8 (4096 x 1, format 0x2A, [api+0x10]+0x170) and publishes it as
+         * 0x2FFE957D, phase 1 fills it (0xF4F4F0). 0x67 released the level's; 0x37 re-creates only the other three
+         * (0xA2003184, 0x1BB41B90, 0xEBD2B190, 0xFCEB80), and the replay's 0x64 binds it (run s72h: without it 0x64's job
+         * crashed a worker at exe+0x396CCD, an id with no resource) */
+        if (SafeRead(g_near.records + (uint64_t)g_move.at4C * 0x19B0u, g_move.one, sizeof g_move.one)) { MoveFail("record 0x4C did not read"); return; }
+        g_move.phase = 0; g_move.waits = 0; g_move.state = MV_LOOKUP;
+        return;
+    }
+    if (g_move.state == MV_LOOKUP)
+    {
+        int r = MoveRunRecord();
+        if (r < 0) { MoveFail("0x4C faulted"); return; }
+        if (r == 0) { if (++g_move.waits > 1200) MoveFail("0x4C did not finish"); return; }
+        if (!MoveReplayBegin()) { MoveFail("the replay could not start"); return; }
+        Note("difficulty: moving tiles: the merge is re-created (%.1f s); replaying %d steps for the tile", (double)(GetTickCount64() - g_move.started) / 1000.0, g_near.steps);
+        g_move.state = MV_REPLAY;
+        return;
+    }
+    if (g_move.state == MV_REPLAY)
+    {
+        TerrainNearReplay(g_near.records, g_near.end, g_near.at65, (uint64_t)(uintptr_t)g_move.ctx, 0, 0);
+        if (g_near.state == NEAR_FAILED) { MoveFail("the replay failed"); return; }
+        if (g_near.state != NEAR_SPAWN) return;
+        MoveHold(0); /* NearReplayEnd unpublished the tile's textures */
+        g_move.waits = 0; g_move.state = MV_TEARDOWN;
+        return;
+    }
+    if (g_move.state == MV_TEARDOWN)
+    {
+        if (NearQueued((uint64_t)(uintptr_t)g_move.ctx) != 0 || ++g_move.waits < 3) { if (g_move.waits > 600) MoveFail("the job queue did not empty"); return; }
+        if (g_move.stamped)
+        {
+            uint64_t locs = 0;
+            SafeRead(g_near.records + (uint64_t)g_move.at2F * 0x19B0u + 8 + 8, &locs, 8);
+            MoveStampsRecheck(locs);
+            if (!MoveStampsRecord(g_near.at65, 0x65)) { MoveFail("record 0x65 did not read"); return; }
+            g_move.waits = 0; g_move.state = MV_UNSTAMP;
+            return;
+        }
+        MoveTeardown();
+        memcpy(g_near.one69, g_near.keep69, sizeof g_near.one69); memcpy(g_near.one6B, g_near.keep6B, sizeof g_near.one6B);
+        g_move.state = MV_SPAWN;
+        return;
+    }
+    if (g_move.state == MV_UNSTAMP)
+    {
+        int r = MoveRunRecord();
+        if (r < 0) { g_move.stamped = 0; MoveFail("0x65 faulted"); return; }
+        if (r == 0) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("0x65 did not finish"); } return; }
+        g_move.stamped = 0;
+        MoveTeardown();
+        memcpy(g_near.one69, g_near.keep69, sizeof g_near.one69); memcpy(g_near.one6B, g_near.keep6B, sizeof g_near.one6B);
+        g_move.state = MV_SPAWN;
+        return;
+    }
+    if (g_move.state == MV_SPAWN)
+    {
+        if (g_matband.tex != 0 && (g_matband.holds < NEAR_MAT_HOLD || GetTickCount64() - g_matband.made < 100)) { g_matband.holds++; return; }
+        if (!NearSpawnTile((uint64_t)(uintptr_t)g_move.ctx)) { MoveFail("the spawn failed"); return; }
+        g_move.state = MV_READY;
+        return;
+    }
+    if (g_move.state == MV_READY)
+    {
+        uint64_t world = 0;
+        if (NearReadyTile((uint64_t)(uintptr_t)g_move.ctx, &world)) return;
+        if (g_near.state == NEAR_FAILED) { MoveFail("the tile was not ready"); return; }
+        MoveTileIn(world);
+        g_move.state = MV_IDLE;
+    }
+}
+
+static void MoveLevelUpdate(uint64_t level)
+{
+    g_moveUpdate(level);
+    MoveTick(level);
+}
+
+static void MoveInstall(uintptr_t game)
+{
+    if (g_moveInstalled || !MoveOn()) return;
+    if (!ApiCodeMatches(game + MOVE_LEVEL_UPDATE, kMoveUpdatePin) || !ApiCodeMatches(game + MOVE_CRATER_UPDATE, kMoveCraterUpdatePin) ||
+        !ApiCodeMatches(game + MOVE_CRATER_RENDER, kMoveCraterRenderPin))
+    { Note("difficulty: moving tiles: the level update or the terrain deformation is not the reviewed code; the detailed terrain stays at the drop point"); return; }
+    if (LoaderHook("extra large maps' crater hold (update)", game + MOVE_CRATER_UPDATE, (void*)MoveCraterUpdate, (void**)&g_moveCraterUpdate) ||
+        LoaderHook("extra large maps' crater hold (render)", game + MOVE_CRATER_RENDER, (void*)MoveCraterRender, (void**)&g_moveCraterRender) ||
+        LoaderHook("extra large maps' moving tiles", game + MOVE_LEVEL_UPDATE, (void*)MoveLevelUpdate, (void**)&g_moveUpdate))
+    { Note("difficulty: moving tiles: a hook did not go in; the detailed terrain stays at the drop point"); return; }
+    g_moveInstalled = 1;
+    Note("difficulty: moving tiles: installed (level update 0x%X, crater hold 0x%X / 0x%X)", MOVE_LEVEL_UPDATE, MOVE_CRATER_UPDATE, MOVE_CRATER_RENDER);
+}
