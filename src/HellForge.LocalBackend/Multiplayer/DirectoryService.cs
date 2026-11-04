@@ -101,12 +101,11 @@ public sealed partial class DirectoryService : IAsyncDisposable
     public void Publish(DateTime now)
     {
         var desired = UnlessStrangersOff(Desired());
-        bool appeared;
         lock (gate)
         {
             if (desired == null && published == null) return;
             if (desired != null && published != null && (Same(desired, published) || now - publishedAt < PublishInterval)) return;
-            appeared = desired != null && published == null;
+            var appeared = published == null;
             published = desired;
             publishedAt = now;
             directory.Publish(desired == null ? null : new DirectoryListing(localId, desired));
@@ -115,7 +114,6 @@ public sealed partial class DirectoryService : IAsyncDisposable
         }
         // friends get it with the lobby (outside this lock: the presence's lock calls into this service's)
         presence.SetLocalListing(desired == null ? null : DirectoryData.Digest(desired));
-        if (appeared) Listed?.Invoke();
     }
 
     // The listing, or null while Play with strangers is off (said once each time it turns off).
@@ -131,9 +129,6 @@ public sealed partial class DirectoryService : IAsyncDisposable
         }
         return off ? null : desired;
     }
-
-    // This machine's lobby was listed for other HellForge players (each time it appears; outside this service's lock).
-    public event Action? Listed;
 
     static bool Same(Dictionary<string, string> a, Dictionary<string, string> b) => a.Count == b.Count && a.All(p => b.TryGetValue(p.Key, out var v) && v == p.Value);
 

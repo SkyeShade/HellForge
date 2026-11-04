@@ -23,13 +23,20 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Changed
 
+- **Public lobbies open up: you decide which mods you trust.** With your game sandboxed, a stranger's lobby running mods
+  that run code or carry unchecked data is no longer out of reach: MOD SYNC asks you to TRUST each one, after a warning
+  of what the sandbox doesn't stop. A mod you trust is stamped with its content hash and downloads without asking from
+  any lobby after that, so Quick Play can take you straight in. Your trusted list lives with your mods, so updating
+  HellForge leaves it alone, and the Mods page takes a trust back. Without the sandbox, a stranger's such mods are still
+  yours to install. HellForge's verified list is now just its own mods, built into each release; nothing is fetched
+  for it any more. Hosting, the mods you share reach anyone who joins and trusts them, so turn sharing off before
+  hosting with something you haven't released.
 - **The lobby browser shows what you can join first.** Lobbies you can join are at the top, and lobbies no setting can
   let you into are hidden while there are others; CAN'T JOIN (or H) shows them. Each row says in a word or two what
-  keeps you out ("Friends only", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
+  keeps you out ("Needs sandbox", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
   list every mod in the way that fits, and say how many more there are instead of cutting names off. When no lobby
   can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
-- Hosting with mods HellForge hasn't verified, a note in game says strangers can't join your lobby and which mods
-  keep them out: those download only to your Steam friends. The lobby browser API lists the mods that keep the most
+- The lobby browser API lists the mods that keep the most
   lobbies out (`needed`) and gives lobbies you can join first.
 - After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
   "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
@@ -65,15 +72,12 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - With the sandbox on, the session log now names what the sandbox refused the game, by the overlay or module that
   asked (Steam's, NVIDIA's, Discord's, RivaTuner's overlays and others), and `result.json` lists each object. This is
   what tells which overlays can be given what they need.
-- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
-  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
-  taken off between releases.
 - The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
   Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
   (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
   lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
   in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
-  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  hides (strangers' with Play with strangers off, or ones with host-enforced stat changes) are listed with the setting
   that lets them in, which you can turn on from the browser for that session.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
@@ -404,11 +408,6 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
   folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
   `tar` for them.
-- `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
-  list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
-  installation's saved list.
-- A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
-  and why a published list was not taken.
 - A session's `result.json` has `prepare` and `connect`, how the two launch edits ended (`outcome`, the wait, and when
   `game.dll` appeared), and `windowsCrash`: Windows' record of a game crash (`module`, `offset`, `code`, `modulePath`,
   `owner`), or `none` (#203, #212).

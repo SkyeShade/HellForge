@@ -73,8 +73,8 @@ Other HellForge players' public lobbies now show up on the Galactic Map. HellFor
 and only HellForge players can see them (CowboyBingus, PR #17). If you'd rather not appear there, a switch in the
 launcher keeps your Public lobbies off the map.
 
-When you join someone, mod sync downloads the host's mods for that session. You can trust a Steam friend's code mods
-after reading a warning; a stranger's you install by hand unless HellForge has verified them.
+When you join someone, mod sync downloads the host's mods for that session. You can trust code mods after reading a
+warning, a stranger's only while your game is sandboxed, and a mod you trusted downloads without asking from then on.
 Downloads run at several MB/s: 38 MB takes about 10 seconds now, where it took about 3 minutes before commit 5fb79fe.
 Mods can also list a web address, which MOD SYNC shows as a GET IT button.
 

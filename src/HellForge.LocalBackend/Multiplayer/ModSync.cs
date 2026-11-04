@@ -15,18 +15,17 @@ namespace HellForge.LocalBackend.Multiplayer;
 //           (without its folders) just before the refusal, mods.offer [lobby id, set, sharing 0|1], and its machine may
 //           download for GrantTime from the first such offer (a later refusal does not extend it), at most the grant's
 //           byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at most PeerRate
-//           per joiner and TotalRate in all, so its own game keeps its link. A code or raw mod HellForge has not verified
-//           goes to Steam friends alone: a stranger gets content and verified mods only, whatever their backend asks:
+//           per joiner and TotalRate in all, so its own game keeps its link:
 //             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...]
 //                                                                  (at most PageFiles files a page)
 //             mods.get   [req, id, hash, path, offset, length]  -> mods.chunk [req, "ok", offset, bytes]
 //           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share).
 //   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for
 //           the game (ModSyncPlan; HfApi sync_state, the in-game editor's MOD
-//           SYNC view). A Steam friend's code or raw mod HellForge has not verified waits for the player's trust (TRUST on
-//           the prompt: that exact content goes on ModSettings' Trusted list); a stranger's is the player's to install, and
-//           GET IT opens a mod's web address in the player's browser. A trust a stranger's mod got from an earlier build
-//           counts only in a sandboxed session (Sandboxed).
+//           SYNC view). A code or raw mod HellForge has not verified waits for the player's trust (TRUST on the prompt:
+//           that exact content goes on ModSettings' Trusted list); GET IT opens a mod's web address in the player's browser.
+//           A stranger's can be trusted only in a sandboxed session and counts only in one (Sandboxed); unsandboxed it is
+//           the player's to install.
 //           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
 //           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
 //           stop-observation.signal), which the launcher starts again with them.
@@ -224,15 +223,9 @@ public sealed class ModSync : IAsyncDisposable
     public bool Open => own != null && Shares() && own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled)
         .All(m => !ModSets.NeedsVerified(m.Class) || verified(m.Id, m.Hash));
 
-    // The shared mods this player's lobby sends to Steam friends alone: code and raw data HellForge has not verified
-    // (Serve refuses them to anyone else). A stranger can join only with each of them installed by hand. Empty while the
-    // player does not share: nothing is sent then, to anyone.
-    public IReadOnlyList<ModSetEntry> FriendsOnlyMods => own == null || !Shares() ? []
-        : [.. own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled && ModSets.NeedsVerified(m.Class) && !verified(m.Id, m.Hash))];
-
-    // Why a lobby is out when a stranger's unchecked mods keep it out (Check): the browser's short label reads it
-    // (native/editor/app_lobbies.cpp ShortVerdict), so it changes with that.
-    public const string FriendsOnlyWhy = "its host's unchecked mods download only from a Steam friend";
+    // Why a lobby is out when a stranger's unchecked mods keep it out of an unsandboxed session (Check): the browser's short
+    // label reads it (native/editor/app_lobbies.cpp ShortVerdict), so it changes with that.
+    public const string SandboxOnlyWhy = "its host's unchecked mods need a sandboxed game";
 
     // ---- HellForge 0.3 (LobbyService.LegacyProtocol) ----------------------------------------------------------------
 
@@ -311,8 +304,8 @@ public sealed class ModSync : IAsyncDisposable
     // Whether a listed lobby could be joined: the same mods, or a plan that is not blocked or unjoinable (mods to install
     // by hand, another HellForge), and edited stats only when the player shows such lobbies. The plan is the one a join
     // would make (ModSyncPlan): code and raw mods that wait for the player's trust are shown (joining brings the MOD SYNC
-    // prompt with TRUST), a stranger's unverified ones are to install by hand and hidden. A listing without a
-    // mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
+    // prompt with TRUST), and unsandboxed a stranger's unverified ones are to install by hand and hidden. A listing without
+    // a mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
     public bool Joinable(DirectoryListing listing, out string why)
     {
         var check = Check(listing);
@@ -326,7 +319,7 @@ public sealed class ModSync : IAsyncDisposable
     {
         var settings = ModSettings.Read(modsFolder);
         if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats && !ShowEditedStatsThisSession)
-            return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
+            return new(false, "its host enforces stat changes", null, []) { Fix = JoinCheck.FixEditedStats };
         // a 0.3 host's listing (DirectoryService.Legacy) is remembered: a join to it then speaks its protocol (JoinAs)
         var legacy = DirectoryService.Legacy(listing);
         if (legacy) LegacyHost(listing.Host, null);
@@ -347,7 +340,7 @@ public sealed class ModSync : IAsyncDisposable
             SyncVerdict.Blocked => "it runs a blocked mod",
             SyncVerdict.Unjoinable when plan.Items.FirstOrDefault(i => i.Action == SyncAction.Update) is { } other => OtherVersion(other.Mod, own?.Mods.FirstOrDefault(m => m.Id == other.Mod.Id)),
             SyncVerdict.Unjoinable when !trust.HostIsFriend && shares && plan.Items.Any(i => i.Action == SyncAction.Manual) =>
-                FriendsOnlyWhy,
+                SandboxOnlyWhy,
             SyncVerdict.Unjoinable => "it needs mods installed by hand",
             _ => ""
         };
@@ -429,8 +422,8 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     // One request, answered from this session's mod set: only a mod in it, only a file it counts, only while granted and
-    // within the grant's bytes, and a code or raw mod HellForge has not verified only to a Steam friend (the joiner checks
-    // its own rule too: verified, or trusted).
+    // within the grant's bytes. Whether a mod may run is the joiner's to check (verified, or trusted), so a stranger gets
+    // code and raw mods as a friend does.
     Frame Serve(ulong peer, Frame frame)
     {
         Grant? grant;
@@ -440,8 +433,6 @@ public sealed class ModSync : IAsyncDisposable
         var mod = own?.Find(frame.Text(1), frame.Text(2));
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
         if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
-        if (ModSets.NeedsVerified(mod.Class) && !verified(mod.Id, mod.Hash) && !transport.IsFriend(peer))
-            return Refused(frame, "the host shares mods HellForge has not checked with Steam friends only");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
         return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
     }
@@ -630,7 +621,8 @@ public sealed class ModSync : IAsyncDisposable
         if (accept && plan.Verdict == SyncVerdict.Download) Accept(made);
     }
 
-    // Code and raw mods download once verified or trusted; a stranger host's unverified ones are the player's to install.
+    // Code and raw mods download once verified or trusted; unsandboxed, a stranger host's unverified ones are the player's
+    // to install.
     ModSyncPlan Plan(ModSet set, bool shares, ulong host)
     {
         var settings = ModSettings.Read(modsFolder);
@@ -639,7 +631,7 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     SyncTrust Trust(ulong host, ModSettings.State settings, ModLocator found) =>
-        new(verified, transport.IsFriend(host), (id, hash) => settings.Trusts(id, hash, sandboxed), found.ClassOf);
+        new(verified, transport.IsFriend(host), (id, hash) => settings.Trusts(id, hash, sandboxed), found.ClassOf, sandboxed);
 
     // What lets a code or raw mod's exact content through on this machine: HellForge's verified list, or the player's trust
     // for this session (read again each time: the Mods page can take it back).
@@ -656,7 +648,7 @@ public sealed class ModSync : IAsyncDisposable
                 ("blocked", $"{o.HostName} runs another HellForge version ({Names(SyncAction.Update)} differs): both players need the same HellForge."),
             SyncVerdict.Unjoinable when !o.Shares => ("blocked", $"{o.HostName} does not share their mods. Install them yourself to join: {Names(SyncAction.Manual)}."),
             // (the message is cut at 191 bytes in the game: names last)
-            SyncVerdict.Unjoinable when !transport.IsFriend(o.Host) => ("blocked", $"{o.HostName} is not your Steam friend, so only mods HellForge checked download. Install these yourself to join: {Names(SyncAction.Manual)}."),
+            SyncVerdict.Unjoinable when !transport.IsFriend(o.Host) => ("blocked", $"{o.HostName} is not your Steam friend, so their unchecked mods need a sandboxed game. Or install these yourself to join: {Names(SyncAction.Manual)}."),
             SyncVerdict.Unjoinable => ("blocked", $"Install these mods yourself to join: {Names(SyncAction.Manual)}."),
             SyncVerdict.Trust => ("blocked", $"HellForge has not checked these mods. TRUST one to download it from {o.HostName}, or install it yourself: {Names(SyncAction.Trust)}."),
             SyncVerdict.Download => ("offer", $"{o.HostName} plays with {plan.Items.Count(i => i.Action == SyncAction.Download)} mod(s) you don't have ({Megabytes(plan.DownloadBytes)}). Download them and restart with {o.HostName}'s mods to join."),
@@ -696,8 +688,8 @@ public sealed class ModSync : IAsyncDisposable
                 log($"Mod sync: {parts[3]} is blocked; lobbies running it are not offered again.");
                 _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares));
                 break;
-            // TRUST AND DOWNLOAD: that exact content (id and hash), only a mod the plan offers for trust (a Steam friend's,
-            // shared, not verified); the offer is made again, and downloads when nothing else waits
+            // TRUST AND DOWNLOAD: that exact content (id and hash), only a mod the plan offers for trust (shared, not
+            // verified); the offer is made again, and downloads when nothing else waits
             case "trust" when parts.Count > 3 && current.Plan.Items.FirstOrDefault(i => i.Mod.Id == parts[3] && i.Action == SyncAction.Trust) is { } item:
                 var stranger = !transport.IsFriend(current.Host);
                 ModSettings.SetTrusted(modsFolder, new TrustedMod(item.Mod.Id, item.Mod.Hash, item.Mod.Name, item.Mod.Version,
@@ -1182,13 +1174,12 @@ public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IRe
 
     // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
     // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null. A stranger's
-    // unchecked mods have none: they download only from a Steam friend, whatever this machine's settings.
+    // unchecked mods have none: they take a sandboxed session, which cannot change once it runs.
     public string? Fix { get; init; }
     public const string FixStrangers = "strangers", FixEditedStats = "editedStats";
 
     // Why one item stands in the way: the host does not share, a stranger's unchecked mod (HellForge has not verified it,
-    // and the host sends those to Steam friends alone), a different bundled mod (another HellForge), or the player's
-    // blocklist.
+    // and this session is not sandboxed), a different bundled mod (another HellForge), or the player's blocklist.
     public static string Reason(SyncItem item, bool hostShares) => item.Action switch
     {
         SyncAction.Blocked => "blocked",
