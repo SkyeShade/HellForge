@@ -626,6 +626,34 @@ static partial class ModSyncTests
         await far.Sync.DisposeAsync();
         lock (network.Strangers) network.Strangers.Remove(StrangerHost);
 
+        // A sandboxed joiner and a Steam friend's mods: the game's TRUST (sync_answer, which any code in that game can send)
+        // counts only in sandboxed sessions, a friend's too, and the game is told so (SandboxOnly: HF_SYNC_FLAG_SANDBOX_ONLY);
+        // the launcher's (its answer file, which the sandboxed game cannot write) counts everywhere.
+        const ulong BoxedFriendId = 0x110000100000053;
+        var boxedFriend = new Node(network, BoxedFriendId, Path.Combine(root, "trust-sandboxed-friend"), new ModSet("none", []), (_, _) => false, sandboxed: true);
+        host.Lobby.FromLocal(MultiplayerTests.Create("trust-f-create", host.Id));
+        boxedFriend.Lobby.FromLocal(MultiplayerTests.Join("trust-f-join", BoxedFriendId, host.Next("lobby.result", check).Text(4)));
+        boxedFriend.Next("lobby.result", check);
+        var boxedAsk = boxedFriend.Shown.Next(check, "blocked");
+        check(Action(boxedAsk, "test.code") == SyncAction.Trust && Action(boxedAsk, "test.texture") == SyncAction.Trust && !boxedAsk.Stranger && boxedAsk.SandboxOnly,
+            "Sandboxed, a friend's code and raw data wait for trust, which the game is told counts only sandboxed: " + boxedAsk.Message);
+        boxedFriend.Sync.Answer(["syncanswer", boxedAsk.Version.ToString(), "trust", "test.code"]);
+        var boxedFriendOne = boxedFriend.Shown.Next(check, "blocked");
+        var gameTrust = ModSettings.Read(boxedFriend.Mods);
+        check(Action(boxedFriendOne, "test.code") == SyncAction.Download && Action(boxedFriendOne, "test.texture") == SyncAction.Trust &&
+            gameTrust.Trusted is [{ Stranger: false, Sandboxed: true, Id: "test.code" }] &&
+            gameTrust.Trusts(code.Id, code.Hash, sandboxed: true) && !gameTrust.Trusts(code.Id, code.Hash),
+            "The sandboxed game's trust of a friend's mod counts only in sandboxed sessions: " + string.Join(", ", gameTrust.Trusted));
+        ModSyncOffer.Answer(Path.Combine(boxedFriend.Run, "backend"), boxedFriendOne.Version, "trust", "test.texture");
+        var boxedFriendReady = boxedFriend.Shown.Next(check, "ready", "failed");
+        var launcherTrust = ModSettings.Read(boxedFriend.Mods);
+        check(boxedFriendReady.State == "ready" && launcherTrust.Trusted.SingleOrDefault(t => t.Id == texture.Id) is { Stranger: false, Sandboxed: false } &&
+            launcherTrust.Trusts(texture.Id, texture.Hash),
+            $"The launcher's trust of a friend's mod counts everywhere: {boxedFriendReady.State} {boxedFriendReady.Message} ({string.Join(", ", launcherTrust.Trusted)})");
+        boxedFriend.Sync.Answer(["syncanswer", boxedFriendReady.Version.ToString(), "decline"]);
+        boxedFriend.Shown.Next(check, "none");
+        await boxedFriend.Sync.DisposeAsync();
+
         // Trust the code mod: kept by its exact content, with who hosted it; the offer is made again, the texture still waits.
         var again = Refused(host, guest, check, "trust-b", "blocked");
         guest.Sync.Answer(["syncanswer", again.Version.ToString(), "trust", "test.code"]);
@@ -676,7 +704,8 @@ static partial class ModSyncTests
         var waited = Stopwatch.StartNew();
         while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
         var lines = new List<string>();
-        var game = Task.Run(async () =>
+        // the game's side of one offer: its lines (without their sequence numbers) up to the syncstate that ends it
+        Task Game() => Task.Run(async () =>
         {
             while (await reader.ReadLineAsync() is { } line)
             {
@@ -686,6 +715,7 @@ static partial class ModSyncTests
                 if (parts[0] == "syncstate") return;
             }
         });
+        var game = Game();
         // (a url HellForge would not open never reaches the game, whatever the entry holds)
         var mod = new ModSetEntry("test.tab", "Name\twith a tab", "1", new string('a', 64), 1234, ModClass.Code, 0) { Url = "javascript:alert(1)" };
         var raw = new ModSetEntry("test.raw", "Raw", "2", new string('b', 64), 10, ModClass.Raw, 1) { Url = "https://example.com/raw" };
@@ -697,5 +727,18 @@ static partial class ModSyncTests
             "The lines: " + string.Join(" | ", lines));
         await writer.WriteLineAsync("syncanswer\t7\tblock\ttest.tab");
         check(answers.TryTake(out var answer, TimeSpan.FromSeconds(5)) && answer!.SequenceEqual(["syncanswer", "7", "block", "test.tab"]), "The game's answer arrives.");
+
+        // A sandboxed game: each mod says a trust answered there counts only sandboxed ("sandboxonly",
+        // HF_SYNC_FLAG_SANDBOX_ONLY); a stranger's says "stranger", which the loader reads as both flags.
+        foreach (var (stranger, word) in new[] { (false, "sandboxonly"), (true, "stranger") })
+        {
+            lock (lines) lines.Clear();
+            game = Game();
+            check(await new LiveSyncDisplay(live).ShowAsync(new SyncView(8, "blocked", "Host", 0, 0, "", [new SyncItem(raw, SyncAction.Trust, null)])
+                { SandboxOnly = true, Stranger = stranger }, withMods: true), "The game took the sandboxed offer.");
+            await game;
+            check(lines.SequenceEqual(["syncmod\t8\t0\ttrust\traw\t10\ttest.raw\tRaw\t2\thttps://example.com/raw\t" + word, "syncstate\t8\tblocked\tHost\t0\t0\t1\t0\t"]),
+                "The sandboxed offer's lines: " + string.Join(" | ", lines));
+        }
     }
 }

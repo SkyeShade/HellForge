@@ -230,7 +230,11 @@ once; with others still waiting the button says **TRUST**, and the prompt comes 
 Trust is for that exact content (its id and content hash, from that lobby or any other): another version, or the same
 version with other files, has to be trusted again. A downloaded code or raw data mod counts as yours, and loads, only
 while HellForge's verified list names it or you trust it: one taken off the list, or untrusted, has to be trusted again
-before it plays. A mod you trusted from a stranger runs only while your game is sandboxed. Trust lives with your mods
+before it plays. A mod you trusted from a stranger runs only while your game is sandboxed. So does one you trusted in a
+sandboxed game, a Steam friend's too: any mod running in the game can answer the prompt as you would, so a trust given
+there must not let a mod out of the sandbox later (the warning says so, and the Mods page marks it "sandbox only").
+Trust it again outside the sandbox, unsandboxed or on the launcher's own prompt, to play it there; trusting a mod again
+never narrows a trust you gave it before. Trust lives with your mods
 (`mods/hellforge-mods.json`), so a HellForge update leaves it alone, and a mod you trusted downloads from any host
 after that with no prompt. Everything is still checked as below. Trusted mods are listed on the launcher's Mods page (MOD SYNC card)
 with who hosted them and when; **Untrust** takes the trust back and deletes the downloaded copy.

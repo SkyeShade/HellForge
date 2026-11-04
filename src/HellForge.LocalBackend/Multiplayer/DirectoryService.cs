@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using HellForge.Core;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
@@ -218,22 +219,9 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var filter = LobbyFilter.Parse(filterText);
         var listings = await Gather(filter.Equalities());
         var answer = new Frame("lobby.found").Add(op).Add(0);
-        var kept = new List<DirectoryListing>();
         var refused = new Dictionary<string, int>(StringComparer.Ordinal);
         var leftOut = new List<string>();
-        var strangers = strangersAllowed?.Invoke() != false;
-        var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
-        foreach (var (listing, vouched) in Unambiguous(listings, refused))
-        {
-            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
-            {
-                Count(refused, why);
-                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
-                continue;
-            }
-            kept.Add(listing);
-            if (kept.Count == count) break;
-        }
+        var kept = Kept(listings, filter, count, refused, leftOut);
         answer.Add(kept.Count);
         foreach (var listing in kept)
         {
@@ -247,6 +235,38 @@ public sealed partial class DirectoryService : IAsyncDisposable
             (filter.Ignored.Count > 0 ? $"; {filter.Ignored.Count} clause(s) not applied (random window, continent)" : "") + ".");
         LogLeftOut(leftOut);
         return answer;
+    }
+
+    // The listings a search answers, at most count, in the directory's order; the rest counted in refused, with a line each
+    // in leftOut. A stranger's lobby whose mods wait for the player's trust (SyncVerdict.Trust, a sandboxed game) is
+    // answered only when no other lobby is: the game's Quick Play and SOS pick among the answer by their own score, which
+    // knows nothing of mods, and a join there stops at the TRUST prompt while a lobby the player could join without one
+    // was found. A Steam friend's stays (joining a friend is the player's choice, TRUST and all); the browser lists them all.
+    List<DirectoryListing> Kept(IReadOnlyList<DirectoryListing> listings, LobbyFilter filter, int count, Dictionary<string, int> refused, List<string> leftOut)
+    {
+        var kept = new List<DirectoryListing>();
+        var waiting = new List<(DirectoryListing Listing, JoinCheck Check)>();
+        var strangers = strangersAllowed?.Invoke() != false;
+        var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
+        foreach (var (listing, vouched) in Unambiguous(listings, refused))
+        {
+            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
+            {
+                Count(refused, why);
+                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
+                continue;
+            }
+            if (check is { Stranger: true, Plan.Verdict: SyncVerdict.Trust }) { waiting.Add((listing, check)); continue; }
+            kept.Add(listing);
+            if (kept.Count == count) break;
+        }
+        if (kept.Count == 0) return [.. waiting.Take(count).Select(w => w.Listing)];
+        foreach (var (listing, check) in waiting)
+        {
+            Count(refused, WaitsForTrust);
+            leftOut.Add(LeftOutLine(listing.Host, WaitsForTrust, check));
+        }
+        return kept;
     }
 
     // The browse API (BrowseApi; docs/external-launchers.md): every listing the directory has (the wire level, a slot free,
@@ -287,6 +307,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
 
     // Why the browse API lists a stranger's lobby as one that cannot be joined (JoinCheck.FixStrangers turns it on).
     public const string StrangersOff = "its host is not a Steam friend, and Play with strangers is off";
+
+    // Why a search left out a stranger's lobby whose mods wait for the player's trust: others in the answer can be joined
+    // without it.
+    public const string WaitsForTrust = "its host's unchecked mods wait for your trust, and other lobbies can be joined without it";
 
     // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
     // every few seconds, and the same lines again say nothing new.

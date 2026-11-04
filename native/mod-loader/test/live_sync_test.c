@@ -218,17 +218,23 @@ static void LiveSyncFixture(void)
     SyncLine("syncstate\t22\t9\tnone\t\t0\t0\t0\t0\t", reply, sizeof reply);
     assert(!strcmp(reply, "22\tok\tnow") && !ApiSyncState(NULL, &state) && state.state == HF_SYNC_NONE && state.version == 9);
 
-    /* a stranger's mod to trust (a sandboxed game's offer): flagged, its address kept; a 12th field that is not "stranger"
-     * is refused; a later offer without it is not flagged */
+    /* a stranger's mod to trust (a sandboxed game's offer): flagged stranger and sandbox-only, its address kept; a 12th
+     * field that is neither "stranger" nor "sandboxonly" is refused; a later offer without it is not flagged */
     SyncLine("syncmod\t23\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tfriend", reply, sizeof reply);
     assert(strstr(reply, "\trefused\t") != NULL);
     SyncLine("syncmod\t24\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tstranger", reply, sizeof reply);
     SyncLine("syncstate\t25\t10\tblocked\tFar One\t0\t0\t1\t", reply, sizeof reply);
     assert(!strcmp(reply, "25\tok\tnow"));
-    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && (mod.flags & HF_SYNC_FLAG_STRANGER) && !strcmp(mod.url, "https://example.com/trusty"));
+    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && mod.flags == (HF_SYNC_FLAG_STRANGER | HF_SYNC_FLAG_SANDBOX_ONLY) &&
+           !strcmp(mod.url, "https://example.com/trusty"));
     SyncLine("syncmod\t26\t11\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\t-", reply, sizeof reply);
     SyncLine("syncstate\t27\t11\tblocked\tFriend One\t0\t0\t1\t", reply, sizeof reply);
     assert(!strcmp(reply, "27\tok\tnow") && ApiSyncMod(NULL, 0, &mod) && mod.flags == 0);
+    /* a friend's mod in a sandboxed game: a trust answered there counts only sandboxed (HF_SYNC_FLAG_SANDBOX_ONLY alone) */
+    SyncLine("syncmod\t28\t12\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\t-\tsandboxonly", reply, sizeof reply);
+    assert(!strcmp(reply, "28\tok\tnow"));
+    SyncLine("syncstate\t29\t12\tblocked\tFriend One\t0\t0\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "29\tok\tnow") && ApiSyncMod(NULL, 0, &mod) && mod.flags == HF_SYNC_FLAG_SANDBOX_ONLY);
     SyncClear();
     assert(!ApiSyncState(NULL, &state) && state.version == 0);
 

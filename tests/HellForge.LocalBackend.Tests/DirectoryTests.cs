@@ -28,14 +28,14 @@ static class DirectoryTests
         public bool Edited;
         public bool ListPublic = true, Strangers = true;
 
-        public Node(InMemoryNetwork network, MemoryLobbyDirectory listings, ulong id, string folder, ModSet own, ILobbyDirectory? directory = null)
+        public Node(InMemoryNetwork network, MemoryLobbyDirectory listings, ulong id, string folder, ModSet own, ILobbyDirectory? directory = null, bool sandboxed = false)
         {
             Mods = System.IO.Directory.CreateDirectory(Path.Combine(folder, "mods")).FullName;
             var run = System.IO.Directory.CreateDirectory(Path.Combine(folder, "run", "backend")).FullName;
             var transport = network.Join(id);
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false);
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false, sandboxed);
             Directory = new DirectoryService(directory ?? listings.For(id), Lobby, Presence, id, Inbox.Add, Note, new DirectorySettings(Sync, () => Edited, AutoPublish: false,
                 ListPublic: () => ListPublic, StrangersAllowed: () => Strangers));
             transport.Received += (peer, bytes) =>
@@ -277,6 +277,23 @@ static class DirectoryTests
         await Task.Delay(SameSearchPause);
         await guest.Directory.SearchAsync("u1t", MapFilter, 50);
         lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The same left-out lobby is not logged again by the next search.");
+
+        // Sandboxed, the stranger's lobby waits for the player's trust instead. The game's own search (Quick Play and SOS
+        // pick from it by a score that knows nothing of mods) answers it only when no lobby that needs no trust is there,
+        // and says why it left it out; the browser still lists it.
+        const ulong BoxedId = 76561198000000034;
+        var boxed = new Node(network, listings, BoxedId, Path.Combine(root, "boxed"), new ModSet("none", []), sandboxed: true);
+        var beside = await boxed.Directory.SearchAsync("t1", MapFilter, 50);
+        check(beside.Int(2) == 1 && beside.Text(3) == lobbyId, "Beside a lobby that needs no trust, a stranger's that waits for trust is left out.");
+        var waitsLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": " + DirectoryService.WaitsForTrust + ".";
+        lock (boxed.Log) check(boxed.Log.Any(l => l.Contains($"2 listed, 1 shown (1 left out: {DirectoryService.WaitsForTrust})")) && boxed.Log.Contains(waitsLine),
+            "The search says why: " + string.Join(" / ", boxed.Log.TakeLast(3)));
+        ModSettings.SetBlocked(boxed.Mods, "test.ammo", true); // the host's lobby is out: only the one to trust is left
+        await Task.Delay(SameSearchPause);
+        var alone = await boxed.Directory.SearchAsync("t2", MapFilter, 50);
+        check(alone.Int(2) == 1 && alone.Text(3) == otherLobby, "With no other lobby to join, the stranger's that waits for trust is answered.");
+        ModSettings.SetBlocked(boxed.Mods, "test.ammo", false);
+        await boxed.Sync.DisposeAsync();
 
         // The lobby browser's API: every lobby with no game filter, the stranger's with why it cannot be joined; one search
         // per MinInterval; a join hands the game an invitation, and only to a joinable lobby of a recent list.

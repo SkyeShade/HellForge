@@ -279,10 +279,17 @@ patches, data specs with `"replace"` or unreviewed resource types such as `lua`,
 download only when `data/verified-mods.json` names their exact content hash (from any host) or the player trusted it. A
 Steam friend's unverified one is `SyncAction.Trust` ("needs your trust"). A stranger's is too in a sandboxed session,
 and `SyncAction.Manual` in an unsandboxed one. The prompt's TRUST, after a warning, answers `trust`, which adds
-`{id, hash, name, version, from, since}` (with `"stranger": true` for a stranger's) to
+`{id, hash, name, version, from, since}` (with `"stranger": true` for a stranger's, and `"sandboxed": true` for a
+friend's trusted on a sandboxed game's prompt) to
 `"trusted"` in `mods/hellforge-mods.json` (`ModSettings`, beside `"blocked"`; the Mods page lists and untrusts them) and
 makes the offer again, downloading once nothing else waits. The joiner's checks then take the verified list or that
-list (`ModSync.Allowed`; a stranger's trust counts only in a sandboxed session), every byte checked as before. A synced
+list (`ModSync.Allowed`; a stranger's trust, and any trust answered by a sandboxed game, counts only in a sandboxed
+session: `TrustedMod.SandboxOnly`), every byte checked as before. The game's `sync_answer` is any mod's to call, and a
+sandboxed mod must not open another mod to unsandboxed play, so `ModSync.Answer` stores the game's trust in a sandboxed
+session as sandbox-only, a Steam friend's too, and tells the game so (`HF_SYNC_FLAG_SANDBOX_ONLY`, the syncmod line's
+`sandboxonly`). The launcher's prompt answers through `<run>/backend/mod-sync-answer.json`, which a sandboxed game
+cannot write (`<run>/game` is the only folder it can write, low integrity on Windows and in the Linux sandbox), so its trust
+of a friend's mod counts everywhere. `ModSettings.SetTrusted` never narrows a trust that counts everywhere. A synced
 code or raw mod counts as `have` in the plan (`ModSyncPlan.Make`, its class read from the stored files) and loads in the
 session after the sync (`ModSyncSession.Resolve`, `mods-stage --sandbox`) only while it is verified now or trusted for
 that session; otherwise the plan treats it as missing, and Resolve plays the player's own mods and says why. Once
@@ -529,6 +536,10 @@ listed, 1 shown (1 left out: its host's unchecked mods need a sandboxed game)`. 
   versions do not compare;
 - `its host's unchecked mods need a sandboxed game` (a stranger's unverified code or raw data, in an unsandboxed
   session);
+- `its host's unchecked mods wait for your trust, and other lobbies can be joined without it` (a stranger's lobby
+  whose plan is `SyncVerdict.Trust`, in a sandboxed session: the game's Quick Play and SOS score the answer without
+  knowing its mods, so such a lobby is answered only when no other is; a Steam friend's stays, and the browser lists
+  every one);
 - `it needs mods installed by hand`.
 
 After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
