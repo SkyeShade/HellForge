@@ -990,7 +990,9 @@ typedef struct HfBrowseLobby
     char reason[192];        /* why it cannot be joined (UTF-8), or "" */
     char players[128];       /* the players' names, comma separated (UTF-8), or "" */
     char mod_list[256];      /* the host's shared mods a join would change, each with what happens to it ("Tanks 2.0:
-                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "" */
+                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "". Those in the way come
+                              * first; a lobby that cannot be joined (UNJOINABLE, BLOCKED) lists only those, by name and
+                              * version ("Guns 1.1; Tanks 2.0"). Whole names only: a last item "+N more" counts the rest */
     uint32_t fix;            /* HF_LOBBY_FIX_...: the player's setting that would let it in (the reason says why it is out) */
 } HfBrowseLobby;
 #define HF_LOBBY_FIX_NONE 0u

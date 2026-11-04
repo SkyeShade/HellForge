@@ -352,6 +352,9 @@ struct LobbyDialog
     std::vector<int> shown;   /* the lobbies the filters leave, in list order */
     int index = 0;            /* the selected one, in shown */
     bool joinableOnly = false, friendsOnly = false;
+    bool showUnreachable = false; /* lobbies out of reach (OutOfReach) show even while others can be joined */
+    int unreachable = 0;      /* how many the other filters leave that are out of reach */
+    int hidden = 0;           /* how many of those are hidden (showUnreachable off, and something else to show) */
     int difficulty = 0;       /* the lowest difficulty shown (0 any) */
     bool terminalRead = false;
     uint32_t terminal = 0;    /* the terminal count last read: the terminal opened the browser when it goes up */

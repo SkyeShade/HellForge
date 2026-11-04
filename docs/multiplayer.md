@@ -560,6 +560,20 @@ only ([external-launchers.md](external-launchers.md#the-lobby-browser-api)). The
 (menu presenter 41, DebugServerBrowser) searches with an empty filter every ~4 s, so the map's search answers it as
 well (seen live on 2026-10-30: a bare list of one row per lobby, or "NO SERVERS").
 
+The list puts lobbies that can be joined first (a friend's first), then ones a setting would let in, then full or
+locked ones, then the rest (`BrowseApi.Rank`), so what a player can join is at the top and survives the loader's 128
+places. `needed` names the mods that keep the most lobbies out (`BrowseApi.Needed`: each lobby's mods to install by
+hand, counted once per lobby). A lobby's `mod_list` for the game lists the mods in the way first, and only those for a
+lobby that can't be joined, fitted whole into 250 bytes with `+N more` for the rest (`LiveBrowse.Fit`). When lobbies
+are listed but none can be joined and no setting would let one in, the browser's message says so, names the most
+needed mods and suggests hosting (`LiveBrowse.Message`). The in-game browser hides lobbies out of reach while any
+other shows (CAN'T JOIN or H shows them) and names each row by what keeps it out.
+
+A host whose shared mods include code or raw data HellForge hasn't verified sends those to Steam friends only
+(`ModSync.Serve`), so strangers can join only with them installed by hand. The first time the session's lobby is
+listed, the backend logs those mods and the game shows a note: "Strangers can't join your lobby", naming them
+(`MultiplayerHost.WarnFriendsOnly`, `ModSync.FriendsOnlyMods`; nothing when the host doesn't share).
+
 **The ship's information terminal opens the lobby browser** (`native/mod-loader/terminal.c`, build 25480438). The
 terminal across from the Armory is menu presenter 6 (InformationTerminal). It needs Arrowhead's news, Major Order and
 statistics services; offline the game asks for `NewsFeed/801`, `v2/Assignment/War/801`, the war and profile statistics

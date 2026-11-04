@@ -275,6 +275,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (directory != null && presence != null)
             Directory = new DirectoryService(directory, Lobby, presence, transport.LocalId, pipes.SendLobby, Log, new DirectorySettings(Sync,
                 () => Stats?.SharesEdited == true, ListPublic: modsFolder != null ? () => ModSettings.Read(modsFolder).ListPublic : null, StrangersAllowed: StrangersAllowed));
+        if (Directory != null) Directory.Listed += WarnFriendsOnly;
         gate = new StrangerGate(transport, () => Directory?.Listing == true, Related, StrangersAllowed, Log, Lobby.Welcome);
         if (transport is SteamPeerTransport steam)
             steam.AcceptStranger = peer => StrangersAllowed() && (Directory?.Listing == true || Related(peer) || Lobby.Welcome(peer));
@@ -283,6 +284,32 @@ public sealed class MultiplayerHost : IAsyncDisposable
             ["This player is not a Steam friend, and Play with strangers is off.", "Turn it on in the launcher's Multiplayer settings to join public lobbies."];
         Log(Directory != null ? "Directory: public lobbies are listed and searched" : "Directory: off (no lobby directory for this link)");
         _ = StrangersAllowed(); // the first read logs which stranger rule applies and why
+    }
+
+    // The first time this session's lobby is listed for strangers: when it runs shared mods HellForge has not verified,
+    // which it sends to Steam friends alone (ModSync.Serve), the player hears that strangers can't join it unless they
+    // install those by hand, and which they are. Once a session: the listing comes and goes with the game's lobby. A
+    // listing before the game's live-edit pipe is up waits for it (the note would be lost).
+    int friendsOnlyWarned, friendsOnlyWaits;
+    const int NoticeLine = 200;
+    void WarnFriendsOnly()
+    {
+        var mods = Sync?.FriendsOnlyMods ?? [];
+        if (mods.Count == 0 || Volatile.Read(ref friendsOnlyWarned) != 0) return;
+        if (Stats is not { } stats) return;
+        var live = stats.Live;
+        if (!live.Connected || live.Mismatched)
+        {
+            if (Interlocked.Exchange(ref friendsOnlyWaits, 1) == 0) live.StateChanged += () => { if (live.Connected && !live.Mismatched) WarnFriendsOnly(); };
+            return;
+        }
+        if (Interlocked.Exchange(ref friendsOnlyWarned, 1) != 0) return;
+        Log($"Directory: strangers can join this lobby only with {mods.Count} mod(s) installed by hand, not verified by HellForge (sent to Steam friends only): " +
+            string.Join(", ", mods.Select(m => $"{m.Name} {m.Version} ({m.Id})")) + ".");
+        var start = $"{(mods.Count == 1 ? "1 of your mods isn't" : $"{mods.Count} of your mods aren't")} on HellForge's verified list, so only your Steam friends can download {(mods.Count == 1 ? "it" : "them")}: ";
+        // a notice line holds 200 characters (LiveEditServer.NoticeAsync): the names that fit, then how many more
+        var names = LiveBrowse.Fit([.. mods.Select(m => m.Name)], NoticeLine - System.Text.Encoding.UTF8.GetByteCount(start) - 1).Replace("; ", ", ");
+        stats.Notice("brief", "Strangers can't join your lobby", [start + names + ".", "Friends can still join. Turn those mods off to let strangers in."]);
     }
 
     // A machine this one deals with: in a lobby hosted here, hosting one joined (or being joined) from here, a mod download,

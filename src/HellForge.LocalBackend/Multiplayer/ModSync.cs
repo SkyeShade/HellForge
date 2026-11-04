@@ -224,6 +224,16 @@ public sealed class ModSync : IAsyncDisposable
     public bool Open => own != null && Shares() && own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled)
         .All(m => !ModSets.NeedsVerified(m.Class) || verified(m.Id, m.Hash));
 
+    // The shared mods this player's lobby sends to Steam friends alone: code and raw data HellForge has not verified
+    // (Serve refuses them to anyone else). A stranger can join only with each of them installed by hand. Empty while the
+    // player does not share: nothing is sent then, to anyone.
+    public IReadOnlyList<ModSetEntry> FriendsOnlyMods => own == null || !Shares() ? []
+        : [.. own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled && ModSets.NeedsVerified(m.Class) && !verified(m.Id, m.Hash))];
+
+    // Why a lobby is out when a stranger's unchecked mods keep it out (Check): the browser's short label reads it
+    // (native/editor/app_lobbies.cpp ShortVerdict), so it changes with that.
+    public const string FriendsOnlyWhy = "its host's unchecked mods download only from a Steam friend";
+
     // ---- HellForge 0.3 (LobbyService.LegacyProtocol) ----------------------------------------------------------------
 
     // Hosts heard to run HellForge 0.3 (their listing, their Steam presence), with their mod set once known (a listing's or
@@ -337,7 +347,7 @@ public sealed class ModSync : IAsyncDisposable
             SyncVerdict.Blocked => "it runs a blocked mod",
             SyncVerdict.Unjoinable when plan.Items.FirstOrDefault(i => i.Action == SyncAction.Update) is { } other => OtherVersion(other.Mod, own?.Mods.FirstOrDefault(m => m.Id == other.Mod.Id)),
             SyncVerdict.Unjoinable when !trust.HostIsFriend && shares && plan.Items.Any(i => i.Action == SyncAction.Manual) =>
-                "its host's unchecked mods download only from a Steam friend",
+                FriendsOnlyWhy,
             SyncVerdict.Unjoinable => "it needs mods installed by hand",
             _ => ""
         };

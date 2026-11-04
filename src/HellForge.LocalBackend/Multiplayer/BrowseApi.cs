@@ -74,6 +74,7 @@ public sealed class BrowseApi
             lobbies.Add(new BrowseLobby(lobbyId, connection, friend, true, "friend", members, 4, false,
                 new Dictionary<string, string>(StringComparer.Ordinal), body, new JoinCheck(true, "", null, [])));
         }
+        lobbies = [.. lobbies.OrderBy(Rank)]; // stable: the directory's order within each rank
         var at = now();
         lock (gate)
         {
@@ -84,8 +85,45 @@ public sealed class BrowseApi
         return new JsonObject
         {
             ["version"] = Version, ["available"] = true, ["searchedUtc"] = at.ToString("O", CultureInfo.InvariantCulture),
-            ["lobbies"] = new JsonArray([.. lobbies.Select(l => (JsonNode?)Describe(l, presence))])
+            ["lobbies"] = new JsonArray([.. lobbies.Select(l => (JsonNode?)Describe(l, presence))]),
+            ["needed"] = Needed(lobbies)
         };
+    }
+
+    // The order the list shows lobbies in: ones that can be joined now (a friend's first), then ones a setting of the
+    // player's would let in, then full or locked ones, then those with mods in the way. A player who opens the browser
+    // sees what they can join at the top, and the loader's 128 places keep it when more are listed.
+    public static int Rank(BrowseLobby lobby) =>
+        lobby.Join.Joinable && !lobby.Locked && lobby.Members < lobby.MaxMembers ? (lobby.Friend ? 0 : 1)
+        : !lobby.Join.Joinable && lobby.Join.Fix != null ? 2
+        : lobby.Locked || lobby.Members >= lobby.MaxMembers ? 3
+        : 4;
+
+    public const int NeededListed = 5;
+
+    // The mods that keep the most lobbies out: each one a lobby needs installed by hand (a stranger's unchecked mod, or a
+    // host who does not share), with how many of the listed lobbies need it and at which versions, most first (then by
+    // name), at most NeededListed. What a player could install to get into the most lobbies, and what a maintainer
+    // could verify first.
+    public static JsonArray Needed(IEnumerable<BrowseLobby> lobbies)
+    {
+        var needed = lobbies.Where(l => !l.Join.Joinable)
+            .SelectMany(l => l.Join.Blocking.Where(b => b.Action == SyncAction.Manual).Select(b => b.Mod).DistinctBy(m => m.Id))
+            .GroupBy(m => m.Id, StringComparer.Ordinal)
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.First().Name, StringComparer.OrdinalIgnoreCase).ThenBy(g => g.Key, StringComparer.Ordinal)
+            .Take(NeededListed);
+        var list = new JsonArray();
+        foreach (var mod in needed)
+        {
+            var item = new JsonObject
+            {
+                ["id"] = mod.Key, ["name"] = mod.First().Name, ["lobbies"] = mod.Count(),
+                ["versions"] = new JsonArray([.. mod.Select(m => m.Version).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(v => (JsonNode?)v)])
+            };
+            if (mod.Select(m => m.Url).FirstOrDefault(u => u != null) is { } url) item["url"] = url;
+            list.Add((JsonNode?)item);
+        }
+        return list;
     }
 
     static JsonObject Unavailable(string reason) => new() { ["version"] = Version, ["available"] = false, ["reason"] = reason, ["lobbies"] = new JsonArray() };
@@ -294,9 +332,37 @@ public sealed class LiveBrowse
                 await FailedAsync("The list could not be shown. REFRESH to try again.");
                 return;
             }
-        var message = all.Count > MaxLobbies ? $"({all.Count - MaxLobbies} more lobbies are not listed.)" : "";
+        var message = Message(list, all.Count - lobbies.Count);
         if ((await live.BrowseStateAsync(version, "ready", lobbies.Count, message)).Ok) shown = (version, lobbies.Count);
     }
+
+    // HfBrowseState.message holds 192 bytes.
+    public const int MessageBytes = 191;
+
+    // What the browser's header says about a list (HfBrowseState.message): when lobbies are listed but none can be joined
+    // and no setting of the player's would change that, that none can, which mods most of them need (the API's
+    // "needed"), and that hosting works; how many lobbies the loader could not take. "" when the browser's own words do.
+    public static string Message(JsonObject list, int notListed)
+    {
+        var more = notListed > 0 ? $"({notListed} more lobbies are not listed.)" : "";
+        var lobbies = (list["lobbies"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+        if (lobbies.Count == 0 || lobbies.Any(l => l["joinable"]?.GetValueKind() == JsonValueKind.True || l["fix"] != null)) return more;
+        var names = (list["needed"] as JsonArray)?.OfType<JsonObject>().Select(m => m["name"]?.GetValue<string>()).OfType<string>().ToList() ?? [];
+        const string start = "No lobby you can join right now.", end = " Or host a Public lobby yourself.";
+        var text = start;
+        if (names.Count > 0)
+        {
+            // as many names as fit with the rest of the message
+            var room = MessageBytes - Bytes(start) - Bytes(end) - Bytes(" Most need: .") - (more.Length > 0 ? Bytes(" " + more) : 0);
+            var fitted = Fit(names, Math.Max(0, room));
+            if (!fitted.StartsWith('+')) text += " Most need: " + fitted.Replace("; ", ", ") + ".";
+        }
+        text += end;
+        if (more.Length > 0 && Bytes(text + " " + more) <= MessageBytes) text += " " + more;
+        return text;
+    }
+
+    static int Bytes(string text) => System.Text.Encoding.UTF8.GetByteCount(text);
 
     async Task JoinAsync(string lobbyId)
     {
@@ -344,13 +410,55 @@ public sealed class LiveBrowse
         long? Optional(string key, long max) => Integer(lobby[key]) is { } n && n >= 0 && n <= max ? n : null;
         var sharedMods = (lobby["mods"] as JsonArray)?.OfType<JsonObject>().Where(m => m["tier"]?.GetValue<string>() == ModSets.TierName(CoopTier.Shared)).ToList() ?? [];
         var players = (lobby["players"] as JsonArray)?.Select(n => n?.GetValue<string>()).OfType<string>() ?? [];
-        // the mods a join would change first (the ones to download, trust or install), then the ones it already has
-        var changed = sharedMods.Where(m => m["action"]?.GetValue<string>() is { } a && a != "have").Select(m =>
-            $"{m["name"]?.GetValue<string>() ?? m["id"]?.GetValue<string>()} {m["version"]?.GetValue<string>()}: {m["action"]!.GetValue<string>()}");
-        return new LiveLobby(lobby["verdict"]?.GetValue<string>() ?? "unknown", flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
+        var verdict = lobby["verdict"]?.GetValue<string>() ?? "unknown";
+        return new LiveLobby(verdict, flags, Count("members"), Count("maxMembers"), Optional("difficulty", 100),
             Optional("planetId", 100000), sharedMods.Count, Math.Max(0, Integer(lobby["downloadBytes"]) ?? 0), id, lobby["hostName"]?.GetValue<string>() ?? "",
-            lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), string.Join("; ", changed),
+            lobby["reason"]?.GetValue<string>() ?? "", string.Join(", ", players), ModList(sharedMods, verdict),
             lobby["fix"]?.GetValue<string>() switch { JoinCheck.FixStrangers => "strangers", JoinCheck.FixEditedStats => "editedstats", _ => "" });
+    }
+
+    // HfBrowseLobby.mod_list holds 256 bytes and LiveEdit sends at most 250 characters of it: a list fitted to this many
+    // UTF-8 bytes is cut by neither.
+    public const int ModListBytes = 250;
+
+    // The shared mods a join would change, as the browser lists them: the ones in the way first (to install by hand,
+    // blocked, another HellForge's), then those to download or trust. A lobby that cannot be joined lists only the ones in
+    // the way, by name and version (its reason says why); others say what happens to each ("Tanks 2.0: download").
+    // Fitted (Fit): whole names only, and "+N more" for the rest.
+    static string ModList(IEnumerable<JsonObject> sharedMods, string verdict)
+    {
+        var outOfReach = verdict is "unjoinable" or "blocked";
+        var changed = sharedMods.Select(m => (Mod: m, Action: m["action"]?.GetValue<string>()))
+            .Where(m => m.Action is { } a && a != "have" && (!outOfReach || InTheWay(a)))
+            .OrderBy(m => InTheWay(m.Action!) ? 0 : 1) // stable: the host's order otherwise
+            .Select(m => $"{m.Mod["name"]?.GetValue<string>() ?? m.Mod["id"]?.GetValue<string>()} {m.Mod["version"]?.GetValue<string>()}" +
+                (outOfReach ? "" : ": " + m.Action))
+            .ToList();
+        return Fit(changed, ModListBytes);
+    }
+
+    static bool InTheWay(string action) => action is "manual" or "blocked" or "update";
+
+    // Items joined with "; " in at most `bytes` UTF-8 bytes: whole items only, and when not all fit, "+N more" (N the
+    // items left out) in place of the rest. The browser shows that last item as the count it is.
+    public static string Fit(IReadOnlyList<string> items, int bytes)
+    {
+        var whole = string.Join("; ", items);
+        if (System.Text.Encoding.UTF8.GetByteCount(whole) <= bytes) return whole;
+        // not all fit, so a count ends it: each item is taken only with room for the count after it
+        var text = new System.Text.StringBuilder();
+        var used = 0;
+        for (var i = 0; i < items.Count; i++)
+        {
+            var next = (i > 0 ? "; " : "") + items[i];
+            var size = System.Text.Encoding.UTF8.GetByteCount(next);
+            var left = items.Count - i - 1;
+            var reserve = left > 0 ? System.Text.Encoding.UTF8.GetByteCount($"; +{left} more") : 0;
+            if (used + size + reserve > bytes) return i == 0 ? $"+{items.Count} more" : text + $"; +{items.Count - i} more";
+            text.Append(next);
+            used += size;
+        }
+        return text.ToString();
     }
 
     // A whole number the list holds (an int or a long, as Describe put it, or parsed JSON), else null.
