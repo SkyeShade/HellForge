@@ -70,6 +70,58 @@ static void ChannelGameFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+static int g_channelNewVersion;
+static void ChannelNewVersionListener(HfMod* mod, const HfEventInfo* event, void* user)
+{
+    (void)mod; (void)event; (void)user;
+    g_channelNewVersion++;
+}
+
+/* A live change renumbers the load order (live_mods.c TxnApplyMods) and a new version is a new entry of the same id: a
+ * mod's table follows its id. Removing test.other moves test.third to its place, which must not hand it test.other's
+ * rows; replacing test.champ keeps its rows for the new version, and sharereset tells the version that runs. Called by
+ * ChannelFixture (test.champ and test.other loaded, host, events delivered on this thread). */
+static void ChannelLiveOrderFixture(void)
+{
+    HfMod saved[4];
+    memcpy(saved, g_mods, sizeof saved);
+    int mods = g_modCount;
+    uint8_t value[4] = {7, 7, 7, 7}, out[8] = {0};
+    uint64_t key = 0;
+    uint32_t bytes = 0;
+
+    ChannelReset();
+    g_modCount = 4;
+    strcpy(g_mods[2].id, "test.third");
+    g_mods[2].loaded = 1;
+    g_mods[3].loaded = 0;
+    for (int i = 0; i < 3; i++) g_mods[i].order = i;
+    assert(ApiShareSet(&g_mods[1], 0x77, value, 4) == 0);
+    assert(ApiShareSet(&g_mods[0], 0x88, value, 2) == 0);
+
+    /* test.other taken out: test.third takes its place in the order, not its table */
+    g_mods[1].loaded = 0;
+    g_mods[2].order = 1;
+    assert(ApiShareGet(&g_mods[2], 0x77, out, sizeof out) == 0 && !ApiShareRow(&g_mods[2], 0, &key, out, sizeof out, &bytes));
+    assert(ApiShareSet(&g_mods[2], 0x99, value, 1) == 0 && ApiShareGet(&g_mods[1], 0x99, out, sizeof out) == 0);
+
+    /* test.champ replaced: its new version (a new entry, the same id and order) has its rows */
+    memcpy(&g_mods[3], &g_mods[0], sizeof g_mods[3]);
+    g_mods[3].loaded = 1;
+    g_mods[0].loaded = 0;
+    assert(ApiShareGet(&g_mods[3], 0x88, out, sizeof out) == 2 && out[0] == 7);
+    g_channelNewVersion = 0;
+    assert(ApiSubscribe(&g_mods[3], HF_ON_SHARE, ChannelNewVersionListener, NULL, 0));
+    int removals = g_channelRemovals;
+    ChannelReset();
+    EventsTick();
+    assert(g_channelNewVersion == 1 && g_channelRemovals == removals);
+    assert(ApiShareGet(&g_mods[3], 0x88, out, sizeof out) == 0 && ApiShareGet(&g_mods[2], 0x99, out, sizeof out) == 0);
+
+    memcpy(g_mods, saved, sizeof saved);
+    g_modCount = mods;
+}
+
 static void ChannelFixture(void)
 {
     HfMod* mod = &g_mods[0];
@@ -245,6 +297,8 @@ static void ChannelFixture(void)
     snprintf(line, sizeof line, "share\t54\ttest.other\t0000000000000002\t09");
     LiveRequest(line, reply, sizeof reply);
     assert(!strcmp(reply, "54\tok\tnow") && g_channelShares == shares + 2 && g_channelOther == 1);
+
+    ChannelLiveOrderFixture();
 
     ChannelReset();
     SetSession(HF_SESSION_SOLO, HF_STATS_OWN, "");
