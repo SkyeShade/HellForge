@@ -414,6 +414,44 @@ static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_
     ReleaseSRWLockExclusive(&g_explorationLock);
     return r;
 }
+/* The map's objective list S is filled at generation setup (0xF7166B -> 0xF70F20: rcx the level, r8 the mission row,
+ * r9 the descriptor's ids (level+0x110), the 5th argument their count (+0x10D), nine more through to the 14th). The
+ * descriptor holds 32 ids at most (its tail follows at +0xA0; objcap.md), and the selection is held at the objective
+ * list's room, so an operation's three missions on one map got fewer optional objectives than three missions have. Here
+ * the list gets more: repeats of the descriptor's optional ids (class 3 in the base row) in their order, until the
+ * optional count reaches each mission's x the missions (g_operationOptional) or the list is full. Only the descriptor
+ * decides it, so every peer fills the same list; repeats are what the selection itself makes (count[i] copies). */
+typedef uint64_t (*ObjectiveFillFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+    uint64_t, uint64_t, uint64_t, uint64_t);
+static ObjectiveFillFn g_objectiveFill;
+static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uint64_t ids, uint64_t count, uint64_t a6, uint64_t a7, uint64_t a8,
+    uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14)
+{
+    uint32_t n = (uint32_t)count, list[64];
+    uint8_t difficulty = 0;
+    uint16_t r = (uint16_t)row;
+    if (g_difficulty.missions > 1 && g_operationOptional != 0 && g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS &&
+        g_objectivePlaces > n && g_objectivePlaces <= 64 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1 &&
+        !SafeRead(ids, list, 4ull * n))
+    {
+        uintptr_t base = g_difficultyGame + DIF_MISSIONS + (uintptr_t)r * DIF_MISSION_ROW;
+        uint32_t optional[32], k = 0, total = n;
+        for (uint32_t i = 0; i < n; i++)
+            if (RowClass(base, list[i]) == 3) optional[k++] = list[i];
+        uint32_t have = k;
+        for (uint32_t i = 0; k > 0 && have < g_operationOptional && total < g_objectivePlaces; i++, have++) list[total++] = optional[i % k];
+        if (total > n)
+        {
+            static LONG noted;
+            if (InterlockedIncrement(&noted) <= 4)
+                Note("difficulty: an operation's %u missions on one map: optional objectives %u -> %u of %u on the map's objective list (%u -> %u of %u places)",
+                    g_difficulty.missions, k, k + (total - n), g_operationOptional, n, total, g_objectivePlaces);
+            return g_objectiveFill(level, b, row, (uint64_t)(uintptr_t)list, total, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+        }
+    }
+    return g_objectiveFill(level, b, row, ids, count, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+}
+
 /* GenerateLocationClusters (op 0x18, 0xF79520; rcx = its context: clusters [+0x20] (0xE0 each, centre xy at +0/+4,
  * class byte +0xD8), count [[+0x38]]; r8 = the pass: S = [+8], world size u32 S+0x2C, playable fraction S+0x50) puts
  * every cluster on one ring: radius lerp(R+0x14, R+0x18, one draw) x the playable radius W/2 x S+0x50 (0xF799B1..
@@ -2567,6 +2605,10 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (convoy != NULL) Note("difficulty: extra large maps: %s", convoy);
     const char* lists = InstallMissionListGuards(game);
     if (lists != NULL) Note("difficulty: extra large maps: %s", lists);
+    if (ApiCodeMatches(game + 0xF70F20u, "48 89 54 24 10 41 56 48 81 EC A0 00 00 00 48 8B 81 C8 02 00 00"))
+        LoaderHook("an operation's missions' objective list", game + 0xF70F20u, (void*)WorldObjectiveFill, (void**)&g_objectiveFill);
+    else
+        Note("difficulty: extra large maps: the map's objective list fill is not the reviewed one; an operation keeps the selection's objectives");
     const char* garrison = InstallGarrisonGuard(game);
     if (garrison != NULL) Note("difficulty: extra large maps: %s", garrison);
     const char* alarms = InstallAlarmGuard(game);
