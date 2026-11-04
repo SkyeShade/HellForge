@@ -1,9 +1,12 @@
 // Sync Inventory's capture: reads the player's own HELLDIVERS 2 inventory and progression from the live API while the
-// normal game logs in (HellForge.Core InventorySync starts it elevated from the launcher).
+// normal game logs in (HellForge.Core InventorySync starts it from the launcher). The Windows build is elevated and owns
+// the hosts file and LocalMachine\Root. The native Linux build runs unprivileged: InventorySync starts it below the
+// installed capture helper, which owns the marked /etc/hosts lines and the 127.0.0.1:443 relay, and puts the exported
+// public CA in HELLDIVERS 2's Proton prefix through Wine.
 //
-// It maps the API host to 127.0.0.1 in the hosts file, trusts a per-run CA in LocalMachine\Root (with a CRL served on
-// loopback, since Schannel checks revocation), terminates the game's TLS and forwards every request unchanged to the real
-// API by IP. With the session the login returns it reads GET /api/Progression and GET /api/Progression/inventory,
+// It maps the API host to 127.0.0.1, trusts a per-run CA (with a CRL served on loopback, since Schannel checks
+// revocation), terminates the game's TLS and forwards every request unchanged to the real API by IP. With the session
+// the login returns it reads GET /api/Progression and GET /api/Progression/inventory,
 // repeating the client headers the login carried (CaptureHeaders: the API refuses a read without Accept-Language), and
 // writes them to --progression and --output. With --seal-key and --steam-account it seals the two files for that Steam
 // account (HellForge.Core SnapshotSeal) as soon as the inventory is in, and says so in its state file (CaptureState), so
@@ -21,8 +24,10 @@
 //
 //   --close-game   end the sync's game once the capture is sealed (the launcher's sync passes it)
 //   --cleanup      only remove a hosts line and CA left by a run that was killed
+//   --ca-cert <file>  write the public CA for the Linux supervisor to put in the game prefix
 //   --no-hosts --no-ca --listen-port 8443 --real-ip <ip>   local plumbing test, no system changes
 
+using HellForge.CaptureProxy;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -39,10 +44,9 @@ using HellForge.Core;
 
 const string CaName = "HellForge Capture CA";
 const string LoginPath = "/api/Account/Login", ProgressionPath = "/api/Progression", InventoryPath = "/api/Progression/inventory";
-const string GameProcess = "helldivers2";
 // The redirect stays while the game runs (ForwardUntilGameExits), but never past the certificates' day.
 const int ForwardHoursAtMost = 12;
-var hostsPath = Path.Combine(Environment.SystemDirectory, "drivers", "etc", "hosts");
+var hostsPath = CapturePlatform.HostsPath;
 
 var host = "api.live.prod.thehelldiversgame.com";
 var listenPort = 443;
@@ -59,6 +63,7 @@ string? sealKey = null;
 ulong? steamAccount = null;
 // The launcher's Windows account, granted the sync folder beside this one's (it differs on a standard account).
 string? grantSid = null;
+string? caCertificatePath = null;
 
 try
 {
@@ -80,6 +85,7 @@ try
             case "--close-game": closeGame = true; break;
             case "--seal-key": sealKey = Next(); break;
             case "--steam-account": steamAccount = ulong.Parse(Next(), NumberStyles.None, CultureInfo.InvariantCulture); break;
+            case "--ca-cert": caCertificatePath = Next(); break;
             case "--grant-sid":
                 grantSid = Next();
                 if (!CaptureAccess.IsSid(grantSid)) throw new ArgumentException("--grant-sid needs a SID (S-1-5-...).");
@@ -88,12 +94,14 @@ try
                 Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
                 Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--grant-sid <launcher's SID>]");
                 Console.WriteLine("  [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
-                Console.WriteLine("  [--close-game] [--no-hosts] [--no-ca] | --cleanup");
+                Console.WriteLine("  [--ca-cert <file>] [--close-game] [--no-hosts] [--no-ca] | --cleanup");
                 return 0;
             default: throw new ArgumentException("Unknown argument: " + args[i]);
         }
     }
     if ((sealKey == null) != (steamAccount == null)) throw new ArgumentException("--seal-key and --steam-account go together.");
+    if (manageCa && !CapturePlatform.ManagesSystemTrustStore && caCertificatePath == null && !cleanupOnly)
+        throw new ArgumentException("On Linux --ca-cert is required when the capture makes its CA.");
     // The seal covers the snapshot's own file names, side by side.
     if (sealKey != null && (Path.GetFileName(outputPath) != SnapshotSeal.InventoryFile ||
         progressionPath != null && Path.GetFullPath(progressionPath) != Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, SnapshotSeal.ProgressionFile)))
@@ -122,14 +130,19 @@ catch (Exception error) when (error is IOException or UnauthorizedAccessExceptio
     return CaptureStart.ExitCode(CaptureProblem.EvidenceFolder);
 }
 var statePath = Path.Combine(evidenceDir, CaptureState.FileName);
-// The sync folder stays private to this account and the launcher's. On a standard Windows account the UAC prompt runs
-// this capture as the administrator who answered it: granting only this account hid the folder from the launcher, which
-// then never opened the game and found no inventory after a capture that worked.
-string captureSid;
-using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent()) captureSid = identity.User!.Value;
-var aclCode = Run("icacls", CaptureAccess.SyncFolderAclArguments(evidenceDir, captureSid, grantSid));
-Log($"sync folder private to {(grantSid == null ? "this account only (no launcher account given)" : string.Equals(grantSid, captureSid, StringComparison.OrdinalIgnoreCase) ? "this account, which is the launcher's" : "this account and the launcher's, another account")}" +
-    (aclCode == 0 ? "" : $": icacls failed with code {aclCode}"));
+// The sync folder stays private to this account and the launcher's (0700 on Linux, where both are the same user). On a
+// standard Windows account the UAC prompt runs this capture as the administrator who answered it: granting only this
+// account hid the folder from the launcher, which then never opened the game and found no inventory after a capture
+// that worked.
+if (OperatingSystem.IsWindows())
+{
+    string captureSid;
+    using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent()) captureSid = identity.User!.Value;
+    var aclCode = Run("icacls", CaptureAccess.SyncFolderAclArguments(evidenceDir, captureSid, grantSid));
+    Log($"sync folder private to {(grantSid == null ? "this account only (no launcher account given)" : string.Equals(grantSid, captureSid, StringComparison.OrdinalIgnoreCase) ? "this account, which is the launcher's" : "this account and the launcher's, another account")}" +
+        (aclCode == 0 ? "" : $": icacls failed with code {aclCode}"));
+}
+else CapturePlatform.RestrictDirectory(evidenceDir);
 
 // What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
 // (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
@@ -162,7 +175,7 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     Log("crashed: " + (e.ExceptionObject is Exception error ? CaptureDiagnostics.Chain(error) : e.ExceptionObject));
     if (manageHosts) Step("hosts cleanup", RemoveHosts);
-    if (manageCa) Step("CA cleanup", () => RemoveCas(null));
+    if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
 };
 // Making the certificates can fail as well as installing the CA (a broken crypto provider; Wine's, 2026-10-30): either
 // stops the run as a certificate problem, with every HellForge CA removed.
@@ -179,21 +192,31 @@ try
         caRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         caRequest.CertificateExtensions.Add(new X509Extension("2.5.29.31", cdp, false));
         using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-        if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
-        try
-        {
-            using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
-            store.Open(OpenFlags.ReadWrite);
-            using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
-            store.Add(publicCa);
-        }
-        catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
-        {
-            // A security program guarding the trusted root store refuses the add.
-            throw new CryptographicException("Windows refused to add the certificate: " + error.Message, error);
-        }
         caThumbprint = ca.Thumbprint;
-        Log("CA installed");
+        if (CapturePlatform.ManagesSystemTrustStore)
+        {
+            if (!Step("CA cleanup", () => RemoveCas(null))) return Fail(CaptureProblem.Certificate, "an earlier sync's certificate could not be removed");
+            try
+            {
+                using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+                store.Open(OpenFlags.ReadWrite);
+                using var publicCa = X509CertificateLoader.LoadCertificate(ca.Export(X509ContentType.Cert));
+                store.Add(publicCa);
+            }
+            catch (Exception error) when (error is CryptographicException or UnauthorizedAccessException)
+            {
+                // A security program guarding the trusted root store refuses the add.
+                throw new CryptographicException("Windows refused to add the certificate: " + error.Message, error);
+            }
+            Log("CA installed");
+        }
+        else
+        {
+            // Native Linux cannot write the game's Wine prefix store without Wine; the supervisor imports this public
+            // certificate as the system store's serialized Blob with reg.exe and proves the value before the game opens.
+            WriteCaCertificate(ca);
+            Log("CA written for the game prefix");
+        }
         serverCert = MakeLeaf(ca, host, cdp);
         StartCrlServer(crlListener, new CertificateRevocationListBuilder().Build(ca, BigInteger.One, new DateTimeOffset(ca.NotAfter),
             HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1, DateTimeOffset.UtcNow.AddDays(-1)));
@@ -203,7 +226,7 @@ try
 catch (CryptographicException error)
 {
     Log("certificate failed: " + CaptureDiagnostics.Chain(error));
-    if (manageCa) Step("CA cleanup", () => RemoveCas(null));
+    if (manageCa && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(null));
     listener.Stop();
     return Fail(CaptureProblem.Certificate, error.Message);
 }
@@ -214,7 +237,7 @@ void Cleanup()
     if (Interlocked.Exchange(ref cleaned, 1) == 1) return;
     listener.Stop();
     if (manageHosts) Step("hosts cleanup", RemoveHosts);
-    if (caThumbprint != null) Step("CA cleanup", () => RemoveCas(caThumbprint));
+    if (caThumbprint != null && CapturePlatform.ManagesSystemTrustStore) Step("CA cleanup", () => RemoveCas(caThumbprint));
     Step("state cleanup", () => File.Delete(statePath));
 }
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; Cleanup(); Environment.Exit(1); };
@@ -272,6 +295,7 @@ try
     LogResolution();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
+    CapturePlatform.RestrictFile(statePath);
     _ = Task.Run(WatchProcesses);
     while (!stop.IsCancellationRequested)
     {
@@ -340,9 +364,7 @@ void LogStart()
 {
     var exe = Environment.ProcessPath;
     var built = exe != null ? File.GetLastWriteTimeUtc(exe).ToString("u", CultureInfo.InvariantCulture) : "unknown";
-    var elevated = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
-        .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-    Log($"capture built {built}, {Environment.OSVersion.VersionString}, .NET {Environment.Version}, elevated {(elevated ? "yes" : "no")}");
+    Log($"capture built {built}, {Environment.OSVersion.VersionString}, .NET {Environment.Version}, elevated {(CapturePlatform.IsElevated ? "yes" : "no")}");
     Log($"options: host {host}, port {listenPort}, timeout {timeoutMin} min, hosts line {(manageHosts ? "yes" : "no")}, " +
         $"CA {(manageCa ? "yes" : "no")}, close game {(closeGame ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
 }
@@ -372,7 +394,7 @@ async Task WatchProcesses()
         {
             beat.Restart();
             Log($"status: {connections} connections, {tally.Total} requests, last connection {lastRequest.Elapsed.TotalSeconds:F0} s ago, " +
-                $"game {(seen.ContainsValue(GameProcess) ? "running" : "not running")}, captured {(Volatile.Read(ref captured) == 1 ? "yes" : "no")}");
+                $"game {(seen.Values.Any(IsGameName) ? "running" : "not running")}, captured {(Volatile.Read(ref captured) == 1 ? "yes" : "no")}");
         }
         try { await Task.Delay(TimeSpan.FromSeconds(2), stop.Token); }
         catch (OperationCanceledException) { return; }
@@ -382,10 +404,10 @@ async Task WatchProcesses()
 void LogProcessChanges(Dictionary<int, string> seen)
 {
     var now = new Dictionary<int, string>();
-    foreach (var name in new[] { GameProcess, "EasyAntiCheat_EOS", "EasyAntiCheat", "start_protected_game" })
+    foreach (var name in CapturePlatform.ProcessNames)
         foreach (var process in Process.GetProcessesByName(name))
         {
-            now[process.Id] = name;
+            if (!now.ContainsKey(process.Id)) now[process.Id] = name;
             process.Dispose();
         }
     foreach (var (pid, name) in now.Where(entry => !seen.ContainsKey(entry.Key))) Log($"process {name} started (pid {pid})");
@@ -402,8 +424,14 @@ void CompleteCapture()
 {
     var progression = progressionPath != null && File.Exists(progressionPath);
     sealOk = sealKey == null || Step("seal", () => SnapshotSeal.Write(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, sealKey, steamAccount!.Value, DateTime.UtcNow));
-    if (sealKey != null && sealOk) Log("capture sealed" + (progression ? "" : " without progression"));
+    if (sealKey != null && sealOk)
+    {
+        Log("capture sealed" + (progression ? "" : " without progression"));
+        CapturePlatform.RestrictFile(sealKey);
+        CapturePlatform.RestrictFile(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, SnapshotSeal.FileName));
+    }
     Step("state", () => CaptureState.Write(evidenceDir, Environment.ProcessId, sealOk, progression));
+    CapturePlatform.RestrictFile(statePath);
     if (closeGame) EndSyncGame();
     _ = Task.Run(ForwardUntilGameExits);
 }
@@ -432,10 +460,14 @@ async Task ForwardUntilGameExits()
 
 static bool IsGameRunning()
 {
-    var running = Process.GetProcessesByName(GameProcess);
+    var running = CapturePlatform.FindProcesses(CapturePlatform.ProcessNames.Where(IsGameName));
     foreach (var process in running) process.Dispose();
-    return running.Length > 0;
+    return running.Count > 0;
 }
+
+static bool IsGameName(string name) =>
+    name.Equals("helldivers2", StringComparison.OrdinalIgnoreCase) ||
+    name.Equals("helldivers2.exe", StringComparison.OrdinalIgnoreCase);
 
 // One connection, one request (the response says Connection: close). Each line carries the connection's number, so
 // interleaved connections stay apart in the log.
@@ -647,7 +679,9 @@ static void WriteAtomically(string path, byte[] body)
 {
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
     File.WriteAllBytes(path + ".tmp", body);
+    CapturePlatform.RestrictFile(path + ".tmp");
     File.Move(path + ".tmp", path, overwrite: true);
+    CapturePlatform.RestrictFile(path);
 }
 
 // "/api/FriendsV2/Recent" stays, "/api/Proxy/<id>/<id>" becomes "/api/Proxy/...": later segments can carry account ids.
@@ -719,7 +753,12 @@ void Log(string message)
 {
     var line = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture) + " " + message;
     Console.WriteLine(line);
-    try { File.AppendAllText(Path.Combine(evidenceDir, "proxy.log"), line + Environment.NewLine); }
+    var path = Path.Combine(evidenceDir, "proxy.log");
+    try
+    {
+        File.AppendAllText(path, line + Environment.NewLine);
+        CapturePlatform.RestrictFile(path);
+    }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("log write failed: " + error.Message); }
 }
 
@@ -753,7 +792,7 @@ void RemoveHosts()
         return;
     }
     hostsAdded = false;
-    Run("ipconfig", "/flushdns");
+    CapturePlatform.FlushDns();
     Log("hosts line removed");
 }
 
@@ -762,8 +801,18 @@ void AddHosts()
     LogHostsFile();
     HostsWrite(() => { CaptureHosts.Add(hostsPath, host); return true; });
     hostsAdded = true;
-    Run("ipconfig", "/flushdns");
+    CapturePlatform.FlushDns();
     Log("hosts line added");
+}
+
+// The public half only: the supervisor imports this as the prefix Root certificate's Blob with reg.exe. The private key
+// stays in this process.
+void WriteCaCertificate(X509Certificate2 ca)
+{
+    var path = Path.GetFullPath(caCertificatePath!);
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    File.WriteAllBytes(path, ca.Export(X509ContentType.Cert));
+    CapturePlatform.RestrictFile(path);
 }
 
 // A failed hosts write: the plain reason, named more exactly where Windows can say who, goes to the log and to the sync
@@ -862,6 +911,7 @@ List<string> HostsLockers()
 // This run's CA by thumbprint, or with null every CA this tool installed.
 void RemoveCas(string? thumbprint)
 {
+    if (!CapturePlatform.ManagesSystemTrustStore) return;
     foreach (var location in new[] { StoreLocation.LocalMachine, StoreLocation.CurrentUser })
     {
         using var store = new X509Store(StoreName.Root, location);

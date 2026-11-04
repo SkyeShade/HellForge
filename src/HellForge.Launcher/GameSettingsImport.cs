@@ -10,9 +10,10 @@ public partial class MainWindow
 {
     void InitializeSettingsImport()
     {
+        ImportSettingsButton.IsVisible = ImportControlsBox.IsVisible = !OperatingSystem.IsLinux();
         ImportSettingsButton.Click += (_, _) =>
         {
-            if (runner.IsRunning || paths.InstallRoot == null) return;
+            if (OperatingSystem.IsLinux() || runner.IsRunning || paths.InstallRoot == null) return;
             var install = new InstallLayout(paths.InstallRoot);
             var withControls = ImportControlsBox.IsChecked == true;
             try

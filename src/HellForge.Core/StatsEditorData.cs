@@ -199,7 +199,7 @@ public static class StatsEditorData
     public static StatsObservation? LatestSnapshot(string sessions)
     {
         if (!Directory.Exists(sessions)) return null;
-        foreach (var path in Directory.EnumerateFiles(sessions, "stats-values.tsv", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc))
+        foreach (var path in LocalInstall.FilesNoLinks(sessions, "stats-values.tsv").OrderByDescending(File.GetLastWriteTimeUtc))
             try { return ReadSnapshot(path); }
             catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException) { }
         return null;

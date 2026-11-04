@@ -51,6 +51,8 @@ public partial class MainWindow
 
     string SandboxOffReason()
     {
+        if (OperatingSystem.IsLinux())
+            return SessionRunner.CanSandbox(paths) ? "Settings > Sandbox is off" : "the Linux sandbox is not available (" + SessionRunner.LinuxSandboxProblem(paths) + ")";
         if (!SessionRunner.HasSteamBridge(paths)) return "this HellForge was built without the Steam bridge";
         return "Settings > Sandbox is off";
     }

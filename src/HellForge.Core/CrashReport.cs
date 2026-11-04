@@ -41,12 +41,20 @@ public static partial class CrashReport
     // The game writes into the run folder, or into run/game when sandboxed.
     internal static IEnumerable<string> GameFolders(string run) => [run, Path.Combine(run, "game")];
 
-    public static string? LoaderLog(string run) =>
-        GameFolders(run).Select(f => Path.Combine(f, "modloader.log")).FirstOrDefault(File.Exists);
+    public static string? LoaderLog(string run)
+    {
+        try { return GameFolders(run).SelectMany(f => LocalInstall.FilesNoLinks(f, "modloader.log", recursive: false)).FirstOrDefault(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        { return null; }
+    }
 
-    // The crash dump the mod loader had written (crash-<process id>.dmp), or null.
-    public static string? Dump(string run) =>
-        GameFolders(run).Where(Directory.Exists).SelectMany(f => Directory.EnumerateFiles(f, "crash-*.dmp")).FirstOrDefault();
+    // The crash dump the mod loader had written (crash-<process id>.dmp), or null. A link is skipped, never opened.
+    public static string? Dump(string run)
+    {
+        try { return GameFolders(run).SelectMany(f => LocalInstall.FilesNoLinks(f, "crash-*.dmp", recursive: false)).FirstOrDefault(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        { return null; }
+    }
 
     // Whether a session ended in a crash: it was not stopped by the launcher, and the game left a dump, or it ended by
     // itself with an exit code other than 0 or after the mod loader noted a crash. Stopped comes first: the loader writes
@@ -95,6 +103,21 @@ public static partial class CrashReport
         _ => null
     };
 
+    // The first crash note line, for result.json; null when there is no loader log or no note.
+    public static string? FirstCrashLine(string run)
+    {
+        try
+        {
+            if (LoaderLog(run) is not { } log) return null;
+            var lines = Tail(log, int.MaxValue);
+            return FindFault(lines) is { } fault ? lines[fault.Line] : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     // The first crash the mod loader noted, from its log's lines.
     public static Fault? FindFault(IReadOnlyList<string> lines)
     {
@@ -106,6 +129,32 @@ public static partial class CrashReport
                 return new("fail-fast", fast.Groups["thread"].Value, fast.Groups["at"].Value.Trim(), null, i);
         }
         return null;
+    }
+
+    // Crashes whose cause is known and lies outside HellForge and the mods, for the supported build only (the offsets
+    // are that build's). Each names what the player can do.
+    //
+    // helldivers2.exe+0x6738c7 (build 25480438): as the game's window opens, its Text Services Framework setup
+    // (0x1406737d0, called from the constructor at 0x140673260) asks ITfThreadMgr::GetFunctionProvider for
+    // GUID_SYSTEM_FUNCTIONPROVIDER, does not check the result and calls through the provider. A Wine whose msctf has no
+    // system function provider returns E_NOTIMPL with a null provider, and the game reads address 0. Proton Experimental
+    // 11.0 implements it (msctf's func_provider_GetFunction); a tester's Wine 10.0 Proton crashed here on every start
+    // and Proton 11 did not (#112, 2026-11-01).
+    public static string? KnownCause(Fault? fault, string buildId)
+    {
+        if (fault == null) return null;
+        if (buildId == "25480438" && fault.Code == "c0000005" && fault.Where.Equals("helldivers2.exe+0x6738c7", StringComparison.OrdinalIgnoreCase))
+            return "this Proton's Wine gave HELLDIVERS 2 no text-input function provider (msctf), which the game needs as its " +
+                "window opens. It is not caused by HellForge or your mods. Choose a Proton based on Wine 11, such as Proton 11 " +
+                "or Proton Experimental, in Settings > Installation > Check and repair, then play again.";
+        return null;
+    }
+
+    // The known cause of a run's crash, from its loader log, or null.
+    public static string? KnownCause(string run)
+    {
+        try { return LoaderLog(run) is { } log ? KnownCause(FindFault(Tail(log, int.MaxValue)), SupportedBuild.Current.BuildId) : null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException) { return null; }
     }
 
     // The note's "by module" line, which follows it: the module of code outside the game.
@@ -191,6 +240,7 @@ public static partial class CrashReport
             text.AppendLine("Failure: " + scrub.Apply(failure));
         text.AppendLine(fault == null ? "Crash: the mod loader noted none"
             : scrub.Apply($"Crash: {fault.Code} at {fault.Where} on thread {fault.Thread}" + (fault.ByModule != null ? $" (by module: {fault.ByModule})" : "")));
+        if (KnownCause(fault, SupportedBuild.Current.BuildId) is { } cause) text.AppendLine("Known cause: " + cause);
         WindowsCrashLine(text, result, scrub);
     }
 

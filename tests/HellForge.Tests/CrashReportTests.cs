@@ -76,6 +76,28 @@ static class CrashReportTests
             check(SystemFacts.Gpus().All(g => g.Name.Length > 0 && Privacy.Scrub(g.Name) == g.Name), "A GPU entry is empty or names the PC.");
         });
 
+        test("Crash reports keep the OS name when this PC is named fedora", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var scrub = new ReportPrivacy(fedora, []);
+            var line = "This PC now: " + system;
+            check(scrub.ApplyNames(line) == line, "The OS name was scrubbed: " + scrub.ApplyNames(line));
+            check(scrub.Apply(system + @" at C:\Users\Alex and /home/alex") == system + @" at %USERPROFILE% and ~",
+                "The OS line kept the user folders: " + scrub.Apply(system + @" at C:\Users\Alex and /home/alex"));
+        });
+
+        test("A PC named after a word of the OS name is still scrubbed in other text", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var line = system + " on host fedora";
+            check(new ReportPrivacy(fedora, []).Apply(line) == system + " on host PC", "The PC name outside the OS name was kept: " + fedora.Apply(line));
+            var gaming = new Privacy(@"C:\Users\Alex", ["fedora-gaming"], "/home/alex", system);
+            check(gaming.Apply(system + " on host fedora-gaming") == system + " on host PC",
+                "A longer PC name was kept: " + gaming.Apply(system + " on host fedora-gaming"));
+        });
+
         test("Mod lines carry each mod's version and content hash", () =>
         {
             using var modset = JsonDocument.Parse("""{"mods": [{"id": "skye.d11", "version": "1.2.0", "hash": "0123456789abcdef0123456789abcdef"}]}""");
@@ -104,6 +126,18 @@ static class CrashReportTests
             var noted = Session(new string('5', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
             File.WriteAllText(Path.Combine(noted, "game", "modloader.log"), "10:00:00.000 crash: fail-fast about to end the game (thread 7, asked from ucrtbase.dll+0x9a1b); stack:\n");
             check(CrashReport.Crashed(noted), "A crash the mod loader noted in a sandboxed session's log.");
+            check(CrashReport.FirstCrashLine(noted)?.Contains("crash: fail-fast", StringComparison.Ordinal) == true,
+                "The first crash note was not returned for result.json.");
+            if (OperatingSystem.IsLinux())
+            {
+                var linked = Session(new string('8', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
+                var outside = Path.Combine(root, "crash-report-links", "modloader.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+                File.WriteAllText(outside, "10:00:00.000 crash: c0000005 on thread 1 at game.dll+0x1\n");
+                File.CreateSymbolicLink(Path.Combine(linked, "game", "modloader.log"), outside);
+                check(CrashReport.LoaderLog(linked) == null && CrashReport.FirstCrashLine(linked) == null && !CrashReport.Crashed(linked),
+                    "CrashReport followed a linked modloader.log.");
+            }
             var dumped = Session(new string('6', 32), "{}");
             File.WriteAllBytes(Path.Combine(dumped, "crash-42.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(CrashReport.Crashed(dumped), "A session that left a dump.");
@@ -144,6 +178,25 @@ static class CrashReportTests
             check(fault.Code == "c0000005" && fault.Thread == "4242" && fault.Where == "game.dll+0xf8f670" && fault.ByModule == "game.dll+0xf8f670" && fault.Line == 260,
                 $"Fault: {fault}");
             check(CrashReport.FindFault(["10:00:00.000 nothing here"]) == null, "A fault in a log without one.");
+        });
+
+        test("A crash in the game's text-input setup under a Wine without msctf's function provider names its cause (#112)", () =>
+        {
+            // The note as the loader wrote it in the tester's report (Wine 10.0, GetFunctionProvider returned E_NOTIMPL).
+            string[] log =
+            [
+                "14:30:47.920 hooks: local.native-atmosphere-control hooked helldivers2.exe+0x4fc590 (priority 0; 1 of 1 in its chain)",
+                "14:30:48.006 crash: c0000005 on thread 856 at helldivers2.exe+0x6738c7 (0x1406738c7), reading 0x0; rax 80004001 rbx a40168 rcx 0",
+                "14:30:48.006 crash: by module: at helldivers2.exe+0x6738c7; rdx helldivers2.exe+0x1690a98; stack outside the game: msctf.dll+0xec82"
+            ];
+            var fault = CrashReport.FindFault(log);
+            var cause = CrashReport.KnownCause(fault, "25480438");
+            check(cause != null && cause.Contains("msctf", StringComparison.Ordinal) && cause.Contains("Proton 11", StringComparison.Ordinal) &&
+                  cause.Contains("not caused by HellForge", StringComparison.Ordinal), "Cause: " + cause);
+            check(CrashReport.KnownCause(fault, "25480439") == null, "The offset was matched for another game build.");
+            check(CrashReport.KnownCause(fault! with { Where = "helldivers2.exe+0x6738ca" }, "25480438") == null, "Another address was matched.");
+            check(CrashReport.KnownCause(fault! with { Code = "c0000096" }, "25480438") == null, "Another exception was matched.");
+            check(CrashReport.KnownCause(null, "25480438") == null, "A run without a crash got a cause.");
         });
 
         test("The friends the backend counted are left out, also when their profile never arrived", () =>

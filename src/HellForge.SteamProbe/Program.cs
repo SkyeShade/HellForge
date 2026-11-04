@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using HellForge.Core;
 
-if (!OperatingSystem.IsWindows() || args.Length != 3)
+if (!OperatingSystem.IsWindows() || args.Length is < 3 or > 4)
 {
-    Console.Error.WriteLine("Use HellForge.SteamProbe <verified steam_api64.dll> <expected SHA256> <report.json>.");
+    Console.Error.WriteLine("Use HellForge.SteamProbe <verified steam_api64.dll> <expected SHA256> <report.json> [private-account.json].");
     return 1;
 }
 var libraryPath = Path.GetFullPath(args[0]);
 var reportPath = Path.GetFullPath(args[2]);
+var privateAccountPath = args.Length == 4 ? Path.GetFullPath(args[3]) : null;
 try
 {
     using var lockedLibrary = new FileStream(libraryPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -37,9 +38,22 @@ try
         var ownerId = Export<UInt64Call>("SteamAPI_ISteamApps_GetAppOwner")(apps);
         var sameOwner = userId != 0 && ownerId == userId;
         var confirmed = SteamOwnershipPolicy.ConfirmsCurrentClientOwner(new(appId, loggedOn, subscribed, sameOwner, shared, freeWeekend, cafe));
+        var checkedUtc = DateTime.UtcNow;
+        // The native launcher's private handoff: an account id only, never logged and never part of the report/evidence.
+        // Best effort: failing to write it must not turn a confirmed ownership result into a failed one.
+        if (privateAccountPath != null && loggedOn && userId != 0)
+        {
+            try
+            {
+                File.WriteAllText(privateAccountPath, JsonSerializer.Serialize(new {
+                    loggedOn, accountId = SteamAccount.AccountId(userId), checkedUtc
+                }));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
         File.WriteAllText(reportPath, JsonSerializer.Serialize(new {
             status = confirmed ? "local_steam_client_subscription_confirmed" : "ownership_unverified",
-            checkedUtc = DateTime.UtcNow, appId, loggedOn, subscribed, sameOwner, familyShared = shared, freeWeekend, cafe,
+            checkedUtc, appId, loggedOn, subscribed, sameOwner, familyShared = shared, freeWeekend, cafe,
             localClientOwnershipConfirmed = confirmed,
             accountHash = userId == 0 ? null : SteamOwnershipCheck.AccountHash(unchecked((uint)userId)), serverVerified = false, permanentLicenseProven = false,
             readyToLaunchGame = false, librarySha256 = args[1],

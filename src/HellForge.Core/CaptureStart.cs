@@ -97,7 +97,8 @@ public static class CaptureStart
 
     // The status line for the launcher. antivirus: third-party security programs Windows knows of (SecurityProducts);
     // proxyPath: the capture's exe, to name in an exclusion; logPath: where the details are, when there is a log.
-    public static string Message(CaptureFailure failure, IReadOnlyList<string> antivirus, string proxyPath, string? logPath)
+    // securityAdvice: false where Windows Security does not apply (the native Linux capture).
+    public static string Message(CaptureFailure failure, IReadOnlyList<string> antivirus, string proxyPath, string? logPath, bool securityAdvice = true)
     {
         var detail = string.IsNullOrWhiteSpace(failure.Detail) ? "" : " (" + failure.Detail.TrimEnd('.') + ")";
         var what = failure.Problem switch
@@ -125,7 +126,7 @@ public static class CaptureStart
         };
         if (logPath != null && failure.Problem is not (CaptureProblem.Declined or CaptureProblem.NotReady or CaptureProblem.Offline or CaptureProblem.Missing))
             what += " Details: " + logPath + ".";
-        return SecurityProgramLikely(failure.Problem) ? what + " " + SecurityAdvice(antivirus, proxyPath) : what;
+        return securityAdvice && SecurityProgramLikely(failure.Problem) ? what + " " + SecurityAdvice(antivirus, proxyPath) : what;
     }
 
     // Which program to allow, and the exact file.

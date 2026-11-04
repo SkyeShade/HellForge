@@ -24,7 +24,7 @@
 #endif
 
 #define HF_LUA_BRIDGE_VERSION 3 /* 2: set_stat, clear_stat, copy_row, set_code, stratagem_type; 3: the SDK 11 events and actions */
-#define HF_LUA_EVENT_SIZE 128 /* the largest event's struct (HfEventInfo and its kind's data), rounded up */
+#define HF_LUA_EVENT_SIZE 128 /* the largest game event a Lua mod can listen to (the SDK 16 mod channel's is larger) */
 
 typedef struct HfLuaInfo
 {

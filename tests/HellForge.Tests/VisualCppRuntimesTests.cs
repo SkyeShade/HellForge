@@ -31,6 +31,7 @@ static class VisualCppRuntimesTests
     {
         test("A PC without the Visual C++ 2012 or 2015-2022 x64 runtime is told which to install before the game starts", () =>
         {
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("  (skipped: Windows system runtimes)"); return; }
             var system = Directory.CreateDirectory(Path.Combine(root, "vc-runtimes")).FullName;
             var none = VisualCppRuntimes.Problem(system, "press Play again.");
             check(none != null && none.Contains("2012") && none.Contains("2015-2022") && none.EndsWith("press Play again."), "Both missing: " + none);
