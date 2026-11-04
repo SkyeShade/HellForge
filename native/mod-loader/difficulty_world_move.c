@@ -76,7 +76,7 @@ static struct
     uint32_t at2F, at37, at38, at4C, at66, frames, waits, calls;
     /* the stamp terrains of the tile's locations (0x2F spawns them for 0x63 to draw, 0x65 takes them away): staging
      * copies of their records, the real indices, their units, the counts the two ops read through pointers */
-    uint8_t* stLoc; uint32_t* stIndex; uint64_t* stUnit; uint32_t stCount, stUnits; int stamped;
+    uint8_t* stLoc; uint32_t* stIndex; uint64_t* stUnit; uint32_t stCount, stUnits, stTemp; int stamped;
     ULONGLONG since, started;
     uint8_t ctx[0xE8];
     uint8_t settings[0xD0];
@@ -242,11 +242,33 @@ static void MoveCellSkip(int a, int b, ULONGLONG now)
     g_move.skip[at].a = a; g_move.skip[at].b = b; g_move.skip[at].until = now + MOVE_SKIP_MS;
 }
 
-/* The locations whose stamps reach the cell's tile (their record xy +0 in generator metres, world + half; a stamp unit
- * at +0xA8, which the content streamer may have taken away: then there is nothing to draw), copied for 0x2F. */
+/* The tile's stamp terrains are drawn 20 km north of their places, where no terrain stands: mid-mission the merge's 0x63
+ * render (a data-driven request, 0xABA7FC8A, set up by 0x37 at 0xFCF1AE) draws the live terrains into the heights as
+ * well (run s72k: its delta over the tile was the level's surface, corr 0.978, slope 0.99). Each staged location gets a
+ * stamp unit of its own (SpawnUnit, the world interface's +0x380, as the streamer respawns one) from the resource and
+ * pose the streamer saved at capture ([[loc+0x90]+8], unit+0x20), its translation (row 3) + MOVE_STAMP_OFFSET in y; 0x2F
+ * spawns its stamp terrains there, 0x63 sees them through the cameras moved by the same offset (an orthographic view: the
+ * heights are the same), 0x65 takes them away, and the units are destroyed (+0x388). The real stamp units, their
+ * buildings and the streamer's state are not touched. */
+#define MOVE_STAMP_OFFSET 20000.0f
+static uint64_t MoveWorld(void);
+
+static void MoveStampUnitsDestroy(void)
+{
+    uint64_t world = MoveWorld();
+    uintptr_t wi = 0, table = 0, destroy = 0;
+    if (world == 0 || SafeRead(g_world.game + DIF_STREAM_INTERFACE, &wi, 8) || wi == 0 || SafeRead(wi + DIF_STREAM_TABLE, &table, 8) || table == 0 ||
+        SafeRead(table + DIF_STREAM_DESTROY_ENTRY, &destroy, 8) || destroy == 0) { g_move.stTemp = 0; return; }
+    for (uint32_t k = 0; k < g_move.stTemp; k++) if (g_move.stUnit[k] != 0) ((WorldStreamDestroyUnitFn)destroy)(world, g_move.stUnit[k], 0, 0);
+    g_move.stTemp = 0;
+    g_nearStampOffset[0] = g_nearStampOffset[1] = 0.0f;
+}
+
+/* The locations whose stamps reach the cell's tile (their record xy +0 in generator metres, world + half), each with a
+ * stamp unit of its own at the offset, copied for 0x2F. */
 static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
 {
-    g_move.stCount = 0; g_move.stUnits = 0;
+    g_move.stCount = 0; g_move.stUnits = 0; g_move.stTemp = 0;
     if (g_move.stLoc == NULL)
     {
         g_move.stLoc = (uint8_t*)VirtualAlloc(NULL, (size_t)MOVE_STAMPS_MAX * 0xE0, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -254,41 +276,35 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
         g_move.stUnit = (uint64_t*)VirtualAlloc(NULL, (size_t)MOVE_STAMPS_MAX * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_move.stLoc == NULL || g_move.stIndex == NULL || g_move.stUnit == NULL) return 0;
     }
+    if (!g_stream.captured || g_stream.level != g_worldLevel)
+    { Note("difficulty: moving tiles: the streamer has no stamp poses for this level; the tile gets no stamp terrains"); return 0; }
+    uint64_t world = MoveWorld();
+    uintptr_t wi = 0, table = 0, spawn = 0;
+    if (world == 0 || SafeRead(g_world.game + DIF_STREAM_INTERFACE, &wi, 8) || wi == 0 || SafeRead(wi + DIF_STREAM_TABLE, &table, 8) || table == 0 ||
+        SafeRead(table + DIF_STREAM_SPAWN_ENTRY, &spawn, 8) || spawn == 0) return 0;
     const float reach = NEAR_SIDE / 2 + MOVE_STAMP_MARGIN;
     uint8_t rec[0xE0];
-    for (uint32_t i = 0; i < count && g_move.stCount < MOVE_STAMPS_MAX; i++)
+    uint32_t failed = 0;
+    for (uint32_t i = 0; i < count && i < kStreamMaxLocations && g_move.stCount < MOVE_STAMPS_MAX; i++)
     {
-        if (SafeRead(locs + (uint64_t)i * 0xE0, rec, sizeof rec)) continue;
-        float at[2]; uint64_t unit = 0;
-        memcpy(at, rec, 8); memcpy(&unit, rec + 0xA8, 8);
-        if (unit == 0 || !isfinite(at[0]) || !isfinite(at[1])) continue;
+        if (!g_streamPoseGood[i] || g_streamResource[i] == 0 || SafeRead(locs + (uint64_t)i * 0xE0, rec, sizeof rec)) continue;
+        float at[2];
+        memcpy(at, rec, 8);
+        if (!isfinite(at[0]) || !isfinite(at[1])) continue;
         if (fabsf(at[0] - half - g_move.centre[0]) > reach || fabsf(at[1] - half - g_move.centre[1]) > reach) continue;
+        float pose[16];
+        memcpy(pose, g_streamPose[i], sizeof pose);
+        pose[13] += MOVE_STAMP_OFFSET;
+        uint64_t unit = ((WorldStreamSpawnUnitFn)spawn)(world, g_streamResource[i], pose, 0, 0);
+        if (unit == 0) { failed++; continue; }
+        memcpy(rec + 0xA8, &unit, 8);
         memcpy(g_move.stLoc + (size_t)g_move.stCount * 0xE0, rec, sizeof rec);
         g_move.stIndex[g_move.stCount] = i; g_move.stUnit[g_move.stUnits++] = unit;
-        g_move.stCount++;
+        g_move.stCount++; g_move.stTemp = g_move.stUnits;
     }
+    if (failed) Note("difficulty: moving tiles: %u stamp units could not be made at the offset", failed);
+    if (g_move.stCount) { g_nearStampOffset[0] = 0.0f; g_nearStampOffset[1] = MOVE_STAMP_OFFSET; }
     return g_move.stCount;
-}
-
-/* Before 0x65: a staged location whose real record no longer holds the unit 0x2F saw (the streamer removed it, and the
- * stamp terrain went with the unit) is left out; the unit list is packed (0x65's unit loop does not test for NULL). */
-static void MoveStampsRecheck(uint64_t locs)
-{
-    uint32_t n = 0, dropped = 0;
-    for (uint32_t k = 0; k < g_move.stCount; k++)
-    {
-        uint64_t seen = 0, now = 0;
-        memcpy(&seen, g_move.stLoc + (size_t)k * 0xE0 + 0xA8, 8);
-        if (seen == 0) continue;
-        if (SafeRead(locs + (uint64_t)g_move.stIndex[k] * 0xE0 + 0xA8, &now, 8) || now != seen)
-        {
-            uint64_t zero = 0; memcpy(g_move.stLoc + (size_t)k * 0xE0 + 0xA8, &zero, 8); dropped++;
-            continue;
-        }
-        g_move.stUnit[n++] = seen;
-    }
-    g_move.stUnits = n;
-    if (dropped) Note("difficulty: moving tiles: %u of the tile's stamp units went while it was built (their terrains went with them)", dropped);
 }
 
 /* The level's 0x2F (op = 0x2F) or 0x65 record on the staging lists: locations pass+8 / count [pass+0x28] for both, units
@@ -399,14 +415,12 @@ static void MoveFail(const char* why)
     if (g_move.stamped)
     {
         /* the stamp terrains away (0x65 needs no frames to pass: a few calls) */
-        uint64_t locs = 0;
-        SafeRead(g_near.records + (uint64_t)g_move.at2F * 0x19B0u + 8 + 8, &locs, 8);
-        MoveStampsRecheck(locs);
         int r = 0;
         if (MoveStampsRecord(g_near.at65, 0x65)) for (int k = 0; k < 64 && r == 0; k++) r = MoveRunRecord();
         if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
         g_move.stamped = 0;
     }
+    MoveStampUnitsDestroy();
     MoveTeardown();
     if (g_move.state >= MV_SPAWN && g_near.handle != 0 && g_near.handle != g_move.dropHandle)
     {
@@ -528,7 +542,7 @@ static int MoveReplayBegin(void)
     g_near.matLeave = 0; g_near.handle = 0;
     g_near.started = GetTickCount64();
     g_stepDump.phase = 0;
-    g_near.state = NEAR_START; g_near.loggedStep = 0;
+    g_near.state = NEAR_START; g_near.loggedStep = 0; g_near.stampLeave = 0;
     MoveHold(1);
     return 1;
 }
@@ -723,9 +737,6 @@ static void MoveTick(uint64_t level)
         if (NearQueued((uint64_t)(uintptr_t)g_move.ctx) != 0 || ++g_move.waits < 3) { if (g_move.waits > 600) MoveFail("the job queue did not empty"); return; }
         if (g_move.stamped)
         {
-            uint64_t locs = 0;
-            SafeRead(g_near.records + (uint64_t)g_move.at2F * 0x19B0u + 8 + 8, &locs, 8);
-            MoveStampsRecheck(locs);
             if (!MoveStampsRecord(g_near.at65, 0x65)) { MoveFail("record 0x65 did not read"); return; }
             g_move.waits = 0; g_move.state = MV_UNSTAMP;
             return;
@@ -741,6 +752,7 @@ static void MoveTick(uint64_t level)
         if (r < 0) { g_move.stamped = 0; MoveFail("0x65 faulted"); return; }
         if (r == 0) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("0x65 did not finish"); } return; }
         g_move.stamped = 0;
+        MoveStampUnitsDestroy();
         MoveTeardown();
         memcpy(g_near.one69, g_near.keep69, sizeof g_near.one69); memcpy(g_near.one6B, g_near.keep6B, sizeof g_near.one6B);
         g_move.state = MV_SPAWN;

@@ -743,6 +743,9 @@ static uint64_t* g_nearSlots[2];         /* the render config's slots for the tw
 static NearRunFn g_nearRunOriginal;
 static volatile LONG g_nearActive; /* the replay's jobs are queued: the wrappers apply the tile's transform */
 static volatile LONG g_moveBuilding; /* a tile is being built in mission (difficulty_world_move.c) */
+/* A tile built in mission draws its stamp terrains away from every terrain (difficulty_world_move.c): the stamp units
+ * stand at their poses + this offset, and the merge cameras move by it for the replayed 0x63 alone. 0, 0 otherwise. */
+static float g_nearStampOffset[2];
 static void MoveLevelGone(void);      /* difficulty_world_move.c: a new level starts, what the last one built in mission goes */
 static void MoveInstall(uintptr_t game);
 static struct {
@@ -757,6 +760,8 @@ static struct {
     int steps, step, building, tilesDrawn, tilesFailed;
     uint8_t one[0x19B0]; uint8_t phase; int calls; uint32_t frames, waits;
     int loggedStep; /* a mid-mission build: the last step whose start was noted, + 1 */
+    int stampLeave; /* the replayed 0x63 drew at the stamp offset: the cameras go back once its job is drained */
+    uint32_t stampWaits;
     int matLeave; /* the replayed 0x41 finished: its cameras go back once its jobs are drained */
     uint32_t readId; float* heights; uint32_t hw, hh;
     uint8_t one69[0x19B0], one6B[0x19B0]; uint32_t at69, at6B;
@@ -1398,7 +1403,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     volatile int calls = 0;
     LONG fault = 0;
     /* a mid-mission build: each step's start (which step is live when something else breaks) */
-    if (g_moveBuilding && g_near.calls == 0 && !g_near.building && !g_near.matLeave && g_near.loggedStep != s + 1)
+    if (g_moveBuilding && g_near.calls == 0 && !g_near.building && !g_near.matLeave && !g_near.stampLeave && g_near.loggedStep != s + 1)
     {
         g_near.loggedStep = s + 1;
         if (g_near.stepKind[s] == NEAR_TILE) Note("difficulty: moving tiles: step %d: composite tile %d", s, g_near.stepTile[s]);
@@ -1430,6 +1435,15 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         g_near.matLeave = 0;
         return 1;
     }
+    if (g_near.stampLeave)
+    {
+        /* 0x63's job renders through the merge camera when the queue runs it: the camera stays at the offset until then */
+        uint32_t q = NearQueued(context);
+        if (q != 0 && q != 0xFFFFFFFFu && ++g_near.stampWaits < 1200) return 0;
+        NearCameras(NEAR_SIDE / 2, NEAR_SIDE / 2, g_near.centre[0], g_near.centre[1]);
+        g_near.stampLeave = 0;
+        return q == 0 ? 1 : -1;
+    }
     if (g_near.stepKind[s] == NEAR_RECORD && g_near.stepOp[s] == 0x3C && NearBaseOn()) return NearBaseStep(context);
     int mat = 0;
     if (g_near.stepOp[s] == 0x41)
@@ -1454,6 +1468,11 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         case 0x3F: memset(g_near.one + 0x128, 0, 0x40); break;
         }
         g_near.phase = 0;
+        /* a tile built in mission: 0x63 renders the world through the merge camera, and mid-mission the world holds the
+         * live terrains, which it draws as heights too (run s72k: the step's delta was the level's surface, corr 0.978);
+         * the tile's stamp terrains stand at the offset, where no terrain is, and the cameras look there for this step */
+        if (g_near.stepOp[s] == 0x63 && (g_nearStampOffset[0] != 0 || g_nearStampOffset[1] != 0))
+            NearCameras(NEAR_SIDE / 2, NEAR_SIDE / 2, g_near.centre[0] + g_nearStampOffset[0], g_near.centre[1] + g_nearStampOffset[1]);
     }
     uint8_t live[0xC0];
     /* 0x3E and 0x3F sample the intermediate captures lg+0..+0xBF on the CPU (0xF4AE30 via [api+0x10]+0x1F0; no other
@@ -1482,6 +1501,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     {
         g_near.calls = 0;
         if (mat) { g_near.matLeave = 1; return 0; }
+        if (g_near.stepOp[s] == 0x63 && (g_nearStampOffset[0] != 0 || g_nearStampOffset[1] != 0)) { g_near.stampLeave = 1; g_near.stampWaits = 0; return 0; }
         return 1;
     }
     return g_near.calls < 3000 ? 0 : -1;
@@ -3036,7 +3056,10 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
         static uint16_t* copy;
         if (copy == NULL) copy = (uint16_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         wchar_t name[64];
-        swprintf(name, 64, L"near-step-%02d-%02X%ls.u16", s, (unsigned)g_near.stepOp[s], g_near.stepKind[s] == NEAR_TILE ? L"t" : L"");
+        if (g_moveBuilding) /* a tile built in mission: named by its centre */
+            swprintf(name, 64, L"near-step-%d-%d-%02d-%02X%ls.u16", (int)lroundf(g_near.centre[0]), (int)lroundf(g_near.centre[1]), s, (unsigned)g_near.stepOp[s],
+                g_near.stepKind[s] == NEAR_TILE ? L"t" : L"");
+        else swprintf(name, 64, L"near-step-%02d-%02X%ls.u16", s, (unsigned)g_near.stepOp[s], g_near.stepKind[s] == NEAR_TILE ? L"t" : L"");
         HANDLE f = OpenLog(name);
         if (copy != NULL && f != INVALID_HANDLE_VALUE && !SafeRead(data, copy, (size_t)4096 * 4096 * 2))
         {
