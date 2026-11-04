@@ -1359,7 +1359,9 @@ typedef struct HfApi
     /* ---- SDK 14: mod sync (HfSyncState; check hf->size before calling) ------------------------------------------- */
     /* The current offer: 1 with *out filled (at most out->size bytes), 0 none (solo, or no backend connected). */
     int (*sync_state)(HfMod* mod, HfSyncState* out);
-    /* The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. */
+    /* The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. Its flags:
+     * HF_SYNC_FLAG_STRANGER (warn harder before HF_SYNC_TRUST) and HF_SYNC_FLAG_SANDBOX_ONLY (a sandboxed game: a trust
+     * answered here counts only in sandboxed sessions, since any code in the game can call sync_answer; say so). */
     int (*sync_mod)(HfMod* mod, uint32_t index, HfSyncMod* out);
     /* Sends the player's answer (HF_SYNC_ACCEPT ...) to the offer of that version; mod_id names the mod for
      * HF_SYNC_BLOCK, HF_SYNC_TRUST and HF_SYNC_OPEN (NULL otherwise). 1 sent; 0 not (another offer came since, or no

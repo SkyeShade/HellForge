@@ -147,7 +147,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 ### SDK 14: mod sync (HfSyncState; check hf->size before calling)
 
 - `sync_state`: `int (HfMod* mod, HfSyncState* out)`. The current offer: 1 with *out filled (at most out->size bytes), 0 none (solo, or no backend connected).
-- `sync_mod`: `int (HfMod* mod, uint32_t index, HfSyncMod* out)`. The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. Its flags: HF_SYNC_FLAG_STRANGER (the host is not the player's Steam friend: warn harder before HF_SYNC_TRUST) and HF_SYNC_FLAG_SANDBOX_ONLY (the game is sandboxed: a trust answered here counts only in sandboxed sessions, since any code in the game can call sync_answer; say so before HF_SYNC_TRUST).
+- `sync_mod`: `int (HfMod* mod, uint32_t index, HfSyncMod* out)`. The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. Its flags: HF_SYNC_FLAG_STRANGER (warn harder before HF_SYNC_TRUST) and HF_SYNC_FLAG_SANDBOX_ONLY (a sandboxed game: a trust answered here counts only in sandboxed sessions, since any code in the game can call sync_answer; say so).
 - `sync_answer`: `int (HfMod* mod, uint32_t version, uint32_t answer, const char* mod_id)`. Sends the player's answer (HF_SYNC_ACCEPT ...) to the offer of that version; mod_id names the mod for HF_SYNC_BLOCK, HF_SYNC_TRUST and HF_SYNC_OPEN (NULL otherwise). 1 sent; 0 not (another offer came since, or no backend connected).
 
 ### SDK 15
