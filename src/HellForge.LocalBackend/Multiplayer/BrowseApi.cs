@@ -361,13 +361,7 @@ public sealed class LiveBrowse
     {
         var more = notListed > 0 ? $"({notListed} more lobbies are not listed.)" : "";
         var lobbies = (list["lobbies"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
-        // co-op over Steam relays off (Linux): what keeps every lobby out, and the key that turns it on
-        if (list["coopRelays"] is JsonObject relays && relays["on"]?.GetValueKind() == JsonValueKind.False)
-        {
-            var off = lobbies.Count > 0 ? "Co-op over Steam relays is off, so no lobby can be joined: select one and press A to turn it on."
-                : "Co-op over Steam relays is off: no lobby could be joined, and yours is not listed.";
-            return more.Length > 0 && Bytes(off + " " + more) <= MessageBytes ? off + " " + more : off;
-        }
+        if (RelaysOff(list, lobbies.Count, more) is { } off) return off;
         if (lobbies.Count == 0 || lobbies.Any(l => l["joinable"]?.GetValueKind() == JsonValueKind.True || l["fix"] != null)) return more;
         var names = (list["needed"] as JsonArray)?.OfType<JsonObject>().Select(m => m["name"]?.GetValue<string>()).OfType<string>().ToList() ?? [];
         const string start = "No lobby you can join right now.", end = " Or host a Public lobby yourself.";
@@ -382,6 +376,15 @@ public sealed class LiveBrowse
         text += end;
         if (more.Length > 0 && Bytes(text + " " + more) <= MessageBytes) text += " " + more;
         return text;
+    }
+
+    // Co-op over Steam relays off (Linux): what keeps every lobby out, and the key that turns it on; null while it is on.
+    static string? RelaysOff(JsonObject list, int lobbies, string more)
+    {
+        if (list["coopRelays"] is not JsonObject relays || relays["on"]?.GetValueKind() != JsonValueKind.False) return null;
+        var off = lobbies > 0 ? "Co-op over Steam relays is off, so no lobby can be joined: select one and press A to turn it on."
+            : "Co-op over Steam relays is off: no lobby could be joined, and yours is not listed.";
+        return more.Length > 0 && Bytes(off + " " + more) <= MessageBytes ? off + " " + more : off;
     }
 
     static int Bytes(string text) => System.Text.Encoding.UTF8.GetByteCount(text);

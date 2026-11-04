@@ -139,25 +139,37 @@ public sealed partial class DirectoryService : IAsyncDisposable
     static bool Same(Dictionary<string, string> a, Dictionary<string, string> b) => a.Count == b.Count && a.All(p => b.TryGetValue(p.Key, out var v) && v == p.Value);
 
     // The listing of the public lobby this machine's game hosts, or null.
-    Dictionary<string, string>? Desired()
+    // The player's switch (read as the listing is looked at, so a change applies within a second); the first time it is
+    // off, the log says so.
+    bool Allowed()
     {
-        var hosted = lobby.HostedLobbies().FirstOrDefault(l => l.LocalOwner);
-        if (hosted == null || hosted.Locked || hosted.Members >= hosted.MaxMembers || hosted.Privacy != LobbyService.Privacy.Public) return null;
-        // the player's switch (read as the listing is looked at, so a change applies within a second)
         var allowed = listPublic?.Invoke() != false;
         if (allowed == unlistedLogged)
         {
             unlistedLogged = !allowed;
             if (!allowed) log("Directory: this player's public lobbies are not listed (Mods page: \"List my Public lobbies\" is off).");
         }
-        if (!allowed) return null;
+        return allowed;
+    }
+
+    // Whether another player could join this machine's lobby (co-op over Steam relays, read as the listing is looked at so
+    // it is listed once turned on live); the first time it could not, the log says why.
+    bool Reachable()
+    {
         var reachable = relaysOpen?.Invoke() != false;
         if (reachable == relaysOffLogged)
         {
             relaysOffLogged = !reachable;
             if (!reachable) log("Directory: this machine's public lobby is not listed: co-op over Steam relays is off, so nobody could join it.");
         }
-        if (!reachable) return null;
+        return reachable;
+    }
+
+    Dictionary<string, string>? Desired()
+    {
+        var hosted = lobby.HostedLobbies().FirstOrDefault(l => l.LocalOwner);
+        if (hosted == null || hosted.Locked || hosted.Members >= hosted.MaxMembers || hosted.Privacy != LobbyService.Privacy.Public) return null;
+        if (!Allowed() || !Reachable()) return null;
         var data = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [DirectoryKeys.Protocol] = LobbyService.Protocol,

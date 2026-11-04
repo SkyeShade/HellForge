@@ -376,6 +376,36 @@ static void CancelRelays()
     Sound(sounds::BACK);
 }
 
+static void CancelStrangers() { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
+
+/* A question over the screen before a setting goes on: TURN ON (Y) or CANCEL (N, Esc). Play with strangers' warning (the
+ * launcher's; Y only), or what co-op over Steam relays opens (Enter too: it continues the join the player asked for). */
+struct TermQuestion
+{
+    const char* title;
+    const char* text;
+    bool warning; /* framed in the warning colour, else the terminal's line */
+    bool enterSaysYes;
+    void (*yes)();
+    void (*no)();
+};
+
+/* The question that shows, or null. */
+static const TermQuestion* OpenQuestion()
+{
+    static const TermQuestion strangers{"TURN ON PLAY WITH STRANGERS?", STRANGER_WARNING, true, false, TurnOnStrangers, CancelStrangers};
+    static const TermQuestion relays{"TURN ON CO-OP OVER STEAM RELAYS?", RELAYS_QUESTION, false, true, TurnOnRelays, CancelRelays};
+    if (g_lobbies.confirmStrangers) return &strangers;
+    if (g_lobbies.confirmRelays) return &relays;
+    return nullptr;
+}
+
+static void QuestionKeys(const TermQuestion& q)
+{
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) q.no();
+    else if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (q.enterSaysYes && ImGui::IsKeyPressed(ImGuiKey_Enter, false))) q.yes();
+}
+
 static void Refresh()
 {
     if (Searching()) return;
@@ -401,18 +431,7 @@ static void LobbyEscape()
 void LobbyKeys()
 {
     if (g_lobbies.camera) return;
-    if (g_lobbies.confirmStrangers)
-    {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
-        else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) TurnOnStrangers();
-        return;
-    }
-    if (g_lobbies.confirmRelays)
-    {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) CancelRelays();
-        else if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || ImGui::IsKeyPressed(ImGuiKey_Enter, false)) TurnOnRelays();
-        return;
-    }
+    if (const TermQuestion* q = OpenQuestion()) { QuestionKeys(*q); return; }
     int n = (int)g_lobbies.shown.size();
     if (Pressed(ImGuiKey_UpArrow)) g_lobbies.index = std::max(0, g_lobbies.index - 1);
     if (Pressed(ImGuiKey_DownArrow)) g_lobbies.index = std::min(std::max(0, n - 1), g_lobbies.index + 1);
@@ -697,25 +716,23 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
     if (TermButton(!g_lobbies.joining.empty() ? "JOINING..." : "JOIN", {x + 20, y + h - 64, w - 40, 44}, joinable, joinable || asks, ui::Id("lobbyjoin"), alpha)) Join(l);
 }
 
-/* A question over the screen before a setting goes on: TURN ON (Y) or CANCEL (N, Esc). Play with strangers' warning (the
- * launcher's), or what co-op over Steam relays opens. */
-static void DrawTermConfirm(float X, float Y, float W, float H, float alpha, const char* title, const char* text, ImU32 frame, void (*yes)(), void (*no)())
+/* The open question (OpenQuestion) over the whole screen. */
+static void DrawTermConfirm(float X, float Y, float W, float H, float alpha, const TermQuestion& q)
 {
+    const ImU32 frame = q.warning ? TERM_WARN : TERM_LINE;
     g_cv.Rect(X, Y, W, H, Alpha(C(0, 8, 30, 170), alpha), 13);
     float w = std::min(640.0f, W - 80), x = X + (W - w) / 2;
-    std::vector<std::string> lines = Wrapped(text, w - 48, SZ_LABEL);
+    std::vector<std::string> lines = Wrapped(q.text, w - 48, SZ_LABEL);
     float h = 150 + 24 * (float)lines.size(), y = Y + (H - h) / 2;
     g_cv.Rect(x, y, w, h, Alpha(TERM_BG, alpha), 13);
     g_cv.Frame(x, y, w, h, Alpha(frame, alpha), 14);
-    g_cv.Text(title, x + 24, y + 30, T(SZ_TITLE, Alpha(frame, alpha), ui::TITLE, ui::LEFT, w - 48, 14));
+    g_cv.Text(q.title, x + 24, y + 30, T(SZ_TITLE, Alpha(frame, alpha), ui::TITLE, ui::LEFT, w - 48, 14));
     float ly = y + 66;
     for (const std::string& line : lines) { g_cv.Text(line, x + 24, ly, T(SZ_LABEL, Alpha(TERM_TEXT, alpha), ui::BODY, ui::LEFT, w - 48, 14)); ly += 24; }
     float bw = (w - 64) / 2;
-    if (TermButton("TURN ON (Y)", {x + 24, y + h - 60, bw, 40}, false, true, ui::Id("lobbyconfirmon"), alpha)) yes();
-    if (TermButton("CANCEL (N)", {x + 40 + bw, y + h - 60, bw, 40}, false, true, ui::Id("lobbyconfirmcancel"), alpha)) no();
+    if (TermButton("TURN ON (Y)", {x + 24, y + h - 60, bw, 40}, false, true, ui::Id("lobbyconfirmon"), alpha)) q.yes();
+    if (TermButton("CANCEL (N)", {x + 40 + bw, y + h - 60, bw, 40}, false, true, ui::Id("lobbyconfirmcancel"), alpha)) q.no();
 }
-
-static void CancelStrangers() { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
 
 /* Esc or CLOSE: the screen powers off, then the browser goes (LobbyEscape's work, after the animation). */
 static void PowerOff()
@@ -749,10 +766,7 @@ void DrawLobbies()
     DrawTermFilters(cx, top, filterW, contents);
     DrawTermList(cx + filterW + 24, top, cw - filterW - detailW - 48, bottom - top, contents);
     DrawTermDetail(cx + cw - detailW, top, detailW, bottom - top, contents);
-    if (g_lobbies.confirmStrangers)
-        DrawTermConfirm(X, Y, W, H, contents, "TURN ON PLAY WITH STRANGERS?", STRANGER_WARNING, TERM_WARN, TurnOnStrangers, CancelStrangers);
-    else if (g_lobbies.confirmRelays)
-        DrawTermConfirm(X, Y, W, H, contents, "TURN ON CO-OP OVER STEAM RELAYS?", RELAYS_QUESTION, TERM_LINE, TurnOnRelays, CancelRelays);
+    if (const TermQuestion* q = OpenQuestion()) DrawTermConfirm(X, Y, W, H, contents, *q);
     g_cv.Text("Up/Down select   Enter join   Q quick play   A allow   R refresh   J joinable only   F friends   D difficulty   H can't join   Esc close", cx, bottom + 16,
         T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::LEFT, 0, 12));
     g_cv.Text("INTERNAL NETWORK - TT_HD: ID_LOBBIES", cx + cw, bottom + 16, T(SZ_TINY, Alpha(TERM_FAINT, contents), ui::BODY, ui::RIGHT, 0, 12));

@@ -215,21 +215,32 @@ static int ApiBrowseLobby(HfMod* mod, uint32_t index, HfBrowseLobby* out)
     return 1;
 }
 
+/* The setting an ask turns on, as "browseask allow" names it (for the session, or co-op over Steam relays, which the
+ * launcher keeps); NULL for an ask that is not one. */
+static const char* BrowseSetting(uint32_t ask)
+{
+    switch (ask)
+    {
+    case HF_BROWSE_ALLOW_STRANGERS: return "strangers";
+    case HF_BROWSE_SHOW_EDITED_STATS: return "editedstats";
+    case HF_BROWSE_TURN_ON_RELAYS: return "relays";
+    default: return NULL;
+    }
+}
+
 /* SDK 16, browse_ask: a new list, a join of a listed lobby, Quick Play or a setting the browser offers, queued for the
  * backend. */
 static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
 {
     if (ask == HF_BROWSE_CLAIM || ask == HF_BROWSE_RELEASE) return BrowseClaim(mod, ask == HF_BROWSE_CLAIM);
     if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) return BrowseCamera(mod, ask == HF_BROWSE_SHOWN);
-    const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" :
-        ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS || ask == HF_BROWSE_TURN_ON_RELAYS ? "allow" : NULL;
+    const char* setting = BrowseSetting(ask);
+    const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" : setting ? "allow" : NULL;
     if (verb == NULL) return 0;
     if (ask == HF_BROWSE_JOIN && (lobbyId == NULL || !BrowseLobbyId(lobbyId))) return 0;
-    /* a setting (for the session, or co-op over Steam relays, which the launcher keeps): while a mod holds the browser,
-     * only that mod asks */
-    if ((ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS || ask == HF_BROWSE_TURN_ON_RELAYS) && !BrowseMay(mod)) return 0;
-    const char* what = ask == HF_BROWSE_JOIN ? lobbyId : ask == HF_BROWSE_ALLOW_STRANGERS ? "strangers" : ask == HF_BROWSE_SHOW_EDITED_STATS ? "editedstats" :
-        ask == HF_BROWSE_TURN_ON_RELAYS ? "relays" : "-";
+    /* a setting: while a mod holds the browser, only that mod asks */
+    if (setting && !BrowseMay(mod)) return 0;
+    const char* what = ask == HF_BROWSE_JOIN ? lobbyId : setting ? setting : "-";
     char line[128];
     snprintf(line, sizeof line, "browseask\t%s\t%s", verb, what);
     int queued = LiveQueue(line);
