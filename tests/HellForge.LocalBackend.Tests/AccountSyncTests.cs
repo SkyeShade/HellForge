@@ -37,10 +37,37 @@ static class AccountSyncTests
         ShipAwayFromPlanet(root, ids, check);
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
+        WarbondsOtherToken(paid, check);
     }
 
     // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
     // served, and a profile that earns its warbonds buys an owned premium warbond's token with them, never one not owned.
+    // A warbond the account owns through its other token, not the one priced in Super Credits: it is as owned. It keeps the
+    // price the client's BUY looks for (with none it reads WARBOND LOCKED), sells for Forge Credits, and that opens it.
+    static void WarbondsOtherToken(PaidContentSet paid, Action<bool, string> check)
+    {
+        using var store = ProfileStore.Open(null, "starter");
+        var exo = paid.Warbonds.Single(w => w.Id == 4228295283);
+        var ownedOther = exo.Tokens[1];
+        store.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = ownedOther, ["amount"] = 1, ["isDiscovered"] = true }]) { EarnWarbonds = true };
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, exo.Items[0].MixId, 1) > 0); // kept for when the warbond is open
+        var fixture = LocalBackend.LoadStartupFixtures()["/Progression/items"];
+        var catalogue = fixture.EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _))
+            .GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
+        var offered = store.Ownership.FilterCatalogueResponse(fixture).EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _))
+            .GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
+        check(offered[exo.Tokens[0]].GetProperty("buyPrice").GetArrayLength() == 1, "A warbond owned through its other token lost its Super Credits price.");
+        check(!Served(store).Contains(exo.Tokens[0]) && !Served(store).Contains(exo.Items[0].MixId), "A warbond owned through its other token was open before it was bought.");
+        var price = catalogue[exo.Tokens[0]].GetProperty("buyPrice").EnumerateArray().Single().GetProperty("amount").GetInt64();
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, price) > 0);
+        var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null);
+        using var body = JsonDocument.Parse("{\"mixId\":" + exo.Tokens[0] + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice +
+            ",\"amount\":" + price + "}]}");
+        var (status, reply, _) = purchases.Handle("/Progression/buy/v2", body.RootElement);
+        check(status == 200, "A warbond owned through its other token could not be bought: " + reply?.ToJsonString());
+        check(Served(store).Contains(exo.Tokens[0]) && Served(store).Contains(exo.Items[0].MixId), "A warbond owned through its other token did not open once bought.");
+    }
+
     static void ForgeCredits(PaidContentSet paid, Action<bool, string> check)
     {
         const uint Wallet = PaidContentSet.ForgeCreditsWallet;
