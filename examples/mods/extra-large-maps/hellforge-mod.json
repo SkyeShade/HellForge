@@ -3,7 +3,7 @@
   "id": "skyeshade.extra-large-maps",
   "name": "Extra Large Maps (prototype)",
   "version": "0.1.0",
-  "description": "A prototype of a ~16 km x 16 km map: difficulty 11 with Super Helldive's enemies and objectives on a map twenty times its radius, in a world of 16,384 m. For testing what the engine does with a map this size; expect long loads and empty land. Unlocked with Super Helldive: press Difficulty Up past it on the war table. Turn Hell Forge Difficulty off first: only one mod can add level 11.",
+  "description": "A prototype of a ~16 km x 16 km map: difficulty 11 with Hell Forge's enemies and objectives (two missions in one, eight optional and two major objectives, three times the outposts) on a map twenty times its radius, in a world of 16,384 m. For testing what the engine does with a map this size; expect long loads and empty land. Unlocked with Super Helldive: press Difficulty Up past it on the war table. Turn Hell Forge Difficulty off first: only one mod can add level 11.",
   "gameplay": true,
   "code": {
     "dll": "extra_large_maps.dll",
