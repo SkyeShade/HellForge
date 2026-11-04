@@ -454,7 +454,7 @@ static void MoveRelease(int slot)
     g_tiles[slot].tex[0] = g_tiles[slot].tex[1] = g_tiles[slot].band = 0; g_tiles[slot].bandPixels = NULL;
     int raised = NearRaiseCoarse(world, &g_tileHidden[slot]);
     g_tileHidden[slot].lowered = 0;
-    NearHideUnion("a tile released");
+    NearHideUnion(world, "a tile released");
     typedef void (*DestroyFn)(uint64_t world, uint64_t handle);
     DestroyFn destroy = (DestroyFn)NearApi(0x08, 0x1E0);
     if (destroy != NULL && t.handle != 0) destroy(world, t.handle);
@@ -559,7 +559,7 @@ static void MoveTileIn(uint64_t world)
     g_tiles[slot].cell[0] = g_move.cell[0]; g_tiles[slot].cell[1] = g_move.cell[1];
     g_tiles[slot].tex[0] = g_near.tex[0]; g_tiles[slot].tex[1] = g_near.tex[1];
     g_tiles[slot].band = g_matband.tex; g_tiles[slot].bandPixels = g_matband.pixels;
-    NearHideUnion("a tile built in mission");
+    NearHideUnion(world, "a tile built in mission");
     g_move.built++;
     Note("difficulty: moving tiles: the tile of cell (%d, %d) is in after %.1f s (%u frames): ground %s, centre %.2f m (coarse %.2f m); %d tiles live; craters held %lld updates",
         g_move.cell[0], g_move.cell[1], (double)(GetTickCount64() - g_move.started) / 1000.0, g_move.frames, ground.v != NULL ? "read" : "NOT read",

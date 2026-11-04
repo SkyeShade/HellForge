@@ -4011,12 +4011,100 @@ static void NearTilesClear(void)
 /* The coarse terrain's drawing under the live tiles: the edit copies the height-bounds quadtree to [[h+0x40]+8]
  * ({f32 min, f32 max, u32 child[4]}, root 0, child -1 = leaf; children 0 low column/low B, 1 high/low, 2 high/high, 3
  * low/high, split at the midpoints; B = H - 1 - row), which the render adopts as it is; its cull (exe 0x2F3AA0 ->
- * 0x2F34F0) drops a node whose box is NaN in every view. A node goes NaN when the live tiles' squares cover it whole:
- * one square, or on the ring's grid every cell it touches (adjacent tiles: the nodes across their shared border are in
- * neither square alone); a node no longer covered (a tile released) gets the bounds it had back. The whole tree is
- * walked on every change (some 5500 nodes). A later edit inside a square (a crater, a lowering) un-hides what it
- * touches (minss/maxss with NaN), so this runs after every edit the loader makes. */
-static struct { LONG level; uintptr_t nodes; uint32_t total; uint8_t* hidden; float* saved; int count; } g_hide = {.level = -1};
+ * 0x2F34F0, the box's 8 corners in clip space, one inside every plane) drops a node whose box is NaN in every view (an
+ * inverted box would not do: its corners still span both z extremes). A node goes NaN when the live tiles' squares cover
+ * it whole: one square, or on the ring's grid every cell it touches (adjacent tiles: the nodes across their shared
+ * border are in neither square alone); a node no longer covered (a tile released) gets the bounds it had back. The whole
+ * tree is walked on every change (some 5500 nodes).
+ * Every height edit ([api+8]+0x1D0 -> exe 0x1ADCD0, under the lock at world+0x230520 -> 0x2F63D0 -> 0x2F5370) sets the
+ * leaves it touches with minss/maxss against the old bounds (a NaN leaf gets the new values: un-hidden) and then each
+ * node on its path to its children's union, as maxss(maxss(maxss(maxss(-FLT_MAX, c0), c1), c2), c3) (0x2F5867..
+ * 0x2F592E): a NaN child 3 makes the parent NaN, and the parent's parent when it is a child 3 too; a NaN child 0..2 drops
+ * the children before it. Run s72l: cell (1, 0)'s lowering (columns 2305..2815) went through three nodes whose child 3
+ * was one of the drop tile's hidden nodes and NaN'd the root's child 1, the coarse terrain's whole south-east quarter
+ * (x > 0, y < 0), seen from the air as the sea plane where the coarse terrain should be. So after every edit of the
+ * coarse terrain (the loader's and the game's craters: NearBoundsDetour on 0x2F63D0, whose only caller is 0x1ADCD0, in
+ * the lock) NearBoundsFix puts the tree right: the hidden nodes NaN, every other node its children's union, a hidden
+ * node counted at its own bounds (the coarse heights there, as the far LODs draw its ancestors whole). */
+static struct { LONG level; uintptr_t nodes; uint32_t total; uint8_t* hidden; float* saved; int count; uint64_t handle; volatile LONG64 fixes, fixed; } g_hide = {.level = -1};
+typedef uint64_t (*NearBoundsFn)(uint64_t h, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9,
+    uint64_t a10, uint64_t a11);
+static NearBoundsFn g_nearBoundsOriginal;
+typedef void (*NearLockFn)(uint64_t lock);
+static NearLockFn g_nearTerrainLock[2]; /* the game's own: [exe+0x13F66B8] (0x1ADD06), [exe+0x13F66C0] (0x1ADE63) */
+
+/* Node k's subtree put right; out = its bounds as drawn when not hidden (a hidden node: its own). 0 when none are finite. */
+static int NearBoundsFix(uintptr_t nodes, uint32_t count, uint32_t k, int depth, float out[2], int* changed)
+{
+    if (k >= count || depth > 24) return 0;
+    uint8_t* node = (uint8_t*)(nodes + (uint64_t)k * 24);
+    uint32_t child[4]; float cur[2], box[2] = {0, 0};
+    memcpy(child, node + 8, 16); memcpy(cur, node, 8);
+    int have = 0;
+    if (child[0] == 0xFFFFFFFFu) { if (!isnan(cur[0]) && !isnan(cur[1])) { box[0] = cur[0]; box[1] = cur[1]; have = 1; } }
+    else
+        for (int q = 0; q < 4; q++)
+        {
+            float b[2];
+            if (!NearBoundsFix(nodes, count, child[q], depth + 1, b, changed)) continue;
+            if (!have) { box[0] = b[0]; box[1] = b[1]; have = 1; }
+            else { box[0] = fminf(box[0], b[0]); box[1] = fmaxf(box[1], b[1]); }
+        }
+    if (g_hide.hidden[k])
+    {
+        float* s = g_hide.saved + 2 * (size_t)k;
+        if (have && child[0] != 0xFFFFFFFFu) { s[0] = box[0]; s[1] = box[1]; } /* its children's union: the coarse heights now */
+        else if (have) { s[0] = fminf(s[0], box[0]); s[1] = fmaxf(s[1], box[1]); } /* a leaf an edit un-hid: what it had and the edit's */
+        if (!isnan(cur[0]) || !isnan(cur[1])) { *(volatile uint64_t*)node = 0x7FC000007FC00000ull; (*changed)++; }
+        if (isnan(s[0]) || isnan(s[1])) return 0;
+        out[0] = s[0]; out[1] = s[1];
+        return 1;
+    }
+    if (!have) return 0;
+    if (child[0] != 0xFFFFFFFFu && !(cur[0] == box[0] && cur[1] == box[1]))
+    {
+        uint64_t v; memcpy(&v, box, 8);
+        *(volatile uint64_t*)node = v; (*changed)++;
+    }
+    out[0] = box[0]; out[1] = box[1];
+    return 1;
+}
+
+/* The whole tree, when it is still the array NearHideUnion hid nodes in. Under the terrain lock. Returns the nodes written. */
+static int NearBoundsFixAll(uint64_t h)
+{
+    uintptr_t cow = 0, nodes = 0; uint32_t count = 0; float b[2]; int changed = 0;
+    if (g_hide.level != g_world.levels || g_hide.hidden == NULL || h == 0 || h != g_hide.handle || SafeRead(h + 0x40, &cow, 8) || cow == 0 ||
+        SafeRead(cow, &count, 4) || SafeRead(cow + 8, &nodes, 8) || nodes != g_hide.nodes || count != g_hide.total) return -1;
+    NearBoundsFix(nodes, count, 0, 0, b, &changed);
+    return changed;
+}
+
+/* After the game's bounds update of any terrain: the coarse terrain's tree put right when it hides nodes. */
+static uint64_t NearBoundsDetour(uint64_t h, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9,
+    uint64_t a10, uint64_t a11)
+{
+    uint64_t r = g_nearBoundsOriginal(h, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+    if (h != 0 && h == g_hide.handle && g_hide.level == g_world.levels && g_hide.count > 0)
+    {
+        int n = NearBoundsFixAll(h);
+        if (n >= 0) { InterlockedIncrement64(&g_hide.fixes); if (n > 0) InterlockedExchangeAdd64(&g_hide.fixed, n); }
+    }
+    return r;
+}
+
+static void NearBoundsInstall(void)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (g_nearBoundsOriginal != NULL) return;
+    if (!ApiCodeMatches(exe + 0x2F63D0u, "48 8B C4 55 41 54 48 8D 68 E8 48 81 EC 28 01 00 00") ||
+        !ApiCodeMatches(exe + 0x1ADCF6u, "4C 8D A9 20 05 23 00 48 8B D9 49 8B CD 41 8B F1 FF 15 AC 89 24 01") ||
+        !ApiCodeMatches(exe + 0x1ADE41u, "E8 8A 85 14 00 49 8B CD") || !ApiCodeMatches(exe + 0x1ADE63u, "48 FF 25 56 88 24 01"))
+    { Note("difficulty: near terrain: the terrain bounds update is not the reviewed code; an edit next to a hidden node can hide more of the coarse terrain"); return; }
+    if (SafeRead(exe + 0x13F66B8u, &g_nearTerrainLock[0], 8) || SafeRead(exe + 0x13F66C0u, &g_nearTerrainLock[1], 8) || g_nearTerrainLock[0] == NULL ||
+        g_nearTerrainLock[1] == NULL || LoaderHook("extra large maps' coarse bounds repair", exe + 0x2F63D0u, (void*)NearBoundsDetour, (void**)&g_nearBoundsOriginal))
+    { g_nearTerrainLock[0] = g_nearTerrainLock[1] = NULL; Note("difficulty: near terrain: the terrain bounds update could not be hooked; an edit next to a hidden node can hide more of the coarse terrain"); }
+}
 
 static int NearCovered(int nc0, int nc1, int nb0, int nb1)
 {
@@ -4046,28 +4134,35 @@ static int NearCovered(int nc0, int nc1, int nb0, int nb1)
     return 1;
 }
 
-static void NearHideUnion(const char* why)
+static void NearHideUnion(uint64_t world, const char* why)
 {
     uint64_t h = NearCoarseHandle();
     uintptr_t cow = 0, nodes = 0; uint32_t count = 0;
     if (h == 0 || SafeRead(h + 0x40, &cow, 8) || cow == 0 || SafeRead(cow, &count, 4) || SafeRead(cow + 8, &nodes, 8) || nodes == 0 || count == 0 || count > 1u << 20)
     { Note("difficulty: near terrain: the coarse terrain's bounds were not copied; it is still drawn under the tiles (%s)", why); return; }
+    /* the game's edits write the tree under this lock (0x1ADCD0) and run NearBoundsFix in it */
+    int locked = world != 0 && g_nearTerrainLock[0] != NULL && g_nearTerrainLock[1] != NULL;
+    if (locked) g_nearTerrainLock[0](world + 0x230520u);
     if (g_hide.level != g_world.levels || g_hide.nodes != nodes || g_hide.total != count)
     {
         if (g_hide.hidden != NULL) VirtualFree(g_hide.hidden, 0, MEM_RELEASE);
         if (g_hide.saved != NULL) VirtualFree(g_hide.saved, 0, MEM_RELEASE);
         if (g_hide.level == g_world.levels && g_hide.nodes != 0) Note("difficulty: near terrain: the coarse terrain's bounds moved (0x%llX -> 0x%llX); hidden again from scratch",
             (unsigned long long)g_hide.nodes, (unsigned long long)nodes);
+        g_hide.handle = 0; /* the detour leaves the tree alone while it is set up */
         g_hide.hidden = (uint8_t*)VirtualAlloc(NULL, count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         g_hide.saved = (float*)VirtualAlloc(NULL, (size_t)count * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         g_hide.level = g_world.levels; g_hide.nodes = nodes; g_hide.total = count; g_hide.count = 0;
-        if (g_hide.hidden == NULL || g_hide.saved == NULL) { g_hide.level = -1; return; }
+        if (g_hide.hidden == NULL || g_hide.saved == NULL) { g_hide.level = -1; if (locked) g_nearTerrainLock[1](world + 0x230520u); return; }
     }
+    g_hide.handle = h;
+    /* first the tree as it should be with the nodes hidden so far (an edit since may have NaN'd an ancestor), so a node
+     * hidden now saves real bounds */
+    int before = NearBoundsFixAll(h);
     const int W = 4096, H = 4096;
     struct { uint32_t node; int c0, c1, b0, b1; } stack[128];
     int top = 0, hid = 0, shown = 0;
     stack[top].node = 0; stack[top].c0 = 0; stack[top].c1 = W; stack[top].b0 = 0; stack[top].b1 = H; top++;
-    const float nan = __builtin_nanf("");
     while (top > 0)
     {
         top--;
@@ -4078,7 +4173,6 @@ static void NearHideUnion(const char* why)
         if (NearCovered(nc0, nc1, nb0, nb1))
         {
             if (!g_hide.hidden[k]) { memcpy(g_hide.saved + 2 * (size_t)k, node, 8); g_hide.hidden[k] = 1; g_hide.count++; hid++; }
-            memcpy(node, &nan, 4); memcpy(node + 4, &nan, 4);
             continue; /* the subtree goes with it */
         }
         if (g_hide.hidden[k]) { memcpy(node, g_hide.saved + 2 * (size_t)k, 8); g_hide.hidden[k] = 0; g_hide.count--; shown++; }
@@ -4093,8 +4187,11 @@ static void NearHideUnion(const char* why)
             top++;
         }
     }
-    Note("difficulty: near terrain: the coarse terrain under the %d live tile(s) hidden (%s): %d nodes hidden now (%d new, %d shown again)", NearTilesLive(), why,
-        g_hide.count, hid, shown);
+    int after = NearBoundsFixAll(h); /* the hidden nodes NaN, their ancestors their children's union */
+    if (locked) g_nearTerrainLock[1](world + 0x230520u);
+    Note("difficulty: near terrain: the coarse terrain under the %d live tile(s) hidden (%s): %d nodes hidden now (%d new, %d shown again); bounds put right: %d "
+        "nodes before, %d after%s; edits repaired since the level began: %lld (%lld nodes)", NearTilesLive(), why, g_hide.count, hid, shown, before, after,
+        locked ? "" : " (not under the game's terrain lock)", (long long)g_hide.fixes, (long long)g_hide.fixed);
 }
 
 
@@ -4684,7 +4781,7 @@ static int TerrainNearStep(uint64_t records, uint32_t end, uint32_t at, uint32_t
                 g_tiles[0].cell[0] = g_tiles[0].cell[1] = 0;
                 g_tiles[0].tex[0] = g_tiles[0].tex[1] = g_tiles[0].band = 0; g_tiles[0].bandPixels = NULL; /* g_near's and g_matband's */
             }
-            NearHideUnion("the drop tile");
+            NearHideUnion(world, "the drop tile");
             /* the eye's A/B: what was hidden for the drop tile */
             g_nearShown.level = g_world.levels; g_nearShown.tileRoot = NULL; g_nearShown.coarseShown = 0; g_nearShown.coarseCount = 0;
             g_nearShown.nodes = g_hide.nodes; g_nearShown.count = g_hide.total;
@@ -5035,6 +5132,7 @@ static void TerrainInstall(uintptr_t game)
     if (g_terrainNoise != NULL) return;
     ScatterOwnerInstall();
     MoveInstall(game);
+    NearBoundsInstall();
     if (!ApiCodeMatches(game + 0xF3A2E0u, "48 8B C4 48 89 58 18 48 89 70 20 F3 0F 11 48 10 57 48 81 EC"))
     {
         Note("difficulty: terrain: the generator's samplers are not the reviewed ones; extra large maps keep the level's own terrain");
