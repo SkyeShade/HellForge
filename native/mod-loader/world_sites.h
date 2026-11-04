@@ -10,7 +10,9 @@ typedef struct WorldSite { uint32_t rva; uint8_t length, which; } WorldSite;
 #define WORLD_NEG_HALF 3u /* -1024.0 (0x23C83C0): added by hand, see below */
 #define WORLD_NEG_FULL 4u /* -2048.0 (0x23C83D0): added by hand, see below */
 static const uint32_t kWorldConstants[5] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u, 0x23C83D0u};
-/* 209 instructions */
+/* 206 instructions. Left out by hand: the structured maps' site template (0xFB9610) reads 1024.0 at 0xFB9886 and
+ * 1 / 2048 at 0xFB96FE / 0xFB970A in template space (points 0..2048 about 1024, scaled by the rect's width / 2048); the
+ * world is not in them (difficulty_world.c's city frame lays the template at vanilla size on a larger world). */
 static const WorldSite kWorldSites[] = {
     {0x1CFC47u, 8, WORLD_HALF},
     {0x1CFC4Fu, 8, WORLD_INV},
@@ -147,9 +149,6 @@ static const WorldSite kWorldSites[] = {
     {0xFA60DAu, 8, WORLD_FULL},
     {0xFA6334u, 8, WORLD_FULL},
     {0xFA6F13u, 9, WORLD_FULL},
-    {0xFB96FEu, 8, WORLD_INV},
-    {0xFB970Au, 9, WORLD_INV},
-    {0xFB9886u, 9, WORLD_HALF},
     {0xFC6D88u, 8, WORLD_HALF},
     {0xFC7172u, 8, WORLD_HALF},
     {0xFC717Au, 8, WORLD_HALF},

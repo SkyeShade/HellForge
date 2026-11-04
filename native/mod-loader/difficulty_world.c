@@ -72,6 +72,15 @@ static struct
     volatile LONG levels, switches;
 } g_world = {1, 1.0f};
 
+/* The structured maps' city frame on a larger world: the city is a vanilla city's layout scaled by CITY_FRAME_K, at the
+ * world's centre (see WorldSiteTemplate below). The zone template's square (0xFB8DD0: E = W x S+0x50 / s at
+ * 0xFB8EF4..0xFB8F22) follows it: x CITY_FRAME_K / map_scale, which is vanilla's 2048 x S+0x50 / s scaled by the frame
+ * (level 11's S+0x50 is vanilla's x map_scale / world scale, difficulty.c's distance row). 1 on a vanilla world. */
+#define CITY_FRAME_K 1.0f
+#define CITY_VANILLA_KEEP 681.12f  /* a vanilla level's keep radius (difficulty_maps.c's radii at map_scale 1: disk + 1) */
+#define CITY_VANILLA_FADE 620.12f  /* and its fade (border + 57): S+0x54 x W / 2 */
+static volatile float* g_cityZone;
+
 /* The scale level 11's map needs: the smallest power of two whose world holds its disk (difficulty_maps.c's radii). */
 static uint32_t WorldScaleFor(float mapScale)
 {
@@ -107,6 +116,7 @@ static void WorldWrite(float scale)
         value *= scale;
         ApiWrite(g_world.game + kWorldImmediates[i].rva + kWorldImmediates[i].at, &value, 4);
     }
+    if (g_cityZone != NULL) *g_cityZone = scale > 1.0f ? CITY_FRAME_K / g_difficulty.mapScale : 1.0f;
     g_world.current = scale;
     InterlockedIncrement(&g_world.switches);
 }
@@ -1707,6 +1717,214 @@ static void TerrainNearWater(uint64_t record);
 static void TerrainStampsRecord(uint64_t record, uint32_t op);
 static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen);
 static void TerrainDiagAfter(uint64_t records, uint64_t index, uint32_t at, uint32_t op);
+/* difficulty_world_towns.c: towns at a vanilla town's shape, x3 */
+static void TownsArm(uint64_t records, uint32_t at, uint64_t context, uintptr_t gen);
+static void TownsAfter(uint64_t records, uint32_t at, uint64_t index, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen);
+static void TownsForget(uint64_t pass);
+
+/* The structured maps' route sites on a larger world (the city frame). GenerateRoutes (op 0x07, 0xF35FF0) on map type 2
+ * makes its sites with the template (0xFB9610) or the grid (0xC129B0, when Z+0x678 == 1) over the site rect (S+0x64 /
+ * S+0x68), keeps those within S+0x6C of the world's centre (0xF361F6..0xF36264), keeps 0.2 of those past S+0x54 x W / 2
+ * (0xF36292..0xF3630D) and builds the route cells from them (0xFD03E0). On the 16 km world the template, laid over the
+ * whole rect, either spanned the map (a vanilla city blown up 12x) or, with its template-space 1024 retargeted to the
+ * world's half (an old world_sites.h entry), sat ~10 km off centre, outside the keep disk: 0 sites, 0 route cells, and
+ * LinkLocationsToRouteCells wrote through a null route cell (0xC186AA; runs s73q-s73t). Each maker now gets a vanilla
+ * rect (CITY_FRAME_K x vanilla's keep radius about the centre) and its sites vanilla's two disk tests. Each call notes
+ * the sites' count, box and how many the level's keep disk holds. */
+typedef uint64_t (*SiteTemplateFn)(uint64_t, float, uint64_t, uint64_t, uint64_t, uint64_t, uint32_t*);
+typedef uint64_t (*SiteGridFn)(float, int32_t, float, int32_t, float, uint64_t, float, uint64_t, uint64_t, uint32_t*);
+static SiteTemplateFn g_siteTemplate;
+static SiteGridFn g_siteGrid;
+static void SiteNote(const char* maker, uint64_t points, uint32_t* count, const char* how)
+{
+    uint32_t n = 0;
+    if (count == NULL || SafeRead((uint64_t)(uintptr_t)count, &n, 4)) return;
+    uint32_t W = 0; float keep = 0.0f, lo = 0.0f, hi = 0.0f;
+    SafeRead(g_worldLevel + 0x2D20 + 0x2C, &W, 4); SafeRead(g_worldLevel + 0x2D20 + 0x6C, &keep, 4);
+    SafeRead(g_worldLevel + 0x2D20 + 0x64, &lo, 4); SafeRead(g_worldLevel + 0x2D20 + 0x68, &hi, 4);
+    float box[4] = {1e30f, 1e30f, -1e30f, -1e30f}, c = 0.5f * (float)W;
+    uint32_t inside = 0;
+    for (uint32_t i = 0; i < n && i < 65536; i++)
+    {
+        float p[2];
+        if (SafeRead(points + 8ull * i, p, 8)) break;
+        if (p[0] < box[0]) box[0] = p[0]; if (p[1] < box[1]) box[1] = p[1]; if (p[0] > box[2]) box[2] = p[0]; if (p[1] > box[3]) box[3] = p[1];
+        if ((p[0] - c) * (p[0] - c) + (p[1] - c) * (p[1] - c) <= keep * keep) inside++;
+    }
+    Note("difficulty: route sites (%s, %s): %u sites, box (%.0f, %.0f)..(%.0f, %.0f), %u within %.0f m of (%.0f, %.0f); the rect %.0f..%.0f, world %u",
+        maker, how, n, (double)box[0], (double)box[1], (double)box[2], (double)box[3], inside, (double)keep, (double)c, (double)c, (double)lo, (double)hi, W);
+}
+/* The city's sites in the frame: kept within CITY_FRAME_K x vanilla's keep radius of the centre, and between the fade and
+ * it with chance 0.2 (GenerateRoutes' own two tests, 0xF361F6..0xF3630D, in vanilla units; there the random keep is
+ * the level's PCG, here a hash of the site, the same on every peer). The game's tests at the larger radii then keep all. */
+static void CityFrameFilter(uint64_t points, uint32_t* count, float cx, float cy)
+{
+    uint32_t n = 0, kept = 0;
+    if (SafeRead((uint64_t)(uintptr_t)count, &n, 4) || n > 65536) return;
+    const float keep = CITY_FRAME_K * CITY_VANILLA_KEEP, fade = CITY_FRAME_K * CITY_VANILLA_FADE;
+    for (uint32_t i = 0; i < n; i++)
+    {
+        float p[2]; uint32_t bits[2];
+        if (SafeRead(points + 8ull * i, p, 8)) return;
+        float d2 = (p[0] - cx) * (p[0] - cx) + (p[1] - cy) * (p[1] - cy);
+        if (d2 > keep * keep) continue;
+        memcpy(bits, p, 8);
+        uint32_t hash = (bits[0] * 0x9E3779B1u + bits[1]) * 0x85EBCA6Bu;
+        hash ^= hash >> 13; hash *= 0xC2B2AE35u; hash ^= hash >> 16;
+        if (d2 > fade * fade && hash > (uint32_t)(0.2 * 4294967295.0)) continue;
+        memcpy((void*)(uintptr_t)(points + 8ull * kept), p, 8);
+        kept++;
+    }
+    *count = kept;
+}
+static uint64_t WorldSiteTemplate(uint64_t arena, float scale, uint64_t kind, uint64_t region, uint64_t box, uint64_t rng, uint32_t* count)
+{
+    if (g_world.current <= 1.0f) return g_siteTemplate(arena, scale, kind, region, box, rng, count);
+    /* the template in template space (0..2048 about 1024, x rect width / 2048): a vanilla rect about the given one's centre */
+    float given[4] = {0, 0, 0, 0};
+    SafeRead(box, given, 16);
+    const float cx = 0.5f * (given[0] + given[2]), cy = 0.5f * (given[1] + given[3]), r = CITY_FRAME_K * CITY_VANILLA_KEEP;
+    float frame[4] = {cx - r, cy - r, cx + r, cy + r};
+    uint64_t points = g_siteTemplate(arena, scale, kind, region, (uint64_t)(uintptr_t)frame, rng, count);
+    char how[96];
+    snprintf(how, sizeof how, "scale %.3f, kind %u, frame (%.0f, %.0f)..(%.0f, %.0f)", (double)scale, (unsigned)(kind & 0xFF), (double)frame[0], (double)frame[1], (double)frame[2], (double)frame[3]);
+    SiteNote("template 0xFB9610", points, count, how);
+    CityFrameFilter(points, count, cx, cy);
+    SiteNote("template 0xFB9610 in the frame's disk", points, count, how);
+    return points;
+}
+static uint64_t WorldSiteGrid(float a, int32_t b, float c, int32_t d, float e, uint64_t arena, float spacing, uint64_t box, uint64_t rng, uint32_t* count)
+{
+    if (g_world.current <= 1.0f) return g_siteGrid(a, b, c, d, e, arena, spacing, box, rng, count);
+    /* the grid at the structured type's own spacing (Z+0x67C, Z = [S+0xB0]: not the larger maps' cell factor) over the frame */
+    float given[4] = {0, 0, 0, 0}, own = 0.0f;
+    uint64_t Z = 0;
+    SafeRead(box, given, 16);
+    if (!SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) && Z != 0 && !SafeRead(Z + 0x67C, &own, 4) && own > 1.0f && own < 1000.0f) spacing = own * CITY_FRAME_K;
+    const float cx = 0.5f * (given[0] + given[2]), cy = 0.5f * (given[1] + given[3]), r = CITY_FRAME_K * CITY_VANILLA_KEEP;
+    float frame[4] = {cx - r, cy - r, cx + r, cy + r};
+    uint64_t points = g_siteGrid(a, b, c, d, e, arena, spacing, (uint64_t)(uintptr_t)frame, rng, count);
+    char how[128];
+    snprintf(how, sizeof how, "spacing %.1f, %g %d %g %d %g, frame (%.0f, %.0f)..(%.0f, %.0f)", (double)spacing, (double)a, b, (double)c, d, (double)e,
+        (double)frame[0], (double)frame[1], (double)frame[2], (double)frame[3]);
+    SiteNote("grid 0xC129B0", points, count, how);
+    CityFrameFilter(points, count, cx, cy);
+    SiteNote("grid 0xC129B0 in the frame's disk", points, count, how);
+    return points;
+}
+
+/* RevoronoiNatureRoutes (op 0xA3, 0xF691E0; structured maps only) rebuilds the route cells and their subregions: its
+ * rebuild 0xFCFA10 zeroes all 1024 subregions (0xFCFA41) and fills the new count, each with its route cell at +0x18.
+ * Each main-Voronoi corner's subregion index (u16, G+0x953B30), painted from the old cells by PaintVoronoiCornerByRouteCell
+ * (op 0x79, inline in the dispatcher) before 0xA3, is left as it was; the builder repaints it only at 0xC1F966. Until
+ * then GenerateObjectiveLocations, SpreadLocations and LinkLocationsToRouteCells (op 0x7B, 0xC1DB3F) read old indices,
+ * and one at or past the new count names a zeroed subregion: 0x7B writes through its null route cell at 0xC186AA (run
+ * s73q, an XL mega city). Op 0xA3 leaves the corners and the zone grid (op 0x25's) alone, so the level's own first 0x79
+ * record, run again right after 0xA3, paints the corners from the new cells, as its later 0x79 does. */
+static void WorldRepaintCorners(uint64_t records, uint32_t at, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
+{
+    uint32_t paint = 0xFFFFFFFFu, op = 0;
+    for (uint32_t i = 0; i < at; i++)
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x79) { paint = i; break; }
+    static uint16_t corner[5849]; /* the array's room: G+0x953B30 .. G+0x9568E2 */
+    uint32_t corners = 0, subs = 0, stale[2] = {0, 0};
+    if (SafeRead(gen + 0x11A7090u, &corners, 4) || SafeRead(gen + 0x11A71C4u, &subs, 4)) return;
+    if (corners > 5849) corners = 5849;
+    for (int pass = 0; pass < 2; pass++)
+    {
+        if (pass == 1)
+        {
+            if (paint == 0xFFFFFFFFu) break;
+            volatile uint32_t one = 0;
+            uint8_t phase = 0;
+            g_worldDispatch(records + (uint64_t)paint * 0x19B0u, context, (uint64_t)(uintptr_t)&one, 1, (uint64_t)(uintptr_t)&phase, 0, g, h);
+        }
+        if (SafeRead(gen + 0x953B30u, corner, corners * 2u)) break;
+        for (uint32_t c = 0; c < corners; c++) if (corner[c] >= subs) stale[pass]++;
+    }
+    /* research (the structured maps' types): 0xA3's type table ([record + 8], indexed by a subregion's +0xC; 0xFD0ED0) */
+    {
+        uint64_t table = 0;
+        static uint32_t used[256];
+        memset(used, 0, sizeof used);
+        for (uint32_t i = 0; i < subs && i < 1024; i++)
+        {
+            int32_t type = -1;
+            if (!SafeRead(gen + 0x92F328u + 0x20ull * i + 0xC, &type, 4) && type >= 0 && type < 256) used[type]++;
+        }
+        if (!SafeRead(records + (uint64_t)at * 0x19B0u + 8, &table, 8) && table != 0)
+        {
+            char text[1024]; int n = 0;
+            for (uint32_t t = 0; t < 256 && n < (int)sizeof text - 48; t++)
+            {
+                uint64_t type = 0; uint32_t flags = 0; float size = 0.0f;
+                if (SafeRead(table + 8ull * t, &type, 8)) break;
+                if (type == 0) { if (used[t]) n += snprintf(text + n, sizeof text - n, " %u:null/%u", t, used[t]); if (t >= 64) break; continue; }
+                SafeRead(type + 0x170, &flags, 4); SafeRead(type + 0x18C, &size, 4);
+                n += snprintf(text + n, sizeof text - n, " %u:%X/%.0f/%u", t, flags & 0xFF, (double)size, used[t]);
+            }
+            Note("difficulty: extra large maps: structured types (index:flags+0x170/size+0x18C/cells):%s", text);
+        }
+    }
+    Note("difficulty: extra large maps: after RevoronoiNatureRoutes (record %u): %u subregions, %u of %u corners named one past them; %s",
+        at, subs, stale[0], corners, paint == 0xFFFFFFFFu ? "no PaintVoronoiCornerByRouteCell record to repaint with" : "repainted");
+    if (paint != 0xFFFFFFFFu && stale[1] != 0) Note("difficulty: extra large maps: %u corners still past the subregions after the repaint", stale[1]);
+}
+
+/* Research (the structured maps' zones on a larger world): after ForceStructuredZoneLayout (op 0xB9), the level's type
+ * list (ids G+0x18008, count G+0x11A7080) with each type's flags (+0x170: bit 1 city, bits 0..1 structured) and cell size
+ * (+0x18C) from op 0x2B's type table ([record + 0x50]), the subregions per type index (+0xC) and the zone ids (+0). */
+static void WorldZoneProbe(uint64_t records, uint32_t end, uintptr_t gen)
+{
+    uint64_t table = 0;
+    for (uint32_t i = 0; i < end && i < 512 && table == 0; i++)
+    {
+        uint32_t op = 0;
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x2B) SafeRead(records + (uint64_t)i * 0x19B0u + 0x50, &table, 8);
+    }
+    uint32_t types = 0, subs = 0;
+    SafeRead(gen + 0x11A7080u, &types, 4); SafeRead(gen + 0x11A71C4u, &subs, 4);
+    static uint32_t perType[256], perZone[256];
+    memset(perType, 0, sizeof perType); memset(perZone, 0, sizeof perZone);
+    for (uint32_t i = 0; i < subs && i < 1024; i++)
+    {
+        int32_t t = -1; uint32_t z = 0xFFFFFFFFu;
+        SafeRead(gen + 0x92F328u + 0x20ull * i, &z, 4); SafeRead(gen + 0x92F328u + 0x20ull * i + 0xC, &t, 4);
+        if (t >= 0 && t < 256) perType[t]++;
+        if (z < 256) perZone[z]++;
+    }
+    char text[1536]; int n = 0;
+    for (uint32_t k = 0; k < types && k < 64 && n < (int)sizeof text - 64; k++)
+    {
+        uint32_t id = 0, flags = 0; uint64_t type = 0; float size = 0.0f;
+        SafeRead(gen + 0x18008u + 4ull * k, &id, 4);
+        if (table != 0 && !SafeRead(table + 8ull * id, &type, 8) && type != 0) { SafeRead(type + 0x170, &flags, 4); SafeRead(type + 0x18C, &size, 4); }
+        n += snprintf(text + n, sizeof text - n, " [%u] id %u %X/%.0f cells %u;", k, id, flags & 0xFF, (double)size, id < 256 ? perType[id] : 0);
+    }
+    Note("difficulty: extra large maps: zone probe: %u types:%s", types, text);
+    n = 0;
+    for (uint32_t z = 0; z < 256 && n < (int)sizeof text - 24; z++) if (perZone[z]) n += snprintf(text + n, sizeof text - n, " %u:%u", z, perZone[z]);
+    Note("difficulty: extra large maps: zone probe: %u subregions by zone id (+0):%s", subs, text);
+    /* the level's zone list (Z+0x238, 0x44 each, to an id of 0; Z = [S+0xB0]) and each entry's type in 0xB9's type table
+     * (the record's +0x38, indexed by entry +4) */
+    uint64_t Z = 0, types38 = 0;
+    for (uint32_t i = 0; i < end && i < 512 && types38 == 0; i++)
+    {
+        uint32_t op = 0;
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0xB9) SafeRead(records + (uint64_t)i * 0x19B0u + 0x38, &types38, 8);
+    }
+    if (SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) || Z == 0) return;
+    uint8_t bit = 0; SafeRead(Z + 0x684, &bit, 1);
+    n = 0;
+    for (uint32_t k = 0; k < 16 && n < (int)sizeof text - 80; k++)
+    {
+        uint32_t e[5] = {0}; uint64_t type = 0; uint32_t flags = 0; float size = 0.0f;
+        if (SafeRead(Z + 0x238 + 0x44ull * k, e, 20) || e[0] == 0) break;
+        if (types38 != 0 && e[1] < 256 && !SafeRead(types38 + 8ull * e[1], &type, 8) && type != 0) { SafeRead(type + 0x170, &flags, 4); SafeRead(type + 0x18C, &size, 4); }
+        n += snprintf(text + n, sizeof text - n, " {id %u type %u flags %X size %.0f +10 %u}", e[0], e[1], flags & 0xFF, (double)size, e[4]);
+    }
+    Note("difficulty: extra large maps: zone probe: Z+0x684 %u, zone list:%s", bit, text);
+}
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
@@ -1859,8 +2077,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && g_world.current == 8.0f && op == 0x3F) TerrainNearPads(records + (uint64_t)at * 0x19B0u, b); /* the level's pads (its first 0x3F) */
     /* the stamp rings (difficulty_world_terrain.c) rerun 0x26 / 0x4E on tiles from their records as they were before */
     if (watch && g_world.current == 8.0f && (op == 0x26 || op == 0x4E)) TerrainStampsRecord(records + (uint64_t)at * 0x19B0u, op);
+    if (watch && op == 0x2B) TownsArm(records, at, b, block);
+    if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
     if (matPatch) TerrainMatPatch(0);
+    if (watch && op == 0x2B) TownsAfter(records, at, index, b, g, h, block); /* before TerrainStamps: it saves below[] */
     if (watch && g_world.current == 8.0f && op == 0x2B)
     {
         uint32_t now = at;
@@ -1904,6 +2125,12 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             if (!SafeRead(index, &pat, 4) && !SafeRead(records + (uint64_t)pat * 0x19B0u, &pop, 4) && pop != 0x96) WorldScatterNote();
     }
     if (!watch) return r;
+    if (op == 0xB9) WorldZoneProbe(records, (uint32_t)d, block);
+    if (op == 0xA3)
+    {
+        uint32_t now = at;
+        if (!SafeRead(index, &now, 4) && now != at) WorldRepaintCorners(records, at, b, g, h, block);
+    }
     if (op == 0x2B)
     {
         OverlapFlush();
@@ -1939,7 +2166,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     SafeRead(block + 0x11A7108, &after, 4);
     uint32_t route[3] = {0, 0, 0}; /* vertices of 975, cells of 1024, edges of 1621 */
     SafeRead(block + 0x11A71B4, &route[0], 4); SafeRead(block + 0x11A71C0, &route[1], 4); SafeRead(block + 0x11A71CC, &route[2], 4);
-    if (after != before || ms > 100.0 || route[0] > 975 || route[1] > 1024 || route[2] > 1621 || op == 0x3 || op == 0xB3)
+    if (after != before || ms > 100.0 || route[0] > 975 || route[1] > 1024 || route[2] > 1621 || op == 0x3 || op == 0xB3 ||
+        op == 0x07 || op == 0x12 || op == 0x75 || op == 0x79 || op == 0xB9 || op == 0xA3)
         Note("difficulty: extra large maps: op 0x%X (record %u) at %.0fx: locations %u -> %u, route vertices %u, cells %u, edges %u, %.1f ms",
             op, at, (double)g_world.current, before, after, route[0], route[1], route[2], ms);
     return r;
@@ -2590,6 +2818,7 @@ static void MissionListsFull(char* out, size_t size)
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
 static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
 static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
+static const char* InstallTowns(uintptr_t game); /* difficulty_world_towns.c */
 static const char* InstallWorld(DifficultyInstall* d)
 {
     uint32_t scale = WorldScaleFor(g_difficulty.mapScale);
@@ -2726,6 +2955,33 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (samples != NULL) Note("difficulty: extra large maps: %s", samples);
     const char* alarms = InstallAlarmGuard(game);
     if (alarms != NULL) Note("difficulty: extra large maps: %s", alarms);
+    const char* towns = InstallTowns(game);
+    if (ApiCodeMatches(game + 0xFB8F08u, "41 0F 28 C4 F3 0F 59 C3"))
+    {
+        /* movaps xmm0, xmm12; mulss xmm0, xmm3; mulss xmm0, [rip+factor]; jmp 0xFB8F10 (factor at +0x20) */
+        uint8_t* zone = AllocateNearGame(game, 0x40);
+        if (zone != NULL)
+        {
+            static const uint8_t code[21] = {0x41, 0x0F, 0x28, 0xC4, 0xF3, 0x0F, 0x59, 0xC3, 0xF3, 0x0F, 0x59, 0x05, 0, 0, 0, 0, 0xE9, 0, 0, 0, 0};
+            memcpy(zone, code, sizeof code);
+            int32_t r32 = (int32_t)((zone + 0x20) - (zone + 16)); memcpy(zone + 12, &r32, 4);
+            r32 = (int32_t)(game + 0xFB8F10u - (uintptr_t)(zone + 21)); memcpy(zone + 17, &r32, 4);
+            float one = 1.0f; memcpy(zone + 0x20, &one, 4);
+            DWORD old;
+            VirtualProtect(zone, 0x40, PAGE_EXECUTE_READWRITE, &old);
+            FlushInstructionCache(GetCurrentProcess(), zone, 0x40);
+            uint8_t patch[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+            r32 = DifficultyJumpRel(game + 0xFB8F08u, (uintptr_t)zone); memcpy(patch + 1, &r32, 4);
+            if (ApiWrite(game + 0xFB8F08u, patch, 8) == 0) g_cityZone = (volatile float*)(zone + 0x20);
+            else Note("difficulty: extra large maps: the city zone template's square could not be written; city maps keep the stretched one");
+        }
+    }
+    else Note("difficulty: extra large maps: the city zone template's square is not the reviewed one; city maps keep the stretched one");
+    if (ApiCodeMatches(game + 0xFB9610u, "48 8B C4 53 56 57 48 81 EC D0 00 00 00"))
+        LoaderHook("extra large maps' city frame (template)", game + 0xFB9610u, (void*)WorldSiteTemplate, (void**)&g_siteTemplate);
+    if (ApiCodeMatches(game + 0xC129B0u, "48 8B C4 44 89 48 20 F3 0F 11 50 18 53 55 56 57"))
+        LoaderHook("extra large maps' city frame (grid)", game + 0xC129B0u, (void*)WorldSiteGrid, (void**)&g_siteGrid);
+    if (towns != NULL) Note("difficulty: extra large maps: %s", towns);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);

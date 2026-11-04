@@ -612,11 +612,16 @@ static const char* AllocateTable(DifficultyInstall* d)
     d->distance = d->bands + (DIF_VANILLA + 1) * 8;
     if (SafeRead(game + DIF_DISTANCE, d->distance, DIF_VANILLA * 12)) return "the mission distance factors are unreadable";
     memcpy(d->distance + DIF_VANILLA * 12, d->distance + (DIF_VANILLA - 1) * 12, 12);
-    for (int k = 0; g_difficulty.mapScale > 1.0f && k < 3; k++) /* the structured maps' playable radius, per sub-kind */
+    /* The structured maps' playable radius, per sub-kind: on map type 2 it replaces the row's +0xF8 (0xF417C8), a
+     * fraction of half the world like the row's radii, so it scales the same way (map_scale over the world's growth).
+     * By map_scale alone an extra large city map's radius came out 8 x too large (0.85 x 20: about 53 km on a 16 km
+     * world; scratch cities/cities.md). */
+    const float distanceScale = g_difficulty.mapScale / (float)WorldScaleFor(g_difficulty.mapScale);
+    for (int k = 0; g_difficulty.mapScale > 1.0f && k < 3; k++)
     {
         float factor;
         memcpy(&factor, d->distance + DIF_VANILLA * 12 + 4 * k, 4);
-        factor *= g_difficulty.mapScale;
+        factor *= distanceScale;
         memcpy(d->distance + DIF_VANILLA * 12 + 4 * k, &factor, 4);
     }
     return NULL;
