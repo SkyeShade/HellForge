@@ -163,6 +163,11 @@ typedef struct Weapon
 typedef struct ModText { uint32_t id; char* text; } ModText;
 static ModText g_texts[REG_MAX_WEAPONS * 4 + REG_STRATAGEM_TEXTS + 2];
 static int g_textCount;
+/* The texts the engine is answered from: the first g_textsServed. A live change's set-ups add theirs while it is staged
+ * (g_textsHeld): they are served once it is made (TextsPublish), and a refused change's are never served. A text is never
+ * freed: the engine and ApiContent's callers may keep its pointer, as they keep the game's own. */
+static volatile LONG g_textsServed;
+static int g_textsHeld;
 static int g_textHooked;
 static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
 /* The network types RegisterNetworkTypes added, as the configuration numbered them, with the vanilla type each copies
@@ -853,11 +858,19 @@ static const char* ModTextOf(uint32_t id)
     return NULL;
 }
 
-/* The engine's text function with the mods' text first. */
+/* The engine's text function with the mods' text first (the served ones: not a live change's still staged). */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)
 {
-    for (int i = g_textCount - 1; i >= 0; i--) if (g_texts[i].id == id) return g_texts[i].text; /* the newest: a live change's new version */
+    for (int i = (int)g_textsServed - 1; i >= 0; i--) if (g_texts[i].id == id) return g_texts[i].text; /* the newest: a live change's new version */
     return g_engineText != NULL ? g_engineText(id, a, b, c) : "";
+}
+
+/* The texts added so far are served (a live change was made, or none is staged). */
+static void TextsPublish(void)
+{
+    g_textsHeld = 0;
+    MemoryBarrier(); /* every entry whole before TextDetour reads it */
+    InterlockedExchange(&g_textsServed, g_textCount);
 }
 
 /* Points the engine API's text slot at TextDetour once the API is set up (retried until then). */
@@ -891,5 +904,6 @@ static uint32_t AddText(const char* text, const char* key, uint32_t salt)
     g_texts[g_textCount] = (ModText){id, copy};
     MemoryBarrier(); /* the game thread looks texts up while a live change adds them (TextDetour) */
     g_textCount++;
+    if (!g_textsHeld) TextsPublish();
     return id;
 }

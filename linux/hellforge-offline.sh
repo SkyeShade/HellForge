@@ -40,54 +40,14 @@ if [ "$unshare" = unshare ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unpri
   exit 1
 fi
 
-# Wine opens every socket of a Windows program in the prefix's wineserver, so the network a program gets is the
-# wineserver's: a wineserver of this prefix still running outside the namespace would give the programs started inside
-# the internet (a VM test of 2026-10-21 reached 1.1.1.1 that way). One ends a few seconds after its last program: wait
-# for that, else refuse. (Wine 10 keeps the server's socket in $XDG_RUNTIME_DIR/wine, older Wine and Proton in /tmp.)
-# Proton always uses $STEAM_COMPAT_DATA_PATH/pfx, whatever WINEPREFIX says.
+# A wineserver of the session's prefix still running outside the namespace would give the programs started inside the
+# internet: waited for, then refused (hf-wineserver.sh). Proton always uses $STEAM_COMPAT_DATA_PATH/pfx, whatever
+# WINEPREFIX says.
 if [ -n "${PROTON:-}" ] && [ -n "${STEAM_COMPAT_DATA_PATH:-}" ]; then prefix="$STEAM_COMPAT_DATA_PATH/pfx"
 else prefix="${WINEPREFIX:-${STEAM_COMPAT_DATA_PATH:+$STEAM_COMPAT_DATA_PATH/pfx}}"; fi
 prefix="${prefix:-$HOME/.wine}"
-if [ -d "$prefix" ]; then
-  server="server-$(stat -L -c %D "$prefix")-$(printf %x "$(stat -L -c %i "$prefix")")"
-  wineserver_running() {
-    local s status
-    for s in "${XDG_RUNTIME_DIR:-/run/user/$uid}/wine/$server/socket" "/tmp/.wine-$uid/$server/socket"; do
-      if "$cli" steam-bridge check "$s"; then
-        return 0
-      else
-        status=$?
-      fi
-      case "$status" in
-        1) ;;
-        *)
-          echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace: steam-bridge check exited with code $status." >&2
-          return 3
-          ;;
-      esac
-    done
-    return 1
-  }
-  wineserver_state=0
-  for _ in $(seq 1 20); do
-    wineserver_state=0
-    wineserver_running || wineserver_state=$?
-    [ "$wineserver_state" = 1 ] || break
-    sleep 1
-  done
-  case "$wineserver_state" in
-    0)
-      echo "A Windows program is still running in the Wine prefix $prefix outside HellForge's network namespace;" >&2
-      echo "programs started inside would share its network. Close it (or give HellForge a prefix of its own: docs/linux.md)." >&2
-      exit 1
-      ;;
-    1) ;;
-    *)
-      echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace; refusing to start." >&2
-      exit 1
-      ;;
-  esac
-fi
+. "$here/hf-wineserver.sh"
+hf_wineserver_wait "$cli" "$prefix" "$uid" || exit 1
 
 # Everything below runs as root of a new user + network namespace. Default: nothing but loopback and a dead end.
 # HELLFORGE_STEAM_UDP=1: the namespace is the same, but pasta (userspace networking, no root) is attached to it from
