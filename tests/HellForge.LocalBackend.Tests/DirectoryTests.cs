@@ -95,6 +95,9 @@ static class DirectoryTests
     public static async Task Run(string root, Action<bool, string> check)
     {
         QuickPlay(check);
+        BrowseOrder(check);
+        BrowseText(check);
+        FriendsOnly(root, check);
         Versions(check);
         // A left-out lobby's log line: its host, the reason, the mods in the way (at most BlockersPerLine, then a count).
         var blockers = Enumerable.Range(0, 10).Select(i => new JoinBlocker(new ModSetEntry($"test.m{i}", $"M{i}", "1", new string('a', 64), 1, ModClass.Code, i),
@@ -125,7 +128,12 @@ static class DirectoryTests
         host.Lobby.FromLocal(Create("c1", HostId, PublicSearch));
         var created = host.Next("lobby.result", check);
         var (lobbyId, connection) = (created.Text(3), created.Text(4));
+        var listedTimes = 0;
+        host.Directory.Listed += () => listedTimes++;
         host.Directory.Publish(now);
+        host.Directory.Publish(now.AddMinutes(1));
+        check(listedTimes == 1 && host.Sync.FriendsOnlyMods.Count == 0,
+            "The lobby's first listing is told once (MultiplayerHost's stranger note), and a content mod reaches strangers too.");
         var listing = listings.All.Single();
         // HellForge 0.3 can join it too (no shared bundled mod): it searches by 0.3's protocol, this one's is in hf.protocol
         check(listing.Host == HostId && listing.Data[DirectoryKeys.Protocol] == LobbyService.LegacyProtocol && listing.Data[DirectoryKeys.Feature] == LobbyService.Protocol &&
@@ -406,7 +414,7 @@ static class DirectoryTests
         var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
         var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
         check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
-            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "Its host's unchecked mods download only from a Steam friend.", _, "Code 1: manual", "-"],
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "Its host's unchecked mods download only from a Steam friend.", _, "Code 1", "-"],
             "The game gets the list: " + string.Join(" | ", first));
         var second = await Game("browseask\trefresh\t-");
         check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",
@@ -481,6 +489,90 @@ static class DirectoryTests
         check(BrowseApi.Best(all.Where(l => !l.Friend))?.LobbyId == "stranger-ready-3", "Then the same mods before a download, and the fuller lobby.");
         check(BrowseApi.Best(all.Where(l => l.LobbyId.Contains("locked") || l.LobbyId.Contains("full") || l.LobbyId.Contains("blocked"))) == null,
             "Locked, full and unjoinable lobbies are never picked.");
+    }
+
+    // The shared mods a host sends to Steam friends alone (ModSync.FriendsOnlyMods, MultiplayerHost's note when its lobby
+    // is listed): code and raw data not verified, while it shares; content and bundled mods reach anyone.
+    static void FriendsOnly(string root, Action<bool, string> check)
+    {
+        static ModSetEntry Mod(string id, ModClass type, CoopTier tier = CoopTier.Shared) => new(id, id, "1", new string('a', 64), 1, type, 0) { Tier = tier };
+        var set = new ModSet("set", [Mod("t.code", ModClass.Code), Mod("t.raw", ModClass.Raw), Mod("t.content", ModClass.Content), Mod("t.bundled", ModClass.Bundled),
+            Mod("t.own", ModClass.Code, CoopTier.PerPlayer), Mod("t.checked", ModClass.Code)]);
+        var folder = Path.Combine(root, "friends-only");
+        var mods = Directory.CreateDirectory(Path.Combine(folder, "mods")).FullName;
+        var run = Directory.CreateDirectory(Path.Combine(folder, "run", "backend")).FullName;
+        var sync = new ModSync(new InMemoryNetwork().Join(HostId), new ModSyncPaths(mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))),
+            set, _ => "Player", _ => { }, (id, _) => id == "t.checked");
+        check(sync.FriendsOnlyMods.Select(m => m.Id).SequenceEqual(["t.code", "t.raw"]), "Unverified shared code and raw data go to friends only: " +
+            string.Join(", ", sync.FriendsOnlyMods.Select(m => m.Id)));
+        ModSettings.SetShare(mods, false);
+        check(sync.FriendsOnlyMods.Count == 0, "A host who does not share sends nothing to anyone: no friends-only note.");
+    }
+
+    // The browser's order (BrowseApi.Rank): joinable lobbies first, a friend's before a stranger's, then ones a setting lets
+    // in, then full or locked ones, then those with mods in the way; and what most of those need (BrowseApi.Needed).
+    static void BrowseOrder(Action<bool, string> check)
+    {
+        static BrowseLobby Lobby(string id, bool friend, int members, JoinCheck join, bool locked = false) =>
+            new(id, "c", 1, friend, "directory", members, 4, locked, new Dictionary<string, string>(), new JsonObject(), join);
+        static ModSetEntry Mod(string id, string name, string version, string? url = null) =>
+            new(id, name, version, new string('a', 64), 1000, ModClass.Code, 0) { Url = url };
+        static JoinCheck Out(params ModSetEntry[] mods) =>
+            new(false, ModSync.FriendsOnlyWhy, null, [.. mods.Select(m => new JoinBlocker(m, SyncAction.Manual, "stranger code, not verified"))]);
+        var ready = new JoinCheck(true, "", null, []);
+        var strangersOff = new JoinCheck(false, DirectoryService.StrangersOff, null, []) { Fix = JoinCheck.FixStrangers };
+        var megapack = Mod("a.megapack", "Megapack", "0.2.0", "https://example.org/megapack");
+        var all = new[]
+        {
+            Lobby("out-1", false, 1, Out(megapack, Mod("b.transmog", "Transmog", "0.1.70"))), Lobby("full", false, 4, ready),
+            Lobby("strangers-off", false, 1, strangersOff), Lobby("stranger-ready", false, 2, ready),
+            Lobby("out-2", false, 1, Out(Mod("a.megapack", "Megapack", "0.1.0"), Mod("c.scope", "Scope", "2.19.8"))),
+            Lobby("locked", true, 1, ready, locked: true), Lobby("friend-ready", true, 1, ready),
+            Lobby("out-3", false, 1, Out(megapack, megapack))
+        };
+        var order = all.OrderBy(BrowseApi.Rank).Select(l => l.LobbyId).ToList();
+        check(order.SequenceEqual(["friend-ready", "stranger-ready", "strangers-off", "full", "locked", "out-1", "out-2", "out-3"]),
+            "The browser lists joinable lobbies first, out-of-reach ones last: " + string.Join(", ", order));
+        var needed = BrowseApi.Needed(all).OfType<JsonObject>().ToList();
+        check(needed.Count == 3 && (string?)needed[0]["id"] == "a.megapack" && (int?)needed[0]["lobbies"] == 3 &&
+            needed[0]["versions"]!.AsArray().Select(v => (string?)v).SequenceEqual(["0.1.0", "0.2.0"]) && (string?)needed[0]["url"] == "https://example.org/megapack" &&
+            (string?)needed[1]["name"] == "Scope" && (int?)needed[1]["lobbies"] == 1 && (string?)needed[2]["name"] == "Transmog" && needed[1]["url"] == null,
+            "The mods that keep the most lobbies out come first, a lobby counted once each, with their versions: " + new JsonArray([.. needed.Select(n => (JsonNode?)n.DeepClone())]).ToJsonString());
+        check(BrowseApi.Needed([Lobby("r", false, 1, ready), Lobby("f", false, 4, ready)]).Count == 0, "Lobbies with nothing in the way need nothing.");
+    }
+
+    // What the browser shows in its few bytes: a lobby's mods fitted whole with a count of the rest (LiveBrowse.Fit), the
+    // ones in the way first, and the header's words when no lobby can be joined (LiveBrowse.Message).
+    static void BrowseText(Action<bool, string> check)
+    {
+        check(LiveBrowse.Fit(["Aa", "Bb", "Cc"], 100) == "Aa; Bb; Cc" && LiveBrowse.Fit([], 10) == "", "A list that fits is whole.");
+        // all three take 16 bytes; in 15: "Aaaa" (4) with room for "; +2 more" (9), but not "Aaaa; Bbbb" (10) with "; +1 more"
+        check(LiveBrowse.Fit(["Aaaa", "Bbbb", "Cccc"], 15) == "Aaaa; +2 more" && LiveBrowse.Fit(["Aaaa", "Bbbb", "Cccc"], 16) == "Aaaa; Bbbb; Cccc" && LiveBrowse.Fit(["Aa", "Bb", "Cc"], 10) == "Aa; Bb; Cc" &&
+            LiveBrowse.Fit(["A long name"], 5) == "+1 more", "A list that does not fit ends in how many more, never half a name.");
+        var names = Enumerable.Range(1, 30).Select(i => $"SEAF Captain \u2014 Terminal {i} 1.0.{i}").ToList();
+        var fitted = LiveBrowse.Fit(names, LiveBrowse.ModListBytes);
+        var items = fitted.Split("; ");
+        check(System.Text.Encoding.UTF8.GetByteCount(fitted) <= LiveBrowse.ModListBytes && fitted.Length <= 250 && items[^1] == $"+{30 - (items.Length - 1)} more" &&
+            items[..^1].SequenceEqual(names.Take(items.Length - 1)), "A long list fits the loader's 256 bytes and LiveEdit's 250 characters: " + fitted);
+        JsonObject Mod(string name, string action) => new() { ["id"] = name.ToLowerInvariant(), ["name"] = name, ["version"] = "1", ["tier"] = "shared", ["action"] = action };
+        var mods = new JsonArray(Mod("Dl", "download"), Mod("Have", "have"), Mod("Code", "manual"), Mod("Tr", "trust"), Mod("Raw", "manual"));
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["mods"] = mods.DeepClone() }) is { ModList: "Code 1; Raw 1" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "trust", ["mods"] = new JsonArray(Mod("Dl", "download"), Mod("Have", "have"), Mod("Tr", "trust")) })
+                is { ModList: "Dl 1: download; Tr 1: trust" },
+            "A lobby out of reach lists only the mods in the way, by name; others say what a join does to each.");
+        static JsonObject List(params JsonObject[] lobbies) => new() { ["lobbies"] = new JsonArray(lobbies), ["needed"] = new JsonArray(
+            new JsonObject { ["name"] = "Megapack" }, new JsonObject { ["name"] = "Transmog" }) };
+        var none = LiveBrowse.Message(List(new JsonObject { ["joinable"] = false }, new JsonObject { ["joinable"] = false }), 0);
+        check(none == "No lobby you can join right now. Most need: Megapack, Transmog. Or host a Public lobby yourself.", "No lobby can be joined: " + none);
+        check(LiveBrowse.Message(List(new JsonObject { ["joinable"] = true }, new JsonObject { ["joinable"] = false }), 0) == "" &&
+            LiveBrowse.Message(List(new JsonObject { ["joinable"] = false, ["fix"] = "strangers" }), 0) == "" && LiveBrowse.Message(List(), 0) == "" &&
+            LiveBrowse.Message(List(new JsonObject { ["joinable"] = true }), 3) == "(3 more lobbies are not listed.)",
+            "With a lobby to join, a setting that lets one in, or none listed, the browser's own words stay.");
+        var many = new JsonObject { ["lobbies"] = new JsonArray(new JsonObject { ["joinable"] = false }),
+            ["needed"] = new JsonArray([.. Enumerable.Range(1, 5).Select(i => (JsonNode?)new JsonObject { ["name"] = new string('M', 30) + i })]) };
+        var cut = LiveBrowse.Message(many, 0);
+        check(System.Text.Encoding.UTF8.GetByteCount(cut) <= LiveBrowse.MessageBytes && cut.Contains(" more.") && cut.EndsWith("Or host a Public lobby yourself.", StringComparison.Ordinal),
+            "The header's message fits its 192 bytes: " + cut);
     }
 
     static async Task Hostile(MemoryLobbyDirectory listings, Node host, Node guest, Action<bool, string> check)

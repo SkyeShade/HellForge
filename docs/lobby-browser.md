@@ -122,7 +122,7 @@ It returns 0 when no backend is connected. The struct is still filled: state `NO
 |---|---|---|
 | `HF_BROWSE_NONE` | nothing asked yet, or the backend isn't connected yet | a connecting state ("Connecting to the ship's network...") |
 | `HF_BROWSE_SEARCHING` | a search is running; the lobbies are still the last list's | the last list, with a searching indicator |
-| `HF_BROWSE_READY` | the list is in | the list. `message` may say "(N more lobbies are not listed.)" |
+| `HF_BROWSE_READY` | the list is in | the list. `message` may say "(N more lobbies are not listed.)", or, when lobbies are listed but none can be joined and no setting would let one in, that none can, which mods most of them need, and that the player can host |
 | `HF_BROWSE_UNAVAILABLE` | this session has no multiplayer | `message`, with no list |
 | `HF_BROWSE_INVITED` | your join (or Quick Play) worked: the game has the lobby's invitation | close the browser; the player accepts the invitation in game. After Quick Play, `message` names the host |
 | `HF_BROWSE_FAILED` | the search or the join failed | `message` (why), and keep the list |
@@ -148,11 +148,16 @@ sizeof lobby` first. Copy the whole list whenever `version` changes; the backend
 | `reason` | why it can't be joined (UTF-8), or "" |
 | `download_bytes` | what a join downloads first (`HF_LOBBY_DOWNLOAD`) |
 | `mods` | how many shared mods the host runs |
-| `mod_list` | the host's shared mods that a join would change, each with what happens to it: `"Tanks 2.0: download; Guns 1.1: trust"` (UTF-8), or "" |
+| `mod_list` | the host's shared mods that a join would change, each with what happens to it: `"Tanks 2.0: download; Guns 1.1: trust"` (UTF-8), or "". The ones in the way come first. A lobby that can't be joined (`UNJOINABLE`, `BLOCKED`) lists only those, by name and version: `"Guns 1.1; Tanks 2.0"`. Names are never cut: when not all fit, the last item is `"+N more"` |
 | `fix` | the player's setting that would let it in, below |
 
 Text fields are cut to fit on a whole UTF-8 character. Use `HF_LOBBY_FLAG_JOINABLE` to enable a join button, and
 don't work joinability out from `verdict` yourself.
+
+The list comes in this order: lobbies that can be joined now (a friend's first), then ones a `fix` would let in, then
+full or locked ones, then the ones that can't be joined. The placeholder hides that last group while any other lobby
+is shown (CAN'T JOIN, or H, shows it), names each row by what keeps it out ("Friends only", "Host must update",
+"Needs mods") and gives the whole `reason` in the selected lobby's details.
 
 | `verdict` | Joinable | Meaning | The placeholder says |
 |---|---|---|---|
@@ -160,13 +165,14 @@ don't work joinability out from `verdict` yourself.
 | `HF_LOBBY_DOWNLOAD` | yes | joins after downloading the host's shared mods (`download_bytes`), through the MOD SYNC prompt | Downloads 12.4 MB |
 | `HF_LOBBY_TRUST` | yes | a mod needs the player's trust first, in the MOD SYNC prompt | Needs your trust |
 | `HF_LOBBY_UNKNOWN` | yes | a friend's lobby heard through Steam presence; its mods are known only when joining | A friend's lobby: mods known on joining |
-| `HF_LOBBY_UNJOINABLE` | no | this machine's mods can't join it; `reason` says why | Can't join: `reason` |
-| `HF_LOBBY_BLOCKED` | no | the host runs a mod on the player's blocklist | `reason`, or "Runs a mod you blocked" |
+| `HF_LOBBY_UNJOINABLE` | no | this machine's mods can't join it; `reason` says why | Can't join: `reason` (the row: a short form, as above) |
+| `HF_LOBBY_BLOCKED` | no | the host runs a mod on the player's blocklist | `reason`, or "Runs a mod you blocked" (the row: Blocked mod) |
 | `HF_LOBBY_FULL` | no | 4 of 4 | Full |
 | `HF_LOBBY_LOCKED` | no | the host locked it | Locked |
 
 The placeholder colours these green (ready), amber (download, trust), red (can't join, blocked) and dim (full, locked,
-unknown).
+unknown). In the list, a lobby no setting lets in (can't join or blocked, no `fix`, not a friend's) is dim too: it may
+be most of them, and it is not an error.
 
 | `fix` | The setting | What your browser does |
 |---|---|---|

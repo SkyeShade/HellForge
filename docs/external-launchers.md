@@ -246,8 +246,16 @@ asking sooner returns the last list. 200 with:
               "joinable": false, "verdict": "unjoinable", "reason": "It needs mods installed by hand.",
               "downloadBytes": 0,
               "mods": [{"id": "author.mod", "name": "Mod", "version": "1.0", "tier": "shared", "class": "code",
-                        "action": "manual", "why": "stranger code, not verified", "url": "https://..."}]}]}
+                        "action": "manual", "why": "stranger code, not verified", "url": "https://..."}]}],
+ "needed": [{"id": "author.mod", "name": "Mod", "lobbies": 1, "versions": ["1.0"], "url": "https://..."}]}
 ```
+
+- `lobbies` come in this order: those that can be joined now (a friend's first), then ones a `fix` would let in, then
+  full or locked ones, then the ones that can't be joined. Within each, the directory's order.
+- `needed` lists the mods that keep the most lobbies out, at most 5, most first: each one a listed lobby needs
+  installed by hand (`"action": "manual"`: a stranger's unchecked mod, or a host who doesn't share), with how many
+  lobbies need it, the versions they run, and the author's address when one gave it. It tells a player what to install
+  to get into the most lobbies.
 
 - `available` is false, with a `reason` and an empty list, when the session has no multiplayer.
 - `source` is `directory` for a listed lobby, or `friend` for one heard only from a Steam friend. A friend's lobby has

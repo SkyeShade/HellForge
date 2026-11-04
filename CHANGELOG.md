@@ -23,6 +23,14 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Changed
 
+- **The lobby browser shows what you can join first.** Lobbies you can join are at the top, and lobbies no setting can
+  let you into are hidden while there are others; CAN'T JOIN (or H) shows them. Each row says in a word or two what
+  keeps you out ("Friends only", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
+  list every mod in the way that fits, and say how many more there are instead of cutting names off. When no lobby
+  can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
+- Hosting with mods HellForge hasn't verified, a note in game says strangers can't join your lobby and which mods
+  keep them out: those download only to your Steam friends. The lobby browser API lists the mods that keep the most
+  lobbies out (`needed`) and gives lobbies you can join first.
 - After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
   "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
 - Sessions that ended in a crash keep their logs past the newest ten, the five newest of them, so a crash report can
