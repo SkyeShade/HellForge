@@ -179,6 +179,7 @@ be most of them, and it is not an error.
 | `HF_LOBBY_FIX_NONE` | none | nothing |
 | `HF_LOBBY_FIX_STRANGERS` | Play with strangers is off | offer to turn it on with `HF_BROWSE_ALLOW_STRANGERS`, **only after showing the warning below and getting a clear yes** |
 | `HF_LOBBY_FIX_EDITED_STATS` | lobbies with host-enforced stat changes are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
+| `HF_LOBBY_FIX_RELAYS` | Linux: co-op over Steam relays is off, so no join can reach any host | offer `HF_BROWSE_TURN_ON_RELAYS` before a join or Quick Play. Say what it opens: UDP to Valve's Steam relays only, kept on for later sessions. If it can't open now (`FAILED` with why), the next session starts with it |
 
 A lobby with a `fix` still has its `verdict` and `reason`. The fix is a way in, offered next to them. A stranger's lobby
 running code or raw-data mods HellForge hasn't verified has no fix in an unsandboxed session: it is joined by trusting
@@ -196,6 +197,7 @@ malformed ask). On 0, tell the player ("The session's backend is not connected")
 | `HF_BROWSE_QUICK` | NULL | Quick Play: a fresh search, then a join of the best joinable lobby. A friend's goes first, then the fewest changes (same mods, then the smallest download, then a friend's unknown, then trust), then the fullest. `INVITED` with the host's name, or `FAILED` when nothing can be joined |
 | `HF_BROWSE_ALLOW_STRANGERS` | NULL | turns Play with strangers on for this session only, then searches again. Nothing is saved: the launcher's switch stays the player's. While a mod holds the browser, only that mod can ask |
 | `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies with host-enforced stat changes for this session only, and searches again. Same rules as above |
+| `HF_BROWSE_TURN_ON_RELAYS` | NULL | Linux: HellForge's launcher opens co-op over Steam relays in the running session and saves it on, then searches again (`SEARCHING` with "Turning on co-op over Steam relays..." first; up to a minute). `FAILED` with why when it can't. Only the owner can ask while a mod holds the browser |
 | `HF_BROWSE_SHOWN` | NULL | your browser shows: the terminal's camera stays on the screen. This machine only |
 | `HF_BROWSE_HIDDEN` | NULL | your browser went: the camera glides back. This machine only |
 | `HF_BROWSE_CLAIM` | NULL | your mod draws the browser (see [Setting up](#setting-up)) |

@@ -180,12 +180,12 @@ if [ -n "$missing" ]; then
 fi
 
 # Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. Warn here;
-# hellforge-offline.sh refuses before it makes the namespace when either is missing.
+# hellforge-offline.sh then starts the session without it (HELLFORGE_STEAM_UDP_PROBLEM says why).
 if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
   missing=""
   for program in pasta python3; do command -v "$program" >/dev/null || missing="$missing $program"; done
   if [ -n "$missing" ]; then
-    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. Co-op over Steam relays cannot start without them." >&2
+    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. This session plays without co-op over Steam relays: lobbies are found, but none can be joined." >&2
     if [ "$steamos" = 1 ]; then
       echo "SteamOS 3.x is not expected to ship pasta (passt) or python3, and a package installed after 'steamos-readonly disable' is lost on an update. Co-op over Steam relays is not available on a stock image." >&2
     elif command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2

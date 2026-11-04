@@ -23,6 +23,12 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Changed
 
+- **Linux: co-op over Steam relays is on by default.** Without it a Linux session finds lobbies but every join times
+  out. It now starts on for everyone (an earlier "off" that was only the old default is not kept), and turning it off
+  in Settings > Multiplayer is still your choice. While it is off, or could not open (no `pasta` or `python3`: the
+  session now starts without co-op instead of refusing), the lobby browser says so on each lobby and asks before a
+  join; yes turns it on in the running game, through the launcher, and keeps it on for later sessions. Your own Public
+  lobby is not listed while nobody could join it.
 - **Public lobbies open up: you decide which mods you trust.** With your game sandboxed, a stranger's lobby running mods
   that run code or carry unchecked data is no longer out of reach: MOD SYNC asks you to TRUST each one, after a warning
   of what the sandbox doesn't stop. A mod you trust is stamped with its content hash and downloads without asking from
