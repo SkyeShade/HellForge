@@ -259,6 +259,8 @@ sealed partial class PlaySession(PlayOptions options)
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
         RecoverStandIns();
         ThrowIfStopRequested();
+        LearnAccountUnderWine();
+        ThrowIfStopRequested();
         StageMods(profileDirectory);
         ThrowIfStopRequested();
         if (OperatingSystem.IsLinux())
@@ -677,6 +679,26 @@ sealed partial class PlaySession(PlayOptions options)
             if (exit != 0) throw new SessionFailure("Steam ownership was not confirmed: " + error.Trim());
         }
         if (SteamOwnershipCheck.Problem(evidence, started) is { } problem) throw new SessionFailure("Steam ownership was not confirmed: " + problem + ".");
+    }
+
+    // mods-stage follows the synced account (premium mods, the warbonds' locked art), and under Wine this process has it only
+    // from the launcher's fresh probe or a probe of its own: without it every warbond looks unowned, whatever the backend
+    // serves later. So a session the launcher gave no account asks Steam here, first. The ownership check then has the
+    // account to find its record with, or asks again itself; a probe that fails here is left to that check to report.
+    void LearnAccountUnderWine()
+    {
+        if (!LinuxNetworkBlock.UnderWine || SteamAccount.Current() != null) return;
+        var privateAccount = Path.Combine(install.Temp, "ownership", Guid.NewGuid().ToString("N") + ".account.json");
+        try
+        {
+            SteamOwnershipCheck.RunProbe(Path.Combine(app, "steamprobe", "HellForge.SteamProbe.exe"), Path.Combine(copy, "bin", CloudName),
+                Path.Combine(install.Temp, "ownership"), Path.Combine(run, "account-probe.json"), TimeSpan.FromSeconds(15), privateAccount);
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            Say("Steam account: not known before the mods were staged (" + error.Message + ").");
+        }
+        finally { AdoptSessionAccount(privateAccount); }
     }
 
     // The account from this session's own ownership probe: read and delete the private handoff, then put its low 32 bits
