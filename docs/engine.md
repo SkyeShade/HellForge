@@ -47,8 +47,8 @@ generating it again would undo those changes. [multiplayer.md](multiplayer.md) s
 
 ## The package and its version
 
-The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.41). HellForge's own version,
-`Version` in the same file, is separate (currently 0.3.0-beta).
+The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.42). HellForge's own version,
+`Version` in the same file, is separate (currently 0.4.0-beta).
 
 Besides the folders in the table, the package holds `engine.json` and the licences (`LICENSE`, `LICENSE-EXCEPTION`).
 `engine.json` lists the engine version, the game build, the commit and every file's SHA-256. `sdk-shims/build.json`

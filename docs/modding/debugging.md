@@ -69,7 +69,8 @@ The loader does not catch a mod's crash, so the game ends. Then:
 3. Narrow it down: run your mod alone, then with the others, and turn off one change at a time.
 
 HELLDIVERS 2 also crashes as it quits (`helldivers2.exe+0x626296` at the end of a session). That crash is the game's
-own and has nothing to do with your mod.
+own and has nothing to do with your mod. The same address during a mission is a different matter: treat it as a real
+crash.
 
 ## Testing with friends
 
