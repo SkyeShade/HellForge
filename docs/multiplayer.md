@@ -617,7 +617,14 @@ lists again. Nothing is saved: any mod in the game can send the ask, so the laun
 player's, and the next session uses them again. Only the game's pipe can ask that, not the HTTP API. Every ask ends in a
 state that is not `searching`: a search that fails or times out, or a list the game refuses, is answered `failed` with
 the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's lobby running
-unverified code or raw mods has no fix in an unsandboxed session: the sandbox cannot change once a session runs. A squad is at most 4 although the
+unverified code or raw mods has no fix in an unsandboxed session: the sandbox cannot change once a session runs.
+On Linux with co-op over Steam relays off (`Multiplayer/CoopRelays.cs`; [linux.md](linux.md#co-op-on-linux-opening-udp)),
+no join could reach a host: every lobby that could otherwise be joined, or that a setting lets in, has the fix `relays`
+(`HF_LOBBY_FIX_RELAYS`, "Co-op relays off"), the list's `coopRelays` says `{"on": false, "why": ...}`, Quick Play answers
+409 `HELLFORGE_COOP_RELAYS_OFF`, and this machine's Public lobby is not listed. The editor asks before any JOIN or QUICK
+PLAY while it is off ("TURN ON CO-OP OVER STEAM RELAYS", Y or N); `browseask allow relays` (`HF_BROWSE_TURN_ON_RELAYS`)
+has the launcher open it in the running session and save it for later ones (`CoopRelaysSwitch`), then lists again and
+carries on with the join. Unlike the other fixes it is the player's saved launcher setting: the question is that choice. A squad is at most 4 although the
 game's lobby has 8 PlayFab places: a listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full
 (`DirectoryService.SquadSize`, also for older HellForge versions' listings, which count to 8). Each browse logs its
 counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per lobby it

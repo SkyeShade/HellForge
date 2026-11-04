@@ -37,9 +37,9 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 
   On other systems, install the same packages with your package manager.
 
-  `passt` (which provides the `pasta` command) and `python3` are needed only for co-op over Steam relays, the optional
-  Settings switch below. `hellforge-linux.sh` warns when `HELLFORGE_STEAM_UDP=1` and either is missing, and the native
-  launcher refuses a co-op session before it starts and prints this install command:
+  `passt` (which provides the `pasta` command) and `python3` are needed only for co-op over Steam relays (on by
+  default, see below). Without them a session still starts, without co-op: `hellforge-linux.sh` warns when
+  `HELLFORGE_STEAM_UDP=1` and either is missing, and the native launcher says so in its log with this install command:
 
   | Package manager | Common distributions | Command for co-op only |
   |---|---|---|
@@ -394,7 +394,7 @@ which SteamOS is not expected to have) and the account-sync helper; neither is n
 | `ip` (iproute2) | loopback, the veth adapter and the `prohibit` routes | Expected: `iproute2` is in Arch's base set, and the Steam Machine ownership run passed through the namespace. |
 | `unshare`, `flock` (util-linux) | the user and network namespace, and the bridge's locks | Expected, for the same reasons. |
 | `pgrep` (procps-ng) | waits for the live-war fetch and the mod tools | Expected, for the same reasons. |
-| `pasta` (passt), `python3` | co-op over Steam relays, only with the Settings switch on | Expected missing: neither is in Arch's base set. A solo session does not need them. |
+| `pasta` (passt), `python3` | co-op over Steam relays (on by default) | Expected missing: neither is in Arch's base set. A solo session does not need them; without them a session plays without co-op. |
 
 The Steam Machine run's `find` and `ownership` steps passed, so at least that image had the required programs and
 unprivileged user namespaces. It does not prove that a fresh Deck image is the same, or that the tester had not
@@ -905,15 +905,36 @@ native agent then compiles the enabled source mods before the namespace, where a
 denied. (ziglang.org:443)"). The Mods page's **Install mod tools** installs the same native Zig directly; the wrapper
 fetches it before a session too.
 
-### Co-op on Linux: opening UDP (optional)
+### Co-op on Linux: opening UDP
 
 **Experimental.** The game starts and runs with this, and the network check below passes. The restricted version below joined Windows players' games and played a full mission (reported on issue 22 by two testers, one of them as the fourth player in a lobby of Windows players). Please report what you see, good or bad, with `backend/multiplayer.log` from the session.
 
 Steam's networking, which co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP, so the
-default namespace (no route at all) cannot carry it. In the native launcher, turn on Settings > Multiplayer >
-**Co-op over Steam relays (UDP to Valve's relays only)** and press PLAY. It is off by default. The launcher sets
-`HELLFORGE_STEAM_UDP=1` for that session's wrapper only, not for the Steam ownership check. For the wrapper directly or
-an external launcher, `HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` does the same.
+default namespace (no route at all) cannot carry it. The native launcher's Settings > Multiplayer > **Co-op over Steam
+relays (UDP to Valve's relays only)** opens it, and it is on by default since the 0.4.0 beta (saved as `coopRelays` in
+`launcher-settings.json`; the `steamUdp` key that launchers before wrote, `false` for everyone who never chose, is not
+read, so every installation starts with it on once). The launcher and `HellForge.Cli play` set `HELLFORGE_STEAM_UDP=1`
+for that session's wrapper only, not for the Steam ownership check. Running the wrapper directly,
+`HELLFORGE_STEAM_UDP=1 bash linux/hellforge-linux.sh` does the same; without it the wrapper starts without co-op.
+
+Without it, lobbies are still found (the lobby directory goes through the Steam client), but no join could reach a host.
+The backend knows (`HELLFORGE_LINUX_NETNS=1` and `HELLFORGE_STEAM_UDP` in its environment): the multiplayer log says so
+first, the lobby browser lists every lobby with the fix "Co-op relays off", Quick Play says why it joins nothing, this
+machine's Public lobby is not listed, and a join the game starts itself (an invitation, a friend's game) gets a notice.
+The in-game lobby browser asks before a join, and **yes turns it on in the running session**:
+
+- The backend writes `coop-relays-request.json` in its run folder (`<run>/backend`). The launcher, outside the
+  namespace, sees it, saves the switch on for later sessions, and runs `app/linux/hf-coop-relays.sh`. Its answer goes
+  to `coop-relays-answer.json`, and the browser lists again.
+- `hellforge-offline.sh` leaves a keeper process in the user namespace that owns the session's network namespace and
+  writes its pid and start time to `temp/linux-netns-keeper` (`HELLFORGE_NETNS_KEEPER`). `hf-coop-relays.sh` enters
+  that namespace as this PC's user (`nsenter -U -n --preserve-credentials`), sets the relay rules first, removes the
+  dead end (the veth adapter and the prohibit routes), attaches pasta, and runs the same self-test as a session's start.
+  Anything that fails puts the dead end back. The kernel checks pasta's new route with a lookup that the policy's last
+  rule refuses, so while pasta sets it, rules that refuse UDP and ICMP stand in for that rule. pasta ends when the
+  keeper does, a few seconds after the session.
+- If it cannot open (no pasta, no relay list, a session started without HellForge's launcher), the browser says why;
+  the switch is saved, so STOP, then PLAY, and the next session starts with it.
 
 With it on, `hellforge-offline.sh` attaches `pasta` (package `passt`) to the same namespace from outside (running the
 game under `pasta -- command` gave it its own pid, mount, ipc and hostname namespaces and it quit during start), which
@@ -924,10 +945,11 @@ itself when the session ends. Two policy rules then close it again: `ip rule add
 connection with the same WSAEACCES, so the session's network probe passes as before, and UDP is allowed only to Valve's
 relays, address and port range each, from the list Valve publishes for the game (`ISteamApps/GetSDRConfig/v1`, app
 553850), fetched at launch while this PC still has its network (the last one is kept in
-`~/.cache/hellforge/sdr-relays.txt` for a launch without a network; with neither, it does not start). Every other UDP
-destination, name lookups included, is refused, and the self-test refuses to start if one works. It needs `python3` for
-the list; without `pasta` or `python3`, the launcher refuses before the session starts and the wrapper warns, with the
-package-manager commands in [What you need](#what-you-need). Co-op through Steam's relays should still work; a direct
+`~/.cache/hellforge/sdr-relays.txt` for a launch without a network). Every other UDP destination, name lookups
+included, is refused, and the self-test refuses to start if one works. It needs `python3` for the list. Without `pasta`,
+`python3` or a relay list, or when pasta does not bring the network up, the session starts without co-op
+(`HELLFORGE_STEAM_UDP=0` and the reason in `HELLFORGE_STEAM_UDP_PROBLEM`, which the backend and the browser repeat); the
+launcher and the wrapper say what to install, with the package-manager commands in [What you need](#what-you-need). Co-op through Steam's relays should still work; a direct
 peer-to-peer path between two players is not allowed and Steam falls back to a relay. Checked in the namespace: UDP to a
 relay address and port goes out, the same address on another port, 1.1.1.1 and 8.8.8.8 are refused, TCP refused,
 loopback fine. A solo session's packet capture (about 5 minutes) showed only backend UDP to Valve relays and nothing

@@ -140,17 +140,20 @@ To change them for good, use `settings`. It takes the same options as `play` (`-
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamUdp": false, "steamBridge": true, "playWithStrangers": true,
+ "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true, "playWithStrangers": true,
  "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
 session starts; the settings JSON says `liveChanges`).
 
-`settings --steam-udp yes|no` saves co-op over Steam relays (off by default). On Linux, `play` sets
-`HELLFORGE_STEAM_UDP=1` for the session when it is on: UDP goes to Valve's Steam relay servers only, and TCP and every
-other destination stay refused. The session refuses before it starts if `passt`'s `pasta` command or `python3` is
-missing ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions.
+`settings --steam-udp yes|no` saves co-op over Steam relays (on by default since the 0.4.0 beta; the settings JSON
+says `steamUdp`, the file `coopRelays`). On Linux, `play` sets `HELLFORGE_STEAM_UDP=1` for the session when it is on:
+UDP goes to Valve's Steam relay servers only, and TCP and every other destination stay refused. Without `passt`'s
+`pasta` command, `python3` or Valve's relay list the session starts without it, and its lobby browser says why
+([linux.md](linux.md#co-op-on-linux-opening-udp)). Turning it on from the in-game lobby browser needs HellForge's own
+launcher running (it carries the change out); other launchers save `--steam-udp yes` and start again. Other systems
+ignore it for sessions.
 
 `settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
 `"strangers": "on"`/`"off"` (a legacy `playWithStrangers` true or false still counts),
@@ -185,7 +188,7 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
 | `--crash-dump` | `no` | a full memory dump if the game crashes (large), instead of the small dump every crash leaves |
 | `--sandbox` | `yes` where the sandbox can run | the game at low integrity, with Steam through the Steam broker ([steam-bridge.md](steam-bridge.md)); on unless turned off, but only with an engine built with the Steam bridge (`settings` prints `steamBridge`) and only on Windows, so `play` runs unsandboxed elsewhere even when `settings` prints `"sandbox": true`. An installation with the older Windows Firewall rules gets the WFP block placed first (one Windows prompt) |
-| `--steam-udp` | the launcher's setting, off by default | on Linux, opens UDP to Valve's Steam relay servers only so Steam networking can carry co-op, with TCP and every other destination refused. Needs `passt`'s `pasta` command and `python3`; the session refuses before it starts without them. Defaults to the saved setting and applies to this session only; `settings --steam-udp` saves it ([linux.md](linux.md#co-op-on-linux-opening-udp-optional)). Other systems ignore it for sessions |
+| `--steam-udp` | the launcher's setting, on by default | on Linux, opens UDP to Valve's Steam relay servers only so Steam networking can carry co-op, with TCP and every other destination refused. Needs `passt`'s `pasta` command and `python3`; without them the session starts without co-op. Defaults to the saved setting and applies to this session only; `settings --steam-udp` saves it ([linux.md](linux.md#co-op-on-linux-opening-udp)). Other systems ignore it for sessions |
 | `--game-options` | the launcher's launch options | options for the game's command line, as Steam takes them; options a session sets itself are refused |
 | `--full-ownership-check` | `no` | `yes` asks Steam to confirm ownership even when a check of this installation passed within the last 7 days for the same Steam account and game build (which a session otherwise reuses); for this session only, not a setting |
 | `--dry-run yes` | | prints the session runner's command line and starts nothing |

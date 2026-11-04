@@ -35,7 +35,7 @@
     {"unit": "mod-loader", "file": "hellforge_modloader.c", "rule": "R10", "function": "PlanGame", "value": 19},
     {"unit": "mod-loader", "file": "hooks.c", "rule": "R10", "function": "HookRemove", "value": 16},
     {"unit": "mod-loader", "file": "live.c", "rule": "R10", "function": "SyncStateLine", "value": 17},
-    {"unit": "mod-loader", "file": "live_browse.c", "rule": "R10", "function": "ApiBrowseAsk", "value": 31},
+    {"unit": "mod-loader", "file": "live_browse.c", "rule": "R10", "function": "ApiBrowseAsk", "value": 28},
     {"unit": "mod-loader", "file": "live_browse.c", "rule": "R10", "function": "BrowseStateLine", "value": 21},
     {"unit": "mod-loader", "file": "live_code.c", "rule": "R10", "function": "FieldRestack", "value": 19},
     {"unit": "mod-loader", "file": "live_content.c", "rule": "R10", "function": "LiveLaunch", "value": 19},

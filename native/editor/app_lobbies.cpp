@@ -96,6 +96,8 @@ static void CloseLobbies()
     g_lobbies.on = false;
     g_lobbies.confirmStrangers = false;
     g_lobbies.detail = false;
+    g_lobbies.confirmRelays = false;
+    g_lobbies.afterRelays.clear();
     g_lobbies.closingAt = 0;
     g_lobbies.joining.clear();
     ShowLobbiesAlone(false);
@@ -212,6 +214,40 @@ static void GiveUpUnanswered(const HfBrowseState& now)
     }
 }
 
+static void Join(const HfBrowseLobby* l);
+static void Quick();
+
+/* Whether co-op over Steam relays keeps every lobby out (Linux: the backend gives each the fix). */
+static bool RelaysOff()
+{
+    return std::any_of(g_lobbies.lobbies.begin(), g_lobbies.lobbies.end(), [](const HfBrowseLobby& l) { return l.fix == HF_LOBBY_FIX_RELAYS; });
+}
+
+/* The backend's answer to turning co-op over Steam relays on: a new list without the fix (on: the join the player tried
+ * goes on), or failed (the message says why, and that the next session has it). */
+static void RelaysAnswered(const HfBrowseState& now, bool turned)
+{
+    if (!g_lobbies.relaysAsked || !turned) return;
+    if (now.state == HF_BROWSE_FAILED)
+    {
+        g_lobbies.relaysAsked = false;
+        g_lobbies.afterRelays.clear();
+        Toast(now.message[0] ? now.message : "Co-op over Steam relays could not be turned on", ERROR_);
+        Sound(sounds::BACK);
+        return;
+    }
+    if (now.state != HF_BROWSE_READY || RelaysOff()) return;
+    g_lobbies.relaysAsked = false;
+    g_host.api->log(g_host.mod, "editor: lobby browser: co-op over Steam relays is on");
+    Toast("Co-op over Steam relays is on: lobbies can be joined.", OK);
+    std::string after = g_lobbies.afterRelays;
+    g_lobbies.afterRelays.clear();
+    if (after == QUICK_JOIN) Quick();
+    else if (!after.empty())
+        for (const HfBrowseLobby& l : g_lobbies.lobbies)
+            if (after == l.lobby_id) { Join(&l); break; }
+}
+
 /* Every 15 frames (Tick): the terminal's count (it opens the browser), the list when it changed, and a new list every
  * LOBBY_REFRESH seconds while it shows. */
 void ReadLobbies()
@@ -245,6 +281,7 @@ void ReadLobbies()
         if (turned) { g_lobbies.searchStuck = false; if (now.state == HF_BROWSE_SEARCHING) g_lobbies.searchSince = Now(); }
         g_lobbies.state = now;
         if (turned) JoinAnswered(now);
+        RelaysAnswered(now, turned);
     }
     GiveUpUnanswered(now);
     if (g_lobbies.on && g_lobbies.joining.empty() && !Searching() && Now() - g_lobbies.askedAt >= LOBBY_REFRESH) AskList();
@@ -252,8 +289,19 @@ void ReadLobbies()
 
 static bool Joinable(const HfBrowseLobby* l) { return l != nullptr && (l->flags & HF_LOBBY_FLAG_JOINABLE) && g_lobbies.joining.empty(); }
 
+/* While co-op over Steam relays is off (Linux), a join or Quick Play asks to turn it on first, and goes on once it is. */
+static bool AskRelaysFirst(const std::string& after)
+{
+    if (!RelaysOff() || !g_lobbies.joining.empty() || g_lobbies.relaysAsked) return false;
+    g_lobbies.confirmRelays = true;
+    g_lobbies.afterRelays = after;
+    Sound(sounds::CLICK);
+    return true;
+}
+
 static void Join(const HfBrowseLobby* l)
 {
+    if (l != nullptr && l->fix == HF_LOBBY_FIX_RELAYS && LobbiesArmed() && AskRelaysFirst(l->lobby_id)) return;
     if (!Joinable(l) || !LobbiesArmed()) return;
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_JOIN, l->lobby_id)) { Toast("The session's backend is not connected", ERROR_); return; }
     g_lobbies.joining = l->lobby_id;
@@ -265,6 +313,7 @@ static void Join(const HfBrowseLobby* l)
 static void Quick()
 {
     if (!g_lobbies.joining.empty() || !LobbiesArmed()) return;
+    if (AskRelaysFirst(QUICK_JOIN)) return;
     if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_QUICK, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
     g_lobbies.joining = QUICK_JOIN;
     g_lobbies.joinedAt = Now();
@@ -277,10 +326,16 @@ const char* const STRANGER_WARNING = "Strangers' games send yours data you canno
     "the game's network code could let it run code on your PC. Turn this on only if you accept that risk. It stays on for this session only: "
     "the launcher's Settings > MULTIPLAYER keeps your choice.";
 
+/* What turning co-op over Steam relays on opens (Linux), before the player says yes. */
+const char* const RELAYS_QUESTION = "Joining other players goes through Valve's Steam relays, which this session can't reach yet. Turning co-op "
+    "over Steam relays on lets this session's network reach Valve's relay servers and nothing else: UDP to them only, while every "
+    "other address stays blocked. The launcher keeps it on (Settings > MULTIPLAYER).";
+
 static void Fix(const HfBrowseLobby* l)
 {
     if (l == nullptr || !LobbiesArmed()) return;
-    if (l->fix == HF_LOBBY_FIX_STRANGERS) { g_lobbies.confirmStrangers = true; Sound(sounds::CLICK); }
+    if (l->fix == HF_LOBBY_FIX_RELAYS) AskRelaysFirst("");
+    else if (l->fix == HF_LOBBY_FIX_STRANGERS) { g_lobbies.confirmStrangers = true; Sound(sounds::CLICK); }
     else if (l->fix == HF_LOBBY_FIX_EDITED_STATS)
     {
         if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_SHOW_EDITED_STATS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
@@ -298,6 +353,60 @@ static void TurnOnStrangers()
     Toast("Play with strangers is on for this session: strangers' lobbies can be joined.", OK);
     g_lobbies.askedAt = Now();
     Sound(sounds::APPLY);
+}
+
+static void TurnOnRelays()
+{
+    g_lobbies.confirmRelays = false;
+    if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_TURN_ON_RELAYS, nullptr))
+    {
+        g_lobbies.afterRelays.clear();
+        Toast("The session's backend is not connected", ERROR_);
+        return;
+    }
+    g_host.api->log(g_host.mod, "editor: lobby browser: the player turned co-op over Steam relays on%s%s",
+        g_lobbies.afterRelays.empty() ? "" : ", to join ", g_lobbies.afterRelays.c_str());
+    g_lobbies.relaysAsked = true;
+    g_lobbies.askedAt = Now();
+    Toast("Turning on co-op over Steam relays...", OK);
+    Sound(sounds::APPLY);
+}
+
+static void CancelRelays()
+{
+    g_lobbies.confirmRelays = false;
+    g_lobbies.afterRelays.clear();
+    Sound(sounds::BACK);
+}
+
+static void CancelStrangers() { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
+
+/* A question over the screen before a setting goes on: TURN ON (Y) or CANCEL (N, Esc). Play with strangers' warning (the
+ * launcher's; Y only), or what co-op over Steam relays opens (Enter too: it continues the join the player asked for). */
+struct TermQuestion
+{
+    const char* title;
+    const char* text;
+    bool warning; /* amber, a warning; else the browser's red */
+    bool enterSaysYes;
+    void (*yes)();
+    void (*no)();
+};
+
+/* The question that shows, or null. */
+static const TermQuestion* OpenQuestion()
+{
+    static const TermQuestion strangers{"TURN ON PLAY WITH STRANGERS?", STRANGER_WARNING, true, false, TurnOnStrangers, CancelStrangers};
+    static const TermQuestion relays{"TURN ON CO-OP OVER STEAM RELAYS?", RELAYS_QUESTION, false, true, TurnOnRelays, CancelRelays};
+    if (g_lobbies.confirmStrangers) return &strangers;
+    if (g_lobbies.confirmRelays) return &relays;
+    return nullptr;
+}
+
+static void QuestionKeys(const TermQuestion& q)
+{
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) q.no();
+    else if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (q.enterSaysYes && ImGui::IsKeyPressed(ImGuiKey_Enter, false))) q.yes();
 }
 
 static void Refresh()
@@ -347,12 +456,7 @@ static void LobbyMoveKeys()
 void LobbyKeys()
 {
     if (g_lobbies.camera) return;
-    if (g_lobbies.confirmStrangers)
-    {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_N, false)) { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
-        else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) TurnOnStrangers();
-        return;
-    }
+    if (const TermQuestion* q = OpenQuestion()) { QuestionKeys(*q); return; }
     if (g_lobbies.detail) { LobbyDetailKeys(); return; }
     LobbyMoveKeys();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { PowerOff(); return; }
@@ -403,6 +507,7 @@ static std::string ShortVerdict(const HfBrowseLobby& l, ImU32* colour)
     if (l.verdict != HF_LOBBY_UNJOINABLE) return text;
     if (l.fix == HF_LOBBY_FIX_STRANGERS) return "Strangers off";
     if (l.fix == HF_LOBBY_FIX_EDITED_STATS) return "Host-enforced stats";
+    if (l.fix == HF_LOBBY_FIX_RELAYS) return "Co-op relays off";
     if (Starts(l.reason, SANDBOX_ONLY_REASON)) return "Needs sandbox";
     if (Starts(l.reason, "Its host runs an older HellForge")) return "Host must update";
     if (Starts(l.reason, "Its host runs a newer HellForge")) return "Update HellForge";
@@ -822,10 +927,11 @@ static bool PopFix(const HfBrowseLobby& l, const Area& a, float alpha)
     g_cv.Frame(a.x, a.y, a.w, a.h, Alpha(LB_AMBER, alpha), 15, 2);
     g_cv.Text("A WAY IN", a.x + 14, a.y + 18, T(SZ_TINY, Alpha(LB_AMBER, alpha), ui::TITLE, ui::LEFT, 0, 15));
     const char* what = l.fix == HF_LOBBY_FIX_STRANGERS ? "Turn on Play with strangers for this session. You'll see a warning first." :
+        l.fix == HF_LOBBY_FIX_RELAYS ? "Turn on co-op over Steam relays. You'll see what it opens first." :
         "Show lobbies with host-enforced stat changes for this session. Joining one, you play with the host's stats.";
     g_cv.Text(what, a.x + 14, a.y + 42, T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, a.w - 28, 15));
     float kw = KeyCap("A", a.x + 14, a.y + 68, alpha, 15);
-    g_cv.Text(l.fix == HF_LOBBY_FIX_STRANGERS ? "TURN IT ON..." : "SHOW THEM", a.x + 24 + kw, a.y + 68, T(SZ_LABEL, Alpha(LB_AMBER, alpha), ui::TITLE, ui::LEFT, 0, 15));
+    g_cv.Text(l.fix == HF_LOBBY_FIX_EDITED_STATS ? "SHOW THEM" : "TURN IT ON...", a.x + 24 + kw, a.y + 68, T(SZ_LABEL, Alpha(LB_AMBER, alpha), ui::TITLE, ui::LEFT, 0, 15));
     return g_cv.Hit(a.x, a.y, a.w, a.h, id) && LobbiesArmed();
 }
 
@@ -843,9 +949,9 @@ static float DetailFacts(const HfBrowseLobby& l, float x, float y, float alpha)
 /* The pop-up's black strip: ESC BACK, and ENTER JOIN (green while the lobby can be joined). */
 static void DetailHints(const HfBrowseLobby* l, const Area& p, float alpha)
 {
-    bool joinable = Joinable(l);
+    bool joinable = Joinable(l), asks = l->fix == HF_LOBBY_FIX_RELAYS && g_lobbies.joining.empty(); /* JOIN asks to turn relays on first */
     std::vector<Hint> hints = {{"ESC", "BACK", LB_TEXT, true, ui::Id("lobbyback")},
-        {"ENTER", !g_lobbies.joining.empty() ? "JOINING..." : "JOIN", joinable ? LB_OK : LB_TEXT, joinable, ui::Id("lobbyjoin")}};
+        {"ENTER", !g_lobbies.joining.empty() ? "JOINING..." : "JOIN", joinable ? LB_OK : LB_TEXT, joinable || asks, ui::Id("lobbyjoin")}};
     int clicked = DrawHintsRight(hints, p.x + p.w - 22, p.y + p.h - 28, alpha, 15);
     if (clicked == 0) { g_lobbies.detail = false; Sound(sounds::BACK); }
     else if (clicked == 1) Join(l);
@@ -872,21 +978,22 @@ static void DrawLobbyDetail(float X, float Y, float W, float H, float alpha)
     DetailHints(l, p, alpha);
 }
 
-/* The warning before Play with strangers goes on (the launcher's words), amber: Y turns it on, N or Esc cancels. */
-static void DrawLobbyConfirm(float X, float Y, float W, float H, float alpha)
+/* The open question (OpenQuestion) over the screen: amber for a warning. Y turns it on, N or Esc cancels. */
+static void DrawLobbyConfirm(float X, float Y, float W, float H, float alpha, const TermQuestion& q)
 {
+    const ImU32 accent = q.warning ? LB_AMBER : LB_RED;
     float w = std::clamp(W * 0.46f, 560.0f, 900.0f) - 44;
-    std::vector<std::string> lines = Wrapped(STRANGER_WARNING, w - 16, SZ_LABEL);
-    Area p = DrawPopFrame({"PLAY WITH STRANGERS?", "", LB_AMBER, true, 30 + 22 * (float)lines.size() + 40}, X, Y, W, H, alpha);
+    std::vector<std::string> lines = Wrapped(q.text, w - 16, SZ_LABEL);
+    Area p = DrawPopFrame({q.title, "", accent, q.warning, 30 + 22 * (float)lines.size() + 40}, X, Y, W, H, alpha);
     float x = p.x + 22, y = p.y + 60 + 30;
-    g_cv.Rect(x, y - 12, 4, 22 * (float)lines.size(), Alpha(LB_AMBER, alpha), 15);
+    g_cv.Rect(x, y - 12, 4, 22 * (float)lines.size(), Alpha(accent, alpha), 15);
     for (const std::string& line : lines) { g_cv.Text(line, x + 16, y, T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 16, 15)); y += 22; }
     g_cv.Text("Esc or N cancels.", x, y + 14, T(SZ_SMALL, Alpha(LB_DIM, alpha), ui::BODY, ui::LEFT, w, 15));
-    std::vector<Hint> hints = {{"ESC", "CANCEL", LB_TEXT, true, ui::Id("lobbystrangerscancel")},
-        {"Y", "YES, TURN IT ON", LB_AMBER, true, ui::Id("lobbystrangerson")}};
+    std::vector<Hint> hints = {{"ESC", "CANCEL", LB_TEXT, true, ui::Id("lobbyconfirmcancel")},
+        {"Y", "YES, TURN IT ON", accent, true, ui::Id("lobbyconfirmon")}};
     int clicked = DrawHintsRight(hints, p.x + p.w - 22, p.y + p.h - 28, alpha, 15);
-    if (clicked == 0) { g_lobbies.confirmStrangers = false; Sound(sounds::BACK); }
-    else if (clicked == 1) TurnOnStrangers();
+    if (clicked == 0) q.no();
+    else if (clicked == 1) q.yes();
 }
 
 /* Esc or CLOSE: the screen powers off, then the browser goes (LobbyEscape's work, after the animation). */
@@ -929,6 +1036,6 @@ void DrawLobbies()
     DrawLobbyRight({X + W - m - rightW, top, rightW, bottom - top}, contents);
     DrawLobbyStrip(X, Y, W, H, contents);
     if (g_lobbies.detail) DrawLobbyDetail(X, Y, W, H, contents);
-    if (g_lobbies.confirmStrangers) DrawLobbyConfirm(X, Y, W, H, contents);
+    if (const TermQuestion* q = OpenQuestion()) DrawLobbyConfirm(X, Y, W, H, contents, *q);
 }
 } // namespace editorapp
