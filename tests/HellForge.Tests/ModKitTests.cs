@@ -391,6 +391,8 @@ static class ModKitTests
             var space = marker < 0 ? -1 : wrapper.IndexOf("Entering the offline network namespace.", marker, StringComparison.Ordinal);
             check(session >= 0 && build > session && marker > build && space > marker,
                 "The wrapper must build source mods before the namespace and tell the session they were built natively.");
+            check(wrapper.Contains("--mod-sync) build_sync=yes", StringComparison.Ordinal) && wrapper.Contains("--sync \"$build_sync\" --sandbox \"$build_sandbox\"", StringComparison.Ordinal),
+                "After a mod sync the wrapper must build the host's mods too (build-source-mods --sync), for the session's sandbox.");
         });
     }
 

@@ -182,6 +182,10 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Fixed
 
+- **Linux: joining a host whose mods include a source mod no longer loops.** After MOD SYNC downloaded the host's mods
+  and restarted the session, a source mod among them was never compiled (Linux builds source mods before the session,
+  and only the player's own were built), so the session left it off, the host refused the join again, and MOD SYNC
+  asked for another restart. The build before the session now builds the host's mods too.
 - If your game was launched straight into a lobby, weapons other players' mods added could stay dead on your screen for the
   whole session. They now work however you joined.
 - With the sandbox on, the game could freeze for 30 seconds as it started, and sometimes crash (0xC0000005 in dbgcore.dll), on

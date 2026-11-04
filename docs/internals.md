@@ -83,7 +83,9 @@ folder (an IDE's build, say) is not used. The code is in `src/HellForge.Core/Mod
 On Linux the session runs under Wine, where the pinned `zig.exe` does not work (issue 81). The wrapper therefore runs a
 native build agent before it enters the namespace (`app/cli-linux/HellForge.Cli build-source-mods --install
 <installation>`, which calls the same `ModBuilds`); the session finds the build ready and does not compile. A source mod
-without a build there is reported and stays off, never compiled with `zig.exe` under Wine.
+without a build there is reported and stays off, never compiled with `zig.exe` under Wine. A session after a mod sync
+(`--mod-sync`) plays the host's mods from the synced store: the wrapper passes `--sync yes` and the session's
+`--sandbox`, and `ModBuilds.ForSession` adds those mods, resolved as `mods-stage` resolves them.
 
 ### The cache
 

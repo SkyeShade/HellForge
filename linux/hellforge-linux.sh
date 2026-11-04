@@ -471,8 +471,16 @@ if session_command "$@"; then
   if [ "${HELLFORGE_SKIP_MOD_BUILDS:-}" = 1 ]; then
     echo "Skipping the source-mod build." >&2
   elif [ -x "$cliNative" ]; then
-    echo "Building the enabled source mods with the native Linux Zig..." >&2
-    timeout -k 10 1800 "$cliNative" build-source-mods --install "$INSTALL" 9>&- >&2 || echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
+    # After a mod sync the session plays the host's mods (--mod-sync): build those too, as the session resolves them
+    # (a stranger's trusted mod only when the session is sandboxed: --sandbox, or HELLFORGE_SANDBOX=1 from SessionRunner).
+    build_sync=no; build_sandbox=no
+    [ "${HELLFORGE_SANDBOX:-}" = 1 ] && build_sandbox=yes
+    for argument in "$@"; do
+      case "$argument" in --mod-sync) build_sync=yes ;; --sandbox) build_sandbox=yes ;; esac
+    done
+    echo "Building the enabled source mods with the native Linux Zig$([ "$build_sync" = yes ] && echo ", and the host's after a mod sync")..." >&2
+    timeout -k 10 1800 "$cliNative" build-source-mods --install "$INSTALL" --sync "$build_sync" --sandbox "$build_sandbox" 9>&- >&2 ||
+      echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
   else
     echo "The native Linux build agent is missing (app/cli-linux/HellForge.Cli); source mods stay off." >&2
   fi
