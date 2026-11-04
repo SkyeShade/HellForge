@@ -582,6 +582,7 @@ try
             // Its reply is the warbond item's shape, {items:[...]}, the price in it (negative): the client adds them all.
             var frontReply = Purchases.StoreFrontReply(new JsonArray(new JsonObject { ["mixId"] = 3499930023u, ["amount"] = 1L },
                 new JsonObject { ["mixId"] = MissionService.RequisitionMixId, ["amount"] = -5000L }));
+            Check(frontReply["packageProgress"] is JsonArray { Count: 0 }, "a store front reply lists no package progress (the client's parser needs the list)");
             Check(frontReply["items"] is JsonArray frontItems && frontItems.Count == 2 && (uint)frontItems[0]!["mixId"]! == 3499930023u &&
                 (long)frontItems[0]!["amount"]! == 1 && (uint)frontItems[1]!["mixId"]! == MissionService.RequisitionMixId && (long)frontItems[1]!["amount"]! == -5000,
                 "A store front purchase's reply is not {items:[the item, the price]}: " + frontReply.ToJsonString());

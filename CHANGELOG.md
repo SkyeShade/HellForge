@@ -169,6 +169,8 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Fixed
 
+- If your game was launched straight into a lobby, weapons other players' mods added could stay dead on your screen for the
+  whole session. They now work however you joined.
 - With the sandbox on, the game could freeze for 30 seconds as it started, and sometimes crash (0xC0000005 in dbgcore.dll), on
   a PC with a tablet driver: its Wintab32.dll faults as it loads, and the session's crash dump waited for it (#235).
 - On Linux, Sync Inventory said "Sign in to Steam first" whenever its Steam check failed for any reason, and left no
