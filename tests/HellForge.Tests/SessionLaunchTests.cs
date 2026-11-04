@@ -91,7 +91,7 @@ static class SessionLaunchTests
             check(start.Environment["HELLFORGE_STEAM_UDP"] == "1", "The wrapper was not given HELLFORGE_STEAM_UDP=1.");
         });
 
-        test("Co-op over Steam relays refuses to start without pasta or python3 and names the package-manager command", () =>
+        test("Co-op over Steam relays names what is missing (pasta or python3) with the package-manager command", () =>
         {
             foreach (var (manager, command) in new[]
                      {
