@@ -53,8 +53,6 @@ Reference and related pages:
   signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
-- [The published verified list](verified-list.md): for maintainers; how HellForge takes its verified list from
-  files.hf-mod.com, the signing key, and how to publish a list.
 - [Co-op and public lobbies](multiplayer.md): how HellForge's co-op, mod sync and public lobbies work, and the research
   log from building them.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs

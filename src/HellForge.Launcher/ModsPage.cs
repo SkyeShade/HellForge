@@ -219,8 +219,8 @@ public partial class MainWindow
         foreach (var rule in new[]
         {
             "From any host: what HellForge checks itself (stats, network field types, data specs that don't replace values).",
-            "From a Steam friend only: mods that run code (a DLL, sources or Lua) or carry data HellForge cannot check (data patches, raw stats, " +
-                "component writes, data specs that replace values), and only when HellForge has verified that exact version or you trusted it on the prompt.",
+            "Once you trust them on the prompt, from a Steam friend or, with the sandbox on, from anyone: mods that run code (a DLL, sources or Lua) or carry " +
+                "data HellForge cannot check (data patches, raw stats, component writes, data specs that replace values). Trust is for that exact version, and HellForge's own mods need none.",
             "Anything else you install yourself: a mod's GET IT button shows where, when its author gave a link."
         })
             rules.Children.Add(new TextBlock { Text = "•  " + rule, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } });
@@ -234,7 +234,7 @@ public partial class MainWindow
         panel.Children.Add(rules);
 
         panel.Children.Add(Section("When I host"));
-        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who are not your Steam friends get only mods HellForge checks or has verified: never ones that run code or carry unchecked data.",
+        panel.Children.Add(SettingSwitch("Share my gameplay mods with players who join", "Players who join can download them. Mods that run code or carry unchecked data reach them only if they choose to trust those mods.",
             settings.Share, on => ModSettings.SetShare(modsFolder, on), "the mod sync setting"));
         // a Public lobby is listed on other HellForge players' Galactic Map unless this is off (DirectoryService)
         panel.Children.Add(SettingSwitch("List my Public lobbies on the Galactic Map", "Other HellForge players can find and join them there.",
@@ -245,8 +245,8 @@ public partial class MainWindow
             settings.HostStats, on => ModSettings.SetHostStats(modsFolder, on), "the shared stats setting"));
 
         panel.Children.Add(Section("When I join"));
-        // joiners of a host who shares edited stats play with them: such public lobbies are hidden on the Galactic Map unless shown
-        panel.Children.Add(SettingSwitch("Show lobbies whose host shares edited stats", "You would play with the host's changes, not your own.",
+        // joiners of a host who enforces their stat changes play with them: such public lobbies are hidden on the Galactic Map unless shown
+        panel.Children.Add(SettingSwitch("Show lobbies with host-enforced stat changes", "You would play with the host's changes, not your own.",
             settings.ShowEditedStats, on => ModSettings.SetShowEditedStats(modsFolder, on), "the mod sync setting"));
 
         // Trusted (TRUST on the in-game prompt): each exact mod, who hosted it and when. Untrusting it deletes its downloaded

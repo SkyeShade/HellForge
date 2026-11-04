@@ -249,15 +249,6 @@ sealed partial class PlaySession(PlayOptions options)
         return process.ExitCode == 0 || (process.ExitCode == 2 && arguments[0] == "prepare-session") ? output.Result : null;
     }
 
-    // HellForge's published verified list (VerifiedMods), fetched for this session's mods-stage and backend, which read the
-    // installation's saved copy: within 5 s, else the saved copy or the embedded list.
-    void RefreshVerifiedMods()
-    {
-        using var http = new HttpClient();
-        var (source, problem) = VerifiedMods.RefreshAsync(http, install, TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-        result["verifiedMods"] = new JsonObject { ["source"] = source.ToString().ToLowerInvariant(), ["serial"] = VerifiedMods.Current.Serial, ["problem"] = problem };
-    }
-
     void Prepare(string profileDirectory)
     {
         CheckPreconditions();
@@ -268,7 +259,6 @@ sealed partial class PlaySession(PlayOptions options)
         if (!System.Text.RegularExpressions.Regex.IsMatch(profileName, "^[a-z0-9-]{1,32}$")) throw new SessionFailure("The profile folder name is not a valid profile name.");
         RecoverStandIns();
         ThrowIfStopRequested();
-        RefreshVerifiedMods();
         StageMods(profileDirectory);
         ThrowIfStopRequested();
         if (OperatingSystem.IsLinux())

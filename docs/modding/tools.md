@@ -113,20 +113,19 @@ your mod and has to install it themselves gets a GET IT button on the in-game MO
 
 When a player joins a lobby whose host runs your mod and lacks it, mod sync can download it from the host
 ([mods.md](../mods.md#playing-with-other-mods)). A mod HellForge checks all of (schema stats, network field types, data
-specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only from a host who is
-the player's Steam friend, and only when:
+specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only when:
 - HellForge's verified list names that exact version (below), or
-- the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC). That trust is for
-  those exact files: a new version has to be trusted again.
+- the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC), which takes a
+  sandboxed game when the host is not their Steam friend. That trust is for those exact files: a new version has to be
+  trusted again.
 
 Otherwise the player installs it themselves, from your `url` when the manifest has one.
 
 ### The verified list
 
-`data/verified-mods.json` in HellForge's repository lists the code and raw-data mods a HellForge maintainer has
-reviewed. It ships inside each HellForge release, and a signed copy published on files.hf-mod.com reaches players
-before their next session, without a release ([the published verified list](../verified-list.md)). Each entry names
-one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
+`data/verified-mods.json` in HellForge's repository lists HellForge's own code and raw-data mods, reviewed by a
+maintainer. It ships inside each HellForge release and changes with a release; any other mod is each player's own
+trust. Each entry names one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
 each counted file and that file's SHA-256, and for a data spec the data builder's version).
 
 To add a mod (maintainers):
@@ -135,11 +134,9 @@ To add a mod (maintainers):
    as a player's HellForge loads it, and prints the mod's class and an `entry` to copy.
 3. Add the entry to `mods` in `data/verified-mods.json`: `id`, `name`, `version`, `hash` (64 lower-case hex digits) and
    `reviewed` (the date, who reviewed it, and what: for example "2026-10-23, SkyeShade: stratagem-compendium-1.0.4.zip
-   as shipped"), and raise `"serial"` by one.
+   as shipped").
 4. Run `scripts/Test.ps1`: the tests parse the list (a malformed entry fails them) and recheck the Stratagem Compendium
    entry against its zip where it is installed.
-5. To reach players before the next release, sign and publish the same list ([publishing a
-   list](../verified-list.md#publishing-a-list)).
 
 Rehash every listed mod that has a data spec when `ModDataBuilder.Version` changes: its hash includes the builder's
 version, so the old entry no longer matches. Any change to a mod's files (a comment, a line ending) is a new hash too:

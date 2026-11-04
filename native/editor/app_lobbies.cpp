@@ -281,7 +281,7 @@ static void Fix(const HfBrowseLobby* l)
     else if (l->fix == HF_LOBBY_FIX_EDITED_STATS)
     {
         if (!g_host.api->browse_ask(g_host.mod, HF_BROWSE_SHOW_EDITED_STATS, nullptr)) { Toast("The session's backend is not connected", ERROR_); return; }
-        Toast("Lobbies whose host shares edited stats show for this session. Joining one, you play with the host's stats.", OK);
+        Toast("Lobbies with host-enforced stat changes show for this session. Joining one, you play with the host's stats.", OK);
         g_lobbies.askedAt = Now();
         Sound(sounds::CLICK);
     }
@@ -364,8 +364,8 @@ static std::string Verdict(const HfBrowseLobby& l, ImU32* colour)
     }
 }
 
-/* The reason's start for a stranger's unchecked mods: ModSync.FriendsOnlyWhy as BrowseApi's Reason writes it. */
-const char* const FRIENDS_ONLY_REASON = "Its host's unchecked mods download only from a Steam friend";
+/* The reason's start for a stranger's unchecked mods: ModSync.SandboxOnlyWhy as BrowseApi's Reason writes it. */
+const char* const SANDBOX_ONLY_REASON = "Its host's unchecked mods need a sandboxed game";
 
 static bool Starts(const char* text, const char* start) { return strncmp(text, start, strlen(start)) == 0; }
 
@@ -377,8 +377,8 @@ static std::string ShortVerdict(const HfBrowseLobby& l, ImU32* colour)
     if (l.verdict == HF_LOBBY_BLOCKED) return "Blocked mod";
     if (l.verdict != HF_LOBBY_UNJOINABLE) return text;
     if (l.fix == HF_LOBBY_FIX_STRANGERS) return "Strangers off";
-    if (l.fix == HF_LOBBY_FIX_EDITED_STATS) return "Edited stats";
-    if (Starts(l.reason, FRIENDS_ONLY_REASON)) return "Friends only";
+    if (l.fix == HF_LOBBY_FIX_EDITED_STATS) return "Host-enforced stats";
+    if (Starts(l.reason, SANDBOX_ONLY_REASON)) return "Needs sandbox";
     if (Starts(l.reason, "Its host runs an older HellForge")) return "Host must update";
     if (Starts(l.reason, "Its host runs a newer HellForge")) return "Update HellForge";
     if (Starts(l.reason, "Its host runs another HellForge")) return "Other HellForge";
@@ -592,10 +592,10 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
     TermColumn column{x + 20, ly, w - 40, alpha};
     column.Lines(TermVerdict(*l, &colour), SZ_LABEL, 24, colour);
     if (l->reason[0] && l->verdict != HF_LOBBY_UNJOINABLE && l->verdict != HF_LOBBY_BLOCKED) column.Lines(l->reason, SZ_SMALL, 20, TERM_DIM);
-    if (l->verdict == HF_LOBBY_UNJOINABLE && Starts(l->reason, FRIENDS_ONLY_REASON))
+    if (l->verdict == HF_LOBBY_UNJOINABLE && Starts(l->reason, SANDBOX_ONLY_REASON))
     {
         column.y += 6;
-        column.Lines("To join, install these mods yourself (the launcher's Mods page), or play with the host as a Steam friend.", SZ_SMALL, 20, TERM_DIM);
+        column.Lines("To join, turn the sandbox on (the launcher's Settings), where you can trust these mods, or install them yourself.", SZ_SMALL, 20, TERM_DIM);
     }
     ly = column.y + 14;
     if (l->mod_list[0]) TermMods(*l, x + 20, ly, w - 40, y + h - (l->fix != HF_LOBBY_FIX_NONE ? 140 : 90), alpha);
@@ -603,7 +603,7 @@ static void DrawTermDetail(float x, float y, float w, float h, float alpha)
         g_cv.Text(std::to_string(l->mods) + " shared mod(s), all the same as yours", x + 20, ly, T(SZ_SMALL, Alpha(TERM_FAINT, alpha), ui::BODY, ui::LEFT, w - 40, 12));
     if (l->fix != HF_LOBBY_FIX_NONE)
     {
-        const char* fix = l->fix == HF_LOBBY_FIX_STRANGERS ? "TURN ON PLAY WITH STRANGERS" : "SHOW EDITED-STATS LOBBIES";
+        const char* fix = l->fix == HF_LOBBY_FIX_STRANGERS ? "TURN ON PLAY WITH STRANGERS" : "SHOW HOST-ENFORCED STATS";
         if (TermButton(fix, {x + 20, y + h - 116, w - 40, 40}, false, true, ui::Id("lobbyfix"), alpha)) Fix(l);
     }
     bool joinable = Joinable(l);

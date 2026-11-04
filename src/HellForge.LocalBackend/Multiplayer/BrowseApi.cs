@@ -90,14 +90,15 @@ public sealed class BrowseApi
         };
     }
 
-    // The order the list shows lobbies in: ones that can be joined now (a friend's first), then ones a setting of the
-    // player's would let in, then full or locked ones, then those with mods in the way. A player who opens the browser
-    // sees what they can join at the top, and the loader's 128 places keep it when more are listed.
+    // The order the list shows lobbies in: ones that can be joined now (a friend's first, ones whose mods wait for the
+    // player's trust after the rest), then ones a setting of the player's would let in, then full or locked ones, then those
+    // with mods in the way. A player who opens the browser sees what they can join at the top, and the loader's 128 places
+    // keep it when more are listed.
     public static int Rank(BrowseLobby lobby) =>
-        lobby.Join.Joinable && !lobby.Locked && lobby.Members < lobby.MaxMembers ? (lobby.Friend ? 0 : 1)
-        : !lobby.Join.Joinable && lobby.Join.Fix != null ? 2
-        : lobby.Locked || lobby.Members >= lobby.MaxMembers ? 3
-        : 4;
+        lobby.Join.Joinable && !lobby.Locked && lobby.Members < lobby.MaxMembers ? (lobby.Friend ? 0 : lobby.Join.Plan?.Verdict == SyncVerdict.Trust ? 2 : 1)
+        : !lobby.Join.Joinable && lobby.Join.Fix != null ? 3
+        : lobby.Locked || lobby.Members >= lobby.MaxMembers ? 4
+        : 5;
 
     public const int NeededListed = 5;
 
@@ -391,7 +392,7 @@ public sealed class LiveBrowse
             return;
         }
         log(what == "strangers" ? "Lobby browser: Play with strangers is on for this session (asked from the game, after its warning; not saved)."
-            : "Lobby browser: lobbies whose host shares edited stats show for this session (asked from the game; not saved).");
+            : "Lobby browser: lobbies with host-enforced stat changes show for this session (asked from the game; not saved).");
         if (shown.Version > 0) await live.BrowseStateAsync(shown.Version, "searching", shown.Lobbies, "");
         api.Forget();
         await RefreshAsync();

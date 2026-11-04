@@ -156,7 +156,7 @@ don't work joinability out from `verdict` yourself.
 
 The list comes in this order: lobbies that can be joined now (a friend's first), then ones a `fix` would let in, then
 full or locked ones, then the ones that can't be joined. The placeholder hides that last group while any other lobby
-is shown (CAN'T JOIN, or H, shows it), names each row by what keeps it out ("Friends only", "Host must update",
+is shown (CAN'T JOIN, or H, shows it), names each row by what keeps it out ("Needs sandbox", "Host must update",
 "Needs mods") and gives the whole `reason` in the selected lobby's details.
 
 | `verdict` | Joinable | Meaning | The placeholder says |
@@ -178,10 +178,11 @@ be most of them, and it is not an error.
 |---|---|---|
 | `HF_LOBBY_FIX_NONE` | none | nothing |
 | `HF_LOBBY_FIX_STRANGERS` | Play with strangers is off | offer to turn it on with `HF_BROWSE_ALLOW_STRANGERS`, **only after showing the warning below and getting a clear yes** |
-| `HF_LOBBY_FIX_EDITED_STATS` | lobbies whose host shares edited stats are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
+| `HF_LOBBY_FIX_EDITED_STATS` | lobbies with host-enforced stat changes are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
 
 A lobby with a `fix` still has its `verdict` and `reason`. The fix is a way in, offered next to them. A stranger's lobby
-running code or raw-data mods HellForge hasn't verified has no fix: a host sends those to Steam friends only.
+running code or raw-data mods HellForge hasn't verified has no fix in an unsandboxed session: it is joined by trusting
+them in a sandboxed one.
 
 ## Actions
 
@@ -194,7 +195,7 @@ malformed ask). On 0, tell the player ("The session's backend is not connected")
 | `HF_BROWSE_JOIN` | the lobby's `lobby_id` | the game gets that lobby's invitation. The lobby must be from a list of the last 2 minutes; if not, the answer is `FAILED`, and you should search again |
 | `HF_BROWSE_QUICK` | NULL | Quick Play: a fresh search, then a join of the best joinable lobby. A friend's goes first, then the fewest changes (same mods, then the smallest download, then a friend's unknown, then trust), then the fullest. `INVITED` with the host's name, or `FAILED` when nothing can be joined |
 | `HF_BROWSE_ALLOW_STRANGERS` | NULL | turns Play with strangers on for this session only, then searches again. Nothing is saved: the launcher's switch stays the player's. While a mod holds the browser, only that mod can ask |
-| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies whose host shares edited stats for this session only, and searches again. Same rules as above |
+| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies with host-enforced stat changes for this session only, and searches again. Same rules as above |
 | `HF_BROWSE_SHOWN` | NULL | your browser shows: the terminal's camera stays on the screen. This machine only |
 | `HF_BROWSE_HIDDEN` | NULL | your browser went: the camera glides back. This machine only |
 | `HF_BROWSE_CLAIM` | NULL | your mod draws the browser (see [Setting up](#setting-up)) |

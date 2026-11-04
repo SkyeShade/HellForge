@@ -125,7 +125,7 @@ Mods are on unless `disabled` lists them. `order` is top first, and mods missing
 A pack's `off` lists the options switched off, and `sub` the variant picked for an option that has variants (otherwise
 the first one is used). `blocked` lists the mods mod sync never offers (see [mods.md](mods.md#playing-with-other-mods)),
 `share` (default true) lets players who join you download your gameplay mods, and
-`showEditedStats` (default false) shows public lobbies whose host plays with edited stats, and `listPublic` (default
+`showEditedStats` (default false) shows public lobbies with host-enforced stat changes, and `listPublic` (default
 true) lists the player's own Public lobbies on other HellForge players' Galactic Map. Write the whole file at once, to a
 temporary file and then a rename, as HellForge does.
 
@@ -264,8 +264,8 @@ asking sooner returns the last list. 200 with:
   waits for the player's trust in the MOD SYNC prompt), `unjoinable`, `blocked`, `full`, `locked`, `unknown`.
   `joinable` is whether a join can be tried now; `reason` says why not.
 - `fix`, when present, is the player's setting that would let the lobby in: `strangers` (Play with strangers is off;
-  the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies whose host shares edited stats are
-  hidden; the Mods page). A stranger's unchecked mods have no fix: they download only from a Steam friend. This API
+  the launcher's Settings > MULTIPLAYER, after its warning) or `editedStats` (lobbies with host-enforced stat changes are
+  hidden; the Mods page). A stranger's unchecked mods have no fix: trusting them takes a sandboxed session. This API
   does not change settings: point the player at them.
 - `privacy` is the game's setting (0 Public, 1 Friends only, 2 Invite only). `difficulty`, `planetId`, `race` and
   `players` come from the lobby record the host's game uploads, and are null or empty until it has uploaded one.
