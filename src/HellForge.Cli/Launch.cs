@@ -512,6 +512,8 @@ static class Launch
         // yes/no stores the player's choice; default removes it, so a sandboxed session turns strangers on.
         if (options.TryGetValue("--strangers", out var strangers))
             ModSettings.SetPlayWithStrangers(install.Mods, StrangersChoice(strangers));
+        // experimental: the next session's mods may change while the game runs
+        if (options.ContainsKey("--live-changes")) ModSettings.SetLiveChanges(install.Mods, Yes(options, "--live-changes", false));
         // Forge Credits in this share (0 to 100) of the loot caches at points of interest; default is HellForge's (30).
         if (options.TryGetValue("--forge-credits", out var forgeCredits))
             ModSettings.SetForgeCreditChance(install.Mods, forgeCredits is "default" or "off" ? null
@@ -532,6 +534,7 @@ static class Launch
             steamBridge = SessionRunner.HasSteamBridge(paths),
             playWithStrangers = ModSettings.StrangersEffective(chosenStrangers, sandboxed),
             playWithStrangersChosen = chosenStrangers,
+            liveChanges = ModSettings.LiveChanges(install.Mods),
             forgeCreditChance = ModSettings.ForgeCreditChance(install.Mods) ?? ModSettings.DefaultForgeCreditChance,
             file = paths.SettingsFile
         };

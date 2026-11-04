@@ -186,6 +186,12 @@ static class ModSyncTests
             ModSettings.SetShare(mods, true);
             state = ModSettings.Read(mods);
             check(state.Blocked.Count == 0 && state.Share && state.Disabled.Count == 1, "Unblocked and sharing again.");
+            check(!ModSettings.LiveChanges(mods), "Changing mods without a restart was on before the player chose it.");
+            ModSettings.SetLiveChanges(mods, true);
+            ModSettings.SetPlayWithStrangers(mods, null); /* another setting's save keeps it */
+            check(ModSettings.LiveChanges(mods), "Changing mods without a restart was not saved.");
+            ModSettings.SetLiveChanges(mods, false);
+            check(!ModSettings.LiveChanges(mods), "Changing mods without a restart stayed on.");
             check(ModSettings.PlayWithStrangers(mods) == null && ModSettings.StrangersEffective(null, true) &&
                 !ModSettings.StrangersEffective(null, false), "Play with strangers is never chosen by default; the sandbox decides.");
             ModSettings.SetPlayWithStrangers(mods, true);

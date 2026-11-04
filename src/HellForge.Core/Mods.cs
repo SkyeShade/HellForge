@@ -930,6 +930,8 @@ public static class ModSettings
         public bool ShowEditedStats { get; set; }
         public bool ListPublic { get; set; } = true;
         public bool HostStats { get; set; }
+        // Experimental: a session's mods may change while the game runs (LiveMods). Off, every change waits for a restart.
+        public bool LiveChanges { get; set; }
         // The choice lives under "strangers" ("on"/"off"); a legacy "playWithStrangers" keeps its value (ReadStrangers).
         // Null: never chosen.
         public bool? PlayWithStrangers { get; set; }
@@ -987,6 +989,7 @@ public static class ModSettings
         if (root.TryGetProperty("showEditedStats", out var edited) && edited.ValueKind == JsonValueKind.True) state.ShowEditedStats = true;
         if (root.TryGetProperty("listPublic", out var listed) && listed.ValueKind == JsonValueKind.False) state.ListPublic = false;
         if (root.TryGetProperty("hostStats", out var hostStats) && hostStats.ValueKind == JsonValueKind.True) state.HostStats = true;
+        if (root.TryGetProperty("liveChanges", out var liveChanges) && liveChanges.ValueKind == JsonValueKind.True) state.LiveChanges = true;
         state.PlayWithStrangers = ReadStrangers(root);
         if (root.TryGetProperty("strangersWarned", out var warned) && warned.ValueKind == JsonValueKind.True) state.StrangersWarned = true;
         if (root.TryGetProperty("forgeCreditChance", out var chance) && chance.ValueKind == JsonValueKind.Number && chance.TryGetInt32(out var percent) &&
@@ -1081,6 +1084,11 @@ public static class ModSettings
     // The first session with strangers on by default showed the warning; later ones do not.
     public static void SetStrangersWarned(string modsFolder) => Change(modsFolder, state => state.StrangersWarned = true);
 
+    // Experimental: whether the next session's mods may change while the game runs, on the Mods page and with a host's
+    // mods (APPLY AND JOIN). Read when a session starts.
+    public static void SetLiveChanges(string modsFolder, bool live) => Change(modsFolder, state => state.LiveChanges = live);
+    public static bool LiveChanges(string modsFolder) => Read(modsFolder).LiveChanges;
+
     // Hosting: whether friends play with this player's editor changes instead of their own.
     public static void SetHostStats(string modsFolder, bool host) => Change(modsFolder, state => state.HostStats = host);
 
@@ -1115,6 +1123,7 @@ public static class ModSettings
         // Written only when the player chose, so "never chosen" survives a round trip and the sandbox default applies. The
         // old playWithStrangers key is not written; a legacy value is migrated to "on"/"off" by the next save.
         if (state.PlayWithStrangers is { } chosen) root["strangers"] = chosen ? "on" : "off";
+        if (state.LiveChanges) root["liveChanges"] = true;
         if (state.StrangersWarned) root["strangersWarned"] = true;
         if (state.ForgeCreditChance is { } forgeCredits) root["forgeCreditChance"] = forgeCredits;
         var text = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";

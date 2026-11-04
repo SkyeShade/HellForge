@@ -5,6 +5,10 @@ page during a session, and when mod sync gives a joining player the host's mods 
 [docs/mods.md](../mods.md#changing-mods-while-you-play)). This page is for mod authors: what HellForge does with your
 mod then, and what a code mod must do to take part.
 
+This is experimental. Players opt in (Settings > Experimental > Change mods without restarting, off by default), and
+what follows may change between HellForge releases. Test your own mod in game before you declare `"live": true`, and
+expect a restart in some cases: [Content added live](#content-added-live) says which.
+
 A change is one transaction. The session's backend plans the whole difference, the in-game loader checks all of it, and
 then makes it, or refuses all of it and leaves the game as it was. A refused change waits for the next session, so a
 mod that does not take part still works: it just needs a restart to change.

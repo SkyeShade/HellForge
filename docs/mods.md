@@ -70,8 +70,12 @@ The page saves its switches, order and pack options in `mods/hellforge-mods.json
 
 ## Changing mods while you play
 
-While a session runs, the Mods page's switches still work. Switching a mod on or off, or saving a change to its files,
-goes to the running game, and the console says what changed:
+This is experimental and off by default: switch on Settings > Experimental > Change mods without restarting, which
+applies from the next session. Off, a change waits for the next session, and joining a friend with other mods
+restarts the game.
+
+While such a session runs, the Mods page's switches still work. Switching a mod on or off, or saving a change to its
+files, goes to the running game, and the console says what changed:
 - **Stats mods** (`hellforge-stats.json`, `componentWrites`, `"own": true` records). Each value applies as a live edit
   does: now, on respawn, or at the next mission; the stats editor shows which. A changed mod keeps its place in the load
   order: the mods above it still win where they change the same value, Local Stats included, and a code mod's edit of a

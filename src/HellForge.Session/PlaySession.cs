@@ -1025,11 +1025,17 @@ sealed partial class PlaySession(PlayOptions options)
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         WarArguments(start);
-        // The game's live pipe, and the session's mods, which the launcher's Mods page can change without a restart
-        // (LiveMods; a multiplayer session's pipe comes with stats sharing). --modset: joiners lacking this session's mods may
-        // download them (ModSync); --mods: co-op plays with the host's Local Stats (StatsShare).
-        foreach (var argument in new[] { "--live-run", (string)result["runId"]!, "--mods", install.Mods, "--modset", ModSetFile, "--session-mods", SessionModsFile, "--cli", Cli })
-            start.ArgumentList.Add(argument);
+        // --modset: joiners lacking this session's mods may download them (ModSync); --mods: co-op plays with the host's
+        // Local Stats (StatsShare).
+        foreach (var argument in new[] { "--mods", install.Mods, "--modset", ModSetFile }) start.ArgumentList.Add(argument);
+        // Experimental, the player's choice (Settings > Experimental): the game's live pipe and the session's mods, which the
+        // Mods page and mod sync can change without a restart (LiveMods; a multiplayer session's pipe comes with stats
+        // sharing). Without them the backend has no LiveMods, and every change waits for a restart.
+        var liveChanges = ModSettings.LiveChanges(install.Mods);
+        result["liveChanges"] = liveChanges;
+        if (liveChanges)
+            foreach (var argument in new[] { "--live-run", (string)result["runId"]!, "--session-mods", SessionModsFile, "--cli", Cli })
+                start.ArgumentList.Add(argument);
         if (options.Multiplayer) MultiplayerArguments(start, realSteamApi);
         // The block permits only this port, so the backend has no other: say so when another program holds it.
         if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == install.BackendPort))

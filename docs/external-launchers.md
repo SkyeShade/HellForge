@@ -142,6 +142,9 @@ To change them for good, use `settings`. It takes the same options as `play` (`-
  "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
+`settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
+session starts; the settings JSON says `liveChanges`).
+
 `settings --strangers yes|no|default` also sets Play with strangers: `yes`/`no` store the explicit choice as
 `"strangers": "on"`/`"off"` (a legacy `playWithStrangers` true or false still counts),
 and `default` removes it and lets the sandbox decide (on in a sandboxed session, off otherwise; see

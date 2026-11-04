@@ -4,9 +4,9 @@
  * behaviour in the stubs; live entities in a fake entity state. Included by stats_test.c after live_mods_test.c. */
 
 /* The load events as a fixture found them, put back at its end. */
-static LONG g_contentFired[HF_EVENT_SESSION_END + 1];
-static void ContentEventsSave(void) { for (int e = 0; e <= HF_EVENT_SESSION_END; e++) g_contentFired[e] = g_fired[e]; }
-static void ContentEventsRestore(void) { for (int e = 0; e <= HF_EVENT_SESSION_END; e++) InterlockedExchange(&g_fired[e], g_contentFired[e]); }
+static LONG g_contentFired[HF_EVENT_MODS_CHANGED + 1];
+static void ContentEventsSave(void) { for (int e = 0; e <= HF_EVENT_MODS_CHANGED; e++) g_contentFired[e] = g_fired[e]; }
+static void ContentEventsRestore(void) { for (int e = 0; e <= HF_EVENT_MODS_CHANGED; e++) InterlockedExchange(&g_fired[e], g_contentFired[e]); }
 
 /* A mod entry as a live change makes one (TxnModEntry's fresh one). */
 static HfMod* ContentMod(const char* id)
@@ -596,6 +596,17 @@ static uint64_t ContentEntity(HfMod* mod, uint64_t base, const char* name)
     return entity;
 }
 
+/* A record for one entity once it is registered, as the game's tables give one: none before. */
+static uint8_t g_contentRecord[360];
+static uint64_t g_contentRecordOf;
+static uintptr_t ContentFieldRecord(const char* name, uint64_t resource, uint32_t* stride, int shared)
+{
+    const Weapon* w = ModEntity(resource);
+    if (resource != g_contentRecordOf || w == NULL || w->state != 1) return 0;
+    *stride = sizeof g_contentRecord;
+    return (uintptr_t)g_contentRecord;
+}
+
 /* Entities added live to a fake entity state: short ids after the vanilla ones in resource id order, the copies made
  * at the first; one sorting before a staying one refused; a new version's identical entity kept. */
 static void ContentWeaponsFixture(void)
@@ -697,6 +708,35 @@ static void ContentWeaponsFixture(void)
     ContentChange(NULL, z2);
     uint64_t third = ContentEntity(z2, base, last);
     assert(third != 0 && ContentCommit() && g_weaponCount == 3 && g_weapons[2].shortId == 80 && FindRow(behaviours, 2008, 16, third) != NULL);
+    /* a field set from hellforge_mod_init, before the entity has a record (a live rack's slots, a live missile's blast):
+     * nothing to write yet, and written once the entity is registered */
+    uint64_t highest = third > first ? third : first;
+    if (second > highest) highest = second;
+    char edited[32];
+    ContentEntityName("y", highest, 0, edited);
+    HfMod* e2 = ContentMod("y");
+    ContentChange(NULL, e2);
+    HfEntity def = {sizeof def, .base = base, .name = edited, .own_all = 1};
+    g_liveSetup = e2;
+    uint64_t fourth = ApiAddEntity(e2, &def);
+    uintptr_t (*fieldRecord)(const char*, uint64_t, uint32_t*, int) = g_fieldRecord;
+    g_fieldRecord = ContentFieldRecord;
+    g_contentRecordOf = fourth;
+    int edits = g_editCount, savedComponents = g_componentCount;
+    Component savedComponent = g_components[0];
+    memset(&g_components[0], 0, sizeof g_components[0]);
+    snprintf(g_components[0].name, sizeof g_components[0].name, "ExplosiveComponentData");
+    g_componentCount = 1;
+    HfField delay = HF_FIELD(Explosive, arming_delay);
+    HfValue value = HF_F32(2.5f); /* a plain field: a reference field also waits for its package */
+    assert(fourth != 0 && ApiSetField(e2, fourth, &delay, &value) == 0 && g_editCount == edits + 1);
+    g_liveSetup = NULL;
+    assert(*(float*)(g_contentRecord + 8) == 0.0f);
+    assert(ContentCommit() && *(float*)(g_contentRecord + 8) == 2.5f);
+    g_fieldRecord = fieldRecord;
+    g_editCount = edits;
+    g_components[0] = savedComponent;
+    g_componentCount = savedComponents;
     printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 4 refusals (one a full component table)\n");
 
     memset(g_lcTomb, 0, sizeof g_lcTomb);

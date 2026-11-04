@@ -55,7 +55,7 @@ try
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
-                     [--strangers yes | no | default] [--forge-credits <0-100> | default] [--game-options <options>]
+                     [--strangers yes | no | default] [--live-changes yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -133,7 +133,7 @@ try
         "mod-switch" => ["--install", "--id", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--forge-credits", "--game-options"],
+        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--strangers", "--live-changes", "--forge-credits", "--game-options"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };

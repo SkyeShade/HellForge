@@ -10,6 +10,10 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Added
 
+- **Experimental: change mods without restarting** (Settings > Experimental, off by default). Stats mods, data mods
+  and code mods that declare `"live": true` switch while the game runs, on the Mods page and when you join a friend
+  with other mods (APPLY AND JOIN). Whatever cannot change live waits for a restart, as before. Mod SDK 16:
+  `hellforge_mod_unload`, `load_phase`, `unhook` and `HF_EVENT_MODS_CHANGED` ([live mods](docs/modding/live.md)) (#65).
 - The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
   for mods that tell it (SDK 16) (#84).
 

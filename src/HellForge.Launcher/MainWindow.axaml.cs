@@ -124,6 +124,7 @@ public partial class MainWindow : Window
             ApplyStrangersSetting();
         };
         InitializeStrangers();
+        InitializeLiveChanges();
         var war = ProfileStore.LoadWar(paths);
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
