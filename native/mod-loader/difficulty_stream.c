@@ -28,7 +28,11 @@
  * for a new unit. When it becomes due again SpawnUnit (+0x380) makes a new stamp unit from the resource and pose saved at
  * capture, SpawnStamps' set-data call puts the location index on it, and its layers stream as before. Only locations this
  * streamer spawned are removed; the start area's content and the generator's own spawns stay. The layer units go, but the
- * game entities some layers queue stay (logged at the 20th removal; a later task). */
+ * game entities some layers queue stay (logged at the 20th removal; a later task).
+ *
+ * The mission's own locations (every important location's stamp: objectives, extraction, outposts, points of interest,
+ * satellites) are never deferred: the game links their entities by the stamp unit and registers objectives and
+ * garrisons at level setup (WorldStreamMissionLocked). Only the rest (stamps, formations) streams. */
 
 #ifndef HF_LUA_API
 #define HF_LUA_API __declspec(dllexport)
@@ -139,6 +143,7 @@ static uint8_t g_streamNeedsUnit[kStreamMaxLocations];   /* 1: removed; a new st
 static uint8_t g_streamFormation[kStreamMaxLocations];   /* 1: a large formation of the outer stamp rings: streamed in
                                                             under the physics budget wherever the players are, kept */
 static ULONGLONG g_streamOutSince[kStreamMaxLocations];  /* tick it first went beyond kStreamOutRadius (0: not out) */
+static uint8_t g_streamMission[kStreamMaxLocations];     /* 1: an important location's stamp (WorldStreamMissionLocked) */
 
 static SRWLOCK g_streamLock = SRWLOCK_INIT;
 static volatile LONG g_streamOwn;     /* the streamer's own call: the thread id inside it (0: none) */
@@ -386,6 +391,39 @@ static int WorldStreamRespawnLocked(uint32_t i)
     return 1;
 }
 
+/* The mission's own stamps: every stamp record an important location points to (G+0x8996B0, 0x108 each, count
+ * G+0x11A715C; loc+0x98 = &stamp[i], op 0x16 at 0xF90275..0xF90280): objectives, extraction, outposts, points of
+ * interest, satellites. The game ties their entities to the location by the stamp unit alone ([loc+0x98]+0xA8 against
+ * the entity's spawning unit: Objective init 0x5D1067/0x5D122B, ExtractionZone 0x8D1216, ShowOnMap 0x677D85,
+ * GuardForce 0x90C459), builds GuardForce once at level setup (0xAD0010 -> 0xAD1FD5) from what exists then, and unlocks
+ * extraction for good once no live main objective is pending (0x5D91B0, Mission +0xAD8 at 0x8F53FF, never cleared).
+ * So these spawn with the level like vanilla's and are never removed: a deferred main objective meant extraction at
+ * landing, and a removed one came back as a fresh instance with no location. Returns how many were marked. */
+static uint32_t WorldStreamMissionLocked(const uint8_t* array, uint32_t count)
+{
+    memset(g_streamMission, 0, count);
+    uintptr_t block = 0;
+    uint32_t locations = 0, marked = 0, outside = 0;
+    if (g_worldLevel == 0 || SafeRead(g_worldLevel + 0x2C8, &block, 8) || block == 0 || SafeRead(block + 0x11A715Cu, &locations, 4))
+    {
+        Note("difficulty: extra large maps: content streaming: the important locations do not read; every far location streams");
+        return 0;
+    }
+    if (locations > 256) Note("difficulty: extra large maps: content streaming: %u important locations, more than the game's 256 places", locations);
+    if (locations > 1024) locations = 1024;
+    const uintptr_t first = (uintptr_t)array, end = first + (uintptr_t)count * kStreamRecord;
+    for (uint32_t l = 0; l < locations; l++)
+    {
+        uint64_t P = 0;
+        if (SafeRead(block + 0x8996B0u + 0x108ull * l + 0x98, &P, 8) || P == 0) continue;
+        if (P < first || P >= end || (P - first) % kStreamRecord != 0) { outside++; continue; }
+        uint32_t i = (uint32_t)((P - first) / kStreamRecord);
+        if (!g_streamMission[i]) { g_streamMission[i] = 1; marked++; }
+    }
+    if (outside) Note("difficulty: extra large maps: content streaming: %u important location(s) point outside the location records", outside);
+    return marked;
+}
+
 /* The generator's first call for this level: read its records and zero the stamp units outside the start area. The
  * original then spawns the start area and skips the deferred locations; WorldStreamEnd puts the units back when the op
  * reaches its count. `resume` is normally 0; locations before a non-zero one were already done before this call. */
@@ -466,7 +504,8 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
             (unsigned long long)g_stream.level, count);
         return;
     }
-    uint32_t kept = 0, deferred = 0, bad = 0, formations = 0;
+    uint32_t mission = WorldStreamMissionLocked(array, count);
+    uint32_t kept = 0, deferred = 0, bad = 0, formations = 0, missionFar = 0;
     float keep = kStreamStartRadius * kStreamStartRadius;
     float full = 2.0f * g_stream.half;
     for (uint32_t i = 0; i < count;)
@@ -505,6 +544,7 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
             g_streamAt[i][1] = at[1] - g_stream.half;
             float dx = g_streamAt[i][0] - g_streamStart[0], dy = g_streamAt[i][1] - g_streamStart[1];
             if (unit == 0 || dx * dx + dy * dy <= keep) { kept++; continue; }
+            if (g_streamMission[i]) { kept++; missionFar++; continue; } /* the mission's own: spawned with the level, never removed */
             uint64_t zero = 0;
             memcpy((void*)((uintptr_t)array + (size_t)i * kStreamRecord + 0xA8), &zero, 8);
             g_streamDeferred[i] = 1;
@@ -517,8 +557,8 @@ static void WorldStreamCaptureLocked(uint8_t* pass, uint8_t* record, uint8_t* co
     g_stream.bad = bad;
     g_stream.captured = 1;
     if (deferred == 0) g_stream.generatorDone = 1; /* nothing held back: the original's op needs no restore */
-    Note("difficulty: extra large maps: content streaming: level 0x%llX: %u locations, %u kept at the start, %u deferred (%u of them far formations, streamed under the physics budget)",
-        (unsigned long long)g_stream.level, count, kept, deferred, formations);
+    Note("difficulty: extra large maps: content streaming: level 0x%llX: %u locations, %u kept at the start (%u of them the mission's own beyond the start area, of %u), %u deferred (%u of them far formations, streamed under the physics budget)",
+        (unsigned long long)g_stream.level, count, kept, missionFar, mission, deferred, formations);
     if (bad) Note("difficulty: extra large maps: content streaming: %u location record(s) did not read; they stay with the generator", bad);
 }
 
@@ -817,6 +857,32 @@ static void WorldStreamSpawnDueLocked(void)
 static uint32_t g_streamFrames;
 static float g_streamFrameSum, g_streamFrameMax;
 
+/* The mission's objective instances as the extraction test reads them (0x5D91B0): the manager [game+0x3326DA0], count
+ * +0x24, instances [+0x60] + i x 0x1078 with the state at +0x1018 and the class at +0x1038 (classes 2..4 are not
+ * waited for; a waited-for one in state 3, or all of them in state 2, opens extraction). Each "class/state". */
+static void WorldStreamObjectivesNote(void)
+{
+    uint64_t manager = 0, data = 0;
+    uint32_t count = 0;
+    if (g_stream.game == 0 || SafeRead(g_stream.game + 0x3326DA0u, &manager, 8) || manager == 0 || SafeRead(manager + 0x24, &count, 4) ||
+        SafeRead(manager + 0x60, &data, 8))
+    {
+        Note("difficulty: extra large maps: objectives: the objective manager does not read");
+        return;
+    }
+    char list[512]; int n = 0;
+    uint32_t waited = 0, open = 0;
+    for (uint32_t i = 0; i < count && i < 64 && data != 0; i++)
+    {
+        uint32_t state = 0, cls = 0;
+        if (SafeRead(data + 0x1078ull * i + 0x1018, &state, 4) || SafeRead(data + 0x1078ull * i + 0x1038, &cls, 4)) break;
+        if (!(cls >= 2 && cls <= 4)) { waited++; if (state != 2 && state != 3) open++; }
+        if (n < (int)sizeof list - 16) n += snprintf(list + n, sizeof list - n, " %u/%u", cls, state);
+    }
+    Note("difficulty: extra large maps: objectives: %u instance(s), %u waited for (%u not done); class/state:%s; physics stream swaps under the world's lock so far: %lld; convoy escort spawns stopped at 8 so far: %ld",
+        count, waited, open, n ? list : " none", (long long)g_sceneSwapsLocked, g_convoyFull != NULL ? (long)*g_convoyFull : -1L);
+}
+
 /* Every 10 s while streaming: what is spawned now, what is due, removals and respawns so far, the players and time,
  * and the frame rate over those 10 s (mean and the slowest frame). */
 static void WorldStreamNoteLocked(ULONGLONG now)
@@ -833,6 +899,7 @@ static void WorldStreamNoteLocked(ULONGLONG now)
         g_stream.bodiesUsed, g_stream.bodySlots,
         g_streamFrameSum > 0 ? (double)g_streamFrames / (double)g_streamFrameSum : 0.0, (double)g_streamFrameMax * 1000.0);
     g_streamFrames = 0; g_streamFrameSum = g_streamFrameMax = 0;
+    WorldStreamObjectivesNote();
 }
 
 /* Called from TickDetour (packages.c) every frame: nothing until a level is captured and the generator's op is done,

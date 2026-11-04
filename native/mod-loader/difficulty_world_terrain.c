@@ -1820,7 +1820,7 @@ static int NearFineCell(int i, int j)
  * zone-type checks that skip a few stamps (0xF4D1B5, 0xF4D431) are not repeated: their areas take the level's surface. */
 #define NEAR_PADS 2048
 typedef struct { float cx, cy, c, s, a, b, ba, bb, k; int rect, foot; } NearPad;
-static struct { LONG level; int count, dropped; float band3C; NearPad pad[NEAR_PADS]; float* w; LONG wLevel; } g_pads = {.level = -1, .wLevel = -1};
+static struct { LONG level; int count, dropped; float band3C; NearPad pad[NEAR_PADS]; float* w; LONG wLevel; float wCentre[2]; } g_pads = {.level = -1, .wLevel = -1};
 #define NEAR_PAD_STEP 2.0f
 #define NEAR_PAD_N 1152 /* NEAR_SIDE / NEAR_PAD_STEP */
 
@@ -1931,11 +1931,13 @@ static void TerrainNearPads(uint64_t record, uint64_t context)
     }
 }
 
-/* W over the tile at NEAR_PAD_STEP, the largest pad weight at each point (made once per tile). */
+/* W over the tile at NEAR_PAD_STEP, the largest pad weight at each point (made once per tile: a mid-mission tile has
+ * its own centre, and W is laid out around it). */
 static void NearPadRaster(void)
 {
-    if (g_pads.wLevel == g_world.levels) return;
+    if (g_pads.wLevel == g_world.levels && g_pads.wCentre[0] == g_near.centre[0] && g_pads.wCentre[1] == g_near.centre[1]) return;
     g_pads.wLevel = g_world.levels;
+    g_pads.wCentre[0] = g_near.centre[0]; g_pads.wCentre[1] = g_near.centre[1];
     if (g_pads.w == NULL) g_pads.w = (float*)VirtualAlloc(NULL, (size_t)NEAR_PAD_N * NEAR_PAD_N * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_pads.w == NULL) return;
     memset(g_pads.w, 0, (size_t)NEAR_PAD_N * NEAR_PAD_N * 4);
@@ -1979,7 +1981,7 @@ static void NearPadRaster(void)
 
 static float NearPadWeight(float wx, float wy)
 {
-    if (g_pads.w == NULL || g_pads.wLevel != g_world.levels) return 0.0f;
+    if (g_pads.w == NULL || g_pads.wLevel != g_world.levels || g_pads.wCentre[0] != g_near.centre[0] || g_pads.wCentre[1] != g_near.centre[1]) return 0.0f;
     float u = (wx - (g_near.centre[0] - NEAR_SIDE / 2)) / NEAR_PAD_STEP - 0.5f, v = ((g_near.centre[1] + NEAR_SIDE / 2) - wy) / NEAR_PAD_STEP - 0.5f;
     int c = (int)floorf(u), r = (int)floorf(v);
     if (c < 0 || r < 0 || c >= NEAR_PAD_N - 1 || r >= NEAR_PAD_N - 1) return 0.0f;
@@ -4139,6 +4141,47 @@ static void NearBoundsInstall(void)
     { g_nearTerrainLock[0] = g_nearTerrainLock[1] = NULL; Note("difficulty: near terrain: the terrain bounds update could not be hooked; an edit next to a hidden node can hide more of the coarse terrain"); }
 }
 
+/* The physics scene's command stream (scene [exe+0x190D4A0 + w x 0x80], stream [scene+0x4A0]: +0x10 the block being
+ * written, +0x18 bytes used in it). In async mode the game's own writers append under the world's lock
+ * [exe+0x27C6350 + w x 8] (Scene::remove_body 0xBE8D10 from 0x812AE0, add_body 0xBE8840, body creation 0x812CC0), while
+ * the world's physics job swaps the stream at the start of its step (0xC9513A -> 0xBB1430 -> 0xAD44B0: +0x10 = 0 at
+ * 0xAD4505, +0x18 left as it was, then a new pool and 0xAD48E0) with no lock. A writer between the two read block 0
+ * and used 0x100 and stored at 0x120 (run s73a, exe+0xBE8E06 on the world update, 0.4 s after an extra large level's
+ * mission content spawned at load; vanilla has the same window, it is just narrow). On extra large levels the swap
+ * runs under the same lock, a recursive critical section (the imports at exe+0x13F66B8/+0x13F66C0, as the terrain
+ * lock): no code the locked writers call reaches the job's wait 0x7D7930 by direct calls (call graph from 0x812CC0,
+ * 0x812510, 0xBE8D10, 0xBE8840 and their callees; their indirect calls not followed). */
+typedef uint64_t (*SceneSwapFn)(uint64_t scene);
+static SceneSwapFn g_sceneSwapOriginal;
+static uintptr_t g_sceneSwapExe;
+static volatile LONG64 g_sceneSwapsLocked;
+static uint64_t SceneSwapDetour(uint64_t scene)
+{
+    if (!(g_world.current > 1.0f) || g_nearTerrainLock[0] == NULL || g_nearTerrainLock[1] == NULL) return g_sceneSwapOriginal(scene);
+    uint64_t lock = 0;
+    for (uintptr_t w = 0; w < 4 && lock == 0; w++)
+        if (*(volatile uint64_t*)(g_sceneSwapExe + 0x190D4A0u + w * 0x80u) == scene) lock = *(volatile uint64_t*)(g_sceneSwapExe + 0x27C6350u + w * 8u);
+    if (lock == 0) return g_sceneSwapOriginal(scene);
+    g_nearTerrainLock[0](lock);
+    uint64_t result = g_sceneSwapOriginal(scene);
+    g_nearTerrainLock[1](lock);
+    InterlockedIncrement64(&g_sceneSwapsLocked);
+    return result;
+}
+
+static void SceneSwapInstall(void)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (g_sceneSwapOriginal != NULL) return;
+    if (g_nearTerrainLock[0] == NULL || g_nearTerrainLock[1] == NULL) { Note("difficulty: extra large maps: the physics stream swap stays unlocked (the terrain lock's calls did not read)"); return; }
+    if (!ApiCodeMatches(exe + 0xBB1430u, "40 53 48 83 EC 20 48 8B D9 48 8B 89 A0 04 00 00") || !ApiCodeMatches(exe + 0xC9513Au, "E8 F1 C2 F1 FF") ||
+        !ApiCodeMatches(exe + 0xAD4505u, "4C 89 43 10 4C 89 03") || !ApiCodeMatches(exe + 0x812C24u, "48 8B AC 2F 50 63 7C 02"))
+    { Note("difficulty: extra large maps: the physics stream swap is not the reviewed code; it stays unlocked"); return; }
+    g_sceneSwapExe = exe;
+    if (LoaderHook("extra large maps' physics stream swap under the world's lock", exe + 0xBB1430u, (void*)SceneSwapDetour, (void**)&g_sceneSwapOriginal))
+        Note("difficulty: extra large maps: the physics stream swap could not be hooked; it stays unlocked");
+}
+
 static int NearCovered(int nc0, int nc1, int nb0, int nb1)
 {
     const int H = 4096;
@@ -5166,6 +5209,7 @@ static void TerrainInstall(uintptr_t game)
     ScatterOwnerInstall();
     MoveInstall(game);
     NearBoundsInstall();
+    SceneSwapInstall(); /* after it: the same lock calls */
     if (!ApiCodeMatches(game + 0xF3A2E0u, "48 8B C4 48 89 58 18 48 89 70 20 F3 0F 11 48 10 57 48 81 EC"))
     {
         Note("difficulty: terrain: the generator's samplers are not the reviewed ones; extra large maps keep the level's own terrain");

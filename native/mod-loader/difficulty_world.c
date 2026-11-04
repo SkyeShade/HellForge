@@ -39,7 +39,7 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
     {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u}};
 /* What the instructions read (the block's second page, writable): half, full, 1 / full, the gate's +-2000 x scale, and
  * the size the stub stores (0: the table's). */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -94,6 +94,7 @@ static void WorldWrite(float scale)
     v->clearing = 2.3283064365386963e-10f * scale * scale;
     v->dropHigh = 1024.0f * scale - 25.0f;
     v->dropLow = -(1024.0f * scale - 25.0f);
+    v->negFull = -2048.0f * scale;
     if (g_world.below != NULL)
     {
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
@@ -2049,6 +2050,52 @@ static const char* WorldSitesFailed(uintptr_t game)
     return NULL;
 }
 
+/* The convoy manager ([game+0x3326B70], 2 records of 0x318 at +0xA0) spawns a convoy's escort squads in 0x868840: a
+ * loop of difficulty row +0x328 (5 at every level) spawns (0x953580, job 5) and appends a 0x40-byte entry each to the
+ * record's list at +0x108 with its count at +0x308, 8 places, unchecked (0x869492 the only increment). 0x869BF0 calls it
+ * every frame until the escorts are placed on the leader's road route (record +0x310), and the list is not reset in
+ * between, so a route that does not come at once spawns 5 more a frame: the 9th entry overwrote the count and the next
+ * store went wild (run s73b, game+0x869466). On an extra large world the route came back empty because the route request
+ * (0x6292A0) drops a destination outside +-2048 (0x62932E, 0x629350: now +-the world's full size, world_sites.h); a
+ * deferred or failed path does the same in vanilla. The loop's head (0x8691A3, rdi = the record) leaves the loop when the
+ * list holds 8 already, so no squad is spawned without its place; the times are counted at stub +0x40. */
+#define DIF_CONVOY_LOOP 0x8691A3u
+#define DIF_CONVOY_LOOP_BACK 0x8691AAu
+#define DIF_CONVOY_LOOP_EXIT 0x8695A3u
+#define DIF_CONVOY_DIRECTOR 0x3326340u
+static const uint8_t kEscortLoopPin[7] = {0x48, 0x8B, 0x05, 0x96, 0xD1, 0xAB, 0x02}; /* mov rax, [rip -> game+0x3326340] */
+static const uint8_t kEscortStub[33] = {
+    0x83, 0xBF, 0x08, 0x03, 0x00, 0x00, 0x08,                         /*  0 cmp dword [rdi+0x308], 8 */
+    0x72, 0x0C,                                                       /*  7 jb 21 */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /*  9 lock inc dword [rip -> stub+0x40] (rel32 at 12) */
+    0xE9, 0, 0, 0, 0,                                                 /* 16 jmp 0x8695A3 (the loop's end; rel32 at 17) */
+    0x48, 0x8B, 0x05, 0, 0, 0, 0,                                     /* 21 mov rax, [rip -> game+0x3326340] (rel32 at 24) */
+    0xE9, 0, 0, 0, 0};                                                /* 28 jmp 0x8691AA (rel32 at 29) */
+static volatile LONG* g_convoyFull;
+static const char* InstallConvoyGuard(uintptr_t game)
+{
+    uint8_t pin[7];
+    if (SafeRead(game + DIF_CONVOY_LOOP, pin, 7) || memcmp(pin, kEscortLoopPin, 7) != 0 ||
+        !ApiCodeMatches(game + DIF_CONVOY_LOOP_EXIT, "8B 7C 24 50 4C 8B 74 24 60") || !ApiCodeMatches(game + 0x869492u, "FF 87 08 03 00 00") ||
+        !ApiCodeMatches(game + 0x86959Eu, "E9 00 FC FF FF"))
+        return "the convoy escorts' loop is not the reviewed one; its list stays unchecked";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the convoy escorts' guard";
+    memcpy(stub, kEscortStub, sizeof kEscortStub);
+    g_convoyFull = (volatile LONG*)(stub + 0x40);
+    int32_t rel = (int32_t)((stub + 0x40) - (stub + 16)); memcpy(stub + 12, &rel, 4);
+    rel = (int32_t)(game + DIF_CONVOY_LOOP_EXIT - (uintptr_t)(stub + 21)); memcpy(stub + 17, &rel, 4);
+    rel = (int32_t)(game + DIF_CONVOY_DIRECTOR - (uintptr_t)(stub + 28)); memcpy(stub + 24, &rel, 4);
+    rel = (int32_t)(game + DIF_CONVOY_LOOP_BACK - (uintptr_t)(stub + 33)); memcpy(stub + 29, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect); /* the count at +0x40 is written */
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + DIF_CONVOY_LOOP, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + DIF_CONVOY_LOOP, jump, 7)) return "the convoy escorts' guard could not be written";
+    return NULL;
+}
+
 /* An extra large map's world: the block (stub +0, values +0x1000), the readers pointed at it, the size store through
  * the stub. */
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
@@ -2063,7 +2110,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -2106,7 +2153,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
-    const float* fields[4] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf};
+    const float* fields[5] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf, &g_world.values->negFull};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
         const WorldSite* s = &kWorldSites[i];
@@ -2174,6 +2221,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
     const char* poisson = InstallWorldPoisson(game);
     if (poisson != NULL) Note("difficulty: extra large maps: the tiled Poisson-disk sampler is not used: %s", poisson);
+    const char* convoy = InstallConvoyGuard(game);
+    if (convoy != NULL) Note("difficulty: extra large maps: %s", convoy);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);

@@ -8,7 +8,8 @@ typedef struct WorldSite { uint32_t rva; uint8_t length, which; } WorldSite;
 #define WORLD_FULL 1u
 #define WORLD_INV 2u
 #define WORLD_NEG_HALF 3u /* -1024.0 (0x23C83C0): added by hand, see below */
-static const uint32_t kWorldConstants[4] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u};
+#define WORLD_NEG_FULL 4u /* -2048.0 (0x23C83D0): added by hand, see below */
+static const uint32_t kWorldConstants[5] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u, 0x23C83D0u};
 /* 209 instructions */
 static const WorldSite kWorldSites[] = {
     {0x1CFC47u, 8, WORLD_HALF},
@@ -93,6 +94,11 @@ static const WorldSite kWorldSites[] = {
      * (0xF4F9E0) builds its fallback quad from -1024.0 (0xF50042, the generator's only reader of 0x23C83C0) to the half
      * world (0xF4FE3E above): unredirected, an extra large map's quad ran from -1024 to +half. */
     {0xF50042u, 8, WORLD_NEG_HALF},
+    /* By hand: the road route request 0x6292A0 drops a destination whose x or y is outside -2048..2048 (0x62932E,
+     * 0x629350; centred coordinates): on an extra large world a convoy's route beyond 2 km never came and its escorts
+     * spawned again every frame (difficulty_world.c, InstallConvoyGuard). */
+    {0x62932Eu, 8, WORLD_NEG_FULL},
+    {0x629350u, 8, WORLD_FULL},
     {0xF551A6u, 9, WORLD_HALF},
     {0xF56716u, 9, WORLD_HALF},
     {0xF5729Du, 9, WORLD_HALF},
