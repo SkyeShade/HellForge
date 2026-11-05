@@ -147,9 +147,10 @@ static const uint8_t kClusterCountStubA[55] = {
     0xB9, 0xAB, 0xAA, 0xAA, 0xAA, 0x48, 0x0F, 0xAF, 0xC1,             /* 16 mov ecx, 0xAAAAAAAB; imul rax, rcx */
     0x8B, 0x0D, 0, 0, 0, 0,                                           /* 25 mov ecx, [rip -> +0x84] (rel32 at 27) */
     0x48, 0xD3, 0xE8,                                                 /* 31 shr rax, cl (eax = ceil(r10d / per cluster)) */
-    0x44, 0x89, 0xC9, 0x44, 0x29, 0xF9,                               /* 34 mov ecx, r9d; sub ecx, r15d (places left) */
-    0x39, 0xC8, 0x0F, 0x47, 0xC1,                                     /* 40 cmp eax, ecx; cmova eax, ecx */
-    0x39, 0xD0, 0x0F, 0x47, 0xD0,                                     /* 45 cmp eax, edx; cmova edx, eax */
+    0x39, 0xD0, 0x0F, 0x47, 0xD0,                                     /* 34 cmp eax, edx; cmova edx, eax (at least the ceiling) */
+    0x44, 0x89, 0xC9, 0x44, 0x29, 0xF9,                               /* 39 mov ecx, r9d; sub ecx, r15d (places left) */
+    0x39, 0xCA, 0x0F, 0x47, 0xD1,                                     /* 45 cmp edx, ecx; cmova edx, ecx (within them: the draw */
+                                                                      /*    alone could pass the list, 0xF7996E) */
     0xE9, 0, 0, 0, 0};                                                /* 50 jmp 0xF7995D (rel32 at 51) */
 static const uint8_t kClusterCountStubB[54] = {
     0x50, 0x51,                                                       /*  0 push rax (r9d, the capacity); push rcx (the cap) */

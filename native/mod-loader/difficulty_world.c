@@ -100,6 +100,7 @@ static struct
 #define CITY_VANILLA_KEEP 681.12f  /* a vanilla level's keep radius (difficulty_maps.c's radii at map_scale 1: disk + 1) */
 #define CITY_VANILLA_FADE 620.12f  /* and its fade (border + 57): S+0x54 x W / 2 */
 static volatile float* g_cityZone;
+#define DIF_PLACE_LIMIT (DIF_LOCATIONS - 256u) /* op 0x2B places no location past it (kPlaceSkipStub) */
 
 /* The scale level 11's map needs: the smallest power of two whose world holds its disk (difficulty_maps.c's radii). */
 static uint32_t WorldScaleFor(float mapScale)
@@ -132,6 +133,7 @@ static void WorldWrite(float scale)
     {
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
         g_world.below[1] = scale > 1.0f ? g_world.placeBelow : 0xFFFFFFFFu;
+        g_world.below[2] = scale > 1.0f ? DIF_PLACE_LIMIT : 0xFFFFFFFFu;
     }
     for (int i = 0; i < WORLD_IMMEDIATES; i++)
     {
@@ -140,7 +142,9 @@ static void WorldWrite(float scale)
         value *= scale;
         ApiWrite(g_world.game + kWorldImmediates[i].rva + kWorldImmediates[i].at, &value, 4);
     }
-    if (g_cityZone != NULL) *g_cityZone = scale > 1.0f ? CITY_FRAME_K / g_difficulty.mapScale : 1.0f;
+    /* x g_cityZoneRatio: the playable fraction on an extra large city map is 0.95 (difficulty.c), not vanilla's x
+     * map_scale / world scale, and the template's square is a share of it */
+    if (g_cityZone != NULL) *g_cityZone = scale > 1.0f ? CITY_FRAME_K / g_difficulty.mapScale * g_cityZoneRatio : 1.0f;
     g_world.current = scale;
     InterlockedIncrement(&g_world.switches);
 }
@@ -275,21 +279,48 @@ static const uint8_t kTableFullSkip[7] = {0xEB, 0x05, 0x90, 0x90, 0x90, 0x90, 0x
 #define DIF_PLACE_LOOP_BACK 0xF35037u
 #define DIF_PLACE_LOOP_END 0xF3517Cu
 static const uint8_t kPlaceLoopPin[10] = {0x48, 0x8B, 0x4F, 0x20, 0x45, 0x8B, 0xD5, 0x41, 0xFF, 0xC5};
-static const uint8_t kPlaceSkipStub[51] = {
-    0x8B, 0x47, 0x54,                                                 /*  0 mov eax, [rdi+0x54] (the count) */
-    0x69, 0xC0, 0x6B, 0xCA, 0xEB, 0x85,                               /*  3 imul eax, eax, 0x85EBCA6B */
-    0x01, 0xF0,                                                       /*  9 add eax, esi (the instance) */
-    0x69, 0xC0, 0xB1, 0x79, 0x37, 0x9E,                               /* 11 imul eax, eax, 0x9E3779B1 */
-    0x3B, 0x05, 0, 0, 0, 0,                                           /* 17 cmp eax, [rip+placeBelow] (rel32 at 19) */
-    0x76, 0x0E,                                                       /* 23 jbe 39 (kept) */
-    0xFF, 0xC6,                                                       /* 25 inc esi (skipped) */
-    0x8B, 0x47, 0x54,                                                 /* 27 mov eax, [rdi+0x54] */
-    0x3B, 0xF0,                                                       /* 30 cmp esi, eax */
-    0x72, 0xDE,                                                       /* 32 jb 0 */
-    0xE9, 0, 0, 0, 0,                                                 /* 34 jmp 0xF3517C (the loop's end; rel32 at 35) */
-    0x48, 0x8B, 0x4F, 0x20,                                           /* 39 mov rcx, [rdi+0x20] */
-    0x45, 0x8B, 0xD5,                                                 /* 43 mov r10d, r13d */
-    0xE9, 0, 0, 0, 0};                                                /* 46 jmp 0xF35037 (rel32 at 47) */
+/* The loop writes location r13d (0xE0 at r15 + r13 x 0xE0 and 0x40 at rbp + r13 x 0x40, 0xF35046 / 0xF35050), bumps it
+ * (0xF35037) and stores the final count at 0xF351B5 ([[rsp+0xA0]+0x270]), with no test of the table's room: on a level
+ * the stub also skips every instance once r13d reaches the limit (g_world.below[2]: DIF_LOCATIONS - 256 on an extra
+ * large world, else none) and counts them (below[3]). */
+static const uint8_t kPlaceSkipStub[69] = {
+    0x44, 0x3B, 0x2D, 0, 0, 0, 0,                                     /*  0 cmp r13d, [rip+limit] (rel32 at 3) */
+    0x73, 0x27,                                                       /*  7 jae 48 (full) */
+    0x8B, 0x47, 0x54,                                                 /*  9 mov eax, [rdi+0x54] (the count) */
+    0x69, 0xC0, 0x6B, 0xCA, 0xEB, 0x85,                               /* 12 imul eax, eax, 0x85EBCA6B */
+    0x01, 0xF0,                                                       /* 18 add eax, esi (the instance) */
+    0x69, 0xC0, 0xB1, 0x79, 0x37, 0x9E,                               /* 20 imul eax, eax, 0x9E3779B1 */
+    0x3B, 0x05, 0, 0, 0, 0,                                           /* 26 cmp eax, [rip+placeBelow] (rel32 at 28) */
+    0x76, 0x17,                                                       /* 32 jbe 57 (kept) */
+    0xFF, 0xC6,                                                       /* 34 inc esi (skipped) */
+    0x8B, 0x47, 0x54,                                                 /* 36 mov eax, [rdi+0x54] */
+    0x3B, 0xF0,                                                       /* 39 cmp esi, eax */
+    0x72, 0xD5,                                                       /* 41 jb 0 */
+    0xE9, 0, 0, 0, 0,                                                 /* 43 jmp 0xF3517C (the loop's end; rel32 at 44) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 48 lock inc dword [rip+refused] (rel32 at 51) */
+    0xEB, 0xE9,                                                       /* 55 jmp 34 */
+    0x48, 0x8B, 0x4F, 0x20,                                           /* 57 mov rcx, [rdi+0x20] */
+    0x45, 0x8B, 0xD5,                                                 /* 61 mov r10d, r13d */
+    0xE9, 0, 0, 0, 0};                                                /* 64 jmp 0xF35037 (rel32 at 65) */
+#define DIF_STAMP_PLACE 6.0f /* the placement's share over the jobs' (InstallWorld) */
+/* GenerateSubregionSpecial (op 0x76, 0xF65DA0) writes each non-empty location cluster's mean xyz to a 16-slot stack
+ * array ([rbp+0x110 + 12 k], 0xF66060..0xF6607C; its cookie at [rbp+0x1D0]), k = the non-empty clusters so far
+ * ([rsp+0x50], stored at 0xF6604B), with no bound: vanilla's cluster list held 8. The larger list (DIF_CLUSTERS 32) and
+ * an extra large level's clusters of 3 (25 in s75u) overwrote the cookie (fail-fast). The cluster loop's head (0xF65F20:
+ * mov r10d, [rdi+0xB8]; test; je 0xF66089, the empty-cluster path) now takes a cluster as empty once 16 are counted;
+ * the later reads (0xF664C0.., an index below [rsp+0x50] from 0xF65C70) stay within the written slots. Up to 16 non-empty
+ * clusters the op is unchanged. */
+#define DIF_SPECIAL_LOOP 0xF65F20u
+#define DIF_SPECIAL_EMPTY 0xF66089u
+#define DIF_SPECIAL_BODY 0xF65F30u
+static const char kSpecialLoopPin[] = "44 8B 97 B8 00 00 00 45 85 D2 0F 84 59 01 00 00";
+static const uint8_t kSpecialCapStub[32] = {
+    0x83, 0x7C, 0x24, 0x50, 0x10,                                     /*  0 cmp dword [rsp+0x50], 16 (the slots) */
+    0x0F, 0x83, 0, 0, 0, 0,                                           /*  5 jae 0xF66089 (rel32 at 7) */
+    0x44, 0x8B, 0x97, 0xB8, 0x00, 0x00, 0x00,                         /* 11 mov r10d, [rdi+0xb8] (the members) */
+    0x45, 0x85, 0xD2,                                                 /* 18 test r10d, r10d */
+    0x0F, 0x84, 0, 0, 0, 0,                                           /* 21 je 0xF66089 (rel32 at 23) */
+    0xE9, 0, 0, 0, 0};                                                /* 27 jmp 0xF65F30 (rel32 at 28) */
 /* The engine's occlusion test (exe 0x68FAxx) projects a bounding box onto its depth buffer ([rdi+0xB8], width [rdi],
  * height [rdi+4]) and clamps the cell range with minps/maxps, which let a NaN through: cvtps2dq made it 0x80000000, the row
  * loop started at -2^28 and read far before the buffer (a 4096 m mission ended at exe 0x68FD47 while loading; which object
@@ -515,7 +546,9 @@ static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e
 {
     AcquireSRWLockExclusive(&g_clusterLock);
     int small = g_clusterPer != NULL && g_world.current > 1.0f;
-    if (small) { g_clusterPer[0] = 5; g_clusterPer[1] = 34; }
+    /* 3 locations a cluster on an extra large level (difficulty_block.c: ceil(n / 3) by 0xAAAAAAAB >> 33; 6 left the
+     * content in about a dozen lumps over the map, audit 13), within DIF_CLUSTERS */
+    if (small) { g_clusterPer[0] = 2; g_clusterPer[1] = 33; }
     uint64_t r = WorldPassClustersTimed(a, b, c, e);
     if (small) { g_clusterPer[0] = 23; g_clusterPer[1] = 36; }
     ReleaseSRWLockExclusive(&g_clusterLock);
@@ -2353,7 +2386,17 @@ static void NatureClusters(uint64_t pass, uint64_t clusters, uint32_t n)
     int s = NatureSlotOf(S);
     if (s < 0 || !g_nature[s].open || g_cities.count == 0) return;
     uint32_t moved3 = 0, moved1 = 0, kinds[6] = {0}, perCity[CITY_COUNT] = {0};
-    const float inner = 0.45f * g_cities.radius, out = g_cities.radius + CITY_FRINGE + 160.0f;
+    const float out = g_cities.radius + CITY_FRINGE + 160.0f;
+    /* kind 3: each city's clusters spread over its disc (golden angle, radius sqrt(0.1 + 0.6 (j + 0.5) / m) of the
+     * city's, m the city's share), not one ring at 0.45: on one ring a city's content sat in a ~300 m patch beside its
+     * centre (audit 13, s75t: centroids 280-360 m off) */
+    uint32_t total3 = 0;
+    for (uint32_t i = 0; i < n && i < 64; i++)
+    {
+        uint8_t kind = 0;
+        if (!SafeRead(clusters + 0xE0ull * i + 0xD8, &kind, 1) && kind == 3) total3++;
+    }
+    const uint32_t share = (total3 + (uint32_t)g_cities.count - 1) / (uint32_t)g_cities.count;
     for (uint32_t i = 0; i < n && i < 64; i++)
     {
         uint64_t at = clusters + 0xE0ull * i;
@@ -2369,8 +2412,10 @@ static void NatureClusters(uint64_t pass, uint64_t clusters, uint32_t n)
         if (kind == 3)
         {
             int k = (int)(moved3 % (uint32_t)g_cities.count);
-            float a = 2.3999632f * (float)perCity[k]++ + 0.7f * (float)k; /* golden angle per city */
-            xy[0] = g_cities.x[k] + inner * cosf(a); xy[1] = g_cities.y[k] + inner * sinf(a);
+            uint32_t j = perCity[k]++;
+            float a = 2.3999632f * (float)j + 0.7f * (float)k; /* golden angle per city */
+            float r = g_cities.radius * sqrtf(0.1f + 0.6f * ((float)j + 0.5f) / (float)(share ? share : 1));
+            xy[0] = g_cities.x[k] + r * cosf(a); xy[1] = g_cities.y[k] + r * sinf(a);
             memcpy((void*)(uintptr_t)at, xy, 8);
             moved3++;
         }
@@ -3175,10 +3220,85 @@ static void WorldOpenEdgesPlain(uintptr_t gen)
         plain, streets, cityCells, unknown, plainNodes, nodes);
 }
 
+/* No water on the extra large city map, as on a vanilla city map. The level's cell types ([[level+0x2D0]], count +0xA0)
+ * carry a water level at +0xE4; op 0x0A (0xF6C610 phase 0) spawns a water body for each used type (ids G+0x18008, the
+ * record built at 0xC23F6A / 0xC26AD2: pass+0x10 = that table) whose level is above -500. A vanilla city map's types are
+ * at -501, so it has none. The XL city map's open land takes the region's open types (s75t: types 3/4/5/30 at -4 / -3.99
+ * / -1.05 / -10), whose basins lie 0.1-0.2 m under their level over 8 km2 (3 % of the map): sheets with a sawtooth
+ * shoreline at the 4 m heightmap (audit 13), and WaterLevelAt (0x13D4620) reads the 16 km water map as if it were 2 km
+ * (KB xl-world-streaming, water ops). So on such a level each type with a level above -500 is set to -501 before the
+ * level's op 0x0A, as soon as the level's map type is set (every generation reader after it, h_macro's wet holds and the
+ * tiles see a dry type), and put back at the next level's first op, while the descriptor is still in that level's table and still holds -501 (else it was unloaded or
+ * replaced: left alone). */
+#define DRY_LEVEL -501.0f
+static struct { LONG level; uint32_t count; uint64_t type[256]; float was[256]; } g_dry = {.level = -1};
+
+static int DryWritable(uint64_t at)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery((void*)(uintptr_t)at, &mbi, sizeof mbi) != sizeof mbi || mbi.State != MEM_COMMIT) return 0;
+    return (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) != 0 && !(mbi.Protect & PAGE_GUARD);
+}
+
+static void WorldDryCity(uint64_t op)
+{
+    static LONG restoredFor = -1, decided = -1;
+    if (decided == g_world.levels || g_worldLevel == 0) return;
+    uint64_t ts = 0, table = 0, mt = 0;
+    uint32_t types = 0;
+    if (SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4)) return;
+    if (types > 256) types = 256;
+    if (restoredFor != g_world.levels)
+    {
+        restoredFor = g_world.levels;
+        uint32_t restored = 0, dropped = 0;
+        for (uint32_t i = 0; i < g_dry.count; i++)
+        {
+            int live = 0;
+            for (uint32_t t = 0; t < types && !live; t++) { uint64_t d = 0; if (!SafeRead(table + 8ull * t, &d, 8) && d == g_dry.type[i]) live = 1; }
+            float now = 0;
+            if (live && !SafeRead(g_dry.type[i] + 0xE4, &now, 4) && now == DRY_LEVEL && DryWritable(g_dry.type[i] + 0xE4))
+            { *(volatile float*)(uintptr_t)(g_dry.type[i] + 0xE4) = g_dry.was[i]; restored++; }
+            else dropped++;
+        }
+        if (g_dry.count) Note("difficulty: extra large maps: water levels put back on %u types (%u no longer this level's or changed: left alone)", restored, dropped);
+        g_dry.count = 0;
+    }
+    if (!(g_world.current > 1.0f)) { decided = g_world.levels; return; }
+    /* the level's map type, [lg+0x2DE0]+0x1D (= [[ctx+8]+0xC0]+0x1D: the settings are lg+0x2D20); set some ops into the
+     * level (s75u: not yet at its first op), so asked again at each op until it is */
+    uint8_t mapType = 0xFF;
+    if (SafeRead(g_worldLevel + 0x2DE0, &mt, 8) || mt == 0 || SafeRead(mt + 0x1D, &mapType, 1))
+    {
+        if (op == 0x0A) { decided = g_world.levels; Note("difficulty: extra large maps: the level's map type is not set at op 0x0A; its water is left as it is"); }
+        return;
+    }
+    decided = g_world.levels;
+    if (mapType != 2) { Note("difficulty: extra large maps: map type %u keeps its water (only the city map, type 2, is made dry)", mapType); return; }
+    char text[512]; size_t at = 0; text[0] = 0;
+    uint32_t refused = 0;
+    for (uint32_t t = 0; t < types; t++)
+    {
+        uint64_t d = 0; float level = DRY_LEVEL;
+        if (SafeRead(table + 8ull * t, &d, 8) || d == 0 || SafeRead(d + 0xE4, &level, 4) || !(level > -500.0f)) continue;
+        if (!DryWritable(d + 0xE4)) { refused++; continue; }
+        g_dry.type[g_dry.count] = d; g_dry.was[g_dry.count] = level; g_dry.count++;
+        *(volatile float*)(uintptr_t)(d + 0xE4) = DRY_LEVEL;
+        if (at < sizeof text - 24) at += (size_t)snprintf(text + at, sizeof text - at, " %u (%.2f)", t, (double)level);
+    }
+    Note("difficulty: extra large maps: the city map's open land has no water (as a vanilla city map), before op 0x%02X: %u types set to %.0f:%s%s",
+        (unsigned)op, g_dry.count, (double)DRY_LEVEL, g_dry.count ? text : " none had one", refused ? " (some descriptors not writable: kept)" : "");
+}
+
+static void CityGatesNote(uint32_t op); /* difficulty_world_gates.c: the city ops' gates about each city, per level */
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     uint32_t diagAt, diagOp;
     TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
+    {
+        uint32_t i = 0, o = 0xFFFFFFFFu;
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4)) WorldDryCity(o); /* once a level, before op 0x0A */
+    }
     if (g_world.current == 8.0f) WorldCamInstall();
     {
         uint32_t i = 0, o = 0xFFFFFFFFu;
@@ -3401,6 +3521,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
             if (!SafeRead(index, &pat, 4) && !SafeRead(records + (uint64_t)pat * 0x19B0u, &pop, 4) && pop != 0x96) WorldScatterNote();
     }
     if (!watch) return r;
+    CityGatesNote(op);
     if (op == 0xB9) WorldZoneProbe(records, (uint32_t)d, block);
     if (op == 0x07 || op == 0xA4) WorldCellEdges(block, op);
     if (op == 0xAB || op == 0xA7 || op == 0x2B) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) WorldCityBudget(block, op); }
@@ -3674,6 +3795,7 @@ static void WorldLevel(uintptr_t level)
     g_world.values->size = scale > 1.0f ? 2048.0f * scale : 0.0f;
     if (scale != g_world.current) WorldWrite(scale);
     g_worldLevel = level;
+    if (g_world.below != NULL) g_world.below[3] = 0; /* op 0x2B's instances refused at the table's limit, this level */
     g_worldOpAt = 0xFFFFFFFFu;
     InterlockedIncrement(&g_worldOpRun);
     WorldIndex(level, 2048.0f * scale);
@@ -3732,6 +3854,8 @@ static const char* WorldSitesFailed(uintptr_t game)
     uint8_t place[10];
     if (SafeRead(game + DIF_PLACE_LOOP, place, 10) || memcmp(place, kPlaceLoopPin, 10) != 0)
         return "the stamp placement is not the reviewed one (an extra large map needs it)";
+    if (!ApiCodeMatches(game + DIF_SPECIAL_LOOP, kSpecialLoopPin))
+        return "op 0x76's cluster loop is not the reviewed one (an extra large map needs it)";
     uint8_t records[10];
     if (SafeRead(game + DIF_RECORDS_FULL, records, 10) || memcmp(records, kRecordsFullPin, 10) != 0)
         return "the world's destruction records are not the reviewed ones (an extra large map needs them)";
@@ -4191,6 +4315,7 @@ static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c:
 static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
 static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
 static const char* InstallTowns(uintptr_t game); /* difficulty_world_towns.c */
+static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
 {
@@ -4215,7 +4340,11 @@ static const char* InstallWorld(DifficultyInstall* d)
     /* The whole share where they are placed (every way the jobs make instances), and sqrt(keep) earlier, where the jobs
      * make their main ones (0xF348E4: one of five ways; for the jobs' time): a 16384 m mission's other ways alone made
      * 7748 locations at sqrt(keep) and the resource hash crashed (0xC176B8). */
-    uint32_t keepBelow = keep >= 1.0f ? 0xFFFFFFFFu : (uint32_t)(keep * 4294967295.0f);
+    /* Placement keeps DIF_STAMP_PLACE x keep of the jobs' instances (1 % kept 713 of s75t's 71172: bare open land, audit
+     * 13); it costs no job time (the overlap tests are the jobs' own, at sqrt(keep)), and the loop stops at the table's
+     * limit (kPlaceSkipStub) */
+    float place = keep * DIF_STAMP_PLACE;
+    uint32_t keepBelow = place >= 1.0f ? 0xFFFFFFFFu : (uint32_t)(place * 4294967295.0f);
     float half = keep >= 1.0f ? 1.0f : sqrtf(keep);
     uint32_t halfBelow = half >= 1.0f ? 0xFFFFFFFFu : (uint32_t)(half * 4294967295.0f);
     /* The thresholds live in the values page and follow the level (WorldWrite): a vanilla level keeps every stamp. The
@@ -4224,19 +4353,27 @@ static const char* InstallWorld(DifficultyInstall* d)
     g_world.makeBelow = halfBelow;
     g_world.placeBelow = keepBelow;
     g_world.below[0] = g_world.below[1] = 0xFFFFFFFFu;
+    g_world.below[2] = 0xFFFFFFFFu; g_world.below[3] = 0;
     memcpy(skip, kPlaceSkipStub, sizeof kPlaceSkipStub);
-    rel = (int32_t)((uint8_t*)&g_world.below[1] - (skip + 23)); memcpy(skip + 19, &rel, 4);
+    rel = (int32_t)((uint8_t*)&g_world.below[2] - (skip + 7)); memcpy(skip + 3, &rel, 4);
+    rel = (int32_t)((uint8_t*)&g_world.below[1] - (skip + 32)); memcpy(skip + 28, &rel, 4);
+    rel = (int32_t)((uint8_t*)&g_world.below[3] - (skip + 55)); memcpy(skip + 51, &rel, 4);
     uint8_t* make = block + 0x300;
     memcpy(make, kInstanceSkipStub, sizeof kInstanceSkipStub);
     rel = (int32_t)((uint8_t*)&g_world.below[0] - (make + 45)); memcpy(make + 41, &rel, 4);
     rel = (int32_t)(game + DIF_INSTANCE_REJECT - (uintptr_t)(make + 52)); memcpy(make + 48, &rel, 4);
     rel = (int32_t)(game + DIF_INSTANCE_MADE - (uintptr_t)(make + 67)); memcpy(make + 63, &rel, 4);
-    rel = (int32_t)(game + DIF_PLACE_LOOP_END - (uintptr_t)(skip + 39)); memcpy(skip + 35, &rel, 4);
-    rel = (int32_t)(game + DIF_PLACE_LOOP_BACK - (uintptr_t)(skip + 51)); memcpy(skip + 47, &rel, 4);
+    rel = (int32_t)(game + DIF_PLACE_LOOP_END - (uintptr_t)(skip + 48)); memcpy(skip + 44, &rel, 4);
+    rel = (int32_t)(game + DIF_PLACE_LOOP_BACK - (uintptr_t)(skip + 69)); memcpy(skip + 65, &rel, 4);
     uint8_t* walkStub = block + 0x380;
     memcpy(walkStub, kObjectWalkStub, sizeof kObjectWalkStub);
     rel = (int32_t)(game + DIF_OBJECT_WALK_NEXT - (uintptr_t)(walkStub + 10)); memcpy(walkStub + 6, &rel, 4);
     rel = (int32_t)(game + DIF_OBJECT_WALK_BACK - (uintptr_t)(walkStub + 21)); memcpy(walkStub + 17, &rel, 4);
+    uint8_t* special = block + 0x400;
+    memcpy(special, kSpecialCapStub, sizeof kSpecialCapStub);
+    rel = (int32_t)(game + DIF_SPECIAL_EMPTY - (uintptr_t)(special + 11)); memcpy(special + 7, &rel, 4);
+    rel = (int32_t)(game + DIF_SPECIAL_EMPTY - (uintptr_t)(special + 27)); memcpy(special + 23, &rel, 4);
+    rel = (int32_t)(game + DIF_SPECIAL_BODY - (uintptr_t)(special + 32)); memcpy(special + 28, &rel, 4);
     uint8_t* full = block + 0x200;
     g_worldIndexFull = (volatile LONG*)(block + 0x1100);
     memcpy(full, kIndexFullStub, sizeof kIndexFullStub);
@@ -4306,7 +4443,11 @@ static const char* InstallWorld(DifficultyInstall* d)
     uint8_t skipJump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_PLACE_LOOP, (uintptr_t)skip); memcpy(skipJump + 1, &rel, 4);
     if (ApiWrite(game + DIF_PLACE_LOOP, skipJump, 7)) return "the stamp placement could not be thinned";
-    Note("difficulty %s: extra large maps: %.1f%% of the weight rules' stamps placed (on its levels only)", g_difficulty.name, (double)(keep >= 1.0f ? 100.0f : keep * 100.0f));
+    uint8_t specialJump[16] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + DIF_SPECIAL_LOOP, (uintptr_t)special); memcpy(specialJump + 1, &rel, 4);
+    if (ApiWrite(game + DIF_SPECIAL_LOOP, specialJump, 16)) return "op 0x76's cluster centres could not be bounded";
+    Note("difficulty %s: extra large maps: %.1f%% of the weight rules' stamps placed (made %.1f%%; on its levels only)", g_difficulty.name,
+        (double)(place >= 1.0f ? 100.0f : place * 100.0f), (double)(half >= 1.0f ? 100.0f : half * 100.0f));
     for (size_t i = 0; i < sizeof kWorldPasses / sizeof kWorldPasses[0]; i++)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
@@ -4385,6 +4526,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (ApiCodeMatches(game + 0xC129B0u, "48 8B C4 44 89 48 20 F3 0F 11 50 18 53 55 56 57"))
         LoaderHook("extra large maps' city frame (grid)", game + 0xC129B0u, (void*)WorldSiteGrid, (void**)&g_siteGrid);
     if (towns != NULL) Note("difficulty: extra large maps: %s", towns);
+    const char* gates = InstallCityGates(game);
+    if (gates != NULL) Note("difficulty: extra large maps: %s", gates);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);

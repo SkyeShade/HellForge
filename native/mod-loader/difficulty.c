@@ -70,6 +70,11 @@ static const uint32_t kWeightReaders[6][2] = {{0x94C1E9u, 5}, {0x94C26Fu, 6}, {0
 /* The level's locations (difficulty_block.c moves them to the end of a larger block): A G+0x758E20 (0xE0 each) and B
  * G+0x7EEBA0 (0x40) in vanilla, 2740 places. 16384 places since 2026-11-04 (an operation's three cities: 0xAB + 0xA7
  * filled 8192 before 0x2B, s74f/s74g); indices are u32 everywhere, the stamp index's payload u16 (scratch locs16k). */
+/* An extra large world's playable fraction on every map type (lg+0x2D70; 0.95 of half the world, as map types 0/1), and
+ * the city zone template's correction for it (difficulty_world.c, g_cityZone): vanilla's sub-kind-0 fraction over it,
+ * so a city keeps vanilla's zone square. */
+#define DIF_XL_PLAYABLE 0.95f
+static float g_cityZoneRatio = 1.0f;
 #define DIF_LOCATIONS 16384u
 #define DIF_LOCATIONS_A 0x758E20u
 #define DIF_LOCATIONS_B 0x7EEBA0u
@@ -629,7 +634,18 @@ static const char* AllocateTable(DifficultyInstall* d)
     {
         float factor;
         memcpy(&factor, d->distance + DIF_VANILLA * 12 + 4 * k, 4);
+        float vanilla = factor;
         factor *= distanceScale;
+        /* On an extra large world the city map's playable radius is the nature maps': SetupMissionDistance stores this
+         * factor at lg+0x2D80 (0xF41DB9) and lg+0x2D70 = it x 0.38 (xmm9, 0xF41DC2), the playable fraction; map types
+         * 0/1 get 0.95 (7782 m on 16 km), which the loader's radii are built for (difficulty_maps.c: border 7956 m, fade
+         * 8013, disk 8073). Scaled from vanilla's 0.85 / 0.85 / 0.90 alone, a city map stopped at 0.8075 (6615 m): 51 % of
+         * the square, the ring from 6.6 to 8 km generated but out of bounds (audit 13; static, subagent content13). */
+        if (WorldScaleFor(g_difficulty.mapScale) > 1u)
+        {
+            if (k == 0) g_cityZoneRatio = vanilla * distanceScale / (DIF_XL_PLAYABLE / 0.38f);
+            factor = DIF_XL_PLAYABLE / 0.38f;
+        }
         memcpy(d->distance + DIF_VANILLA * 12 + 4 * k, &factor, 4);
     }
     return NULL;
@@ -723,9 +739,9 @@ static const char* MakeLevelRow(DifficultyInstall* d)
         uint32_t newMajor = wantMajor <= room ? wantMajor : room;
         uint32_t newOptional = wantOptional <= room - newMajor ? wantOptional : room - newMajor;
         memcpy(row + 0x28, &newOptional, 4); memcpy(row + 0x2C, &newMajor, 4);
-        Note("difficulty: an operation's %u missions on one map: outposts x%u (both lists), optional objectives %u -> %u, major %u -> %u%s", m, m,
+        Note("difficulty: an operation's %u missions on one map: outposts x%u (both lists); the selection takes optional objectives %u -> %u, major %u -> %u%s", m, m,
             optional, newOptional, major, newMajor,
-            newOptional + newMajor < wantOptional + wantMajor ? " (held at the objective list's room)" : "");
+            newOptional + newMajor < wantOptional + wantMajor ? " (its 30-id room; the map's objective list is filled to the full count after it: see \"on the map's objective list\")" : "");
     }
     /* The radii are fractions of half the world (the generator multiplies them by [settings+0x2C] / 2: e.g. the outer
      * subregion ring of GenerateSubregionSpecial, 0xF66156, and some 70 more readers): on an extra large world, whose

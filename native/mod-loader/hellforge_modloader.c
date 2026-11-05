@@ -600,6 +600,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_diag.c" /* after difficulty_world.c: terrain diagnostics (its dispatcher hooks, the layer heightfield copy) */
 #include "difficulty_world_terrain.c" /* after difficulty_world.c: the extra large map's terrain as tiles at vanilla density */
 #include "difficulty_world_towns.c" /* after difficulty_world_terrain.c: towns at a vanilla town's shape, x3 (g_world, WorldTileGuarded) */
+#include "difficulty_world_gates.c" /* after difficulty_world.c: the city ops' distance gates about each city (g_cities, the stub macros) */
 #include "difficulty_world_macro.c" /* after difficulty_world_terrain.c: the extra large map's km-scale relief */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_status.c" /* after difficulty_maps.c: the status-effect volumes' unit registry on larger maps */

@@ -35,8 +35,11 @@
 #define MACRO_SEA 6.0f     /* metres above the sea plane still held at 0 */
 #define MACRO_SHORE 1.0f   /* metres above an area's water level a corner's vanilla ground still counts as wet: the drawn ground dips
                             * about that far below the vertex heights (s74y: drawn -0.90 m beside water at -1.05 m) */
-#define MACRO_HOLD 220.0f  /* metres around a location held flat */
-#define MACRO_RAMP 260.0f  /* metres over which a held plateau blends into the field */
+#define MACRO_HOLD 110.0f  /* metres around a location held flat (220 + 260 m of ramp held about 20 % of the open land flat around
+                            * 179 important locations, s75t; pads follow the capture's rim samples, 0x3F) */
+#define MACRO_RAMP 200.0f  /* metres over which a held plateau blends into the field */
+#define MACRO_LOW 0.30f    /* the lowland hills' height, a share of MACRO_MAX (MacroShape) */
+#define MACRO_HILLS 8.0f   /* their frequency, per 4096 m */
 
 static struct
 {
@@ -113,7 +116,16 @@ static float MacroShape(float gx, float gy, uint32_t seed)
     ridge *= ridge;
     float m = (base + 0.15f) / 0.7f; m = m < 0 ? 0 : m > 1 ? 1 : m; m = m * m * (3 - 2 * m);
     float h = m * (0.55f * ridge + 0.45f * (base * 0.5f + 0.5f));
-    return h > 0 ? powf(h, 1.4f) : 0.0f;
+    h = h > 0 ? powf(h, 1.4f) : 0.0f;
+    /* the lowlands: rolling ridged hills (~500 m) wherever the ranges' cut-off leaves the field at 0. Without them h was 0 on
+     * 62 % of the map (base under -0.15), and the open land was a city map's 6 m vanilla relief stretched over 263 km2:
+     * sd 2.5-4 m, mean slope 1.1-1.6 deg at the audit spots, water planes on 0.2 deg flats (audit 13; static, subagent
+     * terrain13). Offline (terrain13/proto2.py, seed 9C19D00A, before the holds and the slope limit): MACRO_LOW 0.30,
+     * MACRO_HILLS 8 give sd ~20 m, range 76-83 m and mean slopes 7-11 deg within 1 km of each spot (vanilla nature: sd
+     * ~40 m, 10.5 deg at 2 m/px with its own relief), ground never under 16.8 m. */
+    float hr = 1.0f - fabsf(MacroFbm(x * MACRO_HILLS, y * MACRO_HILLS, seed + 29u, 4));
+    float low = MACRO_LOW * (0.15f + 0.85f * hr * hr);
+    return h > low ? h : low;
 }
 
 /* Marks the nodes within r of (gx, gy): the callback gets the node and its distance. */

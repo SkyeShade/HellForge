@@ -304,6 +304,58 @@ static int TerrainTemplate(uintptr_t gen)
     return 1;
 }
 
+/* A tile's open land takes the level's zones. The template clears the tile's subregions (G+0x92F328), so the tile's
+ * SelectSubRegionCellsFromHeightGroup (0x78) rolls each cell's zone from the level's zone list. On a city map every
+ * non-city entry there weighs 0, and the level's open land got its zones from WorldCityOpenZones (before the level's
+ * 0x78, which keeps a non-zero zone at +0: 0xF37A80 -> 0xF37CEE). So the tiles' open land was city zones: city types,
+ * whose weight rules place nothing outside a city (s74s, a vanilla city map: 0 stamps from 0x2B), and s75t's 169 stamp
+ * tiles made 0 records over 189-199 items each. Before the tile's 0x78, each of its cells (+8 == -1, as the level's
+ * call takes) whose nearest level cell (by route-cell point, +0x18 -> xy, generator metres) is not a city cell (the
+ * cell's type +0xC, +0x170 bit 1) takes that cell's zone id (+0); the rest roll as before. Only on a level with cities. */
+static void TerrainTileZones(uintptr_t gen, float ox, float oy)
+{
+    if (g_cities.level != g_world.levels || g_cities.count <= 0 || g_worldLevel == 0) return;
+    static LONG built = -1;
+    static float lx[1024], ly[1024]; static uint32_t lz[1024]; static uint8_t lcity[1024];
+    static uint32_t levelCells;
+    static LONG stats[3]; /* tiles, cells written, cells left to roll */
+    if (built != g_world.levels)
+    {
+        uint64_t ts = 0, table = 0; uint32_t types = 0, subs = 0;
+        levelCells = 0;
+        if (SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4) ||
+            SafeRead(gen + 0x11A71C4u, &subs, 4) || subs > 1024) return;
+        for (uint32_t i = 0; i < subs; i++)
+        {
+            uintptr_t sub = gen + 0x92F328u + 0x20ull * i;
+            uint64_t route = 0, d = 0; float p[2]; int32_t t = -1; uint32_t zone = 0, flags = 0;
+            if (SafeRead(sub, &zone, 4) || SafeRead(sub + 0xC, &t, 4) || SafeRead(sub + 0x18, &route, 8) || route == 0 || SafeRead(route, p, 8)) continue;
+            lcity[levelCells] = t >= 0 && (uint32_t)t < types && !SafeRead(table + 8ull * (uint32_t)t, &d, 8) && d != 0 && !SafeRead(d + 0x170, &flags, 4) && (flags & 2u);
+            lx[levelCells] = p[0]; ly[levelCells] = p[1]; lz[levelCells] = zone; levelCells++;
+        }
+        built = g_world.levels; stats[0] = stats[1] = stats[2] = 0;
+    }
+    if (levelCells == 0 || g_terrain.block == NULL) return;
+    uint8_t* T = g_terrain.block;
+    uint32_t cells = 0; memcpy(&cells, T + 0x11A71C4, 4);
+    if (cells > 1024) return;
+    uint32_t written = 0, left = 0;
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        uint8_t* sub = T + 0x92F328 + (size_t)i * 0x20;
+        int32_t special = 0; uint64_t route = 0; float p[2];
+        memcpy(&special, sub + 8, 4); memcpy(&route, sub + 0x18, 8);
+        if (special != -1 || route == 0 || SafeRead(route, p, 8)) continue;
+        float gx = p[0] + ox, gy = p[1] + oy, best = 3.4e38f; uint32_t at = 0;
+        for (uint32_t k = 0; k < levelCells; k++) { float dx = lx[k] - gx, dy = ly[k] - gy, d = dx * dx + dy * dy; if (d < best) { best = d; at = k; } }
+        if (lcity[at] || lz[at] == 0) { left++; continue; }
+        memcpy(sub, &lz[at], 4); written++;
+    }
+    LONG n = InterlockedIncrement(&stats[0]); InterlockedExchangeAdd(&stats[1], (LONG)written); InterlockedExchangeAdd(&stats[2], (LONG)left);
+    if (n == 1 || n == 16 || n == 169 || n % 1000 == 0)
+        Note("difficulty: terrain: tiles take the level's open zones: %ld tiles so far, %ld cells given the level's zone, %ld left to roll (city)", (long)n, (long)stats[1], (long)stats[2]);
+}
+
 /* One tile: the game's GenerateVoronoi and height passes on the tile's block, then (move) moved to its world position.
  * 1 when built. Without move the tile stays in its own frame (the stamp rings run the level's op 0x2B on it). */
 static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, int move)
@@ -364,6 +416,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         if (!WorldTileRuns(op)) continue;
         WorldTileRelocate(one, gen, (uintptr_t)g_terrain.block);
         { uint64_t r; memcpy(&r, one + 0x1990, 8); r ^= seed; memcpy(one + 0x1990, &r, 8); }
+        if (op == 0x78) TerrainTileZones(gen, ox, oy);
         volatile uint32_t index = 0;
         volatile int calls = 0;
         uint8_t phase = 0;
@@ -3592,6 +3645,12 @@ typedef uint32_t* (*StampInsertFn)(uintptr_t index, float x0, float y0, float x1
 /* After the level's op 0x2B has finished (difficulty_world.c's WorldDispatch). */
 static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
 {
+    if (g_world.below != NULL && g_world.current > 1.0f)
+    {
+        uint32_t count = 0; SafeRead(gen + 0x11A7108u, &count, 4);
+        Note("difficulty: extra large maps: after the level's op 0x2B: %u locations (limit %u); %u instances refused at the limit", count,
+            (unsigned)DIF_PLACE_LIMIT, (unsigned)g_world.below[3]);
+    }
     if (!StampsOn() || g_world.current != 8.0f || g_world.below == NULL) return;
     if (g_terrain.level != g_world.levels || g_terrain.columns == 0 || g_terrain.block == NULL || g_terrain.tmpl == NULL)
     { Note("difficulty: stamps: the level's tiles are not built; no stamp rings"); return; }
