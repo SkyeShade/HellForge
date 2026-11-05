@@ -67,6 +67,8 @@ Reference and related pages:
   signing would fix, the options, and the build scripts' optional signing step.
 - [The Steam download of the supported build](steam-download.md): how setup downloads the build HellForge runs from
   Steam's servers for the player's account, what the sign-in keeps (nothing), and why HellForge hosts no game files.
+- [Asset migrator](asset-migrator.md): for maintainers; how the asset kit finds the game's bytes in a mod, the recipe,
+  the Steam chunk index, measured results and the maintainers' command line.
 - [Co-op internals](multiplayer-internals.md): what a co-op session starts, the stand-in DLLs, the backends and their
   Steam link, joins, privacy, invitations and kicks, and the research into how the game does co-op.
 - [Co-op mod sync](multiplayer-mod-sync.md): how a joiner takes the host's mods, the protocol and its limits, the rejoin

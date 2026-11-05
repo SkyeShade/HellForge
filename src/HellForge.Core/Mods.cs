@@ -14,10 +14,8 @@ namespace HellForge.Core;
 // A HellForge mod: a folder in <installation>/mods with a hellforge-mod.json manifest, or a .zip of one (ModArchives), and optionally
 //   code    a DLL written against the HellForge mod SDK (native/mod-sdk/hellforge_mod.h), loaded into the game by the mod loader;
 //   data/   the game's own mod format (<bundle>.patch_<n>, .gpu_resources, .stream), staged into game/data per session;
-//   hellforge-data.json  a data spec: patches HellForge builds from the player's own game data (GameData/ModDataBuilder.cs)
-//           and stages like data/, so the mod ships no game bytes;
-//   hellforge-recipe.json  game patch files the author made from the game's resources, as a recipe that rebuilds them,
-//           byte for byte, from the player's own game (AssetMigration/ModAssets.cs), so the mod ships only the author's bytes;
+//   hellforge-data.json  a data spec: patches HellForge builds from the player's own game data and stages like data/, so the mod ships no game bytes (GameData/ModDataBuilder.cs);
+//   hellforge-recipe.json  the author's patch files as a recipe that rebuilds the game's bytes in them from the player's game (ModAssets.cs);
 //   native  engine edits HellForge applies in the running game's memory (docs/modding/data.md "Native edits in the manifest"):
 //     networkFieldTypes  widen a named network field type (only widen; kind, bits and min must be as expected);
 //     componentWrites    set u32 fields of an entity's component record, only from their expected vanilla value.

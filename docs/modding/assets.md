@@ -1,7 +1,9 @@
 # Game content in your mod: the asset kit
 
-This page is for authors whose game patch files hold the game's own bytes: a model, texture or sound copied from the
-game, a kitbash of several, a backported weapon, or cut content found in the game's files. Those bytes are Arrowhead's,
+<!-- diataxis: how-to -->
+
+This page is for authors whose game patch files hold the game's own bytes. That can be a model, texture or sound copied
+from the game, a kitbash of several, a backported weapon, or cut content found in the game's files. Those bytes are Arrowhead's,
 and sharing them shares Arrowhead's files. The asset kit takes them out of your mod. What you share is your own work
 plus a recipe, and each player's HellForge rebuilds the exact files from their own copy of the game before the mod
 loads.
@@ -17,7 +19,7 @@ You keep working the way you do now, with your usual tools and your patch files.
 
 ## Quick start
 
-```
+```text
 HellForge.Cli assets-check --mod <installation>/mods/my-mod     # which bytes are the game's, and from which build
 HellForge.Cli package-mod --mod <installation>/mods/my-mod      # the zip to share, with the game's bytes taken out
 ```
@@ -36,15 +38,15 @@ runs take seconds.
 with the game, byte for byte. It finds whole resources, resources you edited in places, and pieces of one resource
 inside another, wherever they sit in your file. It changes nothing, and it writes a report:
 
-```
+```text
 STRIPPED: 259.17 MB of Arrowhead's content (89.4% of the mod's patch files) is out; each player's HellForge rebuilds it
 from their own game (HELLDIVERS 2 in Steam (build 26251122)), checked by SHA-256. 73 resource parts (28.44 MB) are in
 none of the builds checked: ...
 Report: <installation>/temp/asset-kit/my-mod.asset-report.md
 ```
 
-The report lists each patch file with how much of it is the game's, every game resource the mod uses and the build it is
-in, and every resource that is in none of the builds checked. The exit code is 0 when nothing in the mod is the game's,
+The report lists each patch file with how much of it is the game's. It lists every game resource the mod uses and the
+build it is in, and every resource that is in none of the builds checked. The exit code is 0 when nothing in the mod is the game's,
 3 when it found game content, and 1 when it could not prove a recipe would rebuild the mod.
 
 A resource in none of the builds checked is one of two things:
@@ -56,7 +58,7 @@ A resource in none of the builds checked is one of two things:
 
 ## Stripping a mod by hand
 
-```
+```text
 HellForge.Cli assets-strip --mod <folder> [--out <folder>]
 ```
 
@@ -65,8 +67,9 @@ folder name, with the report beside it (`<out>.asset-report.md`). Your own folde
 your folder with three differences:
 
 - the patch files the recipe rebuilds are gone;
-- `hellforge-recipe.json` lists, for each of those files, its size, its SHA-256 and how to put it back together: pieces
-  of the game's resources (named by resource, part and the SHA-256 of the piece), runs of one byte, and your own bytes;
+- `hellforge-recipe.json` lists each of those files with its size, its SHA-256 and how to put it back together. The
+  pieces are the game's resources (named by resource, part and the SHA-256 of the piece), runs of one byte, and your
+  own bytes;
 - `hellforge-recipe.literals` holds your own bytes.
 
 A patch file with nothing from the game in it ships as it is. Everything that is not a game patch file (the manifest,
