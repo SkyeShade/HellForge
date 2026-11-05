@@ -1,5 +1,7 @@
 # Shaders
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors who want effects the game's own materials cannot draw. A mod can bring its own pixel shader
 in a data spec: HellForge copies one of the game's materials, puts your compiled shader in the copy, and gives you a unit
 that draws it. Read [Data mods](data.md#data-specs) first.
@@ -99,7 +101,7 @@ Keep flashes under three a second: a large flash faster than that is a risk for 
 
 ## Getting it on screen
 
-A shader draws when its unit is in the world. The SDK has no call for spawning a unit yet, so for now a code mod does it
+A shader draws when its unit is in the world. The SDK has no call for spawning a unit yet. For now a code mod does it
 on the game thread through [game memory](hooks.md): the world's spawn call, with the resource's name hashed and the
 unit's package loaded. A `decal` box is 1 m across, so scale it to the area it covers, and leave its rotation alone so
 `uvw.z` stays up.
@@ -123,7 +125,7 @@ These checks are for you, not for players' safety: a compiled shader cannot be r
 
 ## Co-op
 
-A shader is code HellForge cannot check, so a mod with one counts as unchecked for [mod sync](tools.md): players who
-join get it only from a Steam friend, or when they press TRUST for it, which takes a sandboxed game with a stranger. Its
-effects are drawn on each machine by the code that spawns its units, so a mod has to arrange for other players to see
-them.
+A shader is code HellForge cannot check, so a mod with one counts as unchecked for [mod sync](tools.md). Players who
+join get it only from a Steam friend, or when they press TRUST for it, which takes a sandboxed game with a stranger.
+Its effects are drawn on each machine by the code that spawns its units, so a mod has to arrange for other players to
+see them.
