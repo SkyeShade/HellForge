@@ -124,8 +124,8 @@ mod, and says so while it works. Each session does it too, before it stages mods
   changed, means a rebuild.
 - **Older builds.** When the recipe takes something from a build the player does not have (cut content), the Mods page
   says how much it needs and offers **GET THEM FROM STEAM**. The player signs in to Steam
-  ([signing in to Steam](#signing-in-to-steam): the Steam app scans a QR code the first time), and HellForge fetches only the chunks that hold those pieces, under the player's own licence, then rebuilds the
-  mod. Nothing downloads without that click. From a terminal: `HellForge.Cli assets-rebuild --mod <folder> --steam yes`.
+  ([signing in to Steam](#signing-in-to-steam): the Steam app scans a QR code the first time). HellForge then fetches
+  only the chunks that hold those pieces, under the player's own licence, and rebuilds the mod. Nothing downloads without that click. From a terminal: `HellForge.Cli assets-rebuild --mod <folder> --steam yes`.
 - **Nothing half-built loads.** A mod whose files cannot be rebuilt stays listed with the reason and does not load.
 - **Co-op and mod sync.** The modlist code friends compare counts the recipe, not the rebuilt files. The recipe holds the
   SHA-256 of every rebuilt file, so two players with the same recipe run the same bytes. Mod sync sends the recipe, never
