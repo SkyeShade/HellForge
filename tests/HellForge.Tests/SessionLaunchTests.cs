@@ -44,7 +44,7 @@ static class SessionLaunchTests
         {
             var paths = Install("launch-profiles");
             var profiles = ProfileStore.List(paths);
-            check(profiles.Count == 1 && profiles[0].Name == ProfileStore.DefaultName && profiles[0].Template == ProfileStore.FirstProfileTemplate,
+            check(profiles.Count == 1 && profiles[0].Name == ProfileStore.DefaultName && profiles[0].Template == "unlock-all",
                 "The first profile uses the development template.");
             check(ProfileStore.Create(paths, "friends", "starter") == null, "A new profile.");
             check(ProfileStore.Create(paths, "friends", "starter") != null, "The same name twice.");

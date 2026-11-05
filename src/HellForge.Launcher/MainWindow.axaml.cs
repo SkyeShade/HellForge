@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         ConsoleList.ItemsSource = lines;
         templates = ProfileStore.LoadTemplates(paths);
         TemplateCombo.ItemsSource = templates;
-        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FallbackTemplate) ?? templates.FirstOrDefault();
+        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FirstProfileTemplate) ?? templates.FirstOrDefault();
         ShowTemplateDescription();
         LoadProfiles(ProfileStore.LoadSelected(paths));
 
