@@ -680,7 +680,7 @@ public static class SyncedStore
             {
                 var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
                 var problems = AssetMigration.ModAssets.Prepare([partial], () => AssetMigration.GameBuilds.Local(install));
-                if (problems.Count > 0) throw new InvalidDataException($"{expected.Id}: {problems[0].Problem}.");
+                if (problems.Count > 0) throw new InvalidDataException($"{expected.Id}: {problems[0].Reason}.");
             }
             cancel.ThrowIfCancellationRequested();
             Verify(expected, partial, verified ?? VerifiedMods.Contains, profile ?? EntityProfile.Current);

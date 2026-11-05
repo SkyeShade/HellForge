@@ -1,11 +1,12 @@
 using HellForge.Core;
 using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
+using HellForge.SteamDownload;
 
 namespace HellForge.Cli;
 
-// assets-check, assets-strip and package-mod's strip (docs/modding/assets.md): a mod's game patch files compared with the
-// builds of the game on this PC, and the mod written without Arrowhead's bytes.
+// assets-check, assets-strip and assets-rebuild (docs/modding/assets.md) on the console: AssetSharing and AssetFetch with
+// a terminal QR sign-in.
 static class AssetCommands
 {
     // --install, else the installation whose mods folder holds the mod, else the one this program is in; null when none
@@ -25,58 +26,42 @@ static class AssetCommands
         return null;
     }
 
-    // Checks (outFolder null) or strips the mod; the report goes to reportPath, else beside the stripped mod, else into
-    // the asset kit's folder.
-    public static (AssetKit.Result Result, string Report) Run(string modFolder, InstallLayout? install, string? outFolder, string? reportPath = null)
+    // Checks (outFolder null) or strips the mod (AssetSharing.Check), and says what it did. history: also against every
+    // build since release, from Steam, after a QR sign-in, when the builds here leave bytes the mod still ships.
+    public static AssetSharing.Checked Run(string modFolder, InstallLayout? install, string? outFolder, bool history = false)
     {
-        var builds = GameBuilds.Local(install);
-        var index = AssetKit.Index(builds, AssetKit.CacheFolder(install), Console.Error.WriteLine);
-        var games = builds.Select(GameBuilds.Open).ToList();
-        try
-        {
-            var named = builds.ToDictionary(b => b.Label, b => b.What, StringComparer.Ordinal);
-            var result = AssetKit.Strip(modFolder, index, games, outFolder, Console.Error.WriteLine, label => named.GetValueOrDefault(label));
-            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder));
-            var report = reportPath ?? (outFolder != null ? Path.TrimEndingDirectorySeparator(outFolder) + ".asset-report.md"
-                : Path.Combine(AssetKit.CacheFolder(install), $"{name}.asset-report.md"));
-            Directory.CreateDirectory(Path.GetDirectoryName(report)!);
-            File.WriteAllText(report, result.ReportText);
-            Console.Error.WriteLine(result.Summary);
-            Console.Error.WriteLine($"Report: {report}");
-            return (result, report);
-        }
-        finally
-        {
-            foreach (var game in games) (game as IDisposable)?.Dispose();
-        }
+        using var cancel = new CancellationTokenSource();
+        var check = AssetSharing.Check(modFolder, outFolder, null, Context(install, history, cancel));
+        Console.Error.WriteLine(check.Result.Summary);
+        Console.Error.WriteLine($"Report: {check.ReportPath}");
+        return check;
     }
 
-    // The mod stripped into a temporary folder named as the mod's (a package is named after its folder), and what was
-    // done; the folder is null when nothing in the mod is the game's (it is packaged as it is). A mod whose recipe would
-    // not rebuild it exactly is not packaged. The report goes to reportPath (beside the zip).
-    public static (string? Folder, string Summary) StripForPackage(string modFolder, InstallLayout? install, string reportPath)
+    public static AssetSharing.Context Context(InstallLayout? install, bool history, CancellationTokenSource cancel)
     {
-        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder));
-        var root = Path.Combine(Path.GetTempPath(), $"hellforge-package-{Guid.NewGuid():N}");
-        var target = Path.Combine(root, name);
+        if (history) Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
+        return new(install, history ? new SteamDownloadCommand.TerminalPrompt() : null, Console.Error.WriteLine, cancel.Token);
+    }
+
+    static SteamDepotSession SignIn(CancellationTokenSource cancel)
+    {
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
+        return SteamDepotSession.SignInAsync(new SteamDownloadCommand.TerminalPrompt(), cancel.Token).GetAwaiter().GetResult();
+    }
+
+    // assets-rebuild --steam yes: signs in to Steam (a QR code for the Steam app; nothing is kept) and rebuilds the mod
+    // from this PC's builds plus what it needs of the builds it lacks, fetched from Steam.
+    public static AssetFetch.Fetched RebuildFromSteam(string modFolder, InstallLayout? install, bool recipe = true)
+    {
+        using var cancel = new CancellationTokenSource();
+        var session = SignIn(cancel);
         try
         {
-            var (result, _) = Run(modFolder, install, target, reportPath);
-            switch (result.Outcome)
-            {
-                case AssetKit.Outcome.Failed:
-                    throw new InvalidDataException($"The mod is not packaged: {result.Summary}");
-                case AssetKit.Outcome.NoGameContent:
-                    Directory.Delete(root, recursive: true);
-                    return (null, result.Summary);
-                default:
-                    return (target, result.Summary);
-            }
+            var steam = SteamBuilds.For(session, install, cancel.Token);
+            var specBuilds = AssetFetch.SpecNeedsSteam(modFolder) ? AssetFetch.FetchSpec(modFolder, steam, Console.Error.WriteLine) : [];
+            if (recipe) return AssetFetch.Rebuild(modFolder, install, steam, Console.Error.WriteLine);
+            return new(steam.Store.Downloaded, steam.Store.FromCache, steam.Store.FromLocal, specBuilds);
         }
-        catch
-        {
-            if (Directory.Exists(root)) try { Directory.Delete(root, recursive: true); } catch (IOException) { }
-            throw;
-        }
+        finally { session.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
     }
 }

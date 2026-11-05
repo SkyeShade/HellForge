@@ -3,6 +3,7 @@ using HellForge.Cli;
 using HellForge.Core;
 using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
+using HellForge.SteamDownload;
 
 try
 {
@@ -33,10 +34,10 @@ try
             sdk-headers --repo <HellForge source folder> [--mode write | check]
             new-mod --id <owner.mod-name> --name <name> (--install <folder> | --out <folder>)
             build-mod --mod <mod folder>
-            package-mod --mod <mod folder> [--out <folder>]
-            assets-check --mod <mod folder> [--install <folder>]
-            assets-strip --mod <mod folder> [--out <folder>] [--install <folder>]
-            assets-rebuild --mod <mod folder> [--install <folder>]
+            package-mod --mod <mod folder> [--out <folder>] [--history yes]
+            assets-check --mod <mod folder> [--install <folder>] [--history yes]
+            assets-strip --mod <mod folder> [--out <folder>] [--install <folder>] [--history yes]
+            assets-rebuild --mod <mod folder> [--install <folder>] [--steam yes]
             mod-hash --mod <mod folder or .zip>
             mod-tools --install <installation or source folder> [--ide yes]
             steam-bridge host | inner | check [socket]
@@ -85,7 +86,12 @@ try
             be shared (--out, or the installation's exports folder): the author's bytes, and a recipe that rebuilds the
             rest from each player's own game, checked by SHA-256; with a report beside it. Both compare the mod with the
             builds on this PC (HellForge's game copy, HELLDIVERS 2 in Steam), fingerprinted once into temp/asset-kit.
-            assets-rebuild rebuilds a mod's recipe into its folder, as a session does before it loads the mod.
+            --history yes (also for package-mod) signs in to Steam (a QR code; nothing kept) and checks what the builds
+            here leave against every build since release, from Steam's depot manifests: cut content from an older build
+            is proven by its chunks' SHA-1, just those resources are fetched, and they go into the recipe too.
+            assets-rebuild rebuilds a mod's recipe into its folder, as a session does before it loads the mod; with
+            --steam yes, what it needs of builds this PC lacks (cut content from an older build) is fetched from Steam
+            first, with your own sign-in (a QR code for the Steam app; nothing is kept), only the chunks that hold it.
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
@@ -148,9 +154,10 @@ try
         "editor-data" => ["--out", "--install", "--game"],
         "new-mod" => ["--id", "--name", "--install", "--out"],
         "build-mod" => ["--mod"],
-        "package-mod" => ["--mod", "--out"],
-        "assets-check" or "assets-rebuild" => ["--mod", "--install"],
-        "assets-strip" => ["--mod", "--out", "--install"],
+        "package-mod" => ["--mod", "--out", "--history"],
+        "assets-check" => ["--mod", "--install", "--history"],
+        "assets-rebuild" => ["--mod", "--install", "--steam"],
+        "assets-strip" => ["--mod", "--out", "--install", "--history"],
         "mod-hash" => ["--mod"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
@@ -334,7 +341,7 @@ try
             // a mod whose recipe could not be rebuilt here does not load: its game patch files are not there
             foreach (var pendingMod in loadOrder.Where(m => m.AssetsPending != null))
             {
-                var why = assetProblems.FirstOrDefault(p => string.Equals(p.Folder, Path.GetFullPath(pendingMod.Folder), StringComparison.OrdinalIgnoreCase)).Problem ?? pendingMod.AssetsPending;
+                var why = assetProblems.FirstOrDefault(p => string.Equals(p.Folder, Path.GetFullPath(pendingMod.Folder), StringComparison.OrdinalIgnoreCase))?.Reason ?? pendingMod.AssetsPending;
                 modProblems.Add($"{pendingMod.Name}: {why}; it is not loaded.");
             }
             loadOrder = loadOrder.Where(m => m.AssetsPending == null).ToList();
@@ -421,7 +428,7 @@ try
             // every data mod of the target with its data built (the change's, and those that stay: their bytes come back
             // where a removed mod's go); the change's source mods built
             var (withData, liveProblems) = ModDataCache.Prepare(liveInstall, liveTarget.Where(m => changing.Contains(m.Id) || LiveModPlan.HasData(m)).Where(m => m.AssetsPending == null).ToList(), Console.Error.WriteLine);
-            liveProblems.InsertRange(0, liveAssetProblems.Select(p => $"{Path.GetFileName(p.Folder)}: {p.Problem}"));
+            liveProblems.InsertRange(0, liveAssetProblems.Select(p => $"{Path.GetFileName(p.Folder)}: {p.Reason}"));
             var (liveBuilt, liveBuildProblems) = ModBuilds.Prepare(liveInstall, ModSdk.Find(liveInstall.Root), withData.Where(m => changing.Contains(m.Id)).ToList(),
                 SupportedBuild.Current.BuildId, Console.Error.WriteLine);
             liveProblems.AddRange(liveBuildProblems);
@@ -530,31 +537,13 @@ try
             }
             var outFolder = options.TryGetValue("--out", out var packageOut) ? packageOut
                 : layout?.Exports ?? throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
-            // Game patch files never go out with Arrowhead's bytes in them: they are stripped first (AssetKit), and the
-            // stripped copy is what is zipped. A mod that already ships a recipe, or has no patch files, is zipped as it is.
-            string? strippedRoot = null;
-            string? assetSummary = null;
-            try
-            {
-                if (!ModAssets.HasRecipe(modFolder) && AssetKit.PatchFiles(modFolder).Count > 0)
-                {
-                    var report = Path.Combine(Path.GetFullPath(outFolder), string.Concat($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder))}-{mod.Version}"
-                        .Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')) + ".asset-report.md");
-                    var (stripped, summary) = AssetCommands.StripForPackage(modFolder, layout, report);
-                    assetSummary = summary;
-                    if (stripped != null)
-                    {
-                        strippedRoot = Path.GetDirectoryName(stripped);
-                        mod = ModCatalog.Parse(stripped, EntityProfile.Current);
-                    }
-                }
-                var zipPath = ModPackage.Create(mod, outFolder);
-                result = new { mod.Id, mod.Version, zip = zipPath, files = ModPackage.Files(mod).Count, kilobytes = new FileInfo(zipPath).Length / 1024, assets = assetSummary };
-            }
-            finally
-            {
-                if (strippedRoot != null) try { Directory.Delete(strippedRoot, recursive: true); } catch (IOException) { }
-            }
+            // Game patch files never go out with Arrowhead's bytes in them: they are stripped first (AssetSharing.Package), and
+            // the stripped copy is what is zipped. A mod that already ships a recipe, or has no patch files, is zipped as it is.
+            using var packageCancel = new CancellationTokenSource();
+            var packaged = AssetSharing.Package(mod, outFolder, AssetCommands.Context(layout, options.GetValueOrDefault("--history") == "yes", packageCancel));
+            if (packaged.Assets != null) Console.Error.WriteLine($"{packaged.Assets.Result.Summary}\nReport: {packaged.Assets.ReportPath}");
+            result = new { mod.Id, mod.Version, zip = packaged.Zip, files = packaged.Files, kilobytes = new FileInfo(packaged.Zip).Length / 1024, assets = packaged.Assets?.Result.Summary,
+                assetReport = packaged.Assets?.ReportPath };
             break;
         }
         case "assets-check":
@@ -567,7 +556,8 @@ try
                 stripOut = options.TryGetValue("--out", out var given) ? Path.GetFullPath(given)
                     : assetInstall != null ? Path.Combine(assetInstall.Exports, Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder)))
                     : throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
-            var (outcome, report) = AssetCommands.Run(modFolder, assetInstall, stripOut);
+            var check = AssetCommands.Run(modFolder, assetInstall, stripOut, history: options.GetValueOrDefault("--history") == "yes");
+            var (outcome, report) = (check.Result, check.ReportPath);
             result = new
             {
                 outcome = outcome.Outcome.ToString(), summary = outcome.Summary, patchBytes = outcome.ModBytes, gameBytes = outcome.FromGame,
@@ -580,11 +570,19 @@ try
         {
             var modFolder = Path.GetFullPath(Required("--mod"));
             var assetInstall = AssetCommands.Installation(options.GetValueOrDefault("--install"), modFolder);
-            if (!ModAssets.HasRecipe(modFolder)) throw new InvalidDataException($"The mod has no recipe ({Recipe.FileName}): there is nothing to rebuild.");
+            var specNeedsSteam = AssetFetch.SpecNeedsSteam(modFolder);
+            if (!ModAssets.HasRecipe(modFolder) && !specNeedsSteam)
+                throw new InvalidDataException($"The mod has no recipe ({Recipe.FileName}) and no data spec resources of past builds to fetch: there is nothing to rebuild.");
             var rebuildProblems = ModAssets.Prepare([modFolder], () => GameBuilds.Local(assetInstall), Console.Error.WriteLine);
-            if (rebuildProblems.Count > 0) throw new InvalidDataException(rebuildProblems[0].Problem);
+            var steamWanted = options.GetValueOrDefault("--steam") == "yes";
+            AssetFetch.Fetched? fetched = null;
+            if (steamWanted && (rebuildProblems is [{ Missing: { Count: > 0 } }] || specNeedsSteam))
+                fetched = AssetCommands.RebuildFromSteam(modFolder, assetInstall, recipe: rebuildProblems.Count > 0);
+            else if (rebuildProblems.Count > 0 || specNeedsSteam)
+                throw new InvalidDataException((rebuildProblems.Count > 0 ? rebuildProblems[0].Reason : "its data spec takes resources from past builds that are not fetched yet") +
+                    (rebuildProblems is [] or [{ Missing: not null }] ? "; --steam yes fetches them from Steam" : ""));
             var rebuilt = ModAssets.Read(modFolder);
-            result = new { mod = modFolder, files = rebuilt.Outputs, ready = rebuilt.Ready };
+            result = new { mod = modFolder, files = rebuilt.Outputs, ready = rebuilt.Ready, fetchedFrom = fetched?.Builds, downloadedBytes = fetched?.Downloaded };
             break;
         }
         case "mod-hash":

@@ -213,6 +213,22 @@ public sealed record DepotHistory(DateTime Time, ulong Manifest, string? Branch)
 {
     public static List<DepotHistory> Load(string path) => Parse(File.ReadLines(path));
 
+    // The history HellForge ships (data/depot-history/<depot>.txt, embedded): every manifest since release with the
+    // branch it was published on, which Steam needs to send an old manifest. Empty for a depot it has none of.
+    public static List<DepotHistory> Embedded(uint depot)
+    {
+        lock (embedded)
+        {
+            if (embedded.TryGetValue(depot, out var known)) return known;
+            using var stream = typeof(DepotHistory).Assembly.GetManifestResourceStream($"HellForge.Core.depot-history.{depot}.txt");
+            if (stream == null) return embedded[depot] = [];
+            using var reader = new StreamReader(stream);
+            return embedded[depot] = Parse(reader.ReadToEnd().Split('\n'));
+        }
+    }
+
+    static readonly Dictionary<uint, List<DepotHistory>> embedded = [];
+
     public static List<DepotHistory> Parse(IEnumerable<string> lines) => lines
         .Select(l => l.Trim())
         .Where(l => l.Length > 0 && !l.StartsWith('#'))

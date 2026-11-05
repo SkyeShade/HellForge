@@ -9,6 +9,9 @@ public interface IDepotService
     Task<byte[]> DepotKeyAsync(uint app, uint depot, CancellationToken cancellation);
     // The code that lets this account fetch one manifest of the depot; 0 when Steam does not grant it.
     Task<ulong> ManifestRequestCodeAsync(uint app, uint depot, ulong manifest, CancellationToken cancellation);
+    // The same for a manifest published on another branch (a past build's, from the depot history).
+    Task<ulong> ManifestRequestCodeAsync(uint app, uint depot, ulong manifest, string branch, CancellationToken cancellation) =>
+        ManifestRequestCodeAsync(app, depot, manifest, cancellation);
     Task<DepotManifest> ManifestAsync(uint app, uint depot, ulong manifest, ulong requestCode, byte[] depotKey, CancellationToken cancellation);
     // One chunk, decrypted and decompressed into buffer; its length.
     Task<int> ChunkAsync(uint app, uint depot, DepotChunk chunk, byte[] depotKey, byte[] buffer, CancellationToken cancellation);

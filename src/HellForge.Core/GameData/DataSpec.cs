@@ -11,19 +11,23 @@ namespace HellForge.Core.GameData;
 //   copy     a game resource under the mod's own name, optionally edited: references replaced, colour curves,
 //            material colours, a colour lookup texture recoloured;
 //   include  game resources unchanged under their own names (what a copy needs loaded with it);
-//   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material;
-// A copy or include reads the player's game copy, or with "source": "steam" the game as Steam has it installed (a newer
-// build's resources, read from the player's own files like the rest; an include from Steam must be new to the copy).
+//   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material.
+// A copy or include reads the player's game copy, or with "source": "steam" the newer build of the player's own Steam install,
+// or with "source": {"build": ...} a past build's (cut content), fetched from Steam once (BuildResources). An include from Steam or a past build must be new to the copy.
 //   mesh     (on a unit copy) the mod's own geometry from an OBJ in the mod folder, in every render and shadow mesh.
 // docs/modding/data.md "Data specs" describes the format.
 public sealed record DataSpec(IReadOnlyList<DataPatch> Patches, IReadOnlyList<string> Inputs)
 {
     public bool UsesSteam => Patches.Any(p => p.Resources.Any(r => r.Steam));
+    // The past builds its resources come from ("<depot>:<manifest>", AssetMigration.GameBuilds), in order.
+    public IReadOnlyList<string> Builds => [.. Patches.SelectMany(p => p.Resources).Select(r => r.Build).OfType<string>().Distinct().Order(StringComparer.Ordinal)];
 }
 public sealed record DataPatch(IReadOnlyList<string> Archives, IReadOnlyList<DataResource> Resources);
 public abstract record DataResource(string Where)
 {
     public bool Steam { get; init; }
+    // A past build it is read from (BuildResources), or null.
+    public string? Build { get; init; }
 }
 public sealed record CopyResource(string Where, ulong Type, ulong From, string Name, IReadOnlyDictionary<int, ulong> Expect,
     IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null,
@@ -164,7 +168,8 @@ public static partial class DataSpecs
         Fields(e, at, "type", "include", "source");
         var ids = Items(e, "include", at).Select(id => Id(id, $"{at}.include")).ToList();
         if (ids.Count == 0) throw new InvalidDataException($"{at}: include lists no resources.");
-        return new IncludeResources(at, Type(e, at), ids) { Steam = FromSteam(e, at) };
+        var (steam, build) = Source(e, at);
+        return new IncludeResources(at, Type(e, at), ids) { Steam = steam, Build = build };
     }
 
     static IconResource ReadIcon(JsonElement e, string at, string? folder, ISet<string> inputs)
@@ -191,46 +196,8 @@ public static partial class DataSpecs
         var colours = ReadColours(e, at);
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
-        var shaders = ReadShaders(e, at, type, folder, inputs);
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, shaders) { Steam = FromSteam(e, at) };
-    }
-
-    // A shader in a host, which says what else the resource needs.
-    static ShaderResource ReadShader(JsonElement e, string at, string? folder, ISet<string> inputs)
-    {
-        Fields(e, at, "shader", "name", "dxbc", "mesh");
-        var name = Text(e, "shader", at);
-        var hosts = ShaderHosts.Current.Hosts;
-        if (!hosts.TryGetValue(name, out var host)) throw new InvalidDataException($"{at}: shader is a host: {string.Join(", ", hosts.Keys)}.");
-        var mesh = ReadMesh(e, at, ResourceTypes.Unit, folder, inputs);
-        if (host.Mesh && mesh == null) throw new InvalidDataException($"{at}: the {name} host draws a mesh: give it one, as \"mesh\": {{\"obj\": \"models/shape.obj\"}}.");
-        if (!host.Mesh && mesh != null) throw new InvalidDataException($"{at}: the {name} host draws inside its box and takes no mesh.");
-        return new ShaderResource(at, name, Name(e, at), Dxbc(e, at, folder, inputs), mesh);
-    }
-
-    // A compiled shader in the mod folder, an input of the build.
-    static string Dxbc(JsonElement e, string at, string? folder, ISet<string> inputs)
-    {
-        var dxbc = Text(e, "dxbc", at).Replace('\\', '/');
-        if (Path.IsPathRooted(dxbc) || dxbc.Split('/').Any(part => part is "" or "." or "..") || !dxbc.EndsWith(".dxbc", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"{at}: dxbc is a .dxbc file in the mod folder, such as \"shaders/rings.dxbc\".");
-        if (folder != null && !File.Exists(Path.Combine(folder, dxbc))) throw new InvalidDataException($"{at}: {dxbc} is missing.");
-        inputs.Add(dxbc);
-        return dxbc;
-    }
-
-    static List<ShaderFile>? ReadShaders(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
-    {
-        if (!e.TryGetProperty("shader", out var list)) return null;
-        if (type != ResourceTypes.Material) throw new InvalidDataException($"{at}.shader: only a material has shaders.");
-        if (list.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{at}.shader: a list of stages.");
-        var shaders = new List<ShaderFile>();
-        foreach (var stage in list.EnumerateArray())
-        {
-            Fields(stage, $"{at}.shader", "offset", "dxbc");
-            shaders.Add(new(Offset(Text(stage, "offset", $"{at}.shader"), $"{at}.shader"), Dxbc(stage, $"{at}.shader", folder, inputs)));
-        }
-        return shaders;
+        var (steam, build) = Source(e, at);
+        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh) { Steam = steam, Build = build };
     }
 
     static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)
@@ -311,13 +278,39 @@ public static partial class DataSpecs
         return new(obj, scale, yUp);
     }
 
-    static bool FromSteam(JsonElement e, string at) =>
-        !e.TryGetProperty("source", out _) ? false : Text(e, "source", at) switch
+    // "source": "game" (the default), "steam", or {"build": "<depot>:<manifest>"} / {"build": "yyyy-MM-dd"} (the build of
+    // that day, from the depot history HellForge ships): from Steam's install, or the past build it names.
+    static (bool Steam, string? Build) Source(JsonElement e, string at)
+    {
+        if (!e.TryGetProperty("source", out var source)) return (false, null);
+        if (source.ValueKind == JsonValueKind.Object)
         {
-            "game" => false,
-            "steam" => true,
-            _ => throw new InvalidDataException($"{at}: source is \"game\" (the game copy, the default) or \"steam\" (the game as Steam has it installed).")
+            Fields(source, $"{at}.source", "build");
+            return (false, PastBuild(Text(source, "build", $"{at}.source"), $"{at}.source"));
+        }
+        return Text(e, "source", at) switch
+        {
+            "game" => (false, null),
+            "steam" => (true, null),
+            _ => throw new InvalidDataException($"{at}: source is \"game\" (the game copy, the default), \"steam\" (the game as Steam has it installed) or {{\"build\": ...}} (a past build)."),
         };
+    }
+
+    // A past build by its data manifest ("553853:<manifest>") or by day ("2024-03-01": the manifest Steam published last on
+    // or before that day, UTC), as its label.
+    static string PastBuild(string text, string at)
+    {
+        var history = AssetMigration.DepotHistory.Embedded(AssetMigration.GameBuilds.DataDepot);
+        if (DateTime.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var day))
+            return history.Where(h => h.Time < day.AddDays(1) && h.Branch == null).MaxBy(h => h.Time) is { } h
+                ? AssetMigration.GameBuilds.Label(AssetMigration.GameBuilds.DataDepot, h.Manifest.ToString())
+                : throw new InvalidDataException($"{at}: no build of the game is older than {text}.");
+        var parts = text.Split(':');
+        if (parts.Length == 2 && parts[0] == AssetMigration.GameBuilds.DataDepot.ToString() && ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var manifest) &&
+            history.Any(h => h.Manifest == manifest))
+            return text;
+        throw new InvalidDataException($"{at}: build is a day (\"2024-03-01\") or a data manifest of the game (\"553853:<manifest>\", as an asset report names it).");
+    }
 
     static Dictionary<int, double[]> Cells(JsonElement e, string at) =>
         Object(e, at).ToDictionary(item => Index(item.Name, at), item => Colour(item.Value, at));

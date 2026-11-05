@@ -47,7 +47,7 @@ Every mod is a row with a switch, in two groups: GAMEPLAY mods first, then CLIEN
 cosmetic packs, Lua mods and mods that say they are not gameplay mods; friends need not have the same ones.
 
 - Click a row's name for what the mod changes. Its ⋮ menu (or a right click) has Details, Move up and Move down, and
-  Open folder. It also has Build now for a mod with sources, Zip to share for your own folder mods, and Remove... for
+  Open folder. It also has Build now for a mod with sources, Prepare for sharing for your own folder mods, and Remove... for
   your own mods (not the bundled mods or Local Stats). Remove asks before it deletes the mod's files.
 - Tags on the right say what a mod is, among them CODE, DATA, STATS, PACK, LUA, ZIP and BUNDLED (shipped with
   HellForge). DID NOT COMPILE marks a source mod whose last build failed; it stays off until fixed, and its details show

@@ -21,6 +21,10 @@ public static class ModPackage
             .Where(f => !mod.HasSource || !(f == mod.CodeDll || f.EndsWith(".lib", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
             .Order(StringComparer.Ordinal).ToList();
 
+    // A package's name without its extension: the mod's folder and version, as safe file name characters.
+    public static string BaseName(ModManifest mod) => string.Concat($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(mod.Folder))}-{mod.Version}"
+        .Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'));
+
     public static string Create(ModManifest mod, string outFolder)
     {
         outFolder = Path.GetFullPath(outFolder);
@@ -30,8 +34,7 @@ public static class ModPackage
         if (mod.HasCode && !mod.HasSource && !File.Exists(Path.Combine(mod.Folder, mod.CodeDll!)))
             throw new InvalidDataException($"The mod has no sources and its DLL ({mod.CodeDll}) is missing: there is nothing to run.");
         var folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(mod.Folder));
-        var name = string.Concat($"{folder}-{mod.Version}".Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')) + ".zip";
-        var target = Path.Combine(Directory.CreateDirectory(outFolder).FullName, name);
+        var target = Path.Combine(Directory.CreateDirectory(outFolder).FullName, BaseName(mod) + ".zip");
         var partial = target + ".partial";
         using (var zip = ZipFile.Open(partial, ZipArchiveMode.Create))
             foreach (var file in Files(mod))

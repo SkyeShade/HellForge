@@ -715,6 +715,7 @@ ForgeCreditsTests.Register(Test, Check, Reject, root);
 ForgeCreditsTests.RegisterChance(Test, Check, Reject, root);
 AssetMigrationTests.Register(Test, Check, Reject, root);
 AssetKitTests.Register(Test, Check, Reject, root);
+AssetFetchTests.Register(Test, Check, Reject, root);
 SdkTests.Register(Test, Check, Reject, root);
 LiveEditTests.Register(Test, Check, Reject, root);
 ModKitTests.Register(Test, Check, Reject, root);

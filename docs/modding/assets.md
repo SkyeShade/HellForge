@@ -13,11 +13,20 @@ You keep working the way you do now, with your usual tools and your patch files.
 - [Quick start](#quick-start)
 - [What the check tells you](#what-the-check-tells-you)
 - [Stripping a mod by hand](#stripping-a-mod-by-hand)
+- [Cut content from older builds](#cut-content-from-older-builds)
 - [What players get](#what-players-get)
 - [Limits](#limits)
 - [Data specs or the asset kit?](#data-specs-or-the-asset-kit)
 
 ## Quick start
+
+In the launcher, choose **Prepare for sharing** in your mod's ⋮ menu on the Mods page. HellForge builds the mod if it
+has sources, takes the game's bytes out of its patch files, and writes the zip to `<installation>/exports`. A card then
+says how much of the game's content is out, with buttons for the zip and the [report](#what-the-check-tells-you).
+When some bytes matched no build on your PC, **CHECK OLDER BUILDS** prepares it again against every build since
+release ([cut content](#cut-content-from-older-builds)).
+
+From the command line:
 
 ```text
 HellForge.Cli assets-check --mod <installation>/mods/my-mod     # which bytes are the game's, and from which build
@@ -53,8 +62,8 @@ A resource in none of the builds checked is one of two things:
 
 - your own work (a new material, your own texture or mesh): it is yours to ship, and it stays in the mod;
 - content copied from an older build of the game that is not on your PC, such as cut content from launch: it is still
-  Arrowhead's. The kit cannot match it without that build, so it stays in the mod as it is. Check where it came from
-  before you share the mod.
+  Arrowhead's. Check it against every build since release with `--history yes`
+  ([cut content from older builds](#cut-content-from-older-builds)).
 
 ## Stripping a mod by hand
 
@@ -80,6 +89,30 @@ original's SHA-256. A mod that does not rebuild exactly is not stripped.
 
 Strip the folder you work in, not a stripped copy: a mod that already ships a recipe is refused.
 
+## Cut content from older builds
+
+Content that is no longer in the game's files, such as a vehicle cut before launch or a model from an early build, is
+not on your PC to match. Add `--history yes` to `assets-check`, `assets-strip` or `package-mod`:
+
+```text
+HellForge.Cli assets-strip --mod <folder> --history yes
+```
+
+HellForge signs in to Steam with your own account (a QR code to scan with the Steam app on your phone; nothing of the
+sign-in is kept). It then checks whatever the builds on your PC left in the mod against every build of the game since
+release:
+
+1. It reads each build's depot manifest from Steam, the list of every file's chunks with their SHA-1. That is hashes
+   only, read once and kept in `temp/asset-kit`.
+2. Wherever your patch file holds a whole chunk Steam shipped, those bytes are proven to be the game's, from that build,
+   whatever the resource is called.
+3. The game resources at those places are fingerprinted from that build alone. Only the chunks they sit in are fetched,
+   not the build.
+4. The mod is matched again, and the cut content goes into the recipe like anything else.
+
+The report names the build each piece came from. What is still left after that is in none of the builds Steam serves
+(the two launch-week builds it no longer sends are the gap), so it is your own.
+
 ## What players get
 
 Players add your mod as they add any other. Before HellForge loads it, it rebuilds the game patch files into the mod's
@@ -89,8 +122,11 @@ mod, and says so while it works. Each session does it too, before it stages mods
 - **Once per version.** A record beside the recipe (`.hellforge-assets.json`) says what was rebuilt. While the recipe
   and the rebuilt files are unchanged, nothing is rebuilt again. A new version of the mod, or a rebuilt file that
   changed, means a rebuild.
-- **Nothing half-built loads.** A mod whose files cannot be rebuilt stays listed with the reason and does not load. The
-  usual reason is that the player lacks the build the recipe takes something from.
+- **Older builds.** When the recipe takes something from a build the player does not have (cut content), the Mods page
+  says how much it needs and offers **GET THEM FROM STEAM**. The player signs in with the Steam app (a QR code, nothing
+  kept), and HellForge fetches only the chunks that hold those pieces, under the player's own licence, then rebuilds the
+  mod. Nothing downloads without that click. From a terminal: `HellForge.Cli assets-rebuild --mod <folder> --steam yes`.
+- **Nothing half-built loads.** A mod whose files cannot be rebuilt stays listed with the reason and does not load.
 - **Co-op and mod sync.** The modlist code friends compare counts the recipe, not the rebuilt files. The recipe holds the
   SHA-256 of every rebuilt file, so two players with the same recipe run the same bytes. Mod sync sends the recipe, never
   the rebuilt files, and the joiner's HellForge rebuilds them before it checks the download. A stripped mod is still
@@ -106,12 +142,14 @@ never overwrite a file the mod ships. Every operation is range-checked.
 
 - **Byte matching.** A model re-exported through a 3D tool (re-encoded vertices, a new order) or a texture re-encoded
   from scratch no longer has the game's bytes. It is not found, and it stays in the mod.
-- **Builds on your PC only.** The kit matches against HellForge's game copy and HELLDIVERS 2 in Steam. Content that is
-  in neither, such as cut content removed from the game's files since, is not matched yet.
+- **Older builds need whole chunks.** `--history yes` proves a piece of an older build by a whole Steam chunk (about
+  1 MB) in your file. A smaller resource is found when it sits in an archive where a chunk was proven; one on its own
+  stays in the mod.
 - **Steam updates.** Content the recipe takes from Steam's build comes from the player's Steam install. When Steam
-  updates the game and that content changes or moves, players who have only the new build cannot rebuild the mod until
-  you strip it again. HellForge's game copy is the pinned build and never changes, so the kit takes anything both builds
-  have from the copy.
+  updates the game and that content changes or moves, the build the recipe names is an older build for players who
+  have only the new one. They get it with **GET THEM FROM STEAM**, as for cut content. Stripping the mod again after an
+  update spares them that. HellForge's game copy is the pinned build and never changes, so the kit takes anything both
+  builds have from the copy.
 - **Game patch files only.** Files of other kinds (a Lua script beside the patches, a loose texture) are shipped as they
   are and are not checked.
 
@@ -121,7 +159,8 @@ Both keep the game's bytes out of your mod, in different ways:
 
 - A [data spec](data.md#data-specs) describes the change: copy this unit, recolour that lookup texture, use this OBJ.
   HellForge builds it on each PC, and it follows game updates by name. Use it when what you want is something a data
-  spec can say.
+  spec can say. It can take resources from a [past build](data.md#source-a-past-build) too: once an asset report names
+  the build some cut content came from, a spec can copy it from there by name.
 - The asset kit takes patch files you already made with other tools, whatever is in them, and ships them as your bytes
   plus a recipe. Use it for work a data spec cannot describe, or for a mod you have already made.
 

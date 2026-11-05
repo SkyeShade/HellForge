@@ -130,6 +130,26 @@ materials and textures an effect uses, or a donor weapon's sound banks (both its
 build's resource, from the player's own files) instead of from the game copy. An `include` from Steam must be new to the
 copy.
 
+### source: a past build
+
+`"source": {"build": "2024-03-01"}` on a `copy` or `include` reads the resource from a past build of the game: cut
+content, or a resource as it was before an update changed it. Name the build by day (the build Steam published last on
+or before that day, UTC, from the depot history HellForge ships) or by its data manifest, `"553853:<manifest>"`, as an
+[asset report](assets.md#cut-content-from-older-builds) names it.
+
+```json
+{ "type": "unit", "copy": "0x1234567890abcdef", "name": "yourname/your_mod/cut_apc", "source": { "build": "2024-02-08" } }
+```
+
+Your mod ships only the spec. Each player's HellForge fetches the resources it names from that build on Steam once, with
+the player's own sign-in. The Mods page shows **GET THEM FROM STEAM** for such a mod, and nothing is fetched until it is
+clicked (`HellForge.Cli assets-rebuild --mod <folder> --steam yes` does the same). Only the chunks those resources
+sit in are downloaded, each checked by SHA-1, and they are kept in the mod's `.hellforge-build-resources` folder. Until
+then the mod is pending and does not load. Friends, mod sync and packages never count or send what was fetched.
+
+A unit copy brings the unit's physics when that build has it. An `include` from a past build must be new to the game
+copy. Materials are rebuilt in the game copy's shader layout, as from Steam.
+
 ### icon
 
 `icon` turns a 256 x 256 PNG in the mod folder into an icon named `name`, with the material that draws it (the game
@@ -140,9 +160,9 @@ keeps the picture's colours and transparency for widgets that draw it as it is (
 ### Checks
 
 Everything is checked before anything is written. Every resource the spec names must exist (all missing ones are
-listed), every edit must find what it expects, and new names must be new. A mod whose data cannot be built does not
-load that session, and the session says why. The modlist code counts the spec, not the built files, because with the
-same game build they are the same bytes on every machine.
+listed, a past build's once they are fetched), every edit must find what it expects, and new names must be new. A mod
+whose data cannot be built does not load that session, and the session says why. The modlist code counts the spec, not
+the built files, because with the same game build they are the same bytes on every machine.
 
 ### Building by hand
 

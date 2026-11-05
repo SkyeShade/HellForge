@@ -7,9 +7,10 @@ using HellForge.Core;
 
 namespace HellForge.Launcher;
 
-// The Mods page's mod kit (docs/modding/first-mod.md): a mod starts as a copy of the SDK's template (app/sdk/templates/c-mod);
-// BUILD compiles a mod's sources with the SDK's pinned Zig, ZIP packs it to share, and the mod tools are fetched
-// on request. Builds wait while a session runs: the game has the mods' DLLs loaded.
+// The Mods page's mod kit (docs/modding/first-mod.md): a mod starts as a copy of the SDK's template
+// (app/sdk/templates/c-mod); BUILD compiles a mod's sources with the SDK's pinned Zig, Prepare for sharing packs it
+// (ModsPage.Sharing.cs), and the mod tools are fetched on request. Builds wait while a session runs: the game has the
+// mods' DLLs loaded.
 public partial class MainWindow
 {
     const string NativeZigTip = "The native Linux Zig is missing: install it with the Mods page's Install mod tools (or HellForge.Cli mod-tools), set ZIG, or put zig on PATH.";
@@ -125,44 +126,14 @@ public partial class MainWindow
     MenuItem ZipItem(ModManifest mod)
     {
         var needsBuild = mod.HasSource;
-        var zip = new MenuItem { Header = "Zip to share", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ModKit.ToolsReady(s))) };
+        var zip = new MenuItem { Header = "Prepare for sharing", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ModKit.ToolsReady(s))) };
         ToolTip.SetShowOnDisabled(zip, true);
-        ToolTip.SetTip(zip, needsBuild && modsLocked ? "Zipping builds the mod first, which waits until the session ends."
-            : "Packs the mod to share, into the installation's exports folder: drop the zip into a mods folder as it is. " +
+        ToolTip.SetTip(zip, needsBuild && modsLocked ? "Preparing builds the mod first, which waits until the session ends."
+            : "Packs the mod to share, into the installation's exports folder: drop the zip into a mods folder as it is. Arrowhead's bytes in its game " +
+              "files are taken out first and replaced by a recipe that each player's HellForge rebuilds them from, out of their own game. " +
               (needsBuild ? "It is built first, so a mod that does not compile is not packed; the zip holds its sources, not a DLL." : ""));
-        zip.Click += (_, _) => ZipMod(mod);
+        zip.Click += (_, _) => ShareMod(mod);
         return zip;
-    }
-
-    // ModPackage, after the build a session would make (a source mod that does not compile is not packed); then the zip
-    // is shown in Explorer.
-    void ZipMod(ModManifest mod)
-    {
-        if (modKitBusy || paths.InstallRoot == null) return;
-        var sdk = Sdk;
-        if (mod.HasSource && (sdk == null || modsLocked)) return;
-        modKitBusy = true;
-        Append($"Packing {mod.Id}...", LauncherLine);
-        RefreshMods();
-        var install = new InstallLayout(paths.InstallRoot);
-        Task.Run(() =>
-        {
-            try
-            {
-                if (mod.HasSource) ModBuilds.Ensure(install, sdk!, mod, SupportedBuild.Current.BuildId, line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
-                var zip = ModPackage.Create(mod, install.Exports);
-                Dispatcher.UIThread.Post(() =>
-                {
-                    Append($"{mod.Id} packed: {zip} ({new FileInfo(zip).Length / 1024} KB). Share that file; players drop it into their mods folder.", Green);
-                    if (OperatingSystem.IsWindows())
-                        try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{zip}\"") { UseShellExecute = false }); }
-                        catch (System.ComponentModel.Win32Exception) { }
-                });
-            }
-            catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
-            { Dispatcher.UIThread.Post(() => Append($"{mod.Id} was not packed: {failure.Message}", Red)); }
-            finally { Dispatcher.UIThread.Post(() => { modKitBusy = false; RefreshMods(); }); }
-        });
     }
 
     void InstallModTools(ModSdk sdk)

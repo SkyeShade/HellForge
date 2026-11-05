@@ -234,8 +234,8 @@ its folder into the mods folder.
 ## 8. Share it
 
 1. Raise `version` in `hellforge-mod.json` for each release.
-2. Choose **Zip to share** in the mod's **⋮** menu. HellForge builds the mod first, so a mod that does not compile is
-   not packed.
+2. Choose **Prepare for sharing** in the mod's **⋮** menu. HellForge builds the mod first, so a mod that does not
+   compile is not packed.
 3. HellForge writes `<installation>\exports\<folder>-<version>.zip` (here `liberator-tweaks-0.1.0.zip`) and shows it
    in Explorer.
 
