@@ -24,8 +24,9 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the starter template, no paid content.
-    public const string FirstProfileTemplate = "starter";
+    // The profile a fresh install starts with, and a new profile's first choice: everything unlocked. Premium items still
+    // come only from Sync Inventory.
+    public const string FirstProfileTemplate = "unlock-all";
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]
@@ -53,7 +54,7 @@ public static partial class ProfileStore
     }
 
     // Every folder under profiles/ made by the launcher, by name. With none (a fresh install), a "default" profile from
-    // the starter template is created; new profiles made in the launcher still pick their template.
+    // FirstProfileTemplate is created; new profiles made in the launcher still pick their template.
     public static List<LocalProfile> List(ISessionPaths paths)
     {
         RetireLegacyDefault(paths);
