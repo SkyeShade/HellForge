@@ -346,8 +346,8 @@ public static partial class DataSpecs
         var textures = ReadTextures(e, at);
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
-        var (steam, build) = Source(e, at);
         var shaders = ReadShaders(e, at, type, folder, inputs);
+        var (steam, build) = Source(e, at);
         return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, textures, shaders) { Steam = steam, Build = build };
     }
 
