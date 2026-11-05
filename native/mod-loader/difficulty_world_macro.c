@@ -220,6 +220,28 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
         { uintptr_t d = MacroType((uintptr_t)table, types, t); if (d && !SafeRead(d + 0x204, &pad, 4) && pad < 3.0e38f) locAbs[l] = 1; }
         if (locAbs[l]) { absolute++; MACRO_FOR_NODES(locXY[l][0], locXY[l][1], MACRO_HOLD, { D[n_] = 0; g_macro.fixed[n_] = 1; }); }
     }
+    /* held at 0: the cities. A city's ground is made by 0xA7 / 0xA9 at absolute heights: 0xA7 (0xFA9E10) sets every route
+     * node beside a height-group-1 cell to 0 (0xFAA032 cmp [sub+4],1; 0xFAA05C mov [node+8],0) and every other node to
+     * the captured ground, and 0xA9 (0xFB5600) redraws each city cell as a fan between those heights. Vanilla's ground
+     * under a city is about 0 m (s74s: 0..1.6 m within 800 m), so the floor matches it; raised by h_macro, the city became
+     * a 0 m pit with walls up to 290 m and its group-2/4 cells mesas (s75j city1/2, static subagent citycliffs). So the
+     * city cells (subregion type +0x170 bit 1, as 0xA7 tests at 0xFAA2F2) hold the field at 0 over their route cell's box
+     * +0x88..+0x94 and one node beyond; the fall-off and the slope limit raise the land around them. */
+    uint32_t cityCells = 0;
+    for (uint32_t s = 0; s < subs; s++)
+    {
+        int32_t t = -1; uint64_t rc = 0; uint32_t flags170 = 0; float box[4];
+        if (SafeRead(gen + 0x92F328u + 0x20ull * s + 0xC, &t, 4) || SafeRead(gen + 0x92F328u + 0x20ull * s + 0x18, &rc, 8) || rc == 0) continue;
+        uintptr_t d = MacroType((uintptr_t)table, types, t);
+        if (d == 0 || SafeRead(d + 0x170, &flags170, 4) || !(flags170 & 2) || SafeRead(rc + 0x88, box, 16)) continue;
+        float x0 = fminf(box[0], box[2]) - MACRO_STEP, x1 = fmaxf(box[0], box[2]) + MACRO_STEP;
+        float y0 = fminf(box[1], box[3]) - MACRO_STEP, y1 = fmaxf(box[1], box[3]) + MACRO_STEP;
+        if (!(x1 - x0 < 4000.0f && y1 - y0 < 4000.0f) || !(x0 > -W && y0 > -W && x1 < 2 * W && y1 < 2 * W)) continue;
+        int i0 = (int)ceilf(x0 / MACRO_STEP), i1 = (int)floorf(x1 / MACRO_STEP), j0 = (int)ceilf(y0 / MACRO_STEP), j1 = (int)floorf(y1 / MACRO_STEP);
+        if (i0 < 0) i0 = 0; if (j0 < 0) j0 = 0; if (i1 > MACRO_N - 1) i1 = MACRO_N - 1; if (j1 > MACRO_N - 1) j1 = MACRO_N - 1;
+        for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) { size_t n = (size_t)j * MACRO_N + i; D[n] = 0; g_macro.fixed[n] = 1; }
+        cityCells++;
+    }
     /* the fall-off: distance to the nearest node held at 0 (chamfer, two passes each way) */
     const float d1 = MACRO_STEP, d2 = MACRO_STEP * 1.41421356f;
     for (int pass = 0; pass < 2; pass++)
@@ -352,10 +374,10 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     QueryPerformanceCounter(&t1);
     g_macro.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_macro.level = g_world.levels; g_macro.ready = 1;
-    Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads; "
+    Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads, %u city cells; "
         "held flat: %u locations, %u flatten zones; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m); %u corners have a water level "
         "(%.1f..%.1f m, their ground %.1f..%.1f m)", seed, (double)lo, (double)hi,
-        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, held, flat, roadNodes,
+        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, cityCells, held, flat, roadNodes,
         (double)MACRO_ROAD, sweeps, g_macro.ms, (double)worldL, typed, typed ? (double)typedLo : 0.0, typed ? (double)typedHi : 0.0,
         typed ? (double)groundLo : 0.0, typed ? (double)groundHi : 0.0);
     (void)W;
