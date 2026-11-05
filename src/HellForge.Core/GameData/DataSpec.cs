@@ -12,10 +12,8 @@ namespace HellForge.Core.GameData;
 //            material colours, a colour lookup texture recoloured;
 //   include  game resources unchanged under their own names (what a copy needs loaded with it);
 //   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material.
-// A copy or include reads the player's game copy, or with "source": "steam" the game as Steam has it installed (a newer
-// build's resources, read from the player's own files like the rest; an include from Steam must be new to the copy), or
-// with "source": {"build": ...} a past build's (cut content), which the player fetches from Steam once
-// (BuildResources; an include from a past build must be new to the copy too).
+// A copy or include reads the player's game copy, or with "source": "steam" the newer build of the player's own Steam install,
+// or with "source": {"build": ...} a past build's (cut content), fetched from Steam once (BuildResources). An include from Steam or a past build must be new to the copy.
 //   mesh     (on a unit copy) the mod's own geometry from an OBJ in the mod folder, in every render and shadow mesh.
 // docs/modding/data.md "Data specs" describes the format.
 public sealed record DataSpec(IReadOnlyList<DataPatch> Patches, IReadOnlyList<string> Inputs)

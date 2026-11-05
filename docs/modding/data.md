@@ -140,9 +140,9 @@ or before that day, UTC, from the depot history HellForge ships) or by its data 
 { "type": "unit", "copy": "0x1234567890abcdef", "name": "yourname/your_mod/cut_apc", "source": { "build": "2024-02-08" } }
 ```
 
-Your mod ships only the spec. Each player's HellForge fetches the resources it names from that build on Steam, with the
-player's own sign-in, once: the Mods page shows **GET THEM FROM STEAM** for such a mod, and nothing is fetched until it
-is clicked (`HellForge.Cli assets-rebuild --mod <folder> --steam yes` does the same). Only the chunks those resources
+Your mod ships only the spec. Each player's HellForge fetches the resources it names from that build on Steam once, with
+the player's own sign-in. The Mods page shows **GET THEM FROM STEAM** for such a mod, and nothing is fetched until it is
+clicked (`HellForge.Cli assets-rebuild --mod <folder> --steam yes` does the same). Only the chunks those resources
 sit in are downloaded, each checked by SHA-1, and they are kept in the mod's `.hellforge-build-resources` folder. Until
 then the mod is pending and does not load. Friends, mod sync and packages never count or send what was fetched.
 
