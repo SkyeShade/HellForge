@@ -273,11 +273,7 @@ public static partial class ModCatalog
         var (types, writes) = ReadNative(root, profile);
         var (code, source, live) = ReadCode(root, folder);
         var (data, lua) = ReadDataFiles(folder);
-        // A recipe's game patch files count as the mod's data before they are rebuilt (they are rebuilt before it loads).
-        var assets = ModAssets.Read(folder);
-        foreach (var output in assets.Outputs)
-            if (output.StartsWith("data/", StringComparison.Ordinal) && output.IndexOf('/', 5) < 0 && !data.Contains(output[5..])) data.Add(output[5..]);
-        data.Sort(StringComparer.Ordinal);
+        var assets = WithRecipeData(folder, data);
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
         var dataSpec = DataSpecs.Load(folder);
         var spec = dataSpec != null;
@@ -489,6 +485,17 @@ public static partial class ModCatalog
     }
 
     // The mod's data/ patch files, in order, and whether one of them holds Lua.
+    // A recipe's game patch files (ModAssets) count as the mod's data before they are rebuilt: they are rebuilt before it
+    // loads. Adds its data/ files to data, in order; the recipe's state.
+    static ModAssets.Info WithRecipeData(string folder, List<string> data)
+    {
+        var assets = ModAssets.Read(folder);
+        foreach (var output in assets.Outputs.Where(o => o.StartsWith("data/", StringComparison.Ordinal) && o.IndexOf('/', 5) < 0))
+            if (!data.Contains(output[5..])) data.Add(output[5..]);
+        data.Sort(StringComparer.Ordinal);
+        return assets;
+    }
+
     static (List<string> Data, bool Lua) ReadDataFiles(string folder)
     {
         var data = new List<string>();

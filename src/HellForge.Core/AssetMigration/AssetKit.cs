@@ -77,15 +77,7 @@ public static class AssetKit
         Func<string, string?>? name = null)
     {
         string Named(string label) => name?.Invoke(label) ?? label;
-        modFolder = Path.GetFullPath(modFolder);
-        if (ModAssets.HasRecipe(modFolder))
-            throw new InvalidDataException($"The mod already ships a recipe ({Recipe.FileName}): strip the folder you made it from, not a stripped copy.");
-        if (outFolder != null)
-        {
-            outFolder = Path.GetFullPath(outFolder);
-            if (LocalInstall.Within(outFolder, modFolder) || LocalInstall.Within(modFolder, outFolder))
-                throw new InvalidDataException("The output folder must be outside the mod's folder (and not hold it).");
-        }
+        (modFolder, outFolder) = CheckFolders(modFolder, outFolder);
         var patches = PatchFiles(modFolder);
         var mod = ModFiles.InFolder(modFolder, patches);
         var literalsPath = Path.Combine(Path.GetTempPath(), $"hellforge-literals-{Guid.NewGuid():N}");
@@ -98,54 +90,69 @@ public static class AssetKit
         log?.Invoke($"Matched {patches.Count} patch files ({mod.TotalSize / 1e6:F1} MB) in {clock.Elapsed.TotalSeconds:F1} s.");
         long fromGame = report.Files.Sum(f => f.FromGame);
         var unknown = report.Resources.Where(r => !r.InIndex && r.Literal > 0).ToList();
-
-        // The gate: the recipe rebuilds every file from the game alone, each to the original's SHA-256.
-        string? failure = null;
-        if (report.Unreadable.Count > 0)
-            failure = $"the mod shares content with {report.Unreadable.Count} game resource parts the builds here could not read back.";
-        else if (recipe.Files.Count > 0)
-        {
-            try { RecipeRebuilder.Write(recipe, literals, games, _ => Stream.Null); }
-            catch (Exception error) when (error is InvalidDataException or IOException) { failure = error.Message; }
-        }
+        var failure = Verify(recipe, report, literals, games);
         Outcome outcome = failure != null ? Outcome.Failed : recipe.Files.Count == 0 ? Outcome.NoGameContent : Outcome.Stripped;
-        var builds = BuildsUsed(index, report).Select(Named).ToList();
         var checkedBuilds = string.Join(" and ", index.Builds.Select(Named));
         var summary = outcome switch
         {
             Outcome.Failed => $"NOT STRIPPED: {failure} Nothing was written; the mod stays as it is.",
             Outcome.NoGameContent => $"NO GAME CONTENT FOUND in the mod's {patches.Count} patch files (checked against {checkedBuilds}): it ships as it is.",
             _ => $"STRIPPED: {Size(fromGame)} of Arrowhead's content ({Pct(fromGame, mod.TotalSize)} of the mod's patch files) is out; " +
-                 $"each player's HellForge rebuilds it from their own game ({string.Join(", ", builds)}), checked by SHA-256.",
+                 $"each player's HellForge rebuilds it from their own game ({string.Join(", ", BuildsUsed(index, report).Select(Named))}), checked by SHA-256.",
         };
         if (outcome != Outcome.Failed && unknown.Count > 0)
             summary += $" {unknown.Count} resource parts ({Size(unknown.Sum(r => r.Literal))}) are in none of the builds checked: your own work, or content from an older build (cut content) this PC does not have, which stays in the mod.";
-
-        string? shipped = null;
-        if (outFolder != null && outcome != Outcome.Failed)
-        {
-            shipped = outFolder;
-            if (Directory.Exists(shipped)) Directory.Delete(shipped, recursive: true);
-            Directory.CreateDirectory(shipped);
-            var inRecipe = recipe.Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
-            foreach (var file in Directory.GetFiles(modFolder, "*", SearchOption.AllDirectories))
-            {
-                var relative = Path.GetRelativePath(modFolder, file).Replace('\\', '/');
-                if (ModCatalog.IsWorkspaceFile(relative) || inRecipe.Contains(relative)) continue;
-                var target = Path.Combine(shipped, relative);
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                File.Copy(file, target);
-            }
-            if (recipe.Files.Count > 0)
-            {
-                recipe.Save(shipped);
-                using var output = File.Create(Path.Combine(shipped, Recipe.LiteralsName));
-                literals.Position = 0;
-                literals.CopyTo(output);
-            }
-        }
-        var text = ReportText(Path.GetFileName(modFolder), summary, index, recipe, report, mod.TotalSize, shipped, Named);
+        var shipped = outFolder != null && outcome != Outcome.Failed ? WriteShareable(modFolder, outFolder, recipe, literals) : null;
+        var text = ReportText(Path.GetFileName(modFolder), summary, index, report, mod.TotalSize, shipped, Named);
         return new(outcome, summary, recipe, report, mod.TotalSize, fromGame, unknown, shipped, text);
+    }
+
+    // The mod and output folders, full: a mod that already ships a recipe, or an output folder inside the mod (or holding
+    // it), is refused.
+    static (string Mod, string? Out) CheckFolders(string modFolder, string? outFolder)
+    {
+        modFolder = Path.GetFullPath(modFolder);
+        if (ModAssets.HasRecipe(modFolder))
+            throw new InvalidDataException($"The mod already ships a recipe ({Recipe.FileName}): strip the folder you made it from, not a stripped copy.");
+        if (outFolder == null) return (modFolder, null);
+        outFolder = Path.GetFullPath(outFolder);
+        if (LocalInstall.Within(outFolder, modFolder) || LocalInstall.Within(modFolder, outFolder))
+            throw new InvalidDataException("The output folder must be outside the mod's folder (and not hold it).");
+        return (modFolder, outFolder);
+    }
+
+    // The gate: the recipe rebuilds every file from the game alone, each to the original's SHA-256. Why not, or null.
+    static string? Verify(Recipe recipe, MigrationReport report, Stream literals, IReadOnlyList<IGameResources> games)
+    {
+        if (report.Unreadable.Count > 0)
+            return $"the mod shares content with {report.Unreadable.Count} game resource parts the builds here could not read back.";
+        if (recipe.Files.Count == 0) return null;
+        try { RecipeRebuilder.Write(recipe, literals, games, _ => Stream.Null); }
+        catch (Exception error) when (error is InvalidDataException or IOException) { return error.Message; }
+        return null;
+    }
+
+    // The mod as it is to be shared, in outFolder (replaced): its files but the patch files the recipe rebuilds and
+    // workspace leftovers, plus the recipe and its literals.
+    static string WriteShareable(string modFolder, string outFolder, Recipe recipe, Stream literals)
+    {
+        if (Directory.Exists(outFolder)) Directory.Delete(outFolder, recursive: true);
+        Directory.CreateDirectory(outFolder);
+        var inRecipe = recipe.Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        foreach (var file in Directory.GetFiles(modFolder, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(modFolder, file).Replace('\\', '/');
+            if (ModCatalog.IsWorkspaceFile(relative) || inRecipe.Contains(relative)) continue;
+            var target = Path.Combine(outFolder, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+        if (recipe.Files.Count == 0) return outFolder;
+        recipe.Save(outFolder);
+        using var output = File.Create(Path.Combine(outFolder, Recipe.LiteralsName));
+        literals.Position = 0;
+        literals.CopyTo(output);
+        return outFolder;
     }
 
     // The builds a recipe's game content comes from, as their labels.
@@ -156,7 +163,7 @@ public static class AssetKit
     static string Pct(long part, long whole) => whole == 0 ? "-" : $"{100.0 * part / whole:F1}%";
 
     // The report an author reads (asset-report.md): what came from the game and from which build, what stays, and why.
-    public static string ReportText(string name, string summary, SourceIndex index, Recipe recipe, MigrationReport report, long total, string? shipped,
+    public static string ReportText(string name, string summary, SourceIndex index, MigrationReport report, long total, string? shipped,
         Func<string, string> named)
     {
         var s = new StringBuilder();
