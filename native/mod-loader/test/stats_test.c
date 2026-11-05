@@ -336,7 +336,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_ZONE_SITE, kZonePin, sizeof kZonePin);
     memcpy(game + DIF_ZONE_CLEAR, kZoneClearPin, 21); memcpy(game + DIF_ZONE_TABLE_LEA, kZoneTableLeaPin, 8); memcpy(game + DIF_ZONE_HEIGHT, kZoneHeightPin, 7);
     for (int i = 0; i < 7; i++) memcpy(game + kCityCapacities[i].rva, kCityCapacities[i].pin, kCityCapacities[i].length);
-    memcpy(game + DIF_FOOTPRINT_CHECK, kFootprintPin, 9);
+    memcpy(game + DIF_FOOTPRINT_CHECK, kFootprintPin, 9); memcpy(game + CITY_LOCATION_TEST, kCityLocationPin, 15);
     for (int i = 0; i < 3; i++) memcpy(game + kReVoronoiStubs[i].site, kReVoronoiStubs[i].pin, kReVoronoiStubs[i].length);
     for (int i = 0; i < 8; i++) memcpy(game + kBucketPool[i].rva, kBucketPool[i].pin, kBucketPool[i].length);
     {   /* the structured weld's full-case guards, strides and pointers (StructuredFailed) */
@@ -814,10 +814,12 @@ static void DifficultyFixture(void)
             assert(game[DIF_TELEMETRY_SITE] == 0xE9 && !memcmp(telemetry, kTelemetryStub, 16));
             memcpy(&rel, telemetry + 16, 4); assert(telemetry + 20 + rel == game + DIF_TELEMETRY_SITE + 5);
         }
-        /* The stamp index has 32767 slots: size, layout check and index agree. */
+        /* The stamp index has 131071 slots: size, layout check and index agree. */
         for (size_t i = 0; i < sizeof kStampIndex / sizeof kStampIndex[0]; i++) assert(!memcmp(game + kStampIndex[i].rva, kStampIndex[i].bytes, kStampIndex[i].length));
-        assert(*(uint32_t*)(game + 0xC0498B + 1) == 32768u * 4u + 7u && *(uint32_t*)(game + 0xC04C1A + 2) == 32767u &&
-            *(uint32_t*)(game + 0xC04CB2 + 3) == 32768u * 4u && *(uint32_t*)(game + 0xC04CCC + 3) == 32768u);
+        assert(*(uint32_t*)(game + 0xC0498B + 1) == 131072u * 4u + 7u && *(uint32_t*)(game + 0xC04C1A + 2) == 131071u &&
+            *(uint32_t*)(game + 0xC04AEA + 1) == 131071u && *(uint32_t*)(game + 0xC04CB2 + 3) == 131072u * 4u &&
+            *(uint32_t*)(game + 0xC04CCC + 3) == 131072u && *(uint32_t*)(game + 0xC04CDA + 3) == 131072u / 64u &&
+            *(uint32_t*)(game + 0xC0497D + 2) == 131072u / 64u * 8u);
         /* The locations moved to the end of a larger block, with 8192 places each. */
         for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++)
         {
