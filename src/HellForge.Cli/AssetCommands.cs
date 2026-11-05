@@ -79,11 +79,17 @@ static class AssetCommands
 
     // assets-rebuild --steam yes: signs in to Steam (a QR code for the Steam app; nothing is kept) and rebuilds the mod
     // from this PC's builds plus what it needs of the builds it lacks, fetched from Steam.
-    public static AssetFetch.Fetched RebuildFromSteam(string modFolder, InstallLayout? install)
+    public static AssetFetch.Fetched RebuildFromSteam(string modFolder, InstallLayout? install, bool recipe = true)
     {
         using var cancel = new CancellationTokenSource();
         var session = SignIn(cancel);
-        try { return AssetFetch.Rebuild(modFolder, install, SteamBuilds.For(session, install, cancel.Token), Console.Error.WriteLine); }
+        try
+        {
+            var steam = SteamBuilds.For(session, install, cancel.Token);
+            var specBuilds = AssetFetch.SpecNeedsSteam(modFolder) ? AssetFetch.FetchSpec(modFolder, steam, Console.Error.WriteLine) : [];
+            if (recipe) return AssetFetch.Rebuild(modFolder, install, steam, Console.Error.WriteLine);
+            return new(steam.Store.Downloaded, steam.Store.FromCache, steam.Store.FromLocal, specBuilds);
+        }
         finally { session.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
     }
 

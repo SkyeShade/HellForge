@@ -587,13 +587,17 @@ try
         {
             var modFolder = Path.GetFullPath(Required("--mod"));
             var assetInstall = AssetCommands.Installation(options.GetValueOrDefault("--install"), modFolder);
-            if (!ModAssets.HasRecipe(modFolder)) throw new InvalidDataException($"The mod has no recipe ({Recipe.FileName}): there is nothing to rebuild.");
+            var specNeedsSteam = AssetFetch.SpecNeedsSteam(modFolder);
+            if (!ModAssets.HasRecipe(modFolder) && !specNeedsSteam)
+                throw new InvalidDataException($"The mod has no recipe ({Recipe.FileName}) and no data spec resources of past builds to fetch: there is nothing to rebuild.");
             var rebuildProblems = ModAssets.Prepare([modFolder], () => GameBuilds.Local(assetInstall), Console.Error.WriteLine);
+            var steamWanted = options.GetValueOrDefault("--steam") == "yes";
             AssetFetch.Fetched? fetched = null;
-            if (rebuildProblems is [{ Missing: { Count: > 0 } }] && options.GetValueOrDefault("--steam") == "yes")
-                fetched = AssetCommands.RebuildFromSteam(modFolder, assetInstall);
-            else if (rebuildProblems.Count > 0)
-                throw new InvalidDataException(rebuildProblems[0].Reason + (rebuildProblems[0].Missing != null ? "; --steam yes fetches it from Steam" : ""));
+            if (steamWanted && (rebuildProblems is [{ Missing: { Count: > 0 } }] || specNeedsSteam))
+                fetched = AssetCommands.RebuildFromSteam(modFolder, assetInstall, recipe: rebuildProblems.Count > 0);
+            else if (rebuildProblems.Count > 0 || specNeedsSteam)
+                throw new InvalidDataException((rebuildProblems.Count > 0 ? rebuildProblems[0].Reason : "its data spec takes resources from past builds that are not fetched yet") +
+                    (rebuildProblems is [] or [{ Missing: not null }] ? "; --steam yes fetches them from Steam" : ""));
             var rebuilt = ModAssets.Read(modFolder);
             result = new { mod = modFolder, files = rebuilt.Outputs, ready = rebuilt.Ready, fetchedFrom = fetched?.Builds, downloadedBytes = fetched?.Downloaded };
             break;

@@ -367,6 +367,78 @@ static class DataBuilderTests
             try { ModDataBuilder.Build(Spec("""{"type":"texture","include":["0x4242"],"source":"steam"}"""), mod, gameReader, output + "3", steamReader); throw new Exception("Missing."); }
             catch (InvalidDataException error) { check(error.Message.Contains("0x0000000000004242 (Steam)"), "A missing Steam resource is not named: " + error.Message); }
         });
+
+        test("Resources come from a past build with \"source\": {\"build\": ...}, read from what was fetched into the mod's folder", () =>
+        {
+            var folder = Path.Combine(root, "past-source");
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            var game = Path.Combine(folder, "game");
+            WriteBundles(game, new Dictionary<string, byte[]>
+            {
+                ["1111111111111111"] = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts>
+                {
+                    [new(ResourceTypes.Material, 0x9999)] = new(LaidOut(0, [(0xA, 0x100)], [(0, 0x50, 0)], [1]), [], []),
+                    [new(ResourceTypes.Texture, 0x100)] = new([1], [], []),
+                }).Archive
+            });
+            var mod = Directory.CreateDirectory(Path.Combine(folder, "mod")).FullName;
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+
+            // A day names the manifest Steam published last on or before it (UTC), from the depot history HellForge ships.
+            var history = HellForge.Core.AssetMigration.DepotHistory.Embedded(553853);
+            var day = history.Where(h => h.Branch == null && h.Time < new DateTime(2024, 3, 8, 0, 0, 0, DateTimeKind.Utc)).MaxBy(h => h.Time)!;
+            var label = $"553853:{day.Manifest}";
+            const string cut = """{"type":"unit","copy":"0x3333","name":"test/mod/cut","source":{"build":"2024-03-07"}}""";
+            var port = cut + $$$""",{"type":"material","include":["0x7777"],"source":{"build":"{{{label}}}"}}""";
+            check(Spec(port).Builds.SequenceEqual([label]), $"the day and the manifest name one build: {string.Join(", ", Spec(port).Builds)}");
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"2023-01-01"}}"""));
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"553853:12345"}}"""));
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"2024-03-07","branch":"x"}}"""));
+            check(BuildResources.Wanted(Spec(port))[label].SetEquals([new(ResourceTypes.Unit, 0x3333), new(ResourceTypes.Physics, 0x3333), new(ResourceTypes.Material, 0x7777)]),
+                "a unit copy takes its physics too");
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(folder, "out");
+            check(BuildResources.Missing(mod, Spec(port)).SequenceEqual([label]), "nothing is fetched yet");
+            try { ModDataBuilder.Build(Spec(port), mod, gameReader, output); throw new Exception("Built without its past resources."); }
+            catch (FileNotFoundException error) { check(error.Message.Contains(label), "The build not fetched is not named: " + error.Message); }
+
+            BuildResources.Write(mod, label, new(ResourceTypes.Unit, 0x3333), new(new byte[0x40], [6, 6], []));
+            BuildResources.Write(mod, label, new(ResourceTypes.Physics, 0x3333), new(Physics(0x3333), [], []));
+            BuildResources.Write(mod, label, new(ResourceTypes.Material, 0x7777),
+                new(LaidOut(0x9999, [(0xE, 0x300), (0xA, 0x101)], [(0, 0x58, 0), (0, 0x50, 4)], [99, 42]), [], []));
+            check(BuildResources.Missing(mod, Spec(port)).Count == 0, "all fetched");
+            var stamp = BuildResources.Stamp(mod, Spec(port));
+            ModDataBuilder.Build(Spec(port), mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/cut"u8);
+            check(built[new(ResourceTypes.Unit, name)].Gpu.SequenceEqual(new byte[] { 6, 6 }) && built.ContainsKey(new(ResourceTypes.Physics, name)),
+                "The unit of the past build was not copied with its physics.");
+            var material = built[new(ResourceTypes.Material, 0x7777)].Main;
+            check(Value(material, 0x50) == 42 && BinaryPrimitives.ReadUInt64LittleEndian(material.AsSpan(0x88 + 4)) == 0x101,
+                "The material of the past build is not in the game copy's shader layout.");
+
+            // A unit that build has without physics is copied alone; a resource it does not have is refused by name.
+            BuildResources.Write(mod, label, new(ResourceTypes.Physics, 0x3333), null);
+            check(BuildResources.Stamp(mod, Spec(port)) != stamp, "the cache key follows what was fetched");
+            ModDataBuilder.Build(Spec(cut), mod, gameReader, output + "2");
+            check(!ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output + "2", "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output + "2", "1111111111111111.patch_0.gpu_resources")), []).ContainsKey(new(ResourceTypes.Physics, name)),
+                "A physics the build does not have was made up.");
+            BuildResources.Write(mod, label, new(ResourceTypes.Texture, 0x4242), null);
+            try { ModDataBuilder.Build(Spec($$$"""{"type":"texture","include":["0x4242"],"source":{"build":"{{{label}}}"}}"""), mod, gameReader, output + "3"); throw new Exception("Missing."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("0x0000000000004242") && error.Message.Contains(label), "A resource the build lacks is not named: " + error.Message); }
+
+            // An include the game copy has already comes from the game, not a past build.
+            BuildResources.Write(mod, label, new(ResourceTypes.Texture, 0x100), new([2], [], []));
+            try { ModDataBuilder.Build(Spec($$$"""{"type":"texture","include":["0x100"],"source":{"build":"{{{label}}}"}}"""), mod, gameReader, output + "4"); throw new Exception("Shadowed."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("include them from the game"), "Refused for another reason: " + error.Message); }
+        });
     }
 
     // The synthetic game data: archive 1111111111111111 with a unit naming a material, the material naming a colour

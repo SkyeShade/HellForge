@@ -21,6 +21,9 @@ On `dev`, since 0.4.0-beta.
   checks what a mod still ships against every build since release. It reads Steam's depot manifests with the author's
   own sign-in, and fingerprints just the resources it proves. A player whose recipe needs such a build gets **GET THEM
   FROM STEAM** on the Mods page (or `assets-rebuild --steam yes`), which fetches only the chunks those pieces sit in.
+- **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
+  `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
+  the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
 
 ### For contributors
 

@@ -195,5 +195,47 @@ static class AssetFetchTests
             new SteamBuilds(new ChunkStore(depot, 553850, Path.Combine(root, "fetch-branch", "cache")), null).Manifest(GameBuilds.Label(553853, legacy.Manifest.ToString()));
             check(depot.Branches.SequenceEqual([legacy.Branch!]), $"asked on {string.Join(",", depot.Branches)}, not {legacy.Branch}");
         });
+
+        test("A data spec's resources of a past build are fetched from Steam into the mod's folder, only those, and the mod is pending until then", () =>
+        {
+            var past = DepotHistory.Embedded(553853).First(h => h.Branch == null && h.Time.Year == 2024);
+            var label = GameBuilds.Label(553853, past.Manifest.ToString());
+            var data = Path.Combine(root, "fetch-spec", "data");
+            Directory.CreateDirectory(data);
+            var unit = new ResourceKey(ResourceTypes.Unit, 0xD0D0);
+            var resources = new Dictionary<ResourceKey, ResourceParts> { [unit] = new(Noise(4, 900), Noise(5, 30_000), []) };
+            for (var i = 0; i < 30; i++) resources[new(ResourceTypes.Texture, 0x2000 + (ulong)i)] = new(Noise(200 + i, 300), Noise(300 + i, 40_000), []);
+            var (archive, gpu, _) = ResourceArchive.Write(resources);
+            File.WriteAllBytes(Path.Combine(data, "00000000000000dd"), archive);
+            File.WriteAllBytes(Path.Combine(data, "00000000000000dd.gpu_resources"), gpu);
+
+            var mod = Path.Combine(root, "fetch-spec", "mod");
+            if (Directory.Exists(mod)) Directory.Delete(mod, true);
+            Directory.CreateDirectory(mod);
+            File.WriteAllText(Path.Combine(mod, "hellforge-mod.json"), """{"format":1,"id":"test.cut-unit","name":"Cut Unit","version":"1.0.0"}""");
+            File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$$"""
+                {"format":1,"patches":[{"archives":["1111111111111111"],"resources":[
+                  {"type":"unit","copy":"0xd0d0","name":"test/cut-unit","source":{"build":"{{{label}}}"}}]}]}
+                """);
+            var profile = EntityProfile.Current;
+            var before = ModCatalog.Parse(mod, profile);
+            check(before.AssetsPending?.Contains(label) == true, $"pending until fetched: {before.AssetsPending}");
+            check(AssetFetch.SpecNeedsSteam(mod), "it needs Steam");
+            var hash = ModSets.ContentHash(before);
+
+            var depot = FakeDepot.Of(553853, past.Manifest, data, 8 * 1024);
+            var steam = new SteamBuilds(new ChunkStore(depot, 553850, Path.Combine(root, "fetch-spec", "cache")), null);
+            check(AssetFetch.FetchSpec(mod, steam).SequenceEqual([label]), "the past build was asked for");
+            check(depot.Served < depot.Chunks.Count / 3, $"only the unit's chunks and the table were fetched: {depot.Served} of {depot.Chunks.Count}");
+            check(BuildResources.Read(mod, label, unit)!.Gpu.SequenceEqual(resources[unit].Gpu), "the unit is kept as the build has it");
+            check(BuildResources.Read(mod, label, new(ResourceTypes.Physics, 0xD0D0)) == null, "a physics the build lacks is kept as missing");
+            check(!AssetFetch.SpecNeedsSteam(mod), "nothing more is needed");
+            var after = ModCatalog.Parse(mod, profile);
+            check(after.AssetsPending == null, $"ready: {after.AssetsPending}");
+            check(ModSets.ContentHash(after) == hash && ModSets.Files(after).All(f => !f.Path.StartsWith(BuildResources.FolderName, StringComparison.Ordinal)),
+                "friends, mod sync and packages never count what was fetched");
+            var served = depot.Served;
+            check(AssetFetch.FetchSpec(mod, steam).Count == 0 && depot.Served == served, "a second fetch asks for nothing");
+        });
     }
 }
