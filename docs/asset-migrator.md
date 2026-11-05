@@ -1,4 +1,9 @@
-# Asset migrator (proof of concept)
+# Asset migrator (maintainers' tools)
+
+Mod authors use the asset kit in HellForge itself (`assets-check`, `assets-strip`, `package-mod`:
+[modding/assets.md](modding/assets.md)), and players' HellForge rebuilds recipes before mods load (`ModAssets`). This
+page is the design behind it and the maintainers' command line (`src/HellForge.AssetMigrator`), which also reads past
+builds from Steam's depots for research on uploaded mods.
 
 Mods that ship the game's own resources (models, textures, sounds, scripts, whether copied whole, kitbashed or edited)
 redistribute Arrowhead's content. The asset migrator takes that content out of a mod: what is left is the author's own

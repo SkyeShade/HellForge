@@ -20,13 +20,6 @@ public sealed class Recipe
     public List<RecipeSource> Sources { get; set; } = [];
     public List<RecipeFile> Files { get; set; } = [];
 
-    static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     public void Save(string folder, byte[] literals)
     {
         Save(folder);
@@ -37,7 +30,7 @@ public sealed class Recipe
     public void Save(string folder)
     {
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, FileName), JsonSerializer.Serialize(this, Json));
+        File.WriteAllText(Path.Combine(folder, FileName), JsonSerializer.Serialize(this, AssetJson.Default.Recipe));
     }
 
     public static (Recipe Recipe, byte[] Literals) Load(string folder)
@@ -49,8 +42,9 @@ public sealed class Recipe
     // The recipe alone; its literals are read from the literals file as the rebuild needs them (OpenLiterals).
     public static Recipe LoadRecipe(string folder)
     {
-        var recipe = JsonSerializer.Deserialize<Recipe>(File.ReadAllText(Path.Combine(folder, FileName)), Json)
-            ?? throw new InvalidDataException("The recipe is empty.");
+        Recipe recipe;
+        try { recipe = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(folder, FileName)), AssetJson.Default.Recipe) ?? throw new InvalidDataException("The recipe is empty."); }
+        catch (JsonException error) { throw new InvalidDataException($"{FileName} is not a recipe HellForge reads ({error.Message})."); }
         if (recipe.Format != 1) throw new InvalidDataException($"Recipe format {recipe.Format} is not one this HellForge reads.");
         return recipe;
     }
@@ -139,7 +133,8 @@ public static class RecipeRebuilder
             }
             var source = recipe.Sources[i];
             var bytes = Resolve(source, games)
-                ?? throw new InvalidDataException($"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
+                ?? throw new MissingSourceException(source.Places.Count == 0 ? "A recipe source names no place in the game."
+                    : $"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
             cache[i] = recent.AddFirst((i, bytes));
             cached += bytes.Length;
             while (cached > cacheBytes && recent.Count > 1)
@@ -210,6 +205,13 @@ public static class RecipeRebuilder
         }
         log?.Invoke($"Rebuilt {recipe.Files.Count} files from {recipe.Sources.Count} game resource parts in the given game folders.");
     }
+
+    // A part of the game the recipe needs that none of the given builds has (with those bytes): an IOException, like a
+    // missing file, since the recipe is fine and this PC lacks the game files.
+    public sealed class MissingSourceException(string message) : IOException(message);
+
+    // Whether one of the given builds has the source's bytes.
+    public static bool Has(RecipeSource source, IReadOnlyList<IGameResources> games) => Resolve(source, games) != null;
 
     static byte[]? Resolve(RecipeSource source, IReadOnlyList<IGameResources> games)
     {

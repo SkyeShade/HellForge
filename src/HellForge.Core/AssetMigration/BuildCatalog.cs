@@ -16,13 +16,11 @@ public sealed class BuildCatalog
     public bool HistoryComplete { get; init; }
     public List<Build> Builds { get; init; } = [];
 
-    static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-
     public static BuildCatalog Load(string path) =>
-        JsonSerializer.Deserialize<BuildCatalog>(File.ReadAllText(path), Json) ?? throw new InvalidDataException($"{path} is empty.");
+        JsonSerializer.Deserialize(File.ReadAllText(path), AssetJson.Default.BuildCatalog) ?? throw new InvalidDataException($"{path} is empty.");
 
     public static BuildCatalog Parse(string json) =>
-        JsonSerializer.Deserialize<BuildCatalog>(json, Json) ?? throw new InvalidDataException("The build catalog is empty.");
+        JsonSerializer.Deserialize(json, AssetJson.Default.BuildCatalog) ?? throw new InvalidDataException("The build catalog is empty.");
 
     public Build? Find(string buildId) => Builds.FirstOrDefault(b => b.BuildId == buildId);
 
@@ -110,10 +108,7 @@ public sealed class BuildCatalog
         };
     }
 
-    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions(Json)
-    {
-        WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-    }) + "\n");
+    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, AssetJson.Default.BuildCatalog) + "\n");
 
     public IEnumerable<string> Commands(Build build) => build.Depots.Select(d => $"download_depot {AppId} {d.Id} {d.ManifestId}");
 }

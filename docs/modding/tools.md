@@ -50,6 +50,8 @@ navigation into `hellforge_mod.h` work.
 HellForge.Cli new-mod --id yourname.my-mod --name "My Mod" --install <installation>   # a mod from the template, in mods/
 HellForge.Cli build-mod --mod <installation>/mods/my-mod                             # compile now
 HellForge.Cli package-mod --mod <installation>/mods/my-mod                           # zip it to share
+HellForge.Cli assets-check --mod <folder>                                            # which patch bytes are the game's
+HellForge.Cli assets-strip --mod <folder> [--out <folder>]                           # the mod without them, plus a recipe
 HellForge.Cli check-stats --mod <folder>                                             # check a stats mod
 HellForge.Cli build-data --mod <folder> --install <installation>                     # build a data spec
 HellForge.Cli mod-hash --mod <folder or zip>                                         # its content hash (mod sync)
@@ -57,7 +59,8 @@ HellForge.Cli mod-hash --mod <folder or zip>                                    
 
 `new-mod` also takes `--out <folder>` instead of `--install`, to make the mod outside an installation. `build-mod` on a
 mod in an installation's mods folder makes the build a session loads (in `temp/mod-builds`); elsewhere it writes the DLL
-its manifest names beside the manifest. `package-mod` takes `--out <folder>` for a mod outside an installation. On
+its manifest names beside the manifest. `package-mod` takes `--out <folder>` for a mod outside an installation, and
+strips the game's bytes out of a mod's game patch files first ([the asset kit](assets.md)). On
 Linux, `<installation>/app/cli-linux/HellForge.Cli` is the native build agent and takes the same commands; it uses the
 pinned `tools/zig-linux/zig`, not the Windows `zig.exe`.
 

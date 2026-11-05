@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 
 namespace HellForge.Core;
@@ -15,6 +16,8 @@ namespace HellForge.Core;
 //   data/   the game's own mod format (<bundle>.patch_<n>, .gpu_resources, .stream), staged into game/data per session;
 //   hellforge-data.json  a data spec: patches HellForge builds from the player's own game data (GameData/ModDataBuilder.cs)
 //           and stages like data/, so the mod ships no game bytes;
+//   hellforge-recipe.json  game patch files the author made from the game's resources, as a recipe that rebuilds them,
+//           byte for byte, from the player's own game (AssetMigration/ModAssets.cs), so the mod ships only the author's bytes;
 //   native  engine edits HellForge applies in the running game's memory (docs/modding/data.md "Native edits in the manifest"):
 //     networkFieldTypes  widen a named network field type (only widen; kind, bits and min must be as expected);
 //     componentWrites    set u32 fields of an entity's component record, only from their expected vanilla value.
@@ -79,6 +82,11 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Arrowhead's premium content the mod builds on (the manifest's "premium", PremiumContent entries): a player who does
     // not own all of it gets none of the mod's weapons and stratagems, and a cosmetic mod is not loaded for them.
     public IReadOnlyList<string> Premium { get; init; } = [];
+    // The game patch files its recipe makes (hellforge-recipe.json, ModAssets), relative to its folder: rebuilt from the
+    // player's game, never counted or shared as the mod's files. AssetsPending says why they are not in place yet (the mod
+    // does not load until they are), or null.
+    public IReadOnlyList<string> AssetOutputs { get; init; } = [];
+    public string? AssetsPending { get; init; }
     // Why HellForge never loads it (LuaRuntimes.EditorUnsupported: HD2R Editor), or null. Such a mod stays listed but off,
     // whatever the Mods page's switch says.
     public string? Unsupported { get; init; }
@@ -187,6 +195,8 @@ public static partial class ModCatalog
         }
         else mod = Parse(folder, profile);
         mod = mod with { Archive = archive };
+        if (mod.Pack != null && ModAssets.Read(folder) is { HasRecipe: true } packAssets)
+            mod = mod with { AssetOutputs = packAssets.Outputs, AssetsPending = packAssets.Pending };
         if (LuaRuntimes.IsEditor(folder)) return mod with { Enabled = false, Unsupported = LuaRuntimes.EditorUnsupported };
         // Local Stats (the in-game editor's saved changes) is always on: the Mods page does not list it
         return settings.Disabled.Contains(mod.Id) && mod.Id != LocalStatsId ? mod with { Enabled = false } : mod;
@@ -263,6 +273,11 @@ public static partial class ModCatalog
         var (types, writes) = ReadNative(root, profile);
         var (code, source, live) = ReadCode(root, folder);
         var (data, lua) = ReadDataFiles(folder);
+        // A recipe's game patch files count as the mod's data before they are rebuilt (they are rebuilt before it loads).
+        var assets = ModAssets.Read(folder);
+        foreach (var output in assets.Outputs)
+            if (output.StartsWith("data/", StringComparison.Ordinal) && output.IndexOf('/', 5) < 0 && !data.Contains(output[5..])) data.Add(output[5..]);
+        data.Sort(StringComparer.Ordinal);
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
         var dataSpec = DataSpecs.Load(folder);
         var spec = dataSpec != null;
@@ -276,7 +291,7 @@ public static partial class ModCatalog
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
             { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
-              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root) };
+              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root), AssetOutputs = assets.Outputs, AssetsPending = assets.Pending };
         return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
     }
 
@@ -315,6 +330,8 @@ public static partial class ModCatalog
     // resources or holds any other type makes the mod shared.
     static bool ClientOnlyPatches(ModManifest mod)
     {
+        // a recipe's patches are not there to read until they are rebuilt; asked again then (the same content hash)
+        if (mod.AssetsPending != null) return false;
         string key;
         try { key = ModSets.ContentHash(mod); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or OverflowException or IndexOutOfRangeException)
@@ -550,7 +567,10 @@ public static partial class ModCatalog
         var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
         var shipped = BundledMods.ShippedFiles(mod.Folder);
         var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
+        // the files a recipe rebuilds are the game's: the recipe counts for them (its SHA-256s pin every byte)
+        var rebuilt = mod.AssetOutputs.Count == 0 ? null : mod.AssetOutputs.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return files.Where(f => !IsWorkspaceFile(f))
+            .Where(f => rebuilt == null || !rebuilt.Contains(f))
             .Where(f => shipped == null || shipped.Contains(f))
             .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
             .Order(StringComparer.Ordinal)

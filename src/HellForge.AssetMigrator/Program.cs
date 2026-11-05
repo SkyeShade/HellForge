@@ -151,9 +151,7 @@ IEnumerable<IGameResources> SteamBuilds(SourceIndex index, IEnumerable<string> h
 IGameResources Game(string label, string where)
 {
     IDataFiles files = where.StartsWith("steam:", StringComparison.Ordinal) ? Depot(where) : new FolderFiles(where);
-    if (!files.Exists(GameDataReader.IndexFile)) return new LooseGameResources(files, label);
-    // The transition builds (December 2025 to January 2026) have both bundles.nxa and loose archives.
-    return files.List().Any(n => n.Length == 16 && !n.Contains('.')) ? new MixedGameResources(files, label) : new GameResources(files, label);
+    return GameBuilds.Open(files, label);
 }
 
 SteamDepots Steam()
@@ -678,7 +676,7 @@ int Migrate()
     {
         RecipeRebuilder.Write(recipe, literals, games, _ => Stream.Null);
     }
-    catch (InvalidDataException e) { rebuildError = e.Message; }
+    catch (Exception e) when (e is InvalidDataException or IOException) { rebuildError = e.Message; }
     Console.WriteLine($"Rebuilt and checked (SHA-256) in {clock.Elapsed.TotalSeconds:F1} s. {Memory()}");
     var decided = MigrationVerdict.Decide(report, index, BuildCatalog.LoadWithHistory(One("--catalog")), recipe.Files.Count, rebuildError,
         All("--map").Count > 0 ? NameMap.Load(One("--map")) : null);

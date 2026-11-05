@@ -35,12 +35,15 @@ public sealed class ModFiles
         return new(files.Select(f => (f.Path, (long)f.Bytes.Length)), path => bytes[path], (path, length) => bytes[path][..Math.Min(length, bytes[path].Length)]);
     }
 
-    public static ModFiles InFolder(string folder)
+    public static ModFiles InFolder(string folder) => InFolder(folder,
+        Directory.EnumerateFiles(Path.GetFullPath(folder), "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(Path.GetFullPath(folder), f).Replace('\\', '/')));
+
+    // Just these files of the folder (relative paths with '/').
+    public static ModFiles InFolder(string folder, IEnumerable<string> paths)
     {
         folder = Path.GetFullPath(folder);
         string Full(string path) => Path.Combine(folder, path);
-        return new(Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                .Select(f => (Path.GetRelativePath(folder, f).Replace('\\', '/'), new FileInfo(f).Length)),
+        return new(paths.Select(p => (p, new FileInfo(Full(p)).Length)),
             path => File.ReadAllBytes(Full(path)),
             (path, length) =>
             {
