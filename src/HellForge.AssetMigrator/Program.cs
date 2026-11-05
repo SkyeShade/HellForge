@@ -258,40 +258,53 @@ int Resolve()
         return opened[build] = Game(build, $"steam:{parts[0]}:{parts[1]}:{branch}");
     }
 
+    // A build's plan entry, a new one when it has none yet.
+    (HashSet<string> Archives, HashSet<ResourceKey>? Keys) PlanEntry(string build)
+    {
+        if (!plan.TryGetValue(build, out var entry)) plan[build] = entry = (new(StringComparer.Ordinal), new());
+        return entry;
+    }
+
     // The Steam chunks the bytes the mod still ships are: each is found in a build (the latest that has it, or one
     // already planned), at a place in a game file; the game resources at that place, and the mod file's leftover
     // resources no indexed build has by name (smaller than a chunk, so the scan cannot prove them), are fingerprinted
     // from that archive alone.
-    if (chunks is not null)
+    void PlanChunks(SteamChunkIndex chunks)
     {
         var clock = Stopwatch.StartNew();
         foreach (var path in mod.Paths)
         {
             if (!report.Kept.TryGetValue(path, out var kept) || kept.Count == 0) continue;
             var mine = left.Where(r => r.File == path && !r.InIndex).ToList();
-            foreach (var m in chunks.Scan(mod.Read(path), kept))
-            {
-                if (!kept.Any(k => k.Start < m.Offset + m.Length && m.Offset < k.Start + k.Length)) continue;
-                var ids = chunks.BuildIdsOf(m.Chunk).ToList();
-                var pick = ids.Where(b => plan.ContainsKey(chunks.Builds[b].Label)).DefaultIfEmpty(ids.MaxBy(b => chunks.Builds[b].Time)).First();
-                var build = chunks.Builds[pick].Label;
-                if (index.Builds.Contains(build) && !index.PartialBuilds.Contains(build)) continue;
-                if (chunks.Locate(m.Chunk, pick) is not { } at || !at.File.StartsWith("data/", StringComparison.Ordinal)) continue;
-                var game = Open(build);
-                var found = game.At(at.File["data/".Length..], at.Offset, m.Length).ToList();
-                if (found.Count == 0) continue;
-                if (!plan.TryGetValue(build, out var entry)) plan[build] = entry = (new(StringComparer.Ordinal), new());
-                foreach (var (key, archive) in found)
-                {
-                    entry.Archives.Add(archive);
-                    entry.Keys!.Add(key);
-                }
-                foreach (var r in mine) entry.Keys!.Add(r.Key);
-            }
+            foreach (var m in chunks.Scan(mod.Read(path), kept)) PlanChunk(chunks, m, kept, mine);
         }
         Console.WriteLine($"Steam chunks: {plan.Sum(p => p.Value.Keys?.Count ?? 0)} game resources to fingerprint, in {plan.Sum(p => p.Value.Archives.Count)} archives of {plan.Count} builds ({clock.Elapsed.TotalSeconds:F1} s).");
     }
-    if (names is not null)
+
+    // One chunk the scan found: the game resources at its place in the build picked for it are planned.
+    void PlanChunk(SteamChunkIndex chunks, SteamChunkIndex.Match m, List<(long Start, long Length)> kept, List<MigrationReport.ResourceLine> mine)
+    {
+        if (!kept.Any(k => k.Start < m.Offset + m.Length && m.Offset < k.Start + k.Length)) return;
+        var ids = chunks.BuildIdsOf(m.Chunk).ToList();
+        var pick = ids.Where(b => plan.ContainsKey(chunks.Builds[b].Label)).DefaultIfEmpty(ids.MaxBy(b => chunks.Builds[b].Time)).First();
+        var build = chunks.Builds[pick].Label;
+        if (index.Builds.Contains(build) && !index.PartialBuilds.Contains(build)) return;
+        if (chunks.Locate(m.Chunk, pick) is not { } at || !at.File.StartsWith("data/", StringComparison.Ordinal)) return;
+        var game = Open(build);
+        var found = game.At(at.File["data/".Length..], at.Offset, m.Length).ToList();
+        if (found.Count == 0) return;
+        var entry = PlanEntry(build);
+        foreach (var (key, archive) in found)
+        {
+            entry.Archives.Add(archive);
+            entry.Keys!.Add(key);
+        }
+        foreach (var r in mine) entry.Keys!.Add(r.Key);
+    }
+
+    // The leftover resources no indexed build has but the name map does: each from a build already planned that has
+    // it, or else the newest that has it.
+    void PlanNames(NameMap names)
     {
         var wanted = left.Where(r => !r.InIndex && names.Has(r.Key)).Select(r => r.Key).Distinct().ToList();
         Console.WriteLine($"{wanted.Count} leftover resources are the game's by name.");
@@ -300,11 +313,14 @@ int Resolve()
             var found = names.Find(key).ToList();
             var pick = found.FirstOrDefault(f => plan.ContainsKey(f.Build));
             if (pick.Build is null) pick = found.OrderByDescending(f => When(f.Build)).First();
-            if (!plan.TryGetValue(pick.Build, out var entry)) plan[pick.Build] = entry = (new(StringComparer.Ordinal), new());
+            var entry = PlanEntry(pick.Build);
             entry.Archives.Add(pick.Archive);
             entry.Keys?.Add(key);
         }
     }
+
+    if (chunks is not null) PlanChunks(chunks);
+    if (names is not null) PlanNames(names);
     foreach (var (build, (archives, keys)) in plan)
     {
         var clock = Stopwatch.StartNew();
@@ -557,6 +573,21 @@ int ManifestsCommand()
     var tableSeen = new HashSet<string>(StringComparer.Ordinal);
     var seen = new HashSet<string>(StringComparer.Ordinal);
     var chunkSeen = new HashSet<string>(StringComparer.Ordinal);
+    // Counts the manifest's files and chunks no manifest before it has; returns the bytes of its files that are new.
+    long CountNew(DepotFiles files, ulong manifest)
+    {
+        long added = 0;
+        foreach (var n in files.List())
+        {
+            if (seen.Add(files.Hash(n) ?? n + manifest)) added += (long)files.File(n).TotalSize;
+            // What the name map reads: the chunk at the start of each distinct archive (and of bundles.nxa's files).
+            var first = files.File(n).Chunks.OrderBy(c => c.Offset).FirstOrDefault();
+            if (first is not null && (n.Length == 16 || n.EndsWith(".nxa")) && tableSeen.Add(Convert.ToHexString(first.ChunkID!))) { tableChunks++; tableBytes += first.CompressedLength; }
+            foreach (var c in files.File(n).Chunks)
+                if (chunkSeen.Add(Convert.ToHexString(c.ChunkID!))) { chunkBytes += c.UncompressedLength; chunkCompressed += c.CompressedLength; }
+        }
+        return added;
+    }
     foreach (var h in history)
     {
         try
@@ -564,16 +595,7 @@ int ManifestsCommand()
             var m = Steam().Manifest(depot, h.Manifest, h.Branch ?? "public").GetAwaiter().GetResult();
             var files = new DepotFiles(Steam(), m);
             var size = files.List().Sum(n => (long)files.File(n).TotalSize);
-            long added = 0;
-            foreach (var n in files.List())
-            {
-                if (seen.Add(files.Hash(n) ?? n + h.Manifest)) added += (long)files.File(n).TotalSize;
-                // What the name map reads: the chunk at the start of each distinct archive (and of bundles.nxa's files).
-                var first = files.File(n).Chunks.OrderBy(c => c.Offset).FirstOrDefault();
-                if (first is not null && (n.Length == 16 || n.EndsWith(".nxa")) && tableSeen.Add(Convert.ToHexString(first.ChunkID!))) { tableChunks++; tableBytes += first.CompressedLength; }
-                foreach (var c in files.File(n).Chunks)
-                    if (chunkSeen.Add(Convert.ToHexString(c.ChunkID!))) { chunkBytes += c.UncompressedLength; chunkCompressed += c.CompressedLength; }
-            }
+            var added = CountNew(files, h.Manifest);
             total += size;
             unique += added;
             ok++;

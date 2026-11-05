@@ -199,33 +199,37 @@ sealed class SteamDepots : IDisposable
     public async Task<DepotManifest> Manifest(uint depot, ulong manifest, string branch = "public")
     {
         var file = Path.Combine(CacheFolder, "manifests", $"{depot}_{manifest}.manifest");
-        if (File.Exists(file))
-        {
-            var cached = DepotManifest.LoadFromFile(file);
-            if (cached is not null)
-            {
-                if (cached.FilenamesEncrypted) cached.DecryptFilenames(await DepotKey(depot));
-                return cached;
-            }
-        }
+        if (await FromCache(depot, file) is { } cached) return cached;
         var key = await DepotKey(depot);
         Exception? last = null;
         foreach (var b in branch == "public" ? new[] { "public" } : new[] { branch, "public" })
             for (var attempt = 0; attempt < 4; attempt++)
             {
-                try
-                {
-                    var code = await content.GetManifestRequestCode(depot, AppId, manifest, b);
-                    if (Environment.GetEnvironmentVariable("HF_STEAM_DEBUG") == "1") Console.Error.WriteLine($"  manifest {manifest} branch {b}: request code {code}");
-                    var m = await cdn.DownloadManifestAsync(depot, manifest, code, NextServer(), key);
-                    if (m.FilenamesEncrypted) m.DecryptFilenames(key);
-                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-                    m.SaveToFile(file);
-                    return m;
-                }
+                try { return await DownloadManifest(depot, manifest, b, key, file); }
                 catch (Exception e) when (e is not OperationCanceledException) { last = e; }
             }
         throw new IOException($"Could not download manifest {manifest} of depot {depot}: {last?.Message}");
+    }
+
+    // The manifest from the disk cache, with its file names decrypted, or null when the cache does not have it.
+    async Task<DepotManifest?> FromCache(uint depot, string file)
+    {
+        if (!File.Exists(file)) return null;
+        var cached = DepotManifest.LoadFromFile(file);
+        if (cached is not null && cached.FilenamesEncrypted) cached.DecryptFilenames(await DepotKey(depot));
+        return cached;
+    }
+
+    // One download of the manifest for a branch, its file names decrypted, saved to the disk cache.
+    async Task<DepotManifest> DownloadManifest(uint depot, ulong manifest, string branch, byte[] key, string file)
+    {
+        var code = await content.GetManifestRequestCode(depot, AppId, manifest, branch);
+        if (Environment.GetEnvironmentVariable("HF_STEAM_DEBUG") == "1") Console.Error.WriteLine($"  manifest {manifest} branch {branch}: request code {code}");
+        var m = await cdn.DownloadManifestAsync(depot, manifest, code, NextServer(), key);
+        if (m.FilenamesEncrypted) m.DecryptFilenames(key);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        m.SaveToFile(file);
+        return m;
     }
 
     // One chunk's bytes (decrypted and decompressed), from the disk cache or from Steam.

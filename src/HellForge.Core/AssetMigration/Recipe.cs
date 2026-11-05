@@ -120,10 +120,34 @@ public static class RecipeRebuilder
     public static void Write(Recipe recipe, Stream literals, IReadOnlyList<IGameResources> games, Func<RecipeFile, Stream> open,
         Action<RecipeFile>? done = null, Action<string>? log = null, long cacheBytes = 256L << 20)
     {
-        var cache = new Dictionary<int, LinkedListNode<(int Source, byte[] Bytes)>>();
-        var recent = new LinkedList<(int Source, byte[] Bytes)>();
-        long cached = 0;
-        byte[] Source(int i)
+        var sources = new SourceCache(recipe, games, cacheBytes);
+        var buffer = new byte[1 << 20];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var file in recipe.Files)
+        {
+            using (var output = open(file))
+            {
+                var writer = new FileWriter(file, output, hash, buffer);
+                foreach (var op in file.Ops) writer.Write(op, sources, literals);
+                if (writer.At != file.Size) throw writer.Bad($"the recipe makes {writer.At:N0} bytes, not {file.Size:N0}.");
+            }
+            var sha = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            if (sha != file.Sha256) throw new InvalidDataException($"{file.Path}: rebuilt file does not match the original ({sha} != {file.Sha256}).");
+            done?.Invoke(file);
+        }
+        log?.Invoke($"Rebuilt {recipe.Files.Count} files from {recipe.Sources.Count} game resource parts in the given game folders.");
+    }
+
+    // The recipe's sources as the rebuild reads them, newest use first, within cacheBytes.
+    sealed class SourceCache(Recipe recipe, IReadOnlyList<IGameResources> games, long cacheBytes)
+    {
+        readonly Dictionary<int, LinkedListNode<(int Source, byte[] Bytes)>> cache = [];
+        readonly LinkedList<(int Source, byte[] Bytes)> recent = new();
+        long cached;
+
+        public int Count => recipe.Sources.Count;
+
+        public byte[] Get(int i)
         {
             if (cache.TryGetValue(i, out var node))
             {
@@ -146,64 +170,69 @@ public static class RecipeRebuilder
             }
             return bytes;
         }
-        var buffer = new byte[1 << 20];
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach (var file in recipe.Files)
+    }
+
+    // Writes one file's operations to its stream and to the hash, checking each first (a recipe is untrusted input).
+    sealed class FileWriter(RecipeFile file, Stream output, IncrementalHash hash, byte[] buffer)
+    {
+        // The bytes written so far.
+        public long At { get; private set; }
+
+        public InvalidDataException Bad(string what) => new($"{file.Path}: {what}");
+
+        void Put(ReadOnlySpan<byte> bytes)
         {
-            long at = 0;
-            using (var output = open(file))
-            {
-                void Put(ReadOnlySpan<byte> bytes)
-                {
-                    output.Write(bytes);
-                    hash.AppendData(bytes);
-                    at += bytes.Length;
-                }
-                InvalidDataException Bad(string what) => new($"{file.Path}: {what}");
-                foreach (var op in file.Ops)
-                {
-                    if (op.Length < 3) throw Bad("an operation is incomplete.");
-                    var length = op[^1];
-                    if (length < 0 || at + length > file.Size) throw Bad($"the recipe makes more than its {file.Size:N0} bytes.");
-                    switch (op[0])
-                    {
-                        case Recipe.Copy:
-                            if (op.Length != 4 || op[1] < 0 || op[1] >= recipe.Sources.Count) throw Bad("a copy names no source.");
-                            var src = Source((int)op[1]);
-                            if (op[2] < 0 || op[2] + length > src.Length) throw Bad("a copy runs past its source.");
-                            Put(src.AsSpan((int)op[2], (int)length));
-                            break;
-                        case Recipe.Literal:
-                            if (op.Length != 3 || op[1] < 0 || op[1] + length > literals.Length) throw Bad("a literal runs past the literals file.");
-                            literals.Position = op[1];
-                            for (var left = length; left > 0;)
-                            {
-                                var n = (int)Math.Min(left, buffer.Length);
-                                literals.ReadExactly(buffer, 0, n);
-                                Put(buffer.AsSpan(0, n));
-                                left -= n;
-                            }
-                            break;
-                        case Recipe.Fill:
-                            if (op.Length != 3) throw Bad("a fill is malformed.");
-                            buffer.AsSpan(0, (int)Math.Min(length, buffer.Length)).Fill((byte)op[1]);
-                            for (var left = length; left > 0;)
-                            {
-                                var n = (int)Math.Min(left, buffer.Length);
-                                Put(buffer.AsSpan(0, n));
-                                left -= n;
-                            }
-                            break;
-                        default: throw Bad($"unknown recipe operation {op[0]}.");
-                    }
-                }
-                if (at != file.Size) throw Bad($"the recipe makes {at:N0} bytes, not {file.Size:N0}.");
-            }
-            var sha = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
-            if (sha != file.Sha256) throw new InvalidDataException($"{file.Path}: rebuilt file does not match the original ({sha} != {file.Sha256}).");
-            done?.Invoke(file);
+            output.Write(bytes);
+            hash.AppendData(bytes);
+            At += bytes.Length;
         }
-        log?.Invoke($"Rebuilt {recipe.Files.Count} files from {recipe.Sources.Count} game resource parts in the given game folders.");
+
+        public void Write(long[] op, SourceCache sources, Stream literals)
+        {
+            if (op.Length < 3) throw Bad("an operation is incomplete.");
+            var length = op[^1];
+            if (length < 0 || At + length > file.Size) throw Bad($"the recipe makes more than its {file.Size:N0} bytes.");
+            switch (op[0])
+            {
+                case Recipe.Copy: Copy(op, length, sources); break;
+                case Recipe.Literal: Literal(op, length, literals); break;
+                case Recipe.Fill: Fill(op, length); break;
+                default: throw Bad($"unknown recipe operation {op[0]}.");
+            }
+        }
+
+        void Copy(long[] op, long length, SourceCache sources)
+        {
+            if (op.Length != 4 || op[1] < 0 || op[1] >= sources.Count) throw Bad("a copy names no source.");
+            var src = sources.Get((int)op[1]);
+            if (op[2] < 0 || op[2] + length > src.Length) throw Bad("a copy runs past its source.");
+            Put(src.AsSpan((int)op[2], (int)length));
+        }
+
+        void Literal(long[] op, long length, Stream literals)
+        {
+            if (op.Length != 3 || op[1] < 0 || op[1] + length > literals.Length) throw Bad("a literal runs past the literals file.");
+            literals.Position = op[1];
+            for (var left = length; left > 0;)
+            {
+                var n = (int)Math.Min(left, buffer.Length);
+                literals.ReadExactly(buffer, 0, n);
+                Put(buffer.AsSpan(0, n));
+                left -= n;
+            }
+        }
+
+        void Fill(long[] op, long length)
+        {
+            if (op.Length != 3) throw Bad("a fill is malformed.");
+            buffer.AsSpan(0, (int)Math.Min(length, buffer.Length)).Fill((byte)op[1]);
+            for (var left = length; left > 0;)
+            {
+                var n = (int)Math.Min(left, buffer.Length);
+                Put(buffer.AsSpan(0, n));
+                left -= n;
+            }
+        }
     }
 
     // A part of the game the recipe needs that none of the given builds has (with those bytes): an IOException, like a

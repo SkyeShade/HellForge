@@ -73,20 +73,24 @@ public sealed class NameMap
     // The builds (and the archive in each) that have this resource.
     public IEnumerable<(string Build, string Archive)> Find(ResourceKey key)
     {
-        if (byKey is null)
-        {
-            byKey = [];
-            for (var t = 0; t < tables.Count; t++)
-                foreach (var k in tables[t].Keys)
-                {
-                    if (!byKey.TryGetValue(k, out var list)) byKey[k] = list = [];
-                    if (list.Count == 0 || list[^1] != t) list.Add(t);
-                }
-        }
-        if (!byKey.TryGetValue(key, out var found)) yield break;
+        if (!ByKey().TryGetValue(key, out var found)) yield break;
         for (var b = 0; b < Builds.Count; b++)
             foreach (var t in buildTables[b])
                 if (found.Contains(t)) yield return (Builds[b], tables[t].Name);
+    }
+
+    // Per resource, the tables that have it (built when first needed).
+    Dictionary<ResourceKey, List<int>> ByKey()
+    {
+        if (byKey is not null) return byKey;
+        byKey = [];
+        for (var t = 0; t < tables.Count; t++)
+            foreach (var k in tables[t].Keys)
+            {
+                if (!byKey.TryGetValue(k, out var list)) byKey[k] = list = [];
+                if (list.Count == 0 || list[^1] != t) list.Add(t);
+            }
+        return byKey;
     }
 
     public bool Has(ResourceKey key)

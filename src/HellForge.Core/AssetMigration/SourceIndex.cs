@@ -201,46 +201,70 @@ public sealed class SourceIndex
             {
                 Finish();
                 current = archiveName;
-                if (!archiveIds.TryGetValue(archiveName, out archive))
-                {
-                    archive = Archives.Count;
-                    Archives.Add(archiveName);
-                    archiveIds[archiveName] = archive;
-                }
+                archive = ArchiveId(archiveName);
                 recordingHash = game.ArchiveHash(archiveName);
-                reuse = recordingHash is not null && archiveMemo.ContainsKey(recordingHash);
-                if (reuse)
-                {
-                    ArchivesReused++;
-                    foreach (var (k, part, content) in archiveMemo[recordingHash!]) Contents[content].Places.Add(new Place(build, k, part, archive));
-                }
-                else if (recordingHash is not null) recording = [];
+                reuse = Reuse(recordingHash, build, archive);
+                if (!reuse && recordingHash is not null) recording = [];
             }
             if (reuse) continue;
-            var parts = read();
-            foreach (var kind in Parts.Kinds)
-            {
-                var data = Parts.Of(parts, kind);
-                if (data.Length == 0) continue;
-                bytes += data.Length;
-                var sha = SHA256.HashData(data);
-                var hex = Convert.ToHexString(sha);
-                if (!bySha.TryGetValue(hex, out var id))
-                {
-                    id = Contents.Count;
-                    Contents.Add(new Content(sha, data.Length));
-                    bySha[hex] = id;
-                    IndexedBytes += data.Length;
-                    foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
-                }
-                Contents[id].Places.Add(new Place(build, key, kind, archive));
-                recording?.Add((key, kind, id));
-            }
+            bytes += AddParts(read(), build, key, archive, recording, partial: false);
             if (resources % 20000 == 0) progress?.Invoke(resources, bytes);
         }
         Finish();
         progress?.Invoke(resources, bytes);
         byKey = null;
+    }
+
+    // The number of an archive name, a new one when it has none yet.
+    int ArchiveId(string name)
+    {
+        if (archiveIds.TryGetValue(name, out var archive)) return archive;
+        archive = Archives.Count;
+        Archives.Add(name);
+        archiveIds[name] = archive;
+        return archive;
+    }
+
+    // Whether an archive with this hash was indexed before; if so, its parts take this place too, without reading.
+    bool Reuse(string? archiveHash, int build, int archive)
+    {
+        if (archiveHash is null || !archiveMemo.TryGetValue(archiveHash, out var memo)) return false;
+        ArchivesReused++;
+        foreach (var (k, part, content) in memo) Contents[content].Places.Add(new Place(build, k, part, archive));
+        return true;
+    }
+
+    // Fingerprints a resource's parts (bytes indexed before are the same content) and adds the place to each, and to
+    // the recording when there is one; returns how many bytes the parts have. In a partial build a place the content
+    // already has is not added again.
+    long AddParts(ResourceParts parts, int build, ResourceKey key, int archive, List<(ResourceKey, PartKind, int)>? recording, bool partial)
+    {
+        long bytes = 0;
+        foreach (var kind in Parts.Kinds)
+        {
+            var data = Parts.Of(parts, kind);
+            if (data.Length == 0) continue;
+            bytes += data.Length;
+            var id = ContentOf(data);
+            var place = new Place(build, key, kind, archive);
+            if (!partial || !Contents[id].Places.Contains(place)) Contents[id].Places.Add(place);
+            recording?.Add((key, kind, id));
+        }
+        return bytes;
+    }
+
+    // The content with these bytes; a new one, with its anchors, when no part indexed before has them.
+    int ContentOf(byte[] data)
+    {
+        var sha = SHA256.HashData(data);
+        var hex = Convert.ToHexString(sha);
+        if (bySha.TryGetValue(hex, out var id)) return id;
+        id = Contents.Count;
+        Contents.Add(new Content(sha, data.Length));
+        bySha[hex] = id;
+        IndexedBytes += data.Length;
+        foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
+        return id;
     }
 
     readonly Dictionary<string, HashSet<string>> partialArchives = new(StringComparer.Ordinal);
@@ -259,39 +283,21 @@ public sealed class SourceIndex
         long resources = 0, bytes = 0;
         foreach (var (key, archiveName, read) in archives is null ? game.All() : game.In(archives))
         {
-            if (archives is not null && !archives.Contains(archiveName) || done.Contains(archiveName) && (archives is null || !archives.Contains(archiveName))) continue;
+            if (Skipped(archiveName, archives, done)) continue;
             if (keys is not null && !keys.Contains(key)) continue;
             resources++;
-            if (!archiveIds.TryGetValue(archiveName, out var archive))
-            {
-                archive = Archives.Count;
-                Archives.Add(archiveName);
-                archiveIds[archiveName] = archive;
-            }
-            var parts = read();
-            foreach (var kind in Parts.Kinds)
-            {
-                var data = Parts.Of(parts, kind);
-                if (data.Length == 0) continue;
-                bytes += data.Length;
-                var sha = SHA256.HashData(data);
-                var hex = Convert.ToHexString(sha);
-                if (!bySha.TryGetValue(hex, out var id))
-                {
-                    id = Contents.Count;
-                    Contents.Add(new Content(sha, data.Length));
-                    bySha[hex] = id;
-                    IndexedBytes += data.Length;
-                    foreach (var (offset, hash) in ContentChunks.Anchors(data)) pending!.Add((hash, id, offset));
-                }
-                var place = new Place(build, key, kind, archive);
-                if (!Contents[id].Places.Contains(place)) Contents[id].Places.Add(place);
-            }
+            var archive = ArchiveId(archiveName);
+            bytes += AddParts(read(), build, key, archive, null, partial: true);
             progress?.Invoke(resources, bytes);
         }
         if (archives is not null && keys is null) done.UnionWith(archives);
         byKey = null;
     }
+
+    // Whether a partial build leaves this archive out: it is not one of those asked for, or (with none asked for) it was
+    // indexed already.
+    static bool Skipped(string archive, IReadOnlySet<string>? archives, HashSet<string> done) =>
+        archives is not null && !archives.Contains(archive) || done.Contains(archive) && (archives is null || !archives.Contains(archive));
 
     // A loaded (sealed) index takes more builds: its anchors go back to the unsorted list.
     void Unseal()
@@ -335,19 +341,20 @@ public sealed class SourceIndex
     public int? Find(byte[] sha256) => bySha.TryGetValue(Convert.ToHexString(sha256), out var id) ? id : null;
 
     // The contents that are a part of this resource in some build.
-    public IReadOnlyList<int> WithKey(ResourceKey key)
+    public IReadOnlyList<int> WithKey(ResourceKey key) => ByKey().TryGetValue(key, out var found) ? found : [];
+
+    // Per resource, the contents that are a part of it (built when first needed).
+    Dictionary<ResourceKey, List<int>> ByKey()
     {
-        if (byKey is null)
-        {
-            byKey = [];
-            for (var id = 0; id < Contents.Count; id++)
-                foreach (var place in Contents[id].Places)
-                {
-                    if (!byKey.TryGetValue(place.Key, out var list)) byKey[place.Key] = list = [];
-                    if (list.Count == 0 || list[^1] != id) list.Add(id);
-                }
-        }
-        return byKey.TryGetValue(key, out var found) ? found : [];
+        if (byKey is not null) return byKey;
+        byKey = [];
+        for (var id = 0; id < Contents.Count; id++)
+            foreach (var place in Contents[id].Places)
+            {
+                if (!byKey.TryGetValue(place.Key, out var list)) byKey[place.Key] = list = [];
+                if (list.Count == 0 || list[^1] != id) list.Add(id);
+            }
+        return byKey;
     }
 
     public void Save(string path)
@@ -428,25 +435,8 @@ public sealed class SourceIndex
             index.Contents.Add(c);
             index.IndexedBytes += c.Size;
         }
-        var partials = r.ReadInt32();
-        for (var i = 0; i < partials; i++)
-        {
-            var label = r.ReadString();
-            var set = new HashSet<string>(StringComparer.Ordinal);
-            var n = r.ReadInt32();
-            for (var e = 0; e < n; e++) set.Add(r.ReadString());
-            index.partialArchives[label] = set;
-            index.PartialBuilds.Add(label);
-        }
-        var memos = r.ReadInt32();
-        for (var i = 0; i < memos; i++)
-        {
-            var hash = r.ReadString();
-            var n = r.ReadInt32();
-            var entries = new List<(ResourceKey, PartKind, int)>(n);
-            for (var e = 0; e < n; e++) entries.Add((new ResourceKey(r.ReadUInt64(), r.ReadUInt64()), (PartKind)r.ReadByte(), r.ReadInt32()));
-            index.archiveMemo[hash] = entries;
-        }
+        index.LoadPartials(r);
+        index.LoadMemos(r);
         var count = r.ReadInt32();
         index.hashes = new ulong[count];
         index.owners = new int[count];
@@ -455,6 +445,35 @@ public sealed class SourceIndex
         for (var i = 0; i < count; i++) index.owners[i] = r.ReadInt32();
         for (var i = 0; i < count; i++) index.offsets[i] = r.ReadInt32();
         return index;
+    }
+
+    // The partial builds, each with the archives it has.
+    void LoadPartials(BinaryReader r)
+    {
+        var partials = r.ReadInt32();
+        for (var i = 0; i < partials; i++)
+        {
+            var label = r.ReadString();
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            var n = r.ReadInt32();
+            for (var e = 0; e < n; e++) set.Add(r.ReadString());
+            partialArchives[label] = set;
+            PartialBuilds.Add(label);
+        }
+    }
+
+    // What each archive (by ArchiveHash) was found to hold.
+    void LoadMemos(BinaryReader r)
+    {
+        var memos = r.ReadInt32();
+        for (var i = 0; i < memos; i++)
+        {
+            var hash = r.ReadString();
+            var n = r.ReadInt32();
+            var entries = new List<(ResourceKey, PartKind, int)>(n);
+            for (var e = 0; e < n; e++) entries.Add((new ResourceKey(r.ReadUInt64(), r.ReadUInt64()), (PartKind)r.ReadByte(), r.ReadInt32()));
+            archiveMemo[hash] = entries;
+        }
     }
 }
 
