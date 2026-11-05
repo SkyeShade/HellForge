@@ -107,7 +107,8 @@ public static class ModAssets
     // rebuild is needed. Each file is rebuilt into a staging folder and checked against its SHA-256 before anything in the
     // mod changes; a file the recipe makes that the mod already has (and the record does not name) is refused, never
     // overwritten. Throws MissingBuildsException when the given builds lack parts the recipe needs (nothing is changed),
-    // InvalidDataException when the recipe is broken or does not rebuild. True when it rebuilt.
+    // InvalidDataException when the recipe is broken or does not rebuild. True when it made the mod ready: rebuilt, or
+    // found every file already the recipe's (only the record was missing).
     public static bool Ensure(string folder, Func<IReadOnlyList<IGameResources>> games, Action<string>? log = null)
     {
         var info = Read(folder);
@@ -116,12 +117,22 @@ public static class ModAssets
         var previous = RecordedFiles(folder);
         // A file already there is replaced only when the record says it was rebuilt, or it already is what the recipe
         // makes (a copy of the mod that lost its record); anything else is the mod's own file and is never overwritten.
+        var already = 0;
         foreach (var file in recipe.Files)
         {
             var path = file.Path.Replace('\\', '/');
             var target = Path.Combine(folder, path);
-            if (File.Exists(target) && !previous.Contains(path) && !IsRecipeOutput(target, file))
-                throw new InvalidDataException($"it ships {path} itself, and its recipe makes that file too.");
+            if (!File.Exists(target)) continue;
+            if (IsRecipeOutput(target, file)) already++;
+            else if (!previous.Contains(path)) throw new InvalidDataException($"it ships {path} itself, and its recipe makes that file too.");
+        }
+        // every file already is the recipe's (mod sync wrote them: from this PC's game and the host's own): only the record
+        if (already == recipe.Files.Count)
+        {
+            var recordStaging = Directory.CreateDirectory(Path.Combine(folder, PartialPrefix + Guid.NewGuid().ToString("N")[..8])).FullName;
+            try { WriteRecord(folder, info, recordStaging); }
+            finally { Directory.Delete(recordStaging, recursive: true); }
+            return true;
         }
         var staging = Path.Combine(folder, PartialPrefix + Guid.NewGuid().ToString("N")[..8]);
         var given = games();
@@ -151,18 +162,7 @@ public static class ModAssets
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.Move(Path.Combine(staging, path.Replace('/', Path.DirectorySeparatorChar)), target, overwrite: true);
             }
-            var files = new JsonObject();
-            foreach (var path in info.Outputs) files[path] = Stamp(Path.Combine(folder, path));
-            var record = new JsonObject
-            {
-                ["format"] = 1,
-                ["recipe"] = Stamp(Path.Combine(folder, Recipe.FileName)),
-                ["literals"] = Stamp(Path.Combine(folder, Recipe.LiteralsName)),
-                ["files"] = files,
-            };
-            var partialRecord = Path.Combine(staging, RecordName);
-            File.WriteAllText(partialRecord, record.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
-            File.Move(partialRecord, Path.Combine(folder, RecordName), overwrite: true);
+            WriteRecord(folder, info, staging);
             return true;
         }
         finally
@@ -170,6 +170,23 @@ public static class ModAssets
             try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    // The record of the outputs as they are now, written whole in staging, then moved into place.
+    static void WriteRecord(string folder, Info info, string staging)
+    {
+        var files = new JsonObject();
+        foreach (var path in info.Outputs) files[path] = Stamp(Path.Combine(folder, path));
+        var record = new JsonObject
+        {
+            ["format"] = 1,
+            ["recipe"] = Stamp(Path.Combine(folder, Recipe.FileName)),
+            ["literals"] = Stamp(Path.Combine(folder, Recipe.LiteralsName)),
+            ["files"] = files,
+        };
+        var partialRecord = Path.Combine(staging, RecordName);
+        File.WriteAllText(partialRecord, record.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        File.Move(partialRecord, Path.Combine(folder, RecordName), overwrite: true);
     }
 
     static bool IsRecipeOutput(string path, RecipeFile file)

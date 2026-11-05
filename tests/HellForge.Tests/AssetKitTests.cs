@@ -122,6 +122,31 @@ static class AssetKitTests
             check(ModCatalog.Parse(shipped, profile).AssetsPending == null, "ready again");
         });
 
+        test("A recipe mod synced with its game files already made is stored ready, and the store finds it again", () =>
+        {
+            var shipped = AssetKit.Strip(Author("synced"), index, games, Out("synced")).ShippedFolder!;
+            // a gameplay mod (mod sync carries only those)
+            File.WriteAllText(Path.Combine(shipped, "hellforge-mod.json"), """{"format":1,"id":"test.synced","name":"Kit synced","version":"1.0.0"}""");
+            ModAssets.Ensure(shipped, () => games);
+            var entry = ModSet.Of(ModCatalog.LoadOrder([ModCatalog.Parse(shipped, profile)])).Mods.Single();
+            var guestMods = Path.Combine(root, "asset-kit-guest", "mods");
+            if (Directory.Exists(guestMods)) Directory.Delete(guestMods, true);
+            Directory.CreateDirectory(guestMods);
+            var partial = SyncedStore.Partial(guestMods, entry.Id, entry.Hash);
+            // what mod sync writes: the counted files, and the rebuilt files (made from the joiner's game and the host's)
+            foreach (var path in entry.Files.Select(f => f.Path).Concat(ModCatalog.Parse(shipped, profile).AssetOutputs))
+            {
+                var target = Path.Combine(partial, path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(Path.Combine(shipped, path), target);
+            }
+            var installed = SyncedStore.Install(guestMods, entry, partial, (_, _) => true);
+            check(ModAssets.Read(installed).Ready, "stored with its record, without a rebuild");
+            check(SyncedStore.Find(guestMods, entry.Id, entry.Hash) == installed, "the store finds the mod with its rebuilt files");
+            File.AppendAllText(Path.Combine(installed, "data", "0123456789abcdef.patch_0.stream"), "x");
+            check(SyncedStore.Find(guestMods, entry.Id, entry.Hash) == null, "a rebuilt file changed since: not that mod");
+        });
+
         test("A recipe from another PC only rebuilds game patch files inside the mod", () =>
         {
             foreach (var path in new[] { "mod.dll", "hellforge-mod.json", "../0123456789abcdef.patch_0", "data/../../x/0123456789abcdef.patch_0", "/abs/0123456789abcdef.patch_0", "data/.hidden.patch_0" })

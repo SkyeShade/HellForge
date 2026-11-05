@@ -536,10 +536,14 @@ public static class SyncedStore
             var mod = ModCatalog.Parse(folder, profile ?? EntityProfile.Current);
             if (mod.Id != id || ModSets.ContentHash(mod) != hash) return null;
             // The store stays writable while a session runs (the backend downloads into it): a file the mod does not count
-            // would load without being compared, so a copy with one is not this mod.
+            // would load without being compared, so a copy with one is not this mod. A recipe mod's rebuilt game patch
+            // files are the exception while its record says they are as rebuilt (ModAssets: each was checked against the
+            // recipe's SHA-256 when it was made).
             var counted = ModSets.Files(mod).Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+            var rebuilt = mod.AssetOutputs.Count > 0 && mod.AssetsPending == null ? mod.AssetOutputs.ToHashSet(StringComparer.Ordinal) : [];
+            if (rebuilt.Count > 0) rebuilt.Add(AssetMigration.ModAssets.RecordName);
             return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f).Replace('\\', '/'))
-                .All(f => f == RecordName || counted.Contains(f)) ? folder : null;
+                .All(f => f == RecordName || counted.Contains(f) || rebuilt.Contains(f)) ? folder : null;
         }
         catch (Exception error) when (error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
     }
