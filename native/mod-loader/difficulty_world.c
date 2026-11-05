@@ -3393,15 +3393,21 @@ static void WorldLocationsNote(uintptr_t block, uint32_t total)
     float half = 1024.0f * g_world.current;
     char line[128];
     DWORD wrote;
-    uint32_t n = total < DIF_LOCATIONS ? total : DIF_LOCATIONS, written = 0;
+    uint32_t n = total < DIF_LOCATIONS ? total : DIF_LOCATIONS, written = 0, important = 0;
+    SafeRead(block + 0x11A715Cu, &important, 4);
     for (uint32_t i = 0; i < n; i++)
     {
         uint8_t rec[0xE0];
         if (SafeRead(block + (offset - 0x90) + (uint64_t)i * 0xE0, rec, sizeof rec)) break;
         float xy[2]; uint32_t type; uint16_t flags;
         memcpy(xy, rec, 8); memcpy(&type, rec + 0xD8, 4); memcpy(&flags, rec + 0xD4, 2);
-        int len = snprintf(line, sizeof line, "%u\t0x%X\t%.1f\t%.1f\t%u\t0x%X\n", i, g_locationOp[i], (double)(xy[0] - half), (double)(xy[1] - half),
-            type, flags);
+        /* the objective id for an op 0x16 / 0x17 location: its important record (they are appended together through the
+         * placement ops, "locations a -> b, important a -> b") when that is an objective's (kind 0xADC32FAA at +8, id +0xD8) */
+        uint32_t objective = 0, kind = 0;
+        if ((g_locationOp[i] == 0x16 || g_locationOp[i] == 0x17) && i < important && !SafeRead(block + g_importantList + 0x108ull * i + 8, &kind, 4) && kind == 0xADC32FAAu)
+            SafeRead(block + g_importantList + 0x108ull * i + 0xD8, &objective, 4);
+        int len = snprintf(line, sizeof line, "%u\t0x%X\t%.1f\t%.1f\t%u\t0x%X\t%08x\n", i, g_locationOp[i], (double)(xy[0] - half), (double)(xy[1] - half),
+            type, flags, objective);
         WriteFile(file, line, (DWORD)len, &wrote, NULL);
         written++;
     }
