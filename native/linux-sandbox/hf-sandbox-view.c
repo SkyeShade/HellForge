@@ -255,6 +255,57 @@ static int mount_dev_dirs(struct hf_sandbox *sandbox)
     return 0;
 }
 
+// One controller node: the host's /dev/<folder>/<name> when it is the device sysfs describes (same device number) and the
+// player can open it, bound at the same path in the view. A node the player could not open stays out, as unsandboxed.
+static int bind_pad(struct hf_sandbox *sandbox, const char *folder, const char *name, const char *sysfs_entry, int *count)
+{
+    char node[PATH_MAX], dev_file[PATH_MAX], text[64];
+    if (hf_join(node, sizeof(node), folder, name) != 0) return hf_fail("a controller node path");
+    if (hf_join(dev_file, sizeof(dev_file), sysfs_entry, "dev") != 0) return hf_fail("a controller's sysfs path");
+    unsigned int major_number = 0, minor_number = 0;
+    struct stat info;
+    if (read_text(dev_file, text, sizeof(text)) != 0 || sscanf(text, "%u:%u", &major_number, &minor_number) != 2) return 0;
+    if (lstat(node, &info) != 0 || !S_ISCHR(info.st_mode) || info.st_rdev != makedev(major_number, minor_number)) return 0;
+    if (access(node, R_OK) != 0) return 0;
+    if (!hf_pad_node(info.st_rdev, NULL, 0)) return 0;
+    if (bind_device_file(sandbox, node, node) != 0) return 1;
+    (*count)++;
+    return 0;
+}
+
+// The controllers of one device class: each sysfs entry <prefix>N under sysfs, bound at <folder>/<prefix>N.
+static int bind_pads_of(struct hf_sandbox *sandbox, const char *sysfs, const char *prefix, const char *folder, int *count)
+{
+    DIR *dir = opendir(sysfs);
+    if (dir == NULL) return 0;
+    int result = 0;
+    struct dirent *entry;
+    while (result == 0 && (entry = readdir(dir)) != NULL)
+    {
+        char sysfs_entry[PATH_MAX];
+        if (strncmp(entry->d_name, prefix, strlen(prefix)) != 0 || hf_join(sysfs_entry, sizeof(sysfs_entry), sysfs, entry->d_name) != 0)
+            continue;
+        result = bind_pad(sandbox, folder, entry->d_name, sysfs_entry, count);
+    }
+    closedir(dir);
+    return result;
+}
+
+// The game controllers (hf_pad_node): evdev nodes in /dev/input and hidraw nodes in /dev, at their real paths, so Wine's
+// winebus (udev and SDL backends) finds them as unsandboxed. Never a keyboard, a mouse or /dev/uinput. The view's /dev
+// is fixed when the game starts: a controller connected later needs the next session.
+static int mount_pads(struct hf_sandbox *sandbox)
+{
+    int count = 0;
+    if (bind_pads_of(sandbox, "/sys/class/input", "event", "/dev/input", &count) != 0) return 1;
+    if (bind_pads_of(sandbox, "/sys/class/hidraw", "hidraw", "/dev", &count) != 0) return 1;
+    char input[PATH_MAX];
+    if (target_path(sandbox, "/dev/input", input, sizeof(input)) != 0) return 1;
+    if (path_exists(input) && chmod(input, 0555) != 0) return hf_fail("restricting /dev/input to its controllers");
+    hf_note("game controllers in the view: %d", count);
+    return 0;
+}
+
 static int mount_dev_links(struct hf_sandbox *sandbox)
 {
     // Some programs open these names; they only resolve inside the private /proc. Best effort: their absence is normal.
@@ -275,11 +326,13 @@ static int mount_dev(struct hf_sandbox *sandbox)
     if (target_path(sandbox, "/dev", dev, sizeof(dev)) != 0) return 1;
     if (ensure_target(dev, true) != 0) return 1;
     // /dev is a tmpfs without MS_NODEV: the only device nodes in it are the ones bound below, and a nodev tmpfs can make
-    // a bind-mounted device node unusable on some kernels. The forbidden nodes are never created or bound.
+    // a bind-mounted device node unusable on some kernels. The forbidden nodes are never created or bound, and of the
+    // input devices only game controllers are (mount_pads).
     if (mount("tmpfs", dev, "tmpfs", MS_NOSUID, "mode=0755,size=16m") != 0) return hf_fail("mounting the private /dev");
     if (hf_add_rule(sandbox, "/dev", HF_ACCESS_DEVICE | LANDLOCK_ACCESS_FS_READ_DIR) != 0) return 1;
     if (mount_dev_nodes(sandbox) != 0) return 1;
     if (mount_dev_dirs(sandbox) != 0) return 1;
+    if (mount_pads(sandbox) != 0) return 1;
     if (mount_tmpfs(sandbox, "/dev/shm", "mode=1777,size=2g", HF_ACCESS_RW) != 0) return 1;
     if (mount_dev_links(sandbox) != 0) return 1;
     if (chmod(dev, 0555) != 0) return hf_fail("restricting /dev to its nodes");

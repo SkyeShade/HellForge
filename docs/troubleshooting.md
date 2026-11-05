@@ -430,6 +430,11 @@ can't reach the sandboxed game" and names the controller. Xbox controllers work.
 but the game runs without the sandbox's protection. [The Steam bridge](steam-bridge.md#controllers-and-steam-input)
 explains why.
 
+On Linux the sandbox passes the game the controllers connected when the session starts, wired or Bluetooth. Connect
+the controller before pressing PLAY; one connected while the game runs needs the next session. Whether Steam Input's
+virtual pad reaches a sandboxed game on Linux is untested. Keyboards and mice reach the game through the window as
+always.
+
 ## Collecting logs
 
 Every session keeps its logs in `logs\sessions\<session>\` in the installation; the newest ten sessions are kept, and

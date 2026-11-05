@@ -548,7 +548,19 @@ There is no command string and no shell: the request names fixed paths and an en
 - **Session services:** the display and audio sockets (Wayland, X11, PipeWire, PulseAudio) are passed in. D-Bus is not.
 - **Absent:** the home folder, the rest of the installation (profiles, user data, the account snapshot and the real
   mods folder except the exact active inputs), the real prefix's path, and every device except null, zero, full, random,
-  urandom, tty, the GPU nodes and `/dev/shm`.
+  urandom, tty, the GPU nodes, `/dev/shm` and the game controllers (below). Keyboards, mice and `/dev/uinput` never
+  enter the view: an evdev node of a keyboard would let the game read every key typed on the PC, and `/dev/uinput`
+  would let it type into other programs.
+- **Game controllers:** the evdev nodes (`/dev/input/eventN`) and hidraw nodes (`/dev/hidrawN`) that are game
+  controllers are bound at their real paths, the ones Wine and SDL read from sysfs, so the game finds them as it does
+  unsandboxed (until 0.4.0-beta no controller at all reached a sandboxed game). An evdev node counts when sysfs shows
+  joystick or gamepad buttons and absolute axes, no keyboard key (`KEY_ESC` to `KEY_F12`) and no relative X or Y; a
+  hidraw node when its report descriptor has a joystick, gamepad or multi-axis application collection and no mouse,
+  keyboard, keypad or digitizer one. Only a node the player can open is bound. Without the udev database in the view,
+  libudev still lists the devices (`udev_enumerate` allows uninitialized ones) and SDL classifies them from sysfs. Before
+  the game starts, the domain checks that every input or hidraw node in `/dev` and `/dev/input` is such a controller at
+  its own kernel name, and refuses the session otherwise; the self-test also opens each one under the domain's rules.
+  The view's `/dev` is fixed at the start: a controller connected later needs the next session.
 - **Folder listings:** every folder of the view can be listed (Landlock `READ_DIR` on its root, nothing else). Wine
   finds a path given in another letter case by listing each parent folder, and HELLDIVERS 2 opens its
   `user_settings.config` lowercased; without this the bare folders between the view's mounts refused the listing, the
