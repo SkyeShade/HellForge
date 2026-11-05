@@ -1,5 +1,6 @@
-<!-- A release: dev into main. Open it with ?template=release.md on the compare page, or
-     gh pr create --base main --head dev --template release.md -->
+<!-- A release: a release/X.Y branch cut from dev, into main. Not dev itself: merging would delete its branch.
+     Open it with ?template=release.md on the compare page, or
+     gh pr create --base main --head release/X.Y --template release.md -->
 
 ## Release HellForge X.Y.Z
 
