@@ -524,12 +524,12 @@ static void WatchOutposts(void)
 
 static void WatchFootprints(void)
 {
-    static LONG footprintsMost, footprintOverflows;
-    if (g_cityFootprints[0] != footprintsMost || g_cityFootprints[1] != footprintOverflows)
+    static LONG footprintsMost, footprintOverflows, refusals;
+    if (g_cityFootprints[0] != footprintsMost || g_cityFootprints[1] != footprintOverflows || g_cityRefusals != refusals)
     {
-        footprintsMost = g_cityFootprints[0]; footprintOverflows = g_cityFootprints[1];
-        Note("difficulty: city buildings: the footprint list used up to %ld places; %ld cells overflowed it (last: %ld wanted of %ld), losing the later cells' buildings",
-            footprintsMost, footprintOverflows, g_cityFootprints[3], g_cityFootprints[2]);
+        footprintsMost = g_cityFootprints[0]; footprintOverflows = g_cityFootprints[1]; refusals = g_cityRefusals;
+        Note("difficulty: city buildings: the footprint list used up to %ld places; %ld cells overflowed it (last: %ld wanted of %ld), losing the later cells' buildings; %ld buildings refused by the location test (full, or the reserve for op 0x2B)",
+            footprintsMost, footprintOverflows, g_cityFootprints[3], g_cityFootprints[2], refusals);
     }
 }
 

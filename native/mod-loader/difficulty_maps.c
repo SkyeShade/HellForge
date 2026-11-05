@@ -360,12 +360,19 @@ static const uint8_t kRadiiStub[116] = {
  * footprint list (0xFA8FE0: 0x800 x 0x60 from the generation arena, capacity at +0x284) takes a footprint per road edge
  * first (~1250), then the city cells' buildings in cell order, and the cell loop stops when it would overflow (0xFAAED1):
  * later cells keep their flattened plot (flatten_city_regions) with no buildings, mostly a larger map's outer ones (cells
- * grow outward from a random seed). For larger maps the list has 0x2000 places and the per-cell list 0x800 (was 0x200).
+ * grow outward from a random seed). For larger maps the list has 0x8000 places and the per-cell list 0x800 (was 0x200).
+ * The cells are the level's route cells in their stored order (0xFA9EA1 [pass+0x30], count [[pass+0x98]], 0x1B8 each),
+ * so on a map with three cities the road footprints of all three come first and the cities' cells follow one city
+ * after another: with 0x2000 places the first city filled the list (s75h/s75i: 8200 wanted of 8192) and the loop's exit
+ * (0xFAAED1 -> 0xFAAC94, after the loop's own test at 0xFAAC8E) left the other two cities' blocks empty.
+ * 0x8000 x 0x60 = 3 MB from the generation arena (0x173B8D0 takes a chunk of max(size, growth) when one is too small);
+ * the list is read only by this op (0xFA9E10/0xFA8FE0: +0x278 list, +0x280 count, +0x284 capacity), its per-edge
+ * references are pointers (0xFA9D1B), and the overlap tests run on the per-cell list, so a longer list costs no time.
  * {rva, instruction length, value at, width, pin, new value}. */
 static const struct { uint32_t rva; uint8_t length, at, width; uint8_t pin[10]; uint32_t value; } kCityCapacities[7] = {
-    {0xFA904Du, 5, 1, 4, {0xBA, 0x00, 0x00, 0x03, 0x00}, 0xC0000u},                                     /* allocation: 0x800 x 0x60 */
-    {0xFA909Fu, 10, 6, 4, {0xC7, 0x81, 0x84, 0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00}, 0x2000u},       /* capacity (+0x284) */
-    {0xFA90BEu, 6, 2, 4, {0x41, 0xB8, 0x00, 0x00, 0x03, 0x00}, 0xC0000u},                               /* clear size */
+    {0xFA904Du, 5, 1, 4, {0xBA, 0x00, 0x00, 0x03, 0x00}, 0x300000u},                                    /* allocation: 0x800 x 0x60 */
+    {0xFA909Fu, 10, 6, 4, {0xC7, 0x81, 0x84, 0x02, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00}, 0x8000u},       /* capacity (+0x284) */
+    {0xFA90BEu, 6, 2, 4, {0x41, 0xB8, 0x00, 0x00, 0x03, 0x00}, 0x300000u},                              /* clear size */
     {0xFAAD3Eu, 5, 1, 4, {0xBA, 0x00, 0xC0, 0x00, 0x00}, 0x30000u},                                     /* per-cell list: allocation */
     {0xFAAD4Du, 6, 2, 4, {0x41, 0xB8, 0x00, 0xC0, 0x00, 0x00}, 0x30000u},                               /* clear size */
     {0xFAAD67u, 7, 3, 4, {0xC7, 0x45, 0x04, 0x00, 0x02, 0x00, 0x00}, 0x800u},                           /* capacity */
@@ -388,6 +395,29 @@ static const uint8_t kFootprintStub[44] = {
     0x89, 0x78, 0x0C,                                                 /* 36 mov [rax+0xc], edi (wanted) */
     0xE9, 0, 0, 0, 0};                                                /* 39 jmp 0xFAAC94 (rel32 at 40) */
 static volatile LONG g_cityFootprints[4]; /* most used, overflows, capacity, wanted */
+/* The city buildings' placer (0xF993E0) adds one location a call after its full test (0xF994A5 `mov eax, [r12+4]`;
+ * 0xF994AA `cmp [r12], eax`; 0xF994AE `jae 0xF99AB7`, r12 = the location list {count, capacity}). Op 0x2B
+ * PlaceStampWithWeightRule runs after op 0xA7 and adds its stamps without a test (s74f: 8192 -> 19599, crash), so with
+ * the larger footprint list the buildings could fill the table and leave op 0x2B writing past it. On a table of
+ * DIF_LOCATIONS places the placer stops CITY_LOCATION_RESERVE short of it (op 0x2B adds about 1000 on a city level, s75i);
+ * a vanilla-size table is tested as before. Refusals are counted (g_cityRefusals). */
+#define CITY_LOCATION_TEST 0xF994A5u
+#define CITY_LOCATION_ADD 0xF994B4u
+#define CITY_LOCATION_FULL 0xF99AB7u
+#define CITY_LOCATION_RESERVE 4096u
+static const uint8_t kCityLocationPin[15] = {0x41, 0x8B, 0x44, 0x24, 0x04, 0x41, 0x39, 0x04, 0x24, 0x0F, 0x83, 0x03, 0x06, 0x00, 0x00};
+static const uint8_t kCityLocationStub[46] = {
+    0x41, 0x8B, 0x44, 0x24, 0x04,                                     /*  0 mov eax, [r12+4] (the capacity) */
+    0x3D, 0, 0, 0, 0,                                                 /*  5 cmp eax, DIF_LOCATIONS (imm32 at 6) */
+    0x72, 0x05,                                                       /* 10 jb 17 */
+    0x2D, 0, 0, 0, 0,                                                 /* 12 sub eax, CITY_LOCATION_RESERVE (imm32 at 13) */
+    0x41, 0x39, 0x04, 0x24,                                           /* 17 cmp [r12], eax */
+    0x73, 0x05,                                                       /* 21 jae 28 */
+    0xE9, 0, 0, 0, 0,                                                 /* 23 jmp 0xF994B4 (rel32 at 24) */
+    0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,                               /* 28 mov rax, &g_cityRefusals (imm64 at 30) */
+    0xF0, 0xFF, 0x00,                                                 /* 38 lock inc dword [rax] */
+    0xE9, 0, 0, 0, 0};                                                /* 41 jmp 0xF99AB7 (rel32 at 42) */
+static volatile LONG g_cityRefusals;
 #define DIF_CONVOY_SITE 0x1003D57u
 #define DIF_CONVOY_BACK 0x1003D63u
 static const uint8_t kConvoyPin[12] = {0x8B, 0x88, 0xB8, 0x71, 0x1A, 0x01, 0x89, 0x8E, 0xCC, 0x28, 0x00, 0x00};
@@ -465,7 +495,8 @@ static const char* MapPinsFailed(uintptr_t game)
     for (int i = 0; i < 7; i++)
         if (SafeRead(game + kCityCapacities[i].rva, zone, kCityCapacities[i].length) || memcmp(zone, kCityCapacities[i].pin, kCityCapacities[i].length) != 0)
             return "the city generator is not the reviewed one (a map_scale above 1 needs it)";
-    if (SafeRead(game + DIF_FOOTPRINT_CHECK, zone, 9) || memcmp(zone, kFootprintPin, 9) != 0)
+    if (SafeRead(game + DIF_FOOTPRINT_CHECK, zone, 9) || memcmp(zone, kFootprintPin, 9) != 0 ||
+        SafeRead(game + CITY_LOCATION_TEST, zone, 15) || memcmp(zone, kCityLocationPin, 15) != 0)
         return "the city generator is not the reviewed one (a map_scale above 1 needs it)";
     return NULL;
 }
@@ -742,6 +773,18 @@ static const char* InstallFootprintWatch(DifficultyInstall* d)
     uint8_t check[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_FOOTPRINT_CHECK, (uintptr_t)footprints); memcpy(check + 1, &rel, 4);
     if (ApiWrite(game + DIF_FOOTPRINT_CHECK, check, 9)) return "the city generator's check could not be watched";
+    uint8_t* guard = footprints + 0x40;
+    uint32_t places = DIF_LOCATIONS, reserve = CITY_LOCATION_RESERVE;
+    uint64_t refusals = (uint64_t)(uintptr_t)&g_cityRefusals;
+    VirtualProtect(footprints, 0x100, PAGE_READWRITE, &footprintProtect);
+    memcpy(guard, kCityLocationStub, sizeof kCityLocationStub);
+    memcpy(guard + 6, &places, 4); memcpy(guard + 13, &reserve, 4); memcpy(guard + 30, &refusals, 8);
+    rel = (int32_t)(game + CITY_LOCATION_ADD - (uintptr_t)(guard + 28)); memcpy(guard + 24, &rel, 4);
+    rel = (int32_t)(game + CITY_LOCATION_FULL - (uintptr_t)(guard + 46)); memcpy(guard + 42, &rel, 4);
+    VirtualProtect(footprints, 0x100, PAGE_EXECUTE_READ, &footprintProtect);
+    uint8_t test[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + CITY_LOCATION_TEST, (uintptr_t)guard); memcpy(test + 1, &rel, 4);
+    if (ApiWrite(game + CITY_LOCATION_TEST, test, 9)) return "the city buildings' location test could not be moved";
     return NULL;
 }
 
