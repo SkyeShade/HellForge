@@ -1,11 +1,16 @@
 # In-game tests
 
-Checks that need the real game, run unattended by the development harness (CowboyBingus's BingusDevelopmentHarness,
-with a `modtest` command that is not in its published repository yet): it copies the test mods into a HellForge
-installation with every other mod off, plays a session to the ship and into a solo mission and back, checks the logs
-the session wrote against an expectations file, and puts the installation back as it was. Without it, the same test
-runs by hand: add `sdk-probe` to a test installation, play to the ship and into a mission and back, and compare the
-probe's log (`mod-hellforge.sdk-probe.log` in the session's folder) with `sdk16.json`.
+Checks that need the real game. The development harness runs them unattended: CowboyBingus's
+BingusDevelopmentHarness, with a `modtest` command that is not in its published repository yet. It:
+
+1. copies the test mods into a HellForge installation with every other mod off
+2. plays a session to the ship and into a solo mission and back
+3. checks the logs the session wrote against an expectations file
+4. puts the installation back as it was
+
+Without the harness, the same test runs by hand: add `sdk-probe` to a test installation, and play to the ship and into
+a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` in the session's folder) with
+`sdk16.json`.
 
 | File | What |
 | --- | --- |
@@ -29,5 +34,5 @@ does, to the session's local backend.
 
 A probe writes what it checks to its log; the expectations file says which lines must be there (`contains`, `regex`
 with `min`) and which must not (`absent`, `absent_regex`), in which log (`mod-<id>.log`, `modloader.log`,
-`session.log`...). A probe check that can only hold at some moment (in a mission, after a spawn) should be retried
-until it holds and written as FAIL when its phase ends, as `sdk-probe` does, so the test does not depend on timing.
+`session.log`...). Retry a probe check that can only hold at some moment (in a mission, after a spawn) until it holds,
+and write it as FAIL when its phase ends. `sdk-probe` does this, so the test does not depend on timing.

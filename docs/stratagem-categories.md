@@ -52,7 +52,7 @@ categories create no entries.
 The header wrapper keeps the native renderer and supplies the custom title text, plus counts grouped by selection
 category. The counts use the native catalogue lookup `0x1372290` and availability predicate `0x136FC20`, as the original
 renderer does. Vanilla counts exclude stratagems assigned to custom groups. Other screens share the renderer, so the
-header thunk passes the list in RSI as a third argument, and the wrapper only changes a list whose keys and section
+header thunk passes the list in RSI as a third argument. The wrapper only changes a list whose keys and section
 boundaries match the selection builder's latest output.
 
 ### Guards
@@ -69,9 +69,15 @@ new stratagems and 150 picker candidates.
 
 The engine's native test of the categories runs with every engine build. It covers namespacing, shared definitions,
 conflicts, bad and late registrations, older struct sizes, deterministic ordering, and selection order within a heading
-(signed range, ties in call order, vanilla sections untouched). It also covers mixed native categories in one group,
-unchanged keys, flags and HUD categories, custom and vanilla counts, reopening an empty picker, isolation of the shared
-renderer, maximum registration, and rejection of mismatched native instructions.
+(signed range, ties in call order, vanilla sections untouched). It also covers:
+
+- mixed native categories in one group
+- unchanged keys, flags and HUD categories
+- custom and vanilla counts
+- reopening an empty picker
+- isolation of the shared renderer
+- maximum registration
+- rejection of mismatched native instructions
 
 In-game acceptance is still required:
 
@@ -81,13 +87,19 @@ In-game acceptance is still required:
 3. Reopen each loadout slot, save and reload the loadout, and check call-ins and ping and beam colours.
 4. Test a loadout with just one nonempty custom category, and a run without any mod that uses categories.
 
-## Hellpod crash investigated, 2026-10-18
+## The loadout-preview recursion guard
 
-The first reported hellpod crash was a native loadout-preview recursion that happened before custom category candidates
-were built. In `helldivers2.exe.40780.dmp`, the category cache count and candidate storage were zero. The stack held 182
-returns to `game.dll+0x18EA758`: the query at `0x18E9D50` kept retrying alternate preview 1 for slot 6, mode 0, context
-0. Those frames held resource `0x5C14F27759DD3BE0` (G-8 Immolation). The access violation that followed, in the loader's
-crash logger, was its stack probe running after the native recursion had exhausted the stack.
+The first reported hellpod crash (2026-10-18) was not the categories but a native loadout-preview recursion:
+
+- It happened before custom category candidates were built. In `helldivers2.exe.40780.dmp`, the category cache count
+  and candidate storage were zero.
+- The stack held 182 returns to `game.dll+0x18EA758`. The query at `0x18E9D50` kept retrying alternate preview 1 for
+  slot 6, mode 0, context 0, and those frames held resource `0x5C14F27759DD3BE0` (G-8 Immolation).
+- The access violation that followed, in the loader's crash logger, was its stack probe running after the native
+  recursion had exhausted the stack.
+
+The full investigation is in
+[the earlier version of this page](https://github.com/SkyeShade/HellForge/blob/8960d58f03787264e3ce88aa68cffaaf8af0d8ff/docs/stratagem-categories.md#hellpod-crash-investigated-2026-10-18).
 
 `loadout_preview.c` guards this query against repeating an active `(alternate, slot, mode, context)` on the same
 thread. A cycle returns the zeroed 76-byte result the native query already uses for a missing loadout row. Ordinary
