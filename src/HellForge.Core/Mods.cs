@@ -285,7 +285,7 @@ public static partial class ModCatalog
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
             { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
-              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root), AssetOutputs = assets.Outputs, AssetsPending = assets.Pending };
+              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root), AssetOutputs = assets.Outputs, AssetsPending = assets.Pending ?? PastBuildsPending(folder, dataSpec) };
         return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
     }
 
@@ -483,6 +483,15 @@ public static partial class ModCatalog
     }
 
     // The mod's data/ patch files, in order, and whether one of them holds Lua.
+    // Why a data spec that takes resources from past builds cannot be built yet (they are not fetched), or null.
+    static string? PastBuildsPending(string folder, DataSpec? spec)
+    {
+        if (spec == null || spec.Builds.Count == 0) return null;
+        var missing = BuildResources.Missing(folder, spec);
+        return missing.Count == 0 ? null
+            : $"its data spec takes resources from {(missing.Count == 1 ? "a past build" : $"{missing.Count} past builds")} of the game that are not fetched yet ({string.Join(", ", missing)})";
+    }
+
     // A recipe's game patch files (ModAssets) count as the mod's data before they are rebuilt: they are rebuilt before it
     // loads. Adds its data/ files to data, in order; the recipe's state.
     static ModAssets.Info WithRecipeData(string folder, List<string> data)

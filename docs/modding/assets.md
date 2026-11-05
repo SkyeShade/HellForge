@@ -151,7 +151,8 @@ Both keep the game's bytes out of your mod, in different ways:
 
 - A [data spec](data.md#data-specs) describes the change: copy this unit, recolour that lookup texture, use this OBJ.
   HellForge builds it on each PC, and it follows game updates by name. Use it when what you want is something a data
-  spec can say.
+  spec can say. It can take resources from a [past build](data.md#source-a-past-build) too: once an asset report names
+  the build some cut content came from, a spec can copy it from there by name.
 - The asset kit takes patch files you already made with other tools, whatever is in them, and ships them as your bytes
   plus a recipe. Use it for work a data spec cannot describe, or for a mod you have already made.
 

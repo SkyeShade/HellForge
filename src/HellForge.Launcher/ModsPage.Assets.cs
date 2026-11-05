@@ -72,18 +72,31 @@ public partial class MainWindow
                 "Their authors ship a recipe instead of Arrowhead's files; HellForge makes the files here and checks each one."));
         var needSteam = new List<ModManifest>();
         foreach (var mod in pending)
-        {
-            if (!assetProblems.TryGetValue(System.IO.Path.GetFullPath(mod.Folder), out var problem))
-            {
-                if (assetRebuild == null) list.Children.Add(Warning($"{mod.Name}: {mod.AssetsPending}."));
-                continue;
-            }
-            if (problem.Missing is { Count: > 0 }) needSteam.Add(mod);
-            list.Children.Add(Warning($"{mod.Name}: {problem.Reason}. It does not load until then."));
-        }
+            if (PendingLine(mod, needSteam) is { } line) list.Children.Add(Warning(line));
         if (assetFetch != null) AddAssetFetchView(list);
         else if (needSteam.Count > 0) AddAssetFetchOffer(list, needSteam);
         if (list.Children.Count > 1) ModsList.Children.Add(new Border { Classes = { "card" }, Child = list, HorizontalAlignment = HorizontalAlignment.Stretch });
+    }
+
+    // Why a pending mod does not load (null while its rebuild may still fix it); adds it to needSteam when Steam has what
+    // it needs: a recipe's parts of a build this PC lacks, or a data spec's resources of past builds (nothing to rebuild
+    // there, only to fetch).
+    string? PendingLine(ModManifest mod, List<ModManifest> needSteam)
+    {
+        if (assetProblems.TryGetValue(System.IO.Path.GetFullPath(mod.Folder), out var problem))
+        {
+            if (problem.Missing is { Count: > 0 }) needSteam.Add(mod);
+            return $"{mod.Name}: {problem.Reason}. It does not load until then.";
+        }
+        if (assetRebuild != null) return null;
+        if (SpecNeedsSteam(mod)) needSteam.Add(mod);
+        return $"{mod.Name}: {mod.AssetsPending}.";
+    }
+
+    static bool SpecNeedsSteam(ModManifest mod)
+    {
+        try { return AssetFetch.SpecNeedsSteam(mod.Folder); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
     }
 
     static TextBlock Muted(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } };
@@ -93,13 +106,14 @@ public partial class MainWindow
     // network namespace, where Steam can be reached).
     void AddAssetFetchOffer(StackPanel list, List<ModManifest> mods)
     {
-        var bytes = mods.Sum(m => assetProblems[System.IO.Path.GetFullPath(m.Folder)].Missing!.Sum(x => x.Bytes));
+        var bytes = mods.Sum(m => assetProblems.GetValueOrDefault(System.IO.Path.GetFullPath(m.Folder))?.Missing?.Sum(x => x.Bytes) ?? 0);
         if (LinuxNetworkBlock.Requested)
         {
             list.Children.Add(Muted("This HellForge cannot reach Steam from here; run the launcher outside the game's network block to fetch them."));
             return;
         }
-        list.Children.Add(Muted($"Steam can send what {(mods.Count == 1 ? "it needs" : "they need")} (about {bytes / 1e6:F0} MB of an older build's files) to your " +
+        var amount = bytes > 0 ? $"about {Math.Max(1, bytes / 1e6):F0} MB of an older build's files" : "a few resources of an older build";
+        list.Children.Add(Muted($"Steam can send what {(mods.Count == 1 ? "it needs" : "they need")} ({amount}) to your " +
             "own account, under your own licence: only the pieces the recipe uses. Sign in with the Steam app on your phone; nothing of the sign-in is kept."));
         var button = new Button { Content = "GET THEM FROM STEAM", HorizontalAlignment = HorizontalAlignment.Left };
         button.Click += (_, _) => _ = FetchModAssets(mods);
@@ -133,12 +147,17 @@ public partial class MainWindow
         {
             await using var session = await SteamDepotSession.SignInAsync(new AssetPrompt(this), cancel);
             assetQr = null;
+            var steam = SteamBuilds.For(session, install, cancel);
             foreach (var mod in mods)
             {
                 Status($"Fetching what {mod.Name} needs from Steam...");
-                var fetched = await Task.Run(() => AssetFetch.Rebuild(mod.Folder, install, SteamBuilds.For(session, install, cancel), Status), cancel);
+                await Task.Run(() =>
+                {
+                    if (AssetFetch.SpecNeedsSteam(mod.Folder)) AssetFetch.FetchSpec(mod.Folder, steam, Status);
+                    if (ModAssets.HasRecipe(mod.Folder) && !ModAssets.Read(mod.Folder).Ready) AssetFetch.Rebuild(mod.Folder, install, steam, Status);
+                }, cancel);
                 assetProblems.Remove(System.IO.Path.GetFullPath(mod.Folder));
-                Status($"{mod.Name}: rebuilt; {fetched.Downloaded / 1e6:F1} MB downloaded.");
+                Status($"{mod.Name}: ready; {steam.Store.Downloaded / 1e6:F1} MB downloaded so far.");
             }
         }
         catch (Exception error) when (error is SteamSignInException or DepotAccessDeniedException or InvalidDataException or IOException or OperationCanceledException or TimeoutException)
