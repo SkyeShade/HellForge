@@ -138,17 +138,43 @@ public static class RecipeRebuilder
         log?.Invoke($"Rebuilt {recipe.Files.Count} files from {recipe.Sources.Count} game resource parts in the given game folders.");
     }
 
-    // The recipe's sources as the rebuild reads them, newest use first, within cacheBytes.
+    // As much of each file as the given builds make (open gives its stream; each is made its full size): a copy whose
+    // source none of them has is left out, every other operation written and checked as Write does. The ranges left
+    // out, by file (none for a whole one); nothing is checked against the files' SHA-256, which the caller does once the
+    // gaps are filled from elsewhere (mod sync: the host's own rebuilt files).
+    public static Dictionary<string, List<(long Start, long Length)>> WriteWhatCan(Recipe recipe, Stream literals, IReadOnlyList<IGameResources> games,
+        Func<RecipeFile, Stream> open, long cacheBytes = 256L << 20)
+    {
+        var sources = new SourceCache(recipe, games, cacheBytes);
+        var buffer = new byte[1 << 20];
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var gaps = new Dictionary<string, List<(long Start, long Length)>>(StringComparer.Ordinal);
+        foreach (var file in recipe.Files)
+        {
+            using var output = open(file);
+            var writer = new FileWriter(file, output, hash, buffer) { Gaps = gaps[file.Path] = [] };
+            foreach (var op in file.Ops) writer.Write(op, sources, literals);
+            if (writer.At != file.Size) throw writer.Bad($"the recipe makes {writer.At:N0} bytes, not {file.Size:N0}.");
+            output.SetLength(file.Size);
+            hash.GetHashAndReset();
+        }
+        return gaps;
+    }
+
+    // The recipe's sources as the rebuild reads them, newest use first, within cacheBytes; one none of the builds has is
+    // looked for once.
     sealed class SourceCache(Recipe recipe, IReadOnlyList<IGameResources> games, long cacheBytes)
     {
         readonly Dictionary<int, LinkedListNode<(int Source, byte[] Bytes)>> cache = [];
         readonly LinkedList<(int Source, byte[] Bytes)> recent = new();
+        readonly HashSet<int> missing = [];
         long cached;
 
         public int Count => recipe.Sources.Count;
 
         public byte[] Get(int i)
         {
+            if (missing.Contains(i)) throw Missing(recipe.Sources[i]);
             if (cache.TryGetValue(i, out var node))
             {
                 recent.Remove(node);
@@ -156,9 +182,11 @@ public static class RecipeRebuilder
                 return node.Value.Bytes;
             }
             var source = recipe.Sources[i];
-            var bytes = Resolve(source, games)
-                ?? throw new MissingSourceException(source.Places.Count == 0 ? "A recipe source names no place in the game."
-                    : $"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
+            if (Resolve(source, games) is not { } bytes)
+            {
+                missing.Add(i);
+                throw Missing(source);
+            }
             cache[i] = recent.AddFirst((i, bytes));
             cached += bytes.Length;
             while (cached > cacheBytes && recent.Count > 1)
@@ -170,6 +198,9 @@ public static class RecipeRebuilder
             }
             return bytes;
         }
+
+        static MissingSourceException Missing(RecipeSource source) => new(source.Places.Count == 0 ? "A recipe source names no place in the game."
+            : $"No given game folder has {Describe(source.Places[0])} (needed from build {string.Join(" or ", source.Places.Select(p => p.Build).Distinct())}).");
     }
 
     // Writes one file's operations to its stream and to the hash, checking each first (a recipe is untrusted input).
@@ -177,6 +208,8 @@ public static class RecipeRebuilder
     {
         // The bytes written so far.
         public long At { get; private set; }
+        // Where copies whose source is missing go (WriteWhatCan): their range is skipped, not an error.
+        public List<(long Start, long Length)>? Gaps { get; init; }
 
         public InvalidDataException Bad(string what) => new($"{file.Path}: {what}");
 
@@ -204,7 +237,16 @@ public static class RecipeRebuilder
         void Copy(long[] op, long length, SourceCache sources)
         {
             if (op.Length != 4 || op[1] < 0 || op[1] >= sources.Count) throw Bad("a copy names no source.");
-            var src = sources.Get((int)op[1]);
+            byte[] src;
+            try { src = sources.Get((int)op[1]); }
+            catch (MissingSourceException) when (Gaps != null)
+            {
+                if (op[2] < 0 || length > int.MaxValue) throw Bad("a copy runs past its source.");
+                Gaps.Add((At, length));
+                output.Seek(length, SeekOrigin.Current);
+                At += length;
+                return;
+            }
             if (op[2] < 0 || op[2] + length > src.Length) throw Bad("a copy runs past its source.");
             Put(src.AsSpan((int)op[2], (int)length));
         }
@@ -241,6 +283,9 @@ public static class RecipeRebuilder
 
     // Whether one of the given builds has the source's bytes.
     public static bool Has(RecipeSource source, IReadOnlyList<IGameResources> games) => Resolve(source, games) != null;
+
+    // The source's bytes from one of the given builds (only bytes with its SHA-256), or null.
+    public static byte[]? Find(RecipeSource source, IReadOnlyList<IGameResources> games) => Resolve(source, games);
 
     static byte[]? Resolve(RecipeSource source, IReadOnlyList<IGameResources> games)
     {

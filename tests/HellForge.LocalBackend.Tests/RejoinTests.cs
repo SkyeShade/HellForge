@@ -187,12 +187,19 @@ static class RejoinTests
         check(late.Join("t2", laterConnection, check) != "0", "Another stranger is refused for its mods.");
         host.Lobby.FromLocal(PrivacyTests.Privacy("p2", later, HostId, "1"));
         host.Next("lobby.result", check, "privacy 2");
+        // A download going on keeps it expected (ModSync.Downloading): ExpectedBack from the last request.
+        clock += TimeSpan.FromMinutes(10);
+        host.Lobby.StillExpected(ThirdId);
+        clock += TimeSpan.FromMinutes(10);
+        check(host.Lobby.Welcome(ThirdId), "A machine still downloading is expected past ExpectedBack from its refusal.");
         clock += LobbyService.ExpectedBack + TimeSpan.FromMinutes(1);
         check(!host.Lobby.Welcome(ThirdId), "After ExpectedBack the host no longer expects it.");
+        host.Lobby.StillExpected(ThirdId);
+        check(!host.Lobby.Welcome(ThirdId), "A download does not bring back an expectation that has run out.");
         var lateBack = new Node(network, ThirdId, HostMods);
         check(lateBack.Join("t3", laterConnection, check) != "0" && lateBack.Refused.TryTake(out var lateTold, TimeSpan.FromSeconds(2)) &&
             lateTold.Lines[0].Contains("Friends only"), "Too late, it meets the lobby's privacy.");
-        clock -= LobbyService.ExpectedBack + TimeSpan.FromMinutes(1);
+        clock -= LobbyService.ExpectedBack + TimeSpan.FromMinutes(21);
 
         // A kicked machine is never expected back.
         host.Drain();

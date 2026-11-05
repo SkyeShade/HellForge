@@ -227,7 +227,8 @@ modlist check and before the game sees a member join.
 (its game crashed, say), may join again. So changing the privacy never removes anyone.
 
 - A machine refused only for its gameplay mods passed the privacy check. It is expected back for 15 minutes with the
-  host's mods ([Mod sync](multiplayer-mod-sync.md#mod-sync)), whatever the privacy then. A kick ends that too.
+  host's mods ([Mod sync](multiplayer-mod-sync.md#mod-sync)), whatever the privacy then. While it downloads them, it
+  stays expected until 15 minutes past its last download request. A kick ends that too.
 - A lobby that turns Friends only or Invite only stops being listed within a second, and its members stay.
 
 **Invitations.** The game calls `PFLobbySendInvite` from its social menu (seen in the stand-in logs).

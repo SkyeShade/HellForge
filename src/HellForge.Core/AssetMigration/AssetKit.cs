@@ -22,9 +22,8 @@ public static class AssetKit
     {
         if (builds.Count == 0)
             throw new InvalidDataException("No build of the game is on this PC to compare the mod with: set up HellForge's game copy, or install HELLDIVERS 2 in Steam.");
-        var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", builds.Select(b => b.Label).Order(StringComparer.Ordinal)))))[..12];
         Directory.CreateDirectory(cacheFolder);
-        var path = Path.Combine(cacheFolder, $"index-{key}.hfsi");
+        var path = IndexPath(builds, cacheFolder);
         if (File.Exists(path))
         {
             try { return SourceIndex.Load(path); }
@@ -49,6 +48,22 @@ public static class AssetKit
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return index;
     }
+
+    static string IndexPath(IReadOnlyList<LocalBuild> builds, string cacheFolder) => Path.Combine(cacheFolder,
+        $"index-{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", builds.Select(b => b.Label).Order(StringComparer.Ordinal)))))[..12]}.hfsi");
+
+    // The index of exactly these builds when one was made before (Index), else null: never made here (fingerprinting
+    // reads the whole game and takes gigabytes of memory, which mod sync does not spend while the game runs).
+    public static SourceIndex? CachedIndex(IReadOnlyList<LocalBuild> builds, string cacheFolder)
+    {
+        var path = builds.Count == 0 ? null : IndexPath(builds, cacheFolder);
+        if (path == null || !File.Exists(path)) return null;
+        try { return SourceIndex.Load(path); }
+        catch (Exception error) when (error is InvalidDataException or IOException or EndOfStreamException or UnauthorizedAccessException) { return null; }
+    }
+
+    // Whether those builds' index is made (Index), without loading it.
+    public static bool HasIndex(IReadOnlyList<LocalBuild> builds, string cacheFolder) => builds.Count > 0 && File.Exists(IndexPath(builds, cacheFolder));
 
     // The mod files a recipe may take: its game patch files (data/ and a pack's option folders), as a package would ship
     // them (no workspace leftovers, nothing a recipe already rebuilds).
