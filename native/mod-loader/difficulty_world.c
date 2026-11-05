@@ -326,6 +326,48 @@ static const uint8_t kSpecialCapStub[32] = {
  * loop started at -2^28 and read far before the buffer (a 4096 m mission ended at exe 0x68FD47 while loading; which object
  * projects to NaN is not known yet). With an extra large world a box whose first column or row is negative counts as not
  * occluded (the test's own result 2, 0x68FD65). */
+/* The renderer's upload allocator (exe 0x7009C0(alloc rcx, out rdx, size r8, align r9d); callers 0x6EBB30..0x6F8B30, e.g.
+ * 0x6EDEB0 through [rsi+0x150]) carves requests from its current block ([alloc], 0x700A46) and, when one does not fit
+ * ([alloc+0x88] the block size, 0x700A32), advances to the block's next (0x700A8E) or makes a GPU block (0x700B80) and
+ * links it as the current block's next (0x700ADE). A thread whose link lost the race spins at 0x700AF0 until the current
+ * block has no next, which only happens once a thread in the main path fills the current block and advances. When every
+ * thread that uploads is in that spin, nobody fills it: s75v (planet 157) froze twice right after op 0x42 with 12 workers
+ * at 0x700AFB and the frame waiting on their jobs (0x6CBA8C). Requests are never larger than a block (probed: 0). The
+ * frame reset (0x700B10) walks each ring's whole chain (+0x20 next, +0x18 offset = 0) and starts again at its head, so a
+ * chain of any length is kept and reused. The loser now walks to the chain's tail and links its block there, then goes
+ * back to the main path (0x7009F0), which takes room from the current block or advances. */
+#define DIF_UPLOAD_SPIN 0x700AF0u
+#define DIF_UPLOAD_RETRY 0x7009F0u
+static const char kUploadSpinPin[] = "48 8B 0B 33 C0 F0 48 0F B1 71 20 75 F3 E9 EE FE FF FF";
+static const uint8_t kUploadTailStub[34] = {
+    0x48, 0x8B, 0x0B,                                                 /*  0 mov rcx, [rbx] (the current block) */
+    0x48, 0x8B, 0x41, 0x20,                                           /*  3 mov rax, [rcx+0x20] (its next) */
+    0x48, 0x85, 0xC0,                                                 /*  7 test rax, rax */
+    0x74, 0x09,                                                       /* 10 jz 21 (the tail) */
+    0x48, 0x89, 0xC1,                                                 /* 12 mov rcx, rax */
+    0x48, 0x8B, 0x41, 0x20,                                           /* 15 mov rax, [rcx+0x20] */
+    0xEB, 0xF2,                                                       /* 19 jmp 7 */
+    0xF0, 0x48, 0x0F, 0xB1, 0x71, 0x20,                               /* 21 lock cmpxchg [rcx+0x20], rsi (rax 0: link the new block) */
+    0x75, 0xEA,                                                       /* 27 jne 7 (someone linked first: rax = that block, walk on) */
+    0xE9, 0, 0, 0, 0};                                                /* 29 jmp 0x7009F0 (rel32 at 30) */
+
+static const char* InstallUploadTail(uintptr_t exe)
+{
+    if (exe == 0 || !ApiCodeMatches(exe + DIF_UPLOAD_SPIN, kUploadSpinPin)) return "the renderer's upload allocator is not the reviewed one (its link race is left as it is)";
+    uint8_t* page = FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE);
+    if (page == NULL) return "no memory near the exe for the upload allocator's link";
+    memcpy(page, kUploadTailStub, sizeof kUploadTailStub);
+    int32_t rel = (int32_t)(exe + DIF_UPLOAD_RETRY - (uintptr_t)(page + 34)); memcpy(page + 30, &rel, 4);
+    DWORD old;
+    VirtualProtect(page, 0x1000, PAGE_EXECUTE_READ, &old);
+    FlushInstructionCache(GetCurrentProcess(), page, 0x1000);
+    uint8_t jump[18];
+    memset(jump, 0x90, sizeof jump);
+    jump[0] = 0xE9; rel = (int32_t)((uintptr_t)page - (exe + DIF_UPLOAD_SPIN + 5)); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(exe + DIF_UPLOAD_SPIN, jump, sizeof jump)) return "the renderer's upload allocator's link could not be written";
+    return NULL;
+}
+
 #define DIF_CULL_SITE 0x68FD06u    /* exe: mov rdi, [rdi+0xb8]; mov r10d, [rsp+8] (r8d the first row, [rsp] the first column) */
 #define DIF_CULL_BACK 0x68FD0Du
 #define DIF_CULL_VISIBLE 0x68FD65u
@@ -4539,6 +4581,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     uint8_t cullJump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = (int32_t)((uintptr_t)cull - (exe + DIF_CULL_SITE + 5)); memcpy(cullJump + 1, &rel, 4);
     if (ApiWrite(exe + DIF_CULL_SITE, cullJump, 7)) return "the engine's occlusion test could not be guarded";
+    const char* upload = InstallUploadTail(exe);
+    if (upload != NULL) Note("difficulty: extra large maps: %s", upload);
     if (ApiCodeMatches(exe + DIF_TREE_CLEAR_A, kTreeClearPin) && ApiCodeMatches(exe + DIF_TREE_CLEAR_B, kTreeClearPin))
     {
         const uintptr_t sites[2] = {DIF_TREE_CLEAR_A, DIF_TREE_CLEAR_B}, backs[2] = {DIF_TREE_CLEAR_A_BACK, DIF_TREE_CLEAR_B_BACK};
