@@ -113,9 +113,9 @@ static class AssetFetchTests
             check(depot.Served < total / 3, $"only the chunks that hold the vehicle and the table were fetched: {depot.Served} of {total}");
             check(store.Downloaded > 0 && store.Downloaded < (archive.Length + gpu.Length) / 3, $"downloaded {store.Downloaded:N0} bytes");
 
-            // Again from the cache: nothing is downloaded twice.
+            // Again from the cache: nothing is downloaded twice (a rebuilt file lost, so the mod is rebuilt).
             var served = depot.Served;
-            File.Delete(Path.Combine(shipped, ModAssets.RecordName));
+            File.Delete(Path.Combine(shipped, "data", "1111222233334444.patch_0.gpu_resources"));
             var again = new SteamBuilds(new ChunkStore(depot, 553850, Path.Combine(root, "fetch", "cache")), null);
             check(ModAssets.Ensure(shipped, () => [again.Open(oldLabel)]) && depot.Served == served, "the second rebuild reads the cached chunks and manifest");
         });
