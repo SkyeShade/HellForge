@@ -4,7 +4,7 @@ using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 using HellForge.LocalBackend.Multiplayer;
 
-// Mod sync from the joiner's own game (docs/multiplayer.md "Mod sync from your own game"): the host lists the resource
+// Mod sync from the joiner's own game (docs/multiplayer-mod-sync.md "Mod sync from your own game"): the host lists the resource
 // parts of a mod's game patch files, the joiner writes the ones its game has (the same key; any key the cached game index
 // knows those bytes under) and downloads the rest. The mod, the game and the link are synthetic; a tap on the joiner's
 // link counts what came over it.

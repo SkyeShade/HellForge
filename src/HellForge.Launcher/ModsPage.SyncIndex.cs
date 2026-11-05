@@ -7,7 +7,7 @@ using HellForge.Core.AssetMigration;
 
 namespace HellForge.Launcher;
 
-// Mod sync from your own game (docs/multiplayer.md "Mod sync from your own game"): a host's mods' game patch files are
+// Mod sync from your own game (docs/multiplayer-mod-sync.md "Mod sync from your own game"): a host's mods' game patch files are
 // written from this PC's game where it has the same bytes, and only the rest is downloaded. Resources under their own
 // names are found without help; the game index (AssetKit.Index, the asset kit's fingerprints of each build: hashes,
 // never game content) finds the game's bytes a mod renamed too. Mod sync never makes it, since it reads the whole game

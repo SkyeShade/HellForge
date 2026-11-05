@@ -7,7 +7,7 @@ using HellForge.Core.GameData;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
-// Mod sync from the joiner's own game (SyncParts; docs/multiplayer.md "Mod sync from your own game"). The host lists the
+// Mod sync from the joiner's own game (SyncParts; docs/multiplayer-mod-sync.md "Mod sync from your own game"). The host lists the
 // resource parts of its mods' game patch files (mods.parts) and sends a recipe mod's rebuilt files to a joiner whose game
 // lacks what the recipe takes; the joiner writes what its own game has and downloads only the rest, every file still
 // checked against the host's list.

@@ -3,7 +3,7 @@ using HellForge.Core.GameData;
 
 namespace HellForge.Core.AssetMigration;
 
-// Mod sync of game patch files without sending the game's bytes over the link (docs/multiplayer.md "Mod sync from your
+// Mod sync of game patch files without sending the game's bytes over the link (docs/multiplayer-mod-sync.md "Mod sync from your
 // own game"). The host lists every resource part of a mod's archives: where it lies in which file, its key and its
 // SHA-256 (Of: read from the archives' tables, then each part hashed; no game index). The joiner writes each part its own
 // game has with those bytes (the same key in any build here, or any key the cached game index knows those bytes under),

@@ -20,7 +20,8 @@ A joiner refused for different gameplay mods can take the host's (protocol `hell
    they never download and are never an off.
 3. The in-game editor shows the MOD SYNC prompt (SDK 14 `sync_state`, `sync_mod`, `sync_answer`).
 4. On accept the joiner downloads each mod's counted files from the host over the Steam link (`mods.files`,
-   `mods.get`; speeds in [Mod sync speed](#mod-sync-speed)).
+   `mods.get`; speeds in [Mod sync speed](#mod-sync-speed)). What the joiner's own game has is written from it instead
+   ([Mod sync from your own game](#mod-sync-from-your-own-game)).
 5. It checks every file and the whole mod (`SyncedStore.Install`), and keeps it in `mods/.synced/<id>@<hash>/`.
 6. Then one of two things happens:
    - the running game takes the host's set (`LiveMods.ApplySyncAsync`). That is one live change of the session's mods
@@ -88,8 +89,11 @@ hash, class (content, code, raw, bundled), load-order place, folder and counted 
 - Then comes the refusal, as before: `lobby.refused [reason, line...]`, its lines shown by both games. When the host
   shares, the joiner's last line says the MOD SYNC window offers the download. A backend from before ignores the offer.
 - A joiner takes an offer only for a join it asked for in the last minute.
-- The joiner's machine may then download for 10 minutes from its first refused join. A later one extends nothing. A
+- The joiner's machine may then download for 10 minutes from its first refused join. A later join extends nothing. A
   stranger may download too: the stranger gate lets a download through.
+- Each request it makes for one of the set's mods keeps the grant on for 2 minutes more, up to 6 hours from that join,
+  so a large mod over a slow link finishes. A grant left idle ends (`GrantTime`, `GrantIdle`, `GrantLongest`). Before
+  2026-11-05 it ended at 10 minutes, downloading or not.
 - The grant's budget is the set's bytes twice over and 16 chunks.
 - It serves only a mod in its set (not a bundled one), only a file that mod counts, and only within the file's size.
 - One worker reads the files, with at most 24 queued requests per machine. It is paced to 8 MiB/s per machine and
@@ -101,6 +105,7 @@ hash, class (content, code, raw, bundled), load-order place, folder and counted 
 |---|---|
 | `mods.files [req, id, hash, start]` | `mods.filelist [req, ok, total, start, (path, size, sha256)...]`: pages of at most 1000 files (a frame holds 4096 fields), at most 10000 files a mod on both sides |
 | `mods.get [req, id, hash, path, offset, length ≤ 128 KiB]` | `mods.chunk [req, ok, offset, bytes]` |
+| `mods.parts [req, id, hash, start]` | `mods.partlist [req, ok, total, start, (path, offset, length, type, name, part, sha256)...]`: 500 parts a page ([Mod sync from your own game](#mod-sync-from-your-own-game)) |
 | either | `[req, refused, reason]` |
 
 ### The joiner
@@ -177,6 +182,9 @@ invitation takes (`Multiplayer/AutoRejoin.cs`). HellForge does not make the game
   the player chose that one.
 - **Admission.** The host keeps a machine refused only for its gameplay mods expected back in that lobby for 15 minutes
   (`LobbyService.ExpectedBack`), and an "ok" keeps it expected for 3 minutes more (`RejoinGrace`).
+  - While it downloads the host's mods, each minute with requests keeps it expected for 15 minutes more
+    (`ModSync.Downloading` → `LobbyService.StillExpected`, since 2026-11-05). That never brings back an expectation
+    that ran out.
   - Its join is then admitted whatever the lobby's privacy.
   - A stranger's Steam session and join pass the stranger gate (`LobbyService.Welcome`).
   - An invited player stays invited, as a refusal never removes an invitation.
@@ -281,6 +289,7 @@ The other limits were looser:
 | Host's queue per machine | 8 | 24 | `ModSync.QueuedPerPeer` |
 | Host's pacing | 1 MiB/s a machine, 2 MiB/s in all | 8 MiB/s a machine, 16 MiB/s in all (caps against abuse; a 40 ms burst makes up a timer's overshoot) | `PeerRate`, `TotalRate`, `PaceBurst` |
 | Grant budget | the set twice and 4 chunks | the set twice and 16 chunks | `GrantBudget` |
+| Grant time | 10 minutes from the join | 10 minutes, kept on 2 minutes past each request, at most 6 hours (2026-11-05) | `GrantTime`, `GrantIdle`, `GrantLongest` |
 | Steam link turn | a sleep of a timer tick | sends at once (`Send` wakes the thread); a turn with traffic is followed by the next at once | `SteamPeerTransport.Run` |
 
 **Game traffic.** A Steam connection without congestion control sends whatever it is given at that rate, and a peer's
@@ -310,6 +319,45 @@ speed.
 - In practice the host's upload sets the speed (20 to 50 Mbit/s is 2.5 to 6 MB/s, so 7 to 15 s), along with what
   Valve's relays carry, which is not measured yet.
 - A sync from a stranger goes through the same link.
+
+### Mod sync from your own game
+
+A gameplay mod's game patch files are mostly the game's own bytes: a model, texture or sound copied, overridden or
+backported. The joiner has those already. So the large part of a big mod does not have to cross the link
+(`ModSync.Parts.cs`, `SyncParts` and `RecipeRebuilder.WriteWhatCan` in HellForge.Core):
+
+1. **The host lists parts.** Its offer carries a fourth field, `parts`, and it answers `mods.parts` with
+   `mods.partlist`, 500 parts a page. The list is every resource part of the mod's archives, read from each archive's
+   table (no game index). Each part is hashed. The list is made once per mod and content, and started in the background
+   when the offer goes out.
+2. **The joiner writes what its game has.** While the mod's other files download, it looks each part up in its own
+   builds (HellForge's game copy and Steam's install). It tries the same key in any build, then any key the game index
+   knows those bytes under. A part is used only when the bytes found have its SHA-256. Each distinct part is read once.
+3. **The rest downloads.** Only the ranges no part covered (the archives' tables, the author's own resources) come
+   over `mods.get`. Every file is then checked against the host's file list. One that does not match (a host whose part
+   list does not match its files) downloads again whole.
+
+The game index is the asset kit's (`AssetKit.Index`: fingerprints of each build, hashes only, in
+`<installation>/temp/asset-kit`). Mod sync never makes one, since it reads the whole game and takes gigabytes of memory
+while the game runs. Without it, only resources under their own names are found, and a rest of 64 MB or more says so
+on the prompt. The Mods page's MOD SYNC card makes it on request (**Index my game**, under "When I join"), with no
+session running.
+
+**Recipe mods.** A mod that ships a recipe instead of the game's bytes ([the asset kit](modding/assets.md)) already
+syncs as its recipe. The joiner rebuilds its game patch files from its own game. Where its game lacks a part the recipe
+takes (a build it does not have, as after a game update), that range comes from the host's own rebuilt files. The
+host serves those for its ready recipe mods, and the grant's budget counts them. From an older host the joiner is told
+which build it lacks.
+
+**Measured (synthetic, `ModSyncPartsTests`).**
+
+| Case | Bytes over the link |
+|---|---|
+| A 2.46 MB mod: an overridden unit (same key), a renamed texture, the author's material; no game index | 1.55 MB |
+| The same, with the game index | 51 KB |
+| The same, from an older host | 2.46 MB (whole) |
+| A recipe mod (54 KB counted), the joiner has the whole game | 54 KB |
+| The same, the joiner's game lacks the texture | 1.55 MB (the texture's 1.5 MB, from the host's rebuilt files) |
 
 **Tests** (`tests/HellForge.LocalBackend.Tests/ModSyncSpeedTests.cs`, over a simulated path without Steam), for a 6 MB
 mod of 63 files:

@@ -10,40 +10,33 @@ using HellForge.Core.GameData;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
-// Mod sync (HellForge.Core.ModSync; docs/multiplayer.md "Mod sync"): a joiner who lacks the host's gameplay mods can
-// download them and play with the host's set.
-//   host:   a joiner refused for different gameplay mods (LobbyService.ModsRefused) is sent this session's mod set
-//           (without its folders) just before the refusal, mods.offer [lobby id, set, sharing 0|1], and its machine may
-//           download for GrantTime from the first such offer (a later refusal does not extend it), and on while it keeps
-//           downloading (each request served keeps the grant for GrantIdle more, never past GrantLongest from the
-//           offer), at most the grant's byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at most PeerRate
-//           per joiner and TotalRate in all, so its own game keeps its link:
-//             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...]
-//                                                                  (at most PageFiles files a page)
+// Mod sync (HellForge.Core.ModSync; docs/multiplayer-mod-sync.md): a joiner who lacks the host's gameplay mods can download them and play
+// with the host's set.
+//   host:   a joiner refused for different gameplay mods (LobbyService.ModsRefused) is sent this session's mod set (without its folders)
+//           just before the refusal, mods.offer [lobby id, set, sharing 0|1, PartsFlag], and its machine may download for GrantTime from
+//           the first such offer (a later refusal does not extend it), kept on GrantIdle past each request served, never past GrantLongest
+//           from the offer, within the grant's byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at
+//           most PeerRate per joiner and TotalRate in all, so its own game keeps its link:
+//             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...], PageFiles a page
 //             mods.get   [req, id, hash, path, offset, length]  -> mods.chunk [req, "ok", offset, bytes]
-//             mods.parts [req, id, hash, start]                 -> mods.partlist [req, "ok", total, start,
-//                                                                  (path, offset, length, type, name, part, sha256)...]
-//                                                                  (at most PageParts a page)
-//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share). An offer's fourth field,
-//           PartsFlag, says this host answers mods.parts (an older one has three fields).
-//   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for
-//           the game (ModSyncPlan; HfApi sync_state, the in-game editor's MOD
-//           SYNC view). A code or raw mod HellForge has not verified waits for the player's trust (TRUST on the prompt:
-//           that exact content goes on ModSettings' Trusted list); GET IT opens a mod's web address in the player's browser.
-//           A stranger's can be trusted only in a sandboxed session and counts only in one (Sandboxed); unsandboxed it is
-//           the player's to install. A trust the sandboxed game answers counts only in sandboxed sessions too, a Steam
-//           friend's included (TrustedMod.Sandboxed): any code in that game can call sync_answer; the launcher's prompt,
-//           outside the sandbox, gives one that counts everywhere.
-//           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). From a host
-//           that lists parts, the resource parts of a mod's game patch files that this PC's own game has are written
-//           from it, and only the rest is downloaded (SyncParts; docs/multiplayer.md "Mod sync from your own game"). On
-//           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
-//           stop-observation.signal), which the launcher starts again with them.
+//             mods.parts [req, id, hash, start]                 -> mods.partlist (ModSync.Parts.cs), PageParts a page
+//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share). The offer's fourth field, PartsFlag, says
+//           this host answers mods.parts (an older host's offer has three fields).
+//   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for the game
+//           (ModSyncPlan; HfApi sync_state, the in-game editor's MOD SYNC view). A code or raw mod HellForge has not verified waits for the
+//           player's trust (TRUST on the prompt: that exact content goes on ModSettings' Trusted list); GET IT opens a mod's web address in
+//           the player's browser. A stranger's can be trusted only in a sandboxed session and counts only in one (Sandboxed); unsandboxed
+//           it is the player's to install. A trust the sandboxed game answers counts only in sandboxed sessions too, a Steam friend's
+//           included (TrustedMod.Sandboxed): any code in that game can call sync_answer; the launcher's prompt, outside the sandbox, gives
+//           one that counts everywhere. On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore).
+//           From a host that lists parts, what this PC's own game has of a mod's game patch files is written from it, and only the rest is
+//           downloaded (SyncParts; docs "Mod sync from your own game"). On restart it writes the next session's mods (ModSyncSession) and
+//           stops this session ("mod-sync" in stop-observation.signal), which the launcher starts again with them.
 public sealed partial class ModSync : IAsyncDisposable
 {
     // PageFiles: a file list page's files (3 fields each, paths of at most 240 characters) stay within a frame's 4096
     // fields and 1 MiB.
-    // Speed (docs/multiplayer.md "Mod sync speed"): a joiner keeps Window chunks asked for at first, then as many as come
+    // Speed (docs/multiplayer-mod-sync.md "Mod sync speed"): a joiner keeps Window chunks asked for at first, then as many as come
     // back without queueing (DownloadWindow: MinWindow to MaxWindow, TargetDelay), across files. A host queues at most
     // QueuedPerPeer requests a machine (MaxWindow and room for a file list; 0.3.0-beta hosts queued 8) and paces its
     // upload to PeerRate a machine and TotalRate in all: caps against abuse, at the Steam link's own send rate
@@ -1142,7 +1135,7 @@ public sealed partial class ModSync : IAsyncDisposable
     }
 }
 
-// How many chunks a download keeps asked for (docs/multiplayer.md "Mod sync speed"). Steam networking does no congestion
+// How many chunks a download keeps asked for (docs/multiplayer-mod-sync.md "Mod sync speed"). Steam networking does no congestion
 // control (it sends at a fixed rate, SteamPeerTransport.SendRate), so the joiner keeps the queue its download makes on
 // the way short, the queue the host's game traffic waits in too: a whole chunk that came back within TargetDelay of the
 // quickest one so far adds one (about doubling each round trip; once it was ever cut, one a round trip), and one that

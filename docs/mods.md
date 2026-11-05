@@ -205,10 +205,11 @@ answer it. **DOWNLOAD AND RESTART** downloads what it can, when the drive has ro
 before that answers no.
 
 Large mods are mostly the game's own files (models, textures and sounds copied from the game), and your game has
-those. From a host on this HellForge, those parts are written from your own game files and only the rest downloads, so
-a 700 MB mod can come down as a few MB. **Index my game** on the Mods page (MOD SYNC, under "When I join") lets it
-find the game's files a mod renamed too: about a minute per game build, run it while no session is running. Every file
-is still checked against the host's, byte for byte ([how it works](multiplayer.md#mod-sync-from-your-own-game)).
+those. From a host on this HellForge, those parts are written from your own game files and only the rest downloads.
+How much that saves depends on how much of the mod is the game's own.
+
+**Index my game** on the Mods page (MOD SYNC, under "When I join") lets it find the game's files a mod renamed too. It
+takes about a minute per game build; run it while no session is running. Every file is still checked against the host's, byte for byte ([how it works](multiplayer-mod-sync.md#mod-sync-from-your-own-game)).
 
 Then one of two buttons plays the host's mods, in the host's load order, plus your own cosmetic mods and Local Stats:
 

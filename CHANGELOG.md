@@ -13,10 +13,10 @@ On `dev`, since 0.4.0-beta.
 ### Added
 
 - **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
-  has the same bytes, and only the rest downloads: the host lists each archive part with its SHA-256 (`mods.parts`),
+  has the same bytes, and only the rest downloads. The host lists each archive part with its SHA-256 (`mods.parts`),
   and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.
   A recipe mod whose sources the joiner's game lacks (after a game update) takes just those ranges from the host's
-  rebuilt files ([mod sync from your own game](docs/multiplayer.md#mod-sync-from-your-own-game)).
+  rebuilt files ([mod sync from your own game](docs/multiplayer-mod-sync.md#mod-sync-from-your-own-game)).
 - **The asset kit: share mods without Arrowhead's files.** `assets-check` shows which bytes of a mod's game patch files
   are the game's and from which build. `assets-strip`, and `package-mod` by itself, ship the author's own bytes plus a
   recipe. Each player's HellForge rebuilds the files from that recipe, out of their own game, checked by SHA-256. The
@@ -33,19 +33,19 @@ On `dev`, since 0.4.0-beta.
   `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
   the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
 
+### Changed
+
+- **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
+  (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
+  The host keeps the player expected back while they download, so the rejoin after a long download is still let in
+  ([mod sync](docs/multiplayer-mod-sync.md#mod-sync-speed)).
+
 ### For contributors
 
 - A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
   (#277).
-
-### Changed
-
-- **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
-  (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
-  The host keeps the player expected back while they download, so the rejoin after a long download is still let in
-  ([mod sync](docs/multiplayer.md#mod-sync-speed)).
 
 ## 0.4.0-beta (2026-11-05)
 
