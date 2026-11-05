@@ -196,8 +196,47 @@ public static partial class DataSpecs
         var colours = ReadColours(e, at);
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
+        var shaders = ReadShaders(e, at, type, folder, inputs);
         var (steam, build) = Source(e, at);
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh) { Steam = steam, Build = build };
+        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, shaders) { Steam = steam, Build = build };
+    }
+
+    // A shader in a host, which says what else the resource needs.
+    static ShaderResource ReadShader(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "shader", "name", "dxbc", "mesh");
+        var name = Text(e, "shader", at);
+        var hosts = ShaderHosts.Current.Hosts;
+        if (!hosts.TryGetValue(name, out var host)) throw new InvalidDataException($"{at}: shader is a host: {string.Join(", ", hosts.Keys)}.");
+        var mesh = ReadMesh(e, at, ResourceTypes.Unit, folder, inputs);
+        if (host.Mesh && mesh == null) throw new InvalidDataException($"{at}: the {name} host draws a mesh: give it one, as \"mesh\": {{\"obj\": \"models/shape.obj\"}}.");
+        if (!host.Mesh && mesh != null) throw new InvalidDataException($"{at}: the {name} host draws inside its box and takes no mesh.");
+        return new ShaderResource(at, name, Name(e, at), Dxbc(e, at, folder, inputs), mesh);
+    }
+
+    // A compiled shader in the mod folder, an input of the build.
+    static string Dxbc(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        var dxbc = Text(e, "dxbc", at).Replace('\\', '/');
+        if (Path.IsPathRooted(dxbc) || dxbc.Split('/').Any(part => part is "" or "." or "..") || !dxbc.EndsWith(".dxbc", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{at}: dxbc is a .dxbc file in the mod folder, such as \"shaders/rings.dxbc\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, dxbc))) throw new InvalidDataException($"{at}: {dxbc} is missing.");
+        inputs.Add(dxbc);
+        return dxbc;
+    }
+
+    static List<ShaderFile>? ReadShaders(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
+    {
+        if (!e.TryGetProperty("shader", out var list)) return null;
+        if (type != ResourceTypes.Material) throw new InvalidDataException($"{at}.shader: only a material has shaders.");
+        if (list.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{at}.shader: a list of stages.");
+        var shaders = new List<ShaderFile>();
+        foreach (var stage in list.EnumerateArray())
+        {
+            Fields(stage, $"{at}.shader", "offset", "dxbc");
+            shaders.Add(new(Offset(Text(stage, "offset", $"{at}.shader"), $"{at}.shader"), Dxbc(stage, $"{at}.shader", folder, inputs)));
+        }
+        return shaders;
     }
 
     static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)
