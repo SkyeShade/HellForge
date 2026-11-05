@@ -174,7 +174,7 @@ static class AssetKitTests
             check(!Directory.Exists(Path.Combine(shipped, "data")) || Directory.GetFiles(Path.Combine(shipped, "data")).Length == 0, "no file written");
             check(!File.Exists(Path.Combine(shipped, ModAssets.RecordName)), "no record written");
             var problems = ModAssets.Prepare([shipped], () => []);
-            check(problems.Count == 1 && problems[0].Problem.Contains("553853:42"), "the session's preparation reports it");
+            check(problems.Count == 1 && problems[0].Reason.Contains("553853:42") && problems[0].Missing?.Single().Build == "553853:42", "the session's preparation reports it");
         });
 
         test("A mod with nothing from the game ships as it is; a stripped copy is not stripped again", () =>

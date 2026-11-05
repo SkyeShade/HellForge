@@ -283,6 +283,13 @@ public partial class MainWindow
 
     void DrawQr(string challenge)
     {
+        SignInQr.Data = QrGeometry(challenge);
+        SignInQrWait.IsVisible = false;
+    }
+
+    // The sign-in QR code as one geometry of square modules, one unit each (setup's card and the Mods page draw it).
+    static Geometry QrGeometry(string challenge)
+    {
         var modules = QrCode.Modules(challenge);
         var geometry = new StreamGeometry();
         using (var draw = geometry.Open())
@@ -298,8 +305,7 @@ public partial class MainWindow
                     draw.EndFigure(true);
                 }
         }
-        SignInQr.Data = geometry;
-        SignInQrWait.IsVisible = false;
+        return geometry;
     }
 
     // What sign-in shows, on the card (from SteamKit2's threads, so through the UI thread).
