@@ -6,7 +6,9 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Unreleased
 
-On `dev`, since 0.3.0-beta. Mod SDK 16.
+## 0.4.0-beta (2026-11-05)
+
+[Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.
 
 ### Added
 
