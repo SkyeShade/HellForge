@@ -2,8 +2,8 @@
 
 <!-- diataxis: explanation -->
 
-For people working on HellForge: which files the game keeps in Steam Cloud, how it reaches them, and how HellForge's
-`steam_api64.dll` stand-in keeps them in each HellForge profile so they never mix with the normal game's.
+For people working on HellForge: which files the game keeps in Steam Cloud and how it reaches them. It also covers how
+HellForge's `steam_api64.dll` stand-in keeps them in each HellForge profile so they never mix with the normal game's.
 
 ## What the game keeps in Steam Cloud
 
@@ -15,7 +15,7 @@ game keeps two files in Steam Cloud:
 - `input_settings.config`: control bindings, as text.
 
 Steam stores them in `Steam/userdata/<account id>/553850/remote/` and uploads them to Valve. That folder belongs to the
-Steam account, not to an installation, so until 2026-10-14 every HellForge session read and wrote the same save as the
+Steam account, not to an installation. So until 2026-10-14 every HellForge session read and wrote the same save as the
 normal game, and Steam synced the save HellForge wrote to the account's cloud. This was seen: `testament_new.sav` was
 written at 22:07 during a HellForge session, and its `remotetime` in `remotecache.vdf` equalled its local time.
 

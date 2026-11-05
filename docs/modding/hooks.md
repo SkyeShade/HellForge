@@ -3,8 +3,9 @@
 <!-- diataxis: how-to -->
 
 This chapter is for code mod authors who need something the SDK's fields, events and actions do not cover yet. For
-that, a code mod has the same reach HellForge's engine has: it can find any function of the game, hook it (run your code
-when the game calls it, with the original a call away), read and write any memory, and patch the game's code.
+that, a code mod has the same reach HellForge's engine has. It can find any function of the game and hook it (run your
+code when the game calls it, with the original a call away). It can read and write any memory, and patch the game's
+code.
 
 After reading it you will be able to:
 
@@ -88,7 +89,7 @@ The others exist since SDK 1. Hooks stay for the session.
 
 HellForge names game functions the way Minecraft's mappings do (`mappings/functions.json`, generated into
 `hellforge_functions.h`). A named function has its signature as a type (`HfFn_SpawnEntity`), so the compiler checks
-your detour, your IDE completes `hf_hook_` and `hf_fn_` with every function there is, and HellForge keeps the address
+your detour. Your IDE completes `hf_hook_` and `hf_fn_` with every function there is, and HellForge keeps the address
 and the check of its first bytes. When the game updates, HellForge updates where the functions are. A mod that hooks by
 name keeps working without being rebuilt, unless a function's signature itself changed.
 
@@ -154,10 +155,10 @@ static void EveryUpdate(HfMod* mod, float dt, void* user)
 hf_on_game_thread(mod, EveryUpdate, NULL);
 ```
 
-- `hf_global_<Name>` returns NULL before `HF_EVENT_GAME_LOADED`, on a game build HellForge has not mapped, while the
-  game has not made the object (some only exist in a mission), or when the game code HellForge checks it against is
-  not the reviewed one. Ask for it each time you use it rather than keeping the pointer: the game makes some objects
-  again each mission.
+- `hf_global_<Name>` returns NULL before `HF_EVENT_GAME_LOADED`, on a game build HellForge has not mapped, or while
+  the game has not made the object (some only exist in a mission). It also returns NULL when the game code HellForge
+  checks it against is not the reviewed one. Ask for it each time you use it rather than keeping the pointer: the game
+  makes some objects again each mission.
 - The object is the game's own, alive. Read it on the game thread (an event listener, `on_game_thread`), and write only
   what a field's comment says you may.
 - Use the pointer, never a copy. A struct reaches as far as its last named field (`HfGame` is 0xAC220 bytes), so
@@ -199,7 +200,7 @@ if (game == 0 || !hf->code_matches(game + TARGET, kTarget))
 Use `??` for bytes that hold addresses. Which check to use depends on what you are about to do:
 
 - Before hooking, use `code_matches`. It reads a hooked function's first 32 bytes as they were before the hooks
-  HellForge placed (its own and every mod's), so a function another mod or HellForge has hooked already still matches,
+  HellForge placed (its own and every mod's). So a function another mod or HellForge has hooked already still matches,
   and your hook joins the chain. Changes made by `write`, by HellForge's own code rewrites or by other tools read as
   they are now.
 - Before patching bytes, use `find_pattern` or `read`. They read the code as it is now: if a hook or another mod's patch
@@ -340,8 +341,8 @@ Some changes are a few bytes of the game's code: a branch taken or skipped, a co
 - A branch. Its hellpod steering fix changes a two-byte `jp` into a `jmp` past the code it skips: checked with
   `find_pattern` at the exact offset, then `write`.
 - A jump to a stub. Its reinforcement fix replaces 23 bytes at a call site with a 14-byte absolute jump
-  (`FF 25 00000000` and the address) to a stub of its own, which repeats the replaced instructions, does its own test,
-  and jumps back. The stub lives in memory the mod allocates (`VirtualAlloc`, then made executable).
+  (`FF 25 00000000` and the address) to a stub of its own. The stub repeats the replaced instructions, does its own
+  test, and jumps back. The stub lives in memory the mod allocates (`VirtualAlloc`, then made executable).
 
 The steering fix is the whole pattern in a few lines: check the bytes at the exact offset, then write.
 
@@ -399,9 +400,9 @@ static void SteerAnywhere(HfMod* mod, HfEvent event, void* user)
 
 - Your log (`logs/sessions/<session>/mod-<id>.log`) has every hook and why one failed, with the function's first
   bytes.
-- A crash leaves its note in `modloader.log`: where it happened as `module+offset` (`game.dll+0x...`, or your DLL's
-  name), what it read, the registers and the game addresses on the stack, and a crash dump beside the logs to open in a
-  debugger (a small one, or a full memory dump with the launcher's Crash dump setting). See
+- A crash leaves its note in `modloader.log`. It has where it happened as `module+offset` (`game.dll+0x...`, or your
+  DLL's name), what it read, the registers and the game addresses on the stack. A crash dump to open in a debugger lies
+  beside the logs: a small one, or a full memory dump with the launcher's Crash dump setting. See
   [debugging](debugging.md#crashes).
 - Test alone first, with only your mod on, then with the mods yours will run beside.
 

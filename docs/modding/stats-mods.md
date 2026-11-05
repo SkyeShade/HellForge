@@ -57,8 +57,8 @@ is a working example.
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,
-  network field types or componentWrites) is a per-player gameplay mod, so friends do not compare it and each player
-  plays with their own; adding any of those makes it shared and then friends compare it.
+  network field types or componentWrites) is a per-player gameplay mod. Friends do not compare it, and each player
+  plays with their own. Adding any of those makes it shared, and then friends compare it.
 - Some records are shared by several items. Changing a shared record changes it for every item that uses it, and the
   mod's log warns about it. `"own": true` on an entity's entry gives that entity its own copy of the record first
   (component fields only).
@@ -89,6 +89,6 @@ EXPORT is the quickest way to share a set of changes with other players. To ship
 `hellforge-stats.json` into a mod of your own.
 
 In co-op every player keeps their own Local Stats. A host may share theirs instead; then a joiner plays with the host's,
-and the joiner's editor shows them read-only ([multiplayer.md](../multiplayer.md#stats-in-co-op)).
+and the joiner's editor shows them read-only ([Co-op in game](../multiplayer-in-game.md#stats-in-co-op)).
 
 Next: [Data mods](data.md), for models, textures, effects, sounds and icons.

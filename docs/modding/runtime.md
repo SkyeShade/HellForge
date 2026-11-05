@@ -45,8 +45,8 @@ spawns, package requests) come from it: [actions](#actions) run at once there, a
 else.
 
 Check `hf->version` for the SDK your mod requires. For some calls, `hellforge_mod.h` also asks you to check `hf->size`
-before calling, so a mod still runs on a HellForge whose table ends before them: `on_game_thread`, `last_log`,
-`set_stat`, `copy_row`, `mods`, every action, `notice`, `hook_ex` and `code_matches`. The check looks like this:
+before calling: `on_game_thread`, `last_log`, `set_stat`, `copy_row`, `mods`, every action, `notice`, `hook_ex` and
+`code_matches`. That way a mod still runs on a HellForge whose table ends before them. The check looks like this:
 
 ```c
 if (hf->size >= offsetof(HfApi, heal) + sizeof hf->heal) { /* heal is there */ }
@@ -69,8 +69,10 @@ order:
 
 `HF_EVENT_SESSION_END` comes once, last. A stop from the launcher delivers it on the watch thread, and the session
 runner waits up to 2 seconds for your callback before it ends the game. A normal quit delivers it on the quitting thread
-while Windows ends the process: the game's other threads are gone and Windows' loader lock is held, so only write and
-close files there, load no DLL and wait for nothing. A crash delivers nothing, and on build 25480438 the game crashes as
+while Windows ends the process. The game's other threads are gone and Windows' loader lock is held, so only write and
+close files there, load no DLL and wait for nothing.
+
+A crash delivers nothing, and on build 25480438 the game crashes as
 it quits ([debugging](debugging.md#crashes)), so do not keep work that matters for the last moment. An older loader
 refuses the event: check `hf->version >= 16` first.
 
@@ -99,9 +101,11 @@ are the same calls under the game events' prefix (below): `hf_on_entities_ready(
 ## Game events
 
 `hf_on_<event>(mod, listener, user, priority)` hands you what happens in the game, one kind of event per call. The
-listener takes its kind's own struct, so there is nothing to cast: the compiler checks the listener's type (a listener
-for the wrong event, or one that drops `const` to write to an event that only observes, does not compile), and typing
-`hf_on_` in your IDE lists every event. Listeners are called on the game thread, highest priority first, equal
+listener takes its kind's own struct, so there is nothing to cast. The compiler checks the listener's type: a listener
+for the wrong event, or one that drops `const` to write to an event that only observes, does not compile. Typing
+`hf_on_` in your IDE lists every event.
+
+Listeners are called on the game thread, highest priority first, equal
 priorities in subscription order; the data is valid during the call only. Each call answers 0 when listening, 1 when
 refused (the mod's log says why).
 
@@ -269,8 +273,8 @@ A `?` marks a timing not yet confirmed from game code.
 
 ### What a live edit finds
 
-The target is found by identity every time: an entity by its resource id, or a settings row by its id (a projectile
-type, a damage id, a stratagem type, a level, an explosion, arc, beam or status row).
+The target is found by identity every time. An entity is found by its resource id, and a settings row by its id (a
+projectile type, a damage id, a stratagem type, a level, an explosion, arc, beam or status row).
 
 `examples/mods/vanilla-plus` live-edits every hellpod stratagem's beacon flags at `HF_EVENT_ENTITIES_READY`, so blue
 beacons stick where they land. It reads each stratagem type's row with `get_live` and writes with `set_live`:
@@ -324,9 +328,11 @@ What your mod uses must be loaded, so a stratagem or effect that needs another o
 `hf->load_package(mod, package)` (SDK 6) loads a package from HellForge's catalogue (`mappings/references.json`) through
 the game's own package system and holds it for the session. It answers `HF_PACKAGE_LOADING` until the engine has all of
 it (call again to see), then `HF_PACKAGE_RESIDENT`, or 0 when refused. At most 64 packages are held, counting the ones
-HellForge loads for references and abilities; a package not resident within 90 seconds fails. Loading is per machine:
-what your mod loads is not told to other players. (In co-op HellForge does share the packages it holds for each player's
-edits, mods and actions, so friends load them too: [multiplayer.md](../multiplayer.md#assets-in-co-op).)
+HellForge loads for references and abilities; a package not resident within 90 seconds fails.
+
+Loading is per machine:
+what your mod loads is not told to other players. In co-op HellForge does share the packages it holds for each player's
+edits, mods and actions, so friends load them too: [Co-op in game](../multiplayer-in-game.md#assets-in-co-op).
 
 A stratagem's payload packages, a reference's packages and a spawned explosion's are loaded for you. The compendium holds
 the extra packages its stratagems need (a shell of another stratagem, say) once the entity data is in

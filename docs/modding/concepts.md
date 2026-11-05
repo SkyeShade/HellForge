@@ -152,11 +152,11 @@ game: use `hf_set` or `edit_entity` instead.
   every machine for the same reason.
 - The mod channel (SDK 16). The same code mod on every machine can send messages (`send`; `HF_ON_MESSAGE`) and share
   a table the host owns (`share_set`, `share_get`, `share_row`; `HF_ON_SHARE`). Messages are at most
-  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo. Rows are per
-  mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most `HF_SHARE_ROWS` (512) rows.
-  Only the host sets rows; every machine reads them, and a late joiner gets the whole table when it joins.
-  `is_authority(entity)` says whether this machine simulates an entity, and `entity_of_network(network)` gives the
-  entity a network id names on this machine now.
+  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo.
+- Shared rows. Rows are per mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most
+  `HF_SHARE_ROWS` (512) rows. Only the host sets rows; every machine reads them, and a late joiner gets the whole table
+  when it joins. `is_authority(entity)` says whether this machine simulates an entity, and
+  `entity_of_network(network)` gives the entity a network id names on this machine now.
 - Example: champions. The host's mod crowns some enemies and shares each crown by network id; every machine listens
   and dresses the entity it holds under that id. What the clients need travels in the value, never a decision they
   would compute differently:
@@ -192,12 +192,12 @@ builds on it, must follow that sync: it may not give premium content to players 
 HellForge does most of this for you.
 
 - **Copies of premium content are locked automatically.** A weapon or stratagem your mod makes as a copy of a premium
-  one (a premium warbond's weapon, a Superstore weapon, the Super Citizen Edition's MP-98 Knight) is in a player's
-  armory only when that player owns the original. It still exists on every machine, so friends with and without it
+  one is in a player's armory only when that player owns the original. Such a copy can be of a premium warbond's
+  weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. It still exists on every machine, so friends with and without it
   play together; a player without it cannot equip it.
-- **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy: a
-  free weapon made to play like a premium one, a premium armour's look on a free armour, a larger variant of a DLC
-  weapon. Each entry is one of:
+- **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy.
+  Examples are a free weapon made to play like a premium one, a premium armour's look on a free armour, or a larger
+  variant of a DLC weapon. Each entry is one of:
 
   | Entry | Owned when the player holds |
   |---|---|
@@ -221,8 +221,8 @@ HellForge does most of this for you.
   }
   ```
 
-- **What a player who does not own all of the list gets:** a gameplay mod still loads (friends keep running the same
-  mods), but none of the weapons and stratagems it adds are in their armory. A cosmetic mod (`"gameplay": false`) is not
+- **What a player who does not own all of the list gets:** a gameplay mod still loads, so friends keep running the
+  same mods. None of the weapons and stratagems it adds are in their armory. A cosmetic mod (`"gameplay": false`) is not
   loaded for them. The Mods page tags the mod PREMIUM, or PREMIUM: LOCKED for the selected profile, and its details say
   what is missing. A player who has not synced owns nothing premium.
 - **Your code's own effects are yours to gate.** HellForge locks items, not logic: a code mod that recreates a premium

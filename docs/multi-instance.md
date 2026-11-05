@@ -20,8 +20,8 @@ session runner's environment. Without the switch nothing below changes what a se
   lobby directory (`--directory`).
 - **The broker** (`native/steam-cloud/broker_lobby.c`, sandboxed sessions only): the game sees `HELLFORGE_IDENTITY` as
   its SteamID, named `HELLFORGE_PERSONA` (else "Diver \<last four digits>"). The game's own Steam lobby is kept between
-  the installations in `<directory folder>\steam-lobbies`: one text file per lobby, changed under a lock file, with
-  create, join, leave, members, owner and owner-only lobby data, and the call results and data updates the game
+  the installations in `<directory folder>\steam-lobbies`, one text file per lobby, changed under a lock file. It
+  covers create, join, leave, members, owner and owner-only lobby data, and the call results and data updates the game
   waits for. Steam P2P between them goes over loopback UDP, port 48000 + (SteamID mod 1000).
 
 ## Setting it up
@@ -39,7 +39,7 @@ session runner's environment. Without the switch nothing below changes what a se
    | `HELLFORGE_IDENTITY` | `76561199000000002` / `76561199000000003` |
    | `HELLFORGE_PEER_LINK` | `udp:11000013DF91602:47002:11000013DF91603=47003`, and the reverse |
    | `HELLFORGE_DIRECTORY_FOLDER` | the same folder for both |
-   | `HELLFORGE_TEST_STRANGERS` | `1`, for the Galactic Map ([multiplayer.md](multiplayer.md)) |
+   | `HELLFORGE_TEST_STRANGERS` | `1`, for the Galactic Map ([public lobbies](multiplayer-lobbies.md#testing-public-lobbies)) |
 
    Both installations need Play with strangers on for the map. `--toaster_mode` in the game options lowers the
    memory each game needs: with it, a game used 3 to 4.5 GB of RAM, and two games 12 GB of graphics memory. It also
@@ -47,36 +47,45 @@ session runner's environment. Without the switch nothing below changes what a se
 4. Join from the second game with `+connect_lobby <the first game's Steam lobby id>` in its options (the lobby file's
    name, in decimal), or from the Galactic Map.
 
-## Tested on one PC (2026-10-24)
+## What has been tested
 
-- `+connect_lobby`: the joiner entered the host's lobby and Party network, with about 30 Party messages a second each
-  way (logs only; not looked at in game).
-- **The Galactic Map**, both as strangers: the host deployed on a planet, and the other game opened the map's planet
-  view there. It drew the host's squad marker ("1/4") and the hover card (host name, level, mission). Selecting the
-  marker brought the loadout screen of the host's mission. After Ready Up the joiner dropped into the mission in
-  progress, and the host's screen showed it. The marker needs the record's `seed` ([multiplayer.md](multiplayer.md)).
+Two installations on one Windows PC (2026-10-24):
+
+- `+connect_lobby` puts the joiner in the host's lobby and Party network, with about 30 Party messages a second each
+  way. That was seen in the logs only, not in game.
+- **The Galactic Map** works with both as strangers. The joiner sees the host's squad marker ("1/4") and hover card
+  (host name, level, mission) on the host's planet. Selecting the marker brings the loadout screen of the host's
+  mission, and after Ready Up the joiner drops into the mission in progress. The marker needs the record's `seed`
+  ([public lobbies](multiplayer-lobbies.md#the-selected-mission-seed)).
+- `BeginAuthSession` (each game checks the other's Steam ticket at a join) is refused, and the join goes on.
 - **Not covered:**
-  - more than two installations;
+  - more than two installations
   - two installations without the sandbox (the game would then talk to Valve's DLL, which cannot give two games
-    different SteamIDs);
-  - a whole mission together;
-  - `BeginAuthSession` (each game checks the other's Steam ticket at a join). It is refused, and the join went on.
+    different SteamIDs)
+  - a whole mission together
 
-## On Linux (2026-10-30, the lobby browser)
+The full test notes are in
+[the earlier version of this page](https://github.com/SkyeShade/HellForge/blob/8960d58f03787264e3ce88aa68cffaaf8af0d8ff/docs/multi-instance.md#tested-on-one-pc-2026-10-24).
 
-Two installations ran side by side on Fedora (Proton), each a session of its own, to test the lobby browser:
+## On Linux
+
+Two installations can run side by side on Linux (Proton), each a session of its own, for the lobby browser. Tested on
+Fedora, 2026-10-30:
 
 - **A Wine prefix each.** Two sessions cannot share a prefix: the second wrapper sees the first one's wineserver, which
-  runs outside its network namespace, and refuses (`hellforge-offline.sh`). The second installation went into a copy
-  of the prefix (`~/.local/share/hellforge-prefix-b/pfx/drive_c/...`, about 380 MB without the installations), with
-  its game data hard-linked as on Windows.
+  runs outside its network namespace, and refuses (`hellforge-offline.sh`). The tested second installation went into a
+  copy of the prefix (`~/.local/share/hellforge-prefix-b/pfx/drive_c/...`, about 380 MB without the installations),
+  with its game data hard-linked as on Windows.
 - **A namespace each.** Each session has its own loopback, so `HELLFORGE_PEER_LINK`'s ports do not reach the other
   session. A relay run in both namespaces (`nsenter`) and joined over a Unix datagram socket can carry them. The
   directory folder needs nothing, since files cross namespaces.
-- **What worked:** each backend listed its lobby in the shared folder, under `HELLFORGE_IDENTITY`. The other session's
-  browse API and in-game browser listed it as a stranger's ("Ready to join"), and Quick Play handed that game the
+- **What works:** each backend lists its lobby in the shared folder, under `HELLFORGE_IDENTITY`. The other session's
+  browse API and in-game browser list it as a stranger's ("Ready to join"), and Quick Play hands that game the
   invitation.
-- **Not covered: the game's join.** The sandboxed Steam broker (`broker_lobby.c`), which gives each game its own
+- **What does not: the game's join.** The sandboxed Steam broker (`broker_lobby.c`), which gives each game its own
   SteamID, is Windows-only. On Linux both games are the same Steam account, and a second game signing in sends the
   first back to its title screen. A join between two installations on one Linux PC therefore needs two PCs, or the
   broker on Linux.
+
+The full test notes are in
+[the earlier version of this page](https://github.com/SkyeShade/HellForge/blob/8960d58f03787264e3ce88aa68cffaaf8af0d8ff/docs/multi-instance.md#on-linux-2026-10-30-the-lobby-browser).
