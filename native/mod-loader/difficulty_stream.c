@@ -271,6 +271,9 @@ static void NearReportPlayer(const float* at);
 static void WindowLeaveLocked(uint32_t s);   /* difficulty_stream_window.c */
 static void WindowScanLocked(ULONGLONG now);
 static void WindowNoteLocked(void);
+static void DestroyTick(void);                /* difficulty_world_destroy.c */
+static void DestroyNote(void);
+static const char* InstallDestroyQueue(void);
 static void WorldStreamPlayersLocked(void)
 {
     g_stream.playerCount = 0;
@@ -973,6 +976,7 @@ static void WorldStreamNoteLocked(ULONGLONG now)
         g_streamFrameSum > 0 ? (double)g_streamFrames / (double)g_streamFrameSum : 0.0, (double)g_streamFrameMax * 1000.0);
     g_streamFrames = 0; g_streamFrameSum = g_streamFrameMax = 0;
     WindowNoteLocked();
+    DestroyNote();
     WorldStreamObjectivesNote();
 }
 
@@ -981,6 +985,7 @@ static void WorldStreamNoteLocked(ULONGLONG now)
 static void WorldStreamTick(float dt)
 {
     if (g_streamInstallState != 1) return;
+    DestroyTick(); /* destroys that waited for their unit (difficulty_world_destroy.c) */
     if (dt > 0 && dt < 10.0f) { g_streamFrames++; g_streamFrameSum += dt; if (dt > g_streamFrameMax) g_streamFrameMax = dt; }
     if (g_streamInside) return; /* a generator call is inside: it owns the pass */
     AcquireSRWLockExclusive(&g_streamLock);
@@ -1035,6 +1040,7 @@ static const char* InstallWorldStream(uintptr_t game)
     g_streamFrequency = frequency.QuadPart;
     g_stream.game = game;
     g_streamInstallState = 1;
+    InstallDestroyQueue();
     Note("difficulty: extra large maps: content streams: %d locations at most, %d per call, kept within %.0f m of the start, streamed within %.0f m of a player, removed beyond %.0f m after %d s",
         (int)kStreamMaxLocations, (int)kStreamBatch, (double)kStreamStartRadius, (double)kStreamInRadius, (double)kStreamOutRadius,
         (int)(kStreamOutTimeout / 1000));

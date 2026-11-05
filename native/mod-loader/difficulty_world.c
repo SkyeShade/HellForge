@@ -628,9 +628,11 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
 }
 /* After op 0x16: each id on the list against the important locations it placed (records 0x108 at G+g_importantList,
  * count G+0x11A715C; op 0x16 writes kind 0xADC32FAA at +0x8, 0xF8FFF7, and the objective id at +0xD8, 0xF900DB). */
+static uint32_t g_unplacedIds[64], g_unplacedCount; /* ids op 0x16 placed none of (WorldObjectiveUnplacedNote) */
 static void WorldObjectivePlaced(uintptr_t block)
 {
     uint32_t count = 0, ids[64], copies[64], placed[64], k = 0, listed = g_objectiveListCount, done = 0;
+    g_unplacedCount = 0;
     if (listed == 0 || SafeRead(block + 0x11A715Cu, &count, 4)) return;
     for (uint32_t i = 0; i < listed; i++)
     {
@@ -646,6 +648,7 @@ static void WorldObjectivePlaced(uintptr_t block)
             SafeRead(block + g_importantList + 0x108ull * l + 0xD8, &id, 4)) continue;
         for (uint32_t j = 0; j < k; j++) if (ids[j] == id) { placed[j]++; done++; break; }
     }
+    for (uint32_t j = 0; j < k; j++) if (placed[j] == 0 && g_unplacedCount < 64) g_unplacedIds[g_unplacedCount++] = ids[j];
     char text[1600];
     int at = snprintf(text, sizeof text, "difficulty: an operation's missions on one map: op 0x16 placed %u of the list's %u (id copies -> placed):", done, listed);
     for (uint32_t j = 0; j < k && at > 0 && at < (int)sizeof text - 32; j++)
@@ -2291,6 +2294,59 @@ static uint32_t NatureKindMask(uint64_t D)
     return mask;
 }
 
+/* Research (an id op 0x16 placed none of, s75z ece7ef4e; static, subagent obj15): op 0x15's entries for it (pass:
+ * holders +0, holder count [+8], entries +0x18 (16 bytes: u16 holder, category, definition), set S' +0x20 in layout L48:
+ * ids +4, starts S'-0xF0, counts +0x100, count +0xD4) and, per entry's definition D (holder +0x28 categories, 0x18 each,
+ * definitions +8, 0x1C8 each), what op 0x16's tests read: D+8 key, +0x160 bit 3, capacity +0x15C against the important
+ * records with the same holder (+0), category (+0xA1) and definition (+0xA2), the level word +0x60 (min bits 2..5, max
+ * 6..9, 0xF none) against [lg+0xF9], faction +0xE8 / +0xE9, +0x70, +0xA8 / +0xB0 / +0xC0 / +0xD0 / +0xD4, kinds, weight
+ * +0x68. Read only. */
+static uint64_t g_pass15;
+static void WorldObjectiveUnplacedNote(uintptr_t block)
+{
+    if (g_unplacedCount == 0 || g_pass15 == 0) return;
+    uint64_t pass = g_pass15, holders = 0, holderCountAt = 0, set = 0, entries = 0;
+    uint32_t holderCount = 0, objectives = 0, important = 0; uint8_t lvl = 0;
+    if (SafeRead(pass, &holders, 8) || SafeRead(pass + 8, &holderCountAt, 8) || holderCountAt == 0 || SafeRead(holderCountAt, &holderCount, 4) ||
+        SafeRead(pass + 0x18, &entries, 8) || SafeRead(pass + 0x20, &set, 8) || set == 0 || SafeRead(set + 0xD4, &objectives, 4))
+    { Note("difficulty: objectives research: op 0x15's pass could not be read"); return; }
+    SafeRead(g_worldLevel + 0xF9, &lvl, 1); SafeRead(block + 0x11A715Cu, &important, 4);
+    if (objectives > 48) objectives = 48;
+    if (important > 1024) important = 1024;
+    for (uint32_t u = 0; u < g_unplacedCount; u++)
+        for (uint32_t o = 0; o < objectives; o++)
+        {
+            uint32_t id = 0, first = 0, count = 0;
+            if (SafeRead(set + 4 + 4ull * o, &id, 4) || id != g_unplacedIds[u]) continue;
+            SafeRead(set - 0xF0 + 4ull * o, &first, 4); SafeRead(set + 0x100 + 4ull * o, &count, 4);
+            Note("difficulty: objectives research: %08x (list place %u): op 0x15 gave %u entries from %u; level %u", id, o, count, first, lvl);
+            for (uint32_t j = 0; j < count && j < 12; j++)
+            {
+                uint16_t ix[3] = {0}; uint64_t holder = 0, cats = 0, defs = 0;
+                if (entries == 0 || SafeRead(entries + 16ull * (first + j), ix, 6) || ix[0] >= holderCount || SafeRead(holders + 8ull * ix[0], &holder, 8) || holder == 0 ||
+                    SafeRead(holder + 0x28, &cats, 8) || cats == 0 || SafeRead(cats + 0x18ull * ix[1] + 8, &defs, 8) || defs == 0)
+                { Note("difficulty: objectives research:   entry %u (%u/%u/%u) does not read", j, ix[0], ix[1], ix[2]); continue; }
+                uint64_t D = defs + 0x1C8ull * ix[2];
+                uint32_t key = 0, x160 = 0, x70 = 0, xD0 = 0, xD4 = 0; uint16_t x60 = 0; uint8_t cap = 0, e8 = 0, e9 = 0; float w = 0;
+                uint64_t xA8 = 0, xB0 = 0, xC0 = 0;
+                SafeRead(D + 8, &key, 4); SafeRead(D + 0x160, &x160, 4); SafeRead(D + 0x15C, &cap, 1); SafeRead(D + 0x60, &x60, 2);
+                SafeRead(D + 0xE8, &e8, 1); SafeRead(D + 0xE9, &e9, 1); SafeRead(D + 0x70, &x70, 4); SafeRead(D + 0xA8, &xA8, 8);
+                SafeRead(D + 0xB0, &xB0, 8); SafeRead(D + 0xC0, &xC0, 8); SafeRead(D + 0xD0, &xD0, 4); SafeRead(D + 0xD4, &xD4, 4); SafeRead(D + 0x68, &w, 4);
+                uint32_t same = 0;
+                for (uint32_t l = 0; l < important; l++)
+                {
+                    uint64_t h = 0; uint8_t a1 = 0, a2 = 0;
+                    if (SafeRead(block + g_importantList + 0x108ull * l, &h, 8) || SafeRead(block + g_importantList + 0x108ull * l + 0xA1, &a1, 1) ||
+                        SafeRead(block + g_importantList + 0x108ull * l + 0xA2, &a2, 1)) continue;
+                    if (h == holder && a1 == ix[1] && a2 == ix[2]) same++;
+                }
+                Note("difficulty: objectives research:   entry %u (%u/%u/%u) key %08x: 0x160 bit3 %u, capacity %u (same records %u), level min %u max %u, E8 %02x E9 %02x, +0x70 %08x, +0xA8 %llx +0xB0 %llx +0xC0 %llx +0xD0 %u +0xD4 %u, kinds %08x, weight %.3g",
+                    j, ix[0], ix[1], ix[2], key, (x160 >> 3) & 1, cap, same, (x60 >> 2) & 0xF, (x60 >> 6) & 0xF, e8, e9, x70, (unsigned long long)xA8,
+                    (unsigned long long)xB0, (unsigned long long)xC0, xD0, xD4, NatureKindMask(D), (double)w);
+            }
+        }
+}
+
 static void WorldNatureResearch15(uint64_t pass, uint64_t context)
 {
     static LONG level = -1;
@@ -2303,12 +2359,12 @@ static void WorldNatureResearch15(uint64_t pass, uint64_t context)
         set == 0 || SafeRead(set + 0xD4, &objectives, 4))
     { Note("difficulty: nature research: op 0x15's pass could not be read"); return; }
     SafeRead(context + 0xD0, &select, 4); SafeRead(context + 0xD4, &selectArg, 4);
-    if (objectives > 16) objectives = 16;
+    if (objectives > 48) objectives = 48;
     /* R1: per objective, its entries' definitions by kind list */
     for (uint32_t o = 0; o < objectives; o++)
     {
         uint32_t id = 0, first = 0, count = 0, one = 0, three = 0, both = 0, neither = 0, e8[8] = {0}, b160 = 0; float wmin = 1e30f, wmax = -1e30f;
-        SafeRead(set + 4 + 4ull * o, &id, 4); SafeRead(set + 0x54 + 4ull * o, &first, 4); SafeRead(set + 0x94 + 4ull * o, &count, 4);
+        SafeRead(set + 4 + 4ull * o, &id, 4); SafeRead(set - 0xF0 + 4ull * o, &first, 4); SafeRead(set + 0x100 + 4ull * o, &count, 4); /* layout L48 (difficulty_block.c) */
         for (uint32_t j = 0; j < count && j < 4096; j++)
         {
             uint16_t ix[3] = {0}; uint64_t holder = 0, cats = 0, defs = 0;
@@ -3609,8 +3665,8 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         if (!SafeRead(index, &now, 4) && now != at)
         {
             WorldNatureOps(op, at);
-            if (op == 0x15) WorldNatureResearch15(records + (uint64_t)at * 0x19B0u + 8, b);
-            if (op == 0x16) WorldObjectivePlaced(block);
+            if (op == 0x15) { g_pass15 = records + (uint64_t)at * 0x19B0u + 8; WorldNatureResearch15(records + (uint64_t)at * 0x19B0u + 8, b); }
+            if (op == 0x16) { WorldObjectivePlaced(block); WorldObjectiveUnplacedNote(block); }
         }
     }
     if (watch && g_world.current == 8.0f && op == 0x2B)
